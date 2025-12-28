@@ -1,42 +1,21 @@
 import axios from 'axios';
 
-// Динамическое определение API URL
-const getApiUrl = () => {
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-  const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:5000/api`;
-};
-
-// Базовый URL без /api для медиафайлов
-const getBaseUrl = () => {
-  if (process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL.replace('/api', '');
-  }
-  const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:5000`;
-};
-
-export const API_URL = getApiUrl();
-export const BASE_URL = getBaseUrl();
+export const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: `${BASE_URL}/api`,
   headers: { 'Content-Type': 'application/json' }
 });
 
-// Add auth token to requests
-api.interceptors.request.use(config => {
+api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Handle auth errors
 api.interceptors.response.use(
-  response => response,
-  error => {
+  (response) => response,
+  (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -48,16 +27,23 @@ api.interceptors.response.use(
 
 // Auth
 export const auth = {
-  login: (username, password) => api.post('/auth/login', { username, password }),
+  login: (credentials) => api.post('/auth/login', credentials),
+  register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
-  changePassword: (currentPassword, newPassword) => 
-    api.post('/auth/change-password', { currentPassword, newPassword }),
-  updateProfile: (data) => api.put('/auth/profile', data)
+  changePassword: (data) => api.post('/auth/change-password', data),
+  updateProfile: (data) => api.put('/auth/profile', data),
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/auth/avatar', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
 };
 
 // Users
 export const users = {
-  list: () => api.get('/users'),
+  list: (params) => api.get('/users', { params }),
   get: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
@@ -146,7 +132,16 @@ export const chat = {
   addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
   leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
-  markRead: (chatId) => api.post(`/chat/${chatId}/read`)
+  markRead: (chatId) => api.post(`/chat/${chatId}/read`),
+  // Group avatar management
+  updateAvatar: (chatId, file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post(`/chat/${chatId}/avatar`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  deleteAvatar: (chatId) => api.delete(`/chat/${chatId}/avatar`)
 };
 
 export default api;

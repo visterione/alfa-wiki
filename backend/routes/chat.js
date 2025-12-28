@@ -1,9 +1,35 @@
 const express = require('express');
 const { Op } = require('sequelize');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const sharp = require('sharp');
 const { Chat, ChatMember, Message, User } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Multer setup for chat avatar
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '../uploads/chat-avatars');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `chat-${req.params.chatId}-${Date.now()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    cb(null, allowed.includes(file.mimetype));
+  }
+});
 
 // Get all chats for current user
 router.get('/', authenticate, async (req, res) => {
@@ -156,6 +182,82 @@ router.post('/group', authenticate, async (req, res) => {
   }
 });
 
+// Update group chat avatar
+router.post('/:chatId/avatar', authenticate, upload.single('avatar'), async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findByPk(chatId);
+    if (!chat || chat.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Only creator (admin) can update avatar
+    if (chat.createdBy !== req.user.id) {
+      return res.status(403).json({ error: 'Only group creator can update avatar' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Process image with sharp
+    const outputPath = req.file.path.replace(/\.[^.]+$/, '-processed.jpg');
+    await sharp(req.file.path)
+      .resize(200, 200, { fit: 'cover' })
+      .jpeg({ quality: 85 })
+      .toFile(outputPath);
+
+    // Delete original file
+    fs.unlinkSync(req.file.path);
+
+    // Delete old avatar if exists
+    if (chat.avatar) {
+      const oldPath = path.join(__dirname, '..', chat.avatar);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    const avatarPath = `uploads/chat-avatars/${path.basename(outputPath)}`;
+    await chat.update({ avatar: avatarPath });
+
+    res.json({ avatar: avatarPath });
+  } catch (error) {
+    console.error('Update chat avatar error:', error);
+    res.status(500).json({ error: 'Failed to update avatar' });
+  }
+});
+
+// Delete group chat avatar
+router.delete('/:chatId/avatar', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chat = await Chat.findByPk(chatId);
+    if (!chat || chat.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (chat.createdBy !== req.user.id) {
+      return res.status(403).json({ error: 'Only group creator can delete avatar' });
+    }
+
+    if (chat.avatar) {
+      const avatarPath = path.join(__dirname, '..', chat.avatar);
+      if (fs.existsSync(avatarPath)) {
+        fs.unlinkSync(avatarPath);
+      }
+    }
+
+    await chat.update({ avatar: null });
+    res.json({ message: 'Avatar deleted' });
+  } catch (error) {
+    console.error('Delete chat avatar error:', error);
+    res.status(500).json({ error: 'Failed to delete avatar' });
+  }
+});
+
 // Get messages for a chat
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
@@ -200,7 +302,6 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
     const { chatId } = req.params;
     const { content, type = 'text', attachments = [], replyToId } = req.body;
 
-    // Allow empty content if there are attachments
     if ((!content || !content.trim()) && attachments.length === 0) {
       return res.status(400).json({ error: 'Message content or attachments required' });
     }
@@ -213,7 +314,6 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
-    // Determine message type based on attachments
     let messageType = type;
     if (attachments.length > 0) {
       const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
@@ -229,7 +329,6 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       replyToId
     });
 
-    // Update chat's last message
     let lastMessagePreview = content?.trim() || '';
     if (attachments.length > 0 && !lastMessagePreview) {
       const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
@@ -298,7 +397,7 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
   }
 });
 
-// Remove member from group
+// Remove member from group (kick)
 router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
   try {
     const { chatId, userId } = req.params;
@@ -308,12 +407,26 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
+    // Check if requester is admin (creator)
     const requesterMembership = await ChatMember.findOne({
-      where: { chatId, userId: req.user.id, role: 'admin' }
+      where: { chatId, userId: req.user.id }
     });
 
-    if (!requesterMembership && userId !== req.user.id) {
-      return res.status(403).json({ error: 'Only admins can remove members' });
+    if (!requesterMembership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Only creator can kick others, or user can remove themselves
+    const isCreator = chat.createdBy === req.user.id;
+    const isSelf = userId === req.user.id;
+
+    if (!isCreator && !isSelf) {
+      return res.status(403).json({ error: 'Only group creator can remove members' });
+    }
+
+    // Cannot kick the creator
+    if (userId === chat.createdBy && !isSelf) {
+      return res.status(403).json({ error: 'Cannot remove group creator' });
     }
 
     const membership = await ChatMember.findOne({ where: { chatId, userId } });
@@ -325,10 +438,15 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
     
     await membership.destroy();
 
+    // Create system message
+    const messageContent = isSelf 
+      ? `${user.displayName || user.username} покинул группу`
+      : `${user.displayName || user.username} исключён из группы`;
+
     await Message.create({
       chatId,
       senderId: req.user.id,
-      content: `${user.displayName || user.username} удалён из группы`,
+      content: messageContent,
       type: 'system'
     });
 
