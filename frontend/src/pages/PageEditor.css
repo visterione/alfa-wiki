@@ -1,0 +1,134 @@
+.page-editor {
+  max-width: 100%;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.editor-header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.editor-body {
+  display: flex;
+  gap: 24px;
+}
+
+.editor-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-sidebar {
+  width: 340px;
+  flex-shrink: 0;
+}
+
+.title-input {
+  font-size: 24px;
+  font-weight: 600;
+  padding: 16px 20px;
+  border: none;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.title-input:focus {
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.editor-type-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.editor-type-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editor-type-tab:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.editor-type-tab.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.html-editor {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.code-textarea {
+  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: var(--radius-md);
+  resize: vertical;
+  padding: 16px;
+}
+
+.code-textarea:focus {
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+  border-color: var(--primary);
+}
+
+.code-textarea::placeholder {
+  color: #6c7086;
+}
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.checkbox-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+@media (max-width: 1200px) {
+  .editor-body {
+    flex-direction: column;
+  }
+  .editor-sidebar {
+    width: 100%;
+  }
+}

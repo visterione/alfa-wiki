@@ -1,0 +1,360 @@
+.editor-container {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.editor-menu {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-menu-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.editor-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editor-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.editor-btn.active {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.editor-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.editor-select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  font-size: 13px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+
+.editor-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.editor-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+/* Dropdown wrapper */
+.editor-dropdown-wrapper {
+  position: relative;
+}
+
+.editor-btn svg:last-child {
+  margin-left: 2px;
+}
+
+/* Color Picker */
+.color-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  z-index: 100;
+  min-width: 160px;
+}
+
+.color-picker-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.color-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.color-picker-item {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.color-picker-item:hover {
+  transform: scale(1.15);
+  border-color: var(--text-primary);
+}
+
+.color-picker-clear {
+  width: 100%;
+  padding: 6px;
+  background: var(--bg-secondary);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.color-picker-clear:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Table Menu */
+.table-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 8px;
+  z-index: 100;
+  min-width: 180px;
+}
+
+.table-menu-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  padding: 4px 8px 8px;
+}
+
+.table-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.table-menu-item:hover {
+  background: var(--bg-secondary);
+}
+
+.table-menu-item.danger {
+  color: var(--error);
+}
+
+.table-menu-divider {
+  height: 1px;
+  background: var(--border-light);
+  margin: 4px 0;
+}
+
+.table-size-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-size-row {
+  display: flex;
+  gap: 4px;
+}
+
+.table-size-cell {
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.table-size-cell:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.editor-content {
+  min-height: 400px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.editor-content .ProseMirror {
+  padding: 24px;
+  min-height: 400px;
+  outline: none;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  height: 0;
+}
+
+/* Editor content styles */
+.editor-content .ProseMirror h1 { font-size: 2em; margin: 0.67em 0; }
+.editor-content .ProseMirror h2 { font-size: 1.5em; margin: 0.75em 0; }
+.editor-content .ProseMirror h3 { font-size: 1.17em; margin: 0.83em 0; }
+.editor-content .ProseMirror h4 { font-size: 1em; margin: 1em 0; }
+
+.editor-content .ProseMirror p {
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror ul,
+.editor-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror li {
+  margin: 0.5em 0;
+}
+
+.editor-content .ProseMirror blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid var(--primary);
+  background: var(--bg-secondary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.editor-content .ProseMirror pre {
+  background: #1D1D1F;
+  color: #fff;
+  padding: 1em;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror code {
+  background: var(--bg-tertiary);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.editor-content .ProseMirror pre code {
+  background: none;
+  padding: 0;
+}
+
+.editor-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm);
+}
+
+.editor-content .ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid var(--primary);
+}
+
+.editor-content .ProseMirror hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 2em 0;
+}
+
+.editor-content .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.editor-content .ProseMirror mark {
+  background: #FFEB3B;
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* Table styles */
+.editor-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror th,
+.editor-content .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  min-width: 80px;
+}
+
+.editor-content .ProseMirror th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.editor-content .ProseMirror .selectedCell {
+  background: var(--primary-light);
+}
+
+/* YouTube embed */
+.editor-content .ProseMirror iframe {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+/* Selection */
+.editor-content .ProseMirror ::selection {
+  background: var(--primary-light);
+}
