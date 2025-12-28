@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Save, ArrowLeft, Eye, Code, FileText, Settings } from 'lucide-react';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
+import CodeEditor from '../components/CodeEditor';
 import toast from 'react-hot-toast';
 import './PageEditor.css';
 
@@ -190,12 +191,12 @@ export default function PageEditor() {
               />
             ) : (
               <div className="html-editor">
-                <textarea
-                  className="textarea code-textarea"
-                  placeholder="<div>Ваш HTML код...</div>"
+                <CodeEditor
                   value={form.content}
-                  onChange={(e) => setForm({ ...form, content: e.target.value })}
-                  rows={20}
+                  onChange={(content) => setForm({ ...form, content })}
+                  language="html"
+                  placeholder="<div>Ваш HTML код...</div>"
+                  height="500px"
                 />
               </div>
             )}
@@ -282,22 +283,22 @@ export default function PageEditor() {
                     <>
                       <div className="form-group">
                         <label className="form-label">Custom CSS</label>
-                        <textarea
-                          className="textarea code-textarea"
-                          placeholder=".my-class { color: red; }"
+                        <CodeEditor
                           value={form.customCss}
-                          onChange={(e) => setForm({ ...form, customCss: e.target.value })}
-                          rows={5}
+                          onChange={(customCss) => setForm({ ...form, customCss })}
+                          language="css"
+                          placeholder=".my-class { color: red; }"
+                          height="150px"
                         />
                       </div>
                       <div className="form-group">
                         <label className="form-label">Custom JavaScript</label>
-                        <textarea
-                          className="textarea code-textarea"
-                          placeholder="console.log('Hello');"
+                        <CodeEditor
                           value={form.customJs}
-                          onChange={(e) => setForm({ ...form, customJs: e.target.value })}
-                          rows={5}
+                          onChange={(customJs) => setForm({ ...form, customJs })}
+                          language="javascript"
+                          placeholder="console.log('Hello');"
+                          height="150px"
                         />
                       </div>
                     </>

@@ -113,6 +113,15 @@
   border-color: rgba(255, 255, 255, 0.4);
 }
 
+/* Отключаем автозаполнение */
+.search-input:-webkit-autofill,
+.search-input:-webkit-autofill:hover,
+.search-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px rgba(255, 255, 255, 0.15) inset;
+  -webkit-text-fill-color: white;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 .search-icon {
   position: absolute;
   left: 14px;
@@ -141,6 +150,7 @@
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-light);
   transition: background var(--transition-fast);
+  cursor: pointer;
 }
 
 .search-result-item:last-child {
@@ -199,11 +209,16 @@
 .header-avatar {
   width: 32px;
   height: 32px;
-  background: rgba(255, 255, 255, 0.3);
+  background: white;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--primary);
+}
+
+.header-username {
+  color: white;
 }
 
 .header-dropdown {

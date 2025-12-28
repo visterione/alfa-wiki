@@ -1,12 +1,10 @@
-/* TipTap Editor Styles */
-.tiptap-editor {
-  background: var(--bg-primary);
+.editor-container {
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
+  background: var(--bg-primary);
+  /* Убираем overflow: hidden чтобы dropdown не обрезался */
 }
 
-/* Menu Bar */
 .editor-menu {
   display: flex;
   flex-wrap: wrap;
@@ -14,32 +12,25 @@
   gap: 4px;
   padding: 8px 12px;
   background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 10;
 }
 
 .editor-menu-group {
   display: flex;
   align-items: center;
   gap: 2px;
+  position: relative;
 }
 
-.editor-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--border);
-  margin: 0 6px;
-}
-
-/* Buttons */
 .editor-btn {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: transparent;
+  background: none;
   border: none;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
@@ -47,7 +38,7 @@
   transition: all var(--transition-fast);
 }
 
-.editor-btn:hover {
+.editor-btn:hover:not(:disabled) {
   background: var(--bg-tertiary);
   color: var(--text-primary);
 }
@@ -62,36 +53,31 @@
   cursor: not-allowed;
 }
 
-/* Buttons with dropdown arrow */
-.editor-btn svg:last-child:not(:first-child) {
-  margin-left: 0;
-  opacity: 0.6;
-}
-
-/* Select */
 .editor-select {
   height: 32px;
   padding: 0 28px 0 10px;
+  font-size: 13px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  font-size: 13px;
   color: var(--text-primary);
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868B' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
-}
-
-.editor-select:hover {
-  border-color: var(--primary);
 }
 
 .editor-select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.editor-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 6px;
 }
 
 /* Dropdown wrapper */
@@ -99,18 +85,19 @@
   position: relative;
 }
 
-/* Color Picker Dropdown */
+.editor-btn svg:last-child {
+  margin-left: 2px;
+}
+
+/* Color Picker */
 .color-picker-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
   background: var(--bg-primary);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-xl);
   padding: 12px;
-  z-index: 100;
-  min-width: 180px;
-  border: 1px solid var(--border-light);
+  z-index: 9999;
+  min-width: 160px;
 }
 
 .color-picker-title {
@@ -118,66 +105,56 @@
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .color-picker-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .color-picker-item {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
   border: 2px solid transparent;
   cursor: pointer;
   transition: all var(--transition-fast);
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1);
 }
 
 .color-picker-item:hover {
   transform: scale(1.15);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-
-.color-picker-item.active {
   border-color: var(--text-primary);
-  transform: scale(1.1);
 }
 
 .color-picker-clear {
   width: 100%;
-  padding: 8px;
+  padding: 6px;
   background: var(--bg-secondary);
   border: none;
   border-radius: var(--radius-sm);
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
 }
 
 .color-picker-clear:hover {
   background: var(--bg-tertiary);
-  color: var(--text-primary);
 }
 
-/* Table Menu Dropdown */
+/* Table Menu - ИСПРАВЛЕНО: позиционирование справа */
 .table-menu-dropdown {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
+  position: fixed;
   background: var(--bg-primary);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-xl);
   padding: 8px;
-  z-index: 100;
+  z-index: 9999;
   min-width: 200px;
-  border: 1px solid var(--border-light);
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .table-menu-title {
@@ -185,32 +162,15 @@
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 6px 10px 10px;
-}
-
-.table-menu-section {
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 10px 10px 6px;
-  margin-top: 4px;
-  border-top: 1px solid var(--border-light);
-}
-
-.table-menu-section:first-of-type {
-  border-top: none;
-  margin-top: 0;
+  padding: 4px 8px 8px;
 }
 
 .table-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 8px 12px;
   background: none;
   border: none;
   border-radius: var(--radius-sm);
@@ -218,7 +178,6 @@
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  transition: all var(--transition-fast);
 }
 
 .table-menu-item:hover {
@@ -229,46 +188,60 @@
   color: var(--error);
 }
 
-.table-menu-item.danger:hover {
-  background: rgba(255, 59, 48, 0.1);
-}
-
-.table-menu-item svg {
-  color: var(--text-tertiary);
-  flex-shrink: 0;
-}
-
-.table-menu-item.danger svg {
-  color: var(--error);
-}
-
-.table-menu-item:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.table-menu-item:disabled:hover {
-  background: none;
-}
-
 .table-menu-divider {
   height: 1px;
   background: var(--border-light);
-  margin: 8px 0;
+  margin: 4px 0;
 }
 
-/* Editor Content Area */
-.tiptap-editor .ProseMirror {
+.table-size-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.table-size-row {
+  display: flex;
+  gap: 4px;
+}
+
+.table-size-cell {
+  width: 40px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.table-size-cell:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.editor-content {
   min-height: 400px;
+  max-height: 70vh;
+  overflow-y: auto;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.editor-content .ProseMirror {
   padding: 24px;
+  min-height: 400px;
   outline: none;
+  font-size: 16px;
+  line-height: 1.7;
 }
 
-.tiptap-editor .ProseMirror > * + * {
-  margin-top: 0.75em;
-}
-
-.tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
   color: var(--text-tertiary);
@@ -276,142 +249,148 @@
   height: 0;
 }
 
-/* Table Styles in Editor */
-.tiptap-editor .ProseMirror table {
-  border-collapse: collapse;
-  width: 100%;
-  margin: 16px 0;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
+/* Editor content styles */
+.editor-content .ProseMirror h1 { font-size: 2em; margin: 0.67em 0; }
+.editor-content .ProseMirror h2 { font-size: 1.5em; margin: 0.75em 0; }
+.editor-content .ProseMirror h3 { font-size: 1.17em; margin: 0.83em 0; }
+.editor-content .ProseMirror h4 { font-size: 1em; margin: 1em 0; }
+
+.editor-content .ProseMirror p {
+  margin: 1em 0;
 }
 
-.tiptap-editor .ProseMirror th,
-.tiptap-editor .ProseMirror td {
-  border: 1px solid var(--border);
-  padding: 10px 14px;
-  text-align: left;
-  position: relative;
-  min-width: 80px;
+.editor-content .ProseMirror ul,
+.editor-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 1em 0;
 }
 
-.tiptap-editor .ProseMirror th {
+.editor-content .ProseMirror li {
+  margin: 0.5em 0;
+}
+
+.editor-content .ProseMirror blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid var(--primary);
   background: var(--bg-secondary);
-  font-weight: 600;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
-.tiptap-editor .ProseMirror .selectedCell {
-  background: var(--primary-light);
-}
-
-.tiptap-editor .ProseMirror .selectedCell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--primary);
-  opacity: 0.1;
-  pointer-events: none;
-}
-
-/* Table resize handle */
-.tiptap-editor .ProseMirror .tableWrapper {
+.editor-content .ProseMirror pre {
+  background: #1D1D1F;
+  color: #fff;
+  padding: 1em;
+  border-radius: var(--radius-sm);
   overflow-x: auto;
+  margin: 1em 0;
 }
 
-.tiptap-editor .ProseMirror .column-resize-handle {
-  position: absolute;
-  right: -2px;
-  top: 0;
-  bottom: -2px;
-  width: 4px;
-  background: var(--primary);
-  cursor: col-resize;
-  z-index: 10;
-}
-
-/* Highlight colors */
-.tiptap-editor .ProseMirror mark {
-  border-radius: 2px;
-  padding: 0 2px;
-}
-
-/* Code blocks */
-.tiptap-editor .ProseMirror pre {
-  background: #1e1e2e;
-  color: #cdd6f4;
-  padding: 16px;
-  border-radius: var(--radius-md);
-  overflow-x: auto;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
-  font-size: 13px;
-}
-
-.tiptap-editor .ProseMirror code {
+.editor-content .ProseMirror code {
   background: var(--bg-tertiary);
-  padding: 2px 6px;
+  padding: 0.2em 0.4em;
   border-radius: 4px;
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
   font-size: 0.9em;
 }
 
-.tiptap-editor .ProseMirror pre code {
+.editor-content .ProseMirror pre code {
   background: none;
   padding: 0;
 }
 
-/* Blockquote */
-.tiptap-editor .ProseMirror blockquote {
-  border-left: 4px solid var(--primary);
-  padding-left: 16px;
-  margin-left: 0;
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-/* Links */
-.tiptap-editor .ProseMirror a {
-  color: var(--primary);
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-/* Images */
-.tiptap-editor .ProseMirror img {
+.editor-content .ProseMirror img {
   max-width: 100%;
   height: auto;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
 }
 
-/* YouTube videos */
-.tiptap-editor .ProseMirror iframe {
-  max-width: 100%;
-  border-radius: var(--radius-md);
+.editor-content .ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid var(--primary);
 }
 
-/* Lists */
-.tiptap-editor .ProseMirror ul,
-.tiptap-editor .ProseMirror ol {
-  padding-left: 24px;
-}
-
-.tiptap-editor .ProseMirror li {
-  margin: 4px 0;
-}
-
-/* Headings */
-.tiptap-editor .ProseMirror h1 { font-size: 2em; }
-.tiptap-editor .ProseMirror h2 { font-size: 1.5em; }
-.tiptap-editor .ProseMirror h3 { font-size: 1.25em; }
-.tiptap-editor .ProseMirror h4 { font-size: 1.1em; }
-
-/* Horizontal rule */
-.tiptap-editor .ProseMirror hr {
+.editor-content .ProseMirror hr {
   border: none;
-  border-top: 2px solid var(--border);
-  margin: 24px 0;
+  height: 1px;
+  background: var(--border);
+  margin: 2em 0;
 }
 
-/* Focus outline for accessibility */
-.tiptap-editor:focus-within {
-  box-shadow: 0 0 0 3px var(--primary-light);
+.editor-content .ProseMirror a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.editor-content .ProseMirror mark {
+  background: #FFEB3B;
+  padding: 0.1em 0.2em;
+  border-radius: 2px;
+}
+
+/* Table styles */
+.editor-content .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror th,
+.editor-content .ProseMirror td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  min-width: 80px;
+}
+
+.editor-content .ProseMirror th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.editor-content .ProseMirror .selectedCell {
+  background: var(--primary-light);
+}
+
+/* YouTube embed */
+.editor-content .ProseMirror iframe {
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+
+/* Selection */
+.editor-content .ProseMirror ::selection {
+  background: var(--primary-light);
+}
+
+/* Table bubble menu */
+.table-bubble-menu {
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+}
+
+.table-bubble-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.table-bubble-menu button:hover {
+  background: var(--bg-secondary);
+}
+
+.table-bubble-menu button.danger {
+  color: var(--error);
 }

@@ -1,0 +1,43 @@
+.code-editor-wrapper {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid #45475a;
+}
+
+.code-editor-wrapper .cm-editor {
+  font-family: 'SF Mono', 'Fira Code', 'Monaco', 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.code-editor-wrapper .cm-editor.cm-focused {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2);
+}
+
+.code-editor-wrapper .cm-scroller {
+  font-family: inherit;
+}
+
+.code-editor-wrapper .cm-gutters {
+  border-right: 1px solid #45475a;
+}
+
+.code-editor-wrapper .cm-activeLineGutter {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.code-editor-wrapper .cm-content {
+  padding: 8px 0;
+}
+
+/* Улучшенные цвета для подсветки синтаксиса */
+.code-editor-wrapper .cm-line {
+  padding: 0 12px;
+}
+
+/* Placeholder стили */
+.code-editor-wrapper .cm-placeholder {
+  color: #6c7086;
+  font-style: italic;
+}

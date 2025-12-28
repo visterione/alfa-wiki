@@ -8,7 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
-import Profile from './pages/Profile';
+import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
@@ -58,10 +58,10 @@ function AppRoutes() {
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
         
-        {/* Profile route - доступен всем авторизованным */}
-        <Route path="profile" element={<Profile />} />
-        
         {/* Admin routes */}
+        <Route path="admin" element={
+          <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
+        } />
         <Route path="admin/users" element={
           <ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>
         } />
@@ -77,9 +77,7 @@ function AppRoutes() {
         <Route path="admin/media" element={
           <ProtectedRoute adminOnly><AdminMedia /></ProtectedRoute>
         } />
-        <Route path="admin/settings" element={
-          <ProtectedRoute adminOnly><AdminSettings /></ProtectedRoute>
-        } />
+        <Route path="admin/settings" element={<AdminSettings />} />
         <Route path="admin/backup" element={
           <ProtectedRoute adminOnly><AdminBackup /></ProtectedRoute>
         } />

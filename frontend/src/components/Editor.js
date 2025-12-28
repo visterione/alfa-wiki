@@ -22,7 +22,7 @@ import {
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, Quote, Code, Minus, Undo, Redo,
   Link as LinkIcon, Image as ImageIcon, Table as TableIcon,
-  Highlighter, Type, Youtube as YoutubeIcon, Subscript as SubIcon,
+  Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2
 } from 'lucide-react';
 import './Editor.css';
@@ -41,212 +41,358 @@ const MenuButton = ({ onClick, isActive, disabled, children, title }) => (
 
 const MenuDivider = () => <div className="editor-divider" />;
 
+// Цвета для хайлайтера
 const highlightColors = [
-  { name: 'Жёлтый', color: '#fef08a' },
-  { name: 'Зелёный', color: '#bbf7d0' },
-  { name: 'Голубой', color: '#bae6fd' },
-  { name: 'Розовый', color: '#fbcfe8' },
-  { name: 'Оранжевый', color: '#fed7aa' },
-  { name: 'Фиолетовый', color: '#ddd6fe' },
-  { name: 'Красный', color: '#fecaca' },
-  { name: 'Серый', color: '#e5e7eb' },
+  { name: 'Жёлтый', color: '#FFEB3B' },
+  { name: 'Зелёный', color: '#A5D6A7' },
+  { name: 'Голубой', color: '#81D4FA' },
+  { name: 'Розовый', color: '#F48FB1' },
+  { name: 'Оранжевый', color: '#FFCC80' },
+  { name: 'Фиолетовый', color: '#CE93D8' },
 ];
 
+// Цвета для текста
 const textColors = [
   { name: 'Чёрный', color: '#000000' },
-  { name: 'Серый', color: '#6b7280' },
-  { name: 'Красный', color: '#dc2626' },
-  { name: 'Оранжевый', color: '#ea580c' },
-  { name: 'Жёлтый', color: '#ca8a04' },
-  { name: 'Зелёный', color: '#16a34a' },
-  { name: 'Голубой', color: '#0891b2' },
-  { name: 'Синий', color: '#2563eb' },
-  { name: 'Фиолетовый', color: '#7c3aed' },
-  { name: 'Розовый', color: '#db2777' },
+  { name: 'Серый', color: '#666666' },
+  { name: 'Красный', color: '#E53935' },
+  { name: 'Оранжевый', color: '#FB8C00' },
+  { name: 'Жёлтый', color: '#FDD835' },
+  { name: 'Зелёный', color: '#43A047' },
+  { name: 'Голубой', color: '#039BE5' },
+  { name: 'Синий', color: '#1E88E5' },
+  { name: 'Фиолетовый', color: '#8E24AA' },
+  { name: 'Розовый', color: '#D81B60' },
 ];
 
-function ColorDropdown({ isOpen, onClose, colors, onSelect, title, currentColor }) {
-  const ref = useRef(null);
-  
+// Компонент выпадающего меню для цветов
+function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const menuRef = useRef(null);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+      if (menuRef.current && !menuRef.current.contains(e.target) && 
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
     };
-    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, onClose]);
+  }, [buttonRef]);
 
-  if (!isOpen) return null;
-  
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 180;
+      const viewportWidth = window.innerWidth;
+      
+      let left = rect.left;
+      if (rect.left + menuWidth > viewportWidth - 20) {
+        left = viewportWidth - menuWidth - 20;
+      }
+      
+      setPosition({
+        top: rect.bottom + 4,
+        left: left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const applyColor = (color) => {
+    if (type === 'highlight') {
+      editor.chain().focus().toggleHighlight({ color }).run();
+    } else {
+      editor.chain().focus().setColor(color).run();
+    }
+    setIsOpen(false);
+  };
+
+  const clearColor = () => {
+    if (type === 'highlight') {
+      editor.chain().focus().unsetHighlight().run();
+    } else {
+      editor.chain().focus().unsetColor().run();
+    }
+    setIsOpen(false);
+  };
+
+  const isActive = type === 'highlight' ? editor.isActive('highlight') : false;
+
   return (
-    <div className="color-picker-dropdown" ref={ref}>
-      <div className="color-picker-title">{title}</div>
-      <div className="color-picker-grid">
-        {colors.map(({ name, color }) => (
+    <div className="editor-dropdown-wrapper">
+      <button
+        type="button"
+        ref={buttonRef}
+        className={`editor-btn ${isActive ? 'active' : ''}`}
+        onClick={openMenu}
+        title={title}
+      >
+        <Icon size={16} />
+        <ChevronDown size={10} />
+      </button>
+
+      {isOpen && (
+        <div 
+          ref={menuRef}
+          className="color-picker-dropdown"
+          style={{ 
+            position: 'fixed',
+            top: position.top,
+            left: position.left
+          }}
+        >
+          <div className="color-picker-title">
+            {type === 'highlight' ? 'Цвет выделения' : 'Цвет текста'}
+          </div>
+          <div className="color-picker-grid">
+            {colors.map(({ name, color }) => (
+              <button
+                key={color}
+                type="button"
+                className="color-picker-item"
+                style={{ background: color }}
+                onClick={() => applyColor(color)}
+                title={name}
+              />
+            ))}
+          </div>
           <button
-            key={color}
-            className={`color-picker-item ${currentColor === color ? 'active' : ''}`}
-            style={{ background: color }}
-            onClick={() => { onSelect(color); onClose(); }}
-            title={name}
-          />
-        ))}
-      </div>
-      <button className="color-picker-clear" onClick={() => { onSelect(null); onClose(); }}>
-        Сбросить
-      </button>
-    </div>
-  );
-}
-
-function TableDropdown({ isOpen, onClose, editor }) {
-  const ref = useRef(null);
-  
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
-    };
-    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, onClose]);
-
-  if (!isOpen || !editor) return null;
-
-  const canAddRowBefore = editor.can().addRowBefore();
-  const canAddRowAfter = editor.can().addRowAfter();
-  const canDeleteRow = editor.can().deleteRow();
-  const canAddColumnBefore = editor.can().addColumnBefore();
-  const canAddColumnAfter = editor.can().addColumnAfter();
-  const canDeleteColumn = editor.can().deleteColumn();
-  const canMergeCells = editor.can().mergeCells();
-  const canSplitCell = editor.can().splitCell();
-  const canDeleteTable = editor.can().deleteTable();
-  
-  const isInTable = canDeleteTable;
-  
-  return (
-    <div className="table-menu-dropdown" ref={ref}>
-      <div className="table-menu-title">Таблица</div>
-      
-      {/* Всегда показываем возможность создать таблицу */}
-      <button className="table-menu-item" onClick={() => {
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-        onClose();
-      }}>
-        <Plus size={16} /> Вставить таблицу 3×3
-      </button>
-      
-      {/* Показываем остальные опции только если мы в таблице */}
-      {isInTable && (
-        <>
-          <div className="table-menu-divider" />
-          <div className="table-menu-section">Строки</div>
-          
-          <button 
-            className="table-menu-item" 
-            disabled={!canAddRowBefore}
-            onClick={() => { editor.chain().focus().addRowBefore().run(); onClose(); }}
+            type="button"
+            className="color-picker-clear"
+            onClick={clearColor}
           >
-            <Plus size={16} /> Добавить строку выше
+            Убрать {type === 'highlight' ? 'выделение' : 'цвет'}
           </button>
-          <button 
-            className="table-menu-item" 
-            disabled={!canAddRowAfter}
-            onClick={() => { editor.chain().focus().addRowAfter().run(); onClose(); }}
-          >
-            <Plus size={16} /> Добавить строку ниже
-          </button>
-          <button 
-            className="table-menu-item danger" 
-            disabled={!canDeleteRow}
-            onClick={() => { editor.chain().focus().deleteRow().run(); onClose(); }}
-          >
-            <Trash2 size={16} /> Удалить строку
-          </button>
-          
-          <div className="table-menu-section">Столбцы</div>
-          
-          <button 
-            className="table-menu-item" 
-            disabled={!canAddColumnBefore}
-            onClick={() => { editor.chain().focus().addColumnBefore().run(); onClose(); }}
-          >
-            <Plus size={16} /> Добавить столбец слева
-          </button>
-          <button 
-            className="table-menu-item" 
-            disabled={!canAddColumnAfter}
-            onClick={() => { editor.chain().focus().addColumnAfter().run(); onClose(); }}
-          >
-            <Plus size={16} /> Добавить столбец справа
-          </button>
-          <button 
-            className="table-menu-item danger" 
-            disabled={!canDeleteColumn}
-            onClick={() => { editor.chain().focus().deleteColumn().run(); onClose(); }}
-          >
-            <Trash2 size={16} /> Удалить столбец
-          </button>
-          
-          <div className="table-menu-section">Ячейки</div>
-          
-          <button 
-            className="table-menu-item" 
-            disabled={!canMergeCells}
-            onClick={() => { editor.chain().focus().mergeCells().run(); onClose(); }}
-          >
-            <TableIcon size={16} /> Объединить ячейки
-          </button>
-          <button 
-            className="table-menu-item" 
-            disabled={!canSplitCell}
-            onClick={() => { editor.chain().focus().splitCell().run(); onClose(); }}
-          >
-            <TableIcon size={16} /> Разделить ячейку
-          </button>
-          <button 
-            className="table-menu-item"
-            onClick={() => { editor.chain().focus().toggleHeaderCell().run(); onClose(); }}
-          >
-            <Type size={16} /> Переключить заголовок
-          </button>
-          
-          <div className="table-menu-divider" />
-          
-          <button 
-            className="table-menu-item danger" 
-            disabled={!canDeleteTable}
-            onClick={() => { editor.chain().focus().deleteTable().run(); onClose(); }}
-          >
-            <Trash2 size={16} /> Удалить таблицу
-          </button>
-        </>
+        </div>
       )}
     </div>
   );
 }
 
-const MenuBar = ({ editor }) => {
-  const [showHighlightColors, setShowHighlightColors] = useState(false);
-  const [showTextColors, setShowTextColors] = useState(false);
-  const [showTableMenu, setShowTableMenu] = useState(false);
+// Компонент выпадающего меню таблицы
+function TableMenuDropdown({ editor, buttonRef }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) && 
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [buttonRef]);
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 220;
+      const viewportWidth = window.innerWidth;
+      
+      let left = rect.left;
+      if (rect.left + menuWidth > viewportWidth - 20) {
+        left = viewportWidth - menuWidth - 20;
+      }
+      
+      setPosition({
+        top: rect.bottom + 4,
+        left: left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const runCommand = (command) => {
+    command();
+    setIsOpen(false);
+  };
 
   if (!editor) return null;
 
-  const addLink = useCallback(() => {
-    const url = window.prompt('URL ссылки:', 'https://');
-    if (url) editor.chain().focus().setLink({ href: url }).run();
+  const isInTable = editor.isActive('table');
+
+  return (
+    <div className="editor-dropdown-wrapper">
+      <button
+        type="button"
+        ref={buttonRef}
+        className={`editor-btn ${isInTable ? 'active' : ''}`}
+        onClick={openMenu}
+        title="Таблица"
+      >
+        <TableIcon size={16} />
+        <ChevronDown size={10} />
+      </button>
+
+      {isOpen && (
+        <div 
+          ref={menuRef}
+          className="table-menu-dropdown"
+          style={{ 
+            position: 'fixed',
+            top: position.top,
+            left: position.left
+          }}
+        >
+          {!isInTable ? (
+            <>
+              <div className="table-menu-title">Вставить таблицу</div>
+              <div className="table-size-grid">
+                {[2, 3, 4, 5].map(rows => (
+                  <div key={rows} className="table-size-row">
+                    {[2, 3, 4, 5].map(cols => (
+                      <button
+                        key={cols}
+                        type="button"
+                        className="table-size-cell"
+                        onClick={() => runCommand(() => 
+                          editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run()
+                        )}
+                      >
+                        {cols}×{rows}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="table-menu-title">Таблица</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => 
+                  editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+                )}
+              >
+                <Plus size={14} /> Вставить новую
+              </button>
+
+              <div className="table-menu-divider" />
+              <div className="table-menu-title">Строки</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().addRowBefore().run())}
+              >
+                <Plus size={14} /> Добавить строку выше
+              </button>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().addRowAfter().run())}
+              >
+                <Plus size={14} /> Добавить строку ниже
+              </button>
+              <button
+                type="button"
+                className="table-menu-item danger"
+                onClick={() => runCommand(() => editor.chain().focus().deleteRow().run())}
+              >
+                <Trash2 size={14} /> Удалить строку
+              </button>
+
+              <div className="table-menu-divider" />
+              <div className="table-menu-title">Столбцы</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().addColumnBefore().run())}
+              >
+                <Plus size={14} /> Добавить столбец слева
+              </button>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().addColumnAfter().run())}
+              >
+                <Plus size={14} /> Добавить столбец справа
+              </button>
+              <button
+                type="button"
+                className="table-menu-item danger"
+                onClick={() => runCommand(() => editor.chain().focus().deleteColumn().run())}
+              >
+                <Trash2 size={14} /> Удалить столбец
+              </button>
+
+              <div className="table-menu-divider" />
+              <div className="table-menu-title">Ячейки</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().mergeCells().run())}
+              >
+                Объединить ячейки
+              </button>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().splitCell().run())}
+              >
+                Разделить ячейку
+              </button>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().toggleHeaderCell().run())}
+              >
+                Переключить заголовок
+              </button>
+
+              <div className="table-menu-divider" />
+              <button
+                type="button"
+                className="table-menu-item danger"
+                onClick={() => runCommand(() => editor.chain().focus().deleteTable().run())}
+              >
+                <Trash2 size={14} /> Удалить таблицу
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuBar({ editor }) {
+  const tableButtonRef = useRef(null);
+  const highlightButtonRef = useRef(null);
+  const colorButtonRef = useRef(null);
+
+  const setLink = useCallback(() => {
+    const url = window.prompt('URL:', editor.getAttributes('link').href || 'https://');
+    if (url === null) return;
+    if (url === '') {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      return;
+    }
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   }, [editor]);
 
   const addImage = useCallback(() => {
     const url = window.prompt('URL изображения:');
-    if (url) editor.chain().focus().setImage({ src: url }).run();
+    if (url) {
+      editor.chain().focus().setImage({ src: url }).run();
+    }
   }, [editor]);
 
   const addYoutube = useCallback(() => {
-    const url = window.prompt('URL YouTube видео:');
-    if (url) editor.chain().focus().setYoutubeVideo({ src: url }).run();
+    const url = window.prompt('YouTube URL:');
+    if (url) {
+      editor.commands.setYoutubeVideo({ src: url });
+    }
   }, [editor]);
+
+  if (!editor) return null;
 
   return (
     <div className="editor-menu">
@@ -301,46 +447,22 @@ const MenuBar = ({ editor }) => {
         <MenuButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Зачёркнутый">
           <Strikethrough size={16} />
         </MenuButton>
-        
-        <div className="editor-dropdown-wrapper">
-          <MenuButton 
-            onClick={() => setShowHighlightColors(!showHighlightColors)} 
-            isActive={editor.isActive('highlight')} 
-            title="Выделение цветом"
-          >
-            <Highlighter size={16} />
-            <ChevronDown size={12} />
-          </MenuButton>
-          <ColorDropdown
-            isOpen={showHighlightColors}
-            onClose={() => setShowHighlightColors(false)}
-            colors={highlightColors}
-            onSelect={(color) => {
-              if (color) editor.chain().focus().toggleHighlight({ color }).run();
-              else editor.chain().focus().unsetHighlight().run();
-            }}
-            title="Цвет выделения"
-            currentColor={editor.getAttributes('highlight').color}
-          />
-        </div>
-        
-        <div className="editor-dropdown-wrapper">
-          <MenuButton onClick={() => setShowTextColors(!showTextColors)} title="Цвет текста">
-            <Palette size={16} />
-            <ChevronDown size={12} />
-          </MenuButton>
-          <ColorDropdown
-            isOpen={showTextColors}
-            onClose={() => setShowTextColors(false)}
-            colors={textColors}
-            onSelect={(color) => {
-              if (color) editor.chain().focus().setColor(color).run();
-              else editor.chain().focus().unsetColor().run();
-            }}
-            title="Цвет текста"
-            currentColor={editor.getAttributes('textStyle').color}
-          />
-        </div>
+        <ColorDropdown 
+          editor={editor} 
+          type="highlight" 
+          buttonRef={highlightButtonRef}
+          icon={Highlighter}
+          title="Выделение цветом"
+          colors={highlightColors}
+        />
+        <ColorDropdown 
+          editor={editor} 
+          type="color" 
+          buttonRef={colorButtonRef}
+          icon={Palette}
+          title="Цвет текста"
+          colors={textColors}
+        />
       </div>
 
       <MenuDivider />
@@ -375,7 +497,7 @@ const MenuBar = ({ editor }) => {
         <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} title="Блок кода">
           <Code size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Горизонтальная линия">
+        <MenuButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Разделитель">
           <Minus size={16} />
         </MenuButton>
       </div>
@@ -394,7 +516,7 @@ const MenuBar = ({ editor }) => {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={addLink} isActive={editor.isActive('link')} title="Ссылка">
+        <MenuButton onClick={setLink} isActive={editor.isActive('link')} title="Ссылка">
           <LinkIcon size={16} />
         </MenuButton>
         <MenuButton onClick={addImage} title="Изображение">
@@ -403,22 +525,7 @@ const MenuBar = ({ editor }) => {
         <MenuButton onClick={addYoutube} title="YouTube видео">
           <YoutubeIcon size={16} />
         </MenuButton>
-        
-        <div className="editor-dropdown-wrapper">
-          <MenuButton 
-            onClick={() => setShowTableMenu(!showTableMenu)} 
-            isActive={editor.isActive('table')} 
-            title="Таблица"
-          >
-            <TableIcon size={16} />
-            <ChevronDown size={12} />
-          </MenuButton>
-          <TableDropdown
-            isOpen={showTableMenu}
-            onClose={() => setShowTableMenu(false)}
-            editor={editor}
-          />
-        </div>
+        <TableMenuDropdown editor={editor} buttonRef={tableButtonRef} />
       </div>
 
       <MenuDivider />
@@ -433,17 +540,17 @@ const MenuBar = ({ editor }) => {
       </div>
     </div>
   );
-};
+}
 
-export default function Editor({ content, onChange, placeholder = 'Начните вводить текст...' }) {
+export default function Editor({ content, onChange, placeholder = 'Начните писать...' }) {
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
+      StarterKit,
       Underline,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
-      Image,
+      Image.configure({ inline: true }),
       Table.configure({ resizable: true }),
       TableRow,
       TableCell,
@@ -452,21 +559,20 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Color,
       Subscript,
       Superscript,
-      Placeholder.configure({ placeholder }),
+      FontFamily,
       Youtube.configure({ width: 640, height: 360 }),
-      FontFamily
+      Placeholder.configure({ placeholder })
     ],
     content,
-    onUpdate: ({ editor }) => onChange?.(editor.getHTML()),
-    editorProps: {
-      attributes: { class: 'editor-content' }
+    onUpdate: ({ editor }) => {
+      onChange?.(editor.getHTML());
     }
   });
 
   return (
-    <div className="tiptap-editor">
+    <div className="editor-container">
       <MenuBar editor={editor} />
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className="editor-content" />
     </div>
   );
 }
