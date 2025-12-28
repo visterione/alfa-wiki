@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
+import Profile from './pages/Profile';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
@@ -56,6 +57,9 @@ function AppRoutes() {
         <Route path="page/:slug" element={<PageView />} />
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
+        
+        {/* Profile route - доступен всем авторизованным */}
+        <Route path="profile" element={<Profile />} />
         
         {/* Admin routes */}
         <Route path="admin/users" element={

@@ -1,226 +1,286 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { FileText, Plus, Clock, Star, TrendingUp } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { pages } from '../services/api';
+import { chat, users as usersApi } from '../services/api';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import toast from 'react-hot-toast';
+import './Dashboard.css';
 
 export default function Dashboard() {
-  const { user, hasPermission, isAdmin } = useAuth();
-  const [recentPages, setRecentPages] = useState([]);
+  const { user } = useAuth();
+  const [chats, setChats] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [activeChat, setActiveChat] = useState(null);
+  const [newMessage, setNewMessage] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const messagesEndRef = useRef(null);
 
-  useEffect(() => {
-    loadPages();
-  }, []);
-
-  const loadPages = async () => {
+  const loadChats = useCallback(async () => {
     try {
-      const { data } = await pages.list({ published: 'true', limit: 10 });
-      setRecentPages(data.rows || []);
-    } catch (error) {
-      console.error('Failed to load pages:', error);
+      const { data } = await chat.list();
+      setChats(data);
+    } catch (e) {
+      console.error('Failed to load chats:', e);
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const loadMessages = useCallback(async (chatId) => {
+    try {
+      const { data } = await chat.getMessages(chatId);
+      setMessages(data);
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+    } catch (e) {
+      console.error('Failed to load messages:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadChats();
+    const interval = setInterval(() => {
+      if (activeChat) loadMessages(activeChat.id);
+      loadChats();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadChats, loadMessages, activeChat]);
+
+  const loadUsers = async () => {
+    try {
+      const { data } = await usersApi.list();
+      setUsersList(data.filter(u => u.id !== user.id && u.isActive));
+    } catch (e) {
+      console.error('Failed to load users:', e);
+    }
+  };
+
+  const handleSelectChat = async (chatItem) => {
+    setActiveChat(chatItem);
+    await loadMessages(chatItem.id);
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!newMessage.trim() || !activeChat || sending) return;
+
+    setSending(true);
+    try {
+      await chat.sendMessage(activeChat.id, newMessage.trim());
+      setNewMessage('');
+      await loadMessages(activeChat.id);
+      await loadChats();
+    } catch (e) {
+      toast.error('Ошибка отправки');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleStartNewChat = async (targetUser) => {
+    try {
+      const { data } = await chat.startPrivate(targetUser.id);
+      setShowNewChat(false);
+      setActiveChat(data);
+      await loadMessages(data.id);
+      await loadChats();
+    } catch (e) {
+      toast.error('Ошибка создания чата');
+    }
+  };
+
+  const filteredChats = chats.filter(c => 
+    c.displayName?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const formatTime = (date) => {
+    if (!date) return '';
+    const d = new Date(date);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    return isToday ? format(d, 'HH:mm') : format(d, 'd MMM', { locale: ru });
   };
 
   return (
-    <div className="dashboard">
-      <div className="dashboard-header">
-        <div>
-          <h1>Добро пожаловать, {user?.displayName || user?.username}!</h1>
-          <p className="text-muted">База знаний медицинского центра</p>
-        </div>
-        {(isAdmin || hasPermission('pages', 'write')) && (
-          <Link to="/new-page" className="btn btn-primary">
-            <Plus size={18} />
-            Создать страницу
-          </Link>
-        )}
-      </div>
-
-      <div className="dashboard-grid">
-        <div className="card">
-          <div className="card-header">
-            <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Clock size={20} />
-              Последние обновления
-            </h3>
+    <div className="dashboard-chat-wrapper">
+      <div className="alfa-chat">
+        {/* Sidebar */}
+        <div className={`chat-sidebar ${activeChat ? 'mobile-hidden' : ''}`}>
+          <div className="chat-sidebar-header">
+            <h2><MessageCircle size={20} /> Сообщения</h2>
+            <button 
+              className="btn-icon-chat" 
+              onClick={() => { setShowNewChat(true); loadUsers(); }}
+              title="Новый чат"
+            >
+              <UserPlus size={20} />
+            </button>
           </div>
-          <div className="card-body" style={{ padding: 0 }}>
+          
+          <div className="chat-search">
+            <Search size={18} />
+            <input 
+              placeholder="Поиск..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          
+          <div className="chat-list">
             {loading ? (
-              <div style={{ padding: '40px', textAlign: 'center' }}>
-                <div className="loading-spinner" style={{ margin: '0 auto' }} />
-              </div>
-            ) : recentPages.length > 0 ? (
-              <div className="page-list">
-                {recentPages.map(page => (
-                  <Link 
-                    key={page.id} 
-                    to={`/page/${page.slug}`}
-                    className="page-list-item"
-                  >
-                    <div className="page-list-icon">
-                      <FileText size={18} />
+              <div className="chat-loading"><div className="loading-spinner" /></div>
+            ) : filteredChats.length > 0 ? (
+              filteredChats.map(c => (
+                <div 
+                  key={c.id} 
+                  className={`chat-item ${activeChat?.id === c.id ? 'active' : ''}`}
+                  onClick={() => handleSelectChat(c)}
+                >
+                  <div className="chat-item-avatar">
+                    {c.avatar ? <img src={c.avatar} alt="" /> : <User size={24} />}
+                  </div>
+                  <div className="chat-item-content">
+                    <div className="chat-item-header">
+                      <span className="chat-item-name">{c.displayName}</span>
+                      <span className="chat-item-time">{formatTime(c.lastMessageAt)}</span>
                     </div>
-                    <div className="page-list-content">
-                      <div className="page-list-title">{page.title}</div>
-                      <div className="page-list-meta">
-                        {page.description && (
-                          <span className="page-list-desc">
-                            {page.description.substring(0, 100)}
-                            {page.description.length > 100 ? '...' : ''}
-                          </span>
-                        )}
-                        <span className="page-list-date">
-                          {format(new Date(page.updatedAt), 'd MMM yyyy', { locale: ru })}
-                        </span>
-                      </div>
+                    <div className="chat-item-preview">
+                      {c.lastMessage || 'Нет сообщений'}
                     </div>
-                    {page.isFavorite && (
-                      <Star size={16} style={{ color: 'var(--warning)', fill: 'var(--warning)' }} />
-                    )}
-                  </Link>
-                ))}
-              </div>
+                  </div>
+                </div>
+              ))
             ) : (
-              <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                <FileText size={48} style={{ opacity: 0.3, marginBottom: '16px' }} />
-                <p>Страницы пока не созданы</p>
-                {(isAdmin || hasPermission('pages', 'write')) && (
-                  <Link to="/new-page" className="btn btn-primary" style={{ marginTop: '16px' }}>
-                    Создать первую страницу
-                  </Link>
-                )}
+              <div className="chat-empty">
+                <MessageCircle size={48} />
+                <p>Нет чатов</p>
+                <button className="btn btn-primary btn-sm" onClick={() => { setShowNewChat(true); loadUsers(); }}>
+                  Начать общение
+                </button>
               </div>
             )}
           </div>
         </div>
 
-        <div className="dashboard-sidebar">
-          <div className="card">
-            <div className="card-header">
-              <h3 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <TrendingUp size={20} />
-                Быстрые действия
-              </h3>
-            </div>
-            <div className="card-body">
-              <div className="quick-actions">
-                {(isAdmin || hasPermission('pages', 'write')) && (
-                  <Link to="/new-page" className="quick-action">
-                    <Plus size={20} />
-                    <span>Новая страница</span>
-                  </Link>
+        {/* Main Chat Area */}
+        <div className={`chat-main ${activeChat ? 'active' : ''}`}>
+          {activeChat ? (
+            <>
+              <div className="chat-main-header">
+                <button className="mobile-back btn-icon-chat" onClick={() => setActiveChat(null)}>
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="chat-main-avatar">
+                  {activeChat.avatar ? <img src={activeChat.avatar} alt="" /> : <User size={24} />}
+                </div>
+                <div className="chat-main-info">
+                  <div className="chat-main-name">{activeChat.displayName}</div>
+                  <div className="chat-main-status">
+                    {activeChat.type === 'group' ? `${activeChat.members?.length || 0} участников` : 'В сети'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="chat-messages">
+                {messages.length > 0 ? (
+                  messages.map((msg, idx) => {
+                    const isOwn = msg.senderId === user.id;
+                    const showAvatar = !isOwn && (idx === 0 || messages[idx-1].senderId !== msg.senderId);
+                    
+                    if (msg.type === 'system') {
+                      return <div key={msg.id} className="message-system">{msg.content}</div>;
+                    }
+                    
+                    return (
+                      <div key={msg.id} className={`message ${isOwn ? 'own' : ''}`}>
+                        {!isOwn && showAvatar && (
+                          <div className="message-avatar">
+                            {msg.sender?.avatar ? <img src={msg.sender.avatar} alt="" /> : <User size={16} />}
+                          </div>
+                        )}
+                        <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''}`}>
+                          {!isOwn && showAvatar && activeChat.type === 'group' && (
+                            <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>
+                          )}
+                          <div className="message-content">{msg.content}</div>
+                          <div className="message-meta">
+                            <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
+                            {isOwn && (
+                              <span className="message-status">
+                                <CheckCheck size={14} />
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <div className="chat-no-messages">
+                    <p>Нет сообщений</p>
+                    <span>Напишите первое сообщение</span>
+                  </div>
                 )}
-                {isAdmin && (
-                  <>
-                    <Link to="/admin/users" className="quick-action">
-                      <span>Управление пользователями</span>
-                    </Link>
-                    <Link to="/admin/sidebar" className="quick-action">
-                      <span>Настройка меню</span>
-                    </Link>
-                  </>
+                <div ref={messagesEndRef} />
+              </div>
+
+              <form className="chat-input" onSubmit={handleSendMessage}>
+                <input 
+                  placeholder="Введите сообщение..." 
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                />
+                <button type="submit" className="btn btn-primary btn-icon" disabled={!newMessage.trim() || sending}>
+                  <Send size={20} />
+                </button>
+              </form>
+            </>
+          ) : (
+            <div className="chat-placeholder">
+              <MessageCircle size={64} />
+              <h3>Alfa Чат</h3>
+              <p>Выберите чат или начните новый</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal: New Chat */}
+      {showNewChat && (
+        <div className="modal-overlay" onClick={() => setShowNewChat(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Новый чат</h2>
+              <button className="modal-close" onClick={() => setShowNewChat(false)}>&times;</button>
+            </div>
+            <div className="modal-body">
+              <div className="user-list">
+                {usersList.length > 0 ? usersList.map(u => (
+                  <div key={u.id} className="user-item" onClick={() => handleStartNewChat(u)}>
+                    <div className="user-item-avatar">
+                      {u.avatar ? <img src={u.avatar} alt="" /> : <User size={20} />}
+                    </div>
+                    <div className="user-item-info">
+                      <div className="user-item-name">{u.displayName || u.username}</div>
+                      <div className="user-item-username">@{u.username}</div>
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)' }}>
+                    Нет доступных пользователей
+                  </div>
                 )}
               </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <style>{`
-        .dashboard-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 32px;
-        }
-        .dashboard-header h1 {
-          margin-bottom: 4px;
-        }
-        .dashboard-grid {
-          display: grid;
-          grid-template-columns: 1fr 320px;
-          gap: 24px;
-        }
-        .page-list-item {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 16px 24px;
-          color: var(--text-primary);
-          border-bottom: 1px solid var(--border-light);
-          transition: background var(--transition-fast);
-        }
-        .page-list-item:last-child {
-          border-bottom: none;
-        }
-        .page-list-item:hover {
-          background: var(--bg-secondary);
-        }
-        .page-list-icon {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--primary-light);
-          color: var(--primary);
-          border-radius: var(--radius-sm);
-          flex-shrink: 0;
-        }
-        .page-list-content {
-          flex: 1;
-          min-width: 0;
-        }
-        .page-list-title {
-          font-weight: 500;
-          margin-bottom: 4px;
-        }
-        .page-list-meta {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          font-size: 13px;
-          color: var(--text-secondary);
-        }
-        .page-list-desc {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .quick-actions {
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-        .quick-action {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 12px 16px;
-          background: var(--bg-secondary);
-          color: var(--text-primary);
-          border-radius: var(--radius-sm);
-          font-size: 14px;
-          transition: all var(--transition-fast);
-        }
-        .quick-action:hover {
-          background: var(--primary-light);
-          color: var(--primary);
-        }
-        @media (max-width: 1024px) {
-          .dashboard-grid {
-            grid-template-columns: 1fr;
-          }
-          .dashboard-sidebar {
-            order: -1;
-          }
-        }
-      `}</style>
+      )}
     </div>
   );
 }

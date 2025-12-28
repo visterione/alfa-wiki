@@ -36,21 +36,34 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
 
 // Create user
 router.post('/', authenticate, requireAdmin, [
-  body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
-  body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('roleId').optional({ nullable: true, checkFalsy: true }).isUUID().withMessage('Invalid role ID')
+  body('username').trim().isLength({ min: 3 }).withMessage('Логин должен быть минимум 3 символа'),
+  body('password').isLength({ min: 6 }).withMessage('Пароль должен быть минимум 6 символов')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    const { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
+    let { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
 
+    // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
     if (existing) {
-      return res.status(400).json({ error: 'Username already exists' });
+      return res.status(400).json({ error: 'Пользователь с таким логином уже существует' });
+    }
+
+    // Обработка пустого roleId - преобразуем в null
+    if (roleId === '' || roleId === undefined) {
+      roleId = null;
+    }
+
+    // Если roleId передан, проверяем что такая роль существует
+    if (roleId) {
+      const roleExists = await Role.findByPk(roleId);
+      if (!roleExists) {
+        return res.status(400).json({ error: 'Указанная роль не найдена' });
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
@@ -59,8 +72,8 @@ router.post('/', authenticate, requireAdmin, [
       username,
       password: hashedPassword,
       displayName: displayName || username,
-      email,
-      roleId,
+      email: email || null,
+      roleId: roleId,
       isAdmin: isAdmin || false,
       isActive: isActive !== false
     });
@@ -73,7 +86,7 @@ router.post('/', authenticate, requireAdmin, [
     res.status(201).json(created);
   } catch (error) {
     console.error('Create user error:', error);
-    res.status(500).json({ error: 'Failed to create user' });
+    res.status(500).json({ error: 'Ошибка создания пользователя' });
   }
 });
 
@@ -81,21 +94,34 @@ router.post('/', authenticate, requireAdmin, [
 router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    const { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
+    let { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
       const existing = await User.findOne({ where: { username } });
-      if (existing) return res.status(400).json({ error: 'Username already exists' });
+      if (existing) return res.status(400).json({ error: 'Пользователь с таким логином уже существует' });
+    }
+
+    // Обработка пустого roleId - преобразуем в null
+    if (roleId === '') {
+      roleId = null;
+    }
+
+    // Если roleId передан и не null, проверяем что такая роль существует
+    if (roleId) {
+      const roleExists = await Role.findByPk(roleId);
+      if (!roleExists) {
+        return res.status(400).json({ error: 'Указанная роль не найдена' });
+      }
     }
 
     const updateData = {
       ...(username && { username }),
       ...(displayName !== undefined && { displayName }),
-      ...(email !== undefined && { email }),
-      ...(roleId !== undefined && { roleId }),
+      ...(email !== undefined && { email: email || null }),
+      ...(roleId !== undefined && { roleId: roleId || null }),
       ...(isAdmin !== undefined && { isAdmin }),
       ...(isActive !== undefined && { isActive })
     };
@@ -114,7 +140,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error('Update user error:', error);
-    res.status(500).json({ error: 'Failed to update user' });
+    res.status(500).json({ error: 'Ошибка обновления пользователя' });
   }
 });
 
@@ -122,17 +148,17 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
     // Prevent self-deletion
     if (user.id === req.user.id) {
-      return res.status(400).json({ error: 'Cannot delete yourself' });
+      return res.status(400).json({ error: 'Нельзя удалить самого себя' });
     }
 
     await user.destroy();
-    res.json({ message: 'User deleted' });
+    res.json({ message: 'Пользователь удалён' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete user' });
+    res.status(500).json({ error: 'Ошибка удаления пользователя' });
   }
 });
 

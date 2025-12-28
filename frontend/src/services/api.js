@@ -85,55 +85,64 @@ export const media = {
       onUploadProgress: e => onProgress?.(Math.round((e.loaded * 100) / e.total))
     });
   },
-  uploadMultiple: (files) => {
-    const formData = new FormData();
-    files.forEach(f => formData.append('files', f));
-    return api.post('/media/upload-multiple', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-  },
-  update: (id, data) => api.put(`/media/${id}`, data),
   delete: (id) => api.delete(`/media/${id}`)
 };
 
 // Search
 export const search = {
-  query: (q, type) => api.get('/search', { params: { q, type } }),
-  fulltext: (q) => api.get('/search/fulltext', { params: { q } }),
-  suggest: (q) => api.get('/search/suggest', { params: { q } }),
-  index: (data) => api.post('/search/index', data),
-  removeIndex: (entityType, entityId) => api.delete(`/search/index/${entityType}/${entityId}`)
+  query: (q) => api.get('/search', { params: { q } }),
+  reindex: () => api.post('/search/reindex')
 };
 
 // Settings
 export const settings = {
   list: () => api.get('/settings'),
-  get: (key) => api.get(`/settings/${key}`),
   update: (key, value) => api.put(`/settings/${key}`, { value }),
-  bulkUpdate: (settings) => api.post('/settings/bulk', { settings }),
+  bulkUpdate: (data) => api.put('/settings', data),
   init: () => api.post('/settings/init')
 };
 
 // Backup
 export const backup = {
   list: () => api.get('/backup'),
-  create: () => api.post('/backup/create'),
+  create: () => api.post('/backup'),
+  restore: (filename) => api.post(`/backup/restore/${filename}`),
   download: (filename) => `${API_URL}/backup/download/${filename}`,
-  delete: (filename) => api.delete(`/backup/${filename}`),
-  cleanup: () => api.post('/backup/cleanup')
+  delete: (filename) => api.delete(`/backup/${filename}`)
 };
 
 // Chat
 export const chat = {
+  // Получить все чаты пользователя
   list: () => api.get('/chat'),
-  getPrivate: (userId) => api.post(`/chat/private/${userId}`),
-  createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
+  
+  // Получить сообщения чата
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
-  sendMessage: (chatId, content, type = 'text', replyToId = null) => 
-    api.post(`/chat/${chatId}/messages`, { content, type, replyToId }),
-  getUsers: () => api.get('/chat/users/list'),
+  
+  // Отправить сообщение
+  sendMessage: (chatId, content, attachments = []) => 
+    api.post(`/chat/${chatId}/messages`, { content, attachments }),
+  
+  // Начать приватный чат с пользователем
+  startPrivate: (userId) => api.post(`/chat/private/${userId}`),
+  
+  // Создать групповой чат
+  createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
+  
+  // Получить информацию о чате
+  get: (chatId) => api.get(`/chat/${chatId}`),
+  
+  // Добавить участника в группу
   addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
-  leaveChat: (chatId) => api.delete(`/chat/${chatId}/leave`)
+  
+  // Удалить участника из группы
+  removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
+  
+  // Покинуть чат
+  leave: (chatId) => api.post(`/chat/${chatId}/leave`),
+  
+  // Отметить как прочитанное
+  markRead: (chatId) => api.post(`/chat/${chatId}/read`)
 };
 
 export default api;

@@ -48,6 +48,19 @@ export function AuthProvider({ children }) {
     localStorage.setItem('user', JSON.stringify(userData));
   };
 
+  // Функция для обновления данных пользователя с сервера
+  const refreshUser = async () => {
+    try {
+      const { data } = await auth.me();
+      setUser(data);
+      localStorage.setItem('user', JSON.stringify(data));
+      return data;
+    } catch (error) {
+      console.error('Failed to refresh user:', error);
+      return null;
+    }
+  };
+
   const hasPermission = (resource, action) => {
     if (!user) return false;
     if (user.isAdmin) return true;
@@ -68,6 +81,7 @@ export function AuthProvider({ children }) {
       login,
       logout,
       updateUser,
+      refreshUser,
       hasPermission,
       canAccessPage,
       isAdmin: user?.isAdmin || false
