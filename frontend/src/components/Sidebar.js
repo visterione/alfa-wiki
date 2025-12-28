@@ -1,26 +1,118 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { 
-  Home, FileText, ChevronRight, ChevronDown, ExternalLink, Folder, File, Star, Heart,
-  Bell, Calendar, Mail, Phone, MapPin, Clock, Search, Tag, Bookmark, Award, Users, Settings,
-  Database, Image, Shield, Layout, Briefcase, Building, Camera, Coffee, Globe, Headphones, 
-  Key, Layers, List, MessageCircle, Monitor, Package, Percent, PieChart, Printer, Server, 
-  ShoppingCart, Smartphone, Speaker, Target, ThumbsUp, Truck, Umbrella, Video, Wifi, Zap
+  // Общие
+  Home, File, Folder, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
+  Settings, Database, Image, Shield, Layout, Users, Key, Layers, List, Grid, Hash, Filter,
+  // Навигация
+  ChevronRight, ChevronDown, ExternalLink,
+  // Документы
+  FileText, FilePlus, FileCheck, FileX, Files, Clipboard, ClipboardList, ClipboardCheck,
+  BookOpen, Book, Newspaper, FileSpreadsheet, FileCode,
+  // Коммуникации
+  MessageCircle, MessageSquare, Send, Inbox, AtSign, PhoneCall, 
+  Video, Mic, Volume2,
+  // Медицина
+  Activity, Stethoscope, Pill, Syringe, Thermometer, HeartPulse, Brain, Bone, Eye,
+  Accessibility, Cross, Plus, Droplet, Droplets, TestTube, TestTubes,
+  // Бизнес
+  Briefcase, Building, Building2, Landmark, CreditCard, Wallet, Receipt, DollarSign,
+  TrendingUp, BarChart, BarChart2, BarChart3, PieChart, LineChart,
+  // Технологии
+  Monitor, Laptop, Smartphone, Tablet, Cpu, HardDrive, Server, Wifi, Globe, Cloud, 
+  Download, Upload, Link, Code, Terminal, QrCode,
+  // Безопасность
+  Lock, Unlock, ShieldCheck, ShieldAlert, Fingerprint, ScanFace, AlertTriangle, AlertCircle,
+  // Люди
+  User, UserPlus, UserCheck, UserCircle, Contact,
+  // Время
+  Timer, Hourglass, CalendarDays, CalendarCheck,
+  // Природа
+  Sun, Moon, Umbrella, Leaf,
+  // Транспорт
+  Car, Truck, Plane, Navigation,
+  // Действия
+  CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2, RefreshCw, Archive, Printer,
+  // Интерфейс
+  Type, Info, HelpCircle,
+  // Разное
+  Trophy, Medal, Target, Lightbulb, Zap, Sparkles, Flame, Gift, Package, Box, ShoppingCart,
+  Coffee, ThumbsUp, Smile, Gauge, Compass, Map, Flag, Power,
+  // Legacy support
+  Percent, Speaker, Headphones, Camera, Rss, Search
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
 import { sidebar as sidebarApi, pages } from '../services/api';
 
+// Расширенный маппинг иконок
 const iconMap = {
-  home: Home, file: File, 'file-text': FileText, folder: Folder, users: Users,
-  settings: Settings, database: Database, image: Image, shield: Shield, layout: Layout,
-  star: Star, heart: Heart, bell: Bell, calendar: Calendar, mail: Mail, phone: Phone,
-  'map-pin': MapPin, clock: Clock, search: Search, tag: Tag, bookmark: Bookmark, award: Award,
-  briefcase: Briefcase, building: Building, camera: Camera, coffee: Coffee, globe: Globe,
-  headphones: Headphones, key: Key, layers: Layers, list: List, 'message-circle': MessageCircle,
-  monitor: Monitor, package: Package, percent: Percent, 'pie-chart': PieChart, printer: Printer,
-  server: Server, 'shopping-cart': ShoppingCart, smartphone: Smartphone, speaker: Speaker,
-  target: Target, 'thumbs-up': ThumbsUp, truck: Truck, umbrella: Umbrella, video: Video,
-  wifi: Wifi, zap: Zap
+  // Популярные
+  'home': Home, 'file': File, 'file-text': FileText, 'folder': Folder,
+  'users': Users, 'settings': Settings, 'star': Star, 'heart': Heart,
+  'bookmark': Bookmark, 'bell': Bell, 'calendar': Calendar, 'clock': Clock,
+  
+  // Медицина
+  'activity': Activity, 'stethoscope': Stethoscope, 'heart-pulse': HeartPulse,
+  'pill': Pill, 'syringe': Syringe, 'thermometer': Thermometer, 'brain': Brain,
+  'bone': Bone, 'eye': Eye, 'accessibility': Accessibility, 'cross': Cross,
+  'droplet': Droplet, 'droplets': Droplets, 'test-tube': TestTube, 'test-tubes': TestTubes,
+  
+  // Документы
+  'file-plus': FilePlus, 'file-check': FileCheck, 'file-x': FileX, 'files': Files,
+  'clipboard': Clipboard, 'clipboard-list': ClipboardList, 'clipboard-check': ClipboardCheck,
+  'book-open': BookOpen, 'book': Book, 'newspaper': Newspaper,
+  'file-spreadsheet': FileSpreadsheet, 'file-code': FileCode,
+  
+  // Коммуникации
+  'mail': Mail, 'phone': Phone, 'message-circle': MessageCircle, 'message-square': MessageSquare,
+  'send': Send, 'inbox': Inbox, 'at-sign': AtSign,
+  'phone-call': PhoneCall, 'video': Video, 'mic': Mic, 'volume-2': Volume2,
+  
+  // Люди
+  'user': User, 'user-plus': UserPlus, 'user-check': UserCheck,
+  'user-circle': UserCircle, 'contact': Contact,
+  
+  // Бизнес
+  'briefcase': Briefcase, 'building': Building, 'building-2': Building2, 'landmark': Landmark,
+  'credit-card': CreditCard, 'wallet': Wallet, 'receipt': Receipt, 'dollar-sign': DollarSign,
+  'trending-up': TrendingUp, 'bar-chart': BarChart, 'bar-chart-2': BarChart2, 
+  'bar-chart-3': BarChart3, 'pie-chart': PieChart, 'line-chart': LineChart,
+  
+  // Безопасность
+  'shield': Shield, 'shield-check': ShieldCheck, 'shield-alert': ShieldAlert,
+  'lock': Lock, 'unlock': Unlock, 'key': Key,
+  'fingerprint': Fingerprint, 'scan-face': ScanFace, 'alert-triangle': AlertTriangle, 'alert-circle': AlertCircle,
+  
+  // Технологии
+  'monitor': Monitor, 'laptop': Laptop, 'smartphone': Smartphone, 'tablet': Tablet,
+  'cpu': Cpu, 'hard-drive': HardDrive, 'server': Server, 'database': Database,
+  'wifi': Wifi, 'globe': Globe, 'cloud': Cloud, 'code': Code, 'terminal': Terminal, 'qr-code': QrCode,
+  
+  // Навигация
+  'map-pin': MapPin, 'map': Map, 'compass': Compass,
+  'navigation': Navigation, 'flag': Flag,
+  
+  // Действия
+  'plus': Plus, 'check-circle': CheckCircle, 'x-circle': XCircle,
+  'edit': Pencil, 'trash': Trash, 'copy': Copy, 'save': Save,
+  'download': Download, 'upload': Upload, 'share': Share2, 'link': Link,
+  'external-link': ExternalLink, 'refresh': RefreshCw, 'archive': Archive, 'printer': Printer,
+  
+  // Интерфейс
+  'layout': Layout, 'grid': Grid, 'layers': Layers, 'list': List,
+  'filter': Filter, 'tag': Tag, 'hash': Hash, 'image': Image,
+  'camera': Camera, 'type': Type, 'info': Info, 'help-circle': HelpCircle, 'search': Search,
+  
+  // Время
+  'timer': Timer, 'hourglass': Hourglass, 'calendar-days': CalendarDays, 'calendar-check': CalendarCheck,
+  
+  // Разное
+  'award': Award, 'trophy': Trophy, 'medal': Medal, 'target': Target,
+  'lightbulb': Lightbulb, 'zap': Zap, 'sparkles': Sparkles, 'flame': Flame,
+  'gift': Gift, 'package': Package, 'box': Box, 'shopping-cart': ShoppingCart,
+  'coffee': Coffee, 'sun': Sun, 'moon': Moon, 'thumbs-up': ThumbsUp,
+  'smile': Smile, 'gauge': Gauge, 'rss': Rss, 'power': Power,
+  'umbrella': Umbrella, 'leaf': Leaf, 'car': Car, 'truck': Truck, 'plane': Plane,
+  'percent': Percent, 'speaker': Speaker, 'headphones': Headphones
 };
 
 function SidebarItemComponent({ item, level = 0 }) {
