@@ -105,7 +105,8 @@ router.post('/change-password', authenticate, [
 // Update profile
 router.put('/profile', authenticate, [
   body('displayName').optional().trim(),
-  body('email').optional().isEmail().withMessage('Invalid email')
+  body('email').optional().isEmail().withMessage('Invalid email'),
+  body('avatar').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -113,13 +114,15 @@ router.put('/profile', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { displayName, email, settings } = req.body;
+    const { displayName, email, avatar, settings } = req.body;
     
-    await req.user.update({
-      ...(displayName && { displayName }),
-      ...(email && { email }),
-      ...(settings && { settings })
-    });
+    const updateData = {};
+    if (displayName !== undefined) updateData.displayName = displayName;
+    if (email !== undefined) updateData.email = email;
+    if (avatar !== undefined) updateData.avatar = avatar;
+    if (settings !== undefined) updateData.settings = settings;
+
+    await req.user.update(updateData);
 
     const updatedUser = await User.findByPk(req.user.id, {
       include: [{ model: Role, as: 'role' }],
@@ -128,6 +131,7 @@ router.put('/profile', authenticate, [
 
     res.json(updatedUser);
   } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({ error: 'Failed to update profile' });
   }
 });

@@ -1,15 +1,16 @@
 /* Header Styles */
 .header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 50%, var(--primary) 100%);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: var(--header-height);
   padding: 0 20px;
-  background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-light);
-  position: sticky;
-  top: 0;
   z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .header-left {
@@ -19,30 +20,30 @@
 }
 
 .header-toggle {
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: none;
+  background: rgba(255, 255, 255, 0.15);
   border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: white;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .header-toggle:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .header-logo {
   display: flex;
   align-items: center;
+  gap: 12px;
+  color: white;
   font-size: 18px;
   font-weight: 600;
-  color: var(--text-primary);
   text-decoration: none;
 }
 
@@ -51,29 +52,37 @@
   width: auto;
 }
 
-/* Search */
+/* Center - Search */
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 20px;
+}
+
 .header-search {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 400px;
-  max-width: 40%;
-  padding: 8px 14px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid transparent;
+  width: 100%;
+  max-width: 500px;
+  padding: 10px 16px 10px 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-lg);
   transition: all var(--transition-fast);
 }
 
 .header-search:focus-within {
-  background: var(--bg-primary);
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-light);
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .header-search svg {
-  color: var(--text-tertiary);
+  position: absolute;
+  left: 14px;
+  color: rgba(255, 255, 255, 0.7);
   flex-shrink: 0;
 }
 
@@ -81,13 +90,13 @@
   flex: 1;
   border: none;
   background: none;
-  font-size: 14px;
-  color: var(--text-primary);
+  font-size: 15px;
+  color: white;
   outline: none;
 }
 
 .header-search input::placeholder {
-  color: var(--text-tertiary);
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* Search Dropdown */
@@ -143,32 +152,51 @@
   white-space: nowrap;
 }
 
+.search-no-results {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
 /* Right Section */
 .header-right {
-  position: relative;
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 
 .header-user {
+  position: relative;
+}
+
+.header-user-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 12px 6px 6px;
-  background: none;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.15);
   border: none;
   border-radius: var(--radius-md);
+  color: white;
+  font-size: 14px;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
-.header-user:hover {
-  background: var(--bg-secondary);
+.header-user-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .header-avatar {
   width: 32px;
   height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  max-width: 32px;
+  max-height: 32px;
+  background: white;
   border-radius: 50%;
-  background: var(--primary-light);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -184,16 +212,14 @@
 }
 
 .header-username {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
+  color: white;
 }
 
 .header-chevron {
-  color: var(--text-tertiary);
+  color: rgba(255, 255, 255, 0.7);
 }
 
-/* Dropdown - БЕЗ скроллбара */
+/* Dropdown - на белом фоне */
 .header-dropdown {
   position: absolute;
   top: calc(100% + 8px);
@@ -204,19 +230,25 @@
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--border-light);
   z-index: 1000;
-  overflow: visible; /* Важно! Убираем скроллбар */
+  overflow: hidden;
 }
 
-.dropdown-header {
+.header-dropdown-user {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
 }
 
-.dropdown-avatar {
+.header-dropdown-avatar {
   width: 48px;
   height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 48px;
+  max-height: 48px;
   border-radius: 50%;
   background: var(--primary-light);
   display: flex;
@@ -227,36 +259,39 @@
   flex-shrink: 0;
 }
 
-.dropdown-avatar img {
+.header-dropdown-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.dropdown-info {
+.header-dropdown-info {
   flex: 1;
   min-width: 0;
 }
 
-.dropdown-name {
+.header-dropdown-name {
   font-weight: 600;
   font-size: 15px;
   color: var(--text-primary);
   margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dropdown-role {
-  font-size: 13px;
+.header-dropdown-role {
+  font-size: 12px;
   color: var(--text-secondary);
 }
 
-.dropdown-divider {
+.header-dropdown-divider {
   height: 1px;
   background: var(--border-light);
   margin: 4px 0;
 }
 
-.dropdown-item {
+.header-dropdown-item {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -264,92 +299,42 @@
   padding: 10px 16px;
   background: none;
   border: none;
-  font-size: 14px;
   color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
   cursor: pointer;
+  transition: background var(--transition-fast);
   text-decoration: none;
-  transition: background var(--transition-fast);
-  text-align: left;
-  position: relative;
 }
 
-.dropdown-item:hover {
+.header-dropdown-item:hover {
   background: var(--bg-secondary);
 }
 
-.dropdown-item svg {
+.header-dropdown-item svg {
   color: var(--text-secondary);
   flex-shrink: 0;
 }
 
-.dropdown-item span {
-  flex: 1;
+.header-dropdown-item:hover svg {
+  color: var(--primary);
 }
 
-/* Submenu trigger */
-.dropdown-submenu-trigger {
-  position: relative;
+.header-dropdown-item.danger {
+  color: var(--error);
 }
 
-.submenu-arrow {
-  margin-left: auto;
-  color: var(--text-tertiary) !important;
+.header-dropdown-item.danger svg {
+  color: var(--error);
 }
 
-/* Submenu - выезжает вправо */
-.dropdown-submenu {
-  position: absolute;
-  left: calc(100% + 4px);
-  top: -4px;
-  width: 220px;
-  background: var(--bg-primary);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--border-light);
-  padding: 4px 0;
-  z-index: 1001;
-}
-
-.dropdown-submenu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 14px;
-  background: none;
-  border: none;
-  font-size: 14px;
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-  transition: background var(--transition-fast);
-}
-
-.dropdown-submenu-item:hover {
-  background: var(--bg-secondary);
-}
-
-.dropdown-submenu-item svg {
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-/* Logout */
-.dropdown-logout {
-  color: var(--error) !important;
-}
-
-.dropdown-logout svg {
-  color: var(--error) !important;
-}
-
-.dropdown-logout:hover {
-  background: rgba(255, 59, 48, 0.1) !important;
+.header-dropdown-item.danger:hover {
+  background: rgba(255, 59, 48, 0.1);
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .header-search {
+  .header-center {
     display: none;
   }
   
@@ -359,21 +344,5 @@
   
   .header-dropdown {
     width: 260px;
-  }
-  
-  .dropdown-submenu {
-    position: static;
-    width: 100%;
-    box-shadow: none;
-    border: none;
-    border-top: 1px solid var(--border-light);
-    border-radius: 0;
-    padding: 0;
-    margin-top: 4px;
-    background: var(--bg-secondary);
-  }
-  
-  .dropdown-submenu-item {
-    padding-left: 44px;
   }
 }

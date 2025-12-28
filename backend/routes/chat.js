@@ -24,7 +24,6 @@ router.get('/', authenticate, async (req, res) => {
 
     const chats = memberships.map(m => {
       const chat = m.chat.toJSON();
-      // For private chats, get the other user's name
       if (chat.type === 'private') {
         const otherMember = chat.members.find(member => member.userId !== req.user.id);
         if (otherMember) {
@@ -35,7 +34,7 @@ router.get('/', authenticate, async (req, res) => {
       } else {
         chat.displayName = chat.name;
       }
-      chat.unreadCount = 0; // TODO: implement unread count
+      chat.unreadCount = 0;
       return chat;
     });
 
@@ -60,13 +59,11 @@ router.post('/private/:userId', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Check if private chat already exists
     const existingMemberships = await ChatMember.findAll({
       where: { userId: { [Op.in]: [req.user.id, userId] } },
       include: [{ model: Chat, as: 'chat', where: { type: 'private' } }]
     });
 
-    // Group by chatId and find chat with both users
     const chatCounts = {};
     existingMemberships.forEach(m => {
       chatCounts[m.chatId] = (chatCounts[m.chatId] || 0) + 1;
@@ -85,7 +82,6 @@ router.post('/private/:userId', authenticate, async (req, res) => {
       return res.json(chat);
     }
 
-    // Create new private chat
     const chat = await Chat.create({
       type: 'private',
       createdBy: req.user.id
@@ -126,10 +122,8 @@ router.post('/group', authenticate, async (req, res) => {
       createdBy: req.user.id
     });
 
-    // Add creator as admin
     const members = [{ chatId: chat.id, userId: req.user.id, role: 'admin' }];
     
-    // Add other members
     if (memberIds && memberIds.length > 0) {
       memberIds.forEach(userId => {
         if (userId !== req.user.id) {
@@ -140,7 +134,6 @@ router.post('/group', authenticate, async (req, res) => {
 
     await ChatMember.bulkCreate(members);
 
-    // Create system message
     await Message.create({
       chatId: chat.id,
       senderId: req.user.id,
@@ -169,7 +162,6 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
     const { chatId } = req.params;
     const { limit = 50, before } = req.query;
 
-    // Check if user is member of chat
     const membership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id }
     });
@@ -193,7 +185,6 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
       limit: parseInt(limit)
     });
 
-    // Update last read
     await membership.update({ lastReadAt: new Date() });
 
     res.json(messages.reverse());
@@ -207,13 +198,13 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
 router.post('/:chatId/messages', authenticate, async (req, res) => {
   try {
     const { chatId } = req.params;
-    const { content, type = 'text', attachments, replyToId } = req.body;
+    const { content, type = 'text', attachments = [], replyToId } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ error: 'Message content is required' });
+    // Allow empty content if there are attachments
+    if ((!content || !content.trim()) && attachments.length === 0) {
+      return res.status(400).json({ error: 'Message content or attachments required' });
     }
 
-    // Check if user is member of chat
     const membership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id }
     });
@@ -222,18 +213,33 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
+    // Determine message type based on attachments
+    let messageType = type;
+    if (attachments.length > 0) {
+      const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
+      messageType = allImages ? 'image' : 'file';
+    }
+
     const message = await Message.create({
       chatId,
       senderId: req.user.id,
-      content: content.trim(),
-      type,
-      attachments: attachments || [],
+      content: content?.trim() || '',
+      type: messageType,
+      attachments: attachments,
       replyToId
     });
 
     // Update chat's last message
+    let lastMessagePreview = content?.trim() || '';
+    if (attachments.length > 0 && !lastMessagePreview) {
+      const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
+      lastMessagePreview = allImages 
+        ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
+        : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
+    }
+
     await Chat.update(
-      { lastMessage: content.trim(), lastMessageAt: new Date() },
+      { lastMessage: lastMessagePreview, lastMessageAt: new Date() },
       { where: { id: chatId } }
     );
 
@@ -251,23 +257,6 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
   }
 });
 
-// Get all users (for starting new chat)
-router.get('/users/list', authenticate, async (req, res) => {
-  try {
-    const users = await User.findAll({
-      where: { 
-        isActive: true,
-        id: { [Op.ne]: req.user.id }
-      },
-      attributes: ['id', 'username', 'displayName', 'avatar'],
-      order: [['displayName', 'ASC']]
-    });
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch users' });
-  }
-});
-
 // Add member to group
 router.post('/:chatId/members', authenticate, async (req, res) => {
   try {
@@ -279,7 +268,6 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    // Check if requester is admin
     const requesterMembership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id, role: 'admin' }
     });
@@ -288,7 +276,6 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Only admins can add members' });
     }
 
-    // Check if user already member
     const existing = await ChatMember.findOne({ where: { chatId, userId } });
     if (existing) {
       return res.status(400).json({ error: 'User is already a member' });
@@ -308,6 +295,47 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Add member error:', error);
     res.status(500).json({ error: 'Failed to add member' });
+  }
+});
+
+// Remove member from group
+router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
+  try {
+    const { chatId, userId } = req.params;
+
+    const chat = await Chat.findByPk(chatId);
+    if (!chat || chat.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const requesterMembership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id, role: 'admin' }
+    });
+
+    if (!requesterMembership && userId !== req.user.id) {
+      return res.status(403).json({ error: 'Only admins can remove members' });
+    }
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId } });
+    if (!membership) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    const user = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
+    
+    await membership.destroy();
+
+    await Message.create({
+      chatId,
+      senderId: req.user.id,
+      content: `${user.displayName || user.username} удалён из группы`,
+      type: 'system'
+    });
+
+    res.json({ message: 'Member removed' });
+  } catch (error) {
+    console.error('Remove member error:', error);
+    res.status(500).json({ error: 'Failed to remove member' });
   }
 });
 
@@ -337,7 +365,6 @@ router.delete('/:chatId/leave', authenticate, async (req, res) => {
 
     await membership.destroy();
 
-    // If no members left, delete the chat
     const remainingMembers = await ChatMember.count({ where: { chatId } });
     if (remainingMembers === 0) {
       await Message.destroy({ where: { chatId } });

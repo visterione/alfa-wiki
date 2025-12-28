@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
+import Profile from './pages/Profile';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRoles from './pages/admin/AdminRoles';
@@ -18,18 +19,12 @@ import AdminBackup from './pages/admin/AdminBackup';
 import AdminMedia from './pages/admin/AdminMedia';
 import './index.css';
 
-// Protected Route component
 function ProtectedRoute({ children, adminOnly = false }) {
   const { user, loading, isAdmin } = useAuth();
 
   if (loading) {
     return (
-      <div style={{ 
-        height: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center' 
-      }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="loading-spinner" />
       </div>
     );
@@ -57,6 +52,7 @@ function AppRoutes() {
         <Route path="page/:slug" element={<PageView />} />
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
+        <Route path="profile" element={<Profile />} />
         
         {/* Admin routes */}
         <Route path="admin" element={
@@ -77,7 +73,9 @@ function AppRoutes() {
         <Route path="admin/media" element={
           <ProtectedRoute adminOnly><AdminMedia /></ProtectedRoute>
         } />
-        <Route path="admin/settings" element={<AdminSettings />} />
+        <Route path="admin/settings" element={
+          <ProtectedRoute adminOnly><AdminSettings /></ProtectedRoute>
+        } />
         <Route path="admin/backup" element={
           <ProtectedRoute adminOnly><AdminBackup /></ProtectedRoute>
         } />

@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Search, User, Settings, LogOut, ChevronDown, Shield } from 'lucide-react';
+import { Menu, Search, User, LogOut, ChevronDown, Shield, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { search as searchApi } from '../services/api';
+import './Header.css';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Header({ sidebarOpen, onToggleSidebar }) {
   const { user, logout, isAdmin } = useAuth();
@@ -34,7 +37,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       if (searchQuery.length >= 2) {
         try {
           const { data } = await searchApi.query(searchQuery);
-          setSearchResults(data.results);
+          setSearchResults(data.results || []);
           setShowResults(true);
         } catch (error) {
           console.error('Search error:', error);
@@ -58,6 +61,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     navigate('/login');
   };
 
+  const getAvatarUrl = () => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${API_URL}/${user.avatar}`;
+  };
+
   return (
     <header className="header">
       <div className="header-left">
@@ -65,40 +74,39 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           <Menu size={20} />
         </button>
         <Link to="/" className="header-logo">
-          {theme.logo ? <img src={theme.logo} alt={theme.siteName} /> : null}
-          <span>{theme.siteName}</span>
+          {theme?.logo ? (
+            <img src={theme.logo} alt={theme.siteName} />
+          ) : (
+            theme?.siteName || 'Alfa Wiki'
+          )}
         </Link>
       </div>
 
-      <div className="header-search" ref={searchRef}>
-        <div className="search-container">
-          <Search className="search-icon" size={18} />
+      <div className="header-center">
+        <div className="header-search" ref={searchRef}>
+          <Search size={18} />
           <input
             type="text"
-            className="search-input"
             placeholder="Поиск..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => searchQuery.length >= 2 && setShowResults(true)}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck="false"
-            data-form-type="other"
-            data-lpignore="true"
-            name="wiki-search-field"
           />
           {showResults && (
-            <div className="search-results">
+            <div className="search-dropdown">
               {searchResults.length > 0 ? (
                 searchResults.map((result, idx) => (
                   <div
                     key={idx}
-                    className="search-result-item"
+                    className="search-result"
                     onClick={() => handleResultClick(result)}
                   >
-                    <div className="search-result-title">{result.title}</div>
-                    <div className="search-result-type">{result.type}</div>
+                    <FileText size={16} />
+                    <div className="search-result-content">
+                      <div className="search-result-title">{result.title}</div>
+                      {result.excerpt && (
+                        <div className="search-result-excerpt">{result.excerpt}</div>
+                      )}
+                    </div>
                   </div>
                 ))
               ) : (
@@ -116,27 +124,41 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             onClick={() => setShowDropdown(!showDropdown)}
           >
             <div className="header-avatar">
-              <User size={18} />
+              {getAvatarUrl() ? (
+                <img src={getAvatarUrl()} alt="" />
+              ) : (
+                <User size={18} />
+              )}
             </div>
             <span className="header-username">{user?.displayName || user?.username}</span>
-            <ChevronDown size={16} />
+            <ChevronDown size={16} className="header-chevron" />
           </button>
 
           {showDropdown && (
             <div className="header-dropdown">
               <div className="header-dropdown-user">
-                <div className="header-dropdown-name">{user?.displayName || user?.username}</div>
-                <div className="header-dropdown-role">{user?.role?.name || 'Пользователь'}</div>
+                <div className="header-dropdown-avatar">
+                  {getAvatarUrl() ? (
+                    <img src={getAvatarUrl()} alt="" />
+                  ) : (
+                    <User size={22} />
+                  )}
+                </div>
+                <div className="header-dropdown-info">
+                  <div className="header-dropdown-name">{user?.displayName || user?.username}</div>
+                  <div className="header-dropdown-role">{user?.role?.name || 'Пользователь'}</div>
+                </div>
               </div>
               
               <div className="header-dropdown-divider" />
+              
               <Link 
-                to="/admin/settings" 
+                to="/profile" 
                 className="header-dropdown-item"
                 onClick={() => setShowDropdown(false)}
               >
-                <Settings size={16} />
-                Настройки
+                <User size={16} />
+                Настройки профиля
               </Link>
               
               {isAdmin && (
@@ -151,6 +173,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
               )}
               
               <div className="header-dropdown-divider" />
+              
               <button className="header-dropdown-item danger" onClick={handleLogout}>
                 <LogOut size={16} />
                 Выйти

@@ -1,28 +1,19 @@
-import React, { useState } from 'react';
-import { User, Lock, Palette, Save } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { User, Lock, Camera, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
-import { auth } from '../services/api';
+import { auth, media } from '../services/api';
 import toast from 'react-hot-toast';
 import './Profile.css';
 
-const colorPresets = [
-  { name: 'Синий', color: '#007AFF' },
-  { name: 'Фиолетовый', color: '#5856D6' },
-  { name: 'Зелёный', color: '#34C759' },
-  { name: 'Оранжевый', color: '#FF9500' },
-  { name: 'Красный', color: '#FF3B30' },
-  { name: 'Розовый', color: '#AF52DE' },
-  { name: 'Тёмно-синий', color: '#1a5fb4' },
-  { name: 'Бирюзовый', color: '#00BCD4' },
-];
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
-  const { theme, updateTheme } = useTheme();
   
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const fileInputRef = useRef(null);
   
   // Profile form
   const [profileForm, setProfileForm] = useState({
@@ -36,11 +27,6 @@ export default function Profile() {
     newPassword: '',
     confirmPassword: ''
   });
-  
-  // Theme settings (local preference stored in localStorage)
-  const [selectedColor, setSelectedColor] = useState(
-    localStorage.getItem('userThemeColor') || theme.primaryColor
-  );
 
   const handleProfileSave = async () => {
     setSaving(true);
@@ -77,16 +63,53 @@ export default function Profile() {
     }
   };
 
-  const handleColorSelect = (color) => {
-    setSelectedColor(color);
-    localStorage.setItem('userThemeColor', color);
-    updateTheme({ ...theme, primaryColor: color });
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Выберите изображение');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Максимальный размер файла 5MB');
+      return;
+    }
+
+    setUploadingAvatar(true);
+    try {
+      const { data } = await media.upload(file);
+      const avatarUrl = `${API_URL}/${data.path}`;
+      
+      await auth.updateProfile({ avatar: avatarUrl });
+      if (refreshUser) await refreshUser();
+      
+      toast.success('Фото профиля обновлено');
+    } catch (e) {
+      toast.error('Ошибка загрузки фото');
+    } finally {
+      setUploadingAvatar(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const getAvatarUrl = () => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${API_URL}/${user.avatar}`;
   };
 
   return (
     <div className="profile-page">
       <div className="profile-header">
-        <h1>Настройки</h1>
+        <h1>Настройки профиля</h1>
       </div>
 
       <div className="profile-tabs">
@@ -104,13 +127,6 @@ export default function Profile() {
           <Lock size={18} />
           Безопасность
         </button>
-        <button 
-          className={`profile-tab ${activeTab === 'appearance' ? 'active' : ''}`}
-          onClick={() => setActiveTab('appearance')}
-        >
-          <Palette size={18} />
-          Внешний вид
-        </button>
       </div>
 
       <div className="profile-content">
@@ -121,16 +137,39 @@ export default function Profile() {
             </div>
             <div className="card-body">
               <div className="profile-avatar-section">
-                <div className="profile-avatar-large">
-                  {user?.avatar ? (
-                    <img src={user.avatar} alt="" />
+                <div 
+                  className={`profile-avatar-large editable ${uploadingAvatar ? 'uploading' : ''}`}
+                  onClick={handleAvatarClick}
+                >
+                  {uploadingAvatar ? (
+                    <div className="loading-spinner" />
+                  ) : getAvatarUrl() ? (
+                    <img src={getAvatarUrl()} alt="" />
                   ) : (
                     <User size={48} />
                   )}
+                  <div className="avatar-overlay">
+                    <Camera size={24} />
+                  </div>
                 </div>
+                <input 
+                  ref={fileInputRef}
+                  type="file" 
+                  accept="image/*" 
+                  hidden 
+                  onChange={handleAvatarChange}
+                />
                 <div className="profile-avatar-info">
                   <div className="profile-username">@{user?.username}</div>
                   <div className="profile-role">{user?.role?.name || (user?.isAdmin ? 'Администратор' : 'Пользователь')}</div>
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleAvatarClick}
+                    disabled={uploadingAvatar}
+                  >
+                    <Camera size={14} />
+                    Изменить фото
+                  </button>
                 </div>
               </div>
 
@@ -160,7 +199,7 @@ export default function Profile() {
                 onClick={handleProfileSave}
                 disabled={saving}
               >
-                {saving ? <div className="loading-spinner-small" /> : <Save size={18} />}
+                {saving ? <div className="loading-spinner" style={{width: 18, height: 18}} /> : <Save size={18} />}
                 Сохранить
               </button>
             </div>
@@ -170,7 +209,7 @@ export default function Profile() {
         {activeTab === 'security' && (
           <div className="card">
             <div className="card-header">
-              <h3>Изменить пароль</h3>
+              <h3>Смена пароля</h3>
             </div>
             <div className="card-body">
               <div className="form-group">
@@ -208,62 +247,9 @@ export default function Profile() {
                 onClick={handlePasswordChange}
                 disabled={saving || !passwordForm.currentPassword || !passwordForm.newPassword}
               >
-                {saving ? <div className="loading-spinner-small" /> : <Lock size={18} />}
+                {saving ? <div className="loading-spinner" style={{width: 18, height: 18}} /> : <Lock size={18} />}
                 Изменить пароль
               </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'appearance' && (
-          <div className="card">
-            <div className="card-header">
-              <h3>Цветовая тема</h3>
-            </div>
-            <div className="card-body">
-              <p className="text-muted" style={{ marginBottom: 20 }}>
-                Выберите основной цвет интерфейса. Эта настройка сохраняется только для вашего браузера.
-              </p>
-              
-              <div className="color-presets-grid">
-                {colorPresets.map(({ name, color }) => (
-                  <button
-                    key={color}
-                    className={`color-preset-btn ${selectedColor === color ? 'active' : ''}`}
-                    style={{ '--preset-color': color }}
-                    onClick={() => handleColorSelect(color)}
-                  >
-                    <span className="color-preset-swatch" style={{ background: color }} />
-                    <span className="color-preset-name">{name}</span>
-                  </button>
-                ))}
-              </div>
-
-              <div className="color-custom">
-                <label className="form-label">Или выберите свой цвет:</label>
-                <div className="color-custom-input">
-                  <input 
-                    type="color" 
-                    value={selectedColor}
-                    onChange={(e) => handleColorSelect(e.target.value)}
-                  />
-                  <input 
-                    className="input"
-                    value={selectedColor}
-                    onChange={(e) => handleColorSelect(e.target.value)}
-                    style={{ width: 120 }}
-                  />
-                </div>
-              </div>
-
-              <div className="theme-preview">
-                <div className="theme-preview-label">Предпросмотр:</div>
-                <div className="theme-preview-box">
-                  <button className="btn btn-primary btn-sm">Кнопка</button>
-                  <span className="badge badge-primary">Метка</span>
-                  <a href="#preview" style={{ color: selectedColor }}>Ссылка</a>
-                </div>
-              </div>
             </div>
           </div>
         )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
+import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus, ChevronRight,
   Home, Users, Settings, Database, Image, Shield, Layout, File, Folder, Star, Heart,
   Bell, Calendar, Mail, Phone, MapPin, Clock, Search, Tag, Bookmark, Award,
@@ -27,19 +27,18 @@ const availableIcons = [
   { name: 'printer', icon: Printer }, { name: 'server', icon: Server }, { name: 'shopping-cart', icon: ShoppingCart },
   { name: 'smartphone', icon: Smartphone }, { name: 'speaker', icon: Speaker }, { name: 'target', icon: Target },
   { name: 'thumbs-up', icon: ThumbsUp }, { name: 'truck', icon: Truck }, { name: 'umbrella', icon: Umbrella },
-  { name: 'video', icon: Video }, { name: 'wifi', icon: Wifi }, { name: 'zap', icon: Zap },
+  { name: 'video', icon: Video }, { name: 'wifi', icon: Wifi }, { name: 'zap', icon: Zap }
 ];
 
 function IconPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
-  const selectedIcon = availableIcons.find(i => i.name === value);
-  const SelectedIconComponent = selectedIcon?.icon || FileText;
+  const CurrentIcon = availableIcons.find(i => i.name === value)?.icon || FileText;
 
   return (
     <div className="icon-picker">
-      <button type="button" className="icon-picker-trigger" onClick={() => setOpen(!open)}>
-        <SelectedIconComponent size={18} />
-        <span>{selectedIcon?.name || 'Выберите иконку'}</span>
+      <button type="button" className="icon-picker-btn" onClick={() => setOpen(!open)}>
+        <CurrentIcon size={20} />
+        <span>{value}</span>
         <ChevronRight size={16} style={{ transform: open ? 'rotate(90deg)' : 'none', transition: '0.2s' }} />
       </button>
       {open && (
@@ -250,56 +249,31 @@ export default function AdminSidebar() {
                   {roleList.map(r => (
                     <label key={r.id} className="checkbox-item">
                       <input type="checkbox" checked={form.allowedRoles.includes(r.id)} onChange={e => {
-                        const newRoles = e.target.checked ? [...form.allowedRoles, r.id] : form.allowedRoles.filter(x => x !== r.id);
+                        const newRoles = e.target.checked 
+                          ? [...form.allowedRoles, r.id] 
+                          : form.allowedRoles.filter(id => id !== r.id);
                         setForm({...form, allowedRoles: newRoles});
                       }} />
-                      {r.name}
+                      <span>{r.name}</span>
                     </label>
                   ))}
                 </div>
+                <small className="form-hint">Если не выбрано — видно всем</small>
               </div>
               <div className="form-group">
-                <label className="checkbox-item"><input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} /> Отображать в меню</label>
+                <label className="checkbox-item">
+                  <input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} />
+                  <span>Показывать в меню</span>
+                </label>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setModal({ open: false, item: null })}>Отмена</button>
+              <button className="btn btn-ghost" onClick={() => setModal({ open: false, item: null })}>Отмена</button>
               <button className="btn btn-primary" onClick={handleSave}>Сохранить</button>
             </div>
           </div>
         </div>
       )}
-
-      <style>{`
-        .icon-picker { position: relative; }
-        .icon-picker-trigger {
-          display: flex; align-items: center; gap: 10px; width: 100%;
-          padding: 12px 16px; background: var(--bg-primary); border: 1px solid var(--border);
-          border-radius: var(--radius-md); font-size: 14px; cursor: pointer; text-align: left;
-        }
-        .icon-picker-trigger:hover { border-color: var(--primary); }
-        .icon-picker-trigger span { flex: 1; }
-        .icon-picker-dropdown {
-          position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-          background: var(--bg-primary); border-radius: var(--radius-md);
-          box-shadow: var(--shadow-lg); padding: 12px; z-index: 100; max-height: 280px; overflow-y: auto;
-        }
-        .icon-picker-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
-        .icon-picker-item {
-          width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
-          background: none; border: 1px solid transparent; border-radius: var(--radius-sm);
-          color: var(--text-secondary); cursor: pointer; transition: all var(--transition-fast);
-        }
-        .icon-picker-item:hover { background: var(--bg-secondary); color: var(--primary); }
-        .icon-picker-item.active { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
-        
-        .sidebar-list.dragging-over { background: var(--bg-secondary); }
-        .sidebar-list-item.dragging { 
-          background: var(--bg-primary); 
-          box-shadow: var(--shadow-lg);
-          border: 2px solid var(--primary);
-        }
-      `}</style>
     </div>
   );
 }

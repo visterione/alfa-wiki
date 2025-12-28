@@ -130,14 +130,6 @@ export default function Sidebar({ open }) {
   return (
     <aside className={`sidebar ${open ? '' : 'closed'}`}>
       <div className="sidebar-content">
-        <NavLink
-          to="/"
-          className={`sidebar-item ${location.pathname === '/' ? 'active' : ''}`}
-        >
-          <Home className="sidebar-item-icon" size={18} />
-          <span>Главная</span>
-        </NavLink>
-
         {favorites.length > 0 && (
           <>
             <div className="sidebar-divider">Избранное</div>
@@ -161,6 +153,12 @@ export default function Sidebar({ open }) {
               <SidebarItemComponent key={item.id} item={item} />
             ))}
           </>
+        )}
+
+        {items.length === 0 && favorites.length === 0 && (
+          <div className="sidebar-empty">
+            <p>Меню пусто</p>
+          </div>
         )}
       </div>
     </aside>

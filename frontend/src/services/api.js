@@ -98,7 +98,7 @@ export const search = {
 export const settings = {
   list: () => api.get('/settings'),
   update: (key, value) => api.put(`/settings/${key}`, { value }),
-  bulkUpdate: (data) => api.put('/settings', data),
+  bulkUpdate: (data) => api.post('/settings/bulk', data),
   init: () => api.post('/settings/init')
 };
 
@@ -120,8 +120,12 @@ export const chat = {
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   
   // Отправить сообщение
-  sendMessage: (chatId, content, attachments = []) => 
-    api.post(`/chat/${chatId}/messages`, { content, attachments }),
+  sendMessage: (chatId, content, attachments = []) => {
+    const type = attachments.length > 0 
+      ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
+      : 'text';
+    return api.post(`/chat/${chatId}/messages`, { content, attachments, type });
+  },
   
   // Начать приватный чат с пользователем
   startPrivate: (userId) => api.post(`/chat/private/${userId}`),
@@ -138,8 +142,8 @@ export const chat = {
   // Удалить участника из группы
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
   
-  // Покинуть чат
-  leave: (chatId) => api.post(`/chat/${chatId}/leave`),
+  // Покинуть чат (DELETE, не POST!)
+  leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
   
   // Отметить как прочитанное
   markRead: (chatId) => api.post(`/chat/${chatId}/read`)

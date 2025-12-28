@@ -7,6 +7,7 @@ import {
   Shield, 
   Image, 
   Database,
+  Settings,
   ChevronRight
 } from 'lucide-react';
 import '../Admin.css';
@@ -47,6 +48,12 @@ const adminSections = [
     icon: Database,
     title: 'Резервные копии',
     description: 'Создание и восстановление бэкапов'
+  },
+  {
+    to: '/admin/settings',
+    icon: Settings,
+    title: 'Настройки',
+    description: 'Общие настройки системы'
   }
 ];
 
