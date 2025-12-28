@@ -4,13 +4,11 @@ import {
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { chat, users as usersApi, media } from '../services/api';
+import { chat, users as usersApi, media, BASE_URL } from '../services/api';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import './Dashboard.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -82,22 +80,17 @@ export default function Dashboard() {
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files);
     if (!files.length) return;
-
-    // Limit to 10 files
     if (attachments.length + files.length > 10) {
       toast.error('Максимум 10 файлов');
       return;
     }
-
     setUploading(true);
     try {
       for (const file of files) {
-        // Check file size (max 50MB)
         if (file.size > 50 * 1024 * 1024) {
           toast.error(`Файл ${file.name} слишком большой (макс. 50MB)`);
           continue;
         }
-
         const { data } = await media.upload(file);
         const attachment = {
           id: data.id,
@@ -105,9 +98,7 @@ export default function Dashboard() {
           path: data.path,
           thumbnailPath: data.thumbnailPath,
           mimeType: data.mimeType,
-          size: data.size,
-          url: `${API_URL}/${data.path}`,
-          thumbnailUrl: data.thumbnailPath ? `${API_URL}/${data.thumbnailPath}` : null
+          size: data.size
         };
         setAttachments(prev => [...prev, attachment]);
       }
@@ -126,13 +117,8 @@ export default function Dashboard() {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if ((!newMessage.trim() && attachments.length === 0) || !activeChat || sending) return;
-
     setSending(true);
     try {
-      const messageType = attachments.length > 0 
-        ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
-        : 'text';
-      
       await chat.sendMessage(
         activeChat.id, 
         newMessage.trim() || (attachments.length > 0 ? `📎 ${attachments.length} файл(ов)` : ''),
@@ -162,15 +148,8 @@ export default function Dashboard() {
   };
 
   const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      toast.error('Введите название группы');
-      return;
-    }
-    if (selectedUsers.length === 0) {
-      toast.error('Добавьте хотя бы одного участника');
-      return;
-    }
-
+    if (!groupName.trim()) { toast.error('Введите название группы'); return; }
+    if (selectedUsers.length === 0) { toast.error('Добавьте хотя бы одного участника'); return; }
     try {
       const { data } = await chat.createGroup(groupName.trim(), selectedUsers.map(u => u.id));
       setShowNewGroup(false);
@@ -204,7 +183,6 @@ export default function Dashboard() {
   const handleLeaveChat = async () => {
     if (!activeChat) return;
     if (!window.confirm('Покинуть этот чат?')) return;
-    
     try {
       await chat.leave(activeChat.id);
       setActiveChat(null);
@@ -226,8 +204,13 @@ export default function Dashboard() {
 
   const getAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
+    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
+    if (avatarPath.startsWith('http://localhost')) {
+      const path = avatarPath.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
     if (avatarPath.startsWith('http')) return avatarPath;
-    return `${API_URL}/${avatarPath}`;
+    return `${BASE_URL}/${avatarPath}`;
   };
 
   const formatFileSize = (bytes) => {
@@ -258,16 +241,24 @@ export default function Dashboard() {
     ? usersList.filter(u => !activeChat.members?.find(m => m.userId === u.id))
     : [];
 
-  // Render message attachments
+  // Хелпер для преобразования URL (обрабатывает старые localhost URL)
+  const fixUrl = (urlOrPath) => {
+    if (!urlOrPath) return null;
+    if (urlOrPath.startsWith('http://localhost')) {
+      const path = urlOrPath.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (urlOrPath.startsWith('http')) return urlOrPath;
+    return `${BASE_URL}/${urlOrPath}`;
+  };
+
   const renderAttachments = (msgAttachments, isOwn) => {
     if (!msgAttachments || msgAttachments.length === 0) return null;
-
     return (
       <div className="message-attachments">
         {msgAttachments.map((att, idx) => {
-          const url = att.url || `${API_URL}/${att.path}`;
-          const thumbUrl = att.thumbnailUrl || (att.thumbnailPath ? `${API_URL}/${att.thumbnailPath}` : null);
-          
+          const url = fixUrl(att.url || att.path);
+          const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
           if (att.mimeType?.startsWith('image/')) {
             return (
               <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="attachment-image">
@@ -275,7 +266,6 @@ export default function Dashboard() {
               </a>
             );
           }
-          
           return (
             <a key={idx} href={url} download={att.name} className={`attachment-file ${isOwn ? 'own' : ''}`}>
               <div className="attachment-file-icon">{getFileIcon(att.mimeType)}</div>
@@ -299,50 +289,22 @@ export default function Dashboard() {
           <div className="chat-sidebar-header">
             <h2><MessageCircle size={20} /> Сообщения</h2>
             <div className="chat-sidebar-actions">
-              <button 
-                className="btn-icon-chat" 
-                onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); }}
-                title="Создать группу"
-              >
-                <Users size={20} />
-              </button>
-              <button 
-                className="btn-icon-chat" 
-                onClick={() => { setShowNewChat(true); loadUsers(); }}
-                title="Новый чат"
-              >
-                <UserPlus size={20} />
-              </button>
+              <button className="btn-icon-chat" onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); }} title="Создать группу"><Users size={20} /></button>
+              <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
           </div>
-          
           <div className="chat-search">
             <Search size={18} />
-            <input 
-              placeholder="Поиск..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <input placeholder="Поиск..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
           </div>
-          
           <div className="chat-list">
             {loading ? (
               <div className="chat-loading"><div className="loading-spinner" /></div>
             ) : filteredChats.length > 0 ? (
               filteredChats.map(c => (
-                <div 
-                  key={c.id} 
-                  className={`chat-item ${activeChat?.id === c.id ? 'active' : ''}`}
-                  onClick={() => handleSelectChat(c)}
-                >
+                <div key={c.id} className={`chat-item ${activeChat?.id === c.id ? 'active' : ''}`} onClick={() => handleSelectChat(c)}>
                   <div className={`chat-item-avatar ${c.type === 'group' ? 'group' : ''}`}>
-                    {c.type === 'group' ? (
-                      <Users size={24} />
-                    ) : getAvatarUrl(c.avatar) ? (
-                      <img src={getAvatarUrl(c.avatar)} alt="" />
-                    ) : (
-                      <User size={24} />
-                    )}
+                    {c.type === 'group' ? <Users size={24} /> : getAvatarUrl(c.avatar) ? <img src={getAvatarUrl(c.avatar)} alt="" /> : <User size={24} />}
                   </div>
                   <div className="chat-item-content">
                     <div className="chat-item-header">
@@ -360,9 +322,7 @@ export default function Dashboard() {
               <div className="chat-empty">
                 <MessageCircle size={48} />
                 <p>Нет чатов</p>
-                <button className="btn btn-primary btn-sm" onClick={() => { setShowNewChat(true); loadUsers(); }}>
-                  Начать общение
-                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => { setShowNewChat(true); loadUsers(); }}>Начать общение</button>
               </div>
             )}
           </div>
@@ -373,39 +333,15 @@ export default function Dashboard() {
           {activeChat ? (
             <>
               <div className="chat-main-header">
-                <button className="mobile-back btn-icon-chat" onClick={() => setActiveChat(null)}>
-                  <ArrowLeft size={20} />
-                </button>
-                <div 
-                  className={`chat-main-avatar ${activeChat.type === 'group' ? 'group' : ''}`}
-                  onClick={() => activeChat.type === 'group' && setShowChatInfo(true)}
-                  style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}
-                >
-                  {activeChat.type === 'group' ? (
-                    <Users size={24} />
-                  ) : getAvatarUrl(activeChat.avatar) ? (
-                    <img src={getAvatarUrl(activeChat.avatar)} alt="" />
-                  ) : (
-                    <User size={24} />
-                  )}
+                <button className="mobile-back btn-icon-chat" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
+                <div className={`chat-main-avatar ${activeChat.type === 'group' ? 'group' : ''}`} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
+                  {activeChat.type === 'group' ? <Users size={24} /> : getAvatarUrl(activeChat.avatar) ? <img src={getAvatarUrl(activeChat.avatar)} alt="" /> : <User size={24} />}
                 </div>
-                <div 
-                  className="chat-main-info"
-                  onClick={() => activeChat.type === 'group' && setShowChatInfo(true)}
-                  style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}
-                >
+                <div className="chat-main-info" onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
-                  <div className="chat-main-status">
-                    {activeChat.type === 'group' 
-                      ? `${activeChat.members?.length || 0} участников` 
-                      : 'В сети'}
-                  </div>
+                  <div className="chat-main-status">{activeChat.type === 'group' ? `${activeChat.members?.length || 0} участников` : 'В сети'}</div>
                 </div>
-                {activeChat.type === 'group' && (
-                  <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}>
-                    <MoreVertical size={20} />
-                  </button>
-                )}
+                {activeChat.type === 'group' && <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}><MoreVertical size={20} /></button>}
               </div>
 
               <div className="chat-messages">
@@ -413,67 +349,40 @@ export default function Dashboard() {
                   messages.map((msg, idx) => {
                     const isOwn = msg.senderId === user.id;
                     const showAvatar = !isOwn && (idx === 0 || messages[idx-1].senderId !== msg.senderId);
-                    
-                    if (msg.type === 'system') {
-                      return <div key={msg.id} className="message-system">{msg.content}</div>;
-                    }
-                    
+                    if (msg.type === 'system') return <div key={msg.id} className="message-system">{msg.content}</div>;
                     const hasAttachments = msg.attachments && msg.attachments.length > 0;
                     const hasText = msg.content && !msg.content.startsWith('📎');
-                    
                     return (
                       <div key={msg.id} className={`message ${isOwn ? 'own' : ''}`}>
                         {!isOwn && showAvatar && (
                           <div className="message-avatar">
-                            {getAvatarUrl(msg.sender?.avatar) ? (
-                              <img src={getAvatarUrl(msg.sender.avatar)} alt="" />
-                            ) : (
-                              <User size={16} />
-                            )}
+                            {getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}
                           </div>
                         )}
                         <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
-                          {!isOwn && showAvatar && activeChat.type === 'group' && (
-                            <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>
-                          )}
+                          {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
                           {renderAttachments(msg.attachments, isOwn)}
                           {hasText && <div className="message-content">{msg.content}</div>}
                           <div className="message-meta">
                             <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
-                            {isOwn && (
-                              <span className="message-status">
-                                <CheckCheck size={14} />
-                              </span>
-                            )}
+                            {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
                           </div>
                         </div>
                       </div>
                     );
                   })
                 ) : (
-                  <div className="chat-no-messages">
-                    <p>Нет сообщений</p>
-                    <span>Напишите первое сообщение</span>
-                  </div>
+                  <div className="chat-no-messages"><p>Нет сообщений</p><span>Напишите первое сообщение</span></div>
                 )}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Attachments Preview */}
               {attachments.length > 0 && (
                 <div className="attachments-preview">
                   {attachments.map((att, idx) => (
                     <div key={idx} className="attachment-preview-item">
-                      {att.mimeType?.startsWith('image/') ? (
-                        <img src={att.thumbnailUrl || att.url} alt={att.name} />
-                      ) : (
-                        <div className="attachment-preview-file">
-                          {getFileIcon(att.mimeType)}
-                        </div>
-                      )}
-                      <button className="attachment-remove" onClick={() => removeAttachment(idx)}>
-                        <X size={14} />
-                      </button>
+                      {att.mimeType?.startsWith('image/') ? <img src={fixUrl(att.thumbnailPath || att.path)} alt={att.name} /> : <div className="attachment-preview-file">{getFileIcon(att.mimeType)}</div>}
+                      <button className="attachment-remove" onClick={() => removeAttachment(idx)}><X size={14} /></button>
                       <div className="attachment-preview-name">{att.name}</div>
                     </div>
                   ))}
@@ -481,35 +390,12 @@ export default function Dashboard() {
               )}
 
               <form className="chat-input" onSubmit={handleSendMessage}>
-                <input 
-                  type="file"
-                  ref={fileInputRef}
-                  hidden
-                  multiple
-                  onChange={handleFileSelect}
-                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar"
-                />
-                <button 
-                  type="button" 
-                  className="btn-icon-chat"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  title="Прикрепить файл"
-                >
+                <input type="file" ref={fileInputRef} hidden multiple onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
+                <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
                   {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
                 </button>
-                <input 
-                  placeholder="Введите сообщение..." 
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                />
-                <button 
-                  type="submit" 
-                  className="btn btn-primary btn-icon" 
-                  disabled={(!newMessage.trim() && attachments.length === 0) || sending}
-                >
-                  <Send size={20} />
-                </button>
+                <input placeholder="Введите сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+                <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}><Send size={20} /></button>
               </form>
             </>
           ) : (
@@ -526,55 +412,30 @@ export default function Dashboard() {
           <div className="chat-info-panel">
             <div className="chat-info-header">
               <h3>Информация о группе</h3>
-              <button className="btn-icon-chat" onClick={() => setShowChatInfo(false)}>
-                <X size={20} />
-              </button>
+              <button className="btn-icon-chat" onClick={() => setShowChatInfo(false)}><X size={20} /></button>
             </div>
-            
             <div className="chat-info-body">
-              <div className="chat-info-avatar">
-                <Users size={48} />
-              </div>
+              <div className="chat-info-avatar"><Users size={48} /></div>
               <div className="chat-info-name">{activeChat.displayName}</div>
               <div className="chat-info-meta">{activeChat.members?.length || 0} участников</div>
-
               <div className="chat-info-section">
                 <div className="chat-info-section-header">
                   <span>Участники</span>
-                  <button 
-                    className="btn btn-ghost btn-sm" 
-                    onClick={() => { setShowAddMember(true); loadUsers(); }}
-                  >
-                    <UserPlus size={16} /> Добавить
-                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => { setShowAddMember(true); loadUsers(); }}><UserPlus size={16} /> Добавить</button>
                 </div>
                 <div className="chat-info-members">
                   {activeChat.members?.map(m => (
                     <div key={m.id} className="chat-member-item">
-                      <div className="chat-member-avatar">
-                        {getAvatarUrl(m.user?.avatar) ? (
-                          <img src={getAvatarUrl(m.user.avatar)} alt="" />
-                        ) : (
-                          <User size={18} />
-                        )}
-                      </div>
+                      <div className="chat-member-avatar">{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={18} />}</div>
                       <div className="chat-member-info">
-                        <div className="chat-member-name">
-                          {m.user?.displayName || m.user?.username}
-                          {m.userId === user.id && <span className="you-badge">Вы</span>}
-                        </div>
+                        <div className="chat-member-name">{m.user?.displayName || m.user?.username}{m.userId === user.id && <span className="you-badge">Вы</span>}</div>
                         {m.role === 'admin' && <span className="admin-badge">Админ</span>}
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-
-              <div className="chat-info-actions">
-                <button className="btn btn-danger" onClick={handleLeaveChat}>
-                  <LogOut size={18} /> Покинуть группу
-                </button>
-              </div>
+              <div className="chat-info-actions"><button className="btn btn-danger" onClick={handleLeaveChat}><LogOut size={18} /> Покинуть группу</button></div>
             </div>
           </div>
         )}
@@ -584,25 +445,18 @@ export default function Dashboard() {
       {showNewChat && (
         <div className="modal-overlay" onClick={() => setShowNewChat(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Новый чат</h2>
-              <button className="btn-icon-chat" onClick={() => setShowNewChat(false)}><X size={20} /></button>
-            </div>
+            <div className="modal-header"><h2>Новый чат</h2><button className="btn-icon-chat" onClick={() => setShowNewChat(false)}><X size={20} /></button></div>
             <div className="modal-body">
               <div className="user-list">
                 {usersList.length > 0 ? usersList.map(u => (
                   <div key={u.id} className="user-item" onClick={() => handleStartNewChat(u)}>
-                    <div className="user-item-avatar">
-                      {getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}
-                    </div>
+                    <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}</div>
                     <div className="user-item-info">
                       <div className="user-item-name">{u.displayName || u.username}</div>
                       <div className="user-item-username">@{u.username}</div>
                     </div>
                   </div>
-                )) : (
-                  <div className="empty-state">Нет доступных пользователей</div>
-                )}
+                )) : <div className="empty-state">Нет доступных пользователей</div>}
               </div>
             </div>
           </div>
@@ -613,21 +467,12 @@ export default function Dashboard() {
       {showNewGroup && (
         <div className="modal-overlay" onClick={() => setShowNewGroup(false)}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Создать группу</h2>
-              <button className="btn-icon-chat" onClick={() => setShowNewGroup(false)}><X size={20} /></button>
-            </div>
+            <div className="modal-header"><h2>Создать группу</h2><button className="btn-icon-chat" onClick={() => setShowNewGroup(false)}><X size={20} /></button></div>
             <div className="modal-body">
               <div className="form-group">
                 <label className="form-label">Название группы</label>
-                <input 
-                  className="input" 
-                  placeholder="Введите название..."
-                  value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
-                />
+                <input className="input" placeholder="Введите название..." value={groupName} onChange={(e) => setGroupName(e.target.value)} />
               </div>
-
               {selectedUsers.length > 0 && (
                 <div className="selected-users">
                   <label className="form-label">Выбрано: {selectedUsers.length}</label>
@@ -641,28 +486,16 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-
               <div className="form-group">
                 <label className="form-label">Добавить участников</label>
                 <div className="user-list">
                   {usersList.map(u => {
                     const isSelected = selectedUsers.find(s => s.id === u.id);
                     return (
-                      <div 
-                        key={u.id} 
-                        className={`user-item selectable ${isSelected ? 'selected' : ''}`} 
-                        onClick={() => toggleUserSelection(u)}
-                      >
-                        <div className="user-item-avatar">
-                          {getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}
-                        </div>
-                        <div className="user-item-info">
-                          <div className="user-item-name">{u.displayName || u.username}</div>
-                          <div className="user-item-username">@{u.username}</div>
-                        </div>
-                        <div className="user-item-check">
-                          {isSelected && <Check size={18} />}
-                        </div>
+                      <div key={u.id} className={`user-item selectable ${isSelected ? 'selected' : ''}`} onClick={() => toggleUserSelection(u)}>
+                        <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}</div>
+                        <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div>
+                        {isSelected && <Check size={20} className="check-icon" />}
                       </div>
                     );
                   })}
@@ -670,38 +503,26 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-ghost" onClick={() => setShowNewGroup(false)}>Отмена</button>
-              <button className="btn btn-primary" onClick={handleCreateGroup}>
-                <Users size={18} /> Создать группу
-              </button>
+              <button className="btn btn-secondary" onClick={() => setShowNewGroup(false)}>Отмена</button>
+              <button className="btn btn-primary" onClick={handleCreateGroup}>Создать</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Add Member to Group */}
+      {/* Modal: Add Member */}
       {showAddMember && (
         <div className="modal-overlay" onClick={() => setShowAddMember(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Добавить участника</h2>
-              <button className="btn-icon-chat" onClick={() => setShowAddMember(false)}><X size={20} /></button>
-            </div>
+            <div className="modal-header"><h2>Добавить участника</h2><button className="btn-icon-chat" onClick={() => setShowAddMember(false)}><X size={20} /></button></div>
             <div className="modal-body">
               <div className="user-list">
                 {availableUsersToAdd.length > 0 ? availableUsersToAdd.map(u => (
                   <div key={u.id} className="user-item" onClick={() => handleAddMember(u)}>
-                    <div className="user-item-avatar">
-                      {getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}
-                    </div>
-                    <div className="user-item-info">
-                      <div className="user-item-name">{u.displayName || u.username}</div>
-                      <div className="user-item-username">@{u.username}</div>
-                    </div>
+                    <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}</div>
+                    <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div>
                   </div>
-                )) : (
-                  <div className="empty-state">Все пользователи уже в группе</div>
-                )}
+                )) : <div className="empty-state">Все пользователи уже добавлены</div>}
               </div>
             </div>
           </div>

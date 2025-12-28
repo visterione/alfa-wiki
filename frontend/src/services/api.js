@@ -1,6 +1,25 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Динамическое определение API URL
+const getApiUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:5000/api`;
+};
+
+// Базовый URL без /api для медиафайлов
+const getBaseUrl = () => {
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL.replace('/api', '');
+  }
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:5000`;
+};
+
+export const API_URL = getApiUrl();
+export const BASE_URL = getBaseUrl();
 
 const api = axios.create({
   baseURL: API_URL,
@@ -107,45 +126,26 @@ export const backup = {
   list: () => api.get('/backup'),
   create: () => api.post('/backup'),
   restore: (filename) => api.post(`/backup/restore/${filename}`),
-  download: (filename) => `${API_URL}/backup/download/${filename}`,
+  download: (filename) => `${BASE_URL}/api/backup/download/${filename}`,
   delete: (filename) => api.delete(`/backup/${filename}`)
 };
 
 // Chat
 export const chat = {
-  // Получить все чаты пользователя
   list: () => api.get('/chat'),
-  
-  // Получить сообщения чата
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
-  
-  // Отправить сообщение
   sendMessage: (chatId, content, attachments = []) => {
     const type = attachments.length > 0 
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
       : 'text';
     return api.post(`/chat/${chatId}/messages`, { content, attachments, type });
   },
-  
-  // Начать приватный чат с пользователем
   startPrivate: (userId) => api.post(`/chat/private/${userId}`),
-  
-  // Создать групповой чат
   createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
-  
-  // Получить информацию о чате
   get: (chatId) => api.get(`/chat/${chatId}`),
-  
-  // Добавить участника в группу
   addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
-  
-  // Удалить участника из группы
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
-  
-  // Покинуть чат (DELETE, не POST!)
   leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
-  
-  // Отметить как прочитанное
   markRead: (chatId) => api.post(`/chat/${chatId}/read`)
 };
 

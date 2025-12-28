@@ -3,10 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Menu, Search, User, LogOut, ChevronDown, Shield, FileText } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { search as searchApi } from '../services/api';
+import { search as searchApi, BASE_URL } from '../services/api';
 import './Header.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Header({ sidebarOpen, onToggleSidebar }) {
   const { user, logout, isAdmin } = useAuth();
@@ -63,8 +61,24 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
 
   const getAvatarUrl = () => {
     if (!user?.avatar) return null;
+    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
     if (user.avatar.startsWith('http')) return user.avatar;
-    return `${API_URL}/${user.avatar}`;
+    return `${BASE_URL}/${user.avatar}`;
+  };
+
+  // Аналогичная функция для логотипа
+  const getLogoUrl = () => {
+    if (!theme?.logo) return null;
+    if (theme.logo.startsWith('http://localhost')) {
+      const path = theme.logo.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (theme.logo.startsWith('http')) return theme.logo;
+    return `${BASE_URL}/${theme.logo}`;
   };
 
   return (
@@ -74,8 +88,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           <Menu size={20} />
         </button>
         <Link to="/" className="header-logo">
-          {theme?.logo ? (
-            <img src={theme.logo} alt={theme.siteName} />
+          {getLogoUrl() ? (
+            <img src={getLogoUrl()} alt={theme?.siteName || 'Wiki'} />
           ) : (
             theme?.siteName || 'Alfa Wiki'
           )}

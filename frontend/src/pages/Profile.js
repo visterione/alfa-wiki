@@ -1,11 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { User, Lock, Camera, Save } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { auth, media } from '../services/api';
+import { auth, media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Profile.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
@@ -84,9 +82,9 @@ export default function Profile() {
     setUploadingAvatar(true);
     try {
       const { data } = await media.upload(file);
-      const avatarUrl = `${API_URL}/${data.path}`;
       
-      await auth.updateProfile({ avatar: avatarUrl });
+      // Сохраняем только относительный путь, не полный URL
+      await auth.updateProfile({ avatar: data.path });
       if (refreshUser) await refreshUser();
       
       toast.success('Фото профиля обновлено');
@@ -102,8 +100,13 @@ export default function Profile() {
 
   const getAvatarUrl = () => {
     if (!user?.avatar) return null;
+    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
     if (user.avatar.startsWith('http')) return user.avatar;
-    return `${API_URL}/${user.avatar}`;
+    return `${BASE_URL}/${user.avatar}`;
   };
 
   return (

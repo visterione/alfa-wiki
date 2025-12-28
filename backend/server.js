@@ -23,10 +23,40 @@ const app = express();
 
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+
+// CORS configuration - разрешаем запросы с любого origin в development
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL 
-    : ['http://localhost:3000', 'http://127.0.0.1:3000'],
+  origin: (origin, callback) => {
+    // Разрешаем запросы без origin (curl, Postman, мобильные приложения)
+    if (!origin) return callback(null, true);
+    
+    // В production проверяем FRONTEND_URL
+    if (process.env.NODE_ENV === 'production') {
+      const allowedOrigins = process.env.FRONTEND_URL 
+        ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
+        : [];
+      
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      // Также разрешаем если origin на том же хосте
+      try {
+        const originUrl = new URL(origin);
+        const allowed = allowedOrigins.some(allowed => {
+          try {
+            const allowedUrl = new URL(allowed);
+            return originUrl.hostname === allowedUrl.hostname;
+          } catch { return false; }
+        });
+        if (allowed) return callback(null, true);
+      } catch {}
+      
+      return callback(new Error('Not allowed by CORS'));
+    }
+    
+    // В development разрешаем все origins
+    callback(null, true);
+  },
   credentials: true
 }));
 
@@ -88,8 +118,8 @@ async function startServer() {
     }
     
     app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
-      console.log(`📁 Uploads available at http://localhost:${PORT}/uploads`);
+      console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
+      console.log(`📁 Uploads available at http://0.0.0.0:${PORT}/uploads`);
     });
   } catch (error) {
     console.error('❌ Unable to start server:', error);

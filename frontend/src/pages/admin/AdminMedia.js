@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Upload, Trash2, Copy, Image, Film, FileText, File } from 'lucide-react';
-import { media } from '../../services/api';
+import { media, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
-
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 export default function AdminMedia() {
   const [mediaList, setMediaList] = useState([]);
@@ -47,7 +45,7 @@ export default function AdminMedia() {
   };
 
   const copyUrl = (item) => {
-    const url = `${API_URL}/${item.path}`;
+    const url = `${BASE_URL}/${item.path}`;
     navigator.clipboard.writeText(url);
     toast.success('URL скопирован');
   };
@@ -99,7 +97,7 @@ export default function AdminMedia() {
               <div key={item.id} className="media-card">
                 <div className="media-preview">
                   {item.mimeType?.startsWith('image/') ? (
-                    <img src={`${API_URL}/${item.thumbnailPath || item.path}`} alt={item.originalName} />
+                    <img src={`${BASE_URL}/${item.thumbnailPath || item.path}`} alt={item.originalName} />
                   ) : (
                     <div className="media-icon">{getIcon(item.mimeType)}</div>
                   )}
