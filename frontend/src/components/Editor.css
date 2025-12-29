@@ -79,6 +79,7 @@
   margin: 0 6px;
 }
 
+/* Dropdown wrapper */
 .editor-dropdown-wrapper {
   position: relative;
 }
@@ -87,28 +88,15 @@
   margin-left: 2px;
 }
 
-.loading-spinner {
-  border: 2px solid rgba(0, 0, 0, 0.1);
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
 /* Color Picker */
 .color-picker-dropdown {
   position: fixed;
   background: var(--bg-primary);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-xl);
-  border: 1px solid var(--border-light);
   padding: 12px;
   z-index: 9999;
-  min-width: 240px;
-  max-width: 280px;
+  min-width: 160px;
 }
 
 .color-picker-title {
@@ -121,14 +109,14 @@
 
 .color-picker-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
   margin-bottom: 8px;
 }
 
 .color-picker-item {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   border: 2px solid transparent;
   cursor: pointer;
@@ -138,7 +126,6 @@
 .color-picker-item:hover {
   transform: scale(1.15);
   border-color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .color-picker-clear {
@@ -150,7 +137,6 @@
   font-size: 12px;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--transition-fast);
 }
 
 .color-picker-clear:hover {
@@ -163,20 +149,11 @@
   background: var(--bg-primary);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-xl);
-  border: 1px solid var(--border-light);
   padding: 8px;
   z-index: 9999;
-  min-width: 220px;
+  min-width: 200px;
   max-height: 70vh;
   overflow-y: auto;
-}
-
-.table-menu-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  padding: 4px 8px 8px;
 }
 
 .table-menu-item {
@@ -192,7 +169,6 @@
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background var(--transition-fast);
 }
 
 .table-menu-item:hover {
@@ -209,155 +185,59 @@
   margin: 4px 0;
 }
 
-.table-size-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 4px 8px;
-}
-
-.table-size-row {
-  display: flex;
-  gap: 4px;
-}
-
-.table-size-cell {
-  width: 36px;
-  height: 32px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  font-size: 12px;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.table-size-cell:hover {
-  background: var(--primary-light);
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.cell-color-picker {
-  padding: 8px;
-  margin-top: 4px;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-}
-
-.cell-color-picker .color-picker-grid {
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  margin-bottom: 0;
-}
-
-/* IMAGE BUBBLE MENU - НОВОЕ */
-.image-bubble-menu {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  box-shadow: var(--shadow-xl);
-}
-
-.image-bubble-section {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.image-bubble-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-}
-
-.image-bubble-btn {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.image-bubble-btn:hover {
-  background: var(--bg-secondary);
-  border-color: var(--text-secondary);
-  color: var(--text-primary);
-}
-
-.image-bubble-btn.active {
-  background: var(--primary-light);
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-.image-bubble-btn.danger {
-  color: var(--error);
-  border-color: var(--error);
-}
-
-.image-bubble-btn.danger:hover {
-  background: rgba(255, 59, 48, 0.1);
-}
-
-.image-bubble-size {
-  font-size: 12px;
-  color: var(--text-primary);
-  min-width: 60px;
-  text-align: center;
-}
-
-.image-bubble-divider {
-  width: 1px;
-  height: 24px;
-  background: var(--border);
-}
-
 /* Editor Content */
 .editor-content {
-  min-height: 300px;
+  padding: 20px;
+  min-height: 400px;
 }
 
 .editor-content .ProseMirror {
-  padding: 20px;
   outline: none;
-  min-height: 300px;
+  min-height: 400px;
 }
 
-.editor-content .ProseMirror p {
-  margin: 0.5em 0;
+.editor-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: var(--text-tertiary);
+  pointer-events: none;
+  height: 0;
 }
 
-.editor-content .ProseMirror p:first-child {
-  margin-top: 0;
+.editor-content .ProseMirror h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.67em 0;
 }
 
-.editor-content .ProseMirror h1,
-.editor-content .ProseMirror h2,
-.editor-content .ProseMirror h3,
-.editor-content .ProseMirror h4,
-.editor-content .ProseMirror h5,
+.editor-content .ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 0.75em 0;
+}
+
+.editor-content .ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin: 0.83em 0;
+}
+
+.editor-content .ProseMirror h4 {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin: 1em 0;
+}
+
+.editor-content .ProseMirror h5 {
+  font-size: 1em;
+  font-weight: 600;
+  margin: 1.33em 0;
+}
+
 .editor-content .ProseMirror h6 {
-  margin: 1.5em 0 0.5em;
-  line-height: 1.3;
-}
-
-.editor-content .ProseMirror h1:first-child,
-.editor-content .ProseMirror h2:first-child,
-.editor-content .ProseMirror h3:first-child {
-  margin-top: 0;
+  font-size: 0.875em;
+  font-weight: 600;
+  margin: 1.67em 0;
 }
 
 .editor-content .ProseMirror ul,
@@ -366,28 +246,36 @@
   margin: 1em 0;
 }
 
+.editor-content .ProseMirror ul {
+  list-style-type: disc;
+}
+
+.editor-content .ProseMirror ol {
+  list-style-type: decimal;
+}
+
 .editor-content .ProseMirror li {
-  margin: 0.5em 0;
+  margin: 0.25em 0;
 }
 
 .editor-content .ProseMirror blockquote {
-  border-left: 4px solid var(--primary);
+  border-left: 3px solid var(--primary);
   padding-left: 1em;
-  margin: 1.5em 0;
+  margin: 1em 0;
   color: var(--text-secondary);
+  font-style: italic;
 }
 
 .editor-content .ProseMirror pre {
-  background: #1D1D1F;
-  color: #fff;
-  padding: 1em;
+  background: var(--bg-secondary);
   border-radius: var(--radius-sm);
-  margin: 1em 0;
+  padding: 1em;
   overflow-x: auto;
+  margin: 1em 0;
 }
 
 .editor-content .ProseMirror code {
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   padding: 0.2em 0.4em;
   border-radius: 4px;
   font-size: 0.9em;
@@ -398,62 +286,11 @@
   padding: 0;
 }
 
-/* ИЗОБРАЖЕНИЯ С ОБТЕКАНИЕМ - НОВОЕ */
-.editor-content .ProseMirror img {
-  max-width: 100%;
-  height: auto;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.editor-content .ProseMirror img.ProseMirror-selectednode {
-  outline: 3px solid var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
-}
-
-/* Обтекание слева */
-.editor-content .ProseMirror img[data-float="left"] {
-  float: left;
-  margin: 0 1em 1em 0;
-  max-width: 50%;
-}
-
-/* Обтекание справа */
-.editor-content .ProseMirror img[data-float="right"] {
-  float: right;
-  margin: 0 0 1em 1em;
-  max-width: 50%;
-}
-
-/* По центру без обтекания */
-.editor-content .ProseMirror img[data-float="center"] {
-  display: block;
-  margin: 1em auto;
-  max-width: 80%;
-}
-
-/* На всю ширину */
-.editor-content .ProseMirror img[data-float="full"] {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-  margin: 1em 0;
-}
-
-/* В тексте (по умолчанию) */
-.editor-content .ProseMirror img[data-float="none"] {
-  display: inline-block;
-  vertical-align: middle;
-  margin: 0 0.25em;
-}
-
 .editor-content .ProseMirror hr {
   border: none;
   height: 1px;
   background: var(--border);
   margin: 2em 0;
-  clear: both; /* Очистка float */
 }
 
 .editor-content .ProseMirror a {
@@ -462,6 +299,7 @@
 }
 
 .editor-content .ProseMirror mark {
+  background: #FFEB3B;
   padding: 0.1em 0.2em;
   border-radius: 2px;
 }
@@ -471,7 +309,6 @@
   border-collapse: collapse;
   width: 100%;
   margin: 1em 0;
-  clear: both; /* Очистка float */
 }
 
 .editor-content .ProseMirror th,
@@ -488,20 +325,20 @@
   font-weight: 600;
 }
 
-.editor-content .ProseMirror td[data-background-color],
-.editor-content .ProseMirror th[data-background-color] {
-  /* Стиль применяется через inline style */
-}
-
 .editor-content .ProseMirror .selectedCell {
   background: var(--primary-light);
+}
+
+/* Ячейки с кастомным цветом фона */
+.editor-content .ProseMirror td[data-background-color],
+.editor-content .ProseMirror th[data-background-color] {
+  /* Цвет применяется через inline style в renderHTML */
 }
 
 /* YouTube embed */
 .editor-content .ProseMirror iframe {
   max-width: 100%;
   border-radius: var(--radius-sm);
-  clear: both; /* Очистка float */
 }
 
 /* Selection */
@@ -509,18 +346,250 @@
   background: var(--primary-light);
 }
 
-/* Placeholder */
-.editor-content .ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  color: var(--text-tertiary);
-  pointer-events: none;
-  height: 0;
+/* Resizable Image Styles */
+.resizable-image-container {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  cursor: default;
+  user-select: none;
 }
 
-/* Clearfix для параграфов с float изображениями */
-.editor-content .ProseMirror p::after {
+.resizable-image-container img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  transition: outline 0.15s ease;
+  user-select: none;
+  pointer-events: none;
+}
+
+.resizable-image-container.selected img {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.resizable-image-container.resizing {
+  cursor: nwse-resize;
+}
+
+.resizable-image-container.resizing img {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Resize Handles - Углы для изменения размера */
+.resize-handle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.15s ease, background 0.15s ease;
+  z-index: 100;
+  pointer-events: all;
+}
+
+.resizable-image-container.selected .resize-handle {
+  opacity: 1;
+}
+
+.resize-handle:hover {
+  transform: scale(1.25);
+  background: var(--primary);
+  cursor: nwse-resize;
+}
+
+.resize-handle:active {
+  background: var(--primary-dark);
+}
+
+/* Позиционирование углов */
+.resize-handle.nw {
+  top: -7px;
+  left: -7px;
+  cursor: nw-resize;
+}
+
+.resize-handle.ne {
+  top: -7px;
+  right: -7px;
+  cursor: ne-resize;
+}
+
+.resize-handle.sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: sw-resize;
+}
+
+.resize-handle.se {
+  bottom: -7px;
+  right: -7px;
+  cursor: se-resize;
+}
+
+/* Image Bubble Menu - Меню настроек изображения */
+.image-bubble-menu {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-xl);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+  z-index: 9999;
+}
+
+.image-bubble-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.image-bubble-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.image-bubble-btn {
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.image-bubble-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--primary);
+}
+
+.image-bubble-btn.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.image-bubble-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* Стили для разных режимов отображения изображений */
+.editor-content .ProseMirror img[data-display="block"] {
+  display: block !important;
+  margin: 0.5em 0;
+}
+
+.editor-content .ProseMirror img[data-display="inline"] {
+  display: inline-block !important;
+  vertical-align: middle;
+}
+
+.editor-content .ProseMirror img[data-float="left"] {
+  float: left !important;
+  margin: 0.5em 1em 0.5em 0 !important;
+}
+
+.editor-content .ProseMirror img[data-float="right"] {
+  float: right !important;
+  margin: 0.5em 0 0.5em 1em !important;
+}
+
+.editor-content .ProseMirror img[data-align="center"] {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+.editor-content .ProseMirror img[data-align="left"] {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+.editor-content .ProseMirror img[data-align="right"] {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+}
+
+/* Очистка float */
+.editor-content .ProseMirror p:after,
+.editor-content .ProseMirror div:after {
   content: "";
   display: table;
   clear: both;
+}
+
+/* Дополнительные стили для NodeViewWrapper */
+.editor-content .ProseMirror .react-renderer {
+  display: inline-block;
+}
+
+.editor-content .ProseMirror .react-renderer[data-node-view-wrapper] {
+  line-height: 0;
+}
+
+/* Для блочного режима */
+.editor-content .ProseMirror .react-renderer.block-display {
+  display: block;
+  width: 100%;
+}
+
+/* Загрузчик для кнопки изображения */
+.loading-spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Цвета для ячеек таблицы */
+.cell-colors-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+}
+
+.cell-color-item {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 2px solid transparent;
+}
+
+.cell-color-item:hover {
+  transform: scale(1.1);
+  border-color: var(--primary);
 }

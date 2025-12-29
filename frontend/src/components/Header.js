@@ -173,7 +173,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 onClick={() => setShowDropdown(false)}
               >
                 <User size={16} />
-                Профиль
+                Настройки
               </Link>
               
               {isAdmin && (
@@ -183,7 +183,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   onClick={() => setShowDropdown(false)}
                 >
                   <Shield size={16} />
-                  Админ-панель
+                  Администрирование
                 </Link>
               )}
               
