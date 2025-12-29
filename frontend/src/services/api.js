@@ -128,7 +128,8 @@ export const backup = {
   create: () => api.post('/backup'),
   restore: (filename) => api.post(`/backup/restore/${filename}`),
   download: (filename) => `${BASE_URL}/api/backup/download/${filename}`,
-  delete: (filename) => api.delete(`/backup/${filename}`)
+  delete: (filename) => api.delete(`/backup/${filename}`),
+  cleanup: () => api.post('/backup/cleanup')
 };
 
 // Chat

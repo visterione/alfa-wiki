@@ -23,9 +23,31 @@
 }
 
 .content-wrapper {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 32px;
+  padding: 24px;
+}
+
+/* Полноширинный контент (для чата, дашборда) */
+.content-wrapper:has(.dashboard-chat-wrapper),
+.content-wrapper:has(.alfa-chat) {
+  max-width: 100%;
+  padding: 0;
+}
+
+/* Широкий контент (для админки, редактора) */
+.content-wrapper:has(.admin-page),
+.content-wrapper:has(.page-editor) {
+  max-width: 1400px;
+  padding: 24px 32px;
+}
+
+/* Стандартный контент (для страниц wiki) */
+.content-wrapper:has(.page-view) {
+  max-width: none;
+  width: 80%;
+  margin: 0 auto;
+  padding: 32px 0;
 }
 
 /* Sidebar styles */
@@ -137,6 +159,23 @@
   }
   
   .content-wrapper {
+    padding: 16px;
+  }
+  
+  .content-wrapper:has(.admin-page),
+  .content-wrapper:has(.page-editor) {
+    padding: 16px;
+  }
+  
+  .content-wrapper:has(.page-view) {
+    width: 100%;
     padding: 20px 16px;
+  }
+}
+
+/* Large screens */
+@media (min-width: 1800px) {
+  .content-wrapper:has(.admin-page) {
+    max-width: 1600px;
   }
 }

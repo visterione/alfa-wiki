@@ -1,40 +1,25 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus, ChevronDown, X, Search as SearchIcon,
-  // Общие
   Home, File, Folder, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
   Settings, Database, Image, Shield, Layout, Users, Key, Layers, List, Grid, Hash, Filter,
-  // Навигация  
   ChevronRight, ExternalLink, RefreshCw,
-  // Документы
   FilePlus, FileCheck, FileX, Files, Clipboard, ClipboardList, ClipboardCheck,
   BookOpen, Book, Newspaper, FileSpreadsheet, FileCode,
-  // Коммуникации
   MessageCircle, MessageSquare, Send, Inbox, AtSign, PhoneCall, Video, Mic, Volume2,
-  // Медицина
   Activity, Stethoscope, Pill, Syringe, Thermometer, HeartPulse, Brain, Bone, Eye,
   Accessibility, Cross, Droplet, Droplets, TestTube, TestTubes,
-  // Бизнес
   Briefcase, Building, Building2, Landmark, CreditCard, Wallet, Receipt, DollarSign,
   TrendingUp, BarChart, BarChart2, BarChart3, PieChart, LineChart,
-  // Технологии
   Monitor, Laptop, Smartphone, Tablet, Cpu, HardDrive, Server, Wifi, Globe, Cloud, 
   Download, Upload, Link, Code, Terminal, QrCode,
-  // Безопасность
   Lock, Unlock, ShieldCheck, ShieldAlert, Fingerprint, ScanFace, AlertTriangle, AlertCircle,
-  // Люди
   User, UserPlus, UserCheck, UserCircle, Contact,
-  // Время
   Timer, Hourglass, CalendarDays, CalendarCheck,
-  // Природа
   Sun, Moon, Umbrella, Leaf,
-  // Транспорт
   Car, Truck, Plane, Navigation,
-  // Действия
   CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2, Archive, Printer,
-  // Интерфейс
   Type, Info, HelpCircle, Search,
-  // Разное
   Trophy, Medal, Target, Lightbulb, Zap, Sparkles, Flame, Gift, Package, Box, ShoppingCart,
   Coffee, ThumbsUp, Smile, Gauge, Compass, Map, Flag, Power, Percent, Speaker, Headphones, Camera, Rss
 } from 'lucide-react';
@@ -42,7 +27,6 @@ import { sidebar, pages, roles } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
-// Организованный список иконок по категориям
 const iconCategories = [
   {
     name: 'Популярные',
@@ -93,7 +77,7 @@ const iconCategories = [
       { name: 'clipboard-check', icon: ClipboardCheck, label: 'Чек-лист' },
       { name: 'book-open', icon: BookOpen, label: 'Книга' },
       { name: 'book', icon: Book, label: 'Книга закр.' },
-      { name: 'newspaper', icon: Newspaper, label: 'Новости' },
+      { name: 'newspaper', icon: Newspaper, label: 'Газета' },
       { name: 'file-spreadsheet', icon: FileSpreadsheet, label: 'Таблица' },
       { name: 'file-code', icon: FileCode, label: 'Код' },
     ]
@@ -102,26 +86,17 @@ const iconCategories = [
     name: 'Коммуникации',
     icons: [
       { name: 'mail', icon: Mail, label: 'Почта' },
-      { name: 'phone', icon: Phone, label: 'Телефон' },
       { name: 'message-circle', icon: MessageCircle, label: 'Сообщение' },
       { name: 'message-square', icon: MessageSquare, label: 'Чат' },
       { name: 'send', icon: Send, label: 'Отправить' },
       { name: 'inbox', icon: Inbox, label: 'Входящие' },
-      { name: 'at-sign', icon: AtSign, label: 'Email' },
+      { name: 'at-sign', icon: AtSign, label: 'Собака' },
+      { name: 'phone', icon: Phone, label: 'Телефон' },
       { name: 'phone-call', icon: PhoneCall, label: 'Звонок' },
       { name: 'video', icon: Video, label: 'Видео' },
       { name: 'mic', icon: Mic, label: 'Микрофон' },
-      { name: 'volume-2', icon: Volume2, label: 'Громкость' },
-    ]
-  },
-  {
-    name: 'Люди',
-    icons: [
-      { name: 'user', icon: User, label: 'Пользователь' },
-      { name: 'user-plus', icon: UserPlus, label: 'Добавить' },
-      { name: 'user-check', icon: UserCheck, label: 'Проверен' },
-      { name: 'user-circle', icon: UserCircle, label: 'Аватар' },
-      { name: 'contact', icon: Contact, label: 'Контакт' },
+      { name: 'volume', icon: Volume2, label: 'Звук' },
+      { name: 'rss', icon: Rss, label: 'RSS' },
     ]
   },
   {
@@ -132,28 +107,14 @@ const iconCategories = [
       { name: 'building-2', icon: Building2, label: 'Офис' },
       { name: 'landmark', icon: Landmark, label: 'Банк' },
       { name: 'credit-card', icon: CreditCard, label: 'Карта' },
-      { name: 'wallet', icon: Wallet, label: 'Кошелек' },
+      { name: 'wallet', icon: Wallet, label: 'Кошелёк' },
       { name: 'receipt', icon: Receipt, label: 'Чек' },
       { name: 'dollar-sign', icon: DollarSign, label: 'Доллар' },
       { name: 'trending-up', icon: TrendingUp, label: 'Рост' },
-      { name: 'bar-chart', icon: BarChart, label: 'Диаграмма' },
-      { name: 'pie-chart', icon: PieChart, label: 'Круговая' },
-      { name: 'line-chart', icon: LineChart, label: 'График' },
-    ]
-  },
-  {
-    name: 'Безопасность',
-    icons: [
-      { name: 'shield', icon: Shield, label: 'Щит' },
-      { name: 'shield-check', icon: ShieldCheck, label: 'Защищено' },
-      { name: 'shield-alert', icon: ShieldAlert, label: 'Внимание' },
-      { name: 'lock', icon: Lock, label: 'Замок' },
-      { name: 'unlock', icon: Unlock, label: 'Открыто' },
-      { name: 'key', icon: Key, label: 'Ключ' },
-      { name: 'fingerprint', icon: Fingerprint, label: 'Отпечаток' },
-      { name: 'scan-face', icon: ScanFace, label: 'FaceID' },
-      { name: 'alert-triangle', icon: AlertTriangle, label: 'Предупр.' },
-      { name: 'alert-circle', icon: AlertCircle, label: 'Ошибка' },
+      { name: 'bar-chart', icon: BarChart, label: 'График' },
+      { name: 'bar-chart-2', icon: BarChart2, label: 'Диаграмма' },
+      { name: 'pie-chart', icon: PieChart, label: 'Пирог' },
+      { name: 'line-chart', icon: LineChart, label: 'Линия' },
     ]
   },
   {
@@ -161,34 +122,49 @@ const iconCategories = [
     icons: [
       { name: 'monitor', icon: Monitor, label: 'Монитор' },
       { name: 'laptop', icon: Laptop, label: 'Ноутбук' },
-      { name: 'smartphone', icon: Smartphone, label: 'Телефон' },
+      { name: 'smartphone', icon: Smartphone, label: 'Смартфон' },
       { name: 'tablet', icon: Tablet, label: 'Планшет' },
       { name: 'cpu', icon: Cpu, label: 'Процессор' },
       { name: 'hard-drive', icon: HardDrive, label: 'Диск' },
       { name: 'server', icon: Server, label: 'Сервер' },
-      { name: 'database', icon: Database, label: 'База данных' },
+      { name: 'database', icon: Database, label: 'База' },
       { name: 'wifi', icon: Wifi, label: 'WiFi' },
-      { name: 'globe', icon: Globe, label: 'Интернет' },
+      { name: 'globe', icon: Globe, label: 'Глобус' },
       { name: 'cloud', icon: Cloud, label: 'Облако' },
       { name: 'code', icon: Code, label: 'Код' },
       { name: 'terminal', icon: Terminal, label: 'Терминал' },
-      { name: 'qr-code', icon: QrCode, label: 'QR-код' },
+      { name: 'qr-code', icon: QrCode, label: 'QR' },
     ]
   },
   {
-    name: 'Навигация',
+    name: 'Безопасность',
     icons: [
-      { name: 'map-pin', icon: MapPin, label: 'Метка' },
-      { name: 'map', icon: Map, label: 'Карта' },
-      { name: 'compass', icon: Compass, label: 'Компас' },
-      { name: 'navigation', icon: Navigation, label: 'Навигация' },
-      { name: 'flag', icon: Flag, label: 'Флаг' },
+      { name: 'lock', icon: Lock, label: 'Замок' },
+      { name: 'unlock', icon: Unlock, label: 'Открыт' },
+      { name: 'key', icon: Key, label: 'Ключ' },
+      { name: 'shield', icon: Shield, label: 'Щит' },
+      { name: 'shield-check', icon: ShieldCheck, label: 'Защищён' },
+      { name: 'shield-alert', icon: ShieldAlert, label: 'Угроза' },
+      { name: 'fingerprint', icon: Fingerprint, label: 'Отпечаток' },
+      { name: 'scan-face', icon: ScanFace, label: 'Лицо' },
+      { name: 'alert-triangle', icon: AlertTriangle, label: 'Внимание' },
+      { name: 'alert-circle', icon: AlertCircle, label: 'Ошибка' },
+    ]
+  },
+  {
+    name: 'Люди',
+    icons: [
+      { name: 'user', icon: User, label: 'Пользователь' },
+      { name: 'user-plus', icon: UserPlus, label: 'Добавить' },
+      { name: 'user-check', icon: UserCheck, label: 'Проверен' },
+      { name: 'user-circle', icon: UserCircle, label: 'Аватар' },
+      { name: 'users', icon: Users, label: 'Группа' },
+      { name: 'contact', icon: Contact, label: 'Контакт' },
     ]
   },
   {
     name: 'Действия',
     icons: [
-      { name: 'plus', icon: Plus, label: 'Добавить' },
       { name: 'check-circle', icon: CheckCircle, label: 'Готово' },
       { name: 'x-circle', icon: XCircle, label: 'Отмена' },
       { name: 'edit', icon: Pencil, label: 'Редактировать' },
@@ -226,70 +202,64 @@ const iconCategories = [
   {
     name: 'Разное',
     icons: [
-      { name: 'award', icon: Award, label: 'Награда' },
       { name: 'trophy', icon: Trophy, label: 'Трофей' },
       { name: 'medal', icon: Medal, label: 'Медаль' },
+      { name: 'award', icon: Award, label: 'Награда' },
       { name: 'target', icon: Target, label: 'Цель' },
       { name: 'lightbulb', icon: Lightbulb, label: 'Идея' },
       { name: 'zap', icon: Zap, label: 'Молния' },
-      { name: 'sparkles', icon: Sparkles, label: 'Блеск' },
+      { name: 'sparkles', icon: Sparkles, label: 'Блёстки' },
       { name: 'flame', icon: Flame, label: 'Огонь' },
       { name: 'gift', icon: Gift, label: 'Подарок' },
       { name: 'package', icon: Package, label: 'Посылка' },
       { name: 'box', icon: Box, label: 'Коробка' },
       { name: 'shopping-cart', icon: ShoppingCart, label: 'Корзина' },
       { name: 'coffee', icon: Coffee, label: 'Кофе' },
-      { name: 'sun', icon: Sun, label: 'Солнце' },
-      { name: 'moon', icon: Moon, label: 'Луна' },
       { name: 'thumbs-up', icon: ThumbsUp, label: 'Лайк' },
       { name: 'smile', icon: Smile, label: 'Улыбка' },
-      { name: 'gauge', icon: Gauge, label: 'Спидометр' },
-      { name: 'rss', icon: Rss, label: 'RSS' },
+      { name: 'map-pin', icon: MapPin, label: 'Метка' },
+      { name: 'compass', icon: Compass, label: 'Компас' },
+      { name: 'map', icon: Map, label: 'Карта' },
+      { name: 'flag', icon: Flag, label: 'Флаг' },
+      { name: 'sun', icon: Sun, label: 'Солнце' },
+      { name: 'moon', icon: Moon, label: 'Луна' },
       { name: 'power', icon: Power, label: 'Питание' },
+      { name: 'gauge', icon: Gauge, label: 'Спидометр' },
     ]
   }
 ];
 
-// Плоский список всех иконок для поиска
 const allIcons = iconCategories.flatMap(cat => cat.icons);
 const iconComponentMap = Object.fromEntries(allIcons.map(i => [i.name, i.icon]));
 
-// Компонент выбора иконки
 function IconPicker({ value, onChange }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('Популярные');
-  const pickerRef = useRef(null);
-  const searchInputRef = useRef(null);
-  
-  const CurrentIcon = iconComponentMap[value] || FileText;
+  const ref = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target)) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (open && searchInputRef.current) {
-      setTimeout(() => searchInputRef.current?.focus(), 100);
-    }
-  }, [open]);
-
   const filteredIcons = useMemo(() => {
-    if (!search.trim()) return null;
-    const q = search.toLowerCase();
-    return allIcons.filter(icon => 
-      icon.name.toLowerCase().includes(q) || 
-      icon.label.toLowerCase().includes(q)
+    if (!search) return null;
+    const s = search.toLowerCase();
+    return allIcons.filter(i => 
+      i.name.toLowerCase().includes(s) || 
+      i.label.toLowerCase().includes(s)
     );
   }, [search]);
 
-  const displayIcons = filteredIcons || iconCategories.find(c => c.name === activeCategory)?.icons || [];
+  const displayIcons = filteredIcons || 
+    iconCategories.find(c => c.name === activeCategory)?.icons || 
+    iconCategories[0].icons;
+
+  const SelectedIcon = iconComponentMap[value] || FileText;
 
   const selectIcon = (name) => {
     onChange(name);
@@ -298,29 +268,27 @@ function IconPicker({ value, onChange }) {
   };
 
   return (
-    <div className="icon-picker-wrapper" ref={pickerRef}>
+    <div className="icon-picker" ref={ref}>
       <button type="button" className="icon-picker-trigger" onClick={() => setOpen(!open)}>
-        <div className="icon-picker-preview">
-          <CurrentIcon size={20} />
-        </div>
-        <span className="icon-picker-value">{value}</span>
-        <ChevronDown size={16} className={`icon-picker-chevron ${open ? 'open' : ''}`} />
+        <SelectedIcon size={20} />
+        <span>{allIcons.find(i => i.name === value)?.label || value}</span>
+        <ChevronDown size={16} />
       </button>
 
       {open && (
-        <div className="icon-picker-popup">
+        <div className="icon-picker-dropdown">
           <div className="icon-picker-search">
             <SearchIcon size={16} />
             <input
-              ref={searchInputRef}
               type="text"
               placeholder="Поиск иконки..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              autoFocus
             />
             {search && (
-              <button type="button" onClick={() => setSearch('')} className="icon-picker-clear">
-                <X size={14} />
+              <button className="icon-picker-clear" onClick={() => setSearch('')}>
+                <X size={12} />
               </button>
             )}
           </div>
@@ -572,11 +540,11 @@ export default function AdminSidebar() {
             
             <div className="modal-body">
               <div className="form-group">
-                <label>Тип элемента</label>
+                <label className="form-label">Тип элемента</label>
                 <select 
                   value={form.type} 
                   onChange={e => setForm({ ...form, type: e.target.value })}
-                  className="form-select"
+                  className="select"
                 >
                   <option value="page">Страница</option>
                   <option value="link">Внешняя ссылка</option>
@@ -587,18 +555,18 @@ export default function AdminSidebar() {
               {form.type !== 'divider' && (
                 <>
                   <div className="form-group">
-                    <label>Заголовок</label>
+                    <label className="form-label">Заголовок</label>
                     <input
                       type="text"
                       value={form.title}
                       onChange={e => setForm({ ...form, title: e.target.value })}
                       placeholder="Название пункта меню"
-                      className="form-input"
+                      className="input"
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Иконка</label>
+                    <label className="form-label">Иконка</label>
                     <IconPicker 
                       value={form.icon} 
                       onChange={(icon) => setForm({ ...form, icon })} 
@@ -609,11 +577,11 @@ export default function AdminSidebar() {
 
               {form.type === 'page' && (
                 <div className="form-group">
-                  <label>Страница</label>
+                  <label className="form-label">Страница</label>
                   <select 
                     value={form.pageId} 
                     onChange={e => setForm({ ...form, pageId: e.target.value })}
-                    className="form-select"
+                    className="select"
                   >
                     <option value="">— Выберите страницу —</option>
                     {pageList.map(p => (
@@ -625,20 +593,20 @@ export default function AdminSidebar() {
 
               {form.type === 'link' && (
                 <div className="form-group">
-                  <label>URL ссылки</label>
+                  <label className="form-label">URL ссылки</label>
                   <input
                     type="url"
                     value={form.externalUrl}
                     onChange={e => setForm({ ...form, externalUrl: e.target.value })}
                     placeholder="https://example.com"
-                    className="form-input"
+                    className="input"
                   />
                 </div>
               )}
 
               {form.type !== 'divider' && roleList.length > 0 && (
                 <div className="form-group">
-                  <label>Доступ для ролей</label>
+                  <label className="form-label">Доступ для ролей</label>
                   <div className="checkbox-group">
                     {roleList.map(role => (
                       <label key={role.id} className="checkbox-item">

@@ -31,6 +31,29 @@ export default function AdminBackup() {
     finally { setCreating(false); }
   };
 
+  const handleDownload = async (filename) => {
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:9001/api'}/backup/download/${filename}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) throw new Error('Download failed');
+    
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  } catch (e) {
+    toast.error('Ошибка скачивания');
+  }
+};
+
   const handleDelete = async (filename) => {
     if (!window.confirm('Удалить резервную копию?')) return;
     try {
@@ -115,7 +138,7 @@ export default function AdminBackup() {
                   <td>{format(new Date(b.createdAt), 'd MMMM yyyy, HH:mm', { locale: ru })}</td>
                   <td>
                     <div className="action-btns">
-                      <a href={backup.download(b.filename)} className="btn btn-ghost btn-sm" download><Download size={16} /></a>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleDownload(b.filename)}><Download size={16} /></button>
                       <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(b.filename)}><Trash2 size={16} /></button>
                     </div>
                   </td>

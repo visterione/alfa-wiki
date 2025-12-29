@@ -1,15 +1,13 @@
 /* Dashboard - полноэкранный чат */
 .dashboard-chat-wrapper {
-  height: calc(100vh - var(--header-height) - 48px);
-  padding: 0;
+  height: calc(100vh - var(--header-height));
+  width: 100%;
 }
 
 .alfa-chat {
   display: flex;
   height: 100%;
   background: var(--bg-primary);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -22,6 +20,8 @@
   background: var(--bg-primary);
   flex-shrink: 0;
 }
+
+/* ... остальной CSS файла остаётся без изменений ... */
 
 .chat-sidebar-header {
   display: flex;

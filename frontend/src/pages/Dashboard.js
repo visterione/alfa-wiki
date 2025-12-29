@@ -432,11 +432,40 @@ export default function Dashboard() {
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="modal-header"><h2>Создать группу</h2><button className="btn-icon-chat" onClick={() => setShowNewGroup(false)}><X size={20} /></button></div>
             <div className="modal-body">
-              <div className="form-group"><label>Название группы</label><input type="text" className="form-control" placeholder="Введите название..." value={groupName} onChange={(e) => setGroupName(e.target.value)} /></div>
-              {selectedUsers.length > 0 && <div className="selected-users"><label>Выбранные участники ({selectedUsers.length})</label><div className="selected-users-list">{selectedUsers.map(u => <div key={u.id} className="selected-user-chip">{u.displayName || u.username}<button onClick={() => toggleUserSelection(u)}><X size={14} /></button></div>)}</div></div>}
-              <div className="form-group"><label>Добавить участников</label><div className="user-list">{usersList.map(u => <div key={u.id} className={`user-item selectable ${selectedUsers.find(s => s.id === u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u)}><div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}</div><div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div><div className="user-item-check">{selectedUsers.find(s => s.id === u.id) && <Check size={18} />}</div></div>)}</div></div>
+              <div className="form-group">
+                <label className="form-label">Название группы</label>
+                <input type="text" className="input" placeholder="Введите название..." value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+              </div>
+              {selectedUsers.length > 0 && (
+                <div className="selected-users">
+                  <label className="form-label">Выбранные участники ({selectedUsers.length})</label>
+                  <div className="selected-users-list">
+                    {selectedUsers.map(u => (
+                      <div key={u.id} className="selected-user-chip">
+                        {u.displayName || u.username}
+                        <button onClick={() => toggleUserSelection(u)}><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="form-group">
+                <label className="form-label">Добавить участников</label>
+                <div className="user-list">
+                  {usersList.map(u => (
+                    <div key={u.id} className={`user-item selectable ${selectedUsers.find(s => s.id === u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u)}>
+                      <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={20} />}</div>
+                      <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div>
+                      <div className="user-item-check">{selectedUsers.find(s => s.id === u.id) && <Check size={18} />}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowNewGroup(false)}>Отмена</button><button className="btn btn-primary" onClick={handleCreateGroup} disabled={!groupName.trim()}>Создать</button></div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowNewGroup(false)}>Отмена</button>
+              <button className="btn btn-primary" onClick={handleCreateGroup} disabled={!groupName.trim()}>Создать</button>
+            </div>
           </div>
         </div>
       )}

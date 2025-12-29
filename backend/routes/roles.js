@@ -5,14 +5,20 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Get all roles
+// Get all roles with user count
 router.get('/', authenticate, async (req, res) => {
   try {
     const roles = await Role.findAll({
+      include: [{ 
+        model: User, 
+        as: 'users', 
+        attributes: ['id'] 
+      }],
       order: [['name', 'ASC']]
     });
     res.json(roles);
   } catch (error) {
+    console.error('Get roles error:', error);
     res.status(500).json({ error: 'Failed to fetch roles' });
   }
 });
