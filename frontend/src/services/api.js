@@ -1,6 +1,18 @@
 import axios from 'axios';
 
-export const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Динамическое определение API URL
+const getBaseUrl = () => {
+  // Если задана переменная окружения — используем её
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Иначе используем тот же хост, но порт 5000
+  const { protocol, hostname } = window.location;
+  return `${protocol}//${hostname}:5000`;
+};
+
+export const BASE_URL = getBaseUrl();
 
 const api = axios.create({
   baseURL: `${BASE_URL}/api`,
@@ -16,7 +28,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Не редиректим на /login если мы уже на странице логина
+    if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
@@ -27,10 +40,10 @@ api.interceptors.response.use(
 
 // Auth
 export const auth = {
-  login: (credentials) => api.post('/auth/login', credentials),
+  login: (username, password) => api.post('/auth/login', { username, password }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
-  changePassword: (data) => api.post('/auth/change-password', data),
+  changePassword: (currentPassword, newPassword) => api.post('/auth/change-password', { currentPassword, newPassword }),
   updateProfile: (data) => api.put('/auth/profile', data),
   uploadAvatar: (file) => {
     const formData = new FormData();
@@ -103,7 +116,7 @@ export const search = {
 export const settings = {
   list: () => api.get('/settings'),
   update: (key, value) => api.put(`/settings/${key}`, { value }),
-  bulkUpdate: (data) => api.post('/settings/bulk', data),
+  bulkUpdate: (data) => api.post('/settings/bulk', { settings: data }),
   init: () => api.post('/settings/init')
 };
 
@@ -133,7 +146,6 @@ export const chat = {
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
   leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
   markRead: (chatId) => api.post(`/chat/${chatId}/read`),
-  // Group avatar management
   updateAvatar: (chatId, file) => {
     const formData = new FormData();
     formData.append('avatar', file);

@@ -12,6 +12,7 @@ router.get('/', authenticate, async (req, res) => {
     settings.forEach(s => { result[s.key] = s.value; });
     res.json(result);
   } catch (error) {
+    console.error('Get settings error:', error);
     res.status(500).json({ error: 'Failed to fetch settings' });
   }
 });
@@ -23,6 +24,7 @@ router.get('/:key', authenticate, async (req, res) => {
     if (!setting) return res.status(404).json({ error: 'Setting not found' });
     res.json({ key: setting.key, value: setting.value });
   } catch (error) {
+    console.error('Get setting error:', error);
     res.status(500).json({ error: 'Failed to fetch setting' });
   }
 });
@@ -32,14 +34,22 @@ router.put('/:key', authenticate, requireAdmin, async (req, res) => {
   try {
     const { value, description } = req.body;
     
-    const [setting, created] = await Setting.upsert({
-      key: req.params.key,
-      value,
-      description
-    });
+    // Используем findOrCreate + update вместо upsert для надёжности
+    let setting = await Setting.findByPk(req.params.key);
+    
+    if (setting) {
+      await setting.update({ value, ...(description && { description }) });
+    } else {
+      setting = await Setting.create({
+        key: req.params.key,
+        value,
+        description
+      });
+    }
 
-    res.json({ key: req.params.key, value, created });
+    res.json({ key: req.params.key, value, created: !setting });
   } catch (error) {
+    console.error('Update setting error:', error);
     res.status(500).json({ error: 'Failed to update setting' });
   }
 });
@@ -47,15 +57,37 @@ router.put('/:key', authenticate, requireAdmin, async (req, res) => {
 // Bulk update settings
 router.post('/bulk', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { settings } = req.body; // { key: value, ... }
+    // Поддержка обоих форматов: { settings: {...} } или просто {...}
+    const settings = req.body.settings || req.body;
+    
+    console.log('Bulk update received:', JSON.stringify(settings, null, 2));
+    
+    if (!settings || typeof settings !== 'object' || Object.keys(settings).length === 0) {
+      return res.status(400).json({ error: 'Settings object is required' });
+    }
     
     for (const [key, value] of Object.entries(settings)) {
-      await Setting.upsert({ key, value });
+      try {
+        // Используем findOrCreate + update вместо upsert
+        let setting = await Setting.findByPk(key);
+        
+        if (setting) {
+          await setting.update({ value });
+        } else {
+          await Setting.create({ key, value });
+        }
+        
+        console.log(`Setting "${key}" updated to:`, value);
+      } catch (err) {
+        console.error(`Error updating setting "${key}":`, err.message);
+        throw err;
+      }
     }
 
     res.json({ message: 'Settings updated' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to update settings' });
+    console.error('Bulk settings update error:', error);
+    res.status(500).json({ error: 'Failed to update settings', details: error.message });
   }
 });
 
@@ -65,6 +97,7 @@ router.delete('/:key', authenticate, requireAdmin, async (req, res) => {
     await Setting.destroy({ where: { key: req.params.key } });
     res.json({ message: 'Setting deleted' });
   } catch (error) {
+    console.error('Delete setting error:', error);
     res.status(500).json({ error: 'Failed to delete setting' });
   }
 });
@@ -92,6 +125,7 @@ router.post('/init', authenticate, requireAdmin, async (req, res) => {
 
     res.json({ message: 'Default settings initialized' });
   } catch (error) {
+    console.error('Init settings error:', error);
     res.status(500).json({ error: 'Failed to initialize settings' });
   }
 });
