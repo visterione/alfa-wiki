@@ -100,7 +100,7 @@ export default function Login() {
         </div>
 
         <div className="login-footer">
-          <p>© 2024 Alfa Wiki. Все права защищены.</p>
+          <p>Альфа Вики - 2026</p>
         </div>
       </div>
     </div>
