@@ -48,8 +48,10 @@ router.get('/', authenticate, async (req, res) => {
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    const chats = memberships.map(m => {
+    // Подсчитываем непрочитанные для каждого чата
+    const chats = await Promise.all(memberships.map(async (m) => {
       const chat = m.chat.toJSON();
+      
       if (chat.type === 'private') {
         const otherMember = chat.members.find(member => member.userId !== req.user.id);
         if (otherMember) {
@@ -60,14 +62,57 @@ router.get('/', authenticate, async (req, res) => {
       } else {
         chat.displayName = chat.name;
       }
-      chat.unreadCount = 0;
+
+      // Подсчёт непрочитанных сообщений
+      const whereCondition = {
+        chatId: chat.id,
+        senderId: { [Op.ne]: req.user.id }
+      };
+      
+      if (m.lastReadAt) {
+        whereCondition.createdAt = { [Op.gt]: m.lastReadAt };
+      }
+
+      chat.unreadCount = await Message.count({ where: whereCondition });
+      
       return chat;
-    });
+    }));
 
     res.json(chats);
   } catch (error) {
     console.error('Get chats error:', error);
     res.status(500).json({ error: 'Failed to fetch chats' });
+  }
+});
+
+// Get total unread messages count
+router.get('/unread/count', authenticate, async (req, res) => {
+  try {
+    const memberships = await ChatMember.findAll({
+      where: { userId: req.user.id },
+      attributes: ['chatId', 'lastReadAt']
+    });
+
+    let totalUnread = 0;
+
+    for (const membership of memberships) {
+      const whereCondition = {
+        chatId: membership.chatId,
+        senderId: { [Op.ne]: req.user.id }
+      };
+      
+      if (membership.lastReadAt) {
+        whereCondition.createdAt = { [Op.gt]: membership.lastReadAt };
+      }
+
+      const count = await Message.count({ where: whereCondition });
+      totalUnread += count;
+    }
+
+    res.json({ unreadCount: totalUnread });
+  } catch (error) {
+    console.error('Get unread count error:', error);
+    res.status(500).json({ error: 'Failed to get unread count' });
   }
 });
 
@@ -192,7 +237,6 @@ router.post('/:chatId/avatar', authenticate, upload.single('avatar'), async (req
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    // Only creator (admin) can update avatar
     if (chat.createdBy !== req.user.id) {
       return res.status(403).json({ error: 'Only group creator can update avatar' });
     }
@@ -201,17 +245,14 @@ router.post('/:chatId/avatar', authenticate, upload.single('avatar'), async (req
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Process image with sharp
     const outputPath = req.file.path.replace(/\.[^.]+$/, '-processed.jpg');
     await sharp(req.file.path)
       .resize(200, 200, { fit: 'cover' })
       .jpeg({ quality: 85 })
       .toFile(outputPath);
 
-    // Delete original file
     fs.unlinkSync(req.file.path);
 
-    // Delete old avatar if exists
     if (chat.avatar) {
       const oldPath = path.join(__dirname, '..', chat.avatar);
       if (fs.existsSync(oldPath)) {
@@ -397,7 +438,7 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
   }
 });
 
-// Remove member from group (kick)
+// Remove member from group
 router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
   try {
     const { chatId, userId } = req.params;
@@ -407,7 +448,6 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    // Check if requester is admin (creator)
     const requesterMembership = await ChatMember.findOne({
       where: { chatId, userId: req.user.id }
     });
@@ -416,7 +456,6 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
-    // Only creator can kick others, or user can remove themselves
     const isCreator = chat.createdBy === req.user.id;
     const isSelf = userId === req.user.id;
 
@@ -424,7 +463,6 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Only group creator can remove members' });
     }
 
-    // Cannot kick the creator
     if (userId === chat.createdBy && !isSelf) {
       return res.status(403).json({ error: 'Cannot remove group creator' });
     }
@@ -438,7 +476,6 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
     
     await membership.destroy();
 
-    // Create system message
     const messageContent = isSelf 
       ? `${user.displayName || user.username} покинул группу`
       : `${user.displayName || user.username} исключён из группы`;

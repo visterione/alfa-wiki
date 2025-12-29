@@ -1,19 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Menu, Search, User, LogOut, ChevronDown, Shield, FileText } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Menu, Search, User, LogOut, ChevronDown, Shield, FileText, Star, MessageCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
-import { search as searchApi, BASE_URL } from '../services/api';
+import { search as searchApi, chat, BASE_URL } from '../services/api';
 import './Header.css';
 
 export default function Header({ sidebarOpen, onToggleSidebar }) {
   const { user, logout, isAdmin } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -29,6 +31,22 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Загружаем количество непрочитанных сообщений
+  useEffect(() => {
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 10000); // Обновляем каждые 10 сек
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadUnreadCount = async () => {
+    try {
+      const { data } = await chat.getUnreadCount();
+      setUnreadCount(data.unreadCount || 0);
+    } catch (error) {
+      console.error('Failed to load unread count:', error);
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(async () => {
@@ -78,6 +96,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     if (theme.logo.startsWith('http')) return theme.logo;
     return `${BASE_URL}/${theme.logo}`;
   };
+
+  const isOnChat = location.pathname === '/';
 
   return (
     <header className="header">
@@ -130,6 +150,21 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       </div>
 
       <div className="header-right">
+        {/* Кнопка Чата */}
+        <Link to="/" className={`header-icon-btn ${isOnChat ? 'active' : ''}`} title="Сообщения">
+          <MessageCircle size={20} />
+          {unreadCount > 0 && (
+            <span className="header-icon-badge">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
+        </Link>
+
+        {/* Кнопка Избранного */}
+        <Link to="/favorites" className={`header-icon-btn ${location.pathname === '/favorites' ? 'active' : ''}`} title="Избранное">
+          <Star size={20} />
+        </Link>
+
         <div className="header-user" ref={dropdownRef}>
           <button 
             className="header-user-btn"
@@ -148,7 +183,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
 
           {showDropdown && (
             <div className="header-dropdown">
-              {/* Информация о пользователе - блок сверху */}
               <div className="header-dropdown-user">
                 <div className="header-dropdown-avatar">
                   {getAvatarUrl() ? (
@@ -163,10 +197,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
               </div>
               
-              {/* Разделитель */}
               <div className="header-dropdown-divider" />
               
-              {/* Кнопки действий */}
               <Link 
                 to="/profile" 
                 className="header-dropdown-item"
@@ -174,6 +206,15 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
               >
                 <User size={16} />
                 Настройки
+              </Link>
+              
+              <Link 
+                to="/favorites" 
+                className="header-dropdown-item"
+                onClick={() => setShowDropdown(false)}
+              >
+                <Star size={16} />
+                Избранное
               </Link>
               
               {isAdmin && (

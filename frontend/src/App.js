@@ -9,6 +9,7 @@ import Dashboard from './pages/Dashboard';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
+import Favorites from './pages/Favorites';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRoles from './pages/admin/AdminRoles';
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="favorites" element={<Favorites />} />
         
         {/* Admin routes */}
         <Route path="admin" element={

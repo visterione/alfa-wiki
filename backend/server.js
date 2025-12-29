@@ -18,6 +18,7 @@ const searchRoutes = require('./routes/search');
 const settingsRoutes = require('./routes/settings');
 const backupRoutes = require('./routes/backup');
 const chatRoutes = require('./routes/chat');
+const favoritesRoutes = require('./routes/favorites');
 
 const app = express();
 
@@ -83,6 +84,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/favorites', favoritesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

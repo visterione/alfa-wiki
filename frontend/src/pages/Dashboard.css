@@ -1289,3 +1289,47 @@
   padding: 16px 24px;
   border-top: 1px solid var(--border-light);
 }
+
+/* Добавить в Dashboard.css */
+
+/* Unread indicator for chat items */
+.chat-item {
+  position: relative;
+}
+
+.chat-item.has-unread {
+  background: rgba(var(--primary-rgb, 0, 122, 255), 0.08);
+}
+
+.chat-item.has-unread .chat-item-name {
+  font-weight: 600;
+}
+
+.chat-item.has-unread .chat-item-preview {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.chat-item-unread {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--primary);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Корректировка для контента когда есть badge */
+.chat-item.has-unread .chat-item-content {
+  padding-right: 40px;
+}

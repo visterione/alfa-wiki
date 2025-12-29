@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Edit, Star, StarOff, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { pages } from '../services/api';
+import { pages, favorites } from '../services/api';
 import toast from 'react-hot-toast';
 import './PageView.css';
 
@@ -13,6 +13,8 @@ export default function PageView() {
   const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     loadPage();
@@ -25,6 +27,14 @@ export default function PageView() {
       const { data } = await pages.get(slug);
       setPage(data);
       
+      // Проверяем статус избранного для текущего пользователя
+      try {
+        const { data: favData } = await favorites.check(data.id);
+        setIsFavorite(favData.isFavorite);
+      } catch (e) {
+        console.error('Failed to check favorite status:', e);
+      }
+      
       // Apply custom CSS if exists
       if (data.customCss) {
         const styleEl = document.createElement('style');
@@ -33,7 +43,7 @@ export default function PageView() {
         document.head.appendChild(styleEl);
       }
       
-      // Execute custom JS if exists (be careful with this)
+      // Execute custom JS if exists
       if (data.customJs) {
         try {
           // eslint-disable-next-line no-eval
@@ -61,12 +71,17 @@ export default function PageView() {
   };
 
   const toggleFavorite = async () => {
+    if (!page || favoriteLoading) return;
+    
+    setFavoriteLoading(true);
     try {
-      const { data } = await pages.toggleFavorite(page.id);
-      setPage({ ...page, isFavorite: data.isFavorite });
+      const { data } = await favorites.toggle(page.id);
+      setIsFavorite(data.isFavorite);
       toast.success(data.isFavorite ? 'Добавлено в избранное' : 'Удалено из избранного');
     } catch (error) {
       toast.error('Ошибка');
+    } finally {
+      setFavoriteLoading(false);
     }
   };
 
@@ -103,11 +118,12 @@ export default function PageView() {
         </div>
         <div className="page-actions">
           <button 
-            className="btn btn-ghost btn-icon" 
+            className={`btn btn-ghost btn-icon ${favoriteLoading ? 'loading' : ''}`}
             onClick={toggleFavorite}
-            title={page.isFavorite ? 'Убрать из избранного' : 'В избранное'}
+            title={isFavorite ? 'Убрать из избранного' : 'В избранное'}
+            disabled={favoriteLoading}
           >
-            {page.isFavorite ? (
+            {isFavorite ? (
               <Star size={20} style={{ color: 'var(--warning)', fill: 'var(--warning)' }} />
             ) : (
               <StarOff size={20} />

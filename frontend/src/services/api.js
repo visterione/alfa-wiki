@@ -2,12 +2,9 @@ import axios from 'axios';
 
 // Динамическое определение API URL
 const getBaseUrl = () => {
-  // Если задана переменная окружения — используем её
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL;
   }
-  
-  // Иначе используем тот же хост, но порт 5000
   const { protocol, hostname } = window.location;
   return `${protocol}//${hostname}:9001`;
 };
@@ -28,7 +25,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Не редиректим на /login если мы уже на странице логина
     if (error.response?.status === 401 && !window.location.pathname.includes('/login')) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
@@ -79,7 +75,17 @@ export const pages = {
   create: (data) => api.post('/pages', data),
   update: (id, data) => api.put(`/pages/${id}`, data),
   delete: (id) => api.delete(`/pages/${id}`),
-  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`)
+  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`) // Оставляем для совместимости
+};
+
+// Favorites (NEW)
+export const favorites = {
+  list: () => api.get('/favorites'),
+  check: (pageId) => api.get(`/favorites/check/${pageId}`),
+  add: (pageId) => api.post(`/favorites/${pageId}`),
+  remove: (pageId) => api.delete(`/favorites/${pageId}`),
+  toggle: (pageId) => api.post(`/favorites/${pageId}/toggle`),
+  reorder: (order) => api.put('/favorites/reorder', { order })
 };
 
 // Sidebar
@@ -135,6 +141,7 @@ export const backup = {
 // Chat
 export const chat = {
   list: () => api.get('/chat'),
+  getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   sendMessage: (chatId, content, attachments = []) => {
     const type = attachments.length > 0 

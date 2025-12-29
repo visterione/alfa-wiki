@@ -49,10 +49,10 @@ const Page = sequelize.define('Page', {
   contentType: { type: DataTypes.ENUM('wysiwyg', 'html'), defaultValue: 'wysiwyg' },
   description: { type: DataTypes.TEXT },
   keywords: { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
-  searchContent: { type: DataTypes.TEXT }, // Plain text for search indexing
+  searchContent: { type: DataTypes.TEXT },
   icon: { type: DataTypes.STRING(50) },
   isPublished: { type: DataTypes.BOOLEAN, defaultValue: false },
-  isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false }, // Оставляем для совместимости, но не используем
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   customCss: { type: DataTypes.TEXT },
   customJs: { type: DataTypes.TEXT },
@@ -64,6 +64,20 @@ const Page = sequelize.define('Page', {
     { fields: ['slug'] },
     { fields: ['title'] },
     { type: 'GIN', fields: ['keywords'] }
+  ]
+});
+
+// === USER FAVORITE MODEL (NEW) ===
+const UserFavorite = sequelize.define('UserFavorite', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  pageId: { type: DataTypes.UUID, allowNull: false },
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 }
+}, { 
+  tableName: 'user_favorites', 
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['userId', 'pageId'] }
   ]
 });
 
@@ -95,10 +109,10 @@ const Media = sequelize.define('Media', {
   description: { type: DataTypes.TEXT }
 }, { tableName: 'media', timestamps: true });
 
-// === SEARCH INDEX MODEL (for dynamic content) ===
+// === SEARCH INDEX MODEL ===
 const SearchIndex = sequelize.define('SearchIndex', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  entityType: { type: DataTypes.STRING(50), allowNull: false }, // 'page', 'doctor', 'service', etc.
+  entityType: { type: DataTypes.STRING(50), allowNull: false },
   entityId: { type: DataTypes.UUID, allowNull: false },
   title: { type: DataTypes.STRING(500) },
   content: { type: DataTypes.TEXT },
@@ -171,6 +185,12 @@ SidebarItem.hasMany(SidebarItem, { foreignKey: 'parentId', as: 'children' });
 
 Media.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
 
+// User Favorites relationships
+UserFavorite.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+UserFavorite.belongsTo(Page, { foreignKey: 'pageId', as: 'page' });
+User.hasMany(UserFavorite, { foreignKey: 'userId', as: 'favorites' });
+Page.hasMany(UserFavorite, { foreignKey: 'pageId', as: 'favoritedBy' });
+
 // Chat relationships
 Chat.hasMany(ChatMember, { foreignKey: 'chatId', as: 'members' });
 Chat.hasMany(Message, { foreignKey: 'chatId', as: 'messages' });
@@ -186,6 +206,7 @@ module.exports = {
   Role,
   User,
   Page,
+  UserFavorite,
   SidebarItem,
   Media,
   SearchIndex,
