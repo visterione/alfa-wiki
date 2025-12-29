@@ -9,7 +9,7 @@ const getBaseUrl = () => {
   
   // Иначе используем тот же хост, но порт 5000
   const { protocol, hostname } = window.location;
-  return `${protocol}//${hostname}:5000`;
+  return `${protocol}//${hostname}:9001`;
 };
 
 export const BASE_URL = getBaseUrl();
