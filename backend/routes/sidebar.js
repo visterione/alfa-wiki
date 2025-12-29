@@ -11,21 +11,32 @@ router.get('/', authenticate, async (req, res) => {
     const items = await SidebarItem.findAll({
       where: { parentId: null },
       include: [
-        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'isPublished'] },
+        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'isPublished', 'createdBy'] },
         { 
           model: SidebarItem, 
           as: 'children',
-          include: [{ model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'isPublished'] }],
+          include: [{ model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'isPublished', 'createdBy'] }],
           order: [['sortOrder', 'ASC']]
         }
       ],
       order: [['sortOrder', 'ASC']]
     });
 
-    // Filter by role access
+    // Filter by role access and page publication status
     const filterByRole = (items) => {
       return items.filter(item => {
         if (!item.isVisible) return false;
+        
+        // Фильтруем черновики
+        // Если элемент привязан к странице-черновику, показываем только админам и авторам
+        if (item.page && !item.page.isPublished) {
+          const canView = req.user.isAdmin || 
+                          item.page.createdBy === req.user.id ||
+                          req.user.permissions?.pages?.write;
+          if (!canView) return false;
+        }
+        
+        // Проверка доступа по ролям
         if (req.user.isAdmin) return true;
         if (!item.allowedRoles || item.allowedRoles.length === 0) return true;
         return item.allowedRoles.includes(req.user.roleId);

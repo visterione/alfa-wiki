@@ -34,20 +34,11 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     const timer = setTimeout(async () => {
       if (searchQuery.length >= 2) {
         try {
-          // Используем fulltext endpoint для более точного поиска
-          const { data } = await searchApi.fulltext(searchQuery);
+          const { data } = await searchApi.query(searchQuery);
           setSearchResults(data.results || []);
           setShowResults(true);
         } catch (error) {
           console.error('Search error:', error);
-          // Fallback to regular search if fulltext fails
-          try {
-            const { data } = await searchApi.query(searchQuery);
-            setSearchResults(data.results || []);
-            setShowResults(true);
-          } catch (fallbackError) {
-            console.error('Fallback search error:', fallbackError);
-          }
         }
       } else {
         setSearchResults([]);
@@ -70,7 +61,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
 
   const getAvatarUrl = () => {
     if (!user?.avatar) return null;
-    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
     if (user.avatar.startsWith('http://localhost')) {
       const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
       return `${BASE_URL}/${path}`;
@@ -79,7 +69,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return `${BASE_URL}/${user.avatar}`;
   };
 
-  // Аналогичная функция для логотипа
   const getLogoUrl = () => {
     if (!theme?.logo) return null;
     if (theme.logo.startsWith('http://localhost')) {
@@ -88,18 +77,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     }
     if (theme.logo.startsWith('http')) return theme.logo;
     return `${BASE_URL}/${theme.logo}`;
-  };
-
-  // Highlight search term in text
-  const highlightText = (text, query) => {
-    if (!text || !query) return text;
-    
-    const parts = text.split(new RegExp(`(${query})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === query.toLowerCase() 
-        ? <mark key={i} style={{ background: '#FFEB3B', padding: '0 2px', borderRadius: '2px' }}>{part}</mark>
-        : part
-    );
   };
 
   return (
@@ -137,13 +114,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   >
                     <FileText size={16} />
                     <div className="search-result-content">
-                      <div className="search-result-title">
-                        {highlightText(result.title, searchQuery)}
-                      </div>
+                      <div className="search-result-title">{result.title}</div>
                       {result.excerpt && (
-                        <div className="search-result-excerpt">
-                          {highlightText(result.excerpt, searchQuery)}
-                        </div>
+                        <div className="search-result-excerpt">{result.excerpt}</div>
                       )}
                     </div>
                   </div>
@@ -164,38 +137,61 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           >
             <div className="header-avatar">
               {getAvatarUrl() ? (
-                <img src={getAvatarUrl()} alt={user?.displayName || user?.username} />
+                <img src={getAvatarUrl()} alt="" />
               ) : (
-                (user?.displayName || user?.username || 'U')[0].toUpperCase()
+                <User size={18} />
               )}
             </div>
-            <span className="header-user-name">
-              {user?.displayName || user?.username}
-            </span>
-            <ChevronDown size={16} />
+            <span className="header-username">{user?.displayName || user?.username}</span>
+            <ChevronDown size={16} className="header-chevron" />
           </button>
 
           {showDropdown && (
-            <div className="header-user-dropdown">
-              <Link to="/profile" className="header-dropdown-item">
+            <div className="header-dropdown">
+              {/* Информация о пользователе - блок сверху */}
+              <div className="header-dropdown-user">
+                <div className="header-dropdown-avatar">
+                  {getAvatarUrl() ? (
+                    <img src={getAvatarUrl()} alt="" />
+                  ) : (
+                    <User size={24} />
+                  )}
+                </div>
+                <div className="header-dropdown-info">
+                  <div className="header-dropdown-name">{user?.displayName || user?.username}</div>
+                  <div className="header-dropdown-role">{user?.role?.name || 'Пользователь'}</div>
+                </div>
+              </div>
+              
+              {/* Разделитель */}
+              <div className="header-dropdown-divider" />
+              
+              {/* Кнопки действий */}
+              <Link 
+                to="/profile" 
+                className="header-dropdown-item"
+                onClick={() => setShowDropdown(false)}
+              >
                 <User size={16} />
-                <span>Профиль</span>
+                Профиль
               </Link>
               
               {isAdmin && (
-                <>
-                  <div className="header-dropdown-divider" />
-                  <Link to="/admin" className="header-dropdown-item">
-                    <Shield size={16} />
-                    <span>Админ-панель</span>
-                  </Link>
-                </>
+                <Link 
+                  to="/admin" 
+                  className="header-dropdown-item"
+                  onClick={() => setShowDropdown(false)}
+                >
+                  <Shield size={16} />
+                  Админ-панель
+                </Link>
               )}
               
               <div className="header-dropdown-divider" />
-              <button onClick={handleLogout} className="header-dropdown-item danger">
+              
+              <button className="header-dropdown-item danger" onClick={handleLogout}>
                 <LogOut size={16} />
-                <span>Выйти</span>
+                Выход
               </button>
             </div>
           )}

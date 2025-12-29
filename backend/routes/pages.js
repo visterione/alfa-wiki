@@ -59,6 +59,11 @@ router.get('/', authenticate, async (req, res) => {
       where.isPublished = published === 'true';
     }
 
+    // Для неадминов показываем только опубликованные страницы
+    if (!req.user.isAdmin && published === undefined) {
+      where.isPublished = true;
+    }
+
     const pages = await Page.findAndCountAll({
       where,
       include: [
@@ -105,7 +110,19 @@ router.get('/:identifier', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Page not found' });
     }
 
-    // Check access
+    // Проверка видимости черновиков
+    // Черновики могут видеть только админы и авторы страницы
+    if (!page.isPublished) {
+      const canView = req.user.isAdmin || 
+                      page.createdBy === req.user.id ||
+                      req.user.permissions?.pages?.write;
+      
+      if (!canView) {
+        return res.status(404).json({ error: 'Page not found' });
+      }
+    }
+
+    // Check role-based access
     if (!req.user.isAdmin && page.allowedRoles?.length > 0) {
       if (!page.allowedRoles.includes(req.user.roleId)) {
         return res.status(403).json({ error: 'Access denied' });
@@ -142,7 +159,8 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
     }
 
     // Sanitize content based on type
-    const sanitizedContent = contentType === 'html' ? content : sanitizeHtml(content || '', sanitizeConfig);
+    const sanitizedContent = contentType === 'html' ?
+      content : sanitizeHtml(content || '', sanitizeConfig);
     const searchContent = extractTextContent(sanitizedContent);
 
     const page = await Page.create({
@@ -199,18 +217,12 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       }
     }
 
-    const type = contentType || page.contentType;
-    const sanitizedContent = type === 'html' ? content : sanitizeHtml(content || '', sanitizeConfig);
-    const searchContent = extractTextContent(sanitizedContent);
-
-    await page.update({
+    const updateData = {
       ...(title && { title }),
       ...(slug && { slug }),
-      content: sanitizedContent,
       ...(contentType && { contentType }),
       ...(description !== undefined && { description }),
       ...(keywords && { keywords }),
-      searchContent,
       ...(icon !== undefined && { icon }),
       ...(isPublished !== undefined && { isPublished }),
       ...(allowedRoles && { allowedRoles }),
@@ -218,14 +230,27 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       ...(customJs !== undefined && { customJs }),
       ...(metadata && { metadata }),
       updatedBy: req.user.id
-    });
+    };
+
+    // Обрабатываем content только если он передан в запросе
+    if (content !== undefined) {
+      const type = contentType || page.contentType;
+      const sanitizedContent = type === 'html' ?
+        content : sanitizeHtml(content || '', sanitizeConfig);
+      const searchContent = extractTextContent(sanitizedContent);
+      
+      updateData.content = sanitizedContent;
+      updateData.searchContent = searchContent;
+    }
+
+    await page.update(updateData);
 
     // Update search index
     await SearchIndex.upsert({
       entityType: 'page',
       entityId: page.id,
       title: page.title,
-      content: searchContent,
+      content: page.searchContent,
       keywords: page.keywords,
       url: `/page/${page.slug}`
     });

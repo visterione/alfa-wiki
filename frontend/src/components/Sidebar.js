@@ -129,6 +129,11 @@ function SidebarItemComponent({ item, level = 0 }) {
     return <div className="sidebar-divider">{item.title}</div>;
   }
 
+  // Пропускаем элементы с неопубликованными страницами
+  if (item.page && item.page.isPublished === false) {
+    return null;
+  }
+
   const url = item.type === 'link' 
     ? item.externalUrl 
     : item.page 
@@ -154,6 +159,16 @@ function SidebarItemComponent({ item, level = 0 }) {
   }
 
   if (hasChildren) {
+    // Фильтруем дочерние элементы
+    const filteredChildren = item.children.filter(child => 
+      !child.page || child.page.isPublished !== false
+    );
+
+    // Если нет видимых детей, не показываем родителя
+    if (filteredChildren.length === 0 && !item.page) {
+      return null;
+    }
+
     return (
       <div className="sidebar-section">
         <div 
@@ -169,7 +184,7 @@ function SidebarItemComponent({ item, level = 0 }) {
         </div>
         {expanded && (
           <div className="sidebar-section-children">
-            {item.children.map(child => (
+            {filteredChildren.map(child => (
               <SidebarItemComponent key={child.id} item={child} level={level + 1} />
             ))}
           </div>
