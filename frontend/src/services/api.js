@@ -109,6 +109,8 @@ export const media = {
 // Search
 export const search = {
   query: (q) => api.get('/search', { params: { q } }),
+  fulltext: (q) => api.get('/search/fulltext', { params: { q } }),
+  suggest: (q) => api.get('/search/suggest', { params: { q } }),
   reindex: () => api.post('/search/reindex')
 };
 

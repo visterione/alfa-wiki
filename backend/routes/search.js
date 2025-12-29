@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Main search endpoint
+// Main search endpoint with improved partial matching
 router.get('/', authenticate, async (req, res) => {
   try {
     const { q, type, limit = 20 } = req.query;
@@ -17,7 +17,7 @@ router.get('/', authenticate, async (req, res) => {
     const searchTerm = q.trim().toLowerCase();
     const results = [];
 
-    // Search in pages
+    // Search in pages with partial matching
     if (!type || type === 'page' || type === 'all') {
       const pages = await Page.findAll({
         where: {
@@ -33,7 +33,7 @@ router.get('/', authenticate, async (req, res) => {
             }
           ]
         },
-        attributes: ['id', 'slug', 'title', 'description', 'keywords', 'allowedRoles'],
+        attributes: ['id', 'slug', 'title', 'description', 'keywords', 'allowedRoles', 'searchContent'],
         limit: parseInt(limit)
       });
 
@@ -44,12 +44,29 @@ router.get('/', authenticate, async (req, res) => {
         return page.allowedRoles.includes(req.user.roleId);
       });
 
+      // Create excerpts with search term highlighted context
       filteredPages.forEach(page => {
+        let excerpt = '';
+        
+        // Try to find excerpt from content
+        if (page.searchContent && page.searchContent.toLowerCase().includes(searchTerm)) {
+          const content = page.searchContent;
+          const index = content.toLowerCase().indexOf(searchTerm);
+          const start = Math.max(0, index - 50);
+          const end = Math.min(content.length, index + searchTerm.length + 50);
+          excerpt = (start > 0 ? '...' : '') + 
+                   content.substring(start, end) + 
+                   (end < content.length ? '...' : '');
+        } else if (page.description) {
+          excerpt = page.description.substring(0, 100) + (page.description.length > 100 ? '...' : '');
+        }
+
         results.push({
           type: 'page',
           id: page.id,
           title: page.title,
           description: page.description,
+          excerpt: excerpt,
           url: `/page/${page.slug}`,
           keywords: page.keywords
         });
@@ -83,14 +100,25 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Sort by relevance (title match first)
+    // Sort by relevance (title match first, then by position)
     results.sort((a, b) => {
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
       const aTitleMatch = aTitle.includes(searchTerm);
       const bTitleMatch = bTitle.includes(searchTerm);
+      
+      // Prioritize title matches
       if (aTitleMatch && !bTitleMatch) return -1;
       if (!aTitleMatch && bTitleMatch) return 1;
+      
+      // Then prioritize matches at the start of the title
+      if (aTitleMatch && bTitleMatch) {
+        const aStartsWith = aTitle.startsWith(searchTerm);
+        const bStartsWith = bTitle.startsWith(searchTerm);
+        if (aStartsWith && !bStartsWith) return -1;
+        if (!aStartsWith && bStartsWith) return 1;
+      }
+      
       return 0;
     });
 
@@ -105,7 +133,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Full-text search with PostgreSQL (more powerful)
+// Full-text search with PostgreSQL (more powerful, with partial matching)
 router.get('/fulltext', authenticate, async (req, res) => {
   try {
     const { q, limit = 20 } = req.query;
@@ -114,48 +142,85 @@ router.get('/fulltext', authenticate, async (req, res) => {
       return res.json({ results: [], total: 0 });
     }
 
-    // Convert search term to tsquery format
-    const searchTerm = q.trim().split(/\s+/).map(w => `${w}:*`).join(' & ');
+    const searchQuery = q.trim();
+    const likePattern = `%${searchQuery}%`;
 
     const results = await sequelize.query(`
       SELECT 
-        id, slug, title, description, keywords,
-        ts_rank(
-          setweight(to_tsvector('russian', coalesce(title, '')), 'A') ||
-          setweight(to_tsvector('russian', coalesce(description, '')), 'B') ||
-          setweight(to_tsvector('russian', coalesce(search_content, '')), 'C'),
-          to_tsquery('russian', :searchTerm)
-        ) as rank
+        id, slug, title, description, keywords, "searchContent",
+        GREATEST(
+          ts_rank(
+            setweight(to_tsvector('russian', coalesce(title, '')), 'A') ||
+            setweight(to_tsvector('russian', coalesce(description, '')), 'B') ||
+            setweight(to_tsvector('russian', coalesce("searchContent", '')), 'C'),
+            plainto_tsquery('russian', :searchQuery)
+          ),
+          0.1
+        ) as rank,
+        CASE
+          WHEN title ILIKE :exactStart THEN 4
+          WHEN title ILIKE :likePattern THEN 3
+          WHEN description ILIKE :likePattern THEN 2
+          WHEN "searchContent" ILIKE :likePattern THEN 1
+          ELSE 0
+        END as match_type
       FROM pages
       WHERE 
-        is_published = true AND
+        "isPublished" = true AND
         (
-          to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce(search_content, ''))
-          @@ to_tsquery('russian', :searchTerm)
+          to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce("searchContent", ''))
+          @@ plainto_tsquery('russian', :searchQuery)
           OR title ILIKE :likePattern
+          OR description ILIKE :likePattern
+          OR "searchContent" ILIKE :likePattern
         )
-      ORDER BY rank DESC
+      ORDER BY match_type DESC, rank DESC
       LIMIT :limit
     `, {
       replacements: { 
-        searchTerm, 
-        likePattern: `%${q.trim()}%`,
+        searchQuery,
+        likePattern,
+        exactStart: `${searchQuery}%`,
         limit: parseInt(limit) 
       },
       type: sequelize.QueryTypes.SELECT
     });
 
-    res.json({
-      results: results.map(r => ({
+    // Create excerpts for results
+    const enrichedResults = results.map(r => {
+      let excerpt = '';
+      
+      if (r.searchContent) {
+        const searchLower = q.trim().toLowerCase();
+        const contentLower = r.searchContent.toLowerCase();
+        const index = contentLower.indexOf(searchLower);
+        
+        if (index !== -1) {
+          const start = Math.max(0, index - 50);
+          const end = Math.min(r.searchContent.length, index + searchLower.length + 50);
+          excerpt = (start > 0 ? '...' : '') + 
+                   r.searchContent.substring(start, end) + 
+                   (end < r.searchContent.length ? '...' : '');
+        } else if (r.description) {
+          excerpt = r.description.substring(0, 100) + (r.description.length > 100 ? '...' : '');
+        }
+      }
+
+      return {
         type: 'page',
         id: r.id,
         title: r.title,
         description: r.description,
+        excerpt: excerpt,
         url: `/page/${r.slug}`,
         keywords: r.keywords,
         rank: r.rank
-      })),
-      total: results.length,
+      };
+    });
+
+    res.json({
+      results: enrichedResults,
+      total: enrichedResults.length,
       query: q
     });
   } catch (error) {
@@ -205,7 +270,7 @@ router.delete('/index/:entityType/:entityId', authenticate, async (req, res) => 
   }
 });
 
-// Get search suggestions (autocomplete)
+// Get search suggestions (autocomplete with partial matching)
 router.get('/suggest', authenticate, async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
@@ -220,6 +285,10 @@ router.get('/suggest', authenticate, async (req, res) => {
         title: { [Op.iLike]: `%${q.trim()}%` }
       },
       attributes: ['title', 'slug'],
+      order: [
+        [sequelize.literal(`CASE WHEN title ILIKE '${q.trim()}%' THEN 0 ELSE 1 END`)],
+        ['title', 'ASC']
+      ],
       limit: parseInt(limit)
     });
 

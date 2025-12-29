@@ -34,11 +34,20 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     const timer = setTimeout(async () => {
       if (searchQuery.length >= 2) {
         try {
-          const { data } = await searchApi.query(searchQuery);
+          // Используем fulltext endpoint для более точного поиска
+          const { data } = await searchApi.fulltext(searchQuery);
           setSearchResults(data.results || []);
           setShowResults(true);
         } catch (error) {
           console.error('Search error:', error);
+          // Fallback to regular search if fulltext fails
+          try {
+            const { data } = await searchApi.query(searchQuery);
+            setSearchResults(data.results || []);
+            setShowResults(true);
+          } catch (fallbackError) {
+            console.error('Fallback search error:', fallbackError);
+          }
         }
       } else {
         setSearchResults([]);
@@ -81,6 +90,18 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return `${BASE_URL}/${theme.logo}`;
   };
 
+  // Highlight search term in text
+  const highlightText = (text, query) => {
+    if (!text || !query) return text;
+    
+    const parts = text.split(new RegExp(`(${query})`, 'gi'));
+    return parts.map((part, i) => 
+      part.toLowerCase() === query.toLowerCase() 
+        ? <mark key={i} style={{ background: '#FFEB3B', padding: '0 2px', borderRadius: '2px' }}>{part}</mark>
+        : part
+    );
+  };
+
   return (
     <header className="header">
       <div className="header-left">
@@ -116,9 +137,13 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   >
                     <FileText size={16} />
                     <div className="search-result-content">
-                      <div className="search-result-title">{result.title}</div>
+                      <div className="search-result-title">
+                        {highlightText(result.title, searchQuery)}
+                      </div>
                       {result.excerpt && (
-                        <div className="search-result-excerpt">{result.excerpt}</div>
+                        <div className="search-result-excerpt">
+                          {highlightText(result.excerpt, searchQuery)}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -139,58 +164,38 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           >
             <div className="header-avatar">
               {getAvatarUrl() ? (
-                <img src={getAvatarUrl()} alt="" />
+                <img src={getAvatarUrl()} alt={user?.displayName || user?.username} />
               ) : (
-                <User size={18} />
+                (user?.displayName || user?.username || 'U')[0].toUpperCase()
               )}
             </div>
-            <span className="header-username">{user?.displayName || user?.username}</span>
-            <ChevronDown size={16} className="header-chevron" />
+            <span className="header-user-name">
+              {user?.displayName || user?.username}
+            </span>
+            <ChevronDown size={16} />
           </button>
 
           {showDropdown && (
-            <div className="header-dropdown">
-              <div className="header-dropdown-user">
-                <div className="header-dropdown-avatar">
-                  {getAvatarUrl() ? (
-                    <img src={getAvatarUrl()} alt="" />
-                  ) : (
-                    <User size={22} />
-                  )}
-                </div>
-                <div className="header-dropdown-info">
-                  <div className="header-dropdown-name">{user?.displayName || user?.username}</div>
-                  <div className="header-dropdown-role">{user?.role?.name || 'Пользователь'}</div>
-                </div>
-              </div>
-              
-              <div className="header-dropdown-divider" />
-              
-              <Link 
-                to="/profile" 
-                className="header-dropdown-item"
-                onClick={() => setShowDropdown(false)}
-              >
+            <div className="header-user-dropdown">
+              <Link to="/profile" className="header-dropdown-item">
                 <User size={16} />
-                Настройки профиля
+                <span>Профиль</span>
               </Link>
               
               {isAdmin && (
-                <Link 
-                  to="/admin" 
-                  className="header-dropdown-item"
-                  onClick={() => setShowDropdown(false)}
-                >
-                  <Shield size={16} />
-                  Администрирование
-                </Link>
+                <>
+                  <div className="header-dropdown-divider" />
+                  <Link to="/admin" className="header-dropdown-item">
+                    <Shield size={16} />
+                    <span>Админ-панель</span>
+                  </Link>
+                </>
               )}
               
               <div className="header-dropdown-divider" />
-              
-              <button className="header-dropdown-item danger" onClick={handleLogout}>
+              <button onClick={handleLogout} className="header-dropdown-item danger">
                 <LogOut size={16} />
-                Выйти
+                <span>Выйти</span>
               </button>
             </div>
           )}
