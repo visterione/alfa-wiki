@@ -25,7 +25,7 @@ import {
   Link as LinkIcon, Image as ImageIcon, Table as TableIcon,
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
-  Maximize2, Minimize2, Paintbrush
+  Maximize2, Minimize2, Paintbrush, Grid
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -48,6 +48,127 @@ const TableCell = TipTapTableCell.extend({
             style: `background-color: ${attributes.backgroundColor}`
           };
         }
+      }
+    };
+  }
+});
+
+// Улучшенное расширение изображений с правильным парсингом размеров
+const ResizableImage = Node.create({
+  name: 'resizableImage',
+  group: 'block',
+  draggable: true,
+  
+  addAttributes() {
+    return {
+      src: { default: null },
+      alt: { default: null },
+      title: { default: null },
+      width: { 
+        default: null,
+        parseHTML: element => {
+          const width = element.getAttribute('width') || element.style.width;
+          if (width) {
+            return parseInt(width);
+          }
+          return null;
+        }
+      },
+      height: { 
+        default: null,
+        parseHTML: element => {
+          const height = element.getAttribute('height') || element.style.height;
+          if (height) {
+            return parseInt(height);
+          }
+          return null;
+        }
+      },
+      display: { 
+        default: 'inline',
+        parseHTML: element => element.getAttribute('data-display') || 'inline'
+      },
+      float: { 
+        default: 'none',
+        parseHTML: element => element.getAttribute('data-float') || 'none'
+      },
+      align: { 
+        default: 'left',
+        parseHTML: element => element.getAttribute('data-align') || 'left'
+      }
+    };
+  },
+
+  parseHTML() {
+    return [{
+      tag: 'img[src]',
+      getAttrs: dom => ({
+        src: dom.getAttribute('src'),
+        alt: dom.getAttribute('alt'),
+        title: dom.getAttribute('title'),
+        width: dom.getAttribute('width') ? parseInt(dom.getAttribute('width')) : null,
+        height: dom.getAttribute('height') ? parseInt(dom.getAttribute('height')) : null,
+        display: dom.getAttribute('data-display') || 'inline',
+        float: dom.getAttribute('data-float') || 'none',
+        align: dom.getAttribute('data-align') || 'left'
+      })
+    }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const { width, height, display, float, align, ...attrs } = HTMLAttributes;
+    
+    // Формируем inline стили
+    let style = '';
+    
+    if (width) style += `width: ${width}px; `;
+    if (height) style += `height: ${height}px; `;
+    
+    // Применяем display
+    if (display === 'block') {
+      style += 'display: block; ';
+      // Применяем выравнивание для блока
+      if (align === 'center') {
+        style += 'margin-left: auto; margin-right: auto; ';
+      } else if (align === 'right') {
+        style += 'margin-left: auto; margin-right: 0; ';
+      } else {
+        style += 'margin-left: 0; margin-right: auto; ';
+      }
+    } else {
+      style += 'display: inline-block; ';
+      // Применяем float
+      if (float === 'left') {
+        style += 'float: left; margin: 0.5em 1em 0.5em 0; ';
+      } else if (float === 'right') {
+        style += 'float: right; margin: 0.5em 0 0.5em 1em; ';
+      }
+    }
+    
+    return ['img', mergeAttributes(attrs, {
+      'data-display': display,
+      'data-float': float,
+      'data-align': align,
+      width: width || undefined,
+      height: height || undefined,
+      style: style.trim()
+    })];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageComponent);
+  },
+
+  addCommands() {
+    return {
+      setImage: (options) => ({ commands }) => {
+        return commands.insertContent({
+          type: this.name,
+          attrs: options
+        });
+      },
+      updateImageAttributes: (attrs) => ({ commands }) => {
+        return commands.updateAttributes(this.name, attrs);
       }
     };
   }
@@ -142,18 +263,14 @@ const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) =
     margin: '0.5em 0'
   } : {
     margin: float === 'left' ? '0.5em 1em 0.5em 0' : 
-            float === 'right' ? '0.5em 0 0.5em 1em' : '0.5em 0'
+            float === 'right' ? '0.5em 0 0.5em 1em' : undefined
   };
 
   return (
-    <NodeViewWrapper 
-      style={containerStyle}
-      className={display === 'block' ? 'block-display' : 'inline-display'}
-    >
+    <NodeViewWrapper style={containerStyle}>
       <div 
         ref={containerRef}
         className={`resizable-image-container ${selected ? 'selected' : ''} ${resizing ? 'resizing' : ''}`}
-        data-drag-handle
         style={wrapperStyle}
       >
         <img
@@ -162,127 +279,19 @@ const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) =
           alt={node.attrs.alt || ''}
           title={node.attrs.title || ''}
           style={imgStyle}
-          draggable="false"
         />
-        
-        {selected && !resizing && (
+        {selected && (
           <>
-            <div 
-              className="resize-handle nw"
-              onMouseDown={(e) => handleMouseDown(e, 'nw')}
-            />
-            <div 
-              className="resize-handle ne"
-              onMouseDown={(e) => handleMouseDown(e, 'ne')}
-            />
-            <div 
-              className="resize-handle sw"
-              onMouseDown={(e) => handleMouseDown(e, 'sw')}
-            />
-            <div 
-              className="resize-handle se"
-              onMouseDown={(e) => handleMouseDown(e, 'se')}
-            />
+            <div className="resize-handle nw" onMouseDown={(e) => handleMouseDown(e, 'nw')} />
+            <div className="resize-handle ne" onMouseDown={(e) => handleMouseDown(e, 'ne')} />
+            <div className="resize-handle sw" onMouseDown={(e) => handleMouseDown(e, 'sw')} />
+            <div className="resize-handle se" onMouseDown={(e) => handleMouseDown(e, 'se')} />
           </>
         )}
       </div>
     </NodeViewWrapper>
   );
 };
-
-// Кастомное расширение изображения
-const ResizableImage = Node.create({
-  name: 'resizableImage',
-  
-  group: 'block',
-  
-  draggable: true,
-  
-  addAttributes() {
-    return {
-      src: { default: null },
-      alt: { default: null },
-      title: { default: null },
-      width: { default: null },
-      height: { default: null },
-      display: { default: 'inline' },
-      float: { default: 'none' },
-      align: { default: 'left' }
-    };
-  },
-
-  parseHTML() {
-    return [{
-      tag: 'img[src]',
-      getAttrs: (dom) => ({
-        src: dom.getAttribute('src'),
-        alt: dom.getAttribute('alt'),
-        title: dom.getAttribute('title'),
-        width: dom.getAttribute('width') ? parseInt(dom.getAttribute('width')) : null,
-        height: dom.getAttribute('height') ? parseInt(dom.getAttribute('height')) : null,
-        display: dom.getAttribute('data-display') || 'inline',
-        float: dom.getAttribute('data-float') || 'none',
-        align: dom.getAttribute('data-align') || 'left'
-      })
-    }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    const { width, height, display, float, align, ...attrs } = HTMLAttributes;
-    
-    // Формируем inline стили
-    let style = '';
-    
-    if (width) style += `width: ${width}px; `;
-    if (height) style += `height: ${height}px; `;
-    
-    // Применяем display
-    if (display === 'block') {
-      style += 'display: block; ';
-      // Применяем выравнивание для блока
-      if (align === 'center') {
-        style += 'margin-left: auto; margin-right: auto; ';
-      } else if (align === 'right') {
-        style += 'margin-left: auto; margin-right: 0; ';
-      } else {
-        style += 'margin-left: 0; margin-right: auto; ';
-      }
-    } else {
-      style += 'display: inline-block; ';
-      // Применяем float
-      if (float === 'left') {
-        style += 'float: left; margin: 0.5em 1em 0.5em 0; ';
-      } else if (float === 'right') {
-        style += 'float: right; margin: 0.5em 0 0.5em 1em; ';
-      }
-    }
-    
-    return ['img', mergeAttributes(attrs, {
-      'data-display': display,
-      'data-float': float,
-      'data-align': align,
-      style: style.trim()
-    })];
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(ResizableImageComponent);
-  },
-
-  addCommands() {
-    return {
-      setImage: (options) => ({ commands }) => {
-        return commands.insertContent({
-          type: this.name,
-          attrs: options
-        });
-      },
-      updateImageAttributes: (attrs) => ({ commands }) => {
-        return commands.updateAttributes(this.name, attrs);
-      }
-    };
-  }
-});
 
 // Меню настроек изображения (появляется при выделении)
 function ImageBubbleMenu({ editor }) {
@@ -295,26 +304,22 @@ function ImageBubbleMenu({ editor }) {
 
   const setDisplay = (e, value) => {
     e.preventDefault();
-    e.stopPropagation();
-    editor.commands.updateImageAttributes({ display: value });
+    editor.chain().focus().updateImageAttributes({ display: value }).run();
   };
 
   const setFloat = (e, value) => {
     e.preventDefault();
-    e.stopPropagation();
-    editor.commands.updateImageAttributes({ float: value, display: 'inline' });
+    editor.chain().focus().updateImageAttributes({ float: value }).run();
   };
 
   const setAlign = (e, value) => {
     e.preventDefault();
-    e.stopPropagation();
-    editor.commands.updateImageAttributes({ align: value, display: 'block', float: 'none' });
+    editor.chain().focus().updateImageAttributes({ align: value }).run();
   };
 
   const resetSize = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    editor.commands.updateImageAttributes({ width: null, height: null });
+    editor.chain().focus().updateImageAttributes({ width: null, height: null }).run();
   };
 
   return (
@@ -325,22 +330,22 @@ function ImageBubbleMenu({ editor }) {
     >
       <div className="image-bubble-menu">
         <div className="image-bubble-section">
-          <span className="image-bubble-label">Отображение:</span>
+          <span className="image-bubble-label">Режим:</span>
           <button 
             type="button"
             className={`image-bubble-btn ${display === 'inline' ? 'active' : ''}`}
             onClick={(e) => setDisplay(e, 'inline')}
-            title="В строке"
+            title="В тексте"
           >
-            В строке
+            В тексте
           </button>
           <button 
             type="button"
             className={`image-bubble-btn ${display === 'block' ? 'active' : ''}`}
             onClick={(e) => setDisplay(e, 'block')}
-            title="Блоком"
+            title="Отдельно"
           >
-            Блоком
+            Отдельно
           </button>
         </div>
 
@@ -434,26 +439,52 @@ const MenuButton = ({ onClick, isActive, disabled, children, title }) => (
 
 const MenuDivider = () => <div className="editor-divider" />;
 
+// Расширенная палитра цветов выделения - 20 цветов
 const highlightColors = [
   { name: 'Желтый', color: '#FFEB3B' },
+  { name: 'Желтый яркий', color: '#FFFF00' },
+  { name: 'Лайм', color: '#CDDC39' },
   { name: 'Зеленый', color: '#A5D6A7' },
+  { name: 'Зеленый яркий', color: '#4CAF50' },
+  { name: 'Мятный', color: '#80CBC4' },
   { name: 'Голубой', color: '#81D4FA' },
+  { name: 'Синий светлый', color: '#90CAF9' },
   { name: 'Розовый', color: '#F48FB1' },
+  { name: 'Розовый яркий', color: '#FF80AB' },
   { name: 'Оранжевый', color: '#FFCC80' },
-  { name: 'Фиолетовый', color: '#CE93D8' }
+  { name: 'Оранжевый яркий', color: '#FF9800' },
+  { name: 'Персиковый', color: '#FFCCBC' },
+  { name: 'Фиолетовый', color: '#CE93D8' },
+  { name: 'Фиолетовый яркий', color: '#AB47BC' },
+  { name: 'Красный', color: '#EF9A9A' },
+  { name: 'Серый', color: '#E0E0E0' },
+  { name: 'Бирюзовый', color: '#80DEEA' },
+  { name: 'Коралловый', color: '#FFAB91' },
+  { name: 'Лавандовый', color: '#E1BEE7' }
 ];
 
+// Расширенная палитра цветов текста - 20 цветов
 const textColors = [
   { name: 'Черный', color: '#000000' },
+  { name: 'Темно-серый', color: '#424242' },
   { name: 'Серый', color: '#666666' },
+  { name: 'Светло-серый', color: '#9E9E9E' },
   { name: 'Красный', color: '#E53935' },
+  { name: 'Красный темный', color: '#C62828' },
   { name: 'Оранжевый', color: '#FB8C00' },
+  { name: 'Оранжевый темный', color: '#EF6C00' },
   { name: 'Желтый', color: '#FDD835' },
+  { name: 'Желто-зеленый', color: '#C0CA33' },
   { name: 'Зеленый', color: '#43A047' },
+  { name: 'Зеленый темный', color: '#2E7D32' },
+  { name: 'Бирюзовый', color: '#00ACC1' },
   { name: 'Голубой', color: '#039BE5' },
   { name: 'Синий', color: '#1E88E5' },
+  { name: 'Синий темный', color: '#1565C0' },
   { name: 'Фиолетовый', color: '#8E24AA' },
-  { name: 'Розовый', color: '#D81B60' }
+  { name: 'Фиолетовый темный', color: '#6A1B9A' },
+  { name: 'Розовый', color: '#D81B60' },
+  { name: 'Коричневый', color: '#6D4C41' }
 ];
 
 // Цвета для фона ячеек таблицы
@@ -489,7 +520,7 @@ function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
   const openMenu = () => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const menuWidth = 180;
+      const menuWidth = 240;
       const viewportWidth = window.innerWidth;
       
       let left = rect.left;
@@ -576,10 +607,52 @@ function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
   );
 }
 
+// Компонент выбора размера таблицы с сеткой
+function TableSizeSelector({ onSelect }) {
+  const [hover, setHover] = useState({ rows: 0, cols: 0 });
+  const maxRows = 10;
+  const maxCols = 10;
+
+  const handleCellHover = (row, col) => {
+    setHover({ rows: row + 1, cols: col + 1 });
+  };
+
+  const handleCellClick = (row, col) => {
+    onSelect(row + 1, col + 1);
+  };
+
+  return (
+    <div className="table-size-selector">
+      <div className="table-size-title">
+        {hover.rows > 0 && hover.cols > 0 
+          ? `Таблица ${hover.rows} × ${hover.cols}` 
+          : 'Выберите размер таблицы'}
+      </div>
+      <div className="table-size-grid">
+        {Array.from({ length: maxRows }).map((_, rowIndex) => (
+          <div key={rowIndex} className="table-size-row">
+            {Array.from({ length: maxCols }).map((_, colIndex) => (
+              <div
+                key={colIndex}
+                className={`table-size-cell ${
+                  rowIndex < hover.rows && colIndex < hover.cols ? 'active' : ''
+                }`}
+                onMouseEnter={() => handleCellHover(rowIndex, colIndex)}
+                onClick={() => handleCellClick(rowIndex, colIndex)}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TableMenuDropdown({ editor, buttonRef }) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [showCellColors, setShowCellColors] = useState(false);
+  const [showSizeSelector, setShowSizeSelector] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -588,6 +661,7 @@ function TableMenuDropdown({ editor, buttonRef }) {
           buttonRef.current && !buttonRef.current.contains(e.target)) {
         setIsOpen(false);
         setShowCellColors(false);
+        setShowSizeSelector(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -597,7 +671,7 @@ function TableMenuDropdown({ editor, buttonRef }) {
   const openMenu = () => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const menuWidth = 220;
+      const menuWidth = 240;
       const viewportWidth = window.innerWidth;
       
       let left = rect.left;
@@ -612,12 +686,20 @@ function TableMenuDropdown({ editor, buttonRef }) {
     }
     setIsOpen(!isOpen);
     setShowCellColors(false);
+    setShowSizeSelector(false);
   };
 
   const runCommand = (command) => {
     command();
     setIsOpen(false);
     setShowCellColors(false);
+    setShowSizeSelector(false);
+  };
+
+  const handleTableSizeSelect = (rows, cols) => {
+    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+    setIsOpen(false);
+    setShowSizeSelector(false);
   };
 
   const setCellBgColor = (color) => {
@@ -657,13 +739,30 @@ function TableMenuDropdown({ editor, buttonRef }) {
           }}
         >
           {!isInTable ? (
-            <button
-              type="button"
-              className="table-menu-item"
-              onClick={() => runCommand(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}
-            >
-              Вставить таблицу 3x3
-            </button>
+            <>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowSizeSelector(!showSizeSelector);
+                }}
+              >
+                <Grid size={14} /> Создать таблицу
+              </button>
+              
+              {showSizeSelector && (
+                <TableSizeSelector onSelect={handleTableSizeSelect} />
+              )}
+              
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}
+              >
+                Быстрая вставка 3×3
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -870,26 +969,6 @@ function MenuBar({ editor }) {
           <option value="5">Заголовок 5</option>
           <option value="6">Заголовок 6</option>
         </select>
-
-        <select
-          className="editor-select"
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val === 'default') {
-              editor.chain().focus().unsetFontFamily().run();
-            } else {
-              editor.chain().focus().setFontFamily(val).run();
-            }
-          }}
-          value={editor.getAttributes('textStyle').fontFamily || 'default'}
-        >
-          <option value="default">Шрифт по умолчанию</option>
-          <option value="Arial">Arial</option>
-          <option value="'Times New Roman'">Times New Roman</option>
-          <option value="'Courier New'">Courier New</option>
-          <option value="Georgia">Georgia</option>
-          <option value="Verdana">Verdana</option>
-        </select>
       </div>
 
       <MenuDivider />
@@ -954,7 +1033,7 @@ function MenuBar({ editor }) {
         <MenuButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive('blockquote')} title="Цитата">
           <Quote size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} title="Блок кода">
+        <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} title="Код">
           <Code size={16} />
         </MenuButton>
         <MenuButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Разделитель">

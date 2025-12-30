@@ -259,8 +259,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
               </div>
               
-              <div className="header-dropdown-divider" />
-              
               <Link 
                 to="/profile" 
                 className="header-dropdown-item"
@@ -270,15 +268,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 Настройки
               </Link>
               
-              <Link 
-                to="/favorites" 
-                className="header-dropdown-item"
-                onClick={() => setShowDropdown(false)}
-              >
-                <Star size={16} />
-                Избранное
-              </Link>
               
+              <div className="header-dropdown-divider" />
+
               {isAdmin && (
                 <Link 
                   to="/admin" 
