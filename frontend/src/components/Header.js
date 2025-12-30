@@ -97,6 +97,46 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return `${BASE_URL}/${theme.logo}`;
   };
 
+  // Функция для подсветки найденного текста
+  const highlightText = (text, query) => {
+    if (!text || !query) return text;
+    
+    const parts = [];
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let lastIndex = 0;
+    let index = lowerText.indexOf(lowerQuery);
+    
+    while (index !== -1) {
+      // Добавляем текст до совпадения
+      if (index > lastIndex) {
+        parts.push({
+          text: text.substring(lastIndex, index),
+          highlight: false
+        });
+      }
+      
+      // Добавляем совпадение
+      parts.push({
+        text: text.substring(index, index + query.length),
+        highlight: true
+      });
+      
+      lastIndex = index + query.length;
+      index = lowerText.indexOf(lowerQuery, lastIndex);
+    }
+    
+    // Добавляем оставшийся текст
+    if (lastIndex < text.length) {
+      parts.push({
+        text: text.substring(lastIndex),
+        highlight: false
+      });
+    }
+    
+    return parts;
+  };
+
   const isOnChat = location.pathname === '/';
 
   return (
@@ -134,9 +174,25 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   >
                     <FileText size={16} />
                     <div className="search-result-content">
-                      <div className="search-result-title">{result.title}</div>
+                      <div className="search-result-title">
+                        {highlightText(result.title, searchQuery).map((part, i) => (
+                          part.highlight ? (
+                            <mark key={i}>{part.text}</mark>
+                          ) : (
+                            <span key={i}>{part.text}</span>
+                          )
+                        ))}
+                      </div>
                       {result.excerpt && (
-                        <div className="search-result-excerpt">{result.excerpt}</div>
+                        <div className="search-result-excerpt">
+                          {highlightText(result.excerpt, searchQuery).map((part, i) => (
+                            part.highlight ? (
+                              <mark key={i}>{part.text}</mark>
+                            ) : (
+                              <span key={i}>{part.text}</span>
+                            )
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -165,6 +221,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           <Star size={20} />
         </Link>
 
+        {/* User Dropdown */}
         <div className="header-user" ref={dropdownRef}>
           <button 
             className="header-user-btn"
@@ -197,7 +254,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
               </div>
               
-              <div className="header-dropdown-divider" />
               
               <Link 
                 to="/profile" 
@@ -207,16 +263,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 <User size={16} />
                 Настройки
               </Link>
-              
-              <Link 
-                to="/favorites" 
-                className="header-dropdown-item"
-                onClick={() => setShowDropdown(false)}
-              >
-                <Star size={16} />
-                Избранное
-              </Link>
-              
+            
+              <div className="header-dropdown-divider" />
+
               {isAdmin && (
                 <Link 
                   to="/admin" 
