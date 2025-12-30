@@ -53,6 +53,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       if (searchQuery.length >= 2) {
         try {
           const { data } = await searchApi.query(searchQuery);
+          console.log('Search results:', data); // Отладка
           setSearchResults(data.results || []);
           setShowResults(true);
         } catch (error) {
@@ -99,6 +100,53 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
 
   const isOnChat = location.pathname === '/';
 
+  // Функция для подсветки поискового запроса в тексте
+  const highlightText = (text, query) => {
+    // Всегда возвращаем массив
+    if (!text) return [{ text: '', highlight: false }];
+    if (!query) return [{ text, highlight: false }];
+    
+    const parts = [];
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let lastIndex = 0;
+    let index = lowerText.indexOf(lowerQuery);
+    
+    // Если совпадений нет, возвращаем весь текст без подсветки
+    if (index === -1) {
+      return [{ text, highlight: false }];
+    }
+    
+    while (index !== -1) {
+      // Добавляем текст до совпадения
+      if (index > lastIndex) {
+        parts.push({
+          text: text.substring(lastIndex, index),
+          highlight: false
+        });
+      }
+      
+      // Добавляем само совпадение
+      parts.push({
+        text: text.substring(index, index + query.length),
+        highlight: true
+      });
+      
+      lastIndex = index + query.length;
+      index = lowerText.indexOf(lowerQuery, lastIndex);
+    }
+    
+    // Добавляем оставшийся текст
+    if (lastIndex < text.length) {
+      parts.push({
+        text: text.substring(lastIndex),
+        highlight: false
+      });
+    }
+    
+    return parts;
+  };
+
   return (
     <header className="header">
       <div className="header-left">
@@ -134,9 +182,25 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   >
                     <FileText size={16} />
                     <div className="search-result-content">
-                      <div className="search-result-title">{result.title}</div>
-                      {result.excerpt && (
-                        <div className="search-result-excerpt">{result.excerpt}</div>
+                      <div className="search-result-title">
+                        {highlightText(result.title, searchQuery).map((part, i) => (
+                          part.highlight ? (
+                            <mark key={i}>{part.text}</mark>
+                          ) : (
+                            <span key={i}>{part.text}</span>
+                          )
+                        ))}
+                      </div>
+                      {(result.excerpt || result.description) && (
+                        <div className="search-result-excerpt">
+                          {highlightText(result.excerpt || result.description || '', searchQuery).map((part, i) => (
+                            part.highlight ? (
+                              <mark key={i}>{part.text}</mark>
+                            ) : (
+                              <span key={i}>{part.text}</span>
+                            )
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -160,16 +224,14 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
           )}
         </Link>
 
-        {/* Кнопка Избранного */}
-        <Link to="/favorites" className={`header-icon-btn ${location.pathname === '/favorites' ? 'active' : ''}`} title="Избранное">
+        {/* Кнопка Избранное */}
+        <Link to="/favorites" className="header-icon-btn" title="Избранное">
           <Star size={20} />
         </Link>
 
+        {/* User Dropdown */}
         <div className="header-user" ref={dropdownRef}>
-          <button 
-            className="header-user-btn"
-            onClick={() => setShowDropdown(!showDropdown)}
-          >
+          <button className="header-user-btn" onClick={() => setShowDropdown(!showDropdown)}>
             <div className="header-avatar">
               {getAvatarUrl() ? (
                 <img src={getAvatarUrl()} alt="" />

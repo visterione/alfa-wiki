@@ -5,6 +5,16 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Функция для очистки и форматирования excerpt
+const cleanExcerpt = (text) => {
+  if (!text) return '';
+  return text
+    // Заменяем множественные пробелы и табы на один пробел
+    .replace(/\s+/g, ' ')
+    // Убираем пробелы в начале и конце
+    .trim();
+};
+
 // Main search endpoint with improved partial matching
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -48,17 +58,31 @@ router.get('/', authenticate, async (req, res) => {
       filteredPages.forEach(page => {
         let excerpt = '';
         
-        // Try to find excerpt from content
+        // Приоритет 1: Ищем в searchContent совпадение с поисковым запросом
         if (page.searchContent && page.searchContent.toLowerCase().includes(searchTerm)) {
           const content = page.searchContent;
           const index = content.toLowerCase().indexOf(searchTerm);
-          const start = Math.max(0, index - 50);
-          const end = Math.min(content.length, index + searchTerm.length + 50);
+          const start = Math.max(0, index - 60);
+          const end = Math.min(content.length, index + searchTerm.length + 60);
+          let rawExcerpt = content.substring(start, end);
           excerpt = (start > 0 ? '...' : '') + 
-                   content.substring(start, end) + 
+                   cleanExcerpt(rawExcerpt) + 
                    (end < content.length ? '...' : '');
-        } else if (page.description) {
-          excerpt = page.description.substring(0, 100) + (page.description.length > 100 ? '...' : '');
+        } 
+        // Приоритет 2: Если searchContent есть, но совпадения нет - берем начало
+        else if (page.searchContent && page.searchContent.length > 0) {
+          let rawExcerpt = page.searchContent.substring(0, 150);
+          excerpt = cleanExcerpt(rawExcerpt) + 
+                   (page.searchContent.length > 150 ? '...' : '');
+        }
+        // Приоритет 3: Используем description только если searchContent пустой
+        else if (page.description) {
+          excerpt = cleanExcerpt(page.description.substring(0, 120)) + 
+                   (page.description.length > 120 ? '...' : '');
+        }
+        // Приоритет 4: Если всё пусто, используем заглушку
+        else {
+          excerpt = 'Нет доступного контента для предпросмотра';
         }
 
         results.push({
@@ -88,11 +112,29 @@ router.get('/', authenticate, async (req, res) => {
       });
 
       indexed.forEach(item => {
+        let excerpt = '';
+        if (item.content) {
+          const contentLower = item.content.toLowerCase();
+          const index = contentLower.indexOf(searchTerm);
+          if (index !== -1) {
+            const start = Math.max(0, index - 60);
+            const end = Math.min(item.content.length, index + searchTerm.length + 60);
+            let rawExcerpt = item.content.substring(start, end);
+            excerpt = (start > 0 ? '...' : '') + 
+                     cleanExcerpt(rawExcerpt) + 
+                     (end < item.content.length ? '...' : '');
+          } else {
+            let rawExcerpt = item.content.substring(0, 150);
+            excerpt = cleanExcerpt(rawExcerpt) + (item.content.length > 150 ? '...' : '');
+          }
+        }
+
         results.push({
           type: item.entityType,
           id: item.entityId,
           title: item.title,
           description: item.content?.substring(0, 200),
+          excerpt: excerpt,
           url: item.url,
           keywords: item.keywords,
           metadata: item.metadata
@@ -196,14 +238,18 @@ router.get('/fulltext', authenticate, async (req, res) => {
         const index = contentLower.indexOf(searchLower);
         
         if (index !== -1) {
-          const start = Math.max(0, index - 50);
-          const end = Math.min(r.searchContent.length, index + searchLower.length + 50);
+          const start = Math.max(0, index - 60);
+          const end = Math.min(r.searchContent.length, index + searchLower.length + 60);
+          let rawExcerpt = r.searchContent.substring(start, end);
           excerpt = (start > 0 ? '...' : '') + 
-                   r.searchContent.substring(start, end) + 
+                   cleanExcerpt(rawExcerpt) + 
                    (end < r.searchContent.length ? '...' : '');
-        } else if (r.description) {
-          excerpt = r.description.substring(0, 100) + (r.description.length > 100 ? '...' : '');
+        } else {
+          let rawExcerpt = r.searchContent.substring(0, 150);
+          excerpt = cleanExcerpt(rawExcerpt) + (r.searchContent.length > 150 ? '...' : '');
         }
+      } else if (r.description) {
+        excerpt = cleanExcerpt(r.description.substring(0, 120)) + (r.description.length > 120 ? '...' : '');
       }
 
       return {
