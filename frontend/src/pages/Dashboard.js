@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
-  Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut
+  Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { chat, users as usersApi, media, BASE_URL } from '../services/api';
@@ -34,6 +34,8 @@ export default function Dashboard() {
   const [lightboxImages, setLightboxImages] = useState([]);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [lightboxZoom, setLightboxZoom] = useState(1);
+  const [videoPreview, setVideoPreview] = useState({ open: false, url: '', name: '' });
+  const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', name: '', blobUrl: '' });
   
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -213,6 +215,7 @@ export default function Dashboard() {
 
   const getFileIcon = (mime) => {
     if (mime?.startsWith('image/')) return <Image size={20} />;
+    if (mime?.startsWith('video/')) return <Film size={20} />;
     if (mime?.includes('pdf')) return <FileText size={20} />;
     return <File size={20} />;
   };
@@ -240,34 +243,136 @@ export default function Dashboard() {
   const openLightbox = (images, idx = 0) => { setLightboxImages(images); setLightboxIndex(idx); setLightboxZoom(1); setLightboxOpen(true); };
   const closeLightbox = () => { setLightboxOpen(false); setLightboxImages([]); setLightboxIndex(0); setLightboxZoom(1); };
 
+  const openPdfPreview = async (url, name) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      setPdfPreview({ open: true, url, name, blobUrl });
+    } catch (e) {
+      console.error('Failed to load PDF:', e);
+      toast.error('Ошибка загрузки PDF');
+    }
+  };
+
+  const closePdfPreview = () => {
+    if (pdfPreview.blobUrl) {
+      window.URL.revokeObjectURL(pdfPreview.blobUrl);
+    }
+    setPdfPreview({ open: false, url: '', name: '', blobUrl: '' });
+  };
+
+  const downloadFile = async (e, url, filename) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const downloadBlob = new Blob([blob], { type: 'application/octet-stream' });
+      const blobUrl = window.URL.createObjectURL(downloadBlob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = filename || 'file';
+      link.style.display = 'none';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(blobUrl);
+      }, 150);
+    } catch (err) {
+      console.error('Download failed:', err);
+      toast.error('Ошибка скачивания');
+    }
+  };
+
   useEffect(() => {
     const handleKey = (e) => {
+      if (e.key === 'Escape') {
+        if (lightboxOpen) closeLightbox();
+        if (videoPreview.open) setVideoPreview({ open: false, url: '', name: '' });
+        if (pdfPreview.open) closePdfPreview();
+      }
       if (!lightboxOpen) return;
-      if (e.key === 'Escape') closeLightbox();
       if (e.key === 'ArrowLeft') { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }
       if (e.key === 'ArrowRight') { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [lightboxOpen, lightboxImages.length]);
+  }, [lightboxOpen, lightboxImages.length, videoPreview.open, pdfPreview.open]);
 
   const renderAttachments = (msgAttachments, isOwn) => {
     if (!msgAttachments || msgAttachments.length === 0) return null;
     const imageAtts = msgAttachments.filter(a => a.mimeType?.startsWith('image/')).map(a => fixUrl(a.url || a.path));
+    
     return (
       <div className="message-attachments">
         {msgAttachments.map((att, idx) => {
           const url = fixUrl(att.url || att.path);
           const thumbUrl = fixUrl(att.thumbnailUrl || att.thumbnailPath);
+          
           if (att.mimeType?.startsWith('image/')) {
-            return <div key={idx} className="attachment-image" onClick={() => openLightbox(imageAtts, imageAtts.indexOf(url))}><img src={thumbUrl || url} alt={att.name} /></div>;
+            return (
+              <div key={idx} className="attachment-image" onClick={() => openLightbox(imageAtts, imageAtts.indexOf(url))}>
+                <img src={thumbUrl || url} alt={att.name} />
+              </div>
+            );
           }
+          
+          if (att.mimeType?.startsWith('video/')) {
+            return (
+              <div 
+                key={idx} 
+                className={`attachment-video ${isOwn ? 'own' : ''}`}
+                onClick={() => setVideoPreview({ open: true, url, name: att.name })}
+              >
+                <div className="attachment-video-thumb">
+                  <Film size={32} />
+                  <div className="attachment-video-play">▶</div>
+                </div>
+                <div className="attachment-file-info">
+                  <div className="attachment-file-name">{att.name}</div>
+                  <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+                </div>
+              </div>
+            );
+          }
+          
+          if (att.mimeType?.includes('pdf')) {
+            return (
+              <div 
+                key={idx} 
+                className={`attachment-file ${isOwn ? 'own' : ''}`}
+                onClick={() => openPdfPreview(url, att.name)}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className="attachment-file-icon"><FileText size={20} /></div>
+                <div className="attachment-file-info">
+                  <div className="attachment-file-name">{att.name}</div>
+                  <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+                </div>
+                <Eye size={18} />
+              </div>
+            );
+          }
+          
           return (
-            <a key={idx} href={url} className={`attachment-file ${isOwn ? 'own' : ''}`} onClick={(e) => { e.preventDefault(); const link = document.createElement('a'); link.href = url; link.download = att.name || 'file'; document.body.appendChild(link); link.click(); document.body.removeChild(link); }}>
+            <div 
+              key={idx} 
+              className={`attachment-file ${isOwn ? 'own' : ''}`}
+              onClick={(e) => downloadFile(e, url, att.name)}
+              style={{ cursor: 'pointer' }}
+            >
               <div className="attachment-file-icon">{getFileIcon(att.mimeType)}</div>
-              <div className="attachment-file-info"><div className="attachment-file-name">{att.name}</div><div className="attachment-file-size">{formatFileSize(att.size)}</div></div>
+              <div className="attachment-file-info">
+                <div className="attachment-file-name">{att.name}</div>
+                <div className="attachment-file-size">{formatFileSize(att.size)}</div>
+              </div>
               <Download size={18} />
-            </a>
+            </div>
           );
         })}
       </div>
@@ -302,11 +407,7 @@ export default function Dashboard() {
                     {c.lastMessage || 'Нет сообщений'}
                   </div>
                 </div>
-                {c.unreadCount > 0 && (
-                  <div className="chat-item-unread">
-                    {c.unreadCount > 99 ? '99+' : c.unreadCount}
-                  </div>
-                )}
+                {c.unreadCount > 0 && <div className="chat-item-unread">{c.unreadCount > 99 ? '99+' : c.unreadCount}</div>}
               </div>
             )) : <div className="chat-empty"><MessageCircle size={48} /><p>Нет чатов</p><button className="btn btn-primary btn-sm" onClick={() => { setShowNewChat(true); loadUsers(); }}>Начать общение</button></div>}
           </div>
@@ -377,18 +478,17 @@ export default function Dashboard() {
                 {isGroupCreator && (
                   <div className="chat-info-avatar-actions">
                     <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
-                    <button className="btn btn-sm btn-ghost" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>{avatarUploading ? <div className="loading-spinner" style={{width: 16, height: 16}} /> : <Camera size={16} />}{activeChat.avatar ? 'Изменить' : 'Добавить фото'}</button>
+                    <button className="btn btn-sm btn-ghost" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>{avatarUploading ? <div className="loading-spinner" style={{width: 16, height: 16}} /> : <Camera size={16} />}{activeChat.avatar ? 'Изменить' : 'Добавить'}</button>
                     {activeChat.avatar && <button className="btn btn-sm btn-ghost text-danger" onClick={handleDeleteAvatar}><X size={16} /> Удалить</button>}
                   </div>
                 )}
               </div>
               <div className="chat-info-name">{activeChat.displayName}</div>
-              <div className="chat-info-meta">{activeChat.members?.length || 0} участников</div>
               <div className="chat-info-section">
-                <div className="chat-info-section-header"><span>Участники</span>{isGroupCreator && <button className="btn btn-ghost btn-sm" onClick={() => { setShowAddMember(true); loadUsers(); }}><UserPlus size={16} /> Добавить</button>}</div>
-                <div className="chat-info-members">
+                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupCreator && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); loadUsers(); }}><UserPlus size={16} /> Добавить</button>}</div>
+                <div className="chat-members-list">
                   {activeChat.members?.map(m => (
-                    <div key={m.id} className="chat-member-item">
+                    <div key={m.userId} className="chat-member-item">
                       <div className="chat-member-avatar">{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
                       <div className="chat-member-info">
                         <div className="chat-member-name">{m.user?.displayName || m.user?.username}{m.userId === activeChat.createdBy && <span className="chat-member-badge">Создатель</span>}</div>
@@ -466,20 +566,72 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Lightbox */}
+      {/* Image Lightbox */}
       {lightboxOpen && (
         <div className="lightbox-overlay" onClick={closeLightbox}>
           <div className="lightbox-content" onClick={e => e.stopPropagation()}>
             <button className="lightbox-close" onClick={closeLightbox}><X size={24} /></button>
+            {lightboxImages.length > 1 && (
+              <button className="lightbox-nav prev" onClick={() => { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}>
+                <ChevronLeft size={32} />
+              </button>
+            )}
+            <div className="lightbox-image-wrapper" style={{ transform: `scale(${lightboxZoom})` }}>
+              <img src={lightboxImages[lightboxIndex]} alt="" />
+            </div>
+            {lightboxImages.length > 1 && (
+              <button className="lightbox-nav next" onClick={() => { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}>
+                <ChevronRight size={32} />
+              </button>
+            )}
             <div className="lightbox-controls">
               <button onClick={() => setLightboxZoom(z => Math.max(0.5, z - 0.25))}><ZoomOut size={20} /></button>
               <span>{Math.round(lightboxZoom * 100)}%</span>
               <button onClick={() => setLightboxZoom(z => Math.min(3, z + 0.25))}><ZoomIn size={20} /></button>
+              {lightboxImages.length > 1 && <span className="lightbox-counter">{lightboxIndex + 1} / {lightboxImages.length}</span>}
+              <button className="lightbox-download" onClick={(e) => downloadFile(e, lightboxImages[lightboxIndex], `image_${lightboxIndex + 1}`)} title="Скачать">
+                <Download size={20} />
+              </button>
             </div>
-            {lightboxImages.length > 1 && <button className="lightbox-nav prev" onClick={() => { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}><ChevronLeft size={32} /></button>}
-            <img src={lightboxImages[lightboxIndex]} alt="" style={{ transform: `scale(${lightboxZoom})` }} />
-            {lightboxImages.length > 1 && <button className="lightbox-nav next" onClick={() => { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}><ChevronRight size={32} /></button>}
-            {lightboxImages.length > 1 && <div className="lightbox-counter">{lightboxIndex + 1} / {lightboxImages.length}</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Video Preview */}
+      {videoPreview.open && (
+        <div className="lightbox-overlay" onClick={() => setVideoPreview({ open: false, url: '', name: '' })}>
+          <div className="media-preview-modal" onClick={e => e.stopPropagation()}>
+            <div className="media-preview-header">
+              <span className="media-preview-title">{videoPreview.name}</span>
+              <div className="media-preview-actions">
+                <button onClick={(e) => downloadFile(e, videoPreview.url, videoPreview.name)} title="Скачать"><Download size={20} /></button>
+                <button onClick={() => setVideoPreview({ open: false, url: '', name: '' })} title="Закрыть"><X size={20} /></button>
+              </div>
+            </div>
+            <div className="media-preview-body">
+              <video controls autoPlay className="media-preview-video">
+                <source src={videoPreview.url} />
+                Ваш браузер не поддерживает воспроизведение видео
+              </video>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Preview */}
+      {pdfPreview.open && (
+        <div className="lightbox-overlay" onClick={closePdfPreview}>
+          <div className="media-preview-modal pdf-modal" onClick={e => e.stopPropagation()}>
+            <div className="media-preview-header">
+              <span className="media-preview-title">{pdfPreview.name}</span>
+              <div className="media-preview-actions">
+                <button onClick={(e) => downloadFile(e, pdfPreview.url, pdfPreview.name)} title="Скачать"><Download size={20} /></button>
+                <button onClick={closePdfPreview} title="Закрыть"><X size={20} /></button>
+              </div>
+            </div>
+            <div className="media-preview-body">
+              <iframe src={pdfPreview.blobUrl} className="media-preview-pdf" title={pdfPreview.name} />
+            </div>
           </div>
         </div>
       )}

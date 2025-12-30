@@ -9,6 +9,16 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Функция для правильного декодирования имени файла
+const decodeFileName = (filename) => {
+  try {
+    // Декодируем из Latin1 в UTF-8
+    return Buffer.from(filename, 'latin1').toString('utf8');
+  } catch (e) {
+    return filename;
+  }
+};
+
 // Configure multer
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
@@ -83,6 +93,10 @@ router.post('/upload', authenticate, requirePermission('media', 'upload'),
     }
 
     const { alt, description } = req.body;
+    
+    // Декодируем имя файла для корректного отображения кириллицы
+    const originalName = decodeFileName(req.file.originalname);
+    
     const relativePath = path.relative(
       path.join(__dirname, '..'),
       req.file.path
@@ -111,7 +125,7 @@ router.post('/upload', authenticate, requirePermission('media', 'upload'),
 
     const media = await Media.create({
       filename: req.file.filename,
-      originalName: req.file.originalname,
+      originalName: originalName, // Используем декодированное имя
       mimeType: req.file.mimetype,
       size: req.file.size,
       path: relativePath,
@@ -143,6 +157,9 @@ router.post('/upload-multiple', authenticate, requirePermission('media', 'upload
     const results = [];
 
     for (const file of req.files) {
+      // Декодируем имя файла
+      const originalName = decodeFileName(file.originalname);
+      
       const relativePath = path.relative(
         path.join(__dirname, '..'),
         file.path
@@ -170,7 +187,7 @@ router.post('/upload-multiple', authenticate, requirePermission('media', 'upload
 
       const media = await Media.create({
         filename: file.filename,
-        originalName: file.originalname,
+        originalName: originalName, // Используем декодированное имя
         mimeType: file.mimetype,
         size: file.size,
         path: relativePath,

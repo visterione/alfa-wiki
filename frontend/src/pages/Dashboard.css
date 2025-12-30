@@ -1333,3 +1333,261 @@
 .chat-item.has-unread .chat-item-content {
   padding-right: 40px;
 }
+
+/* ============================================
+   ДОБАВИТЬ В КОНЕЦ frontend/src/pages/Dashboard.css
+   ============================================ */
+
+/* ========== VIDEO ATTACHMENT ========== */
+.attachment-video {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  min-width: 200px;
+  max-width: 280px;
+}
+
+.attachment-video:hover {
+  background: var(--bg-tertiary);
+}
+
+.attachment-video.own {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.attachment-video.own:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.attachment-video-thumb {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  background: linear-gradient(135deg, var(--primary-light), var(--primary));
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  flex-shrink: 0;
+}
+
+.attachment-video.own .attachment-video-thumb {
+  background: linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.3));
+}
+
+.attachment-video-play {
+  position: absolute;
+  font-size: 20px;
+  opacity: 0.9;
+}
+
+.attachment-video-thumb svg {
+  opacity: 0.3;
+}
+
+/* ========== MEDIA PREVIEW MODAL (Video & PDF) ========== */
+.media-preview-modal {
+  background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  width: 90%;
+  max-width: 900px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.2s ease;
+}
+
+.media-preview-modal.pdf-modal {
+  max-width: 1000px;
+  height: 90vh;
+}
+
+.media-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.media-preview-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+.media-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.media-preview-actions button {
+  width: 36px;
+  height: 36px;
+  background: var(--bg-tertiary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.media-preview-actions button:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.media-preview-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  min-height: 0;
+}
+
+/* Video Player */
+.media-preview-video {
+  width: 100%;
+  max-height: 70vh;
+  outline: none;
+}
+
+/* PDF Viewer */
+.media-preview-pdf {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}
+
+/* ========== UPDATED LIGHTBOX CONTROLS ========== */
+.lightbox-controls {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 12px 20px;
+  border-radius: 100px;
+  backdrop-filter: blur(10px);
+}
+
+.lightbox-controls button {
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.lightbox-controls button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.05);
+}
+
+.lightbox-controls span {
+  color: white;
+  font-size: 14px;
+  min-width: 50px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.lightbox-counter {
+  padding: 0 12px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  margin-left: 4px;
+}
+
+.lightbox-download {
+  margin-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.2);
+  padding-left: 12px !important;
+  width: auto !important;
+  padding: 8px 12px !important;
+}
+
+/* Улучшенная обёртка изображения */
+.lightbox-image-wrapper {
+  max-width: 90%;
+  max-height: 80%;
+  transition: transform 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-image-wrapper img {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 4px;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* ========== MOBILE ADAPTATIONS ========== */
+@media (max-width: 768px) {
+  .media-preview-modal {
+    width: 100%;
+    max-width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+  
+  .media-preview-modal.pdf-modal {
+    height: 100vh;
+  }
+  
+  .lightbox-controls {
+    bottom: 20px;
+    padding: 10px 16px;
+    gap: 8px;
+  }
+  
+  .lightbox-controls button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .lightbox-nav {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .lightbox-nav.prev {
+    left: 10px;
+  }
+  
+  .lightbox-nav.next {
+    right: 10px;
+  }
+}
