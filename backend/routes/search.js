@@ -51,18 +51,14 @@ router.get('/', authenticate, async (req, res) => {
         // Try to find excerpt from content
         if (page.searchContent && page.searchContent.toLowerCase().includes(searchTerm)) {
           const content = page.searchContent;
-          const contentLower = content.toLowerCase();
-          const index = contentLower.indexOf(searchTerm);
-          
-          // Увеличиваем контекст до 80 символов с каждой стороны
-          const start = Math.max(0, index - 80);
-          const end = Math.min(content.length, index + searchTerm.length + 80);
-          
+          const index = content.toLowerCase().indexOf(searchTerm);
+          const start = Math.max(0, index - 50);
+          const end = Math.min(content.length, index + searchTerm.length + 50);
           excerpt = (start > 0 ? '...' : '') + 
                    content.substring(start, end) + 
                    (end < content.length ? '...' : '');
         } else if (page.description) {
-          excerpt = page.description.substring(0, 150) + (page.description.length > 150 ? '...' : '');
+          excerpt = page.description.substring(0, 100) + (page.description.length > 100 ? '...' : '');
         }
 
         results.push({
@@ -72,24 +68,21 @@ router.get('/', authenticate, async (req, res) => {
           description: page.description,
           excerpt: excerpt,
           url: `/page/${page.slug}`,
-          keywords: page.keywords,
-          searchQuery: searchTerm // Добавляем запрос для подсветки на фронте
+          keywords: page.keywords
         });
       });
     }
 
-    // Search in search index ONLY for non-page types (dynamic content like doctors, services, etc.)
-    // НЕ ищем 'page' здесь, чтобы избежать дублирования
-    if (type && type !== 'page' && type !== 'all') {
+    // Search in search index (for dynamic content like doctors, services, etc.)
+    if (!type || type !== 'page') {
       const indexed = await SearchIndex.findAll({
         where: {
-          entityType: { [Op.ne]: 'page' }, // Исключаем страницы из SearchIndex
           [Op.or]: [
             { title: { [Op.iLike]: `%${searchTerm}%` } },
             { content: { [Op.iLike]: `%${searchTerm}%` } },
             { keywords: { [Op.overlap]: [searchTerm] } }
           ],
-          entityType: type
+          ...(type && type !== 'all' ? { entityType: type } : {})
         },
         limit: parseInt(limit)
       });
@@ -102,8 +95,7 @@ router.get('/', authenticate, async (req, res) => {
           description: item.content?.substring(0, 200),
           url: item.url,
           keywords: item.keywords,
-          metadata: item.metadata,
-          searchQuery: searchTerm
+          metadata: item.metadata
         });
       });
     }
@@ -204,13 +196,13 @@ router.get('/fulltext', authenticate, async (req, res) => {
         const index = contentLower.indexOf(searchLower);
         
         if (index !== -1) {
-          const start = Math.max(0, index - 80);
-          const end = Math.min(r.searchContent.length, index + searchLower.length + 80);
+          const start = Math.max(0, index - 50);
+          const end = Math.min(r.searchContent.length, index + searchLower.length + 50);
           excerpt = (start > 0 ? '...' : '') + 
                    r.searchContent.substring(start, end) + 
                    (end < r.searchContent.length ? '...' : '');
         } else if (r.description) {
-          excerpt = r.description.substring(0, 150) + (r.description.length > 150 ? '...' : '');
+          excerpt = r.description.substring(0, 100) + (r.description.length > 100 ? '...' : '');
         }
       }
 
@@ -222,8 +214,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
         excerpt: excerpt,
         url: `/page/${r.slug}`,
         keywords: r.keywords,
-        rank: r.rank,
-        searchQuery: q.trim().toLowerCase()
+        rank: r.rank
       };
     });
 
