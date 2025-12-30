@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight, Plus, ExternalLink,
+import { ChevronDown, ChevronRight, ChevronLeft, Plus, ExternalLink,
   Home, File, FileText, Folder, Users, Settings, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
   Database, Image, Shield, Layout, Key, Layers, List, Grid, Hash, Filter,
   RefreshCw, Archive, Printer,
@@ -27,26 +27,26 @@ import { sidebar as sidebarApi } from '../services/api';
 // Маппинг иконок
 const iconMap = {
   'home': Home, 'file': File, 'file-text': FileText, 'folder': Folder,
-  'users': Users, 'settings': Settings, 'star': Star, 'heart': Heart,
-  'bookmark': Bookmark, 'bell': Bell, 'calendar': Calendar, 'clock': Clock,
-  'activity': Activity, 'stethoscope': Stethoscope, 'heart-pulse': HeartPulse,
-  'pill': Pill, 'syringe': Syringe, 'thermometer': Thermometer, 'brain': Brain,
-  'bone': Bone, 'eye': Eye, 'accessibility': Accessibility, 'cross': Cross,
-  'droplet': Droplet, 'droplets': Droplets, 'test-tube': TestTube, 'test-tubes': TestTubes,
+  'users': Users, 'settings': Settings, 'star': Star, 'heart': Heart, 'bell': Bell,
+  'calendar': Calendar, 'mail': Mail, 'phone': Phone, 'map-pin': MapPin, 'clock': Clock,
+  'tag': Tag, 'bookmark': Bookmark, 'award': Award,
+  'database': Database, 'image': Image, 'shield': Shield, 'layout': Layout,
+  'key': Key, 'layers': Layers, 'list': List, 'grid': Grid, 'hash': Hash, 'filter': Filter,
   'file-plus': FilePlus, 'file-check': FileCheck, 'file-x': FileX, 'files': Files,
   'clipboard': Clipboard, 'clipboard-list': ClipboardList, 'clipboard-check': ClipboardCheck,
   'book-open': BookOpen, 'book': Book, 'newspaper': Newspaper,
   'file-spreadsheet': FileSpreadsheet, 'file-code': FileCode,
-  'mail': Mail, 'phone': Phone, 'message-circle': MessageCircle, 'message-square': MessageSquare,
-  'send': Send, 'inbox': Inbox, 'at-sign': AtSign, 'phone-call': PhoneCall, 'video': Video, 'mic': Mic, 'volume-2': Volume2,
-  'user': User, 'user-plus': UserPlus, 'user-check': UserCheck, 'user-circle': UserCircle, 'contact': Contact,
+  'message-circle': MessageCircle, 'message-square': MessageSquare,
+  'send': Send, 'inbox': Inbox, 'at-sign': AtSign, 'phone-call': PhoneCall,
+  'video': Video, 'mic': Mic, 'volume-2': Volume2,
+  'activity': Activity, 'stethoscope': Stethoscope, 'pill': Pill, 'syringe': Syringe,
+  'thermometer': Thermometer, 'heart-pulse': HeartPulse, 'brain': Brain, 'bone': Bone, 'eye': Eye,
+  'accessibility': Accessibility, 'cross': Cross, 'droplet': Droplet, 'droplets': Droplets,
+  'test-tube': TestTube, 'test-tubes': TestTubes,
   'briefcase': Briefcase, 'building': Building, 'building-2': Building2, 'landmark': Landmark,
   'credit-card': CreditCard, 'wallet': Wallet, 'receipt': Receipt, 'dollar-sign': DollarSign,
   'trending-up': TrendingUp, 'bar-chart': BarChart, 'bar-chart-2': BarChart2,
   'bar-chart-3': BarChart3, 'pie-chart': PieChart, 'line-chart': LineChart,
-  'shield': Shield, 'shield-check': ShieldCheck, 'shield-alert': ShieldAlert,
-  'lock': Lock, 'unlock': Unlock, 'key': Key,
-  'fingerprint': Fingerprint, 'scan-face': ScanFace, 'alert-triangle': AlertTriangle, 'alert-circle': AlertCircle,
   'monitor': Monitor, 'laptop': Laptop, 'smartphone': Smartphone, 'tablet': Tablet,
   'cpu': Cpu, 'hard-drive': HardDrive, 'server': Server, 'database': Database,
   'wifi': Wifi, 'globe': Globe, 'cloud': Cloud, 'code': Code, 'terminal': Terminal, 'qr-code': QrCode,
@@ -67,10 +67,124 @@ const iconMap = {
   'umbrella': Umbrella, 'leaf': Leaf, 'car': Car, 'truck': Truck, 'plane': Plane
 };
 
-function SidebarItemComponent({ item, level = 0 }) {
+// Компонент календаря
+function SidebarCalendar() {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  const monthNames = [
+    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+  ];
+
+  const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+  const getDaysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    // Получаем день недели первого дня месяца (0 - воскресенье, 1 - понедельник...)
+    let firstDayOfWeek = firstDay.getDay();
+    // Преобразуем в формат 0 - понедельник, 6 - воскресенье
+    firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+    
+    const daysInMonth = lastDay.getDate();
+    const days = [];
+
+    // Добавляем пустые ячейки для дней предыдущего месяца
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      days.push(null);
+    }
+
+    // Добавляем дни текущего месяца
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(new Date(year, month, i));
+    }
+
+    return days;
+  };
+
+  const goToPreviousMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  const isToday = (date) => {
+    if (!date) return false;
+    const today = new Date();
+    return date.getDate() === today.getDate() &&
+           date.getMonth() === today.getMonth() &&
+           date.getFullYear() === today.getFullYear();
+  };
+
+  const isSelected = (date) => {
+    if (!date) return false;
+    return date.getDate() === selectedDate.getDate() &&
+           date.getMonth() === selectedDate.getMonth() &&
+           date.getFullYear() === selectedDate.getFullYear();
+  };
+
+  const days = getDaysInMonth(currentDate);
+
+  return (
+    <div className="sidebar-calendar">
+      <div className="sidebar-calendar-header">
+        <button 
+          className="sidebar-calendar-nav" 
+          onClick={goToPreviousMonth}
+          title="Предыдущий месяц"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <div className="sidebar-calendar-title">
+          {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
+        </div>
+        <button 
+          className="sidebar-calendar-nav" 
+          onClick={goToNextMonth}
+          title="Следующий месяц"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
+      
+      <div className="sidebar-calendar-grid">
+        {weekDays.map(day => (
+          <div key={day} className="sidebar-calendar-weekday">
+            {day}
+          </div>
+        ))}
+        
+        {days.map((date, index) => (
+          <div 
+            key={index}
+            className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''}`}
+            onClick={() => date && setSelectedDate(date)}
+          >
+            {date ? date.getDate() : ''}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SidebarItemComponent({ item, level = 0, onClose }) {
   const location = useLocation();
   const [expanded, setExpanded] = useState(item.isExpanded);
   const Icon = iconMap[item.icon] || FileText;
+
+  // Функция для закрытия на мобильных
+  const handleClick = () => {
+    if (window.innerWidth <= 768 && onClose) {
+      onClose();
+    }
+  };
 
   if (item.type === 'divider') {
     return <div className="sidebar-divider">{item.title}</div>;
@@ -102,7 +216,7 @@ function SidebarItemComponent({ item, level = 0 }) {
         {expanded && (
           <div className="sidebar-section-children">
             {filteredChildren.map(child => (
-              <SidebarItemComponent key={child.id} item={child} level={level + 1} />
+              <SidebarItemComponent key={child.id} item={child} level={level + 1} onClose={onClose} />
             ))}
           </div>
         )}
@@ -118,6 +232,7 @@ function SidebarItemComponent({ item, level = 0 }) {
         style={{ paddingLeft: `${14 + level * 16}px` }}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={handleClick}
       >
         <Icon className="sidebar-item-icon" size={18} />
         <span>{item.title}</span>
@@ -131,6 +246,7 @@ function SidebarItemComponent({ item, level = 0 }) {
       to={url}
       className={`sidebar-item ${isActive ? 'active' : ''}`}
       style={{ paddingLeft: `${14 + level * 16}px` }}
+      onClick={handleClick}
     >
       <Icon className="sidebar-item-icon" size={18} />
       <span>{item.title}</span>
@@ -138,7 +254,7 @@ function SidebarItemComponent({ item, level = 0 }) {
   );
 }
 
-export default function Sidebar({ open }) {
+export default function Sidebar({ open, onClose }) {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
@@ -155,11 +271,17 @@ export default function Sidebar({ open }) {
   };
 
   return (
-    <aside className={`sidebar ${open ? '' : 'closed'}`}>
+    <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
+      {/* Календарь с фиксированной позицией */}
+      <div className="sidebar-calendar-wrapper">
+        <SidebarCalendar />
+      </div>
+      
+      {/* Прокручиваемый контент навигации */}
       <div className="sidebar-content">
         {items.length > 0 ? (
           items.map(item => (
-            <SidebarItemComponent key={item.id} item={item} />
+            <SidebarItemComponent key={item.id} item={item} onClose={onClose} />
           ))
         ) : (
           <div className="sidebar-empty">

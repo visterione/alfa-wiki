@@ -59,19 +59,127 @@
   width: var(--sidebar-width);
   background: var(--bg-primary);
   border-right: 1px solid var(--border-light);
-  overflow-y: auto;
   transition: transform var(--transition-normal);
   z-index: 50;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar.closed {
   transform: translateX(-100%);
 }
 
+/* Фиксированный календарь в верхней части */
+.sidebar-calendar-wrapper {
+  flex-shrink: 0;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-light);
+  padding: 12px;
+}
+
+/* Прокручиваемый контент навигации */
 .sidebar-content {
+  flex: 1;
+  overflow-y: auto;
   padding: 16px 12px;
 }
 
+/* Стили календаря */
+.sidebar-calendar {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.sidebar-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.sidebar-calendar-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  flex: 1;
+}
+
+.sidebar-calendar-nav {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-calendar-nav:hover {
+  background: var(--bg-primary);
+  color: var(--primary);
+}
+
+.sidebar-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.sidebar-calendar-weekday {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-align: center;
+  padding: 6px 0;
+  text-transform: uppercase;
+}
+
+.sidebar-calendar-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.sidebar-calendar-day:not(.empty):hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.sidebar-calendar-day.empty {
+  cursor: default;
+}
+
+.sidebar-calendar-day.today {
+  background: var(--primary);
+  color: white;
+  font-weight: 600;
+}
+
+.sidebar-calendar-day.today:hover {
+  background: var(--primary-hover);
+  color: white;
+}
+
+.sidebar-calendar-day.selected:not(.today) {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* Стили элементов навигации */
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -150,8 +258,26 @@
     box-shadow: var(--shadow-xl);
   }
   
+  /* Важно: используем класс .open вместо отсутствия .closed */
   .sidebar.open {
     transform: translateX(0);
+  }
+  
+  /* Overlay для затемнения фона */
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    top: var(--header-height);
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 149;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--transition-normal);
+  }
+  
+  .sidebar-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
   }
   
   .main-content {
@@ -170,6 +296,21 @@
   .content-wrapper:has(.page-view) {
     width: 100%;
     padding: 20px 16px;
+  }
+}
+
+/* Responsive для планшетов в альбомной ориентации */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: landscape) {
+  .sidebar {
+    width: 240px;
+  }
+  
+  .main-content {
+    margin-left: 240px;
+  }
+  
+  .main-content.sidebar-closed {
+    margin-left: 0;
   }
 }
 
