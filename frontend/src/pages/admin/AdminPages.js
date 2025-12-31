@@ -3,19 +3,22 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FolderPlus, FilePlus, Folder, FolderOpen, FileText, 
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
-  ArrowLeft, Check, X
+  ArrowLeft, Check, X, AlertCircle
 } from 'lucide-react';
 import { folders, pages } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
 export default function AdminPages() {
   const navigate = useNavigate();
+  const { isAdmin, hasPermission } = useAuth();
   const [loading, setLoading] = useState(true);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
+  const [openMenuId, setOpenMenuId] = useState(null); // Для отслеживания открытого меню
   
   // Modals
   const [folderModal, setFolderModal] = useState({ open: false, folder: null });
@@ -26,9 +29,22 @@ export default function AdminPages() {
   const [folderForm, setFolderForm] = useState({ title: '', icon: 'folder', description: '' });
   const [pageForm, setPageForm] = useState({ title: '', icon: 'file-text' });
 
+  // Проверка прав
+  const canEdit = isAdmin || hasPermission('pages', 'write');
+  const canDelete = isAdmin || hasPermission('pages', 'delete');
+
   useEffect(() => {
     loadContent();
   }, [currentFolderId]);
+
+  // Закрытие меню при клике вне его
+  useEffect(() => {
+    const handleClickOutside = () => setOpenMenuId(null);
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [openMenuId]);
 
   const loadContent = async () => {
     setLoading(true);
@@ -52,31 +68,36 @@ export default function AdminPages() {
 
   const navigateUp = () => {
     if (breadcrumbs.length > 0) {
-      const parent = breadcrumbs[breadcrumbs.length - 1];
-      // Переходим к родителю текущей папки
-      const parentBreadcrumb = breadcrumbs[breadcrumbs.length - 2];
-      setCurrentFolderId(parentBreadcrumb?.id || null);
-    } else {
-      setCurrentFolderId(null);
+      const parent = breadcrumbs[breadcrumbs.length - 2];
+      setCurrentFolderId(parent ? parent.id : null);
     }
   };
 
-  // Folder CRUD
+  // Modals
   const openFolderModal = (folder = null) => {
-    if (folder) {
-      setFolderForm({ title: folder.title, icon: folder.icon || 'folder', description: folder.description || '' });
-    } else {
-      setFolderForm({ title: '', icon: 'folder', description: '' });
+    if (!canEdit) {
+      toast.error('У вас нет прав на создание/редактирование папок');
+      return;
     }
+    setFolderForm(folder || { title: '', icon: 'folder', description: '' });
     setFolderModal({ open: true, folder });
   };
 
-  const saveFolderHandler = async () => {
+  const openPageModal = (page = null) => {
+    if (!canEdit) {
+      toast.error('У вас нет прав на создание/редактирование страниц');
+      return;
+    }
+    setPageForm(page || { title: '', icon: 'file-text' });
+    setPageModal({ open: true, page });
+  };
+
+  // Save handlers
+  const handleSaveFolder = async () => {
     if (!folderForm.title.trim()) {
       toast.error('Введите название папки');
       return;
     }
-
     try {
       if (folderModal.folder) {
         await folders.update(folderModal.folder.id, folderForm);
@@ -92,22 +113,11 @@ export default function AdminPages() {
     }
   };
 
-  // Page CRUD
-  const openPageModal = (page = null) => {
-    if (page) {
-      setPageForm({ title: page.title, icon: page.icon || 'file-text' });
-    } else {
-      setPageForm({ title: '', icon: 'file-text' });
-    }
-    setPageModal({ open: true, page });
-  };
-
-  const savePageHandler = async () => {
+  const handleSavePage = async () => {
     if (!pageForm.title.trim()) {
       toast.error('Введите название страницы');
       return;
     }
-
     try {
       if (pageModal.page) {
         await pages.update(pageModal.page.id, pageForm);
@@ -133,6 +143,10 @@ export default function AdminPages() {
 
   // Delete
   const openDeleteModal = (type, item) => {
+    if (!canDelete) {
+      toast.error('У вас нет прав на удаление');
+      return;
+    }
     setDeleteModal({ open: true, type, item });
   };
 
@@ -153,24 +167,43 @@ export default function AdminPages() {
     }
   };
 
+  // Меню действий
+  const toggleMenu = (itemId, e) => {
+    e.stopPropagation();
+    setOpenMenuId(openMenuId === itemId ? null : itemId);
+  };
+
   // Check nesting level
   const canCreateSubfolder = breadcrumbs.length < 2;
 
   return (
     <div className="admin-page">
       <div className="admin-header">
-        <h1>Страницы и папки</h1>
-        <div className="admin-header-actions">
-          {canCreateSubfolder && (
-            <button className="btn btn-secondary" onClick={() => openFolderModal()}>
-              <FolderPlus size={18} /> Папка
+        <h1>Проводник страниц</h1>
+        {canEdit && (
+          <div className="admin-header-actions">
+            {canCreateSubfolder && (
+              <button className="btn btn-secondary" onClick={() => openFolderModal()}>
+                <FolderPlus size={18} /> Папка
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={() => openPageModal()}>
+              <FilePlus size={18} /> Страница
             </button>
-          )}
-          <button className="btn btn-primary" onClick={() => openPageModal()}>
-            <FilePlus size={18} /> Страница
-          </button>
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Информационное сообщение для пользователей без прав */}
+      {!canEdit && (
+        <div className="info-banner">
+          <AlertCircle size={20} />
+          <div>
+            <strong>Режим просмотра</strong>
+            <p>У вас нет прав на создание и редактирование страниц. Вы можете только просматривать существующий контент.</p>
+          </div>
+        </div>
+      )}
 
       {/* Breadcrumbs */}
       <div className="explorer-breadcrumbs">
@@ -205,7 +238,7 @@ export default function AdminPages() {
             {currentFolderId && (
               <div className="explorer-item explorer-back" onClick={navigateUp}>
                 <div className="explorer-item-icon">
-                  <ArrowLeft size={32} />
+                  <ArrowLeft size={48} />
                 </div>
                 <div className="explorer-item-name">Назад</div>
               </div>
@@ -219,17 +252,33 @@ export default function AdminPages() {
                 onDoubleClick={() => navigateToFolder(folder.id)}
               >
                 <div className="explorer-item-icon">
-                  <Folder size={32} />
+                  <Folder size={48} />
                 </div>
                 <div className="explorer-item-name">{folder.title}</div>
-                <div className="explorer-item-actions">
-                  <button onClick={(e) => { e.stopPropagation(); openFolderModal(folder); }} title="Редактировать">
-                    <Edit size={14} />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); openDeleteModal('folder', folder); }} title="Удалить">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
+                {canEdit && (
+                  <div className="explorer-item-actions">
+                    <button 
+                      className="actions-menu-btn"
+                      onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}
+                    >
+                      <MoreVertical size={18} />
+                    </button>
+                    {openMenuId === `folder-${folder.id}` && (
+                      <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { openFolderModal(folder); setOpenMenuId(null); }}>
+                          <Edit size={16} />
+                          Редактировать
+                        </button>
+                        {canDelete && (
+                          <button onClick={() => { openDeleteModal('folder', folder); setOpenMenuId(null); }} className="danger">
+                            <Trash2 size={16} />
+                            Удалить
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
 
@@ -238,40 +287,57 @@ export default function AdminPages() {
               <div 
                 key={page.id} 
                 className="explorer-item explorer-page"
-                onDoubleClick={() => navigate(`/page/${page.slug}/edit`)}
+                onDoubleClick={() => navigate(canEdit ? `/page/${page.slug}/edit` : `/page/${page.slug}`)}
               >
                 <div className="explorer-item-icon">
-                  <FileText size={32} />
+                  <FileText size={48} />
                 </div>
                 <div className="explorer-item-name">{page.title}</div>
                 <div className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
                   {page.isPublished ? 'Опубликовано' : 'Черновик'}
                 </div>
                 <div className="explorer-item-actions">
-                  <button onClick={(e) => { e.stopPropagation(); window.open(`/page/${page.slug}`, '_blank'); }} title="Просмотр">
-                    <Eye size={14} />
+                  <button 
+                    className="actions-menu-btn"
+                    onClick={(e) => toggleMenu(`page-${page.id}`, e)}
+                  >
+                    <MoreVertical size={18} />
                   </button>
-                  <button onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}/edit`); }} title="Редактировать">
-                    <Edit size={14} />
-                  </button>
-                  <button onClick={(e) => { e.stopPropagation(); openDeleteModal('page', page); }} title="Удалить">
-                    <Trash2 size={14} />
-                  </button>
+                  {openMenuId === `page-${page.id}` && (
+                    <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                        <Eye size={16} />
+                        Просмотр
+                      </button>
+                      {canEdit && (
+                        <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
+                          <Edit size={16} />
+                          Редактировать
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button onClick={() => { openDeleteModal('page', page); setOpenMenuId(null); }} className="danger">
+                          <Trash2 size={16} />
+                          Удалить
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
 
             {/* Empty state */}
             {folderList.length === 0 && pageList.length === 0 && !currentFolderId && (
-              <div className="explorer-empty">
+              <div className="empty-state">
                 <Folder size={48} />
                 <p>Папки и страницы отсутствуют</p>
-                <p>Создайте первую папку или страницу</p>
+                {canEdit && <p>Создайте первую папку или страницу</p>}
               </div>
             )}
             {folderList.length === 0 && pageList.length === 0 && currentFolderId && (
-              <div className="explorer-empty">
-                <FolderOpen size={48} />
+              <div className="empty-state">
+                <Folder size={48} />
                 <p>Папка пуста</p>
               </div>
             )}
@@ -282,33 +348,29 @@ export default function AdminPages() {
       {/* Folder Modal */}
       {folderModal.open && (
         <div className="modal-overlay" onClick={() => setFolderModal({ open: false, folder: null })}>
-          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{folderModal.folder ? 'Редактировать папку' : 'Новая папка'}</h2>
-              <button className="modal-close" onClick={() => setFolderModal({ open: false, folder: null })}>
-                <X size={20} />
-              </button>
+              <h3>{folderModal.folder ? 'Редактировать папку' : 'Новая папка'}</h3>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Название *</label>
+                <label className="form-label">Название</label>
                 <input
-                  type="text"
                   className="input"
                   value={folderForm.title}
                   onChange={e => setFolderForm({ ...folderForm, title: e.target.value })}
-                  placeholder="Название папки"
+                  placeholder="Введите название папки"
                   autoFocus
                 />
               </div>
               <div className="form-group">
                 <label className="form-label">Описание</label>
                 <textarea
-                  className="input"
-                  rows={3}
-                  value={folderForm.description}
+                  className="textarea"
+                  value={folderForm.description || ''}
                   onChange={e => setFolderForm({ ...folderForm, description: e.target.value })}
-                  placeholder="Описание (необязательно)"
+                  placeholder="Необязательное описание"
+                  rows={3}
                 />
               </div>
             </div>
@@ -316,72 +378,69 @@ export default function AdminPages() {
               <button className="btn btn-secondary" onClick={() => setFolderModal({ open: false, folder: null })}>
                 Отмена
               </button>
-              <button className="btn btn-primary" onClick={saveFolderHandler}>
-                {folderModal.folder ? 'Сохранить' : 'Создать'}
+              <button className="btn btn-primary" onClick={handleSaveFolder}>
+                <Check size={18} />
+                Сохранить
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Page Modal (quick create) */}
-      {pageModal.open && !pageModal.page && (
+      {/* Page Modal */}
+      {pageModal.open && (
         <div className="modal-overlay" onClick={() => setPageModal({ open: false, page: null })}>
-          <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Новая страница</h2>
-              <button className="modal-close" onClick={() => setPageModal({ open: false, page: null })}>
-                <X size={20} />
-              </button>
+              <h3>{pageModal.page ? 'Редактировать страницу' : 'Новая страница'}</h3>
             </div>
             <div className="modal-body">
               <div className="form-group">
-                <label className="form-label">Название *</label>
+                <label className="form-label">Название</label>
                 <input
-                  type="text"
                   className="input"
                   value={pageForm.title}
                   onChange={e => setPageForm({ ...pageForm, title: e.target.value })}
-                  placeholder="Название страницы"
+                  placeholder="Введите название страницы"
                   autoFocus
                 />
               </div>
-              <p className="form-hint">После создания откроется редактор страницы</p>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setPageModal({ open: false, page: null })}>
                 Отмена
               </button>
-              <button className="btn btn-primary" onClick={savePageHandler}>
-                Создать
+              <button className="btn btn-primary" onClick={handleSavePage}>
+                <Check size={18} />
+                {pageModal.page ? 'Сохранить' : 'Создать'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Delete confirmation */}
+      {/* Delete Modal */}
       {deleteModal.open && (
         <div className="modal-overlay" onClick={() => setDeleteModal({ open: false, type: null, item: null })}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Подтверждение удаления</h2>
+              <h3>Подтверждение удаления</h3>
             </div>
             <div className="modal-body">
-              {deleteModal.type === 'folder' ? (
-                <p>Удалить папку <strong>"{deleteModal.item?.title}"</strong> и всё её содержимое?</p>
-              ) : (
-                <p>Удалить страницу <strong>"{deleteModal.item?.title}"</strong>?</p>
-              )}
-              <p className="text-danger" style={{ marginTop: 8, fontSize: 13 }}>
-                Это действие необратимо!
+              <p>
+                Вы уверены, что хотите удалить {deleteModal.type === 'folder' ? 'папку' : 'страницу'} 
+                <strong> "{deleteModal.item?.title}"</strong>?
               </p>
+              {deleteModal.type === 'folder' && (
+                <p className="text-warning">Все вложенные папки и страницы также будут удалены!</p>
+              )}
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setDeleteModal({ open: false, type: null, item: null })}>
                 Отмена
               </button>
-              <button className="btn btn-danger" onClick={confirmDelete}>
+              <button className="btn btn-error" onClick={confirmDelete}>
+                <Trash2 size={18} />
                 Удалить
               </button>
             </div>

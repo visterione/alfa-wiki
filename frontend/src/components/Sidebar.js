@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Home, File, FileText, Folder, FolderOpen, Users, Settings, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
   Database, Image, Shield, Layout, Key, Layers, List, Grid, Hash, Filter,
@@ -23,7 +23,8 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus
 } from 'lucide-react';
-import { sidebar as sidebarApi } from '../services/api';
+import { sidebar as sidebarApi, chat } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 // Маппинг иконок
 const iconMap = {
@@ -52,8 +53,7 @@ const iconMap = {
   'cpu': Cpu, 'hard-drive': HardDrive, 'server': Server, 'database': Database,
   'wifi': Wifi, 'globe': Globe, 'cloud': Cloud, 'code': Code, 'terminal': Terminal, 'qr-code': QrCode,
   'map-pin': MapPin, 'map': Map, 'compass': Compass, 'navigation': Navigation, 'flag': Flag,
-  'plus': Plus, 'check-circle': CheckCircle, 'x-circle': XCircle,
-  'edit': Pencil, 'pencil': Pencil, 'trash': Trash, 'copy': Copy, 'save': Save,
+  'plus': Plus, 'check-circle': CheckCircle, 'x-circle': XCircle, 'pencil': Pencil, 'trash': Trash, 'copy': Copy, 'save': Save,
   'download': Download, 'upload': Upload, 'link': Link, 'external-link': ExternalLink,
   'share': Share2, 'refresh': RefreshCw, 'archive': Archive, 'printer': Printer,
   'lock': Lock, 'unlock': Unlock, 'shield-check': ShieldCheck, 'shield-alert': ShieldAlert,
@@ -88,12 +88,24 @@ function SidebarCalendar() {
     const daysInMonth = lastDay.getDate();
     const days = [];
 
+    // Дни предыдущего месяца
     for (let i = 0; i < firstDayOfWeek; i++) {
       days.push(null);
     }
+    
+    // Дни текущего месяца
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
     }
+    
+    // Дни следующего месяца для заполнения недель
+    const remainingCells = 7 - (days.length % 7);
+    if (remainingCells < 7) {
+      for (let i = 1; i <= remainingCells; i++) {
+        days.push(new Date(year, month + 1, i));
+      }
+    }
+    
     return days;
   };
 
@@ -120,6 +132,11 @@ function SidebarCalendar() {
            date.getFullYear() === selectedDate.getFullYear();
   };
 
+  const isOtherMonth = (date) => {
+    if (!date) return false;
+    return date.getMonth() !== currentDate.getMonth();
+  };
+
   const days = getDaysInMonth(currentDate);
 
   return (
@@ -136,19 +153,97 @@ function SidebarCalendar() {
         </button>
       </div>
       <div className="sidebar-calendar-grid">
-        {weekDays.map(day => (
-          <div key={day} className="sidebar-calendar-weekday">{day}</div>
-        ))}
-        {days.map((date, index) => (
+        {weekDays.map((day, index) => (
           <div 
-            key={index}
-            className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''}`}
-            onClick={() => date && setSelectedDate(date)}
+            key={day} 
+            className={`sidebar-calendar-weekday ${index >= 5 ? 'weekend' : ''}`}
           >
-            {date ? date.getDate() : ''}
+            {day}
           </div>
         ))}
+        {days.map((date, index) => {
+          const isWeekend = date && (date.getDay() === 0 || date.getDay() === 6);
+          const otherMonth = isOtherMonth(date);
+          return (
+            <div 
+              key={index}
+              className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${otherMonth ? 'other-month' : ''}`}
+              onClick={() => date && !otherMonth && setSelectedDate(date)}
+            >
+              {date ? date.getDate() : ''}
+            </div>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+// Компонент кнопок быстрого доступа
+function QuickAccessButtons({ onClose }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isAdmin, hasPermission } = useAuth();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Загружаем количество непрочитанных сообщений
+  useEffect(() => {
+    loadUnreadCount();
+    const interval = setInterval(loadUnreadCount, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadUnreadCount = async () => {
+    try {
+      const { data } = await chat.getUnreadCount();
+      setUnreadCount(data.count || 0);
+    } catch (error) {
+      console.error('Failed to load unread count:', error);
+    }
+  };
+
+  const isOnChat = location.pathname === '/';
+  const isOnFavorites = location.pathname === '/favorites';
+  const isOnAdminPages = location.pathname === '/admin/pages';
+
+  const handleClick = (path) => {
+    navigate(path);
+    // На мобильных устройствах закрываем sidebar
+    if (window.innerWidth <= 768) {
+      onClose();
+    }
+  };
+
+  return (
+    <div className="sidebar-quick-access">
+      <button 
+        className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
+        onClick={() => handleClick('/')}
+        title="Сообщения"
+      >
+        <MessageCircle size={20} />
+        {unreadCount > 0 && (
+          <span className="quick-access-badge">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
+      </button>
+
+      <button 
+        className={`quick-access-btn favorites ${isOnFavorites ? 'active' : ''}`}
+        onClick={() => handleClick('/favorites')}
+        title="Избранное"
+      >
+        <Star size={20} />
+      </button>
+
+      <button 
+        className={`quick-access-btn explorer ${isOnAdminPages ? 'active' : ''}`}
+        onClick={() => handleClick('/admin/pages')}
+        title="Проводник"
+      >
+        <Folder size={20} />
+      </button>
     </div>
   );
 }
@@ -180,43 +275,21 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
   const location = useLocation();
   const Icon = iconMap[item.icon] || FileText;
   
-  const isExpanded = expandedState[item.id] ?? true; // По умолчанию раскрыто
-  const hasChildren = item.children && item.children.length > 0;
-  
-  // Проверка активности для страниц
-  const isActive = item.page && location.pathname === `/page/${item.page.slug}`;
-  
-  // Проверка, есть ли активный ребенок (для подсветки папки)
-  const hasActiveChild = hasChildren && item.children.some(child => 
-    child.page && location.pathname === `/page/${child.page.slug}`
-  );
+  const isExpanded = expandedState[item.id] ?? true;
 
-  const handleClick = () => {
-    if (window.innerWidth <= 768 && onClose) {
+  const handleToggle = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleExpand(item.id);
+  };
+
+  const handleMobileClick = () => {
+    if (window.innerWidth <= 768) {
       onClose();
     }
   };
 
-  // Обработчик для мобильных устройств
-  const handleMobileClick = (e) => {
-    handleClick();
-  };
-
-  // === РАЗДЕЛИТЕЛЬ ===
-  if (item.type === 'divider') {
-    return <div className="sidebar-divider" style={{ marginLeft: level > 0 ? `${level * 16}px` : 0 }} />;
-  }
-
-  // === ЗАГОЛОВОК СЕКЦИИ ===
-  if (item.type === 'header') {
-    return (
-      <div className="sidebar-header" style={{ paddingLeft: `${14 + level * 16}px` }}>
-        {item.title}
-      </div>
-    );
-  }
-
-  // === ПАПКА (из проводника) ===
+  // Folder
   if (item.type === 'folder') {
     const FolderIcon = isExpanded ? FolderOpen : Folder;
     const DisplayIcon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : 
@@ -225,6 +298,9 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     // Страницы из папки проводника
     const folderPages = item.folderPages || item.folder?.pages || [];
     const hasFolderPages = folderPages.length > 0;
+    
+    // Вложенные элементы sidebar
+    const hasChildren = item.children && item.children.length > 0;
     
     // Проверяем есть ли активная страница внутри папки
     const hasActiveFolderPage = folderPages.some(p => 
@@ -236,9 +312,9 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     return (
       <div className="sidebar-folder">
         <div 
-          className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage || hasActiveChild ? 'has-active-child' : ''}`}
+          className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage ? 'has-active-child' : ''}`}
           style={{ paddingLeft: `${14 + level * 16}px` }}
-          onClick={() => onToggleExpand(item.id)}
+          onClick={handleToggle}
         >
           <DisplayIcon className="sidebar-item-icon" size={18} />
           <span>{folderTitle}</span>
@@ -290,30 +366,19 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     );
   }
 
-  // === ВНЕШНЯЯ ССЫЛКА ===
-  if (item.type === 'link') {
-    return (
-      <a
-        href={item.externalUrl}
-        className="sidebar-item"
-        style={{ paddingLeft: `${14 + level * 16}px` }}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handleMobileClick}
-      >
-        <Icon className="sidebar-item-icon" size={18} />
-        <span>{item.title}</span>
-        <ExternalLink size={14} className="sidebar-external" />
-      </a>
-    );
+  // Divider
+  if (item.type === 'divider') {
+    return <div className="sidebar-divider" style={{ marginLeft: `${14 + level * 16}px` }} />;
   }
 
-  // === СТРАНИЦА ===
-  if (item.type === 'page' && item.page) {
+  // Page or Link
+  if (item.type === 'page' || item.type === 'link') {
     return (
       <NavLink
-        to={`/page/${item.page.slug}`}
-        className={`sidebar-item ${isActive ? 'active' : ''}`}
+        to={item.url}
+        target={item.openInNewTab ? '_blank' : undefined}
+        rel={item.openInNewTab ? 'noopener noreferrer' : undefined}
+        className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >
@@ -361,6 +426,7 @@ export default function Sidebar({ open, onClose }) {
       {/* Календарь с фиксированной позицией */}
       <div className="sidebar-calendar-wrapper">
         <SidebarCalendar />
+        <QuickAccessButtons onClose={onClose} />
       </div>
       
       {/* Прокручиваемый контент навигации */}

@@ -75,19 +75,14 @@ function PageTreeSelect({ pages, folders, value, onChange }) {
         >
           {hasContent ? (
             isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
-          ) : (
-            <span style={{ width: 16 }} />
-          )}
+          ) : <div style={{width: 16}} />}
           <Folder size={16} />
           <span>{folder.title}</span>
-          <span className="tree-folder-count">{folder.pages.length}</span>
+          {folder.pages.length > 0 && <span className="tree-count">({folder.pages.length})</span>}
         </div>
         
-        {isExpanded && (
+        {isExpanded && hasContent && (
           <div className="tree-folder-content">
-            {/* Дочерние папки */}
-            {folder.children.map(child => renderFolder(child))}
-            
             {/* Страницы в папке */}
             {filteredPages.map(page => (
               <div 
@@ -100,31 +95,31 @@ function PageTreeSelect({ pages, folders, value, onChange }) {
                 {value === page.id && <Check size={16} className="tree-check" />}
               </div>
             ))}
+            
+            {/* Дочерние папки */}
+            {folder.children.map(child => renderFolder(child))}
           </div>
         )}
       </div>
     );
   };
 
-  // Фильтрованные корневые страницы
   const filteredRootPages = rootPages.filter(p => filterBySearch(p.title));
 
-  const hasAnyContent = pages.length > 0 || folders.length > 0;
-
   return (
-    <div className="tree-select-wrapper">
+    <div className="tree-select">
       <div className="tree-select-search">
         <input
           type="text"
-          placeholder="Поиск страницы..."
+          placeholder="Поиск страниц..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="input"
         />
       </div>
       
-      <div className="tree-select">
-        {!hasAnyContent ? (
+      <div className="tree-select-content">
+        {pages.length === 0 ? (
           <div className="tree-select-empty">Нет страниц. Создайте в разделе "Страницы"</div>
         ) : (
           <>
@@ -164,12 +159,24 @@ function PageTreeSelect({ pages, folders, value, onChange }) {
 }
 
 // Компонент элемента списка
-function SidebarListItem({ item, index, onEdit, onDelete, level = 0 }) {
+function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, level = 0 }) {
   const [expanded, setExpanded] = useState(true);
   
   // Для папки из проводника показываем страницы из неё
   const folderPages = item.folder?.pages || item.folderPages || [];
   const hasChildren = item.children?.length > 0 || folderPages.length > 0;
+
+  // Обработчик drag-end для страниц внутри папки
+  const handleFolderPagesDragEnd = (result) => {
+    if (!result.destination) return;
+    
+    const newPages = Array.from(folderPages);
+    const [reorderedPage] = newPages.splice(result.source.index, 1);
+    newPages.splice(result.destination.index, 0, reorderedPage);
+    
+    // Вызываем callback с новым порядком
+    onReorderFolderPages(item.folder.id, newPages);
+  };
 
   const getIcon = (type) => {
     if (type === 'divider') return Minus;
@@ -257,20 +264,48 @@ function SidebarListItem({ item, index, onEdit, onDelete, level = 0 }) {
             </div>
           </div>
           
-          {/* Страницы внутри папки */}
+          {/* Страницы внутри папки с drag-n-drop */}
           {hasChildren && expanded && item.type === 'folder' && folderPages.length > 0 && (
             <div className="sidebar-list-children">
-              {folderPages.map((page, idx) => (
-                <div key={page.id} className="sidebar-list-item page" style={{ paddingLeft: `${40 + level * 24}px` }}>
-                  <div className="sidebar-list-icon">
-                    <FileText size={16} />
-                  </div>
-                  <div className="sidebar-list-content">
-                    <span className="sidebar-list-title">{page.title}</span>
-                    <span className="sidebar-list-page">→ {page.slug}</span>
-                  </div>
-                </div>
-              ))}
+              <DragDropContext onDragEnd={handleFolderPagesDragEnd}>
+                <Droppable droppableId={`folder-pages-${item.folder.id}`}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={snapshot.isDraggingOver ? 'dragging-over' : ''}
+                    >
+                      {folderPages.map((page, idx) => (
+                        <Draggable key={page.id} draggableId={`page-${page.id}`} index={idx}>
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              className={`sidebar-list-item page ${snapshot.isDragging ? 'dragging' : ''}`}
+                              style={{
+                                paddingLeft: `${40 + level * 24}px`,
+                                ...provided.draggableProps.style
+                              }}
+                            >
+                              <div className="sidebar-list-drag" {...provided.dragHandleProps}>
+                                <GripVertical size={14} />
+                              </div>
+                              <div className="sidebar-list-icon">
+                                <FileText size={16} />
+                              </div>
+                              <div className="sidebar-list-content">
+                                <span className="sidebar-list-title">{page.title}</span>
+                                <span className="sidebar-list-page">→ {page.slug}</span>
+                              </div>
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DragDropContext>
             </div>
           )}
           
@@ -284,6 +319,7 @@ function SidebarListItem({ item, index, onEdit, onDelete, level = 0 }) {
                   index={idx}
                   onEdit={onEdit}
                   onDelete={onDelete}
+                  onReorderFolderPages={onReorderFolderPages}
                   level={level + 1}
                 />
               ))}
@@ -435,6 +471,58 @@ export default function AdminSidebar() {
     }
   };
 
+  // Функция для пересортировки страниц папки
+  const handleReorderFolderPages = async (folderId, newPages) => {
+    try {
+      const reordered = newPages.map((page, i) => ({
+        id: page.id,
+        sortOrder: i
+      }));
+
+      await sidebar.reorderFolderPages(folderId, reordered);
+      
+      // Обновляем state локально вместо перезагрузки
+      setItems(prevItems => {
+        const updateFolderPages = (items) => {
+          return items.map(item => {
+            if (item.type === 'folder' && item.folder?.id === folderId) {
+              // Обновляем страницы в папке
+              return {
+                ...item,
+                folder: {
+                  ...item.folder,
+                  pages: newPages.map((page, i) => ({
+                    ...page,
+                    sortOrder: i
+                  }))
+                },
+                folderPages: newPages.map((page, i) => ({
+                  ...page,
+                  sortOrder: i
+                }))
+              };
+            }
+            // Рекурсивно обновляем вложенные элементы
+            if (item.children?.length > 0) {
+              return {
+                ...item,
+                children: updateFolderPages(item.children)
+              };
+            }
+            return item;
+          });
+        };
+        
+        return updateFolderPages(prevItems);
+      });
+      
+      toast.success('Порядок страниц сохранён');
+    } catch (e) {
+      toast.error('Ошибка сортировки');
+      load(); // Только при ошибке перезагружаем
+    }
+  };
+
   // Flatten folder tree for select
   const flattenTree = (tree, level = 0) => {
     let result = [];
@@ -476,6 +564,7 @@ export default function AdminSidebar() {
                       index={index}
                       onEdit={openModal}
                       onDelete={handleDelete}
+                      onReorderFolderPages={handleReorderFolderPages}
                     />
                   ))}
                   {provided.placeholder}
@@ -497,117 +586,98 @@ export default function AdminSidebar() {
         <div className="modal-overlay" onClick={() => setModal({ open: false, item: null })}>
           <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{modal.item ? 'Редактировать' : 'Добавить в меню'}</h2>
-              <button className="modal-close" onClick={() => setModal({ open: false, item: null })}>
+              <h2>{modal.item ? 'Редактировать элемент' : 'Добавить элемент'}</h2>
+              <button className="btn-icon" onClick={() => setModal({ open: false, item: null })}>
                 <X size={20} />
               </button>
             </div>
             
             <div className="modal-body">
+              {/* Тип элемента */}
               <div className="form-group">
                 <label className="form-label">Тип элемента</label>
-                <select 
-                  value={form.type} 
-                  onChange={e => setForm({ ...form, type: e.target.value })}
-                  className="select"
-                >
-                  <option value="page">📄 Страница</option>
-                  <option value="folder">📁 Папка (из проводника)</option>
-                  <option value="header">📑 Заголовок секции</option>
-                  <option value="link">🔗 Внешняя ссылка</option>
-                  <option value="divider">➖ Разделитель</option>
-                </select>
+                <div className="radio-group">
+                  <label className="radio-item">
+                    <input type="radio" checked={form.type === 'page'} onChange={() => setForm({...form, type: 'page'})} />
+                    <FileText size={16} />
+                    Страница
+                  </label>
+                  <label className="radio-item">
+                    <input type="radio" checked={form.type === 'folder'} onChange={() => setForm({...form, type: 'folder'})} />
+                    <Folder size={16} />
+                    Папка
+                  </label>
+                  <label className="radio-item">
+                    <input type="radio" checked={form.type === 'link'} onChange={() => setForm({...form, type: 'link'})} />
+                    <LinkIcon size={16} />
+                    Ссылка
+                  </label>
+                  <label className="radio-item">
+                    <input type="radio" checked={form.type === 'header'} onChange={() => setForm({...form, type: 'header'})} />
+                    <TypeIcon size={16} />
+                    Заголовок
+                  </label>
+                  <label className="radio-item">
+                    <input type="radio" checked={form.type === 'divider'} onChange={() => setForm({...form, type: 'divider'})} />
+                    <Minus size={16} />
+                    Разделитель
+                  </label>
+                </div>
               </div>
 
-              {/* Page selector - tree view */}
+              {/* Выбор страницы */}
               {form.type === 'page' && (
                 <div className="form-group">
-                  <label className="form-label">Выберите страницу *</label>
+                  <label className="form-label">Страница</label>
                   <PageTreeSelect 
                     pages={pageList}
                     folders={folderTree}
                     value={form.pageId}
-                    onChange={(pageId) => setForm({ ...form, pageId })}
+                    onChange={(pageId) => setForm({...form, pageId})}
                   />
                 </div>
               )}
 
-              {/* Folder selector */}
+              {/* Выбор папки */}
               {form.type === 'folder' && (
                 <div className="form-group">
-                  <label className="form-label">Выберите папку *</label>
-                  <div className="tree-select">
-                    {flatFolders.length === 0 ? (
-                      <div className="tree-select-empty">Нет папок. Создайте в разделе "Страницы"</div>
-                    ) : (
-                      flatFolders.map(folder => (
-                        <div 
-                          key={folder.id}
-                          className={`tree-select-item level-${folder.level} ${form.folderId === folder.id ? 'selected' : ''}`}
-                          onClick={() => setForm({ ...form, folderId: folder.id })}
-                        >
-                          <Folder size={16} />
-                          <span>{folder.title}</span>
-                          {form.folderId === folder.id && <Check size={16} style={{ marginLeft: 'auto' }} />}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <small className="form-hint">Все страницы из папки автоматически появятся в меню</small>
+                  <label className="form-label">Папка из проводника</label>
+                  <select className="input" value={form.folderId} onChange={e => setForm({...form, folderId: e.target.value})}>
+                    <option value="">Выберите папку</option>
+                    {flatFolders.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {'—'.repeat(f.level)} {f.title}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 
-              {/* Header title */}
-              {form.type === 'header' && (
+              {/* Заголовок для header/link */}
+              {['header', 'link'].includes(form.type) && (
                 <div className="form-group">
-                  <label className="form-label">Заголовок *</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={form.title}
-                    onChange={e => setForm({ ...form, title: e.target.value })}
-                    placeholder="НАЗВАНИЕ СЕКЦИИ"
-                  />
+                  <label className="form-label">Название</label>
+                  <input className="input" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
                 </div>
               )}
 
-              {/* Link */}
+              {/* URL для link */}
               {form.type === 'link' && (
-                <>
-                  <div className="form-group">
-                    <label className="form-label">Название *</label>
-                    <input
-                      type="text"
-                      className="input"
-                      value={form.title}
-                      onChange={e => setForm({ ...form, title: e.target.value })}
-                      placeholder="Название ссылки"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">URL *</label>
-                    <input
-                      type="url"
-                      className="input"
-                      value={form.externalUrl}
-                      onChange={e => setForm({ ...form, externalUrl: e.target.value })}
-                      placeholder="https://example.com"
-                    />
-                  </div>
-                </>
+                <div className="form-group">
+                  <label className="form-label">Ссылка</label>
+                  <input className="input" placeholder="https://..." value={form.externalUrl} onChange={e => setForm({...form, externalUrl: e.target.value})} />
+                </div>
               )}
 
-              {/* Visibility */}
-              <div className="form-group">
-                <label className="checkbox-item">
-                  <input
-                    type="checkbox"
-                    checked={form.isVisible}
-                    onChange={e => setForm({ ...form, isVisible: e.target.checked })}
-                  />
-                  Отображать в меню
-                </label>
-              </div>
+              {/* Видимость */}
+              {form.type !== 'divider' && (
+                <div className="form-group">
+                  <label className="checkbox-item">
+                    <input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} />
+                    Показывать в меню
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer">
