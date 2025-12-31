@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, ChevronRight, ChevronLeft, Plus, ExternalLink,
-  Home, File, FileText, Folder, Users, Settings, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
+import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
+  Home, File, FileText, Folder, FolderOpen, Users, Settings, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
   Database, Image, Shield, Layout, Key, Layers, List, Grid, Hash, Filter,
-  RefreshCw, Archive, Printer,
+  RefreshCw, Archive, Printer, Plus,
   Type, Info, HelpCircle,
   Trophy, Medal, Target, Lightbulb, Zap, Sparkles, Flame, Gift, Package, Box, ShoppingCart,
   Coffee, ThumbsUp, Smile, Gauge, Compass, Map, Flag, Power,
@@ -20,7 +20,8 @@ import { ChevronDown, ChevronRight, ChevronLeft, Plus, ExternalLink,
   Lock, Unlock, ShieldCheck, ShieldAlert, Fingerprint, ScanFace, AlertTriangle, AlertCircle,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
-  Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2
+  Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
+  Minus
 } from 'lucide-react';
 import { sidebar as sidebarApi } from '../services/api';
 
@@ -52,57 +53,47 @@ const iconMap = {
   'wifi': Wifi, 'globe': Globe, 'cloud': Cloud, 'code': Code, 'terminal': Terminal, 'qr-code': QrCode,
   'map-pin': MapPin, 'map': Map, 'compass': Compass, 'navigation': Navigation, 'flag': Flag,
   'plus': Plus, 'check-circle': CheckCircle, 'x-circle': XCircle,
-  'edit': Pencil, 'trash': Trash, 'copy': Copy, 'save': Save,
-  'download': Download, 'upload': Upload, 'share': Share2, 'link': Link,
-  'external-link': ExternalLink, 'refresh': RefreshCw, 'archive': Archive, 'printer': Printer,
-  'layout': Layout, 'grid': Grid, 'layers': Layers, 'list': List, 'filter': Filter,
-  'tag': Tag, 'hash': Hash, 'image': Image, 'camera': Camera, 'type': Type,
-  'info': Info, 'help-circle': HelpCircle, 'search': Search,
-  'trophy': Trophy, 'medal': Medal, 'award': Award, 'target': Target, 'lightbulb': Lightbulb,
-  'zap': Zap, 'sparkles': Sparkles, 'flame': Flame, 'gift': Gift, 'package': Package,
-  'box': Box, 'shopping-cart': ShoppingCart, 'coffee': Coffee, 'thumbs-up': ThumbsUp, 'smile': Smile,
-  'gauge': Gauge, 'sun': Sun, 'moon': Moon, 'power': Power, 'percent': Percent,
-  'speaker': Speaker, 'headphones': Headphones, 'rss': Rss,
+  'edit': Pencil, 'pencil': Pencil, 'trash': Trash, 'copy': Copy, 'save': Save,
+  'download': Download, 'upload': Upload, 'link': Link, 'external-link': ExternalLink,
+  'share': Share2, 'refresh': RefreshCw, 'archive': Archive, 'printer': Printer,
+  'lock': Lock, 'unlock': Unlock, 'shield-check': ShieldCheck, 'shield-alert': ShieldAlert,
+  'fingerprint': Fingerprint, 'scan-face': ScanFace, 'alert-triangle': AlertTriangle, 'alert-circle': AlertCircle,
+  'user': User, 'user-plus': UserPlus, 'user-check': UserCheck, 'user-circle': UserCircle, 'contact': Contact,
   'timer': Timer, 'hourglass': Hourglass, 'calendar-days': CalendarDays, 'calendar-check': CalendarCheck,
-  'umbrella': Umbrella, 'leaf': Leaf, 'car': Car, 'truck': Truck, 'plane': Plane
+  'sun': Sun, 'moon': Moon, 'umbrella': Umbrella, 'leaf': Leaf,
+  'car': Car, 'truck': Truck, 'plane': Plane,
+  'type': Type, 'info': Info, 'help-circle': HelpCircle, 'search': Search,
+  'trophy': Trophy, 'medal': Medal, 'target': Target, 'lightbulb': Lightbulb,
+  'zap': Zap, 'sparkles': Sparkles, 'flame': Flame, 'gift': Gift,
+  'package': Package, 'box': Box, 'shopping-cart': ShoppingCart,
+  'coffee': Coffee, 'thumbs-up': ThumbsUp, 'smile': Smile, 'gauge': Gauge,
+  'power': Power, 'percent': Percent, 'speaker': Speaker, 'headphones': Headphones, 'camera': Camera, 'rss': Rss
 };
 
 // Компонент календаря
+const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
 function SidebarCalendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
-
-  const monthNames = [
-    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
-    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
-  ];
-
-  const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    
-    // Получаем день недели первого дня месяца (0 - воскресенье, 1 - понедельник...)
-    let firstDayOfWeek = firstDay.getDay();
-    // Преобразуем в формат 0 - понедельник, 6 - воскресенье
-    firstDayOfWeek = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
-    
+    const firstDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
     const daysInMonth = lastDay.getDate();
     const days = [];
 
-    // Добавляем пустые ячейки для дней предыдущего месяца
     for (let i = 0; i < firstDayOfWeek; i++) {
       days.push(null);
     }
-
-    // Добавляем дни текущего месяца
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
     }
-
     return days;
   };
 
@@ -134,32 +125,20 @@ function SidebarCalendar() {
   return (
     <div className="sidebar-calendar">
       <div className="sidebar-calendar-header">
-        <button 
-          className="sidebar-calendar-nav" 
-          onClick={goToPreviousMonth}
-          title="Предыдущий месяц"
-        >
+        <button className="sidebar-calendar-nav" onClick={goToPreviousMonth} title="Предыдущий месяц">
           <ChevronLeft size={16} />
         </button>
         <div className="sidebar-calendar-title">
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </div>
-        <button 
-          className="sidebar-calendar-nav" 
-          onClick={goToNextMonth}
-          title="Следующий месяц"
-        >
+        <button className="sidebar-calendar-nav" onClick={goToNextMonth} title="Следующий месяц">
           <ChevronRight size={16} />
         </button>
       </div>
-      
       <div className="sidebar-calendar-grid">
         {weekDays.map(day => (
-          <div key={day} className="sidebar-calendar-weekday">
-            {day}
-          </div>
+          <div key={day} className="sidebar-calendar-weekday">{day}</div>
         ))}
-        
         {days.map((date, index) => (
           <div 
             key={index}
@@ -174,65 +153,153 @@ function SidebarCalendar() {
   );
 }
 
-function SidebarItemComponent({ item, level = 0, onClose }) {
-  const location = useLocation();
-  const [expanded, setExpanded] = useState(item.isExpanded);
-  const Icon = iconMap[item.icon] || FileText;
+// Ключ для localStorage
+const SIDEBAR_EXPANDED_KEY = 'alfa-wiki-sidebar-expanded';
 
-  // Функция для закрытия на мобильных
+// Загрузка состояния раскрытия из localStorage
+const loadExpandedState = () => {
+  try {
+    const saved = localStorage.getItem(SIDEBAR_EXPANDED_KEY);
+    return saved ? JSON.parse(saved) : {};
+  } catch {
+    return {};
+  }
+};
+
+// Сохранение состояния раскрытия в localStorage
+const saveExpandedState = (state) => {
+  try {
+    localStorage.setItem(SIDEBAR_EXPANDED_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore localStorage errors
+  }
+};
+
+// Компонент элемента сайдбара
+function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggleExpand }) {
+  const location = useLocation();
+  const Icon = iconMap[item.icon] || FileText;
+  
+  const isExpanded = expandedState[item.id] ?? true; // По умолчанию раскрыто
+  const hasChildren = item.children && item.children.length > 0;
+  
+  // Проверка активности для страниц
+  const isActive = item.page && location.pathname === `/page/${item.page.slug}`;
+  
+  // Проверка, есть ли активный ребенок (для подсветки папки)
+  const hasActiveChild = hasChildren && item.children.some(child => 
+    child.page && location.pathname === `/page/${child.page.slug}`
+  );
+
   const handleClick = () => {
     if (window.innerWidth <= 768 && onClose) {
       onClose();
     }
   };
 
+  // Обработчик для мобильных устройств
+  const handleMobileClick = (e) => {
+    handleClick();
+  };
+
+  // === РАЗДЕЛИТЕЛЬ ===
   if (item.type === 'divider') {
-    return <div className="sidebar-divider">{item.title}</div>;
+    return <div className="sidebar-divider" style={{ marginLeft: level > 0 ? `${level * 16}px` : 0 }} />;
   }
 
-  const url = item.type === 'link' 
-    ? item.externalUrl 
-    : item.page ? `/page/${item.page.slug}` : '#';
-  
-  const isActive = item.page && location.pathname === `/page/${item.page.slug}`;
-  const hasChildren = item.children && item.children.length > 0;
-
-  const filteredChildren = hasChildren 
-    ? item.children.filter(c => c.type === 'divider' || c.page) 
-    : [];
-
-  if (hasChildren && filteredChildren.length > 0) {
+  // === ЗАГОЛОВОК СЕКЦИИ ===
+  if (item.type === 'header') {
     return (
-      <div className="sidebar-group">
+      <div className="sidebar-header" style={{ paddingLeft: `${14 + level * 16}px` }}>
+        {item.title}
+      </div>
+    );
+  }
+
+  // === ПАПКА (из проводника) ===
+  if (item.type === 'folder') {
+    const FolderIcon = isExpanded ? FolderOpen : Folder;
+    const DisplayIcon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : 
+                        (item.folder?.icon && iconMap[item.folder.icon] ? iconMap[item.folder.icon] : FolderIcon);
+    
+    // Страницы из папки проводника
+    const folderPages = item.folderPages || item.folder?.pages || [];
+    const hasFolderPages = folderPages.length > 0;
+    
+    // Проверяем есть ли активная страница внутри папки
+    const hasActiveFolderPage = folderPages.some(p => 
+      location.pathname === `/page/${p.slug}`
+    );
+    
+    const folderTitle = item.title || item.folder?.title || 'Папка';
+    
+    return (
+      <div className="sidebar-folder">
         <div 
-          className={`sidebar-item ${isActive ? 'active' : ''}`}
+          className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage || hasActiveChild ? 'has-active-child' : ''}`}
           style={{ paddingLeft: `${14 + level * 16}px` }}
-          onClick={() => setExpanded(!expanded)}
+          onClick={() => onToggleExpand(item.id)}
         >
-          <Icon className="sidebar-item-icon" size={18} />
-          <span>{item.title}</span>
-          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <DisplayIcon className="sidebar-item-icon" size={18} />
+          <span>{folderTitle}</span>
+          <span className="sidebar-folder-chevron">
+            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </span>
         </div>
-        {expanded && (
-          <div className="sidebar-section-children">
-            {filteredChildren.map(child => (
-              <SidebarItemComponent key={child.id} item={child} level={level + 1} onClose={onClose} />
-            ))}
+        
+        {isExpanded && hasFolderPages && (
+          <div className="sidebar-folder-children">
+            {folderPages.map(page => {
+              const PageIcon = page.icon && iconMap[page.icon] ? iconMap[page.icon] : FileText;
+              const isPageActive = location.pathname === `/page/${page.slug}`;
+              
+              return (
+                <NavLink
+                  key={page.id}
+                  to={`/page/${page.slug}`}
+                  className={`sidebar-item ${isPageActive ? 'active' : ''}`}
+                  style={{ paddingLeft: `${14 + (level + 1) * 16}px` }}
+                  onClick={handleMobileClick}
+                >
+                  <PageIcon className="sidebar-item-icon" size={18} />
+                  <span>{page.title}</span>
+                </NavLink>
+              );
+            })}
+          </div>
+        )}
+        
+        {/* Также показываем вложенные SidebarItem если есть */}
+        {isExpanded && hasChildren && (
+          <div className="sidebar-folder-children">
+            {item.children
+              .filter(c => c.type === 'divider' || c.page || c.type === 'link')
+              .map(child => (
+                <SidebarItemComponent 
+                  key={child.id} 
+                  item={child} 
+                  level={level + 1} 
+                  onClose={onClose}
+                  expandedState={expandedState}
+                  onToggleExpand={onToggleExpand}
+                />
+              ))}
           </div>
         )}
       </div>
     );
   }
 
+  // === ВНЕШНЯЯ ССЫЛКА ===
   if (item.type === 'link') {
     return (
       <a
-        href={url}
+        href={item.externalUrl}
         className="sidebar-item"
         style={{ paddingLeft: `${14 + level * 16}px` }}
         target="_blank"
         rel="noopener noreferrer"
-        onClick={handleClick}
+        onClick={handleMobileClick}
       >
         <Icon className="sidebar-item-icon" size={18} />
         <span>{item.title}</span>
@@ -241,21 +308,28 @@ function SidebarItemComponent({ item, level = 0, onClose }) {
     );
   }
 
-  return (
-    <NavLink
-      to={url}
-      className={`sidebar-item ${isActive ? 'active' : ''}`}
-      style={{ paddingLeft: `${14 + level * 16}px` }}
-      onClick={handleClick}
-    >
-      <Icon className="sidebar-item-icon" size={18} />
-      <span>{item.title}</span>
-    </NavLink>
-  );
+  // === СТРАНИЦА ===
+  if (item.type === 'page' && item.page) {
+    return (
+      <NavLink
+        to={`/page/${item.page.slug}`}
+        className={`sidebar-item ${isActive ? 'active' : ''}`}
+        style={{ paddingLeft: `${14 + level * 16}px` }}
+        onClick={handleMobileClick}
+      >
+        <Icon className="sidebar-item-icon" size={18} />
+        <span>{item.title}</span>
+      </NavLink>
+    );
+  }
+
+  // Fallback для неизвестных типов
+  return null;
 }
 
 export default function Sidebar({ open, onClose }) {
   const [items, setItems] = useState([]);
+  const [expandedState, setExpandedState] = useState(loadExpandedState);
 
   useEffect(() => {
     loadSidebar();
@@ -270,6 +344,18 @@ export default function Sidebar({ open, onClose }) {
     }
   };
 
+  // Переключение раскрытия папки
+  const handleToggleExpand = useCallback((itemId) => {
+    setExpandedState(prev => {
+      const newState = {
+        ...prev,
+        [itemId]: !(prev[itemId] ?? true) // Инвертируем, по умолчанию true
+      };
+      saveExpandedState(newState);
+      return newState;
+    });
+  }, []);
+
   return (
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       {/* Календарь с фиксированной позицией */}
@@ -281,7 +367,13 @@ export default function Sidebar({ open, onClose }) {
       <div className="sidebar-content">
         {items.length > 0 ? (
           items.map(item => (
-            <SidebarItemComponent key={item.id} item={item} onClose={onClose} />
+            <SidebarItemComponent 
+              key={item.id} 
+              item={item} 
+              onClose={onClose}
+              expandedState={expandedState}
+              onToggleExpand={handleToggleExpand}
+            />
           ))
         ) : (
           <div className="sidebar-empty">

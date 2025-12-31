@@ -1,368 +1,329 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus, ChevronDown, X, Search as SearchIcon,
-  Home, File, Folder, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
-  Settings, Database, Image, Shield, Layout, Users, Key, Layers, List, Grid, Hash, Filter,
-  ChevronRight, ExternalLink, RefreshCw,
-  FilePlus, FileCheck, FileX, Files, Clipboard, ClipboardList, ClipboardCheck,
-  BookOpen, Book, Newspaper, FileSpreadsheet, FileCode,
-  MessageCircle, MessageSquare, Send, Inbox, AtSign, PhoneCall, Video, Mic, Volume2,
-  Activity, Stethoscope, Pill, Syringe, Thermometer, HeartPulse, Brain, Bone, Eye,
-  Accessibility, Cross, Droplet, Droplets, TestTube, TestTubes,
-  Briefcase, Building, Building2, Landmark, CreditCard, Wallet, Receipt, DollarSign,
-  TrendingUp, BarChart, BarChart2, BarChart3, PieChart, LineChart,
-  Monitor, Laptop, Smartphone, Tablet, Cpu, HardDrive, Server, Wifi, Globe, Cloud, 
-  Download, Upload, Link, Code, Terminal, QrCode,
-  Lock, Unlock, ShieldCheck, ShieldAlert, Fingerprint, ScanFace, AlertTriangle, AlertCircle,
-  User, UserPlus, UserCheck, UserCircle, Contact,
-  Timer, Hourglass, CalendarDays, CalendarCheck,
-  Sun, Moon, Umbrella, Leaf,
-  Car, Truck, Plane, Navigation,
-  CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2, Archive, Printer,
-  Type, Info, HelpCircle, Search,
-  Trophy, Medal, Target, Lightbulb, Zap, Sparkles, Flame, Gift, Package, Box, ShoppingCart,
-  Coffee, ThumbsUp, Smile, Gauge, Compass, Map, Flag, Power, Percent, Speaker, Headphones, Camera, Rss
+import { 
+  Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus, 
+  ChevronDown, ChevronRight, X, Folder, FolderOpen, Type as TypeIcon,
+  ExternalLink, Check
 } from 'lucide-react';
-import { sidebar, pages, roles } from '../../services/api';
+import { sidebar, folders, pages } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
-const iconCategories = [
-  {
-    name: 'Популярные',
-    icons: [
-      { name: 'home', icon: Home, label: 'Дом' },
-      { name: 'file', icon: File, label: 'Файл' },
-      { name: 'file-text', icon: FileText, label: 'Документ' },
-      { name: 'folder', icon: Folder, label: 'Папка' },
-      { name: 'users', icon: Users, label: 'Пользователи' },
-      { name: 'settings', icon: Settings, label: 'Настройки' },
-      { name: 'star', icon: Star, label: 'Звезда' },
-      { name: 'heart', icon: Heart, label: 'Сердце' },
-      { name: 'bookmark', icon: Bookmark, label: 'Закладка' },
-      { name: 'bell', icon: Bell, label: 'Уведомление' },
-      { name: 'calendar', icon: Calendar, label: 'Календарь' },
-      { name: 'clock', icon: Clock, label: 'Время' },
-    ]
-  },
-  {
-    name: 'Медицина',
-    icons: [
-      { name: 'activity', icon: Activity, label: 'Активность' },
-      { name: 'stethoscope', icon: Stethoscope, label: 'Стетоскоп' },
-      { name: 'heart-pulse', icon: HeartPulse, label: 'Пульс' },
-      { name: 'pill', icon: Pill, label: 'Таблетка' },
-      { name: 'syringe', icon: Syringe, label: 'Шприц' },
-      { name: 'thermometer', icon: Thermometer, label: 'Термометр' },
-      { name: 'brain', icon: Brain, label: 'Мозг' },
-      { name: 'bone', icon: Bone, label: 'Кость' },
-      { name: 'eye', icon: Eye, label: 'Глаз' },
-      { name: 'accessibility', icon: Accessibility, label: 'Доступность' },
-      { name: 'cross', icon: Cross, label: 'Крест' },
-      { name: 'droplet', icon: Droplet, label: 'Капля' },
-      { name: 'droplets', icon: Droplets, label: 'Капли' },
-      { name: 'test-tube', icon: TestTube, label: 'Пробирка' },
-      { name: 'test-tubes', icon: TestTubes, label: 'Пробирки' },
-    ]
-  },
-  {
-    name: 'Документы',
-    icons: [
-      { name: 'file-plus', icon: FilePlus, label: 'Новый файл' },
-      { name: 'file-check', icon: FileCheck, label: 'Файл ок' },
-      { name: 'file-x', icon: FileX, label: 'Файл х' },
-      { name: 'files', icon: Files, label: 'Файлы' },
-      { name: 'clipboard', icon: Clipboard, label: 'Буфер' },
-      { name: 'clipboard-list', icon: ClipboardList, label: 'Список задач' },
-      { name: 'clipboard-check', icon: ClipboardCheck, label: 'Чек-лист' },
-      { name: 'book-open', icon: BookOpen, label: 'Книга' },
-      { name: 'book', icon: Book, label: 'Книга закр.' },
-      { name: 'newspaper', icon: Newspaper, label: 'Газета' },
-      { name: 'file-spreadsheet', icon: FileSpreadsheet, label: 'Таблица' },
-      { name: 'file-code', icon: FileCode, label: 'Код' },
-    ]
-  },
-  {
-    name: 'Коммуникации',
-    icons: [
-      { name: 'mail', icon: Mail, label: 'Почта' },
-      { name: 'message-circle', icon: MessageCircle, label: 'Сообщение' },
-      { name: 'message-square', icon: MessageSquare, label: 'Чат' },
-      { name: 'send', icon: Send, label: 'Отправить' },
-      { name: 'inbox', icon: Inbox, label: 'Входящие' },
-      { name: 'at-sign', icon: AtSign, label: 'Собака' },
-      { name: 'phone', icon: Phone, label: 'Телефон' },
-      { name: 'phone-call', icon: PhoneCall, label: 'Звонок' },
-      { name: 'video', icon: Video, label: 'Видео' },
-      { name: 'mic', icon: Mic, label: 'Микрофон' },
-      { name: 'volume', icon: Volume2, label: 'Звук' },
-      { name: 'rss', icon: Rss, label: 'RSS' },
-    ]
-  },
-  {
-    name: 'Бизнес',
-    icons: [
-      { name: 'briefcase', icon: Briefcase, label: 'Портфель' },
-      { name: 'building', icon: Building, label: 'Здание' },
-      { name: 'building-2', icon: Building2, label: 'Офис' },
-      { name: 'landmark', icon: Landmark, label: 'Банк' },
-      { name: 'credit-card', icon: CreditCard, label: 'Карта' },
-      { name: 'wallet', icon: Wallet, label: 'Кошелёк' },
-      { name: 'receipt', icon: Receipt, label: 'Чек' },
-      { name: 'dollar-sign', icon: DollarSign, label: 'Доллар' },
-      { name: 'trending-up', icon: TrendingUp, label: 'Рост' },
-      { name: 'bar-chart', icon: BarChart, label: 'График' },
-      { name: 'bar-chart-2', icon: BarChart2, label: 'Диаграмма' },
-      { name: 'pie-chart', icon: PieChart, label: 'Пирог' },
-      { name: 'line-chart', icon: LineChart, label: 'Линия' },
-    ]
-  },
-  {
-    name: 'Технологии',
-    icons: [
-      { name: 'monitor', icon: Monitor, label: 'Монитор' },
-      { name: 'laptop', icon: Laptop, label: 'Ноутбук' },
-      { name: 'smartphone', icon: Smartphone, label: 'Смартфон' },
-      { name: 'tablet', icon: Tablet, label: 'Планшет' },
-      { name: 'cpu', icon: Cpu, label: 'Процессор' },
-      { name: 'hard-drive', icon: HardDrive, label: 'Диск' },
-      { name: 'server', icon: Server, label: 'Сервер' },
-      { name: 'database', icon: Database, label: 'База' },
-      { name: 'wifi', icon: Wifi, label: 'WiFi' },
-      { name: 'globe', icon: Globe, label: 'Глобус' },
-      { name: 'cloud', icon: Cloud, label: 'Облако' },
-      { name: 'code', icon: Code, label: 'Код' },
-      { name: 'terminal', icon: Terminal, label: 'Терминал' },
-      { name: 'qr-code', icon: QrCode, label: 'QR' },
-    ]
-  },
-  {
-    name: 'Безопасность',
-    icons: [
-      { name: 'lock', icon: Lock, label: 'Замок' },
-      { name: 'unlock', icon: Unlock, label: 'Открыт' },
-      { name: 'key', icon: Key, label: 'Ключ' },
-      { name: 'shield', icon: Shield, label: 'Щит' },
-      { name: 'shield-check', icon: ShieldCheck, label: 'Защищён' },
-      { name: 'shield-alert', icon: ShieldAlert, label: 'Угроза' },
-      { name: 'fingerprint', icon: Fingerprint, label: 'Отпечаток' },
-      { name: 'scan-face', icon: ScanFace, label: 'Лицо' },
-      { name: 'alert-triangle', icon: AlertTriangle, label: 'Внимание' },
-      { name: 'alert-circle', icon: AlertCircle, label: 'Ошибка' },
-    ]
-  },
-  {
-    name: 'Люди',
-    icons: [
-      { name: 'user', icon: User, label: 'Пользователь' },
-      { name: 'user-plus', icon: UserPlus, label: 'Добавить' },
-      { name: 'user-check', icon: UserCheck, label: 'Проверен' },
-      { name: 'user-circle', icon: UserCircle, label: 'Аватар' },
-      { name: 'users', icon: Users, label: 'Группа' },
-      { name: 'contact', icon: Contact, label: 'Контакт' },
-    ]
-  },
-  {
-    name: 'Действия',
-    icons: [
-      { name: 'check-circle', icon: CheckCircle, label: 'Готово' },
-      { name: 'x-circle', icon: XCircle, label: 'Отмена' },
-      { name: 'edit', icon: Pencil, label: 'Редактировать' },
-      { name: 'trash', icon: Trash, label: 'Удалить' },
-      { name: 'copy', icon: Copy, label: 'Копировать' },
-      { name: 'save', icon: Save, label: 'Сохранить' },
-      { name: 'download', icon: Download, label: 'Скачать' },
-      { name: 'upload', icon: Upload, label: 'Загрузить' },
-      { name: 'share', icon: Share2, label: 'Поделиться' },
-      { name: 'link', icon: Link, label: 'Ссылка' },
-      { name: 'external-link', icon: ExternalLink, label: 'Внешняя' },
-      { name: 'refresh', icon: RefreshCw, label: 'Обновить' },
-      { name: 'archive', icon: Archive, label: 'Архив' },
-      { name: 'printer', icon: Printer, label: 'Печать' },
-    ]
-  },
-  {
-    name: 'Интерфейс',
-    icons: [
-      { name: 'layout', icon: Layout, label: 'Макет' },
-      { name: 'grid', icon: Grid, label: 'Сетка' },
-      { name: 'layers', icon: Layers, label: 'Слои' },
-      { name: 'list', icon: List, label: 'Список' },
-      { name: 'filter', icon: Filter, label: 'Фильтр' },
-      { name: 'tag', icon: Tag, label: 'Тег' },
-      { name: 'hash', icon: Hash, label: 'Хэштег' },
-      { name: 'image', icon: Image, label: 'Изображение' },
-      { name: 'camera', icon: Camera, label: 'Камера' },
-      { name: 'type', icon: Type, label: 'Текст' },
-      { name: 'info', icon: Info, label: 'Инфо' },
-      { name: 'help-circle', icon: HelpCircle, label: 'Помощь' },
-      { name: 'search', icon: Search, label: 'Поиск' },
-    ]
-  },
-  {
-    name: 'Разное',
-    icons: [
-      { name: 'trophy', icon: Trophy, label: 'Трофей' },
-      { name: 'medal', icon: Medal, label: 'Медаль' },
-      { name: 'award', icon: Award, label: 'Награда' },
-      { name: 'target', icon: Target, label: 'Цель' },
-      { name: 'lightbulb', icon: Lightbulb, label: 'Идея' },
-      { name: 'zap', icon: Zap, label: 'Молния' },
-      { name: 'sparkles', icon: Sparkles, label: 'Блёстки' },
-      { name: 'flame', icon: Flame, label: 'Огонь' },
-      { name: 'gift', icon: Gift, label: 'Подарок' },
-      { name: 'package', icon: Package, label: 'Посылка' },
-      { name: 'box', icon: Box, label: 'Коробка' },
-      { name: 'shopping-cart', icon: ShoppingCart, label: 'Корзина' },
-      { name: 'coffee', icon: Coffee, label: 'Кофе' },
-      { name: 'thumbs-up', icon: ThumbsUp, label: 'Лайк' },
-      { name: 'smile', icon: Smile, label: 'Улыбка' },
-      { name: 'map-pin', icon: MapPin, label: 'Метка' },
-      { name: 'compass', icon: Compass, label: 'Компас' },
-      { name: 'map', icon: Map, label: 'Карта' },
-      { name: 'flag', icon: Flag, label: 'Флаг' },
-      { name: 'sun', icon: Sun, label: 'Солнце' },
-      { name: 'moon', icon: Moon, label: 'Луна' },
-      { name: 'power', icon: Power, label: 'Питание' },
-      { name: 'gauge', icon: Gauge, label: 'Спидометр' },
-    ]
-  }
-];
-
-const allIcons = iconCategories.flatMap(cat => cat.icons);
-const iconComponentMap = Object.fromEntries(allIcons.map(i => [i.name, i.icon]));
-
-function IconPicker({ value, onChange }) {
-  const [open, setOpen] = useState(false);
+// Компонент древовидного выбора страницы
+function PageTreeSelect({ pages, folders, value, onChange }) {
+  const [expandedFolders, setExpandedFolders] = useState({});
   const [search, setSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState('Популярные');
-  const ref = useRef(null);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const filteredIcons = useMemo(() => {
-    if (!search) return null;
-    const s = search.toLowerCase();
-    return allIcons.filter(i => 
-      i.name.toLowerCase().includes(s) || 
-      i.label.toLowerCase().includes(s)
-    );
-  }, [search]);
-
-  const displayIcons = filteredIcons || 
-    iconCategories.find(c => c.name === activeCategory)?.icons || 
-    iconCategories[0].icons;
-
-  const SelectedIcon = iconComponentMap[value] || FileText;
-
-  const selectIcon = (name) => {
-    onChange(name);
-    setOpen(false);
-    setSearch('');
+  // Группируем страницы по папкам
+  const rootPages = pages.filter(p => !p.folderId);
+  
+  // Рекурсивно строим дерево папок с их страницами
+  const buildFolderTree = (folderList, allPages, level = 0) => {
+    return folderList.map(folder => {
+      const folderPages = allPages.filter(p => p.folderId === folder.id);
+      const children = folder.children ? buildFolderTree(folder.children, allPages, level + 1) : [];
+      return {
+        ...folder,
+        level,
+        pages: folderPages,
+        children
+      };
+    });
   };
 
-  return (
-    <div className="icon-picker" ref={ref}>
-      <button type="button" className="icon-picker-trigger" onClick={() => setOpen(!open)}>
-        <SelectedIcon size={20} />
-        <span>{allIcons.find(i => i.name === value)?.label || value}</span>
-        <ChevronDown size={16} />
-      </button>
+  const treeData = buildFolderTree(folders, pages);
 
-      {open && (
-        <div className="icon-picker-dropdown">
-          <div className="icon-picker-search">
-            <SearchIcon size={16} />
-            <input
-              type="text"
-              placeholder="Поиск иконки..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoFocus
-            />
-            {search && (
-              <button className="icon-picker-clear" onClick={() => setSearch('')}>
-                <X size={12} />
+  // Фильтрация по поиску
+  const filterBySearch = (text) => {
+    if (!search) return true;
+    return text.toLowerCase().includes(search.toLowerCase());
+  };
+
+  const toggleFolder = (folderId, e) => {
+    e.stopPropagation();
+    setExpandedFolders(prev => ({
+      ...prev,
+      [folderId]: !prev[folderId]
+    }));
+  };
+
+  // Рендер папки и её содержимого
+  const renderFolder = (folder) => {
+    const isExpanded = expandedFolders[folder.id];
+    const hasContent = folder.pages.length > 0 || folder.children.length > 0;
+    
+    // Фильтруем страницы в папке
+    const filteredPages = folder.pages.filter(p => filterBySearch(p.title));
+    const hasMatchingPages = filteredPages.length > 0;
+    
+    // Проверяем, есть ли совпадения в дочерних папках
+    const hasMatchingChildren = folder.children.some(child => {
+      const childPages = child.pages.filter(p => filterBySearch(p.title));
+      return childPages.length > 0 || filterBySearch(child.title);
+    });
+
+    // Если поиск активен и нет совпадений - скрываем папку
+    if (search && !filterBySearch(folder.title) && !hasMatchingPages && !hasMatchingChildren) {
+      return null;
+    }
+
+    return (
+      <div key={folder.id} className="tree-folder">
+        <div 
+          className={`tree-select-item tree-folder-header level-${folder.level}`}
+          onClick={(e) => hasContent && toggleFolder(folder.id, e)}
+        >
+          {hasContent ? (
+            isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />
+          ) : (
+            <span style={{ width: 16 }} />
+          )}
+          <Folder size={16} />
+          <span>{folder.title}</span>
+          <span className="tree-folder-count">{folder.pages.length}</span>
+        </div>
+        
+        {isExpanded && (
+          <div className="tree-folder-content">
+            {/* Дочерние папки */}
+            {folder.children.map(child => renderFolder(child))}
+            
+            {/* Страницы в папке */}
+            {filteredPages.map(page => (
+              <div 
+                key={page.id}
+                className={`tree-select-item tree-page level-${folder.level + 1} ${value === page.id ? 'selected' : ''}`}
+                onClick={() => onChange(page.id)}
+              >
+                <FileText size={16} />
+                <span>{page.title}</span>
+                {value === page.id && <Check size={16} className="tree-check" />}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Фильтрованные корневые страницы
+  const filteredRootPages = rootPages.filter(p => filterBySearch(p.title));
+
+  const hasAnyContent = pages.length > 0 || folders.length > 0;
+
+  return (
+    <div className="tree-select-wrapper">
+      <div className="tree-select-search">
+        <input
+          type="text"
+          placeholder="Поиск страницы..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="input"
+        />
+      </div>
+      
+      <div className="tree-select">
+        {!hasAnyContent ? (
+          <div className="tree-select-empty">Нет страниц. Создайте в разделе "Страницы"</div>
+        ) : (
+          <>
+            {/* Папки с содержимым */}
+            {treeData.map(folder => renderFolder(folder))}
+            
+            {/* Страницы без папки */}
+            {filteredRootPages.length > 0 && (
+              <>
+                {treeData.length > 0 && <div className="tree-select-divider">Без папки</div>}
+                {filteredRootPages.map(page => (
+                  <div 
+                    key={page.id}
+                    className={`tree-select-item tree-page ${value === page.id ? 'selected' : ''}`}
+                    onClick={() => onChange(page.id)}
+                  >
+                    <FileText size={16} />
+                    <span>{page.title}</span>
+                    {value === page.id && <Check size={16} className="tree-check" />}
+                  </div>
+                ))}
+              </>
+            )}
+            
+            {/* Если поиск не дал результатов */}
+            {search && filteredRootPages.length === 0 && treeData.every(f => {
+              const fp = f.pages.filter(p => filterBySearch(p.title));
+              return fp.length === 0 && !filterBySearch(f.title);
+            }) && (
+              <div className="tree-select-empty">Ничего не найдено</div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Компонент элемента списка
+function SidebarListItem({ item, index, onEdit, onDelete, level = 0 }) {
+  const [expanded, setExpanded] = useState(true);
+  
+  // Для папки из проводника показываем страницы из неё
+  const folderPages = item.folder?.pages || item.folderPages || [];
+  const hasChildren = item.children?.length > 0 || folderPages.length > 0;
+
+  const getIcon = (type) => {
+    if (type === 'divider') return Minus;
+    if (type === 'link') return ExternalLink;
+    if (type === 'folder') return expanded ? FolderOpen : Folder;
+    if (type === 'header') return TypeIcon;
+    return FileText;
+  };
+
+  const getTypeBadge = (type) => {
+    const badges = {
+      page: { label: 'Страница', class: 'badge-info' },
+      folder: { label: 'Папка', class: 'badge-warning' },
+      header: { label: 'Заголовок', class: 'badge-secondary' },
+      link: { label: 'Ссылка', class: 'badge-primary' },
+      divider: { label: 'Разделитель', class: 'badge-secondary' }
+    };
+    return badges[type] || { label: type, class: '' };
+  };
+
+  const getTitle = () => {
+    if (item.type === 'divider') return '— Разделитель —';
+    if (item.type === 'folder' && item.folder) return item.title || item.folder.title;
+    if (item.type === 'page' && item.page) return item.title || item.page.title;
+    return item.title || 'Без названия';
+  };
+
+  const getSubtitle = () => {
+    if (item.type === 'folder' && item.folder) {
+      return `${folderPages.length} стр.`;
+    }
+    if (item.type === 'page' && item.page) {
+      return `→ ${item.page.slug}`;
+    }
+    if (item.type === 'link' && item.externalUrl) {
+      return `→ ${item.externalUrl}`;
+    }
+    return null;
+  };
+
+  const IconComponent = getIcon(item.type);
+  const typeBadge = getTypeBadge(item.type);
+
+  return (
+    <Draggable draggableId={item.id} index={index}>
+      {(provided, snapshot) => (
+        <div ref={provided.innerRef} {...provided.draggableProps}>
+          <div
+            className={`sidebar-list-item ${item.type} ${snapshot.isDragging ? 'dragging' : ''}`}
+            style={{ paddingLeft: `${16 + level * 24}px` }}
+          >
+            <div className="sidebar-list-drag" {...provided.dragHandleProps}>
+              <GripVertical size={16} />
+            </div>
+            
+            {hasChildren && (
+              <button className="sidebar-list-expand" onClick={() => setExpanded(!expanded)}>
+                {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
             )}
+            
+            <div className="sidebar-list-icon">
+              <IconComponent size={16} />
+            </div>
+            
+            <div className="sidebar-list-content">
+              <span className="sidebar-list-title">{getTitle()}</span>
+              {getSubtitle() && (
+                <span className="sidebar-list-page">{getSubtitle()}</span>
+              )}
+            </div>
+            
+            <span className={`badge ${typeBadge.class}`}>{typeBadge.label}</span>
+            <span className={`badge ${item.isVisible ? 'badge-success' : 'badge-error'}`}>
+              {item.isVisible ? 'Видим' : 'Скрыт'}
+            </span>
+            
+            <div className="sidebar-list-actions">
+              <button className="btn btn-icon" onClick={() => onEdit(item)} title="Редактировать">
+                <Edit size={16} />
+              </button>
+              <button className="btn btn-icon btn-danger" onClick={() => onDelete(item)} title="Удалить">
+                <Trash2 size={16} />
+              </button>
+            </div>
           </div>
-
-          {!search && (
-            <div className="icon-picker-categories">
-              {iconCategories.map(cat => (
-                <button
-                  key={cat.name}
-                  type="button"
-                  className={`icon-picker-category ${activeCategory === cat.name ? 'active' : ''}`}
-                  onClick={() => setActiveCategory(cat.name)}
-                >
-                  {cat.name}
-                </button>
+          
+          {/* Страницы внутри папки */}
+          {hasChildren && expanded && item.type === 'folder' && folderPages.length > 0 && (
+            <div className="sidebar-list-children">
+              {folderPages.map((page, idx) => (
+                <div key={page.id} className="sidebar-list-item page" style={{ paddingLeft: `${40 + level * 24}px` }}>
+                  <div className="sidebar-list-icon">
+                    <FileText size={16} />
+                  </div>
+                  <div className="sidebar-list-content">
+                    <span className="sidebar-list-title">{page.title}</span>
+                    <span className="sidebar-list-page">→ {page.slug}</span>
+                  </div>
+                </div>
               ))}
             </div>
           )}
-
-          <div className="icon-picker-content">
-            {search && (
-              <div className="icon-picker-results-header">
-                Найдено: {filteredIcons?.length || 0}
-              </div>
-            )}
-            
-            <div className="icon-picker-grid">
-              {displayIcons.map(({ name, icon: Icon, label }) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={`icon-picker-item ${value === name ? 'selected' : ''}`}
-                  onClick={() => selectIcon(name)}
-                  title={label}
-                >
-                  <Icon size={20} />
-                  <span className="icon-picker-item-label">{label}</span>
-                </button>
+          
+          {/* Вложенные элементы сайдбара */}
+          {hasChildren && expanded && item.children?.length > 0 && (
+            <div className="sidebar-list-children">
+              {item.children.map((child, idx) => (
+                <SidebarListItem
+                  key={child.id}
+                  item={child}
+                  index={idx}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  level={level + 1}
+                />
               ))}
             </div>
-
-            {search && filteredIcons?.length === 0 && (
-              <div className="icon-picker-empty">Иконки не найдены</div>
-            )}
-          </div>
+          )}
         </div>
       )}
-    </div>
+    </Draggable>
   );
 }
 
 export default function AdminSidebar() {
   const [items, setItems] = useState([]);
-  const [pageList, setPageList] = useState([]);
-  const [roleList, setRoleList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [folderTree, setFolderTree] = useState([]);
+  const [pageList, setPageList] = useState([]);
+  
   const [modal, setModal] = useState({ open: false, item: null });
   const [form, setForm] = useState({ 
-    type: 'page', title: '', pageId: '', externalUrl: '', 
-    icon: 'file', allowedRoles: [], isVisible: true 
+    type: 'page', 
+    title: '', 
+    pageId: '', 
+    folderId: '',
+    externalUrl: '', 
+    allowedRoles: [], 
+    isVisible: true 
   });
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     try {
-      const [s, p, r] = await Promise.all([
-        sidebar.listAll(), 
-        pages.list({ limit: 200 }), 
-        roles.list()
+      const [sidebarRes, foldersRes, pagesRes] = await Promise.all([
+        sidebar.listAll(),
+        folders.tree(),
+        pages.list({ limit: 500 })
       ]);
-      setItems(s.data);
-      setPageList(p.data.rows || []);
-      setRoleList(r.data);
+      setItems(sidebarRes.data);
+      setFolderTree(foldersRes.data);
+      setPageList(pagesRes.data.rows || []);
     } catch (e) { 
       toast.error('Ошибка загрузки'); 
     } finally { 
@@ -376,35 +337,60 @@ export default function AdminSidebar() {
         type: item.type, 
         title: item.title || '', 
         pageId: item.pageId || '', 
+        folderId: item.folderId || '',
         externalUrl: item.externalUrl || '', 
-        icon: item.icon || 'file', 
         allowedRoles: item.allowedRoles || [], 
         isVisible: item.isVisible 
       });
     } else {
       setForm({ 
-        type: 'page', title: '', pageId: '', externalUrl: '', 
-        icon: 'file', allowedRoles: [], isVisible: true 
+        type: 'page', 
+        title: '', 
+        pageId: '', 
+        folderId: '',
+        externalUrl: '', 
+        allowedRoles: [], 
+        isVisible: true 
       });
     }
     setModal({ open: true, item });
   };
 
   const handleSave = async () => {
-    if (form.type !== 'divider' && !form.title) { 
-      toast.error('Введите заголовок'); 
-      return; 
+    // Validation
+    if (form.type === 'page' && !form.pageId) {
+      toast.error('Выберите страницу');
+      return;
     }
-    if (form.type === 'page' && !form.pageId) { 
-      toast.error('Выберите страницу'); 
-      return; 
+    if (form.type === 'folder' && !form.folderId) {
+      toast.error('Выберите папку');
+      return;
     }
+    if (form.type === 'link' && !form.externalUrl) {
+      toast.error('Введите URL');
+      return;
+    }
+    if (form.type === 'header' && !form.title) {
+      toast.error('Введите заголовок');
+      return;
+    }
+
     try {
+      const data = {
+        type: form.type,
+        title: ['header', 'link'].includes(form.type) ? form.title : null,
+        pageId: form.type === 'page' ? form.pageId : null,
+        folderId: form.type === 'folder' ? form.folderId : null,
+        externalUrl: form.type === 'link' ? form.externalUrl : null,
+        allowedRoles: form.allowedRoles,
+        isVisible: form.isVisible
+      };
+
       if (modal.item) {
-        await sidebar.update(modal.item.id, form);
+        await sidebar.update(modal.item.id, data);
         toast.success('Обновлено');
       } else {
-        await sidebar.create(form);
+        await sidebar.create(data);
         toast.success('Добавлено');
       }
       setModal({ open: false, item: null });
@@ -415,7 +401,7 @@ export default function AdminSidebar() {
   };
 
   const handleDelete = async (item) => {
-    if (!window.confirm('Удалить элемент?')) return;
+    if (!window.confirm(`Удалить элемент из меню?`)) return;
     try {
       await sidebar.delete(item.id);
       toast.success('Удалено');
@@ -434,9 +420,14 @@ export default function AdminSidebar() {
     
     setItems(newItems);
     
-    const reordered = newItems.map((item, i) => ({ id: item.id, sortOrder: i }));
+    const reordered = newItems.map((item, i) => ({ 
+      id: item.id, 
+      sortOrder: i,
+      parentId: item.parentId 
+    }));
+    
     try {
-      await sidebar.reorder(reordered);
+      await sidebar.reorder({ items: reordered });
       toast.success('Порядок сохранён');
     } catch (e) { 
       toast.error('Ошибка сортировки'); 
@@ -444,11 +435,18 @@ export default function AdminSidebar() {
     }
   };
 
-  const getIcon = (type, iconName) => {
-    if (type === 'divider') return Minus;
-    if (type === 'link') return LinkIcon;
-    return iconComponentMap[iconName] || FileText;
+  // Flatten folder tree for select
+  const flattenTree = (tree, level = 0) => {
+    let result = [];
+    for (const folder of tree) {
+      result.push({ ...folder, level });
+      if (folder.children?.length > 0) {
+        result = result.concat(flattenTree(folder.children, level + 1));
+      }
+    }
+    return result;
   };
+  const flatFolders = flattenTree(folderTree);
 
   return (
     <div className="admin-page">
@@ -471,49 +469,15 @@ export default function AdminSidebar() {
                   {...provided.droppableProps}
                   ref={provided.innerRef}
                 >
-                  {items.map((item, index) => {
-                    const IconComponent = getIcon(item.type, item.icon);
-                    return (
-                      <Draggable key={item.id} draggableId={item.id} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            className={`sidebar-list-item ${item.type} ${snapshot.isDragging ? 'dragging' : ''}`}
-                          >
-                            <div className="sidebar-list-drag" {...provided.dragHandleProps}>
-                              <GripVertical size={16} />
-                            </div>
-                            <div className="sidebar-list-icon">
-                              <IconComponent size={16} />
-                            </div>
-                            <div className="sidebar-list-content">
-                              <span className="sidebar-list-title">
-                                {item.title || '— Разделитель —'}
-                              </span>
-                              {item.page && (
-                                <span className="sidebar-list-page">→ {item.page.title}</span>
-                              )}
-                              {item.externalUrl && (
-                                <span className="sidebar-list-page">→ {item.externalUrl}</span>
-                              )}
-                            </div>
-                            <span className={`badge ${item.isVisible ? 'badge-success' : 'badge-secondary'}`}>
-                              {item.isVisible ? 'Видим' : 'Скрыт'}
-                            </span>
-                            <div className="sidebar-list-actions">
-                              <button className="btn btn-icon" onClick={() => openModal(item)} title="Редактировать">
-                                <Edit size={16} />
-                              </button>
-                              <button className="btn btn-icon btn-danger" onClick={() => handleDelete(item)} title="Удалить">
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                    );
-                  })}
+                  {items.map((item, index) => (
+                    <SidebarListItem
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      onEdit={openModal}
+                      onDelete={handleDelete}
+                    />
+                  ))}
                   {provided.placeholder}
                 </div>
               )}
@@ -523,16 +487,17 @@ export default function AdminSidebar() {
 
         {!loading && items.length === 0 && (
           <div className="admin-empty">
-            <p>Меню пусто. Добавьте первый элемент.</p>
+            <p>Меню пусто. Добавьте элементы.</p>
           </div>
         )}
       </div>
 
+      {/* Modal */}
       {modal.open && (
         <div className="modal-overlay" onClick={() => setModal({ open: false, item: null })}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>{modal.item ? 'Редактировать' : 'Добавить элемент'}</h2>
+              <h2>{modal.item ? 'Редактировать' : 'Добавить в меню'}</h2>
               <button className="modal-close" onClick={() => setModal({ open: false, item: null })}>
                 <X size={20} />
               </button>
@@ -546,88 +511,93 @@ export default function AdminSidebar() {
                   onChange={e => setForm({ ...form, type: e.target.value })}
                   className="select"
                 >
-                  <option value="page">Страница</option>
-                  <option value="link">Внешняя ссылка</option>
-                  <option value="divider">Разделитель</option>
+                  <option value="page">📄 Страница</option>
+                  <option value="folder">📁 Папка (из проводника)</option>
+                  <option value="header">📑 Заголовок секции</option>
+                  <option value="link">🔗 Внешняя ссылка</option>
+                  <option value="divider">➖ Разделитель</option>
                 </select>
               </div>
 
-              {form.type !== 'divider' && (
+              {/* Page selector - tree view */}
+              {form.type === 'page' && (
+                <div className="form-group">
+                  <label className="form-label">Выберите страницу *</label>
+                  <PageTreeSelect 
+                    pages={pageList}
+                    folders={folderTree}
+                    value={form.pageId}
+                    onChange={(pageId) => setForm({ ...form, pageId })}
+                  />
+                </div>
+              )}
+
+              {/* Folder selector */}
+              {form.type === 'folder' && (
+                <div className="form-group">
+                  <label className="form-label">Выберите папку *</label>
+                  <div className="tree-select">
+                    {flatFolders.length === 0 ? (
+                      <div className="tree-select-empty">Нет папок. Создайте в разделе "Страницы"</div>
+                    ) : (
+                      flatFolders.map(folder => (
+                        <div 
+                          key={folder.id}
+                          className={`tree-select-item level-${folder.level} ${form.folderId === folder.id ? 'selected' : ''}`}
+                          onClick={() => setForm({ ...form, folderId: folder.id })}
+                        >
+                          <Folder size={16} />
+                          <span>{folder.title}</span>
+                          {form.folderId === folder.id && <Check size={16} style={{ marginLeft: 'auto' }} />}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <small className="form-hint">Все страницы из папки автоматически появятся в меню</small>
+                </div>
+              )}
+
+              {/* Header title */}
+              {form.type === 'header' && (
+                <div className="form-group">
+                  <label className="form-label">Заголовок *</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={form.title}
+                    onChange={e => setForm({ ...form, title: e.target.value })}
+                    placeholder="НАЗВАНИЕ СЕКЦИИ"
+                  />
+                </div>
+              )}
+
+              {/* Link */}
+              {form.type === 'link' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label">Заголовок</label>
+                    <label className="form-label">Название *</label>
                     <input
                       type="text"
+                      className="input"
                       value={form.title}
                       onChange={e => setForm({ ...form, title: e.target.value })}
-                      placeholder="Название пункта меню"
-                      className="input"
+                      placeholder="Название ссылки"
                     />
                   </div>
-
                   <div className="form-group">
-                    <label className="form-label">Иконка</label>
-                    <IconPicker 
-                      value={form.icon} 
-                      onChange={(icon) => setForm({ ...form, icon })} 
+                    <label className="form-label">URL *</label>
+                    <input
+                      type="url"
+                      className="input"
+                      value={form.externalUrl}
+                      onChange={e => setForm({ ...form, externalUrl: e.target.value })}
+                      placeholder="https://example.com"
                     />
                   </div>
                 </>
               )}
 
-              {form.type === 'page' && (
-                <div className="form-group">
-                  <label className="form-label">Страница</label>
-                  <select 
-                    value={form.pageId} 
-                    onChange={e => setForm({ ...form, pageId: e.target.value })}
-                    className="select"
-                  >
-                    <option value="">— Выберите страницу —</option>
-                    {pageList.map(p => (
-                      <option key={p.id} value={p.id}>{p.title}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {form.type === 'link' && (
-                <div className="form-group">
-                  <label className="form-label">URL ссылки</label>
-                  <input
-                    type="url"
-                    value={form.externalUrl}
-                    onChange={e => setForm({ ...form, externalUrl: e.target.value })}
-                    placeholder="https://example.com"
-                    className="input"
-                  />
-                </div>
-              )}
-
-              {form.type !== 'divider' && roleList.length > 0 && (
-                <div className="form-group">
-                  <label className="form-label">Доступ для ролей</label>
-                  <div className="checkbox-group">
-                    {roleList.map(role => (
-                      <label key={role.id} className="checkbox-item">
-                        <input
-                          type="checkbox"
-                          checked={form.allowedRoles.includes(role.id)}
-                          onChange={e => {
-                            const roles = e.target.checked
-                              ? [...form.allowedRoles, role.id]
-                              : form.allowedRoles.filter(r => r !== role.id);
-                            setForm({ ...form, allowedRoles: roles });
-                          }}
-                        />
-                        {role.name}
-                      </label>
-                    ))}
-                  </div>
-                  <small className="form-hint">Пусто = доступно всем</small>
-                </div>
-              )}
-
+              {/* Visibility */}
               <div className="form-group">
                 <label className="checkbox-item">
                   <input

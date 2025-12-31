@@ -1,8 +1,8 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const sanitizeHtml = require('sanitize-html');
-const { Page, User, SearchIndex } = require('../models');
-const { authenticate, requirePermission, checkPageAccess } = require('../middleware/auth');
+const { Page, User, SearchIndex, Folder, SidebarItem } = require('../models');
+const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -27,7 +27,6 @@ const sanitizeConfig = {
   allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel']
 };
 
-// Extract plain text from HTML for search indexing
 function extractTextContent(html) {
   if (!html) return '';
   return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
@@ -35,7 +34,6 @@ function extractTextContent(html) {
     .trim();
 }
 
-// Generate slug from title
 function generateSlug(title) {
   return title
     .toLowerCase()
@@ -52,14 +50,18 @@ function generateSlug(title) {
 // Get all pages (with filtering)
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { published, search, limit = 50, offset = 0 } = req.query;
+    const { published, search, folderId, limit = 50, offset = 0 } = req.query;
     
     const where = {};
     if (published !== undefined) {
       where.isPublished = published === 'true';
     }
+    
+    // Фильтр по папке
+    if (folderId !== undefined) {
+      where.folderId = folderId === 'null' ? null : folderId;
+    }
 
-    // Для неадминов показываем только опубликованные страницы
     if (!req.user.isAdmin && published === undefined) {
       where.isPublished = true;
     }
@@ -68,15 +70,15 @@ router.get('/', authenticate, async (req, res) => {
       where,
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
-        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] }
+        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
       ],
-      order: [['updatedAt', 'DESC']],
+      order: [['sortOrder', 'ASC'], ['updatedAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
       attributes: { exclude: ['content', 'customCss', 'customJs'] }
     });
 
-    // Filter by user's role access
     if (!req.user.isAdmin) {
       pages.rows = pages.rows.filter(page => {
         if (!page.allowedRoles || page.allowedRoles.length === 0) return true;
@@ -95,14 +97,14 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/:identifier', authenticate, async (req, res) => {
   try {
     const { identifier } = req.params;
-    
     const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identifier);
     
     const page = await Page.findOne({
       where: isUUID ? { id: identifier } : { slug: identifier },
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
-        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] }
+        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
       ]
     });
 
@@ -110,19 +112,15 @@ router.get('/:identifier', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Page not found' });
     }
 
-    // Проверка видимости черновиков
-    // Черновики могут видеть только админы и авторы страницы
     if (!page.isPublished) {
       const canView = req.user.isAdmin || 
                       page.createdBy === req.user.id ||
                       req.user.permissions?.pages?.write;
-      
       if (!canView) {
         return res.status(404).json({ error: 'Page not found' });
       }
     }
 
-    // Check role-based access
     if (!req.user.isAdmin && page.allowedRoles?.length > 0) {
       if (!page.allowedRoles.includes(req.user.roleId)) {
         return res.status(403).json({ error: 'Access denied' });
@@ -139,7 +137,7 @@ router.get('/:identifier', authenticate, async (req, res) => {
 // Create page
 router.post('/', authenticate, requirePermission('pages', 'write'), [
   body('title').trim().notEmpty().withMessage('Title is required'),
-  body('contentType').isIn(['wysiwyg', 'html']).withMessage('Invalid content type')
+  body('contentType').optional().isIn(['wysiwyg', 'html']).withMessage('Invalid content type')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -147,21 +145,25 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, content, contentType, description, keywords, icon, 
-            isPublished, allowedRoles, customCss, customJs, metadata } = req.body;
+    const { title, content, contentType = 'wysiwyg', description, keywords, icon, 
+            isPublished, allowedRoles, customCss, customJs, metadata, folderId } = req.body;
 
     let slug = req.body.slug || generateSlug(title);
     
-    // Ensure unique slug
     const existing = await Page.findOne({ where: { slug } });
     if (existing) {
       slug = `${slug}-${Date.now()}`;
     }
 
-    // Sanitize content based on type
-    const sanitizedContent = contentType === 'html' ?
-      content : sanitizeHtml(content || '', sanitizeConfig);
+    const sanitizedContent = contentType === 'html' 
+      ? content 
+      : sanitizeHtml(content || '', sanitizeConfig);
     const searchContent = extractTextContent(sanitizedContent);
+
+    // Получаем maxSortOrder для папки
+    const maxOrder = await Page.max('sortOrder', { 
+      where: { folderId: folderId || null } 
+    });
 
     const page = await Page.create({
       slug,
@@ -172,6 +174,8 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       keywords: keywords || [],
       searchContent,
       icon,
+      folderId: folderId || null,
+      sortOrder: (maxOrder || 0) + 1,
       isPublished: isPublished || false,
       allowedRoles: allowedRoles || [],
       customCss,
@@ -181,7 +185,6 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       updatedBy: req.user.id
     });
 
-    // Update search index
     await SearchIndex.upsert({
       entityType: 'page',
       entityId: page.id,
@@ -191,7 +194,14 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       url: `/page/${page.slug}`
     });
 
-    res.status(201).json(page);
+    const created = await Page.findByPk(page.id, {
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
+      ]
+    });
+
+    res.status(201).json(created);
   } catch (error) {
     console.error('Create page error:', error);
     res.status(500).json({ error: 'Failed to create page' });
@@ -207,9 +217,8 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     }
 
     const { title, content, contentType, description, keywords, icon,
-            isPublished, allowedRoles, customCss, customJs, metadata, slug } = req.body;
+            isPublished, allowedRoles, customCss, customJs, metadata, slug, folderId, sortOrder } = req.body;
 
-    // If slug changed, check uniqueness
     if (slug && slug !== page.slug) {
       const existing = await Page.findOne({ where: { slug } });
       if (existing) {
@@ -229,14 +238,16 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       ...(customCss !== undefined && { customCss }),
       ...(customJs !== undefined && { customJs }),
       ...(metadata && { metadata }),
+      ...(folderId !== undefined && { folderId: folderId || null }),
+      ...(sortOrder !== undefined && { sortOrder }),
       updatedBy: req.user.id
     };
 
-    // Обрабатываем content только если он передан в запросе
     if (content !== undefined) {
       const type = contentType || page.contentType;
-      const sanitizedContent = type === 'html' ?
-        content : sanitizeHtml(content || '', sanitizeConfig);
+      const sanitizedContent = type === 'html' 
+        ? content 
+        : sanitizeHtml(content || '', sanitizeConfig);
       const searchContent = extractTextContent(sanitizedContent);
       
       updateData.content = sanitizedContent;
@@ -245,7 +256,6 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
 
     await page.update(updateData);
 
-    // Update search index
     await SearchIndex.upsert({
       entityType: 'page',
       entityId: page.id,
@@ -258,7 +268,8 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     const updated = await Page.findByPk(page.id, {
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
-        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] }
+        { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
       ]
     });
 
@@ -278,6 +289,10 @@ router.delete('/:id', authenticate, requirePermission('pages', 'delete'), async 
     }
 
     await SearchIndex.destroy({ where: { entityType: 'page', entityId: page.id } });
+    
+    // Удаляем связанные элементы сайдбара
+    await SidebarItem.destroy({ where: { pageId: page.id } });
+    
     await page.destroy();
 
     res.json({ message: 'Page deleted' });
@@ -287,14 +302,13 @@ router.delete('/:id', authenticate, requirePermission('pages', 'delete'), async 
   }
 });
 
-// Toggle favorite
+// Toggle favorite (legacy support)
 router.post('/:id/favorite', authenticate, async (req, res) => {
   try {
     const page = await Page.findByPk(req.params.id);
     if (!page) {
       return res.status(404).json({ error: 'Page not found' });
     }
-
     await page.update({ isFavorite: !page.isFavorite });
     res.json({ isFavorite: page.isFavorite });
   } catch (error) {

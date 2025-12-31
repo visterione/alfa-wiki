@@ -213,13 +213,13 @@
   color: var(--primary);
 }
 
+/* Тонкий разделитель */
 .sidebar-divider {
-  padding: 16px 14px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  height: 1px !important;
+  padding: 0 !important;
+  background: var(--border-light) !important;
+  margin: 6px 0 !important;
+  font-size: 0 !important;
 }
 
 .sidebar-section {
@@ -319,4 +319,69 @@
   .content-wrapper:has(.admin-page) {
     max-width: 1600px;
   }
+}
+
+/* Заголовок секции в сайдбаре */
+.sidebar-header {
+  padding: 16px 14px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-top: 8px;
+}
+
+.sidebar-header:first-child {
+  margin-top: 0;
+}
+
+.sidebar-folder {
+  margin-bottom: 2px;
+}
+
+.sidebar-folder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.sidebar-folder-toggle:hover {
+  background: var(--bg-secondary);
+}
+
+.sidebar-folder-toggle.has-active-child {
+  color: var(--primary);
+}
+
+.sidebar-folder-toggle.has-active-child .sidebar-item-icon {
+  color: var(--primary);
+}
+
+.sidebar-folder-chevron {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+.sidebar-folder-children {
+  overflow: hidden;
+}
+
+.sidebar-external {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.sidebar-item:hover .sidebar-external {
+  opacity: 1;
 }

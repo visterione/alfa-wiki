@@ -12,6 +12,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
 const pageRoutes = require('./routes/pages');
+const folderRoutes = require('./routes/folders'); // NEW
 const sidebarRoutes = require('./routes/sidebar');
 const mediaRoutes = require('./routes/media');
 const searchRoutes = require('./routes/search');
@@ -25,13 +26,11 @@ const app = express();
 // Security middleware
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
 
-// CORS configuration - разрешаем запросы с любого origin в development
+// CORS configuration
 app.use(cors({
   origin: (origin, callback) => {
-    // Разрешаем запросы без origin (curl, Postman, мобильные приложения)
     if (!origin) return callback(null, true);
     
-    // В production проверяем FRONTEND_URL
     if (process.env.NODE_ENV === 'production') {
       const allowedOrigins = process.env.FRONTEND_URL 
         ? process.env.FRONTEND_URL.split(',').map(url => url.trim())
@@ -40,7 +39,6 @@ app.use(cors({
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      // Также разрешаем если origin на том же хосте
       try {
         const originUrl = new URL(origin);
         const allowed = allowedOrigins.some(allowed => {
@@ -55,7 +53,6 @@ app.use(cors({
       return callback(new Error('Not allowed by CORS'));
     }
     
-    // В development разрешаем все origins
     callback(null, true);
   },
   credentials: true
@@ -78,6 +75,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/pages', pageRoutes);
+app.use('/api/folders', folderRoutes); // NEW
 app.use('/api/sidebar', sidebarRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/search', searchRoutes);
@@ -113,7 +111,6 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('✅ Database connected');
     
-    // Sync models (in dev mode, use alter; in prod, use migrations)
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: true });
       console.log('✅ Models synchronized');

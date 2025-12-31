@@ -40,6 +40,24 @@ const User = sequelize.define('User', {
   settings: { type: DataTypes.JSONB, defaultValue: {} }
 }, { tableName: 'users', timestamps: true });
 
+// === FOLDER MODEL (NEW) ===
+const Folder = sequelize.define('Folder', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: { type: DataTypes.STRING(255), allowNull: false },
+  icon: { type: DataTypes.STRING(50), defaultValue: 'folder' },
+  parentId: { type: DataTypes.UUID, allowNull: true }, // Для вложенности (макс 2 уровня)
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  description: { type: DataTypes.TEXT },
+  createdBy: { type: DataTypes.UUID }
+}, { 
+  tableName: 'folders', 
+  timestamps: true,
+  indexes: [
+    { fields: ['parentId'] },
+    { fields: ['sortOrder'] }
+  ]
+});
+
 // === PAGE MODEL ===
 const Page = sequelize.define('Page', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -51,8 +69,10 @@ const Page = sequelize.define('Page', {
   keywords: { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
   searchContent: { type: DataTypes.TEXT },
   icon: { type: DataTypes.STRING(50) },
+  folderId: { type: DataTypes.UUID, allowNull: true }, // NEW: принадлежность к папке
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 }, // NEW: порядок в папке
   isPublished: { type: DataTypes.BOOLEAN, defaultValue: false },
-  isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false }, // Оставляем для совместимости, но не используем
+  isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   customCss: { type: DataTypes.TEXT },
   customJs: { type: DataTypes.TEXT },
@@ -63,11 +83,12 @@ const Page = sequelize.define('Page', {
   indexes: [
     { fields: ['slug'] },
     { fields: ['title'] },
+    { fields: ['folderId'] },
     { type: 'GIN', fields: ['keywords'] }
   ]
 });
 
-// === USER FAVORITE MODEL (NEW) ===
+// === USER FAVORITE MODEL ===
 const UserFavorite = sequelize.define('UserFavorite', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   userId: { type: DataTypes.UUID, allowNull: false },
@@ -82,16 +103,19 @@ const UserFavorite = sequelize.define('UserFavorite', {
 });
 
 // === SIDEBAR ITEM MODEL ===
+// Типы: page, folder, header, link, divider
+// page/folder ссылаются на существующие сущности через pageId/folderId
 const SidebarItem = sequelize.define('SidebarItem', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  type: { type: DataTypes.ENUM('page', 'divider', 'link', 'header'), defaultValue: 'page' },
-  title: { type: DataTypes.STRING(255) },
-  icon: { type: DataTypes.STRING(50) },
-  pageId: { type: DataTypes.UUID },
-  externalUrl: { type: DataTypes.STRING(1000) },
-  parentId: { type: DataTypes.UUID },
+  type: { type: DataTypes.ENUM('page', 'folder', 'header', 'link', 'divider'), defaultValue: 'page' },
+  title: { type: DataTypes.STRING(255) }, // Для header, link, divider или переопределения названия
+  icon: { type: DataTypes.STRING(50) },   // Для переопределения иконки
+  pageId: { type: DataTypes.UUID },       // Ссылка на Page (type='page')
+  folderId: { type: DataTypes.UUID },     // Ссылка на Folder (type='folder')
+  externalUrl: { type: DataTypes.STRING(1000) }, // Для type='link'
+  parentId: { type: DataTypes.UUID },     // Родительский SidebarItem (для вложенности в сайдбаре)
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
-  isExpanded: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isExpanded: { type: DataTypes.BOOLEAN, defaultValue: true },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   isVisible: { type: DataTypes.BOOLEAN, defaultValue: true }
 }, { tableName: 'sidebar_items', timestamps: true });
@@ -173,19 +197,34 @@ const Message = sequelize.define('Message', {
 }, { tableName: 'messages', timestamps: true });
 
 // === RELATIONSHIPS ===
+
+// User & Role
 User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
 Role.hasMany(User, { foreignKey: 'roleId', as: 'users' });
 
+// Folder hierarchy (self-referencing)
+Folder.belongsTo(Folder, { foreignKey: 'parentId', as: 'parent' });
+Folder.hasMany(Folder, { foreignKey: 'parentId', as: 'children' });
+Folder.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
+// Page & Folder
+Page.belongsTo(Folder, { foreignKey: 'folderId', as: 'folder' });
+Folder.hasMany(Page, { foreignKey: 'folderId', as: 'pages' });
+
+// Page & User
 Page.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
 Page.belongsTo(User, { foreignKey: 'updatedBy', as: 'editor' });
 
+// SidebarItem relationships
 SidebarItem.belongsTo(Page, { foreignKey: 'pageId', as: 'page' });
+SidebarItem.belongsTo(Folder, { foreignKey: 'folderId', as: 'folder' });
 SidebarItem.belongsTo(SidebarItem, { foreignKey: 'parentId', as: 'parent' });
 SidebarItem.hasMany(SidebarItem, { foreignKey: 'parentId', as: 'children' });
 
+// Media
 Media.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
 
-// User Favorites relationships
+// User Favorites
 UserFavorite.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 UserFavorite.belongsTo(Page, { foreignKey: 'pageId', as: 'page' });
 User.hasMany(UserFavorite, { foreignKey: 'userId', as: 'favorites' });
@@ -205,6 +244,7 @@ module.exports = {
   Sequelize,
   Role,
   User,
+  Folder,
   Page,
   UserFavorite,
   SidebarItem,

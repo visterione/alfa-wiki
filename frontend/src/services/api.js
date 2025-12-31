@@ -78,6 +78,18 @@ export const pages = {
   toggleFavorite: (id) => api.post(`/pages/${id}/favorite`) // Оставляем для совместимости
 };
 
+// Folders (NEW)
+export const folders = {
+  browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),
+  tree: () => api.get('/folders/tree'),
+  get: (id) => api.get(`/folders/${id}`),
+  create: (data) => api.post('/folders', data),
+  update: (id, data) => api.put(`/folders/${id}`, data),
+  move: (items) => api.post('/folders/move', { items }),
+  reorder: (data) => api.post('/folders/reorder', data),
+  delete: (id) => api.delete(`/folders/${id}`)
+};
+
 // Favorites (NEW)
 export const favorites = {
   list: () => api.get('/favorites'),
@@ -88,13 +100,14 @@ export const favorites = {
   reorder: (order) => api.put('/favorites/reorder', { order })
 };
 
-// Sidebar
+
 export const sidebar = {
   list: () => api.get('/sidebar'),
   listAll: () => api.get('/sidebar/all'),
   create: (data) => api.post('/sidebar', data),
   update: (id, data) => api.put(`/sidebar/${id}`, data),
-  reorder: (items) => api.post('/sidebar/reorder', { items }),
+  reorder: (data) => api.post('/sidebar/reorder', data),
+  reorderFolderPages: (folderId, pages) => api.post('/sidebar/reorder-folder-pages', { folderId, pages }),
   delete: (id) => api.delete(`/sidebar/${id}`)
 };
 
