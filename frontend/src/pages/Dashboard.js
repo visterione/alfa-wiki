@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { chat, users as usersApi, media, BASE_URL } from '../services/api';
-import { format } from 'date-fns';
+import { format, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import './Dashboard.css';
@@ -235,70 +235,52 @@ export default function Dashboard() {
     return diffDays === 0 ? format(d, 'HH:mm') : format(d, 'd MMM', { locale: ru });
   };
 
+  // Форматирование даты для разделителя (как в Telegram)
+  const formatDateSeparator = (date) => {
+    if (isToday(date)) return 'Сегодня';
+    if (isYesterday(date)) return 'Вчера';
+    if (isThisYear(date)) return format(date, 'd MMMM', { locale: ru });
+    return format(date, 'd MMMM yyyy', { locale: ru });
+  };
+
+  // Проверка, нужен ли разделитель даты между сообщениями
+  const shouldShowDateSeparator = (currentMsg, previousMsg) => {
+    if (!previousMsg) return true;
+    const currentDate = new Date(currentMsg.createdAt);
+    const previousDate = new Date(previousMsg.createdAt);
+    return currentDate.toDateString() !== previousDate.toDateString();
+  };
+
   const availableUsersToAdd = activeChat?.type === 'group' ? usersList.filter(u => !activeChat.members?.find(m => m.userId === u.id)) : [];
   const fixUrl = (urlOrPath) => getAvatarUrl(urlOrPath);
-  const getChatAvatar = (c) => c ? getAvatarUrl(c.avatar) : null;
-  const isGroupCreator = activeChat?.type === 'group' && activeChat?.createdBy === user.id;
+  const getChatAvatar = (c) => c ? (c.type === 'group' ? c.avatar : c.otherUser?.avatar) : null;
+  const isGroupCreator = activeChat?.type === 'group' && activeChat.createdBy === user.id;
 
-  const openLightbox = (images, idx = 0) => { setLightboxImages(images); setLightboxIndex(idx); setLightboxZoom(1); setLightboxOpen(true); };
-  const closeLightbox = () => { setLightboxOpen(false); setLightboxImages([]); setLightboxIndex(0); setLightboxZoom(1); };
-
-  const openPdfPreview = async (url, name) => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      setPdfPreview({ open: true, url, name, blobUrl });
-    } catch (e) {
-      console.error('Failed to load PDF:', e);
-      toast.error('Ошибка загрузки PDF');
-    }
-  };
-
-  const closePdfPreview = () => {
-    if (pdfPreview.blobUrl) {
-      window.URL.revokeObjectURL(pdfPreview.blobUrl);
-    }
-    setPdfPreview({ open: false, url: '', name: '', blobUrl: '' });
-  };
+  const openLightbox = (images, index) => { setLightboxImages(images); setLightboxIndex(index); setLightboxOpen(true); setLightboxZoom(1); };
+  const closeLightbox = () => { setLightboxOpen(false); setLightboxZoom(1); };
+  const openPdfPreview = (url, name) => setPdfPreview({ open: true, url, name, blobUrl: url });
+  const closePdfPreview = () => { setPdfPreview({ open: false, url: '', name: '', blobUrl: '' }); };
 
   const downloadFile = async (e, url, filename) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+    e.preventDefault();
+    e.stopPropagation();
     try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const downloadBlob = new Blob([blob], { type: 'application/octet-stream' });
-      const blobUrl = window.URL.createObjectURL(downloadBlob);
+      const res = await fetch(url);
+      const blob = await res.blob();
       const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename || 'file';
-      link.style.display = 'none';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
       link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(blobUrl);
-      }, 150);
-    } catch (err) {
-      console.error('Download failed:', err);
-      toast.error('Ошибка скачивания');
-    }
+      URL.revokeObjectURL(link.href);
+    } catch (err) { toast.error('Ошибка скачивания'); }
   };
 
   useEffect(() => {
+    if (!lightboxOpen && !videoPreview.open && !pdfPreview.open) return;
     const handleKey = (e) => {
-      if (e.key === 'Escape') {
-        if (lightboxOpen) closeLightbox();
-        if (videoPreview.open) setVideoPreview({ open: false, url: '', name: '' });
-        if (pdfPreview.open) closePdfPreview();
-      }
-      if (!lightboxOpen) return;
-      if (e.key === 'ArrowLeft') { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }
-      if (e.key === 'ArrowRight') { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }
+      if (e.key === 'Escape') { closeLightbox(); setVideoPreview({ open: false, url: '', name: '' }); closePdfPreview(); }
+      if (lightboxOpen && e.key === 'ArrowLeft') { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }
+      if (lightboxOpen && e.key === 'ArrowRight') { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -395,7 +377,7 @@ export default function Dashboard() {
             {loading ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(c => (
               <div key={c.id} className={`chat-item ${activeChat?.id === c.id ? 'active' : ''} ${c.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(c)}>
                 <div className={`chat-item-avatar ${c.type === 'group' ? 'group' : ''}`}>
-                  {getChatAvatar(c) ? <img src={getChatAvatar(c)} alt="" /> : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
+                  {getChatAvatar(c) ? <img src={getAvatarUrl(getChatAvatar(c))} alt="" /> : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
                 </div>
                 <div className="chat-item-content">
                   <div className="chat-item-header">
@@ -419,7 +401,7 @@ export default function Dashboard() {
               <div className="chat-main-header">
                 <button className="mobile-back btn-icon-chat" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
                 <div className={`chat-main-avatar ${activeChat.type === 'group' ? 'group' : ''}`} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
-                  {getChatAvatar(activeChat) ? <img src={getChatAvatar(activeChat)} alt="" /> : (activeChat.type === 'group' ? <Users size={24} /> : <User size={24} />)}
+                  {getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={24} /> : <User size={24} />)}
                 </div>
                 <div className="chat-main-info" onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
@@ -431,19 +413,32 @@ export default function Dashboard() {
                 {messages.length > 0 ? messages.map((msg, idx) => {
                   const isOwn = msg.senderId === user.id;
                   const showAvatar = !isOwn && (idx === 0 || messages[idx-1].senderId !== msg.senderId);
-                  if (msg.type === 'system') return <div key={msg.id} className="message-system">{msg.content}</div>;
+                  const showDateSeparator = shouldShowDateSeparator(msg, messages[idx - 1]);
+                  
                   const hasAttachments = msg.attachments && msg.attachments.length > 0;
                   const hasText = msg.content && !msg.content.startsWith('📎') && !msg.content.startsWith('📷');
+                  
                   return (
-                    <div key={msg.id} className={`message ${isOwn ? 'own' : ''}`}>
-                      {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
-                      <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
-                        {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
-                        {renderAttachments(msg.attachments, isOwn)}
-                        {hasText && <div className="message-content">{msg.content}</div>}
-                        <div className="message-meta"><span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>{isOwn && <span className="message-status"><CheckCheck size={14} /></span>}</div>
-                      </div>
-                    </div>
+                    <React.Fragment key={msg.id}>
+                      {showDateSeparator && (
+                        <div className="date-separator">
+                          <span>{formatDateSeparator(new Date(msg.createdAt))}</span>
+                        </div>
+                      )}
+                      {msg.type === 'system' ? (
+                        <div className="message-system">{msg.content}</div>
+                      ) : (
+                        <div className={`message ${isOwn ? 'own' : ''}`}>
+                          {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
+                          <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
+                            {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
+                            {renderAttachments(msg.attachments, isOwn)}
+                            {hasText && <div className="message-content">{msg.content}</div>}
+                            <div className="message-meta"><span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>{isOwn && <span className="message-status"><CheckCheck size={14} /></span>}</div>
+                          </div>
+                        </div>
+                      )}
+                    </React.Fragment>
                   );
                 }) : <div className="chat-no-messages"><p>Нет сообщений</p><span>Напишите первое сообщение</span></div>}
                 <div ref={messagesEndRef} />
@@ -474,7 +469,7 @@ export default function Dashboard() {
             <div className="chat-info-header"><h3>Информация о группе</h3><button className="btn-icon-chat" onClick={() => setShowChatInfo(false)}><X size={20} /></button></div>
             <div className="chat-info-body">
               <div className="chat-info-avatar-wrapper">
-                <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getChatAvatar(activeChat)} alt="" /> : <Users size={48} />}</div>
+                <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : <Users size={48} />}</div>
                 {isGroupCreator && (
                   <div className="chat-info-avatar-actions">
                     <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
@@ -535,14 +530,14 @@ export default function Dashboard() {
                   {usersList.map(u => (
                     <div key={u.id} className={`user-item ${selectedUsers.includes(u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u.id)}>
                       <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
-                      <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div>
-                      {selectedUsers.includes(u.id) && <Check size={20} className="text-primary" />}
+                      <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
+                      {selectedUsers.includes(u.id) && <Check size={20} />}
                     </div>
                   ))}
                 </div>
               </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-secondary" onClick={() => setShowNewGroup(false)}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim()}>Создать</button></div>
+            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowNewGroup(false)}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
           </div>
         </div>
       )}
@@ -556,63 +551,43 @@ export default function Dashboard() {
                 {availableUsersToAdd.map(u => (
                   <div key={u.id} className="user-item" onClick={() => addMemberToGroup(u.id)}>
                     <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
-                    <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div></div>
+                    <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
                   </div>
                 ))}
-                {availableUsersToAdd.length === 0 && <div className="text-muted text-center">Все пользователи уже в группе</div>}
+                {availableUsersToAdd.length === 0 && <div className="text-muted text-center">Нет доступных пользователей</div>}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Image Lightbox */}
+      {/* Lightbox для изображений */}
       {lightboxOpen && (
         <div className="lightbox-overlay" onClick={closeLightbox}>
-          <div className="lightbox-content" onClick={e => e.stopPropagation()}>
-            <button className="lightbox-close" onClick={closeLightbox}><X size={24} /></button>
-            {lightboxImages.length > 1 && (
-              <button className="lightbox-nav prev" onClick={() => { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}>
-                <ChevronLeft size={32} />
-              </button>
-            )}
-            <div className="lightbox-image-wrapper" style={{ transform: `scale(${lightboxZoom})` }}>
-              <img src={lightboxImages[lightboxIndex]} alt="" />
-            </div>
-            {lightboxImages.length > 1 && (
-              <button className="lightbox-nav next" onClick={() => { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}>
-                <ChevronRight size={32} />
-              </button>
-            )}
-            <div className="lightbox-controls">
-              <button onClick={() => setLightboxZoom(z => Math.max(0.5, z - 0.25))}><ZoomOut size={20} /></button>
-              <span>{Math.round(lightboxZoom * 100)}%</span>
-              <button onClick={() => setLightboxZoom(z => Math.min(3, z + 0.25))}><ZoomIn size={20} /></button>
-              {lightboxImages.length > 1 && <span className="lightbox-counter">{lightboxIndex + 1} / {lightboxImages.length}</span>}
-              <button className="lightbox-download" onClick={(e) => downloadFile(e, lightboxImages[lightboxIndex], `image_${lightboxIndex + 1}`)} title="Скачать">
-                <Download size={20} />
-              </button>
-            </div>
+          <button className="lightbox-close" onClick={closeLightbox}><X size={24} /></button>
+          <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}><ChevronLeft size={32} /></button>
+          <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}><ChevronRight size={32} /></button>
+          <div className="lightbox-controls">
+            <button onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.max(0.5, z - 0.25)); }}><ZoomOut size={20} /></button>
+            <span>{Math.round(lightboxZoom * 100)}%</span>
+            <button onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.min(3, z + 0.25)); }}><ZoomIn size={20} /></button>
           </div>
+          <img src={lightboxImages[lightboxIndex]} alt="" onClick={(e) => e.stopPropagation()} style={{ transform: `scale(${lightboxZoom})`, maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
         </div>
       )}
 
       {/* Video Preview */}
       {videoPreview.open && (
-        <div className="lightbox-overlay" onClick={() => setVideoPreview({ open: false, url: '', name: '' })}>
+        <div className="modal-overlay" onClick={() => setVideoPreview({ open: false, url: '', name: '' })}>
           <div className="media-preview-modal" onClick={e => e.stopPropagation()}>
             <div className="media-preview-header">
-              <span className="media-preview-title">{videoPreview.name}</span>
+              <div className="media-preview-title">{videoPreview.name}</div>
               <div className="media-preview-actions">
-                <button onClick={(e) => downloadFile(e, videoPreview.url, videoPreview.name)} title="Скачать"><Download size={20} /></button>
-                <button onClick={() => setVideoPreview({ open: false, url: '', name: '' })} title="Закрыть"><X size={20} /></button>
+                <button onClick={() => setVideoPreview({ open: false, url: '', name: '' })}><X size={20} /></button>
               </div>
             </div>
-            <div className="media-preview-body">
-              <video controls autoPlay className="media-preview-video">
-                <source src={videoPreview.url} />
-                Ваш браузер не поддерживает воспроизведение видео
-              </video>
+            <div style={{ padding: 20, background: 'black', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <video controls autoPlay style={{ maxWidth: '100%', maxHeight: 'calc(90vh - 60px)' }}><source src={videoPreview.url} /></video>
             </div>
           </div>
         </div>
@@ -620,18 +595,16 @@ export default function Dashboard() {
 
       {/* PDF Preview */}
       {pdfPreview.open && (
-        <div className="lightbox-overlay" onClick={closePdfPreview}>
+        <div className="modal-overlay" onClick={closePdfPreview}>
           <div className="media-preview-modal pdf-modal" onClick={e => e.stopPropagation()}>
             <div className="media-preview-header">
-              <span className="media-preview-title">{pdfPreview.name}</span>
+              <div className="media-preview-title">{pdfPreview.name}</div>
               <div className="media-preview-actions">
-                <button onClick={(e) => downloadFile(e, pdfPreview.url, pdfPreview.name)} title="Скачать"><Download size={20} /></button>
-                <button onClick={closePdfPreview} title="Закрыть"><X size={20} /></button>
+                <button onClick={(e) => { e.stopPropagation(); downloadFile(e, pdfPreview.url, pdfPreview.name); }}><Download size={20} /></button>
+                <button onClick={closePdfPreview}><X size={20} /></button>
               </div>
             </div>
-            <div className="media-preview-body">
-              <iframe src={pdfPreview.blobUrl} className="media-preview-pdf" title={pdfPreview.name} />
-            </div>
+            <iframe src={pdfPreview.blobUrl} style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} title={pdfPreview.name} />
           </div>
         </div>
       )}
