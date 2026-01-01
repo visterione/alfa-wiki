@@ -8,11 +8,75 @@ const router = express.Router();
 // Функция для очистки и форматирования excerpt
 const cleanExcerpt = (text) => {
   if (!text) return '';
-  return text
-    // Заменяем множественные пробелы и табы на один пробел
-    .replace(/\s+/g, ' ')
-    // Убираем пробелы в начале и конце
-    .trim();
+  return text.replace(/\s+/g, ' ').trim();
+};
+
+// Функция для форматирования результатов из SearchIndex
+const formatIndexedResult = (item, searchTerm) => {
+  let excerpt = '';
+  
+  if (item.content) {
+    const contentLower = item.content.toLowerCase();
+    const index = contentLower.indexOf(searchTerm);
+    if (index !== -1) {
+      const start = Math.max(0, index - 60);
+      const end = Math.min(item.content.length, index + searchTerm.length + 60);
+      let rawExcerpt = item.content.substring(start, end);
+      excerpt = (start > 0 ? '...' : '') + 
+               cleanExcerpt(rawExcerpt) + 
+               (end < item.content.length ? '...' : '');
+    } else {
+      let rawExcerpt = item.content.substring(0, 150);
+      excerpt = cleanExcerpt(rawExcerpt) + (item.content.length > 150 ? '...' : '');
+    }
+  }
+
+  // Специальная обработка для разных типов сущностей
+  let displayType = item.entityType;
+  let icon = 'file';
+  
+  switch (item.entityType) {
+    case 'accreditation':
+      displayType = 'Аккредитация';
+      icon = 'award';
+      // Добавляем информацию о медцентре и дате в excerpt
+      if (item.metadata) {
+        const meta = item.metadata;
+        const parts = [];
+        if (meta.medCenter) parts.push(`Медцентр: ${meta.medCenter}`);
+        if (meta.expirationDate) {
+          const date = new Date(meta.expirationDate);
+          parts.push(`Срок: ${date.toLocaleDateString('ru-RU')}`);
+        }
+        if (parts.length > 0) {
+          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+        }
+      }
+      break;
+    case 'doctor':
+      displayType = 'Врач';
+      icon = 'user';
+      break;
+    case 'service':
+      displayType = 'Услуга';
+      icon = 'briefcase';
+      break;
+    default:
+      displayType = item.entityType;
+  }
+
+  return {
+    type: item.entityType,
+    displayType: displayType,
+    icon: icon,
+    id: item.entityId,
+    title: item.title,
+    description: item.content?.substring(0, 200),
+    excerpt: excerpt,
+    url: item.url,
+    keywords: item.keywords,
+    metadata: item.metadata
+  };
 };
 
 // Main search endpoint with improved partial matching
@@ -58,7 +122,6 @@ router.get('/', authenticate, async (req, res) => {
       filteredPages.forEach(page => {
         let excerpt = '';
         
-        // Приоритет 1: Ищем в searchContent совпадение с поисковым запросом
         if (page.searchContent && page.searchContent.toLowerCase().includes(searchTerm)) {
           const content = page.searchContent;
           const index = content.toLowerCase().indexOf(searchTerm);
@@ -68,25 +131,21 @@ router.get('/', authenticate, async (req, res) => {
           excerpt = (start > 0 ? '...' : '') + 
                    cleanExcerpt(rawExcerpt) + 
                    (end < content.length ? '...' : '');
-        } 
-        // Приоритет 2: Если searchContent есть, но совпадения нет - берем начало
-        else if (page.searchContent && page.searchContent.length > 0) {
+        } else if (page.searchContent && page.searchContent.length > 0) {
           let rawExcerpt = page.searchContent.substring(0, 150);
           excerpt = cleanExcerpt(rawExcerpt) + 
                    (page.searchContent.length > 150 ? '...' : '');
-        }
-        // Приоритет 3: Используем description только если searchContent пустой
-        else if (page.description) {
+        } else if (page.description) {
           excerpt = cleanExcerpt(page.description.substring(0, 120)) + 
                    (page.description.length > 120 ? '...' : '');
-        }
-        // Приоритет 4: Если всё пусто, используем заглушку
-        else {
+        } else {
           excerpt = 'Нет доступного контента для предпросмотра';
         }
 
         results.push({
           type: 'page',
+          displayType: 'Страница',
+          icon: 'file-text',
           id: page.id,
           title: page.title,
           description: page.description,
@@ -97,48 +156,28 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Search in search index (for dynamic content like doctors, services, etc.)
+    // Search in search index (for dynamic content like accreditations, doctors, services, etc.)
     if (!type || type !== 'page') {
+      const whereClause = {
+        [Op.or]: [
+          { title: { [Op.iLike]: `%${searchTerm}%` } },
+          { content: { [Op.iLike]: `%${searchTerm}%` } },
+          { keywords: { [Op.overlap]: [searchTerm] } }
+        ]
+      };
+
+      // Если указан конкретный тип - фильтруем
+      if (type && type !== 'all') {
+        whereClause.entityType = type;
+      }
+
       const indexed = await SearchIndex.findAll({
-        where: {
-          [Op.or]: [
-            { title: { [Op.iLike]: `%${searchTerm}%` } },
-            { content: { [Op.iLike]: `%${searchTerm}%` } },
-            { keywords: { [Op.overlap]: [searchTerm] } }
-          ],
-          ...(type && type !== 'all' ? { entityType: type } : {})
-        },
+        where: whereClause,
         limit: parseInt(limit)
       });
 
       indexed.forEach(item => {
-        let excerpt = '';
-        if (item.content) {
-          const contentLower = item.content.toLowerCase();
-          const index = contentLower.indexOf(searchTerm);
-          if (index !== -1) {
-            const start = Math.max(0, index - 60);
-            const end = Math.min(item.content.length, index + searchTerm.length + 60);
-            let rawExcerpt = item.content.substring(start, end);
-            excerpt = (start > 0 ? '...' : '') + 
-                     cleanExcerpt(rawExcerpt) + 
-                     (end < item.content.length ? '...' : '');
-          } else {
-            let rawExcerpt = item.content.substring(0, 150);
-            excerpt = cleanExcerpt(rawExcerpt) + (item.content.length > 150 ? '...' : '');
-          }
-        }
-
-        results.push({
-          type: item.entityType,
-          id: item.entityId,
-          title: item.title,
-          description: item.content?.substring(0, 200),
-          excerpt: excerpt,
-          url: item.url,
-          keywords: item.keywords,
-          metadata: item.metadata
-        });
+        results.push(formatIndexedResult(item, searchTerm));
       });
     }
 
@@ -149,11 +188,9 @@ router.get('/', authenticate, async (req, res) => {
       const aTitleMatch = aTitle.includes(searchTerm);
       const bTitleMatch = bTitle.includes(searchTerm);
       
-      // Prioritize title matches
       if (aTitleMatch && !bTitleMatch) return -1;
       if (!aTitleMatch && bTitleMatch) return 1;
       
-      // Then prioritize matches at the start of the title
       if (aTitleMatch && bTitleMatch) {
         const aStartsWith = aTitle.startsWith(searchTerm);
         const bStartsWith = bTitle.startsWith(searchTerm);
@@ -187,7 +224,8 @@ router.get('/fulltext', authenticate, async (req, res) => {
     const searchQuery = q.trim();
     const likePattern = `%${searchQuery}%`;
 
-    const results = await sequelize.query(`
+    // Поиск по страницам
+    const pageResults = await sequelize.query(`
       SELECT 
         id, slug, title, description, keywords, "searchContent",
         GREATEST(
@@ -205,41 +243,65 @@ router.get('/fulltext', authenticate, async (req, res) => {
           WHEN description ILIKE :likePattern THEN 2
           WHEN "searchContent" ILIKE :likePattern THEN 1
           ELSE 0
-        END as match_type
+        END as priority
       FROM pages
-      WHERE 
-        "isPublished" = true AND
-        (
-          to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce("searchContent", ''))
-          @@ plainto_tsquery('russian', :searchQuery)
-          OR title ILIKE :likePattern
+      WHERE "isPublished" = true
+        AND (
+          title ILIKE :likePattern
           OR description ILIKE :likePattern
           OR "searchContent" ILIKE :likePattern
+          OR to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce("searchContent", '')) 
+             @@ plainto_tsquery('russian', :searchQuery)
         )
-      ORDER BY match_type DESC, rank DESC
+      ORDER BY priority DESC, rank DESC
       LIMIT :limit
     `, {
       replacements: { 
-        searchQuery,
-        likePattern,
+        searchQuery, 
+        likePattern, 
         exactStart: `${searchQuery}%`,
         limit: parseInt(limit) 
       },
       type: sequelize.QueryTypes.SELECT
     });
 
-    // Create excerpts for results
-    const enrichedResults = results.map(r => {
+    // Поиск по индексу (аккредитации и др.)
+    const indexResults = await sequelize.query(`
+      SELECT 
+        "entityType", "entityId", title, content, keywords, url, metadata,
+        CASE
+          WHEN title ILIKE :exactStart THEN 4
+          WHEN title ILIKE :likePattern THEN 3
+          WHEN content ILIKE :likePattern THEN 2
+          ELSE 1
+        END as priority
+      FROM search_index
+      WHERE 
+        title ILIKE :likePattern
+        OR content ILIKE :likePattern
+      ORDER BY priority DESC
+      LIMIT :limit
+    `, {
+      replacements: { 
+        likePattern, 
+        exactStart: `${searchQuery}%`,
+        limit: parseInt(limit) 
+      },
+      type: sequelize.QueryTypes.SELECT
+    });
+
+    const searchTermLower = searchQuery.toLowerCase();
+    const results = [];
+
+    // Обработка страниц
+    pageResults.forEach(r => {
       let excerpt = '';
       
       if (r.searchContent) {
-        const searchLower = q.trim().toLowerCase();
-        const contentLower = r.searchContent.toLowerCase();
-        const index = contentLower.indexOf(searchLower);
-        
+        const index = r.searchContent.toLowerCase().indexOf(searchTermLower);
         if (index !== -1) {
           const start = Math.max(0, index - 60);
-          const end = Math.min(r.searchContent.length, index + searchLower.length + 60);
+          const end = Math.min(r.searchContent.length, index + searchQuery.length + 60);
           let rawExcerpt = r.searchContent.substring(start, end);
           excerpt = (start > 0 ? '...' : '') + 
                    cleanExcerpt(rawExcerpt) + 
@@ -252,8 +314,10 @@ router.get('/fulltext', authenticate, async (req, res) => {
         excerpt = cleanExcerpt(r.description.substring(0, 120)) + (r.description.length > 120 ? '...' : '');
       }
 
-      return {
+      results.push({
         type: 'page',
+        displayType: 'Страница',
+        icon: 'file-text',
         id: r.id,
         title: r.title,
         description: r.description,
@@ -261,12 +325,30 @@ router.get('/fulltext', authenticate, async (req, res) => {
         url: `/page/${r.slug}`,
         keywords: r.keywords,
         rank: r.rank
-      };
+      });
+    });
+
+    // Обработка индексированных сущностей
+    indexResults.forEach(item => {
+      results.push(formatIndexedResult(item, searchTermLower));
+    });
+
+    // Сортировка по релевантности
+    results.sort((a, b) => {
+      const aTitle = a.title?.toLowerCase() || '';
+      const bTitle = b.title?.toLowerCase() || '';
+      const aTitleMatch = aTitle.includes(searchTermLower);
+      const bTitleMatch = bTitle.includes(searchTermLower);
+      
+      if (aTitleMatch && !bTitleMatch) return -1;
+      if (!aTitleMatch && bTitleMatch) return 1;
+      
+      return (b.rank || 0) - (a.rank || 0);
     });
 
     res.json({
-      results: enrichedResults,
-      total: enrichedResults.length,
+      results: results.slice(0, parseInt(limit)),
+      total: results.length,
       query: q
     });
   } catch (error) {
@@ -325,25 +407,72 @@ router.get('/suggest', authenticate, async (req, res) => {
       return res.json([]);
     }
 
+    const searchTerm = q.trim();
+
+    // Поиск по страницам
     const pages = await Page.findAll({
       where: {
         isPublished: true,
-        title: { [Op.iLike]: `%${q.trim()}%` }
+        title: { [Op.iLike]: `%${searchTerm}%` }
       },
       attributes: ['title', 'slug'],
       order: [
-        [sequelize.literal(`CASE WHEN title ILIKE '${q.trim()}%' THEN 0 ELSE 1 END`)],
+        [sequelize.literal(`CASE WHEN title ILIKE '${searchTerm}%' THEN 0 ELSE 1 END`)],
         ['title', 'ASC']
       ],
-      limit: parseInt(limit)
+      limit: Math.floor(parseInt(limit) / 2)
     });
 
-    res.json(pages.map(p => ({
-      title: p.title,
-      url: `/page/${p.slug}`
-    })));
+    // Поиск по индексу
+    const indexed = await SearchIndex.findAll({
+      where: {
+        title: { [Op.iLike]: `%${searchTerm}%` }
+      },
+      attributes: ['title', 'url', 'entityType'],
+      limit: Math.floor(parseInt(limit) / 2)
+    });
+
+    const suggestions = [
+      ...pages.map(p => ({
+        title: p.title,
+        url: `/page/${p.slug}`,
+        type: 'page'
+      })),
+      ...indexed.map(i => ({
+        title: i.title,
+        url: i.url,
+        type: i.entityType
+      }))
+    ];
+
+    res.json(suggestions.slice(0, parseInt(limit)));
   } catch (error) {
     res.status(500).json({ error: 'Failed to get suggestions' });
+  }
+});
+
+// Получить статистику индекса
+router.get('/stats', authenticate, async (req, res) => {
+  try {
+    const pageCount = await Page.count({ where: { isPublished: true } });
+    
+    const indexStats = await SearchIndex.findAll({
+      attributes: [
+        'entityType',
+        [sequelize.fn('COUNT', sequelize.col('id')), 'count']
+      ],
+      group: ['entityType']
+    });
+
+    res.json({
+      pages: pageCount,
+      indexed: indexStats.map(s => ({
+        type: s.entityType,
+        count: parseInt(s.getDataValue('count'))
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to get stats' });
   }
 });
 

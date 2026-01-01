@@ -1,10 +1,83 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Accreditation } = require('../models');
+const { Accreditation, SearchIndex } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+// ═══════════════════════════════════════════════════════════════
+// НАСТРОЙКА: Укажи slug wiki-страницы с аккредитациями
+// Посмотри URL страницы в браузере: /page/ЭТОТ_SLUG
+// ═══════════════════════════════════════════════════════════════
+const ACCREDITATIONS_PAGE_SLUG = 'accreditations'; // <-- ЗАМЕНИ НА СВОЙ SLUG
+// ═══════════════════════════════════════════════════════════════
+
+// === HELPER: Индексация аккредитации для поиска ===
+const indexAccreditation = async (accreditation) => {
+  // Формируем поисковый контент из всех релевантных полей
+  const searchContent = [
+    accreditation.fullName,
+    accreditation.specialty,
+    accreditation.medCenter,
+    accreditation.comment
+  ].filter(Boolean).join(' | ');
+
+  // Формируем заголовок для отображения в результатах
+  const title = `${accreditation.fullName} — ${accreditation.specialty}`;
+
+  // Ключевые слова для поиска
+  const keywords = [
+    accreditation.medCenter?.toLowerCase(),
+    accreditation.specialty?.toLowerCase(),
+    'аккредитация',
+    'сертификат',
+    'врач'
+  ].filter(Boolean);
+
+  await SearchIndex.upsert({
+    entityType: 'accreditation',
+    entityId: accreditation.id,
+    title: title,
+    content: searchContent,
+    keywords: keywords,
+    url: `/page/${ACCREDITATIONS_PAGE_SLUG}?highlight=${accreditation.id}`,
+    metadata: {
+      medCenter: accreditation.medCenter,
+      specialty: accreditation.specialty,
+      expirationDate: accreditation.expirationDate,
+      fullName: accreditation.fullName
+    }
+  });
+};
+
+// === HELPER: Удаление из индекса ===
+const removeFromIndex = async (accreditationId) => {
+  await SearchIndex.destroy({
+    where: {
+      entityType: 'accreditation',
+      entityId: accreditationId
+    }
+  });
+};
+
+// === HELPER: Полная переиндексация всех аккредитаций ===
+const reindexAllAccreditations = async () => {
+  // Удаляем старые записи
+  await SearchIndex.destroy({
+    where: { entityType: 'accreditation' }
+  });
+
+  // Получаем все аккредитации
+  const allAccreditations = await Accreditation.findAll();
+
+  // Индексируем каждую
+  for (const acc of allAccreditations) {
+    await indexAccreditation(acc);
+  }
+
+  return allAccreditations.length;
+};
 
 // Получить все аккредитации с фильтрацией
 router.get('/', authenticate, async (req, res) => {
@@ -70,6 +143,20 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// Полная переиндексация (для админа)
+router.post('/reindex', authenticate, async (req, res) => {
+  try {
+    const count = await reindexAllAccreditations();
+    res.json({ 
+      message: 'Reindex completed', 
+      indexed: count 
+    });
+  } catch (error) {
+    console.error('Reindex error:', error);
+    res.status(500).json({ error: 'Failed to reindex accreditations' });
+  }
+});
+
 // Создать аккредитацию
 router.post('/', authenticate, [
   body('medCenter').isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К']),
@@ -89,6 +176,9 @@ router.post('/', authenticate, [
       medCenter, fullName, specialty, expirationDate, comment
     });
 
+    // Индексируем для поиска
+    await indexAccreditation(accreditation);
+
     res.status(201).json(accreditation);
   } catch (error) {
     console.error('Create accreditation error:', error);
@@ -97,8 +187,18 @@ router.post('/', authenticate, [
 });
 
 // Обновить аккредитацию
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, [
+  body('medCenter').optional().isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К']),
+  body('fullName').optional().trim().notEmpty(),
+  body('specialty').optional().trim().notEmpty(),
+  body('expirationDate').optional().isDate()
+], async (req, res) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
     const accreditation = await Accreditation.findByPk(req.params.id);
     if (!accreditation) {
       return res.status(404).json({ error: 'Accreditation not found' });
@@ -106,18 +206,17 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const { medCenter, fullName, specialty, expirationDate, comment } = req.body;
     
-    // При изменении даты сбрасываем флаги напоминаний
-    const updateData = { medCenter, fullName, specialty, comment };
-    if (expirationDate && expirationDate !== accreditation.expirationDate) {
-      updateData.expirationDate = expirationDate;
-      updateData.reminded90 = false;
-      updateData.reminded60 = false;
-      updateData.reminded30 = false;
-      updateData.reminded14 = false;
-      updateData.reminded7 = false;
-    }
+    await accreditation.update({
+      ...(medCenter && { medCenter }),
+      ...(fullName && { fullName }),
+      ...(specialty && { specialty }),
+      ...(expirationDate && { expirationDate }),
+      ...(comment !== undefined && { comment })
+    });
 
-    await accreditation.update(updateData);
+    // Обновляем индекс
+    await indexAccreditation(accreditation);
+
     res.json(accreditation);
   } catch (error) {
     console.error('Update accreditation error:', error);
@@ -133,7 +232,13 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Accreditation not found' });
     }
 
+    const accId = accreditation.id;
+    
     await accreditation.destroy();
+    
+    // Удаляем из индекса
+    await removeFromIndex(accId);
+
     res.json({ message: 'Accreditation deleted' });
   } catch (error) {
     console.error('Delete accreditation error:', error);

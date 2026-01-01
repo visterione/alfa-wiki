@@ -240,11 +240,11 @@
 
 /* Индикация дат - исправленные цвета */
 .acc-date { padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 500; display: inline-block; }
-.acc-date.expired { background: #fee2e2; color: #dc2626; } /* Красный - просрочено */
-.acc-date.critical { background: #fef2f2; color: #b91c1c; } /* Тёмно-красный - 7 дней */
-.acc-date.warning { background: #fef3c7; color: #b45309; } /* Оранжевый - 30 дней */
-.acc-date.soon { background: #fef9c3; color: #a16207; } /* Жёлтый - 90 дней */
-.acc-date.ok { background: #dcfce7; color: #16a34a; } /* Зелёный - норма */
+.acc-date.expired { background: #fee2e2; color: #dc2626; }
+.acc-date.critical { background: #fef2f2; color: #b91c1c; }
+.acc-date.warning { background: #fef3c7; color: #b45309; }
+.acc-date.soon { background: #fef9c3; color: #a16207; }
+.acc-date.ok { background: #dcfce7; color: #16a34a; }
 
 .acc-actions { display: flex; gap: 6px; }
 
@@ -397,12 +397,24 @@
   font-weight: 500;
   display: inline-block;
 }
-.acc-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; } /* Розовый */
-.acc-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; } /* Оранжевый */
-.acc-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; } /* Фиолетовый */
-.acc-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; } /* Фуксия */
-.acc-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; } /* Серый */
-.acc-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; } /* Бежевый */
+.acc-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
+.acc-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
+.acc-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
+.acc-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
+.acc-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
+.acc-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; }
+
+/* Подсветка найденной записи из поиска */
+.acc-highlight {
+  animation: highlightPulse 3s ease-out;
+}
+.acc-highlight td {
+  background: #fef3c7 !important;
+}
+@keyframes highlightPulse {
+  0%, 50% { background: #fde68a; }
+  100% { background: transparent; }
+}
 
 /* Планшеты */
 @media (max-width: 1024px) {
@@ -442,9 +454,8 @@
   }
   .acc-table td { padding: 10px 8px; }
   
-  /* Скрываем менее важные колонки на мобильных */
   .acc-table th:nth-child(5),
-  .acc-table td:nth-child(5) { display: none; } /* Комментарий */
+  .acc-table td:nth-child(5) { display: none; }
   
   .acc-medcenter, .acc-date { 
     padding: 3px 8px; 
@@ -463,7 +474,7 @@
   .acc-modal-header h3 { font-size: 16px; }
   #acc-form { padding: 16px; }
   .acc-form-group { margin-bottom: 14px; }
-  .acc-input, .acc-select, .acc-textarea { padding: 12px; font-size: 16px; } /* 16px предотвращает зум на iOS */
+  .acc-input, .acc-select, .acc-textarea { padding: 12px; font-size: 16px; }
   
   .acc-toast { 
     left: 16px; 
@@ -484,9 +495,8 @@
     padding: 12px 16px;
   }
   
-  /* Скрываем ещё колонки на очень маленьких экранах */
   .acc-table th:nth-child(3),
-  .acc-table td:nth-child(3) { display: none; } /* Специальность */
+  .acc-table td:nth-child(3) { display: none; }
   
   .acc-table th:first-child,
   .acc-table td:first-child { 
@@ -664,6 +674,7 @@ window.accApp = (function() {
   var debounceTimer = null;
   var currentPage = 1;
   var pageSize = 20;
+  var highlightId = null;
 
   function getToken() {
     return localStorage.getItem('token');
@@ -705,11 +716,11 @@ window.accApp = (function() {
 
   function getDateClass(ds) {
     var diff = Math.ceil((new Date(ds) - new Date().setHours(0,0,0,0)) / 86400000);
-    if (diff < 0) return 'expired';      // Просрочено - красный
-    if (diff <= 7) return 'critical';    // До 7 дней - тёмно-красный
-    if (diff <= 30) return 'warning';    // До 30 дней - оранжевый
-    if (diff <= 90) return 'soon';       // До 90 дней - жёлтый
-    return 'ok';                          // Норма - зелёный
+    if (diff < 0) return 'expired';
+    if (diff <= 7) return 'critical';
+    if (diff <= 30) return 'warning';
+    if (diff <= 90) return 'soon';
+    return 'ok';
   }
 
   function loadData() {
@@ -764,7 +775,8 @@ window.accApp = (function() {
     var pageData = accreditations.slice(start, end);
     
     tb.innerHTML = pageData.map(function(a) {
-      return '<tr>' +
+      var isHighlighted = highlightId && a.id === highlightId;
+      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' class="acc-highlight"' : '') + '>' +
         '<td><span class="acc-medcenter" data-center="'+a.medCenter+'">'+a.medCenter+'</span></td>' +
         '<td><strong>'+escapeHtml(a.fullName)+'</strong></td>' +
         '<td>'+escapeHtml(a.specialty)+'</td>' +
@@ -775,6 +787,10 @@ window.accApp = (function() {
           '<button class="acc-btn acc-btn-icon acc-btn-delete" onclick="accApp.deleteRecord(\''+a.id+'\')" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
         '</div></td></tr>';
     }).join('');
+
+    if (highlightId) {
+      setTimeout(function() { highlightId = null; }, 3000);
+    }
   }
 
   function renderPagination() {
@@ -830,6 +846,25 @@ window.accApp = (function() {
     renderTable();
     renderPagination();
     document.querySelector('.acc-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function scrollToRecord(id) {
+    var index = -1;
+    for (var i = 0; i < accreditations.length; i++) {
+      if (accreditations[i].id === id) { index = i; break; }
+    }
+    if (index === -1) return false;
+    
+    highlightId = id;
+    currentPage = Math.floor(index / pageSize) + 1;
+    renderTable();
+    renderPagination();
+    
+    setTimeout(function() {
+      var row = document.querySelector('tr[data-id="' + id + '"]');
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+    return true;
   }
 
   function openAddModal() {
@@ -914,8 +949,23 @@ window.accApp = (function() {
   if (!getToken()) {
     document.getElementById('accreditations-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
+    var urlParams = new URLSearchParams(window.location.search);
+    var highlightParam = urlParams.get('highlight');
+    
     loadData();
     loadSpecialties();
+    
+    if (highlightParam) {
+      var checkAndScroll = setInterval(function() {
+        if (accreditations.length > 0) {
+          clearInterval(checkAndScroll);
+          scrollToRecord(highlightParam);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }, 100);
+      setTimeout(function() { clearInterval(checkAndScroll); }, 5000);
+    }
+    
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
   }
 
@@ -929,7 +979,8 @@ window.accApp = (function() {
     sortTable: sortTable,
     debounceLoad: debounceLoad,
     resetAndLoad: resetAndLoad,
-    goToPage: goToPage
+    goToPage: goToPage,
+    scrollToRecord: scrollToRecord
   };
 })();
 </script>
