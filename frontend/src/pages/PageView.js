@@ -1,20 +1,88 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Edit, Star, StarOff, ArrowLeft } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Edit, ArrowLeft, Star, StarOff } from 'lucide-react';
 import { pages, favorites } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import './PageView.css';
 
 export default function PageView() {
   const { slug } = useParams();
   const navigate = useNavigate();
-  const { hasPermission, isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
+
   const [page, setPage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  // Cleanup функция
+  const cleanupScripts = useCallback(() => {
+    document.getElementById('page-custom-css')?.remove();
+    document.getElementById('page-custom-js')?.remove();
+    document.querySelectorAll('script[data-page-script]').forEach(s => s.remove());
+  }, []);
+
+  // Callback ref - вызывается когда DOM элемент создан
+  const contentRefCallback = useCallback((node) => {
+    if (!node || !page) return;
+    
+    console.log('=== contentRefCallback called ===');
+    console.log('page.contentType:', page.contentType);
+
+    // Чистим предыдущие скрипты
+    cleanupScripts();
+
+    // Добавляем Custom CSS
+    if (page.customCss) {
+      const style = document.createElement('style');
+      style.id = 'page-custom-css';
+      style.textContent = page.customCss;
+      document.head.appendChild(style);
+    }
+
+    // Для HTML-страниц: извлекаем и выполняем скрипты
+    if (page.contentType === 'html' && page.content) {
+      console.log('=== Processing HTML scripts ===');
+      
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(page.content, 'text/html');
+      const scripts = doc.querySelectorAll('script');
+      
+      console.log('Found scripts:', scripts.length);
+      
+      scripts.forEach((scriptEl, index) => {
+        console.log(`Script ${index} content:`, scriptEl.textContent?.substring(0, 50));
+        
+        const newScript = document.createElement('script');
+        newScript.setAttribute('data-page-script', 'true');
+        
+        if (scriptEl.src) {
+          newScript.src = scriptEl.src;
+        } else {
+          newScript.textContent = scriptEl.textContent;
+        }
+        
+        document.body.appendChild(newScript);
+        console.log(`Script ${index} appended`);
+      });
+    }
+
+    // Добавляем Custom JS из отдельного поля
+    if (page.customJs) {
+      const script = document.createElement('script');
+      script.id = 'page-custom-js';
+      script.setAttribute('data-page-script', 'true');
+      script.textContent = page.customJs;
+      document.body.appendChild(script);
+    }
+  }, [page, cleanupScripts]);
+
+  // Cleanup при размонтировании
+  useEffect(() => {
+    return () => cleanupScripts();
+  }, [cleanupScripts]);
 
   useEffect(() => {
     loadPage();
@@ -23,66 +91,55 @@ export default function PageView() {
   const loadPage = async () => {
     setLoading(true);
     setError(null);
+    cleanupScripts(); // Чистим при загрузке новой страницы
+    
     try {
       const { data } = await pages.get(slug);
       setPage(data);
       
-      // Проверяем статус избранного для текущего пользователя
       try {
-        const { data: favData } = await favorites.check(data.id);
-        setIsFavorite(favData.isFavorite);
+        const favResponse = await favorites.list();
+        const isFav = favResponse.data.some(f => f.pageId === data.id);
+        setIsFavorite(isFav);
       } catch (e) {
-        console.error('Failed to check favorite status:', e);
-      }
-      
-      // Apply custom CSS if exists
-      if (data.customCss) {
-        const styleEl = document.createElement('style');
-        styleEl.id = 'page-custom-css';
-        styleEl.textContent = data.customCss;
-        document.head.appendChild(styleEl);
-      }
-      
-      // Execute custom JS if exists
-      if (data.customJs) {
-        try {
-          // eslint-disable-next-line no-eval
-          eval(data.customJs);
-        } catch (e) {
-          console.error('Custom JS error:', e);
-        }
+        console.error('Failed to check favorites:', e);
       }
     } catch (err) {
       if (err.response?.status === 404) {
         setError('Страница не найдена');
       } else if (err.response?.status === 403) {
-        setError('У вас нет доступа к этой странице');
+        setError('Доступ запрещён');
       } else {
         setError('Ошибка загрузки страницы');
       }
     } finally {
       setLoading(false);
     }
-
-    return () => {
-      const styleEl = document.getElementById('page-custom-css');
-      if (styleEl) styleEl.remove();
-    };
   };
 
   const toggleFavorite = async () => {
-    if (!page || favoriteLoading) return;
-    
+    if (favoriteLoading) return;
     setFavoriteLoading(true);
     try {
-      const { data } = await favorites.toggle(page.id);
-      setIsFavorite(data.isFavorite);
-      toast.success(data.isFavorite ? 'Добавлено в избранное' : 'Удалено из избранного');
+      if (isFavorite) {
+        await favorites.remove(page.id);
+      } else {
+        await favorites.add(page.id);
+      }
+      setIsFavorite(!isFavorite);
+      toast.success(isFavorite ? 'Удалено из избранного' : 'Добавлено в избранное');
     } catch (error) {
       toast.error('Ошибка');
     } finally {
       setFavoriteLoading(false);
     }
+  };
+
+  // Рендерим контент без script тегов
+  const getContentWithoutScripts = () => {
+    if (!page?.content) return '';
+    if (page.contentType !== 'html') return page.content;
+    return page.content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   };
 
   if (loading) {
@@ -139,7 +196,11 @@ export default function PageView() {
       </div>
 
       <div className="card">
-        <div className="page-content" dangerouslySetInnerHTML={{ __html: page.content }} />
+        <div 
+          ref={contentRefCallback}
+          className="page-content" 
+          dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }} 
+        />
       </div>
 
       {page.keywords && page.keywords.length > 0 && (

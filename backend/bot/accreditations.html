@@ -1,0 +1,935 @@
+<style>
+#accreditations-app {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Блок Telegram бота */
+.acc-bot-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+  border: 1px solid #7dd3fc;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.acc-bot-qr {
+  width: 100px;
+  height: 100px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.acc-bot-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+}
+
+.acc-bot-content {
+  flex: 1;
+}
+
+.acc-bot-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acc-bot-title svg {
+  width: 20px;
+  height: 20px;
+  color: #0ea5e9;
+}
+
+.acc-bot-desc {
+  font-size: 14px;
+  color: #075985;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.acc-bot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #0ea5e9;
+  color: #fff !important;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.acc-bot-link:hover,
+.acc-bot-link:visited {
+  background: #0284c7;
+  color: #fff !important;
+}
+
+.acc-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.acc-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.acc-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.acc-stat-icon svg { width: 24px; height: 24px; }
+.acc-stat-icon.total { background: #e0f2fe; color: #0284c7; }
+.acc-stat-icon.danger { background: #fee2e2; color: #dc2626; }
+.acc-stat-icon.warning { background: #fef3c7; color: #d97706; }
+.acc-stat-icon.info { background: #dbeafe; color: #2563eb; }
+
+.acc-stat-info { display: flex; flex-direction: column; }
+.acc-stat-value { font-size: 28px; font-weight: 700; color: #1f2937; line-height: 1; }
+.acc-stat-label { font-size: 13px; color: #6b7280; margin-top: 4px; }
+
+.acc-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.acc-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.acc-filter-group { min-width: 180px; }
+
+.acc-input, .acc-select, .acc-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #fff;
+  color: #1f2937;
+  box-sizing: border-box;
+}
+
+.acc-input:focus, .acc-select:focus, .acc-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.acc-textarea { resize: vertical; min-height: 80px; }
+
+.acc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.acc-btn svg { width: 18px; height: 18px; }
+
+.acc-btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #fff;
+}
+.acc-btn-primary:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); transform: translateY(-1px); }
+
+.acc-btn-secondary { background: #f3f4f6; color: #374151; }
+.acc-btn-secondary:hover { background: #e5e7eb; }
+
+.acc-btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.acc-btn-edit { background: #dbeafe; color: #2563eb; }
+.acc-btn-edit:hover { background: #bfdbfe; }
+.acc-btn-delete { background: #fee2e2; color: #dc2626; }
+.acc-btn-delete:hover { background: #fecaca; }
+
+.acc-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow-x: auto;
+  margin-top: 0;
+}
+
+.acc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 !important;
+}
+
+.acc-table th {
+  background: #f8fafc;
+  padding: 14px 16px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 13px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+.acc-table th.sortable { cursor: pointer; user-select: none; }
+.acc-table th.sortable:hover { background: #f1f5f9; }
+.sort-icon { opacity: 0.4; margin-left: 4px; }
+.acc-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
+
+.acc-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.acc-table tr:hover { background: #f8fafc; }
+.acc-table tr:last-child td { border-bottom: none; }
+
+/* Индикация дат - исправленные цвета */
+.acc-date { padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 500; display: inline-block; }
+.acc-date.expired { background: #fee2e2; color: #dc2626; } /* Красный - просрочено */
+.acc-date.critical { background: #fef2f2; color: #b91c1c; } /* Тёмно-красный - 7 дней */
+.acc-date.warning { background: #fef3c7; color: #b45309; } /* Оранжевый - 30 дней */
+.acc-date.soon { background: #fef9c3; color: #a16207; } /* Жёлтый - 90 дней */
+.acc-date.ok { background: #dcfce7; color: #16a34a; } /* Зелёный - норма */
+
+.acc-actions { display: flex; gap: 6px; }
+
+.acc-loading, .acc-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
+
+.acc-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.acc-modal-content {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  margin: 16px;
+}
+
+.acc-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.acc-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+
+.acc-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.acc-modal-close:hover { background: #e5e7eb; }
+
+#acc-form { padding: 24px; }
+
+.acc-form-group { margin-bottom: 18px; }
+.acc-form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: #374151; }
+
+.acc-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 8px;
+}
+
+.acc-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 20px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  z-index: 10001;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+.acc-toast.show { opacity: 1; transform: translateY(0); }
+.acc-toast.success { background: #059669; }
+.acc-toast.error { background: #dc2626; }
+
+/* Пагинация */
+.acc-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  gap: 16px;
+}
+
+.acc-pagination-info {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.acc-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acc-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.acc-pagination-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.acc-pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.acc-pagination-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.acc-pagination-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Цвета медцентров - обновлённые */
+.acc-medcenter {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-block;
+}
+.acc-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; } /* Розовый */
+.acc-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; } /* Оранжевый */
+.acc-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; } /* Фиолетовый */
+.acc-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; } /* Фуксия */
+.acc-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; } /* Серый */
+.acc-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; } /* Бежевый */
+
+/* Планшеты */
+@media (max-width: 1024px) {
+  .acc-table th, .acc-table td { padding: 12px 10px; }
+  .acc-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Мобильные устройства */
+@media (max-width: 768px) {
+  .acc-bot-info { 
+    flex-direction: column; 
+    text-align: center; 
+    padding: 16px;
+    gap: 16px;
+  }
+  .acc-bot-qr { width: 120px; height: 120px; }
+  .acc-bot-desc { font-size: 13px; }
+  
+  .acc-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .acc-stat-card { padding: 14px 12px; gap: 12px; }
+  .acc-stat-icon { width: 40px; height: 40px; }
+  .acc-stat-icon svg { width: 20px; height: 20px; }
+  .acc-stat-value { font-size: 22px; }
+  .acc-stat-label { font-size: 11px; }
+  
+  .acc-toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
+  .acc-filters { flex-direction: column; gap: 10px; }
+  .acc-filter-group { min-width: 100%; }
+  .acc-btn-primary { width: 100%; justify-content: center; }
+  
+  .acc-table-container { border-radius: 8px; }
+  .acc-table { font-size: 13px; }
+  .acc-table th { 
+    padding: 10px 8px; 
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .acc-table td { padding: 10px 8px; }
+  
+  /* Скрываем менее важные колонки на мобильных */
+  .acc-table th:nth-child(5),
+  .acc-table td:nth-child(5) { display: none; } /* Комментарий */
+  
+  .acc-medcenter, .acc-date { 
+    padding: 3px 8px; 
+    font-size: 11px; 
+  }
+  
+  .acc-btn-icon { width: 28px; height: 28px; }
+  .acc-btn-icon svg { width: 14px; height: 14px; }
+  
+  .acc-modal-content { 
+    margin: 8px; 
+    max-height: calc(100vh - 16px);
+    border-radius: 12px;
+  }
+  .acc-modal-header { padding: 16px; }
+  .acc-modal-header h3 { font-size: 16px; }
+  #acc-form { padding: 16px; }
+  .acc-form-group { margin-bottom: 14px; }
+  .acc-input, .acc-select, .acc-textarea { padding: 12px; font-size: 16px; } /* 16px предотвращает зум на iOS */
+  
+  .acc-toast { 
+    left: 16px; 
+    right: 16px; 
+    bottom: 16px; 
+    text-align: center;
+  }
+  
+  .acc-pagination { flex-wrap: wrap; justify-content: center; }
+}
+
+/* Маленькие мобильные */
+@media (max-width: 480px) {
+  .acc-stats { grid-template-columns: 1fr; gap: 8px; }
+  .acc-stat-card { 
+    flex-direction: row; 
+    justify-content: flex-start;
+    padding: 12px 16px;
+  }
+  
+  /* Скрываем ещё колонки на очень маленьких экранах */
+  .acc-table th:nth-child(3),
+  .acc-table td:nth-child(3) { display: none; } /* Специальность */
+  
+  .acc-table th:first-child,
+  .acc-table td:first-child { 
+    max-width: 70px;
+  }
+  
+  .acc-medcenter {
+    max-width: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .acc-bot-qr { width: 100px; height: 100px; }
+  .acc-bot-link { 
+    width: 100%; 
+    justify-content: center;
+    padding: 10px 16px;
+  }
+  
+  .acc-pagination { 
+    flex-direction: column; 
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .acc-pagination-info { text-align: center; }
+  .acc-pagination-btn { min-width: 32px; height: 32px; padding: 0 8px; font-size: 13px; }
+}
+</style>
+
+<div id="accreditations-app">
+  <!-- Блок с информацией о Telegram боте -->
+  <div class="acc-bot-info">
+    <div class="acc-bot-qr">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://t.me/alfa_appointments_bot" alt="QR код бота">
+    </div>
+    <div class="acc-bot-content">
+      <div class="acc-bot-title">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+        Telegram-бот напоминаний
+      </div>
+      <div class="acc-bot-desc">
+        Подпишитесь на бота, чтобы получать уведомления об истечении сроков аккредитаций за 90, 60, 30, 14 и 7 дней.
+      </div>
+      <a href="https://t.me/alfa_appointments_bot" target="_blank" class="acc-bot-link">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+        @alfa_appointments_bot
+      </a>
+    </div>
+  </div>
+
+  <div class="acc-stats">
+    <div class="acc-stat-card">
+      <div class="acc-stat-icon total"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-total">0</span><span class="acc-stat-label">Всего</span></div>
+    </div>
+    <div class="acc-stat-card danger">
+      <div class="acc-stat-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-expired">0</span><span class="acc-stat-label">Просрочено</span></div>
+    </div>
+    <div class="acc-stat-card warning">
+      <div class="acc-stat-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-soon">0</span><span class="acc-stat-label">Истекает ≤30 дней</span></div>
+    </div>
+    <div class="acc-stat-card info">
+      <div class="acc-stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-90">0</span><span class="acc-stat-label">Истекает ≤90 дней</span></div>
+    </div>
+  </div>
+
+  <div class="acc-toolbar">
+    <div class="acc-filters">
+      <div class="acc-filter-group">
+        <input type="text" id="filter-search" placeholder="🔍 Поиск по ФИО..." class="acc-input" oninput="accApp.debounceLoad()">
+      </div>
+      <div class="acc-filter-group">
+        <select id="filter-medcenter" class="acc-select" onchange="accApp.resetAndLoad()">
+          <option value="">Все медцентры</option>
+          <option value="Альфа">Альфа</option>
+          <option value="Кидс">Кидс</option>
+          <option value="Проф">Проф</option>
+          <option value="Линия">Линия</option>
+          <option value="Смайл">Смайл</option>
+          <option value="3К">3К</option>
+        </select>
+      </div>
+      <div class="acc-filter-group">
+        <select id="filter-specialty" class="acc-select" onchange="accApp.resetAndLoad()">
+          <option value="">Все специальности</option>
+        </select>
+      </div>
+    </div>
+    <button class="acc-btn acc-btn-primary" onclick="accApp.openAddModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Добавить
+    </button>
+  </div>
+
+  <div class="acc-table-container">
+    <table class="acc-table">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="accApp.sortTable('medCenter')">Медцентр <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="accApp.sortTable('fullName')">ФИО <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="accApp.sortTable('specialty')">Специальность <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="accApp.sortTable('expirationDate')">Срок действия <span class="sort-icon">↕</span></th>
+          <th>Комментарий</th>
+          <th style="text-align:center">Действия</th>
+        </tr>
+      </thead>
+      <tbody id="acc-table-body">
+        <tr><td colspan="6" class="acc-loading">Загрузка...</td></tr>
+      </tbody>
+    </table>
+    <div class="acc-pagination" id="acc-pagination" style="display:none">
+      <div class="acc-pagination-info" id="pagination-info">Показано 1-20 из 100</div>
+      <div class="acc-pagination-controls" id="pagination-controls"></div>
+    </div>
+  </div>
+
+  <div id="acc-modal" class="acc-modal" style="display:none" onclick="if(event.target===this)accApp.closeModal()">
+    <div class="acc-modal-content">
+      <div class="acc-modal-header">
+        <h3 id="modal-title">Добавить запись</h3>
+        <button class="acc-modal-close" onclick="accApp.closeModal()">&times;</button>
+      </div>
+      <form id="acc-form" onsubmit="accApp.saveRecord(event)">
+        <input type="hidden" id="edit-id">
+        <div class="acc-form-group">
+          <label>Медцентр *</label>
+          <select id="edit-medcenter" required class="acc-select">
+            <option value="">Выберите...</option>
+            <option value="Альфа">Альфа</option>
+            <option value="Кидс">Кидс</option>
+            <option value="Проф">Проф</option>
+            <option value="Линия">Линия</option>
+            <option value="Смайл">Смайл</option>
+            <option value="3К">3К</option>
+          </select>
+        </div>
+        <div class="acc-form-group">
+          <label>ФИО *</label>
+          <input type="text" id="edit-fullname" required class="acc-input" placeholder="Иванов Иван Иванович">
+        </div>
+        <div class="acc-form-group">
+          <label>Специальность *</label>
+          <input type="text" id="edit-specialty" required class="acc-input" placeholder="Терапия" list="specialties-list">
+          <datalist id="specialties-list"></datalist>
+        </div>
+        <div class="acc-form-group">
+          <label>Срок действия *</label>
+          <input type="date" id="edit-expdate" required class="acc-input">
+        </div>
+        <div class="acc-form-group">
+          <label>Комментарий</label>
+          <textarea id="edit-comment" class="acc-textarea" rows="3" placeholder="Дополнительная информация..."></textarea>
+        </div>
+        <div class="acc-modal-footer">
+          <button type="button" class="acc-btn acc-btn-secondary" onclick="accApp.closeModal()">Отмена</button>
+          <button type="submit" class="acc-btn acc-btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="acc-toast" class="acc-toast"></div>
+</div>
+
+<script>
+window.accApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/accreditations';
+  var accreditations = [];
+  var sortField = 'expirationDate';
+  var sortOrder = 'ASC';
+  var debounceTimer = null;
+  var currentPage = 1;
+  var pageSize = 20;
+
+  function getToken() {
+    return localStorage.getItem('token');
+  }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var t = document.getElementById('acc-toast');
+    t.textContent = msg;
+    t.className = 'acc-toast show ' + (type || '');
+    setTimeout(function() { t.className = 'acc-toast'; }, 3000);
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function formatDate(ds) {
+    var d = new Date(ds);
+    return ('0'+d.getDate()).slice(-2) + '.' + ('0'+(d.getMonth()+1)).slice(-2) + '.' + d.getFullYear();
+  }
+
+  function getDateClass(ds) {
+    var diff = Math.ceil((new Date(ds) - new Date().setHours(0,0,0,0)) / 86400000);
+    if (diff < 0) return 'expired';      // Просрочено - красный
+    if (diff <= 7) return 'critical';    // До 7 дней - тёмно-красный
+    if (diff <= 30) return 'warning';    // До 30 дней - оранжевый
+    if (diff <= 90) return 'soon';       // До 90 дней - жёлтый
+    return 'ok';                          // Норма - зелёный
+  }
+
+  function loadData() {
+    var search = document.getElementById('filter-search').value;
+    var mc = document.getElementById('filter-medcenter').value;
+    var sp = document.getElementById('filter-specialty').value;
+    
+    var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (mc) url += '&medCenter=' + encodeURIComponent(mc);
+    if (sp) url += '&specialty=' + encodeURIComponent(sp);
+
+    fetchAPI(url).then(function(data) {
+      accreditations = data;
+      if (currentPage > Math.ceil(accreditations.length / pageSize)) {
+        currentPage = 1;
+      }
+      renderTable();
+      renderPagination();
+      loadStats();
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function loadStats() {
+    fetchAPI(API_URL + '/stats').then(function(s) {
+      document.getElementById('stat-total').textContent = s.total;
+      document.getElementById('stat-expired').textContent = s.expired;
+      document.getElementById('stat-soon').textContent = s.expiringSoon;
+      document.getElementById('stat-90').textContent = s.expiringIn90;
+    });
+  }
+
+  function loadSpecialties() {
+    fetchAPI(API_URL + '/specialties').then(function(list) {
+      var sel = document.getElementById('filter-specialty');
+      var dl = document.getElementById('specialties-list');
+      sel.innerHTML = '<option value="">Все специальности</option>' + list.map(function(s) {
+        return '<option value="'+s+'">'+s+'</option>';
+      }).join('');
+      dl.innerHTML = list.map(function(s) { return '<option value="'+s+'">'; }).join('');
+    });
+  }
+
+  function renderTable() {
+    var tb = document.getElementById('acc-table-body');
+    if (!accreditations.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="acc-empty">Нет данных</td></tr>';
+      return;
+    }
+    var start = (currentPage - 1) * pageSize;
+    var end = start + pageSize;
+    var pageData = accreditations.slice(start, end);
+    
+    tb.innerHTML = pageData.map(function(a) {
+      return '<tr>' +
+        '<td><span class="acc-medcenter" data-center="'+a.medCenter+'">'+a.medCenter+'</span></td>' +
+        '<td><strong>'+escapeHtml(a.fullName)+'</strong></td>' +
+        '<td>'+escapeHtml(a.specialty)+'</td>' +
+        '<td><span class="acc-date '+getDateClass(a.expirationDate)+'">'+formatDate(a.expirationDate)+'</span></td>' +
+        '<td>'+escapeHtml(a.comment||'—')+'</td>' +
+        '<td style="text-align:center"><div class="acc-actions" style="justify-content:center">' +
+          '<button class="acc-btn acc-btn-icon acc-btn-edit" onclick="accApp.openEditModal(\''+a.id+'\')" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+          '<button class="acc-btn acc-btn-icon acc-btn-delete" onclick="accApp.deleteRecord(\''+a.id+'\')" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
+        '</div></td></tr>';
+    }).join('');
+  }
+
+  function renderPagination() {
+    var pagination = document.getElementById('acc-pagination');
+    var info = document.getElementById('pagination-info');
+    var controls = document.getElementById('pagination-controls');
+    var total = accreditations.length;
+    var totalPages = Math.ceil(total / pageSize);
+    
+    if (total <= pageSize) {
+      pagination.style.display = 'none';
+      return;
+    }
+    
+    pagination.style.display = 'flex';
+    
+    var start = (currentPage - 1) * pageSize + 1;
+    var end = Math.min(currentPage * pageSize, total);
+    info.textContent = 'Показано ' + start + '-' + end + ' из ' + total;
+    
+    var html = '';
+    html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>';
+    
+    var startPage = Math.max(1, currentPage - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) {
+      startPage = Math.max(1, endPage - 4);
+    }
+    
+    if (startPage > 1) {
+      html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(1)">1</button>';
+      if (startPage > 2) html += '<span style="color:#9ca3af">...</span>';
+    }
+    
+    for (var i = startPage; i <= endPage; i++) {
+      html += '<button class="acc-pagination-btn ' + (i === currentPage ? 'active' : '') + '" onclick="accApp.goToPage(' + i + ')">' + i + '</button>';
+    }
+    
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += '<span style="color:#9ca3af">...</span>';
+      html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
+    }
+    
+    html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>';
+    
+    controls.innerHTML = html;
+  }
+
+  function goToPage(page) {
+    var totalPages = Math.ceil(accreditations.length / pageSize);
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    renderTable();
+    renderPagination();
+    document.querySelector('.acc-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Добавить запись';
+    document.getElementById('edit-id').value = '';
+    document.getElementById('acc-form').reset();
+    document.getElementById('acc-modal').style.display = 'flex';
+  }
+
+  function openEditModal(id) {
+    var a = accreditations.find(function(x) { return x.id === id; });
+    if (!a) return;
+    document.getElementById('modal-title').textContent = 'Редактировать';
+    document.getElementById('edit-id').value = a.id;
+    document.getElementById('edit-medcenter').value = a.medCenter;
+    document.getElementById('edit-fullname').value = a.fullName;
+    document.getElementById('edit-specialty').value = a.specialty;
+    document.getElementById('edit-expdate').value = a.expirationDate;
+    document.getElementById('edit-comment').value = a.comment || '';
+    document.getElementById('acc-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('acc-modal').style.display = 'none';
+  }
+
+  function saveRecord(e) {
+    e.preventDefault();
+    var id = document.getElementById('edit-id').value;
+    var data = {
+      medCenter: document.getElementById('edit-medcenter').value,
+      fullName: document.getElementById('edit-fullname').value,
+      specialty: document.getElementById('edit-specialty').value,
+      expirationDate: document.getElementById('edit-expdate').value,
+      comment: document.getElementById('edit-comment').value
+    };
+    var url = id ? API_URL + '/' + id : API_URL;
+    fetchAPI(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) })
+      .then(function() {
+        showToast(id ? 'Обновлено' : 'Добавлено', 'success');
+        closeModal();
+        loadData();
+        loadSpecialties();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function deleteRecord(id) {
+    if (!confirm('Удалить запись?')) return;
+    fetchAPI(API_URL + '/' + id, { method: 'DELETE' })
+      .then(function() {
+        showToast('Удалено', 'success');
+        loadData();
+        loadSpecialties();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function sortTable(field) {
+    if (sortField === field) {
+      sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+    } else {
+      sortField = field;
+      sortOrder = 'ASC';
+    }
+    currentPage = 1;
+    loadData();
+  }
+
+  function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      currentPage = 1;
+      loadData();
+    }, 300);
+  }
+
+  function resetAndLoad() {
+    currentPage = 1;
+    loadData();
+  }
+
+  // Init
+  if (!getToken()) {
+    document.getElementById('accreditations-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+  } else {
+    loadData();
+    loadSpecialties();
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+  }
+
+  return {
+    loadData: loadData,
+    openAddModal: openAddModal,
+    openEditModal: openEditModal,
+    closeModal: closeModal,
+    saveRecord: saveRecord,
+    deleteRecord: deleteRecord,
+    sortTable: sortTable,
+    debounceLoad: debounceLoad,
+    resetAndLoad: resetAndLoad,
+    goToPage: goToPage
+  };
+})();
+</script>

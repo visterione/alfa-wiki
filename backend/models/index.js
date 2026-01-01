@@ -40,12 +40,12 @@ const User = sequelize.define('User', {
   settings: { type: DataTypes.JSONB, defaultValue: {} }
 }, { tableName: 'users', timestamps: true });
 
-// === FOLDER MODEL (NEW) ===
+// === FOLDER MODEL ===
 const Folder = sequelize.define('Folder', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   title: { type: DataTypes.STRING(255), allowNull: false },
   icon: { type: DataTypes.STRING(50), defaultValue: 'folder' },
-  parentId: { type: DataTypes.UUID, allowNull: true }, // Для вложенности (макс 2 уровня)
+  parentId: { type: DataTypes.UUID, allowNull: true },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   description: { type: DataTypes.TEXT },
   createdBy: { type: DataTypes.UUID }
@@ -69,8 +69,8 @@ const Page = sequelize.define('Page', {
   keywords: { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
   searchContent: { type: DataTypes.TEXT },
   icon: { type: DataTypes.STRING(50) },
-  folderId: { type: DataTypes.UUID, allowNull: true }, // NEW: принадлежность к папке
-  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 }, // NEW: порядок в папке
+  folderId: { type: DataTypes.UUID, allowNull: true },
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   isPublished: { type: DataTypes.BOOLEAN, defaultValue: false },
   isFavorite: { type: DataTypes.BOOLEAN, defaultValue: false },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
@@ -103,17 +103,15 @@ const UserFavorite = sequelize.define('UserFavorite', {
 });
 
 // === SIDEBAR ITEM MODEL ===
-// Типы: page, folder, header, link, divider
-// page/folder ссылаются на существующие сущности через pageId/folderId
 const SidebarItem = sequelize.define('SidebarItem', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   type: { type: DataTypes.ENUM('page', 'folder', 'header', 'link', 'divider'), defaultValue: 'page' },
-  title: { type: DataTypes.STRING(255) }, // Для header, link, divider или переопределения названия
-  icon: { type: DataTypes.STRING(50) },   // Для переопределения иконки
-  pageId: { type: DataTypes.UUID },       // Ссылка на Page (type='page')
-  folderId: { type: DataTypes.UUID },     // Ссылка на Folder (type='folder')
-  externalUrl: { type: DataTypes.STRING(1000) }, // Для type='link'
-  parentId: { type: DataTypes.UUID },     // Родительский SidebarItem (для вложенности в сайдбаре)
+  title: { type: DataTypes.STRING(255) },
+  icon: { type: DataTypes.STRING(50) },
+  pageId: { type: DataTypes.UUID },
+  folderId: { type: DataTypes.UUID },
+  externalUrl: { type: DataTypes.STRING(1000) },
+  parentId: { type: DataTypes.UUID },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   isExpanded: { type: DataTypes.BOOLEAN, defaultValue: true },
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
@@ -196,6 +194,46 @@ const Message = sequelize.define('Message', {
   replyToId: { type: DataTypes.UUID }
 }, { tableName: 'messages', timestamps: true });
 
+// === ACCREDITATION MODEL === (NEW)
+const Accreditation = sequelize.define('Accreditation', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  medCenter: { 
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'), 
+    allowNull: false 
+  },
+  fullName: { type: DataTypes.STRING(255), allowNull: false },
+  specialty: { type: DataTypes.STRING(255), allowNull: false },
+  expirationDate: { type: DataTypes.DATEONLY, allowNull: false },
+  comment: { type: DataTypes.TEXT },
+  reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded7: { type: DataTypes.BOOLEAN, defaultValue: false }
+}, { 
+  tableName: 'accreditations', 
+  timestamps: true,
+  indexes: [
+    { fields: ['medCenter'] },
+    { fields: ['fullName'] },
+    { fields: ['specialty'] },
+    { fields: ['expirationDate'] }
+  ]
+});
+
+// === TELEGRAM SUBSCRIBER MODEL === (NEW)
+const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  chatId: { type: DataTypes.STRING(50), allowNull: false, unique: true },
+  username: { type: DataTypes.STRING(100) },
+  firstName: { type: DataTypes.STRING(100) },
+  lastName: { type: DataTypes.STRING(100) },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+}, { 
+  tableName: 'telegram_subscribers', 
+  timestamps: true 
+});
+
 // === RELATIONSHIPS ===
 
 // User & Role
@@ -253,5 +291,7 @@ module.exports = {
   Setting,
   Chat,
   ChatMember,
-  Message
+  Message,
+  Accreditation,
+  TelegramSubscriber
 };

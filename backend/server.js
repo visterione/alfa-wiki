@@ -6,13 +6,14 @@ const path = require('path');
 require('dotenv').config();
 
 const { sequelize } = require('./models');
+const { initBot } = require('./bot/telegramBot'); // NEW: Telegram бот
 
 // Import routes
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const roleRoutes = require('./routes/roles');
 const pageRoutes = require('./routes/pages');
-const folderRoutes = require('./routes/folders'); // NEW
+const folderRoutes = require('./routes/folders');
 const sidebarRoutes = require('./routes/sidebar');
 const mediaRoutes = require('./routes/media');
 const searchRoutes = require('./routes/search');
@@ -20,6 +21,7 @@ const settingsRoutes = require('./routes/settings');
 const backupRoutes = require('./routes/backup');
 const chatRoutes = require('./routes/chat');
 const favoritesRoutes = require('./routes/favorites');
+const accreditationsRoutes = require('./routes/accreditations'); // NEW: Аккредитации
 
 const app = express();
 
@@ -75,7 +77,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/pages', pageRoutes);
-app.use('/api/folders', folderRoutes); // NEW
+app.use('/api/folders', folderRoutes);
 app.use('/api/sidebar', sidebarRoutes);
 app.use('/api/media', mediaRoutes);
 app.use('/api/search', searchRoutes);
@@ -83,6 +85,7 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/backup', backupRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/favorites', favoritesRoutes);
+app.use('/api/accreditations', accreditationsRoutes); // NEW: Аккредитации
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -110,6 +113,9 @@ async function startServer() {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connected');
+    
+    // NEW: Запуск Telegram бота
+    initBot();
     
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: true });
