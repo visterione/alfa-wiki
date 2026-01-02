@@ -75,10 +75,10 @@ export const pages = {
   create: (data) => api.post('/pages', data),
   update: (id, data) => api.put(`/pages/${id}`, data),
   delete: (id) => api.delete(`/pages/${id}`),
-  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`) // Оставляем для совместимости
+  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`)
 };
 
-// Folders (NEW)
+// Folders
 export const folders = {
   browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),
   tree: () => api.get('/folders/tree'),
@@ -90,7 +90,7 @@ export const folders = {
   delete: (id) => api.delete(`/folders/${id}`)
 };
 
-// Favorites (NEW)
+// Favorites
 export const favorites = {
   list: () => api.get('/favorites'),
   check: (pageId) => api.get(`/favorites/check/${pageId}`),
@@ -100,7 +100,7 @@ export const favorites = {
   reorder: (order) => api.put('/favorites/reorder', { order })
 };
 
-
+// Sidebar
 export const sidebar = {
   list: () => api.get('/sidebar'),
   listAll: () => api.get('/sidebar/all'),
@@ -160,23 +160,69 @@ export const chat = {
     const type = attachments.length > 0 
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
       : 'text';
-    return api.post(`/chat/${chatId}/messages`, { content, attachments, type });
+    return api.post(`/chat/${chatId}/messages`, { content, type, attachments });
   },
-  startPrivate: (userId) => api.post(`/chat/private/${userId}`),
+  markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
+  createPrivate: (userId) => api.post('/chat/private', { userId }),
   createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
-  get: (chatId) => api.get(`/chat/${chatId}`),
-  addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
-  removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
-  leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
-  markRead: (chatId) => api.post(`/chat/${chatId}/read`),
-  updateAvatar: (chatId, file) => {
+  updateGroup: (chatId, data) => api.put(`/chat/${chatId}`, data),
+  uploadAvatar: (chatId, file) => {
     const formData = new FormData();
     formData.append('avatar', file);
     return api.post(`/chat/${chatId}/avatar`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  deleteAvatar: (chatId) => api.delete(`/chat/${chatId}/avatar`)
+  addMembers: (chatId, userIds) => api.post(`/chat/${chatId}/members`, { userIds }),
+  removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
+  leaveChat: (chatId) => api.post(`/chat/${chatId}/leave`),
+  deleteChat: (chatId) => api.delete(`/chat/${chatId}`),
+  uploadFiles: (chatId, files) => {
+    const formData = new FormData();
+    files.forEach(file => formData.append('files', file));
+    return api.post(`/chat/${chatId}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  editMessage: (chatId, messageId, content) => api.put(`/chat/${chatId}/messages/${messageId}`, { content }),
+  deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`)
+};
+
+// Accreditations
+export const accreditations = {
+  list: (params) => api.get('/accreditations', { params }),
+  get: (id) => api.get(`/accreditations/${id}`),
+  create: (data) => api.post('/accreditations', data),
+  update: (id, data) => api.put(`/accreditations/${id}`, data),
+  delete: (id) => api.delete(`/accreditations/${id}`),
+  stats: () => api.get('/accreditations/stats'),
+  specialties: () => api.get('/accreditations/specialties')
+};
+
+// Vehicles
+export const vehicles = {
+  list: (params) => api.get('/vehicles', { params }),
+  get: (id) => api.get(`/vehicles/${id}`),
+  create: (data) => api.post('/vehicles', data),
+  update: (id, data) => api.put(`/vehicles/${id}`, data),
+  delete: (id) => api.delete(`/vehicles/${id}`),
+  stats: () => api.get('/vehicles/stats'),
+  organizations: () => api.get('/vehicles/organizations'),
+  brands: () => api.get('/vehicles/brands')
+};
+
+// Map
+export const map = {
+  getMarkers: (params) => api.get('/map/markers', { params }),
+  getMarker: (id) => api.get(`/map/markers/${id}`),
+  createMarker: (data) => api.post('/map/markers', data),
+  updateMarker: (id, data) => api.put(`/map/markers/${id}`, data),
+  deleteMarker: (id) => api.delete(`/map/markers/${id}`),
+  upload: (formData) => api.post('/map/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
+  getCategories: () => api.get('/map/categories'),
+  reindex: () => api.post('/map/reindex')
 };
 
 export default api;

@@ -22,7 +22,8 @@ const backupRoutes = require('./routes/backup');
 const chatRoutes = require('./routes/chat');
 const favoritesRoutes = require('./routes/favorites');
 const accreditationsRoutes = require('./routes/accreditations');
-const vehiclesRoutes = require('./routes/vehicles'); // NEW: Техобслуживание
+const vehiclesRoutes = require('./routes/vehicles');
+const mapRoutes = require('./routes/map');
 
 const app = express();
 
@@ -63,6 +64,7 @@ if (process.env.NODE_ENV !== 'test') {
 
 // Static files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads/map', express.static(path.join(__dirname, 'uploads/map')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -78,7 +80,8 @@ app.use('/api/backup', backupRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/favorites', favoritesRoutes);
 app.use('/api/accreditations', accreditationsRoutes);
-app.use('/api/vehicles', vehiclesRoutes); // NEW: Техобслуживание
+app.use('/api/vehicles', vehiclesRoutes);
+app.use('/api/map', mapRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

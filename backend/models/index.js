@@ -269,6 +269,27 @@ const Vehicle = sequelize.define('Vehicle', {
   ]
 });
 
+// === MAP MARKER MODEL === (NEW)
+const MapMarker = sequelize.define('MapMarker', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  lat: { type: DataTypes.DOUBLE, allowNull: false },
+  lng: { type: DataTypes.DOUBLE, allowNull: false },
+  title: { type: DataTypes.STRING(255), allowNull: false },
+  description: { type: DataTypes.TEXT },
+  color: { type: DataTypes.STRING(20), defaultValue: '#4a90e2' },
+  media: { type: DataTypes.JSONB, defaultValue: [] },
+  category: { type: DataTypes.STRING(100) },
+  createdBy: { type: DataTypes.UUID }
+}, { 
+  tableName: 'map_markers', 
+  timestamps: true,
+  indexes: [
+    { fields: ['lat', 'lng'] },
+    { fields: ['color'] },
+    { fields: ['category'] }
+  ]
+});
+
 // === RELATIONSHIPS ===
 
 // User & Role
@@ -312,6 +333,9 @@ Message.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(Message, { foreignKey: 'replyToId', as: 'replyTo' });
 
+// MapMarker & User (NEW)
+MapMarker.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -329,5 +353,6 @@ module.exports = {
   Message,
   Accreditation,
   TelegramSubscriber,
-  Vehicle
+  Vehicle,
+  MapMarker // NEW
 };
