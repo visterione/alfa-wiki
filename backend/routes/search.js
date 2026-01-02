@@ -39,7 +39,6 @@ const formatIndexedResult = (item, searchTerm) => {
     case 'accreditation':
       displayType = 'Аккредитация';
       icon = 'award';
-      // Добавляем информацию о медцентре и дате в excerpt
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -57,7 +56,6 @@ const formatIndexedResult = (item, searchTerm) => {
     case 'vehicle':
       displayType = 'Транспорт';
       icon = 'car';
-      // Добавляем информацию об организации и страховке
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -76,6 +74,27 @@ const formatIndexedResult = (item, searchTerm) => {
     case 'doctor':
       displayType = 'Врач';
       icon = 'user';
+      if (item.metadata) {
+        const meta = item.metadata;
+        const parts = [];
+        if (meta.specialty) parts.push(meta.specialty);
+        // Красивые названия страниц
+        if (meta.pageSlug) {
+          const pageNames = {
+            'stomatologi': 'Стоматологи',
+            'ginekologi': 'Гинекологи',
+            'pediatry': 'Педиатры',
+            'terapevty': 'Терапевты',
+            'hirurgi': 'Хирурги',
+            'vrachi': 'Врачи'
+          };
+          const pageName = pageNames[meta.pageSlug] || meta.pageSlug;
+          parts.push(`Раздел: ${pageName}`);
+        }
+        if (parts.length > 0) {
+          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+        }
+      }
       break;
       
     case 'service':
@@ -166,7 +185,7 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Search in search index (for dynamic content like accreditations, vehicles, doctors, services, etc.)
+    // Search in search index (for dynamic content)
     if (!type || type !== 'page') {
       const whereClause = {
         [Op.or]: [
@@ -176,7 +195,6 @@ router.get('/', authenticate, async (req, res) => {
         ]
       };
 
-      // Если указан конкретный тип - фильтруем
       if (type && type !== 'all') {
         whereClause.entityType = type;
       }
@@ -191,7 +209,7 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Sort by relevance (title match first, then by position)
+    // Sort by relevance
     results.sort((a, b) => {
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
@@ -292,7 +310,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
     const searchTermLower = searchQuery.toLowerCase();
     const results = [];
 
-    // Обработка страниц
+    // Process pages
     pageResults.forEach(r => {
       let excerpt = '';
       
@@ -327,12 +345,12 @@ router.get('/fulltext', authenticate, async (req, res) => {
       });
     });
 
-    // Обработка индексированных сущностей
+    // Process indexed entities
     indexResults.forEach(item => {
       results.push(formatIndexedResult(item, searchTermLower));
     });
 
-    // Сортировка по релевантности
+    // Sort by relevance
     results.sort((a, b) => {
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
@@ -397,7 +415,7 @@ router.delete('/index/:entityType/:entityId', authenticate, async (req, res) => 
   }
 });
 
-// Get search suggestions (autocomplete with partial matching)
+// Get search suggestions (autocomplete)
 router.get('/suggest', authenticate, async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
@@ -408,7 +426,7 @@ router.get('/suggest', authenticate, async (req, res) => {
 
     const searchTerm = q.trim();
 
-    // Поиск по страницам
+    // Search pages
     const pages = await Page.findAll({
       where: {
         isPublished: true,
@@ -422,7 +440,7 @@ router.get('/suggest', authenticate, async (req, res) => {
       limit: Math.floor(parseInt(limit) / 2)
     });
 
-    // Поиск по индексу
+    // Search index
     const indexed = await SearchIndex.findAll({
       where: {
         title: { [Op.iLike]: `%${searchTerm}%` }
@@ -450,7 +468,7 @@ router.get('/suggest', authenticate, async (req, res) => {
   }
 });
 
-// Получить статистику индекса
+// Get index stats
 router.get('/stats', authenticate, async (req, res) => {
   try {
     const pageCount = await Page.count({ where: { isPublished: true } });

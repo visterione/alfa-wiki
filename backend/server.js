@@ -24,6 +24,8 @@ const favoritesRoutes = require('./routes/favorites');
 const accreditationsRoutes = require('./routes/accreditations');
 const vehiclesRoutes = require('./routes/vehicles');
 const mapRoutes = require('./routes/map');
+const doctorCardsRoutes = require('./routes/doctor-cards');
+const misProxyRoutes = require('./routes/mis-proxy');
 
 const app = express();
 
@@ -82,6 +84,8 @@ app.use('/api/favorites', favoritesRoutes);
 app.use('/api/accreditations', accreditationsRoutes);
 app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/map', mapRoutes);
+app.use('/api/doctor-cards', doctorCardsRoutes);
+app.use('/api/mis', misProxyRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

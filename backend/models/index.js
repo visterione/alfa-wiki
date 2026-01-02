@@ -76,7 +76,9 @@ const Page = sequelize.define('Page', {
   allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] },
   customCss: { type: DataTypes.TEXT },
   customJs: { type: DataTypes.TEXT },
-  metadata: { type: DataTypes.JSONB, defaultValue: {} }
+  metadata: { type: DataTypes.JSONB, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID },
+  updatedBy: { type: DataTypes.UUID }
 }, { 
   tableName: 'pages', 
   timestamps: true,
@@ -128,7 +130,8 @@ const Media = sequelize.define('Media', {
   path: { type: DataTypes.STRING(1000), allowNull: false },
   thumbnailPath: { type: DataTypes.STRING(1000) },
   alt: { type: DataTypes.STRING(500) },
-  description: { type: DataTypes.TEXT }
+  description: { type: DataTypes.TEXT },
+  uploadedBy: { type: DataTypes.UUID }
 }, { tableName: 'media', timestamps: true });
 
 // === SEARCH INDEX MODEL ===
@@ -228,7 +231,9 @@ const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
   username: { type: DataTypes.STRING(100) },
   firstName: { type: DataTypes.STRING(100) },
   lastName: { type: DataTypes.STRING(100) },
-  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+  subscribedToAccreditations: { type: DataTypes.BOOLEAN, defaultValue: true },
+  subscribedToVehicles: { type: DataTypes.BOOLEAN, defaultValue: true }
 }, { 
   tableName: 'telegram_subscribers', 
   timestamps: true 
@@ -239,18 +244,16 @@ const Vehicle = sequelize.define('Vehicle', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   organization: { type: DataTypes.STRING(255), allowNull: false },
   carBrand: { type: DataTypes.STRING(255), allowNull: false },
-  licensePlate: { type: DataTypes.STRING(50), allowNull: false },
+  licensePlate: { type: DataTypes.STRING(20), allowNull: false },
   carYear: { type: DataTypes.INTEGER, allowNull: false },
   mileage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   nextTO: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   insuranceDate: { type: DataTypes.DATEONLY, allowNull: false },
   condition: { 
     type: DataTypes.ENUM('Хорошее', 'Удовлетворительное', 'Плохое'), 
-    allowNull: false 
+    defaultValue: 'Хорошее' 
   },
   comment: { type: DataTypes.TEXT },
-  reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
-  reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded7: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -260,16 +263,12 @@ const Vehicle = sequelize.define('Vehicle', {
   timestamps: true,
   indexes: [
     { fields: ['organization'] },
-    { fields: ['carBrand'] },
     { fields: ['licensePlate'] },
-    { fields: ['insuranceDate'] },
-    { fields: ['condition'] },
-    { fields: ['mileage'] },
-    { fields: ['nextTO'] }
+    { fields: ['insuranceDate'] }
   ]
 });
 
-// === MAP MARKER MODEL === (NEW)
+// === MAP MARKER MODEL ===
 const MapMarker = sequelize.define('MapMarker', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   lat: { type: DataTypes.DOUBLE, allowNull: false },
@@ -290,7 +289,44 @@ const MapMarker = sequelize.define('MapMarker', {
   ]
 });
 
-// === RELATIONSHIPS ===
+// === DOCTOR CARD MODEL ===
+const DoctorCard = sequelize.define('DoctorCard', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  pageSlug: { 
+    type: DataTypes.STRING(255), 
+    allowNull: false,
+    comment: 'Slug страницы wiki, к которой привязаны карточки'
+  },
+  fullName: { type: DataTypes.STRING(255), allowNull: false },
+  specialty: { type: DataTypes.STRING(255) },
+  experience: { type: DataTypes.STRING(100) },
+  profileUrl: { 
+    type: DataTypes.STRING(1000),
+    comment: 'Ссылка на страницу врача (wiki или внешняя)'
+  },
+  photo: { type: DataTypes.STRING(1000) },
+  description: { type: DataTypes.TEXT },
+  phones: { 
+    type: DataTypes.JSONB, 
+    defaultValue: [],
+    comment: 'Массив телефонов: [{type: "internal", number: "123"}]'
+  },
+  sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
+  metadata: { type: DataTypes.JSONB, defaultValue: {} }
+}, { 
+  tableName: 'doctor_cards', 
+  timestamps: true,
+  indexes: [
+    { fields: ['pageSlug'] },
+    { fields: ['fullName'] },
+    { fields: ['specialty'] },
+    { fields: ['sortOrder'] }
+  ]
+});
+
+// ═══════════════════════════════════════════════════════════════
+// RELATIONSHIPS
+// ═══════════════════════════════════════════════════════════════
 
 // User & Role
 User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
@@ -333,7 +369,7 @@ Message.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(Message, { foreignKey: 'replyToId', as: 'replyTo' });
 
-// MapMarker & User (NEW)
+// MapMarker & User
 MapMarker.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
 module.exports = {
@@ -354,5 +390,6 @@ module.exports = {
   Accreditation,
   TelegramSubscriber,
   Vehicle,
-  MapMarker // NEW
+  MapMarker,
+  DoctorCard
 };

@@ -1,0 +1,931 @@
+<!-- 
+  ШАБЛОН КАРТОЧЕК ВРАЧЕЙ С ИНТЕГРАЦИЕЙ МИС RENOVATIO
+-->
+
+<style>
+.dc-app {
+  --dc-primary: #2563eb;
+  --dc-primary-hover: #1d4ed8;
+  --dc-success: #10b981;
+  --dc-warning: #f59e0b;
+  --dc-danger: #ef4444;
+  --dc-bg: #f8fafc;
+  --dc-card-bg: #ffffff;
+  --dc-border: #e2e8f0;
+  --dc-text: #1e293b;
+  --dc-text-secondary: #64748b;
+  --dc-radius: 12px;
+  --dc-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --dc-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1);
+  --dc-inactive: #d1d5db;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--dc-bg);
+  padding: 20px;
+  min-height: 400px;
+}
+
+/* === HEADER === */
+.dc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
+.dc-title { font-size: 22px; font-weight: 700; color: var(--dc-text); margin: 0; display: flex; align-items: center; gap: 10px; }
+.dc-title svg { width: 26px; height: 26px; color: var(--dc-primary); }
+.dc-stats { display: flex; gap: 12px; }
+.dc-stat { background: var(--dc-card-bg); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--dc-border); font-size: 13px; color: var(--dc-text-secondary); }
+.dc-stat strong { color: var(--dc-primary); font-size: 16px; margin-right: 4px; }
+
+/* === TOOLBAR === */
+.dc-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.dc-filters { display: flex; gap: 10px; flex-wrap: wrap; flex: 1; }
+.dc-input, .dc-select { padding: 9px 12px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 13px; background: var(--dc-card-bg); color: var(--dc-text); }
+.dc-input:focus, .dc-select:focus { outline: none; border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.dc-search-input { min-width: 260px; }
+
+/* === BUTTONS === */
+.dc-btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.dc-btn svg { width: 16px; height: 16px; }
+.dc-btn-primary { background: var(--dc-primary); color: white; }
+.dc-btn-primary:hover { background: var(--dc-primary-hover); }
+.dc-btn-secondary { background: var(--dc-card-bg); color: var(--dc-text); border: 1px solid var(--dc-border); }
+.dc-btn-secondary:hover { background: var(--dc-bg); }
+.dc-btn-danger { background: var(--dc-danger); color: white; }
+.dc-btn-icon { padding: 7px; min-width: 32px; justify-content: center; }
+
+/* === CARDS === */
+.dc-cards { display: flex; flex-direction: column; gap: 16px; }
+
+/* === CARD === */
+.dc-card { background: var(--dc-card-bg); border-radius: var(--dc-radius); border: 1px solid var(--dc-border); overflow: hidden; transition: all 0.3s; }
+.dc-card:hover { box-shadow: var(--dc-shadow-lg); }
+.dc-card.highlighted { border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
+
+/* Clinic badges - ИСПРАВЛЕНО */
+.dc-clinics { display: flex; gap: 6px; padding: 12px 16px; background: var(--dc-bg); border-bottom: 1px solid var(--dc-border); flex-wrap: wrap; }
+.dc-clinic { 
+  min-width: 70px; 
+  padding: 5px 10px; 
+  border-radius: 6px; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  font-size: 11px; 
+  font-weight: 600; 
+  color: white; 
+  background: var(--dc-inactive);
+  transition: all 0.2s; 
+  text-align: center;
+}
+.dc-clinic.active { opacity: 1; }
+
+/* Card header */
+.dc-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; gap: 12px; }
+.dc-card-info { flex: 1; min-width: 0; }
+.dc-card-name { font-size: 17px; font-weight: 600; color: var(--dc-text); margin: 0 0 4px 0; }
+.dc-card-name a { color: inherit; text-decoration: none; }
+.dc-card-name a:hover { color: var(--dc-primary); }
+.dc-card-specialty { font-size: 13px; color: var(--dc-primary); font-weight: 500; margin-bottom: 8px; }
+.dc-card-details { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--dc-text-secondary); }
+.dc-card-details div { display: flex; align-items: center; gap: 4px; }
+
+/* Tabs */
+.dc-tabs { display: flex; gap: 4px; }
+.dc-tab { padding: 6px 10px; border: none; background: transparent; border-radius: 6px; cursor: pointer; font-size: 16px; transition: all 0.2s; }
+.dc-tab:hover { background: var(--dc-bg); }
+.dc-tab.active { background: var(--dc-primary); color: white; }
+.dc-tab.btn-edit:hover { background: #dbeafe; }
+.dc-tab.btn-delete:hover { background: #fee2e2; }
+
+/* Card body - ОТКРЫТ ПО УМОЛЧАНИЮ */
+.dc-card-body { padding: 16px; border-top: 1px solid var(--dc-border); }
+.dc-tab-content { display: none; }
+.dc-tab-content.active { display: block; }
+
+/* Notes */
+.dc-notes { font-size: 13px; color: var(--dc-text-secondary); line-height: 1.6; margin-bottom: 16px; }
+
+/* Timeline */
+.dc-timeline-container { margin-top: 12px; }
+.dc-timeline-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--dc-text-secondary); margin-bottom: 4px; padding: 0 2px; }
+.dc-timeline { display: flex; height: 24px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.dc-timeline-slot { flex: 1; border-right: 1px solid rgba(255,255,255,0.3); transition: background 0.2s; }
+.dc-timeline-slot:last-child { border-right: none; }
+.dc-timeline-slot.busy { background: var(--dc-primary); }
+.dc-timeline-slot.past { background: #cbd5e1; }
+
+/* Services table */
+.dc-services-container { max-height: 300px; overflow-y: auto; }
+.dc-services-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dc-services-table th { background: var(--dc-bg); padding: 8px 10px; text-align: left; font-weight: 600; color: var(--dc-text); border-bottom: 1px solid var(--dc-border); position: sticky; top: 0; }
+.dc-services-table td { padding: 8px 10px; border-bottom: 1px solid var(--dc-border); color: var(--dc-text-secondary); }
+.dc-services-table tr:hover td { background: #f8fafc; }
+
+/* === MODAL === */
+.dc-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; visibility: hidden; transition: all 0.3s; }
+.dc-modal.active { opacity: 1; visibility: visible; }
+.dc-modal-content { background: var(--dc-card-bg); border-radius: var(--dc-radius); width: 100%; max-width: 600px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; transform: scale(0.9); transition: transform 0.3s; }
+.dc-modal.active .dc-modal-content { transform: scale(1); }
+.dc-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--dc-border); }
+.dc-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
+.dc-modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--dc-text-secondary); }
+.dc-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.dc-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--dc-border); background: var(--dc-bg); }
+
+/* Form */
+.dc-form-group { margin-bottom: 16px; }
+.dc-form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--dc-text); margin-bottom: 5px; }
+.dc-form-group .dc-input, .dc-form-group .dc-select, .dc-form-group .dc-textarea { width: 100%; box-sizing: border-box; }
+.dc-textarea { padding: 9px 12px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 13px; resize: vertical; min-height: 70px; font-family: inherit; }
+.dc-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* Search wrapper */
+.dc-search-wrapper { position: relative; }
+.dc-search-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--dc-card-bg); border: 1px solid var(--dc-border); border-radius: 8px; max-height: 250px; overflow-y: auto; z-index: 100; display: none; box-shadow: var(--dc-shadow-lg); }
+.dc-search-results.active { display: block; }
+.dc-search-result { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--dc-border); }
+.dc-search-result:last-child { border-bottom: none; }
+.dc-search-result:hover { background: var(--dc-bg); }
+.dc-search-result-name { font-weight: 500; color: var(--dc-text); font-size: 13px; }
+.dc-search-result-spec { font-size: 11px; color: var(--dc-text-secondary); margin-top: 2px; }
+.dc-loading { text-align: center; padding: 12px; color: var(--dc-text-secondary); font-size: 12px; }
+
+/* Clinics checkboxes - ИСПРАВЛЕНО */
+.dc-clinics-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.dc-clinic-check { 
+  display: flex; 
+  align-items: center; 
+  gap: 6px; 
+  padding: 8px 12px; 
+  border: 2px solid var(--dc-border); 
+  border-radius: 8px; 
+  cursor: pointer; 
+  font-size: 12px; 
+  transition: all 0.2s; 
+  user-select: none;
+  background: var(--dc-card-bg);
+}
+.dc-clinic-check:hover { border-color: var(--dc-primary); }
+.dc-clinic-check.selected { border-color: var(--dc-primary); background: #eff6ff; }
+.dc-clinic-check input { display: none; }
+.dc-clinic-dot { width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0; }
+
+/* Toast */
+.dc-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 8px; font-size: 13px; font-weight: 500; color: white; background: var(--dc-text); box-shadow: var(--dc-shadow-lg); transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 10001; }
+.dc-toast.show { transform: translateY(0); opacity: 1; }
+.dc-toast.success { background: var(--dc-success); }
+.dc-toast.error { background: var(--dc-danger); }
+
+/* Empty state */
+.dc-empty { text-align: center; padding: 50px 20px; color: var(--dc-text-secondary); }
+.dc-empty svg { width: 50px; height: 50px; margin-bottom: 12px; opacity: 0.5; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .dc-app { padding: 12px; }
+  .dc-header, .dc-toolbar { flex-direction: column; align-items: stretch; }
+  .dc-filters { width: 100%; }
+  .dc-search-input { min-width: unset; width: 100%; }
+  .dc-form-row { grid-template-columns: 1fr; }
+  .dc-clinic { min-width: 60px; font-size: 10px; }
+}
+</style>
+
+<div id="doctors-app" class="dc-app">
+  <div class="dc-header">
+    <h1 class="dc-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Наши специалисты
+    </h1>
+    <div class="dc-stats">
+      <div class="dc-stat"><strong id="stat-total">0</strong> врачей</div>
+    </div>
+  </div>
+
+  <div class="dc-toolbar">
+    <div class="dc-filters">
+      <input type="text" id="filter-search" placeholder="🔍 Поиск по ФИО..." class="dc-input dc-search-input" oninput="dcApp.debounceFilter()">
+      <select id="filter-specialty" class="dc-select" onchange="dcApp.filterCards()">
+        <option value="">Все специальности</option>
+      </select>
+    </div>
+    <button class="dc-btn dc-btn-primary" onclick="dcApp.openAddModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Добавить врача
+    </button>
+  </div>
+
+  <div id="dc-cards-container" class="dc-cards">
+    <div class="dc-loading">Загрузка...</div>
+  </div>
+
+  <!-- Modal -->
+  <div id="dc-modal" class="dc-modal">
+    <div class="dc-modal-content">
+      <div class="dc-modal-header">
+        <h3 id="modal-title">Добавить врача</h3>
+        <button type="button" class="dc-modal-close" onclick="dcApp.closeModal()">&times;</button>
+      </div>
+      <form id="dc-form" onsubmit="dcApp.saveCard(event)">
+        <div class="dc-modal-body">
+          <input type="hidden" id="edit-id">
+          <input type="hidden" id="edit-mis-user-id">
+          
+          <div class="dc-form-group">
+            <label>Поиск врача в МИС</label>
+            <div class="dc-search-wrapper">
+              <input type="text" id="mis-search" class="dc-input" placeholder="Начните вводить ФИО для поиска..." oninput="dcApp.searchMIS(this.value)">
+              <div id="mis-search-results" class="dc-search-results"></div>
+            </div>
+          </div>
+          
+          <div class="dc-form-group">
+            <label>ФИО *</label>
+            <input type="text" id="edit-fullname" required class="dc-input" placeholder="Иванов Иван Иванович">
+          </div>
+          
+          <div class="dc-form-row">
+            <div class="dc-form-group">
+              <label>Специальность</label>
+              <input type="text" id="edit-specialty" class="dc-input" placeholder="Стоматолог-терапевт">
+            </div>
+            <div class="dc-form-group">
+              <label>Стаж</label>
+              <input type="text" id="edit-experience" class="dc-input" placeholder="15 лет">
+            </div>
+          </div>
+          
+          <div class="dc-form-row">
+            <div class="dc-form-group">
+              <label>Возраст пациентов</label>
+              <input type="text" id="edit-age-range" class="dc-input" placeholder="0+">
+            </div>
+            <div class="dc-form-group">
+              <label>Ссылка на страницу</label>
+              <input type="text" id="edit-profile-url" class="dc-input" placeholder="/page/ivanov или https://...">
+            </div>
+          </div>
+
+          <div class="dc-form-row">
+            <div class="dc-form-group">
+              <label>Внутренний номер</label>
+              <input type="text" id="edit-internal" class="dc-input" placeholder="123">
+            </div>
+            <div class="dc-form-group">
+              <label>Мобильный</label>
+              <input type="text" id="edit-mobile" class="dc-input" placeholder="+7 (999) 123-45-67">
+            </div>
+          </div>
+          
+          <div class="dc-form-group">
+            <label>Клиники</label>
+            <div id="clinics-checkboxes" class="dc-clinics-grid"></div>
+          </div>
+          
+          <div class="dc-form-group">
+            <label>Заметки</label>
+            <textarea id="edit-notes" class="dc-textarea" rows="3" placeholder="Информация о враче..."></textarea>
+          </div>
+        </div>
+        
+        <div class="dc-modal-footer">
+          <button type="button" class="dc-btn dc-btn-secondary" onclick="dcApp.closeModal()">Отмена</button>
+          <button type="submit" class="dc-btn dc-btn-primary">💾 Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="dc-toast" class="dc-toast"></div>
+</div>
+
+<script>
+window.dcApp = (function() {
+  var API_BASE = window.location.protocol + '//' + window.location.hostname + ':9001/api';
+  var PAGE_SLUG = getPageSlug();
+  var cards = [];
+  var filteredCards = [];
+  var debounceTimer = null;
+  var searchTimer = null;
+  var highlightId = null;
+
+  // Справочник клиник с ПРАВИЛЬНЫМИ ЦВЕТАМИ
+  var CLINICS = [
+    { id: 1, name: 'Альфа', color: '#FF80AB' },
+    { id: 2, name: 'Кидс', color: '#FFA726' },
+    { id: 3, name: 'Проф', color: '#7E57C2' },
+    { id: 4, name: 'Линия', color: '#C5E1A5' },
+    { id: 5, name: '3К', color: '#BA68C8' },
+    { id: 6, name: 'Смайл', color: '#555555' }
+  ];
+
+  function getPageSlug() {
+    var path = window.location.pathname;
+    var match = path.match(/\/page\/([^\/\?]+)/);
+    return match ? match[1] : 'default';
+  }
+
+  function getToken() { return localStorage.getItem('token'); }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var t = document.getElementById('dc-toast');
+    if (!t) return;
+    t.textContent = msg;
+    t.className = 'dc-toast show ' + (type || '');
+    setTimeout(function() { t.className = 'dc-toast'; }, 3000);
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // DATA LOADING
+  // ═══════════════════════════════════════════════════════════════
+
+  function loadCards() {
+    fetchAPI(API_BASE + '/doctor-cards/page/' + PAGE_SLUG + '?sortBy=sortOrder&sortOrder=ASC')
+      .then(function(data) {
+        cards = data;
+        filteredCards = cards.slice();
+        renderCards();
+        loadSpecialties();
+        var statEl = document.getElementById('stat-total');
+        if (statEl) statEl.textContent = cards.length;
+      })
+      .catch(function(e) { showToast('Ошибка загрузки: ' + e.message, 'error'); });
+  }
+
+  function loadSpecialties() {
+    fetchAPI(API_BASE + '/doctor-cards/page/' + PAGE_SLUG + '/specialties')
+      .then(function(list) {
+        var sel = document.getElementById('filter-specialty');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Все специальности</option>' + list.map(function(s) {
+          return '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>';
+        }).join('');
+      }).catch(function() {});
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // RENDERING
+  // ═══════════════════════════════════════════════════════════════
+
+  function renderCards() {
+    var container = document.getElementById('dc-cards-container');
+    if (!container) return;
+    
+    if (!filteredCards.length) {
+      container.innerHTML = '<div class="dc-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg><h3>Список врачей пуст</h3><p>Нажмите "Добавить врача"</p></div>';
+      return;
+    }
+
+    container.innerHTML = filteredCards.map(function(card) {
+      var meta = card.metadata || {};
+      var cardClinics = meta.clinics || [];
+      var isHighlighted = highlightId && card.id === highlightId;
+
+      // Clinic badges - полные названия, цвет только если активна
+      var clinicBadges = CLINICS.map(function(c) {
+        var isActive = cardClinics.indexOf(c.id) !== -1;
+        var bgColor = isActive ? c.color : '';
+        var style = isActive ? 'background:' + c.color : '';
+        return '<div class="dc-clinic' + (isActive ? ' active' : '') + '" style="' + style + '">' + c.name + '</div>';
+      }).join('');
+
+      // Name with link
+      var nameHtml = card.profileUrl 
+        ? '<a href="' + escapeHtml(card.profileUrl) + '">' + escapeHtml(card.fullName) + '</a>'
+        : escapeHtml(card.fullName);
+
+      return '<div class="dc-card' + (isHighlighted ? ' highlighted' : '') + '" data-id="' + card.id + '">' +
+        '<div class="dc-clinics">' + clinicBadges + '</div>' +
+        '<div class="dc-card-header">' +
+          '<div class="dc-card-info">' +
+            '<h3 class="dc-card-name">' + nameHtml + '</h3>' +
+            (card.specialty ? '<div class="dc-card-specialty">' + escapeHtml(card.specialty) + '</div>' : '') +
+            '<div class="dc-card-details">' +
+              (meta.ageRange ? '<div>👶 ' + escapeHtml(meta.ageRange) + '</div>' : '') +
+              (card.experience ? '<div>📅 ' + escapeHtml(card.experience) + '</div>' : '') +
+              (meta.internalNumber ? '<div>📞 вн. ' + escapeHtml(meta.internalNumber) + '</div>' : '') +
+              (meta.mobileNumber ? '<div>📱 ' + escapeHtml(meta.mobileNumber) + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="dc-tabs">' +
+            '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)" title="Информация">📋</button>' +
+            '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="services" onclick="dcApp.switchTab(this)" title="Услуги">📊</button>' +
+            '<button type="button" class="dc-tab btn-edit" onclick="dcApp.openEditModal(\'' + card.id + '\')" title="Редактировать">✏️</button>' +
+            '<button type="button" class="dc-tab btn-delete" onclick="dcApp.deleteCard(\'' + card.id + '\')" title="Удалить">🗑️</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="dc-card-body" id="body-' + card.id + '">' +
+          '<div class="dc-tab-content active" data-tab="info">' +
+            (card.description ? '<div class="dc-notes">' + escapeHtml(card.description).replace(/\n/g, '<br>') + '</div>' : '<div class="dc-notes" style="color:#999">Заметки отсутствуют</div>') +
+            '<div class="dc-timeline-container">' +
+              '<div class="dc-timeline-labels" id="labels-' + card.id + '"></div>' +
+              '<div class="dc-timeline" id="timeline-' + card.id + '"></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="dc-tab-content" data-tab="services">' +
+            '<div class="dc-services-container">' +
+              '<table class="dc-services-table"><thead><tr><th>Артикул</th><th>Услуга</th><th>Длит.</th><th>Цена</th></tr></thead>' +
+              '<tbody id="services-' + card.id + '"><tr><td colspan="4" style="text-align:center;color:#999">Нажмите вкладку "📊" для загрузки...</td></tr></tbody></table>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    // Load schedule for all visible cards - СРАЗУ, т.к. info tab открыт по умолчанию
+    filteredCards.forEach(function(card) {
+      if (card.metadata && card.metadata.misUserId) {
+        loadSchedule(card.id, card.metadata.misUserId);
+      } else {
+        // Показать пустую шкалу
+        renderEmptyTimeline(card.id);
+      }
+    });
+
+    // Scroll to highlighted
+    if (highlightId) {
+      setTimeout(function() {
+        var el = document.querySelector('[data-id="' + highlightId + '"]');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // TABS & SCHEDULE
+  // ═══════════════════════════════════════════════════════════════
+
+  function switchTab(btn) {
+    var cardId = btn.dataset.card;
+    var tabName = btn.dataset.tab;
+    var card = document.querySelector('[data-id="' + cardId + '"]');
+    if (!card) return;
+
+    // Toggle tabs
+    card.querySelectorAll('.dc-tab[data-tab]').forEach(function(t) { t.classList.remove('active'); });
+    btn.classList.add('active');
+
+    // Toggle content
+    var body = document.getElementById('body-' + cardId);
+    if (!body) return;
+    body.querySelectorAll('.dc-tab-content').forEach(function(c) { c.classList.remove('active'); });
+    var content = body.querySelector('[data-tab="' + tabName + '"]');
+    if (content) content.classList.add('active');
+
+    // Load services if needed - ТОЛЬКО услуги этого врача
+    if (tabName === 'services') {
+      var cardData = cards.find(function(c) { return c.id === cardId; });
+      if (cardData && cardData.metadata && cardData.metadata.misUserId) {
+        loadServices(cardId, cardData.metadata.misUserId);
+      } else {
+        var tbody = document.getElementById('services-' + cardId);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Врач не привязан к МИС</td></tr>';
+      }
+    }
+  }
+
+  function renderEmptyTimeline(cardId) {
+    var timeline = document.getElementById('timeline-' + cardId);
+    var labels = document.getElementById('labels-' + cardId);
+    if (!timeline || !labels) return;
+
+    var hours = [];
+    for (var h = 8; h <= 20; h++) hours.push(h + ':00');
+    labels.innerHTML = hours.map(function(h) { return '<span>' + h + '</span>'; }).join('');
+
+    var slots = '';
+    for (var i = 0; i < 48; i++) {
+      slots += '<div class="dc-timeline-slot"></div>';
+    }
+    timeline.innerHTML = slots;
+  }
+
+  function loadSchedule(cardId, misUserId) {
+    var timeline = document.getElementById('timeline-' + cardId);
+    var labels = document.getElementById('labels-' + cardId);
+    if (!timeline || !labels) return;
+
+    // Generate time labels
+    var hours = [];
+    for (var h = 8; h <= 20; h++) hours.push(h + ':00');
+    labels.innerHTML = hours.map(function(h) { return '<span>' + h + '</span>'; }).join('');
+
+    // Generate empty slots
+    var slots = '';
+    for (var i = 0; i < 48; i++) {
+      slots += '<div class="dc-timeline-slot"></div>';
+    }
+    timeline.innerHTML = slots;
+
+    // Fetch schedule from MIS
+    fetchAPI(API_BASE + '/mis/schedule', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: misUserId, date_start: getTodayDate(), date_end: getTodayDate() })
+    }).then(function(data) {
+      if (data.error === 0 && data.data) {
+        renderSchedule(cardId, data.data);
+      }
+    }).catch(function() {});
+  }
+
+  function getTodayDate() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  }
+
+  function renderSchedule(cardId, scheduleData) {
+    var timeline = document.getElementById('timeline-' + cardId);
+    if (!timeline) return;
+    var slots = timeline.querySelectorAll('.dc-timeline-slot');
+    
+    if (Array.isArray(scheduleData)) {
+      scheduleData.forEach(function(item) {
+        if (item.time_start && item.time_end) {
+          var start = parseTime(item.time_start);
+          var end = parseTime(item.time_end);
+          for (var i = start; i < end && i < 48; i++) {
+            if (slots[i]) slots[i].classList.add('busy');
+          }
+        }
+      });
+    }
+
+    // Mark past slots
+    var now = new Date();
+    var currentSlot = Math.floor((now.getHours() - 8) * 2 + now.getMinutes() / 30);
+    for (var i = 0; i < currentSlot && i < 48; i++) {
+      if (slots[i] && !slots[i].classList.contains('busy')) {
+        slots[i].classList.add('past');
+      }
+    }
+  }
+
+  function parseTime(timeStr) {
+    var parts = timeStr.split(':');
+    var hour = parseInt(parts[0]) - 8;
+    var min = parseInt(parts[1]) / 30;
+    return Math.max(0, hour * 2 + Math.floor(min));
+  }
+
+  // ИСПРАВЛЕНО: Загружаем только услуги ЭТОГО врача
+  function loadServices(cardId, misUserId) {
+    var tbody = document.getElementById('services-' + cardId);
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Загрузка...</td></tr>';
+
+    // Сначала получаем данные врача с его услугами
+    fetchAPI(API_BASE + '/mis/doctor-info', {
+      method: 'POST',
+      body: JSON.stringify({ userId: misUserId })
+    }).then(function(data) {
+      if (data.success && data.data && data.data.services && data.data.services.length > 0) {
+        // Теперь запрашиваем детали ТОЛЬКО этих услуг
+        return fetchAPI(API_BASE + '/mis/services', {
+          method: 'POST',
+          body: JSON.stringify({ service_ids: data.data.services })
+        });
+      }
+      throw new Error('Нет услуг');
+    }).then(function(servData) {
+      if (servData.error === 0 && servData.data) {
+        var services = Array.isArray(servData.data) ? servData.data : [servData.data];
+        if (services.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
+          return;
+        }
+        tbody.innerHTML = services.map(function(s) {
+          return '<tr><td>' + (s.code || '—') + '</td><td>' + escapeHtml(s.title || '—') + '</td><td>' + (s.duration ? s.duration + ' мин' : '—') + '</td><td>' + (s.price ? Number(s.price).toLocaleString('ru-RU') + ' ₽' : '—') + '</td></tr>';
+        }).join('');
+      } else {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
+      }
+    }).catch(function(e) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет данных</td></tr>';
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FILTERING
+  // ═══════════════════════════════════════════════════════════════
+
+  function filterCards() {
+    var searchEl = document.getElementById('filter-search');
+    var specEl = document.getElementById('filter-specialty');
+    var search = searchEl ? searchEl.value.toLowerCase() : '';
+    var specialty = specEl ? specEl.value : '';
+
+    filteredCards = cards.filter(function(c) {
+      if (search && !c.fullName.toLowerCase().includes(search)) return false;
+      if (specialty && c.specialty !== specialty) return false;
+      return true;
+    });
+
+    renderCards();
+  }
+
+  function debounceFilter() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(filterCards, 300);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MIS SEARCH
+  // ═══════════════════════════════════════════════════════════════
+
+  function searchMIS(query) {
+    var resultsDiv = document.getElementById('mis-search-results');
+    if (!resultsDiv) return;
+    
+    if (query.length < 2) {
+      resultsDiv.classList.remove('active');
+      return;
+    }
+
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+      resultsDiv.innerHTML = '<div class="dc-loading">Поиск...</div>';
+      resultsDiv.classList.add('active');
+
+      fetchAPI(API_BASE + '/mis/doctors', { method: 'POST', body: JSON.stringify({}) })
+        .then(function(data) {
+          if (data.error === 0 && data.data) {
+            var doctors = Array.isArray(data.data) ? data.data : [];
+            var filtered = doctors.filter(function(d) {
+              var name = (d.name || d.last_name + ' ' + d.first_name).toLowerCase();
+              return name.includes(query.toLowerCase());
+            }).slice(0, 10);
+
+            if (filtered.length === 0) {
+              resultsDiv.innerHTML = '<div class="dc-loading">Ничего не найдено</div>';
+            } else {
+              resultsDiv.innerHTML = filtered.map(function(d) {
+                var name = d.name || (d.last_name + ' ' + d.first_name + ' ' + (d.middle_name || '')).trim();
+                var specs = d.professions ? d.professions.map(function(p) { return p.title; }).join(', ') : '';
+                var dataStr = encodeURIComponent(JSON.stringify(d));
+                return '<div class="dc-search-result" onclick="dcApp.selectDoctor(decodeURIComponent(\'' + dataStr + '\'))">' +
+                  '<div class="dc-search-result-name">' + escapeHtml(name) + '</div>' +
+                  (specs ? '<div class="dc-search-result-spec">' + escapeHtml(specs) + '</div>' : '') +
+                '</div>';
+              }).join('');
+            }
+          }
+        })
+        .catch(function() {
+          resultsDiv.innerHTML = '<div class="dc-loading">Ошибка поиска</div>';
+        });
+    }, 400);
+  }
+
+  function selectDoctor(dataStr) {
+    var doctor = JSON.parse(dataStr);
+    var resultsDiv = document.getElementById('mis-search-results');
+    if (resultsDiv) resultsDiv.classList.remove('active');
+    
+    var searchInput = document.getElementById('mis-search');
+    if (searchInput) searchInput.value = '';
+
+    var name = doctor.name || (doctor.last_name + ' ' + doctor.first_name + ' ' + (doctor.middle_name || '')).trim();
+    var specs = doctor.professions ? doctor.professions.map(function(p) { return p.title; }).join(', ') : '';
+    var clinicIds = doctor.clinics ? doctor.clinics.map(function(c) { return typeof c === 'object' ? c.id : c; }) : [];
+
+    var fnEl = document.getElementById('edit-fullname');
+    var spEl = document.getElementById('edit-specialty');
+    var muEl = document.getElementById('edit-mis-user-id');
+    var exEl = document.getElementById('edit-experience');
+    var inEl = document.getElementById('edit-internal');
+    
+    if (fnEl) fnEl.value = name;
+    if (spEl) spEl.value = specs;
+    if (muEl) muEl.value = doctor.id;
+    if (exEl) exEl.value = doctor.work_period || '';
+    if (inEl) inEl.value = doctor.internal_number || '';
+
+    // Update clinic checkboxes
+    updateClinicCheckboxes(clinicIds);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MODAL & CRUD
+  // ═══════════════════════════════════════════════════════════════
+
+  function renderClinicsCheckboxes(selectedClinics) {
+    var container = document.getElementById('clinics-checkboxes');
+    if (!container) return;
+    
+    selectedClinics = selectedClinics || [];
+    
+    container.innerHTML = CLINICS.map(function(c) {
+      var isSelected = selectedClinics.indexOf(c.id) !== -1;
+      return '<div class="dc-clinic-check' + (isSelected ? ' selected' : '') + '" data-clinic-id="' + c.id + '">' +
+        '<input type="checkbox" value="' + c.id + '"' + (isSelected ? ' checked' : '') + '>' +
+        '<span class="dc-clinic-dot" style="background:' + c.color + '"></span> ' + c.name +
+      '</div>';
+    }).join('');
+    
+    // Добавляем обработчики кликов
+    container.querySelectorAll('.dc-clinic-check').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var checkbox = this.querySelector('input');
+        checkbox.checked = !checkbox.checked;
+        this.classList.toggle('selected', checkbox.checked);
+      });
+    });
+  }
+
+  function updateClinicCheckboxes(selectedClinics) {
+    var container = document.getElementById('clinics-checkboxes');
+    if (!container) return;
+    
+    container.querySelectorAll('.dc-clinic-check').forEach(function(el) {
+      var cid = parseInt(el.dataset.clinicId);
+      var isSelected = selectedClinics.indexOf(cid) !== -1;
+      var checkbox = el.querySelector('input');
+      if (checkbox) checkbox.checked = isSelected;
+      el.classList.toggle('selected', isSelected);
+    });
+  }
+
+  function getSelectedClinics() {
+    var clinics = [];
+    var checkboxes = document.querySelectorAll('#clinics-checkboxes input:checked');
+    checkboxes.forEach(function(cb) {
+      clinics.push(parseInt(cb.value));
+    });
+    return clinics;
+  }
+
+  function openAddModal() {
+    var titleEl = document.getElementById('modal-title');
+    var formEl = document.getElementById('dc-form');
+    var idEl = document.getElementById('edit-id');
+    var misEl = document.getElementById('edit-mis-user-id');
+    
+    if (titleEl) titleEl.textContent = 'Добавить врача';
+    if (formEl) formEl.reset();
+    if (idEl) idEl.value = '';
+    if (misEl) misEl.value = '';
+    
+    renderClinicsCheckboxes([]);
+    
+    var modal = document.getElementById('dc-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  function openEditModal(id) {
+    var card = cards.find(function(c) { return c.id === id; });
+    if (!card) return;
+
+    var meta = card.metadata || {};
+    
+    var titleEl = document.getElementById('modal-title');
+    if (titleEl) titleEl.textContent = 'Редактировать врача';
+    
+    setValue('edit-id', card.id);
+    setValue('edit-mis-user-id', meta.misUserId || '');
+    setValue('edit-fullname', card.fullName || '');
+    setValue('edit-specialty', card.specialty || '');
+    setValue('edit-experience', card.experience || '');
+    setValue('edit-age-range', meta.ageRange || '');
+    setValue('edit-profile-url', card.profileUrl || '');
+    setValue('edit-internal', meta.internalNumber || '');
+    setValue('edit-mobile', meta.mobileNumber || '');
+    setValue('edit-notes', card.description || '');
+
+    renderClinicsCheckboxes(meta.clinics || []);
+    
+    var modal = document.getElementById('dc-modal');
+    if (modal) modal.classList.add('active');
+  }
+
+  function setValue(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.value = value;
+  }
+
+  function getValue(id) {
+    var el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  }
+
+  function closeModal() {
+    var modal = document.getElementById('dc-modal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  function saveCard(e) {
+    e.preventDefault();
+
+    var id = getValue('edit-id');
+    var clinics = getSelectedClinics();
+
+    var data = {
+      pageSlug: PAGE_SLUG,
+      fullName: getValue('edit-fullname'),
+      specialty: getValue('edit-specialty'),
+      experience: getValue('edit-experience'),
+      profileUrl: getValue('edit-profile-url'),
+      description: getValue('edit-notes'),
+      misUserId: getValue('edit-mis-user-id') || null,
+      ageRange: getValue('edit-age-range'),
+      internalNumber: getValue('edit-internal'),
+      mobileNumber: getValue('edit-mobile'),
+      clinics: clinics
+    };
+
+    var url = id ? API_BASE + '/doctor-cards/' + id : API_BASE + '/doctor-cards';
+    var method = id ? 'PUT' : 'POST';
+
+    fetchAPI(url, { method: method, body: JSON.stringify(data) })
+      .then(function() {
+        showToast(id ? 'Карточка обновлена' : 'Врач добавлен', 'success');
+        closeModal();
+        loadCards();
+      })
+      .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function deleteCard(id) {
+    if (!confirm('Удалить карточку врача?')) return;
+
+    fetchAPI(API_BASE + '/doctor-cards/' + id, { method: 'DELETE' })
+      .then(function() {
+        showToast('Карточка удалена', 'success');
+        loadCards();
+      })
+      .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════════════════════
+
+  function init() {
+    if (!getToken()) {
+      var app = document.getElementById('doctors-app');
+      if (app) app.innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+      return;
+    }
+
+    var urlParams = new URLSearchParams(window.location.search);
+    highlightId = urlParams.get('highlight');
+
+    loadCards();
+
+    if (highlightId) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+    
+    // Закрытие результатов поиска при клике вне
+    document.addEventListener('click', function(e) {
+      var wrapper = e.target.closest('.dc-search-wrapper');
+      if (!wrapper) {
+        var results = document.getElementById('mis-search-results');
+        if (results) results.classList.remove('active');
+      }
+    });
+    
+    // Закрытие модалки при клике на overlay
+    var modal = document.getElementById('dc-modal');
+    if (modal) {
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) closeModal();
+      });
+    }
+  }
+
+  init();
+
+  return {
+    loadCards: loadCards,
+    debounceFilter: debounceFilter,
+    filterCards: filterCards,
+    openAddModal: openAddModal,
+    openEditModal: openEditModal,
+    closeModal: closeModal,
+    saveCard: saveCard,
+    deleteCard: deleteCard,
+    switchTab: switchTab,
+    searchMIS: searchMIS,
+    selectDoctor: selectDoctor
+  };
+})();
+</script>
