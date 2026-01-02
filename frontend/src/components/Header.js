@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
-  Award, UserCircle, Briefcase, File, ExternalLink
+  Award, UserCircle, Briefcase, File, ExternalLink, Car
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -16,6 +16,8 @@ const getResultIcon = (type) => {
       return FileText;
     case 'accreditation':
       return Award;
+    case 'vehicle':
+      return Car;
     case 'doctor':
       return UserCircle;
     case 'service':
@@ -33,6 +35,8 @@ const getTypeName = (type, displayType) => {
       return 'Страница';
     case 'accreditation':
       return 'Аккредитация';
+    case 'vehicle':
+      return 'Транспорт';
     case 'doctor':
       return 'Врач';
     case 'service':
@@ -235,7 +239,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   );
                 })
               ) : (
-                <div className="search-no-results">Ничего не найдено</div>
+                <div className="search-no-results">
+                  Ничего не найдено
+                </div>
               )}
             </div>
           )}
@@ -243,59 +249,44 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       </div>
 
       <div className="header-right">
-        {/* User Dropdown */}
-        <div className="header-user" ref={dropdownRef}>
-          <button className="header-user-btn" onClick={() => setShowDropdown(!showDropdown)}>
-            <div className="header-avatar">
+        {user && (
+          <div className="header-user" ref={dropdownRef}>
+            <button 
+              className="header-user-btn"
+              onClick={() => setShowDropdown(!showDropdown)}
+            >
               {getAvatarUrl() ? (
-                <img src={getAvatarUrl()} alt="" />
+                <img src={getAvatarUrl()} alt={user.displayName || user.username} className="header-avatar" />
               ) : (
-                <User size={18} />
+                <div className="header-avatar-placeholder">
+                  <User size={18} />
+                </div>
               )}
-            </div>
-            <span className="header-username">{user?.displayName || user?.username}</span>
-            <ChevronDown size={16} className="header-chevron" />
-          </button>
-
-          {showDropdown && (
-            <div className="header-dropdown">
-              <div className="header-dropdown-user">
-                <div className="header-dropdown-avatar">
-                  {getAvatarUrl() ? (
-                    <img src={getAvatarUrl()} alt="" />
-                  ) : (
-                    <User size={24} />
-                  )}
-                </div>
-                <div className="header-dropdown-info">
-                  <span className="header-dropdown-name">{user?.displayName || user?.username}</span>
-                  <span className="header-dropdown-email">{user?.email}</span>
-                </div>
-              </div>
-
-              <div className="header-dropdown-divider" />
-
-              <Link to="/profile" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                <User size={18} />
-                <span>Профиль</span>
-              </Link>
-
-              {isAdmin && (
-                <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                  <Shield size={18} />
-                  <span>Администрирование</span>
+              <span className="header-username">{user.displayName || user.username}</span>
+              <ChevronDown size={16} />
+            </button>
+            
+            {showDropdown && (
+              <div className="header-dropdown">
+                <Link to="/profile" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                  <User size={16} />
+                  Профиль
                 </Link>
-              )}
-
-              <div className="header-dropdown-divider" />
-
-              <button className="header-dropdown-item header-dropdown-logout" onClick={handleLogout}>
-                <LogOut size={18} />
-                <span>Выйти</span>
-              </button>
-            </div>
-          )}
-        </div>
+                {isAdmin && (
+                  <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Shield size={16} />
+                    Админ-панель
+                  </Link>
+                )}
+                <div className="header-dropdown-divider" />
+                <button className="header-dropdown-item" onClick={handleLogout}>
+                  <LogOut size={16} />
+                  Выйти
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

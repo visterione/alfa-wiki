@@ -194,7 +194,7 @@ const Message = sequelize.define('Message', {
   replyToId: { type: DataTypes.UUID }
 }, { tableName: 'messages', timestamps: true });
 
-// === ACCREDITATION MODEL === (NEW)
+// === ACCREDITATION MODEL ===
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   medCenter: { 
@@ -221,7 +221,7 @@ const Accreditation = sequelize.define('Accreditation', {
   ]
 });
 
-// === TELEGRAM SUBSCRIBER MODEL === (NEW)
+// === TELEGRAM SUBSCRIBER MODEL ===
 const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   chatId: { type: DataTypes.STRING(50), allowNull: false, unique: true },
@@ -232,6 +232,41 @@ const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
 }, { 
   tableName: 'telegram_subscribers', 
   timestamps: true 
+});
+
+// === VEHICLE MODEL ===
+const Vehicle = sequelize.define('Vehicle', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  organization: { type: DataTypes.STRING(255), allowNull: false },
+  carBrand: { type: DataTypes.STRING(255), allowNull: false },
+  licensePlate: { type: DataTypes.STRING(50), allowNull: false },
+  carYear: { type: DataTypes.INTEGER, allowNull: false },
+  mileage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  nextTO: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  insuranceDate: { type: DataTypes.DATEONLY, allowNull: false },
+  condition: { 
+    type: DataTypes.ENUM('Хорошее', 'Удовлетворительное', 'Плохое'), 
+    allowNull: false 
+  },
+  comment: { type: DataTypes.TEXT },
+  reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded7: { type: DataTypes.BOOLEAN, defaultValue: false },
+  remindedTO: { type: DataTypes.BOOLEAN, defaultValue: false }
+}, { 
+  tableName: 'vehicles', 
+  timestamps: true,
+  indexes: [
+    { fields: ['organization'] },
+    { fields: ['carBrand'] },
+    { fields: ['licensePlate'] },
+    { fields: ['insuranceDate'] },
+    { fields: ['condition'] },
+    { fields: ['mileage'] },
+    { fields: ['nextTO'] }
+  ]
 });
 
 // === RELATIONSHIPS ===
@@ -293,5 +328,6 @@ module.exports = {
   ChatMember,
   Message,
   Accreditation,
-  TelegramSubscriber
+  TelegramSubscriber,
+  Vehicle
 };

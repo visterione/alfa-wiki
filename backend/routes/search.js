@@ -53,16 +53,39 @@ const formatIndexedResult = (item, searchTerm) => {
         }
       }
       break;
+    
+    case 'vehicle':
+      displayType = 'Транспорт';
+      icon = 'car';
+      // Добавляем информацию об организации и страховке
+      if (item.metadata) {
+        const meta = item.metadata;
+        const parts = [];
+        if (meta.organization) parts.push(`Орг: ${meta.organization}`);
+        if (meta.licensePlate) parts.push(`${meta.licensePlate}`);
+        if (meta.insuranceDate) {
+          const date = new Date(meta.insuranceDate);
+          parts.push(`Страховка: ${date.toLocaleDateString('ru-RU')}`);
+        }
+        if (parts.length > 0) {
+          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+        }
+      }
+      break;
+      
     case 'doctor':
       displayType = 'Врач';
       icon = 'user';
       break;
+      
     case 'service':
       displayType = 'Услуга';
       icon = 'briefcase';
       break;
+      
     default:
       displayType = item.entityType;
+      icon = 'file';
   }
 
   return {
@@ -71,7 +94,6 @@ const formatIndexedResult = (item, searchTerm) => {
     icon: icon,
     id: item.entityId,
     title: item.title,
-    description: item.content?.substring(0, 200),
     excerpt: excerpt,
     url: item.url,
     keywords: item.keywords,
@@ -79,52 +101,40 @@ const formatIndexedResult = (item, searchTerm) => {
   };
 };
 
-// Main search endpoint with improved partial matching
+// Basic search endpoint
 router.get('/', authenticate, async (req, res) => {
   try {
     const { q, type, limit = 20 } = req.query;
     
     if (!q || q.trim().length < 2) {
-      return res.json({ results: [], total: 0 });
+      return res.json({ results: [], total: 0, query: q });
     }
 
     const searchTerm = q.trim().toLowerCase();
     const results = [];
 
-    // Search in pages with partial matching
-    if (!type || type === 'page' || type === 'all') {
+    // Search in pages
+    if (!type || type === 'all' || type === 'page') {
       const pages = await Page.findAll({
         where: {
-          [Op.and]: [
-            { isPublished: true },
-            {
-              [Op.or]: [
-                { title: { [Op.iLike]: `%${searchTerm}%` } },
-                { description: { [Op.iLike]: `%${searchTerm}%` } },
-                { searchContent: { [Op.iLike]: `%${searchTerm}%` } },
-                { keywords: { [Op.overlap]: [searchTerm] } }
-              ]
-            }
+          isPublished: true,
+          [Op.or]: [
+            { title: { [Op.iLike]: `%${searchTerm}%` } },
+            { searchContent: { [Op.iLike]: `%${searchTerm}%` } },
+            { description: { [Op.iLike]: `%${searchTerm}%` } },
+            { keywords: { [Op.overlap]: [searchTerm] } }
           ]
         },
-        attributes: ['id', 'slug', 'title', 'description', 'keywords', 'allowedRoles', 'searchContent'],
+        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent'],
         limit: parseInt(limit)
       });
 
-      // Filter by user role
-      const filteredPages = pages.filter(page => {
-        if (req.user.isAdmin) return true;
-        if (!page.allowedRoles || page.allowedRoles.length === 0) return true;
-        return page.allowedRoles.includes(req.user.roleId);
-      });
-
-      // Create excerpts with search term highlighted context
-      filteredPages.forEach(page => {
+      pages.forEach(page => {
         let excerpt = '';
+        const content = page.searchContent || '';
+        const index = content.toLowerCase().indexOf(searchTerm);
         
-        if (page.searchContent && page.searchContent.toLowerCase().includes(searchTerm)) {
-          const content = page.searchContent;
-          const index = content.toLowerCase().indexOf(searchTerm);
+        if (index !== -1) {
           const start = Math.max(0, index - 60);
           const end = Math.min(content.length, index + searchTerm.length + 60);
           let rawExcerpt = content.substring(start, end);
@@ -156,7 +166,7 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Search in search index (for dynamic content like accreditations, doctors, services, etc.)
+    // Search in search index (for dynamic content like accreditations, vehicles, doctors, services, etc.)
     if (!type || type !== 'page') {
       const whereClause = {
         [Op.or]: [
@@ -212,52 +222,41 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Full-text search with PostgreSQL (more powerful, with partial matching)
+// Fulltext search with ranking
 router.get('/fulltext', authenticate, async (req, res) => {
   try {
     const { q, limit = 20 } = req.query;
     
     if (!q || q.trim().length < 2) {
-      return res.json({ results: [], total: 0 });
+      return res.json({ results: [], total: 0, query: q });
     }
 
     const searchQuery = q.trim();
     const likePattern = `%${searchQuery}%`;
 
-    // Поиск по страницам
+    // Search in pages with ranking
     const pageResults = await sequelize.query(`
       SELECT 
-        id, slug, title, description, keywords, "searchContent",
-        GREATEST(
-          ts_rank(
-            setweight(to_tsvector('russian', coalesce(title, '')), 'A') ||
-            setweight(to_tsvector('russian', coalesce(description, '')), 'B') ||
-            setweight(to_tsvector('russian', coalesce("searchContent", '')), 'C'),
-            plainto_tsquery('russian', :searchQuery)
-          ),
-          0.1
-        ) as rank,
+        id, title, slug, description, keywords, "searchContent",
         CASE
-          WHEN title ILIKE :exactStart THEN 4
-          WHEN title ILIKE :likePattern THEN 3
-          WHEN description ILIKE :likePattern THEN 2
-          WHEN "searchContent" ILIKE :likePattern THEN 1
-          ELSE 0
-        END as priority
+          WHEN title ILIKE :exactStart THEN 5
+          WHEN title ILIKE :likePattern THEN 4
+          WHEN description ILIKE :likePattern THEN 3
+          WHEN "searchContent" ILIKE :likePattern THEN 2
+          ELSE 1
+        END as rank
       FROM pages
-      WHERE "isPublished" = true
+      WHERE 
+        "isPublished" = true
         AND (
           title ILIKE :likePattern
           OR description ILIKE :likePattern
           OR "searchContent" ILIKE :likePattern
-          OR to_tsvector('russian', coalesce(title, '') || ' ' || coalesce(description, '') || ' ' || coalesce("searchContent", '')) 
-             @@ plainto_tsquery('russian', :searchQuery)
         )
-      ORDER BY priority DESC, rank DESC
+      ORDER BY rank DESC, title ASC
       LIMIT :limit
     `, {
       replacements: { 
-        searchQuery, 
         likePattern, 
         exactStart: `${searchQuery}%`,
         limit: parseInt(limit) 
@@ -265,7 +264,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
       type: sequelize.QueryTypes.SELECT
     });
 
-    // Поиск по индексу (аккредитации и др.)
+    // Search in search index
     const indexResults = await sequelize.query(`
       SELECT 
         "entityType", "entityId", title, content, keywords, url, metadata,
