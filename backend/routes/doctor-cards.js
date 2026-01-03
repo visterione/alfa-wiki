@@ -8,11 +8,15 @@ const router = express.Router();
 
 // === HELPER: Индексация карточки врача для поиска ===
 const indexDoctorCard = async (card) => {
+  const meta = card.metadata || {};
+  const tagsText = (meta.tags || []).join(' ');
+  
   const searchContent = [
     card.fullName,
     card.specialty,
     card.experience,
     card.description,
+    tagsText,
     card.phones?.map(p => p.number).join(' ')
   ].filter(Boolean).join(' | ');
 
@@ -25,7 +29,8 @@ const indexDoctorCard = async (card) => {
     card.pageSlug?.toLowerCase(),
     'врач',
     'доктор',
-    'специалист'
+    'специалист',
+    ...(meta.tags || []).map(t => t.toLowerCase())
   ].filter(Boolean);
 
   await SearchIndex.upsert({
@@ -41,7 +46,8 @@ const indexDoctorCard = async (card) => {
       fullName: card.fullName,
       photo: card.photo,
       profileUrl: card.profileUrl,
-      misUserId: card.misUserId
+      misUserId: meta.misUserId,
+      tags: meta.tags
     }
   });
 };
@@ -166,7 +172,9 @@ router.post('/', authenticate, [
       description, phones, sortOrder, metadata,
       // Поля из МИС
       misUserId, professions, professionTitles, clinics, ageRange,
-      internalNumber, mobileNumber, notes
+      internalNumber, mobileNumber, notes,
+      // Теги
+      tags
     } = req.body;
 
     const maxOrder = await DoctorCard.max('sortOrder', { where: { pageSlug } }) || 0;
@@ -189,7 +197,8 @@ router.post('/', authenticate, [
         clinics,
         ageRange,
         internalNumber,
-        mobileNumber
+        mobileNumber,
+        tags
       }
     });
 
@@ -214,7 +223,9 @@ router.put('/:id', authenticate, async (req, res) => {
       fullName, specialty, experience, profileUrl, photo, 
       description, phones, sortOrder, metadata,
       misUserId, professions, professionTitles, clinics, ageRange,
-      internalNumber, mobileNumber, notes
+      internalNumber, mobileNumber, notes,
+      // Теги
+      tags
     } = req.body;
 
     const updateData = {};
@@ -237,6 +248,7 @@ router.put('/:id', authenticate, async (req, res) => {
     if (ageRange !== undefined) newMetadata.ageRange = ageRange;
     if (internalNumber !== undefined) newMetadata.internalNumber = internalNumber;
     if (mobileNumber !== undefined) newMetadata.mobileNumber = mobileNumber;
+    if (tags !== undefined) newMetadata.tags = tags;
     if (metadata) Object.assign(newMetadata, metadata);
     updateData.metadata = newMetadata;
 

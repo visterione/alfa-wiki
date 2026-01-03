@@ -190,7 +190,7 @@ router.post('/services', authenticate, async (req, res) => {
     console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', service_ids.slice(0, 5));
 
     const data = await misRequest('getServices', {
-      service_ids: service_ids.join(',')
+      service_id: service_ids.join(',')
     });
 
     res.json(data);
