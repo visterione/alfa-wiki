@@ -194,13 +194,13 @@ function QuickAccessButtons({ onClose }) {
   }, []);
 
   const loadUnreadCount = async () => {
-    try {
-      const { data } = await chat.getUnreadCount();
-      setUnreadCount(data.count || 0);
-    } catch (error) {
-      console.error('Failed to load unread count:', error);
-    }
-  };
+  try {
+    const { data } = await chat.getUnreadCount();
+    setUnreadCount(data.unreadCount || 0);  // Было: data.count
+  } catch (error) {
+    console.error('Failed to load unread count:', error);
+  }
+};
 
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';

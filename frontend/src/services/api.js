@@ -145,7 +145,14 @@ export const settings = {
 export const backup = {
   list: () => api.get('/backup'),
   create: () => api.post('/backup'),
-  restore: (filename) => api.post(`/backup/restore/${filename}`),
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('backup', file);
+    return api.post('/backup/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  restore: (filename, options = {}) => api.post(`/backup/restore/${filename}`, options),
   download: (filename) => `${BASE_URL}/api/backup/download/${filename}`,
   delete: (filename) => api.delete(`/backup/${filename}`),
   cleanup: () => api.post('/backup/cleanup')
@@ -163,20 +170,28 @@ export const chat = {
     return api.post(`/chat/${chatId}/messages`, { content, type, attachments });
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
-  createPrivate: (userId) => api.post('/chat/private', { userId }),
+  
+  // ИСПРАВЛЕНО: startPrivate вместо createPrivate, URL с параметром
+  startPrivate: (userId) => api.post(`/chat/private/${userId}`),
+  
   createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
   updateGroup: (chatId, data) => api.put(`/chat/${chatId}`, data),
-  uploadAvatar: (chatId, file) => {
+  
+  // Алиасы для совместимости
+  updateAvatar: (chatId, file) => {
     const formData = new FormData();
     formData.append('avatar', file);
     return api.post(`/chat/${chatId}/avatar`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });
   },
-  addMembers: (chatId, userIds) => api.post(`/chat/${chatId}/members`, { userIds }),
+  deleteAvatar: (chatId) => api.delete(`/chat/${chatId}/avatar`),
+  
+  addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
-  leaveChat: (chatId) => api.post(`/chat/${chatId}/leave`),
+  leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
   deleteChat: (chatId) => api.delete(`/chat/${chatId}`),
+  
   uploadFiles: (chatId, files) => {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
