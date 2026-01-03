@@ -1,5 +1,5 @@
 /**
- * Прокси для API МИС Renovatio v3
+ * Прокси для API МИС Renovatio
  * Позволяет получать данные врачей, расписание, услуги из внешней системы
  */
 
@@ -14,33 +14,23 @@ const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
 const REQUEST_TIMEOUT = 15000;
 
-// Helper для POST запросов к МИС
 const misRequest = async (endpoint, params = {}) => {
-  console.log(`🔗 MIS Request: ${endpoint}`, JSON.stringify(params));
-  
-  try {
-    const response = await axios.post(
-      `${MIS_BASE_URL}/${endpoint}`,
-      qs.stringify({ api_key: MIS_API_KEY, ...params }),
-      {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        timeout: REQUEST_TIMEOUT
-      }
-    );
-    
-    console.log(`📥 MIS Response ${endpoint}:`, JSON.stringify(response.data).substring(0, 500));
-    return response.data;
-  } catch (error) {
-    console.error(`❌ MIS Error ${endpoint}:`, error.message);
-    throw error;
-  }
+  const response = await axios.post(
+    `${MIS_BASE_URL}/${endpoint}`,
+    qs.stringify({ api_key: MIS_API_KEY, ...params }),
+    {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: REQUEST_TIMEOUT
+    }
+  );
+  return response.data;
 };
 
 // ═══════════════════════════════════════════════════════════════
 // ВРАЧИ
 // ═══════════════════════════════════════════════════════════════
 
-// Получить данные врача по ID (включая услуги)
+// Получить данные врача по ID (с услугами!)
 router.post('/doctor-info', authenticate, async (req, res) => {
   try {
     const userId = req.body.userId || req.body.user_id || req.body.id;
@@ -51,7 +41,6 @@ router.post('/doctor-info', authenticate, async (req, res) => {
 
     console.log('👨‍⚕️ Запрос данных врача:', userId);
 
-    // Запрашиваем с with_services: 1 чтобы получить список услуг
     const data = await misRequest('getUsers', {
       user_id: userId,
       role: 'doctor',
@@ -62,28 +51,22 @@ router.post('/doctor-info', authenticate, async (req, res) => {
     const doctorsArray = Array.isArray(data?.data) ? data.data : [];
 
     if (errorCode !== 0 || doctorsArray.length === 0) {
-      console.log('⚠️ Врач не найден:', userId);
       return res.json({ success: false, error: 'Врач не найден', data: null });
     }
 
     const doctor = doctorsArray[0];
     
     // Логируем для отладки
-    console.log('👨‍⚕️ Doctor data:', {
-      id: doctor.id,
-      name: doctor.name,
-      services: doctor.services,
-      servicesCount: doctor.services ? doctor.services.length : 0
-    });
+    console.log('📋 Услуги врача:', doctor.services?.length || 0, 'шт.');
     
     res.json({
       success: true,
       data: {
         id: doctor.id,
         name: doctor.name || `${doctor.last_name || ''} ${doctor.first_name || ''} ${doctor.middle_name || ''}`.trim(),
-        professions: doctor.professions || [],
-        services: doctor.services || [],  // Массив ID услуг
-        clinics: doctor.clinics || [],
+        professions: doctor.professions || doctor.profession || [],
+        services: doctor.services || [],
+        clinics: doctor.clinics || doctor.clinic || [],
         workPeriod: doctor.work_period,
         internalNumber: doctor.internal_number,
         doctorInfo: doctor.doctor_info
@@ -95,22 +78,24 @@ router.post('/doctor-info', authenticate, async (req, res) => {
   }
 });
 
-// Поиск/список врачей
+// Поиск/список врачей - ИСПРАВЛЕНО: добавлен with_services
 router.post('/doctors', authenticate, async (req, res) => {
   try {
-    const { clinic_id, profession_id } = req.body;
+    const { clinic_id, profession_id, show_all } = req.body;
 
     console.log('👨‍⚕️ Запрос списка врачей');
 
     const params = {
       role: 'doctor',
-      show_all: true
+      with_services: 1,  // ВАЖНО для получения услуг
+      show_all: show_all !== undefined ? show_all : true
     };
 
     if (clinic_id) params.clinic_id = clinic_id;
     if (profession_id) params.profession_id = profession_id;
 
     const data = await misRequest('getUsers', params);
+
     res.json(data);
   } catch (err) {
     console.error('❌ Ошибка /mis/doctors:', err.message);
@@ -125,63 +110,54 @@ router.post('/doctors', authenticate, async (req, res) => {
 // РАСПИСАНИЕ
 // ═══════════════════════════════════════════════════════════════
 
-// Получить записи на приём (занятые слоты)
 router.post('/schedule', authenticate, async (req, res) => {
   try {
-    const { user_id, clinic_id, date_start, date_end } = req.body;
+    const { user_id, clinic_id, time_start, time_end, show_busy, show_past, step } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ error: 1, data: { desc: 'user_id обязателен' } });
     }
 
-    console.log('📅 Запрос записей для врача:', user_id, 'даты:', date_start, '-', date_end);
+    console.log('📅 Запрос расписания для врача:', user_id);
 
     const params = { user_id };
     if (clinic_id) params.clinic_id = clinic_id;
-    if (date_start) params.date_start = date_start;
-    if (date_end) params.date_end = date_end;
+    if (time_start) params.time_start = time_start;
+    if (time_end) params.time_end = time_end;
+    if (step) params.step = step;
+    params.show_busy = show_busy !== undefined ? show_busy : true;
+    params.show_past = show_past !== undefined ? show_past : false;
 
     const data = await misRequest('getSchedule', params);
-    
-    console.log('📅 Записи врача:', JSON.stringify(data).substring(0, 1000));
-    
     res.json(data);
   } catch (err) {
     console.error('❌ Ошибка /mis/schedule:', err.message);
-    res.status(500).json({
-      error: 1,
-      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе расписания' }
-    });
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе расписания' } });
   }
 });
 
-// Получить периоды работы врача (рабочее время)
 router.post('/schedule-periods', authenticate, async (req, res) => {
   try {
-    const { user_id, clinic_id, date_start, date_end } = req.body;
+    const { user_id, time_start, time_end, clinic_id } = req.body;
 
     if (!user_id) {
       return res.status(400).json({ error: 1, data: { desc: 'user_id обязателен' } });
     }
 
-    console.log('📆 Запрос периодов работы врача:', user_id);
+    if (!time_start || !time_end) {
+      return res.status(400).json({ error: 1, data: { desc: 'time_start и time_end обязательны (формат: dd.mm.yyyy hh:mm)' } });
+    }
 
-    const params = { user_id };
+    console.log('📆 Запрос периодов расписания для:', user_id);
+
+    const params = { user_id, time_start, time_end };
     if (clinic_id) params.clinic_id = clinic_id;
-    if (date_start) params.date_start = date_start;
-    if (date_end) params.date_end = date_end;
 
     const data = await misRequest('getSchedulePeriods', params);
-    
-    console.log('📆 Периоды работы:', JSON.stringify(data).substring(0, 1000));
-    
     res.json(data);
   } catch (err) {
     console.error('❌ Ошибка /mis/schedule-periods:', err.message);
-    res.status(500).json({
-      error: 1,
-      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе периодов' }
-    });
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе периодов' } });
   }
 });
 
@@ -189,60 +165,38 @@ router.post('/schedule-periods', authenticate, async (req, res) => {
 // СПЕЦИАЛЬНОСТИ И УСЛУГИ
 // ═══════════════════════════════════════════════════════════════
 
-// Список специальностей
 router.post('/professions', authenticate, async (req, res) => {
   try {
     console.log('📋 Запрос списка специальностей');
-
-    const data = await misRequest('getProfessions', {
-      without_doctors: false
-    });
-
+    const data = await misRequest('getProfessions', { without_doctors: false });
     res.json(data);
   } catch (err) {
     console.error('❌ Ошибка /mis/professions:', err.message);
-    res.status(500).json({
-      error: 1,
-      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе специальностей' }
-    });
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе специальностей' } });
   }
 });
 
-// Получить услуги по списку ID
+// Получить услуги по ID - ИСПРАВЛЕНО
 router.post('/services', authenticate, async (req, res) => {
   try {
     const { service_ids } = req.body;
 
-    // Проверяем что переданы ID услуг
+    // Если нет service_ids - возвращаем пустой массив (НЕ все услуги!)
     if (!service_ids || !Array.isArray(service_ids) || service_ids.length === 0) {
-      console.log('⚠️ /mis/services: Пустой список service_ids');
+      console.log('🏥 Запрос услуг: пустой список service_ids');
       return res.json({ error: 0, data: [] });
     }
 
-    console.log('🏥 Запрос услуг. Количество ID:', service_ids.length);
-    console.log('🏥 Service IDs:', service_ids.slice(0, 10), service_ids.length > 10 ? '...' : '');
+    console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', service_ids.slice(0, 5));
 
-    // Формируем строку ID через запятую
-    const idsString = service_ids.join(',');
-    
     const data = await misRequest('getServices', {
-      service_ids: idsString
-    });
-
-    console.log('🏥 Ответ getServices:', {
-      error: data.error,
-      dataType: typeof data.data,
-      isArray: Array.isArray(data.data),
-      count: Array.isArray(data.data) ? data.data.length : (data.data ? 1 : 0)
+      service_ids: service_ids.join(',')
     });
 
     res.json(data);
   } catch (err) {
     console.error('❌ Ошибка /mis/services:', err.message);
-    res.status(500).json({
-      error: 1,
-      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе услуг' }
-    });
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе услуг' } });
   }
 });
 
