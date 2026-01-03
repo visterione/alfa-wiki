@@ -77,8 +77,16 @@ const formatIndexedResult = (item, searchTerm) => {
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
+        
+        // Специальность
         if (meta.specialty) parts.push(meta.specialty);
-        // Красивые названия страниц
+        
+        // Кол-во услуг
+        if (meta.servicesCount && meta.servicesCount > 0) {
+          parts.push(`${meta.servicesCount} услуг`);
+        }
+        
+        // Раздел
         if (meta.pageSlug) {
           const pageNames = {
             'stomatologi': 'Стоматологи',
@@ -86,13 +94,34 @@ const formatIndexedResult = (item, searchTerm) => {
             'pediatry': 'Педиатры',
             'terapevty': 'Терапевты',
             'hirurgi': 'Хирурги',
-            'vrachi': 'Врачи'
+            'vrachi': 'Врачи',
+            'uzi': 'УЗИ-специалисты',
+            'nevrology': 'Неврологи',
+            'kardiologi': 'Кардиологи'
           };
           const pageName = pageNames[meta.pageSlug] || meta.pageSlug;
           parts.push(`Раздел: ${pageName}`);
         }
+        
         if (parts.length > 0) {
-          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+          excerpt = parts.join(' • ');
+        }
+        
+        // Если поиск совпал с услугой, показываем какая именно
+        if (item.content) {
+          const searchLower = searchTerm.toLowerCase();
+          const contentParts = item.content.split(' | ');
+          
+          // Ищем совпадение в услугах (обычно в конце контента)
+          for (const part of contentParts) {
+            if (part.toLowerCase().includes(searchLower) && 
+                !part.toLowerCase().includes(item.title?.toLowerCase() || '')) {
+              // Это совпадение в услуге, а не в имени
+              excerpt += excerpt ? ' | ' : '';
+              excerpt += `Услуга: ${cleanExcerpt(part.substring(0, 80))}${part.length > 80 ? '...' : ''}`;
+              break;
+            }
+          }
         }
       }
       break;

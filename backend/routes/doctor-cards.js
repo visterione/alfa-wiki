@@ -1,22 +1,107 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
+const axios = require('axios');
+const qs = require('qs');
 const { DoctorCard, SearchIndex } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+// MIS API конфигурация
+const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
+const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
+const MIS_TIMEOUT = 15000;
+
+// === HELPER: Запрос к MIS API ===
+const misRequest = async (endpoint, params = {}) => {
+  try {
+    const response = await axios.post(
+      `${MIS_BASE_URL}/${endpoint}`,
+      qs.stringify({ api_key: MIS_API_KEY, ...params }),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        timeout: MIS_TIMEOUT
+      }
+    );
+    return response.data;
+  } catch (err) {
+    console.error(`MIS API error (${endpoint}):`, err.message);
+    return null;
+  }
+};
+
+// === HELPER: Получить услуги врача из MIS ===
+const fetchDoctorServices = async (misUserId) => {
+  if (!misUserId) return { serviceIds: [], serviceTitles: [] };
+
+  try {
+    // 1. Получаем данные врача с ID услуг
+    const doctorData = await misRequest('getUsers', {
+      user_id: misUserId,
+      role: 'doctor',
+      with_services: 1
+    });
+
+    if (doctorData?.error !== 0 || !doctorData?.data?.[0]?.services) {
+      return { serviceIds: [], serviceTitles: [] };
+    }
+
+    const serviceIds = doctorData.data[0].services;
+    if (!serviceIds.length) {
+      return { serviceIds: [], serviceTitles: [] };
+    }
+
+    // 2. Получаем названия услуг
+    const servicesData = await misRequest('getServices', {
+      service_id: serviceIds.join(',')
+    });
+
+    if (servicesData?.error !== 0 || !servicesData?.data) {
+      return { serviceIds, serviceTitles: [] };
+    }
+
+    const services = Array.isArray(servicesData.data) ? servicesData.data : [servicesData.data];
+    const serviceTitles = services
+      .map(s => s.title)
+      .filter(Boolean);
+
+    console.log(`📋 Врач ${misUserId}: ${serviceTitles.length} услуг`);
+
+    return { serviceIds, serviceTitles };
+  } catch (err) {
+    console.error('Fetch doctor services error:', err.message);
+    return { serviceIds: [], serviceTitles: [] };
+  }
+};
+
 // === HELPER: Индексация карточки врача для поиска ===
-const indexDoctorCard = async (card) => {
+const indexDoctorCard = async (card, fetchServices = true) => {
   const meta = card.metadata || {};
+  let serviceTitles = meta.serviceTitles || [];
+
+  // Подгружаем услуги из MIS если нужно
+  if (fetchServices && meta.misUserId) {
+    const servicesResult = await fetchDoctorServices(meta.misUserId);
+    serviceTitles = servicesResult.serviceTitles;
+    
+    // Сохраняем в metadata для кэширования
+    if (serviceTitles.length > 0) {
+      const newMetadata = { ...meta, serviceTitles };
+      await card.update({ metadata: newMetadata });
+    }
+  }
+
   const tagsText = (meta.tags || []).join(' ');
-  
+  const servicesText = serviceTitles.join(' | ');
+
   const searchContent = [
     card.fullName,
     card.specialty,
     card.experience,
     card.description,
     tagsText,
+    servicesText,
     card.phones?.map(p => p.number).join(' ')
   ].filter(Boolean).join(' | ');
 
@@ -30,15 +115,20 @@ const indexDoctorCard = async (card) => {
     'врач',
     'доктор',
     'специалист',
-    ...(meta.tags || []).map(t => t.toLowerCase())
+    ...(meta.tags || []).map(t => t.toLowerCase()),
+    // Добавляем ключевые слова из услуг (первые 2 слова каждой услуги)
+    ...serviceTitles.flatMap(s => s.toLowerCase().split(' ').slice(0, 2))
   ].filter(Boolean);
+
+  // Убираем дубликаты из keywords
+  const uniqueKeywords = [...new Set(keywords)];
 
   await SearchIndex.upsert({
     entityType: 'doctor',
     entityId: card.id,
     title: title,
     content: searchContent,
-    keywords: keywords,
+    keywords: uniqueKeywords.slice(0, 50), // Лимит на 50 ключевых слов
     url: `/page/${card.pageSlug}?highlight=${card.id}`,
     metadata: {
       pageSlug: card.pageSlug,
@@ -47,7 +137,8 @@ const indexDoctorCard = async (card) => {
       photo: card.photo,
       profileUrl: card.profileUrl,
       misUserId: meta.misUserId,
-      tags: meta.tags
+      tags: meta.tags,
+      servicesCount: serviceTitles.length
     }
   });
 };
@@ -59,10 +150,11 @@ const removeFromIndex = async (cardId) => {
   });
 };
 
-// === HELPER: Полная переиндексация ===
-const reindexAllCards = async (pageSlug = null) => {
+// === HELPER: Полная переиндексация с услугами ===
+const reindexAllCards = async (pageSlug = null, withServices = true) => {
   const where = pageSlug ? { pageSlug } : {};
   
+  // Очищаем старые индексы
   if (pageSlug) {
     const cards = await DoctorCard.findAll({ where, attributes: ['id'] });
     const ids = cards.map(c => c.id);
@@ -76,11 +168,25 @@ const reindexAllCards = async (pageSlug = null) => {
   }
 
   const allCards = await DoctorCard.findAll({ where });
+  let indexed = 0;
+  let withServicesCount = 0;
+
   for (const card of allCards) {
-    await indexDoctorCard(card);
+    try {
+      await indexDoctorCard(card, withServices);
+      indexed++;
+      
+      const meta = card.metadata || {};
+      if (meta.serviceTitles?.length > 0) {
+        withServicesCount++;
+      }
+    } catch (err) {
+      console.error(`Failed to index card ${card.id}:`, err.message);
+    }
   }
 
-  return allCards.length;
+  console.log(`✅ Переиндексация завершена: ${indexed} карточек, ${withServicesCount} с услугами`);
+  return { indexed, withServicesCount };
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -144,12 +250,16 @@ router.get('/page/:pageSlug/stats', authenticate, async (req, res) => {
   }
 });
 
-// Переиндексация
+// Переиндексация (с опцией обновления услуг)
 router.post('/reindex', authenticate, async (req, res) => {
   try {
-    const { pageSlug } = req.body;
-    const count = await reindexAllCards(pageSlug);
-    res.json({ message: 'Reindex completed', indexed: count });
+    const { pageSlug, withServices = true } = req.body;
+    const result = await reindexAllCards(pageSlug, withServices);
+    res.json({ 
+      message: 'Reindex completed', 
+      indexed: result.indexed,
+      withServices: result.withServicesCount
+    });
   } catch (error) {
     console.error('Reindex error:', error);
     res.status(500).json({ error: 'Failed to reindex' });
@@ -170,10 +280,8 @@ router.post('/', authenticate, [
     const { 
       pageSlug, fullName, specialty, experience, profileUrl, photo, 
       description, phones, sortOrder, metadata,
-      // Поля из МИС
       misUserId, professions, professionTitles, clinics, ageRange,
       internalNumber, mobileNumber, notes,
-      // Теги
       tags
     } = req.body;
 
@@ -202,7 +310,8 @@ router.post('/', authenticate, [
       }
     });
 
-    await indexDoctorCard(card);
+    // Индексируем с подгрузкой услуг
+    await indexDoctorCard(card, true);
 
     res.status(201).json(card);
   } catch (error) {
@@ -224,7 +333,6 @@ router.put('/:id', authenticate, async (req, res) => {
       description, phones, sortOrder, metadata,
       misUserId, professions, professionTitles, clinics, ageRange,
       internalNumber, mobileNumber, notes,
-      // Теги
       tags
     } = req.body;
 
@@ -240,7 +348,8 @@ router.put('/:id', authenticate, async (req, res) => {
     if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
     
     // Обновляем metadata
-    const newMetadata = { ...(card.metadata || {}) };
+    const oldMeta = card.metadata || {};
+    const newMetadata = { ...oldMeta };
     if (misUserId !== undefined) newMetadata.misUserId = misUserId;
     if (professions !== undefined) newMetadata.professions = professions;
     if (professionTitles !== undefined) newMetadata.professionTitles = professionTitles;
@@ -253,7 +362,10 @@ router.put('/:id', authenticate, async (req, res) => {
     updateData.metadata = newMetadata;
 
     await card.update(updateData);
-    await indexDoctorCard(card);
+    
+    // Переиндексируем (обновляем услуги если изменился misUserId)
+    const shouldFetchServices = misUserId !== undefined && misUserId !== oldMeta.misUserId;
+    await indexDoctorCard(card, shouldFetchServices);
 
     res.json(card);
   } catch (error) {
@@ -319,4 +431,35 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
+// Принудительное обновление услуг для одной карточки
+router.post('/:id/refresh-services', authenticate, async (req, res) => {
+  try {
+    const card = await DoctorCard.findByPk(req.params.id);
+    if (!card) {
+      return res.status(404).json({ error: 'Doctor card not found' });
+    }
+
+    const meta = card.metadata || {};
+    if (!meta.misUserId) {
+      return res.status(400).json({ error: 'Карточка не привязана к МИС' });
+    }
+
+    // Принудительно обновляем услуги
+    await indexDoctorCard(card, true);
+
+    // Получаем обновлённую карточку
+    const updatedCard = await DoctorCard.findByPk(req.params.id);
+
+    res.json({ 
+      message: 'Услуги обновлены',
+      servicesCount: updatedCard.metadata?.serviceTitles?.length || 0
+    });
+  } catch (error) {
+    console.error('Refresh services error:', error);
+    res.status(500).json({ error: 'Failed to refresh services' });
+  }
+});
+
+// Экспортируем функцию переиндексации для использования в cron
 module.exports = router;
+module.exports.reindexAllCards = reindexAllCards;

@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const { sequelize } = require('./models');
 const { initBot } = require('./bot/telegramBot');
+const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -122,6 +123,9 @@ async function startServer() {
 
     // Initialize Telegram bot
     initBot();
+
+    // Initialize doctor services reindex cron job
+    initDoctorReindexJob();
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
