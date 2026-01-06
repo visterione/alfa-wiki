@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { LogIn, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Login.css';
+import logo from '../assets/images/logo.png';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -39,11 +40,11 @@ export default function Login() {
           <div className="login-header">
             <div className="login-logo">
               <div className="login-logo-icon">
-                <LogIn size={28} />
+                <img src={logo} alt="Alfa Wiki Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
             </div>
-            <h1>Alfa Wiki</h1>
-            <p>База знаний медицинского центра</p>
+            <h1>Альфа Вики</h1>
+            <p>База знаний</p>
           </div>
 
           <form onSubmit={handleSubmit} className="login-form">
@@ -97,10 +98,6 @@ export default function Login() {
               )}
             </button>
           </form>
-        </div>
-
-        <div className="login-footer">
-          <p>Альфа Вики - 2026</p>
         </div>
       </div>
     </div>
