@@ -55,6 +55,8 @@ coverage/
 uploads/
 backend/uploads/
 
+backend/backups/
+
 # Database
 *.sqlite
 *.sqlite3
@@ -75,3 +77,4 @@ temp/
 *.seed
 *.pid.lock
 .git/
+backend/backups/backup-2026-01-07T09-02-42-344Z.zip
