@@ -37,6 +37,8 @@ api.interceptors.response.use(
 // Auth
 export const auth = {
   login: (username, password) => api.post('/auth/login', { username, password }),
+  verify2FA: (userId, code) => api.post('/auth/verify-2fa', { userId, code }),
+  resend2FA: (userId) => api.post('/auth/resend-2fa', { userId }),
   register: (data) => api.post('/auth/register', data),
   me: () => api.get('/auth/me'),
   changePassword: (currentPassword, newPassword) => api.post('/auth/change-password', { currentPassword, newPassword }),
@@ -171,13 +173,11 @@ export const chat = {
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
   
-  // ИСПРАВЛЕНО: startPrivate вместо createPrivate, URL с параметром
   startPrivate: (userId) => api.post(`/chat/private/${userId}`),
   
   createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
   updateGroup: (chatId, data) => api.put(`/chat/${chatId}`, data),
   
-  // Алиасы для совместимости
   updateAvatar: (chatId, file) => {
     const formData = new FormData();
     formData.append('avatar', file);

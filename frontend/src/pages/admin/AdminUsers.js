@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail } from 'lucide-react';
 import { users, roles } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -10,7 +10,16 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [modal, setModal] = useState({ open: false, user: null });
-  const [form, setForm] = useState({ username: '', password: '', displayName: '', email: '', roleId: '', isAdmin: false, isActive: true });
+  const [form, setForm] = useState({ 
+    username: '', 
+    password: '', 
+    displayName: '', 
+    email: '', 
+    roleId: '', 
+    isAdmin: false, 
+    isActive: true,
+    twoFactorEnabled: false 
+  });
 
   useEffect(() => { load(); }, []);
 
@@ -25,9 +34,27 @@ export default function AdminUsers() {
 
   const openModal = (user = null) => {
     if (user) {
-      setForm({ username: user.username, password: '', displayName: user.displayName || '', email: user.email || '', roleId: user.roleId || '', isAdmin: user.isAdmin, isActive: user.isActive });
+      setForm({ 
+        username: user.username, 
+        password: '', 
+        displayName: user.displayName || '', 
+        email: user.email || '', 
+        roleId: user.roleId || '', 
+        isAdmin: user.isAdmin, 
+        isActive: user.isActive,
+        twoFactorEnabled: user.twoFactorEnabled || false
+      });
     } else {
-      setForm({ username: '', password: '', displayName: '', email: '', roleId: '', isAdmin: false, isActive: true });
+      setForm({ 
+        username: '', 
+        password: '', 
+        displayName: '', 
+        email: '', 
+        roleId: '', 
+        isAdmin: false, 
+        isActive: true,
+        twoFactorEnabled: false
+      });
     }
     setModal({ open: true, user });
   };
@@ -35,6 +62,13 @@ export default function AdminUsers() {
   const handleSave = async () => {
     if (!form.username) { toast.error('Введите логин'); return; }
     if (!modal.user && !form.password) { toast.error('Введите пароль'); return; }
+    
+    // Проверка email при включённой 2FA
+    if (form.twoFactorEnabled && !form.email) {
+      toast.error('Для включения 2FA необходимо указать email');
+      return;
+    }
+    
     try {
       if (modal.user) {
         const data = { ...form };
@@ -90,6 +124,7 @@ export default function AdminUsers() {
                 <th>Пользователь</th>
                 <th>Email</th>
                 <th>Роль</th>
+                <th>2FA</th>
                 <th>Статус</th>
                 <th>Действия</th>
               </tr>
@@ -107,8 +142,28 @@ export default function AdminUsers() {
                       {user.isAdmin && <span className="badge badge-primary">Admin</span>}
                     </div>
                   </td>
-                  <td>{user.email || '—'}</td>
+                  <td>
+                    {user.email ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Mail size={14} style={{ color: 'var(--text-tertiary)' }} />
+                        {user.email}
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+                    )}
+                  </td>
                   <td>{user.role?.name || '—'}</td>
+                  <td>
+                    {user.twoFactorEnabled ? (
+                      <span className="badge badge-success" title="Двухфакторная аутентификация включена">
+                        <Shield size={12} /> Включена
+                      </span>
+                    ) : (
+                      <span className="badge badge-secondary" title="Обычная авторизация">
+                        <ShieldOff size={12} /> Выключена
+                      </span>
+                    )}
+                  </td>
                   <td>
                     {user.isActive ? (
                       <span className="badge badge-success"><UserCheck size={12} /> Активен</span>
@@ -118,8 +173,12 @@ export default function AdminUsers() {
                   </td>
                   <td>
                     <div className="action-btns">
-                      <button className="btn btn-ghost btn-sm" onClick={() => openModal(user)}><Edit size={16} /></button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(user)}><Trash2 size={16} /></button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => openModal(user)}>
+                        <Edit size={16} />
+                      </button>
+                      <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(user)}>
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -133,7 +192,7 @@ export default function AdminUsers() {
         <div className="modal-overlay" onClick={() => setModal({ open: false, user: null })}>
           <div className="modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>{modal.user ? 'Редактировать' : 'Новый пользователь'}</h3>
+              <h3>{modal.user ? 'Редактировать пользователя' : 'Новый пользователь'}</h3>
             </div>
             <div className="modal-body">
               <div className="form-group">
@@ -149,8 +208,13 @@ export default function AdminUsers() {
                 <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
               </div>
               <div className="form-group">
-                <label className="form-label">Email</label>
+                <label className="form-label">Email {form.twoFactorEnabled && <span style={{color: 'var(--error)'}}>*</span>}</label>
                 <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                {form.twoFactorEnabled && !form.email && (
+                  <small style={{ color: 'var(--error)', marginTop: 4, display: 'block' }}>
+                    Email обязателен для двухфакторной аутентификации
+                  </small>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Роль</label>
@@ -160,15 +224,52 @@ export default function AdminUsers() {
                 </select>
               </div>
               <div className="form-group">
-                <label className="checkbox-item"><input type="checkbox" checked={form.isAdmin} onChange={e => setForm({...form, isAdmin: e.target.checked})} /> Администратор</label>
+                <label className="checkbox-item">
+                  <input type="checkbox" checked={form.isAdmin} onChange={e => setForm({...form, isAdmin: e.target.checked})} />
+                  Администратор
+                </label>
               </div>
               <div className="form-group">
-                <label className="checkbox-item"><input type="checkbox" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} /> Активен</label>
+                <label className="checkbox-item">
+                  <input type="checkbox" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} />
+                  Активен
+                </label>
+              </div>
+              
+              {/* 2FA Toggle */}
+              <div className="form-group" style={{ 
+                background: 'var(--bg-secondary)', 
+                padding: 16, 
+                borderRadius: 'var(--radius-md)',
+                border: form.twoFactorEnabled ? '2px solid var(--primary)' : '2px solid transparent'
+              }}>
+                <label className="checkbox-item" style={{ marginBottom: 8 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={form.twoFactorEnabled} 
+                    onChange={e => setForm({...form, twoFactorEnabled: e.target.checked})} 
+                  />
+                  <Shield size={18} style={{ color: form.twoFactorEnabled ? 'var(--primary)' : 'var(--text-secondary)' }} />
+                  <span style={{ fontWeight: 500 }}>Двухфакторная аутентификация (2FA)</span>
+                </label>
+                <p style={{ 
+                  fontSize: 13, 
+                  color: 'var(--text-secondary)', 
+                  margin: '8px 0 0 32px', 
+                  lineHeight: 1.5 
+                }}>
+                  При входе пользователю будет отправлен код подтверждения на email. 
+                  Это повышает безопасность учётной записи.
+                </p>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setModal({ open: false, user: null })}>Отмена</button>
-              <button className="btn btn-primary" onClick={handleSave}>Сохранить</button>
+              <button className="btn btn-secondary" onClick={() => setModal({ open: false, user: null })}>
+                Отмена
+              </button>
+              <button className="btn btn-primary" onClick={handleSave}>
+                Сохранить
+              </button>
             </div>
           </div>
         </div>

@@ -39,15 +39,7 @@
   justify-content: center;
   color: white;
   box-shadow: 0 8px 24px rgba(0, 122, 255, 0.3);
-}
-
-.login-logo-image {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto;
-  display: block;
-  border-radius: var(--radius-lg);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  transition: all var(--transition-fast);
 }
 
 .login-header h1 {
@@ -112,4 +104,91 @@
   margin-top: 24px;
   color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
+}
+
+/* 2FA Specific Styles */
+.two-factor-info {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-secondary);
+}
+
+.two-factor-info svg {
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+
+.two-factor-info p {
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.code-input {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+.code-input::placeholder {
+  letter-spacing: 4px;
+}
+
+.two-factor-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.two-factor-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.form-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.form-hint.text-warning {
+  color: var(--warning);
+  font-weight: 500;
+}
+
+/* Animation for logo icon change */
+.login-logo-icon {
+  animation: iconPulse 0.3s ease;
+}
+
+@keyframes iconPulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .login-card {
+    padding: 36px 28px;
+  }
+
+  .login-header h1 {
+    font-size: 24px;
+  }
+
+  .code-input {
+    font-size: 24px;
+    letter-spacing: 6px;
+  }
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Plus, Download, Trash2, Database, Clock, HardDrive, 
   Upload, RotateCcw, AlertTriangle, CheckCircle, FileArchive,
-  X, Server, FolderOpen
+  X, Server, FolderOpen, AlertCircle
 } from 'lucide-react';
 import { backup } from '../../services/api';
 import { format } from 'date-fns';
@@ -15,8 +15,8 @@ export default function AdminBackup() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [restoring, setRestoring] = useState(null); // filename being restored
-  const [showRestoreModal, setShowRestoreModal] = useState(null); // backup to restore
+  const [restoring, setRestoring] = useState(null);
+  const [showRestoreModal, setShowRestoreModal] = useState(null);
   const [restoreOptions, setRestoreOptions] = useState({ restoreDb: true, restoreFiles: true });
   const fileInputRef = useRef(null);
 
@@ -26,17 +26,23 @@ export default function AdminBackup() {
     try {
       const { data } = await backup.list();
       setBackups(data);
-    } catch (e) { toast.error('Ошибка загрузки'); }
+    } catch (e) { 
+      toast.error('Ошибка загрузки'); 
+    }
     finally { setLoading(false); }
   };
 
   const handleCreate = async () => {
     setCreating(true);
+    const loadingToast = toast.loading('Создание резервной копии...');
+    
     try {
       await backup.create();
-      toast.success('Резервная копия создана');
+      toast.success('Резервная копия создана', { id: loadingToast });
       load();
-    } catch (e) { toast.error('Ошибка создания'); }
+    } catch (e) { 
+      toast.error('Ошибка создания: ' + (e.response?.data?.error || e.message), { id: loadingToast }); 
+    }
     finally { setCreating(false); }
   };
 
@@ -50,12 +56,14 @@ export default function AdminBackup() {
     }
 
     setUploading(true);
+    const loadingToast = toast.loading('Загрузка бэкапа...');
+    
     try {
       await backup.upload(file);
-      toast.success('Бэкап загружен');
+      toast.success('Бэкап загружен', { id: loadingToast });
       load();
     } catch (e) { 
-      toast.error(e.response?.data?.error || 'Ошибка загрузки'); 
+      toast.error(e.response?.data?.error || 'Ошибка загрузки', { id: loadingToast }); 
     }
     finally { 
       setUploading(false); 
@@ -70,24 +78,44 @@ export default function AdminBackup() {
     setRestoring(filename);
     setShowRestoreModal(null);
     
+    const loadingToast = toast.loading('Восстановление из бэкапа...', { duration: Infinity });
+    
     try {
       const { data } = await backup.restore(filename, restoreOptions);
       
       const dbOk = data.results?.database === 'success';
-      const filesOk = data.results?.files === 'success' || data.results?.files?.includes('skipped');
+      const filesOk = data.results?.files === 'success' || 
+                      data.results?.files?.includes('cleaned') ||
+                      data.results?.files?.includes('skipped');
       
       if (dbOk && filesOk) {
-        toast.success('Восстановление завершено успешно!');
+        toast.success('✅ Восстановление завершено успешно! Перезагрузите страницу.', { 
+          id: loadingToast,
+          duration: 10000 
+        });
+        
+        // Предлагаем перезагрузить страницу
+        setTimeout(() => {
+          if (window.confirm('Восстановление завершено. Перезагрузить страницу?')) {
+            window.location.reload();
+          }
+        }, 2000);
       } else if (dbOk || filesOk) {
-        toast.success('Восстановление частично завершено', { duration: 5000 });
+        toast.success('⚠️ Восстановление частично завершено. Проверьте результаты.', { 
+          id: loadingToast,
+          duration: 8000 
+        });
         console.log('Restore results:', data.results);
       } else {
-        toast.error('Ошибка восстановления');
+        toast.error('❌ Ошибка восстановления', { id: loadingToast });
       }
       
       load();
     } catch (e) { 
-      toast.error(e.response?.data?.error || 'Ошибка восстановления'); 
+      toast.error('❌ ' + (e.response?.data?.error || 'Ошибка восстановления'), { 
+        id: loadingToast,
+        duration: 8000 
+      });
     }
     finally { setRestoring(null); }
   };
@@ -96,7 +124,7 @@ export default function AdminBackup() {
     try {
       const token = localStorage.getItem('token');
       const response = await fetch(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:9001/api'}/backup/download/${filename}`, 
+        `${process.env.REACT_APP_API_URL || 'http://localhost:9001'}/api/backup/download/${filename}`, 
         { headers: { 'Authorization': `Bearer ${token}` } }
       );
       
@@ -170,6 +198,16 @@ export default function AdminBackup() {
             {creating ? <div className="loading-spinner" style={{width:18,height:18}} /> : <Plus size={18} />}
             Создать копию
           </button>
+        </div>
+      </div>
+
+      {/* Предупреждение о важности бэкапов */}
+      <div className="backup-warning-panel">
+        <AlertCircle size={20} />
+        <div>
+          <strong>Важно о восстановлении:</strong>
+          <p>При восстановлении все текущие данные и файлы будут ПОЛНОСТЬЮ ЗАМЕНЕНЫ на данные из бэкапа. 
+          Перед восстановлением рекомендуется создать текущую резервную копию.</p>
         </div>
       </div>
 
@@ -298,8 +336,10 @@ export default function AdminBackup() {
               <div className="restore-warning">
                 <AlertTriangle size={20} />
                 <div>
-                  <strong>Внимание!</strong>
-                  <p>Восстановление перезапишет текущие данные. Убедитесь, что у вас есть актуальная резервная копия.</p>
+                  <strong>Внимание! Полное восстановление:</strong>
+                  <p>Все текущие данные будут ПОЛНОСТЬЮ УДАЛЕНЫ и заменены данными из бэкапа. 
+                  Файлы в папке uploads будут полностью очищены перед восстановлением. 
+                  Эта операция необратима!</p>
                 </div>
               </div>
 
@@ -313,7 +353,7 @@ export default function AdminBackup() {
                   <Server size={18} />
                   <div>
                     <div className="restore-option-title">База данных</div>
-                    <div className="restore-option-desc">Все таблицы: пользователи, страницы, чаты, аккредитации и др.</div>
+                    <div className="restore-option-desc">Все таблицы будут удалены и восстановлены из бэкапа</div>
                   </div>
                 </label>
                 <label className="restore-option">
@@ -325,7 +365,7 @@ export default function AdminBackup() {
                   <FolderOpen size={18} />
                   <div>
                     <div className="restore-option-title">Файлы</div>
-                    <div className="restore-option-desc">Аватары, медиа, вложения чатов, файлы карты</div>
+                    <div className="restore-option-desc">Папка uploads будет полностью очищена и восстановлена из бэкапа</div>
                   </div>
                 </label>
               </div>
@@ -354,11 +394,18 @@ export default function AdminBackup() {
         .stat-value { font-size: 24px; font-weight: 600; }
         .stat-label { font-size: 13px; color: var(--text-secondary); }
         
-        .backup-info-panel { background: var(--bg-secondary); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 24px; display: flex; flex-direction: column; gap: 8px; }
-        .backup-info-item { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); }
-        .backup-info-item svg { flex-shrink: 0; }
-        .backup-info-item:first-child svg { color: var(--success); }
-        .backup-info-item:last-child svg { color: var(--warning); }
+        .backup-warning-panel { 
+          display: flex; 
+          gap: 12px; 
+          padding: 16px 20px; 
+          background: linear-gradient(135deg, rgba(255, 152, 0, 0.1), rgba(255, 152, 0, 0.05)); 
+          border: 1px solid rgba(255, 152, 0, 0.3); 
+          border-radius: var(--radius-md); 
+          margin-bottom: 24px;
+        }
+        .backup-warning-panel svg { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
+        .backup-warning-panel strong { display: block; color: var(--warning); margin-bottom: 4px; }
+        .backup-warning-panel p { font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.5; }
         
         tr.restoring { opacity: 0.6; pointer-events: none; }
         
@@ -367,9 +414,9 @@ export default function AdminBackup() {
         .restore-filename { font-weight: 600; font-size: 14px; word-break: break-all; }
         .restore-meta { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
         
-        .restore-warning { display: flex; gap: 12px; padding: 14px 16px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-md); margin-bottom: 20px; }
-        .restore-warning svg { color: var(--warning); flex-shrink: 0; margin-top: 2px; }
-        .restore-warning strong { display: block; color: var(--warning); margin-bottom: 4px; }
+        .restore-warning { display: flex; gap: 12px; padding: 14px 16px; background: rgba(255, 59, 48, 0.1); border: 1px solid rgba(255, 59, 48, 0.3); border-radius: var(--radius-md); margin-bottom: 20px; }
+        .restore-warning svg { color: var(--error); flex-shrink: 0; margin-top: 2px; }
+        .restore-warning strong { display: block; color: var(--error); margin-bottom: 4px; }
         .restore-warning p { font-size: 13px; color: var(--text-secondary); margin: 0; }
         
         .restore-options { display: flex; flex-direction: column; gap: 12px; }

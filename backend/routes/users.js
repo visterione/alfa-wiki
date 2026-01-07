@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { User, Role } = require('../models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { send2FADisabledNotification } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -11,7 +12,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const users = await User.findAll({
       include: [{ model: Role, as: 'role' }],
-      attributes: { exclude: ['password'] },
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] },
       order: [['createdAt', 'DESC']]
     });
     res.json(users);
@@ -25,7 +26,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id, {
       include: [{ model: Role, as: 'role' }],
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
@@ -45,7 +46,7 @@ router.post('/', authenticate, requireAdmin, [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
+    let { username, password, displayName, email, roleId, isAdmin, isActive, twoFactorEnabled } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -66,6 +67,13 @@ router.post('/', authenticate, requireAdmin, [
       }
     }
 
+    // Если включена 2FA, проверяем наличие email
+    if (twoFactorEnabled && !email) {
+      return res.status(400).json({ 
+        error: 'Для включения двухфакторной аутентификации необходимо указать email' 
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const user = await User.create({
@@ -75,12 +83,13 @@ router.post('/', authenticate, requireAdmin, [
       email: email || null,
       roleId: roleId,
       isAdmin: isAdmin || false,
-      isActive: isActive !== false
+      isActive: isActive !== false,
+      twoFactorEnabled: twoFactorEnabled || false
     });
 
     const created = await User.findByPk(user.id, {
       include: [{ model: Role, as: 'role' }],
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
 
     res.status(201).json(created);
@@ -96,7 +105,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, isAdmin, isActive } = req.body;
+    let { username, password, displayName, email, roleId, isAdmin, isActive, twoFactorEnabled } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -117,14 +126,38 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
       }
     }
 
+    // Если пытаются включить 2FA, проверяем наличие email
+    if (twoFactorEnabled && !email && !user.email) {
+      return res.status(400).json({ 
+        error: 'Для включения двухфакторной аутентификации необходимо указать email' 
+      });
+    }
+
     const updateData = {
       ...(username && { username }),
       ...(displayName !== undefined && { displayName }),
       ...(email !== undefined && { email: email || null }),
       ...(roleId !== undefined && { roleId: roleId || null }),
       ...(isAdmin !== undefined && { isAdmin }),
-      ...(isActive !== undefined && { isActive })
+      ...(isActive !== undefined && { isActive }),
+      ...(twoFactorEnabled !== undefined && { twoFactorEnabled })
     };
+
+    // Если отключаем 2FA - очищаем коды
+    if (twoFactorEnabled === false && user.twoFactorEnabled) {
+      updateData.twoFactorCode = null;
+      updateData.twoFactorCodeExpires = null;
+      updateData.twoFactorAttempts = 0;
+
+      // Отправляем уведомление (не критично, если не отправится)
+      if (user.email) {
+        try {
+          await send2FADisabledNotification(user.email, user.displayName || user.username);
+        } catch (e) {
+          console.warn('Failed to send 2FA disabled notification:', e);
+        }
+      }
+    }
 
     if (password) {
       updateData.password = await bcrypt.hash(password, 12);
@@ -134,7 +167,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 
     const updated = await User.findByPk(user.id, {
       include: [{ model: Role, as: 'role' }],
-      attributes: { exclude: ['password'] }
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
 
     res.json(updated);

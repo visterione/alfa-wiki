@@ -10,7 +10,11 @@ const sequelize = new Sequelize(
     port: process.env.DB_PORT,
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
-    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+    pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+    timezone: '+00:00', // Принудительно используем UTC
+    dialectOptions: {
+      timezone: 'Etc/GMT'
+    }
   }
 );
 
@@ -26,7 +30,7 @@ const Role = sequelize.define('Role', {
   isSystem: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { tableName: 'roles', timestamps: true });
 
-// === USER MODEL ===
+// === USER MODEL (С 2FA) ===
 const User = sequelize.define('User', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   username: { type: DataTypes.STRING(50), allowNull: false, unique: true },
@@ -37,7 +41,27 @@ const User = sequelize.define('User', {
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
   isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
   lastLogin: { type: DataTypes.DATE },
-  settings: { type: DataTypes.JSONB, defaultValue: {} }
+  settings: { type: DataTypes.JSONB, defaultValue: {} },
+  
+  // 2FA поля
+  twoFactorEnabled: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    comment: 'Включена ли 2FA для этого пользователя' 
+  },
+  twoFactorCode: { 
+    type: DataTypes.STRING(6),
+    comment: 'Временный код для 2FA' 
+  },
+  twoFactorCodeExpires: { 
+    type: DataTypes.DATE,
+    comment: 'Время истечения кода 2FA' 
+  },
+  twoFactorAttempts: { 
+    type: DataTypes.INTEGER, 
+    defaultValue: 0,
+    comment: 'Количество неудачных попыток ввода кода' 
+  }
 }, { tableName: 'users', timestamps: true });
 
 // === FOLDER MODEL ===

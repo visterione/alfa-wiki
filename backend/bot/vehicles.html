@@ -1,0 +1,1076 @@
+<style>
+#vehicles-app {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Блок Telegram бота */
+.veh-bot-info {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+  border: 1px solid #7dd3fc;
+  border-radius: 12px;
+  margin-bottom: 24px;
+}
+
+.veh-bot-qr {
+  width: 100px;
+  height: 100px;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  flex-shrink: 0;
+}
+
+.veh-bot-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  margin: 0;
+}
+
+.veh-bot-content {
+  flex: 1;
+}
+
+.veh-bot-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.veh-bot-title svg {
+  width: 20px;
+  height: 20px;
+  color: #0ea5e9;
+}
+
+.veh-bot-desc {
+  font-size: 14px;
+  color: #075985;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.veh-bot-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: #0ea5e9;
+  color: #fff !important;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.veh-bot-link:hover,
+.veh-bot-link:visited {
+  background: #0284c7;
+  color: #fff !important;
+}
+
+.veh-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.veh-stat-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.veh-stat-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.veh-stat-icon svg { width: 24px; height: 24px; }
+.veh-stat-icon.total { background: #e0f2fe; color: #0284c7; }
+.veh-stat-icon.danger { background: #fee2e2; color: #dc2626; }
+.veh-stat-icon.warning { background: #fef3c7; color: #d97706; }
+.veh-stat-icon.info { background: #dbeafe; color: #2563eb; }
+
+.veh-stat-info { display: flex; flex-direction: column; }
+.veh-stat-value { font-size: 28px; font-weight: 700; color: #111827; line-height: 1.2; }
+.veh-stat-label { font-size: 13px; color: #6b7280; margin-top: 2px; }
+
+/* Тулбар и фильтры */
+.veh-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.veh-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.veh-filter-group {
+  min-width: 180px;
+}
+
+.veh-input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+.veh-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.veh-select {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.veh-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.veh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.veh-btn svg { width: 18px; height: 18px; }
+
+.veh-btn-primary {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.veh-btn-primary:hover { background: #2563eb; }
+
+.veh-btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.veh-btn-secondary:hover { background: #e5e7eb; }
+
+/* Кнопки действий в таблице */
+.veh-btn-icon {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.veh-btn-icon svg { width: 16px; height: 16px; }
+
+.veh-btn-icon.edit {
+  background: #dbeafe;
+  color: #2563eb;
+}
+.veh-btn-icon.edit:hover { background: #bfdbfe; }
+
+.veh-btn-icon.delete {
+  background: #fee2e2;
+  color: #dc2626;
+}
+.veh-btn-icon.delete:hover { background: #fecaca; }
+
+/* Таблица */
+.veh-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.veh-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.veh-table th {
+  padding: 14px 16px;
+  text-align: left;
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 13px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+
+.veh-table th.sortable { cursor: pointer; user-select: none; }
+.veh-table th.sortable:hover { background: #f1f5f9; }
+.sort-icon { opacity: 0.4; margin-left: 4px; }
+.veh-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
+
+.veh-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.veh-table tr:hover { background: #f8fafc; }
+.veh-table tr:last-child td { border-bottom: none; }
+
+/* Индикация - организация */
+.veh-organization {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* Индикация дат и пробега */
+.veh-date, .veh-mileage { 
+  padding: 4px 10px; 
+  border-radius: 20px; 
+  font-size: 13px; 
+  font-weight: 500; 
+  display: inline-block; 
+}
+.veh-date.expired, .veh-mileage.expired { background: #fee2e2; color: #dc2626; }
+.veh-date.critical, .veh-mileage.critical { background: #fef2f2; color: #b91c1c; }
+.veh-date.warning, .veh-mileage.warning { background: #fef3c7; color: #b45309; }
+.veh-date.soon, .veh-mileage.soon { background: #fef9c3; color: #a16207; }
+.veh-date.ok, .veh-mileage.ok { background: #dcfce7; color: #16a34a; }
+
+/* Состояние */
+.veh-condition {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-block;
+}
+.veh-condition.good { background: #dcfce7; color: #16a34a; }
+.veh-condition.satisfactory { background: #fef3c7; color: #b45309; }
+.veh-condition.poor { background: #fee2e2; color: #dc2626; }
+
+.veh-actions { display: flex; gap: 6px; }
+
+.veh-loading, .veh-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
+
+/* Модальное окно */
+.veh-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.veh-modal-content {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  margin: 16px;
+}
+
+.veh-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.veh-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+
+.veh-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.veh-modal-close:hover { background: #e5e7eb; }
+
+#veh-form { padding: 24px; }
+
+.veh-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.veh-form-group { margin-bottom: 18px; }
+.veh-form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: #374151; }
+.veh-form-group.full-width { grid-column: 1 / -1; }
+
+.veh-textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+  box-sizing: border-box;
+}
+
+.veh-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.veh-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 8px;
+}
+
+/* Toast */
+.veh-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 20px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 10px;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  z-index: 10001;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+.veh-toast.show { opacity: 1; transform: translateY(0); }
+.veh-toast.success { background: #059669; }
+.veh-toast.error { background: #dc2626; }
+
+/* Пагинация */
+.veh-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  gap: 16px;
+}
+
+.veh-pagination-info {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.veh-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.veh-pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.veh-pagination-btn:hover:not(:disabled) {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.veh-pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.veh-pagination-btn.active {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.veh-pagination-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Подсветка найденной записи из поиска */
+.veh-highlight {
+  animation: highlightPulse 3s ease-out;
+}
+.veh-highlight td {
+  background: #fef3c7 !important;
+}
+@keyframes highlightPulse {
+  0%, 50% { background: #fde68a; }
+  100% { background: transparent; }
+}
+
+/* Планшеты */
+@media (max-width: 1024px) {
+  .veh-table th, .veh-table td { padding: 12px 10px; }
+  .veh-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* Мобильные устройства */
+@media (max-width: 768px) {
+  .veh-bot-info { 
+    flex-direction: column; 
+    text-align: center; 
+    padding: 16px;
+    gap: 16px;
+  }
+  .veh-bot-qr { width: 120px; height: 120px; }
+  .veh-bot-desc { font-size: 13px; }
+  
+  .veh-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .veh-stat-card { padding: 14px 12px; gap: 12px; }
+  .veh-stat-icon { width: 40px; height: 40px; }
+  .veh-stat-icon svg { width: 20px; height: 20px; }
+  .veh-stat-value { font-size: 22px; }
+  .veh-stat-label { font-size: 11px; }
+  
+  .veh-toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
+  .veh-filters { flex-direction: column; gap: 10px; }
+  .veh-filter-group { min-width: 100%; }
+  .veh-btn-primary { width: 100%; justify-content: center; }
+  
+  .veh-table-container { border-radius: 8px; }
+  .veh-table { font-size: 13px; }
+  .veh-table th { 
+    padding: 10px 8px; 
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .veh-table td { padding: 10px 8px; }
+  
+  .veh-table th:nth-child(5),
+  .veh-table td:nth-child(5) { display: none; }
+  
+  .veh-organization, .veh-date, .veh-mileage, .veh-condition { 
+    padding: 3px 8px; 
+    font-size: 11px; 
+  }
+  
+  .veh-btn-icon { width: 28px; height: 28px; }
+  .veh-btn-icon svg { width: 14px; height: 14px; }
+  
+  .veh-modal-content { 
+    margin: 8px; 
+    max-height: calc(100vh - 16px);
+    border-radius: 12px;
+  }
+  .veh-modal-header { padding: 16px; }
+  .veh-modal-header h3 { font-size: 16px; }
+  #veh-form { padding: 16px; }
+  .veh-form-group { margin-bottom: 14px; }
+  .veh-form-row { grid-template-columns: 1fr; }
+  .veh-input, .veh-select, .veh-textarea { padding: 12px; font-size: 16px; }
+  
+  .veh-toast { 
+    left: 16px; 
+    right: 16px; 
+    bottom: 16px; 
+    text-align: center;
+  }
+  
+  .veh-pagination { flex-wrap: wrap; justify-content: center; }
+}
+
+/* Маленькие мобильные */
+@media (max-width: 480px) {
+  .veh-stats { grid-template-columns: 1fr; gap: 8px; }
+  .veh-stat-card { 
+    flex-direction: row; 
+    justify-content: flex-start;
+    padding: 12px 16px;
+  }
+  
+  .veh-table th:nth-child(4),
+  .veh-table td:nth-child(4) { display: none; }
+  
+  .veh-bot-qr { width: 100px; height: 100px; }
+  .veh-bot-link { 
+    width: 100%; 
+    justify-content: center;
+    padding: 10px 16px;
+  }
+  
+  .veh-pagination { 
+    flex-direction: column; 
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .veh-pagination-info { text-align: center; }
+  .veh-pagination-btn { min-width: 32px; height: 32px; padding: 0 8px; font-size: 13px; }
+}
+</style>
+
+<div id="vehicles-app">
+  <!-- Блок с информацией о Telegram боте -->
+  <div class="veh-bot-info">
+    <div class="veh-bot-qr">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://t.me/alfa_appointments_bot" alt="QR код бота">
+    </div>
+    <div class="veh-bot-content">
+      <div class="veh-bot-title">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+        Telegram-бот напоминаний
+      </div>
+      <div class="veh-bot-desc">
+        Подпишитесь на бота, чтобы получать уведомления об истечении сроков страховки и о необходимости прохождения ТО.
+      </div>
+      <a href="https://t.me/alfa_appointments_bot" target="_blank" class="veh-bot-link">
+        <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
+        Открыть бота
+      </a>
+    </div>
+  </div>
+
+  <!-- Статистика -->
+  <div class="veh-stats">
+    <div class="veh-stat-card">
+      <div class="veh-stat-icon total"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg></div>
+      <div class="veh-stat-info"><span class="veh-stat-value" id="stat-total">0</span><span class="veh-stat-label">Всего ТС</span></div>
+    </div>
+    <div class="veh-stat-card">
+      <div class="veh-stat-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+      <div class="veh-stat-info"><span class="veh-stat-value" id="stat-expired">0</span><span class="veh-stat-label">Просрочено</span></div>
+    </div>
+    <div class="veh-stat-card">
+      <div class="veh-stat-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+      <div class="veh-stat-info"><span class="veh-stat-value" id="stat-soon">0</span><span class="veh-stat-label">Истекает ≤30 дней</span></div>
+    </div>
+    <div class="veh-stat-card">
+      <div class="veh-stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+      <div class="veh-stat-info"><span class="veh-stat-value" id="stat-to">0</span><span class="veh-stat-label">Скоро ТО (≤5000 км)</span></div>
+    </div>
+  </div>
+
+  <!-- Тулбар -->
+  <div class="veh-toolbar">
+    <div class="veh-filters">
+      <div class="veh-filter-group">
+        <input type="text" id="filter-search" placeholder="🔍 Поиск по марке, номеру..." class="veh-input" oninput="vehApp.debounceLoad()">
+      </div>
+      <div class="veh-filter-group">
+        <select id="filter-condition" class="veh-select" onchange="vehApp.resetAndLoad()">
+          <option value="">Все состояния</option>
+          <option value="Хорошее">Хорошее</option>
+          <option value="Удовлетворительное">Удовлетворительное</option>
+          <option value="Плохое">Плохое</option>
+        </select>
+      </div>
+    </div>
+    <button class="veh-btn veh-btn-primary" onclick="vehApp.openAddModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Добавить
+    </button>
+  </div>
+
+  <!-- Таблица -->
+  <div class="veh-table-container">
+    <table class="veh-table">
+      <thead>
+        <tr>
+          <th class="sortable" onclick="vehApp.sortTable('carBrand')">Марка авто <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="vehApp.sortTable('organization')">Организация <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="vehApp.sortTable('licensePlate')">Гос. номер <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="vehApp.sortTable('carYear')">Год <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="vehApp.sortTable('mileage')">Пробег / ТО <span class="sort-icon">↕</span></th>
+          <th class="sortable sorted" onclick="vehApp.sortTable('insuranceDate')">Страховка <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="vehApp.sortTable('condition')">Состояние <span class="sort-icon">↕</span></th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="veh-table-body">
+        <tr><td colspan="8" class="veh-loading">Загрузка...</td></tr>
+      </tbody>
+    </table>
+    <div class="veh-pagination" id="veh-pagination" style="display:none;">
+      <div class="veh-pagination-info">
+        Показано <span id="pag-start">0</span>–<span id="pag-end">0</span> из <span id="pag-total">0</span>
+      </div>
+      <div class="veh-pagination-controls" id="pag-controls"></div>
+    </div>
+  </div>
+
+  <!-- Модальное окно -->
+  <div class="veh-modal" id="veh-modal" style="display:none;">
+    <div class="veh-modal-content">
+      <div class="veh-modal-header">
+        <h3 id="modal-title">Добавить ТС</h3>
+        <button class="veh-modal-close" onclick="vehApp.closeModal()">×</button>
+      </div>
+      <form id="veh-form" onsubmit="return vehApp.saveVehicle(event)">
+        <input type="hidden" id="edit-id">
+        <div class="veh-form-row">
+          <div class="veh-form-group">
+            <label>Марка авто *</label>
+            <input type="text" id="edit-carbrand" class="veh-input" required placeholder="Toyota Camry">
+          </div>
+          <div class="veh-form-group">
+            <label>Организация *</label>
+            <input type="text" id="edit-organization" class="veh-input" required placeholder="ООО Компания">
+          </div>
+        </div>
+        <div class="veh-form-row">
+          <div class="veh-form-group">
+            <label>Гос. номер *</label>
+            <input type="text" id="edit-licenseplate" class="veh-input" required placeholder="А123БВ777">
+          </div>
+          <div class="veh-form-group">
+            <label>Год авто *</label>
+            <input type="number" id="edit-caryear" class="veh-input" required min="1990" max="2030" placeholder="2020">
+          </div>
+        </div>
+        <div class="veh-form-row">
+          <div class="veh-form-group">
+            <label>Пробег (км) *</label>
+            <input type="number" id="edit-mileage" class="veh-input" required min="0" placeholder="150000">
+          </div>
+          <div class="veh-form-group">
+            <label>ТО на (км) *</label>
+            <input type="number" id="edit-nextto" class="veh-input" required min="0" placeholder="160000">
+          </div>
+        </div>
+        <div class="veh-form-row">
+          <div class="veh-form-group">
+            <label>Страховка до *</label>
+            <input type="date" id="edit-insurancedate" class="veh-input" required>
+          </div>
+          <div class="veh-form-group">
+            <label>Состояние *</label>
+            <select id="edit-condition" class="veh-select" required>
+              <option value="">Выберите...</option>
+              <option value="Хорошее">Хорошее</option>
+              <option value="Удовлетворительное">Удовлетворительное</option>
+              <option value="Плохое">Плохое</option>
+            </select>
+          </div>
+        </div>
+        <div class="veh-form-group full-width">
+          <label>Комментарий</label>
+          <textarea id="edit-comment" class="veh-textarea" rows="2" placeholder="Дополнительная информация..."></textarea>
+        </div>
+        <div class="veh-modal-footer">
+          <button type="button" class="veh-btn veh-btn-secondary" onclick="vehApp.closeModal()">Отмена</button>
+          <button type="submit" class="veh-btn veh-btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="veh-toast" class="veh-toast"></div>
+</div>
+
+<script>
+window.vehApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/vehicles';
+  var vehicles = [];
+  var sortField = 'insuranceDate';
+  var sortOrder = 'ASC';
+  var debounceTimer = null;
+  var currentPage = 1;
+  var pageSize = 20;
+  var highlightId = null;
+
+  function getToken() {
+    return localStorage.getItem('token');
+  }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var t = document.getElementById('veh-toast');
+    t.textContent = msg;
+    t.className = 'veh-toast show ' + (type || '');
+    setTimeout(function() { t.className = 'veh-toast'; }, 3000);
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function formatDate(ds) {
+    var d = new Date(ds);
+    return ('0'+d.getDate()).slice(-2) + '.' + ('0'+(d.getMonth()+1)).slice(-2) + '.' + d.getFullYear();
+  }
+
+  function formatNumber(n) {
+    return n ? n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') : '0';
+  }
+
+  function getDateClass(ds) {
+    var diff = Math.ceil((new Date(ds) - new Date().setHours(0,0,0,0)) / 86400000);
+    if (diff < 0) return 'expired';
+    if (diff <= 7) return 'critical';
+    if (diff <= 30) return 'warning';
+    if (diff <= 90) return 'soon';
+    return 'ok';
+  }
+
+  function getMileageClass(mileage, nextTO) {
+    var diff = nextTO - mileage;
+    if (diff <= 0) return 'expired';
+    if (diff <= 1000) return 'critical';
+    if (diff <= 3000) return 'warning';
+    if (diff <= 5000) return 'soon';
+    return 'ok';
+  }
+
+  function getConditionClass(cond) {
+    if (cond === 'Хорошее') return 'good';
+    if (cond === 'Удовлетворительное') return 'satisfactory';
+    return 'poor';
+  }
+
+  function loadData() {
+    var search = document.getElementById('filter-search').value;
+    var cond = document.getElementById('filter-condition').value;
+    
+    var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (cond) url += '&condition=' + encodeURIComponent(cond);
+
+    fetchAPI(url).then(function(data) {
+      vehicles = data;
+      if (currentPage > Math.ceil(vehicles.length / pageSize)) {
+        currentPage = 1;
+      }
+      renderTable();
+      renderPagination();
+      loadStats();
+    }).catch(function(e) { 
+      document.getElementById('veh-table-body').innerHTML = '<tr><td colspan="8" class="veh-empty">Ошибка загрузки данных</td></tr>';
+      showToast('Ошибка: ' + e.message, 'error'); 
+    });
+  }
+
+  function loadStats() {
+    fetchAPI(API_URL + '/stats').then(function(s) {
+      document.getElementById('stat-total').textContent = s.total;
+      document.getElementById('stat-expired').textContent = s.expired;
+      document.getElementById('stat-soon').textContent = s.expiringSoon;
+      document.getElementById('stat-to').textContent = s.needsTO;
+    });
+  }
+
+  function renderTable() {
+    var tb = document.getElementById('veh-table-body');
+    if (!vehicles.length) {
+      tb.innerHTML = '<tr><td colspan="8" class="veh-empty">Нет данных</td></tr>';
+      return;
+    }
+    var start = (currentPage - 1) * pageSize;
+    var end = Math.min(start + pageSize, vehicles.length);
+    var pageData = vehicles.slice(start, end);
+    
+    tb.innerHTML = pageData.map(function(v) {
+      var isHighlighted = highlightId && v.id === highlightId;
+      var dateClass = getDateClass(v.insuranceDate);
+      var mileageClass = getMileageClass(v.mileage, v.nextTO);
+      var condClass = getConditionClass(v.condition);
+      
+      return '<tr data-id="' + v.id + '"' + (isHighlighted ? ' class="veh-highlight"' : '') + '>' +
+        '<td><strong>' + escapeHtml(v.carBrand) + '</strong></td>' +
+        '<td><span class="veh-organization">' + escapeHtml(v.organization) + '</span></td>' +
+        '<td>' + escapeHtml(v.licensePlate) + '</td>' +
+        '<td>' + v.carYear + '</td>' +
+        '<td><span class="veh-mileage ' + mileageClass + '">' + formatNumber(v.mileage) + ' / ' + formatNumber(v.nextTO) + '</span></td>' +
+        '<td><span class="veh-date ' + dateClass + '">' + formatDate(v.insuranceDate) + '</span></td>' +
+        '<td><span class="veh-condition ' + condClass + '">' + escapeHtml(v.condition) + '</span></td>' +
+        '<td class="veh-actions">' +
+          '<button class="veh-btn-icon edit" onclick="vehApp.editVehicle(\'' + v.id + '\')" title="Редактировать">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+          '</button>' +
+          '<button class="veh-btn-icon delete" onclick="vehApp.deleteVehicle(\'' + v.id + '\')" title="Удалить">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
+          '</button>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    if (highlightId) {
+      setTimeout(function() { highlightId = null; }, 3000);
+    }
+  }
+
+  function renderPagination() {
+    var total = vehicles.length;
+    var totalPages = Math.ceil(total / pageSize);
+    var pagEl = document.getElementById('veh-pagination');
+    
+    if (totalPages <= 1) {
+      pagEl.style.display = 'none';
+      return;
+    }
+    
+    pagEl.style.display = 'flex';
+    
+    var start = (currentPage - 1) * pageSize + 1;
+    var end = Math.min(currentPage * pageSize, total);
+    
+    document.getElementById('pag-start').textContent = start;
+    document.getElementById('pag-end').textContent = end;
+    document.getElementById('pag-total').textContent = total;
+    
+    var html = '<button class="veh-pagination-btn" onclick="vehApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>';
+    
+    var startPage = Math.max(1, currentPage - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+    
+    if (startPage > 1) {
+      html += '<button class="veh-pagination-btn" onclick="vehApp.goToPage(1)">1</button>';
+      if (startPage > 2) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
+    }
+    
+    for (var i = startPage; i <= endPage; i++) {
+      html += '<button class="veh-pagination-btn' + (i === currentPage ? ' active' : '') + '" onclick="vehApp.goToPage(' + i + ')">' + i + '</button>';
+    }
+    
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
+      html += '<button class="veh-pagination-btn" onclick="vehApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
+    }
+    
+    html += '<button class="veh-pagination-btn" onclick="vehApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>';
+    
+    document.getElementById('pag-controls').innerHTML = html;
+  }
+
+  function goToPage(p) {
+    var totalPages = Math.ceil(vehicles.length / pageSize) || 1;
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    renderTable();
+    renderPagination();
+  }
+
+  function sortTable(field) {
+    var ths = document.querySelectorAll('.veh-table th');
+    ths.forEach(function(th) { th.classList.remove('sorted'); });
+    
+    if (sortField === field) {
+      sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+    } else {
+      sortField = field;
+      sortOrder = 'ASC';
+    }
+    
+    event.target.closest('th').classList.add('sorted');
+    loadData();
+  }
+
+  function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(loadData, 300);
+  }
+
+  function resetAndLoad() {
+    currentPage = 1;
+    loadData();
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Добавить ТС';
+    document.getElementById('veh-form').reset();
+    document.getElementById('edit-id').value = '';
+    document.getElementById('veh-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('veh-modal').style.display = 'none';
+  }
+
+  function editVehicle(id) {
+    var v = vehicles.find(function(x) { return x.id === id; });
+    if (!v) return;
+    
+    document.getElementById('modal-title').textContent = 'Редактировать ТС';
+    document.getElementById('edit-id').value = v.id;
+    document.getElementById('edit-carbrand').value = v.carBrand;
+    document.getElementById('edit-organization').value = v.organization;
+    document.getElementById('edit-licenseplate').value = v.licensePlate;
+    document.getElementById('edit-caryear').value = v.carYear;
+    document.getElementById('edit-mileage').value = v.mileage;
+    document.getElementById('edit-nextto').value = v.nextTO;
+    document.getElementById('edit-insurancedate').value = v.insuranceDate;
+    document.getElementById('edit-condition').value = v.condition;
+    document.getElementById('edit-comment').value = v.comment || '';
+    document.getElementById('veh-modal').style.display = 'flex';
+  }
+
+  function saveVehicle(e) {
+    e.preventDefault();
+    var id = document.getElementById('edit-id').value;
+    var data = {
+      carBrand: document.getElementById('edit-carbrand').value,
+      organization: document.getElementById('edit-organization').value,
+      licensePlate: document.getElementById('edit-licenseplate').value,
+      carYear: parseInt(document.getElementById('edit-caryear').value),
+      mileage: parseInt(document.getElementById('edit-mileage').value),
+      nextTO: parseInt(document.getElementById('edit-nextto').value),
+      insuranceDate: document.getElementById('edit-insurancedate').value,
+      condition: document.getElementById('edit-condition').value,
+      comment: document.getElementById('edit-comment').value
+    };
+
+    var url = id ? API_URL + '/' + id : API_URL;
+    var method = id ? 'PUT' : 'POST';
+
+    fetchAPI(url, { method: method, body: JSON.stringify(data) })
+      .then(function(result) {
+        showToast(id ? 'ТС обновлено' : 'ТС добавлено', 'success');
+        closeModal();
+        highlightId = result.id;
+        loadData();
+      })
+      .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+    
+    return false;
+  }
+
+  function deleteVehicle(id) {
+    if (!confirm('Удалить это ТС?')) return;
+    
+    fetchAPI(API_URL + '/' + id, { method: 'DELETE' })
+      .then(function() {
+        showToast('ТС удалено', 'success');
+        loadData();
+      })
+      .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // Проверяем highlight из URL
+  function checkHighlight() {
+    var params = new URLSearchParams(window.location.search);
+    var hl = params.get('highlight');
+    if (hl) {
+      highlightId = hl;
+      history.replaceState(null, '', window.location.pathname);
+    }
+  }
+
+  // Init
+  checkHighlight();
+  loadData();
+
+  return {
+    loadData: loadData,
+    debounceLoad: debounceLoad,
+    sortTable: sortTable,
+    goToPage: goToPage,
+    resetAndLoad: resetAndLoad,
+    openAddModal: openAddModal,
+    closeModal: closeModal,
+    editVehicle: editVehicle,
+    saveVehicle: saveVehicle,
+    deleteVehicle: deleteVehicle
+  };
+})();
+</script>
