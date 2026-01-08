@@ -30,8 +30,25 @@ const misProxyRoutes = require('./routes/mis-proxy');
 
 const app = express();
 
-// Security middleware
-app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+// Security middleware with CSP configuration for PDF preview
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "*"],
+      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", "*"],
+      frameSrc: ["'self'", "blob:"], // Разрешаем iframe для blob URLs (PDF preview)
+      mediaSrc: ["'self'", "blob:", "*"],
+      objectSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      childSrc: ["'self'", "blob:"]
+    }
+  }
+}));
 
 // CORS configuration
 app.use(cors({

@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
-  Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye
+  Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
+  Edit2, Trash2, Smile
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { chat, users as usersApi, media, BASE_URL } from '../services/api';
 import { format, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
+import EmojiPicker from 'emoji-picker-react';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -36,11 +38,19 @@ export default function Dashboard() {
   const [lightboxZoom, setLightboxZoom] = useState(1);
   const [videoPreview, setVideoPreview] = useState({ open: false, url: '', name: '' });
   const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', name: '', blobUrl: '' });
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null });
+  const [editingMessage, setEditingMessage] = useState(null);
   
   const messagesEndRef = useRef(null);
+  const activeChatRef = useRef(null);
   const fileInputRef = useRef(null);
   const avatarInputRef = useRef(null);
-  const activeChatRef = useRef(null);
+  const emojiPickerRef = useRef(null);
+  const contextMenuRef = useRef(null);
+  const messageInputRef = useRef(null);
+
+  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
 
@@ -52,26 +62,27 @@ export default function Dashboard() {
     finally { setLoading(false); }
   }, []);
 
-  const refreshActiveChat = useCallback(async () => {
-    if (!activeChatRef.current) return;
-    try {
-      const { data } = await chat.list();
-      setChats(data);
-      const updated = data.find(c => c.id === activeChatRef.current.id);
-      if (updated) setActiveChat(updated);
-    } catch (e) { console.error('Failed to refresh chat:', e); }
-  }, []);
-
   const loadMessages = useCallback(async (chatId) => {
     try {
       const { data } = await chat.getMessages(chatId);
       setMessages(data);
-      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      setTimeout(scrollToBottom, 100);
+      await chat.markAsRead(chatId);
     } catch (e) { console.error('Failed to load messages:', e); }
   }, []);
 
+  const refreshActiveChat = async () => {
+    if (!activeChat) return;
+    try {
+      const { data } = await chat.list();
+      const updated = data.find(c => c.id === activeChat.id);
+      if (updated) setActiveChat(updated);
+    } catch (e) { console.error('Failed to refresh chat:', e); }
+  };
+
+  useEffect(() => { loadChats(); loadUsers(); }, [loadChats]);
+
   useEffect(() => {
-    loadChats();
     const interval = setInterval(() => {
       if (activeChatRef.current) loadMessages(activeChatRef.current.id);
       loadChats();
@@ -90,6 +101,8 @@ export default function Dashboard() {
     setActiveChat(chatItem);
     setShowChatInfo(false);
     setAttachments([]);
+    setEditingMessage(null);
+    setNewMessage('');
     await loadMessages(chatItem.id);
   };
 
@@ -113,6 +126,12 @@ export default function Dashboard() {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if ((!newMessage.trim() && attachments.length === 0) || !activeChat || sending) return;
+    
+    if (editingMessage) {
+      await handleEditMessage();
+      return;
+    }
+    
     setSending(true);
     try {
       await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments);
@@ -123,6 +142,77 @@ export default function Dashboard() {
     } catch (e) { toast.error('Ошибка отправки'); }
     finally { setSending(false); }
   };
+
+  const handleEditMessage = async () => {
+    if (!newMessage.trim()) { toast.error('Введите текст сообщения'); return; }
+    setSending(true);
+    try {
+      await chat.editMessage(activeChat.id, editingMessage.id, newMessage.trim());
+      setEditingMessage(null);
+      setNewMessage('');
+      await loadMessages(activeChat.id);
+      toast.success('Сообщение изменено');
+    } catch (e) { toast.error('Ошибка редактирования'); }
+    finally { setSending(false); }
+  };
+
+  const handleDeleteMessage = async (messageId) => {
+    if (!window.confirm('Удалить сообщение?')) return;
+    try {
+      await chat.deleteMessage(activeChat.id, messageId);
+      await loadMessages(activeChat.id);
+      toast.success('Сообщение удалено');
+    } catch (e) { toast.error('Ошибка удаления'); }
+  };
+
+  const handleContextMenu = (e, msg) => {
+    e.preventDefault();
+    if (msg.senderId !== user.id || msg.type === 'system') return;
+    
+    setContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      messageId: msg.id,
+      message: msg
+    });
+  };
+
+  const handleEmojiClick = (emojiData) => {
+    setNewMessage(prev => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+    messageInputRef.current?.focus();
+  };
+
+  const startEditMessage = (msg) => {
+    setEditingMessage(msg);
+    setNewMessage(msg.content);
+    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null });
+    messageInputRef.current?.focus();
+  };
+
+  const cancelEdit = () => {
+    setEditingMessage(null);
+    setNewMessage('');
+  };
+
+  // Закрытие контекстного меню при клике вне
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
+        setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null });
+      }
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
+        const emojiButton = document.querySelector('.emoji-picker-button');
+        if (!emojiButton?.contains(e.target)) {
+          setShowEmojiPicker(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const startPrivateChat = async (userId) => {
     try {
@@ -235,7 +325,6 @@ export default function Dashboard() {
     return diffDays === 0 ? format(d, 'HH:mm') : format(d, 'd MMM', { locale: ru });
   };
 
-  // Форматирование даты для разделителя (как в Telegram)
   const formatDateSeparator = (date) => {
     if (isToday(date)) return 'Сегодня';
     if (isYesterday(date)) return 'Вчера';
@@ -243,7 +332,6 @@ export default function Dashboard() {
     return format(date, 'd MMMM yyyy', { locale: ru });
   };
 
-  // Проверка, нужен ли разделитель даты между сообщениями
   const shouldShowDateSeparator = (currentMsg, previousMsg) => {
     if (!previousMsg) return true;
     const currentDate = new Date(currentMsg.createdAt);
@@ -258,8 +346,24 @@ export default function Dashboard() {
 
   const openLightbox = (images, index) => { setLightboxImages(images); setLightboxIndex(index); setLightboxOpen(true); setLightboxZoom(1); };
   const closeLightbox = () => { setLightboxOpen(false); setLightboxZoom(1); };
-  const openPdfPreview = (url, name) => setPdfPreview({ open: true, url, name, blobUrl: url });
-  const closePdfPreview = () => { setPdfPreview({ open: false, url: '', name: '', blobUrl: '' }); };
+  
+  const openPdfPreview = async (url, name) => {
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      setPdfPreview({ open: true, url, name, blobUrl });
+    } catch (err) {
+      toast.error('Ошибка загрузки PDF');
+    }
+  };
+  
+  const closePdfPreview = () => {
+    if (pdfPreview.blobUrl) {
+      URL.revokeObjectURL(pdfPreview.blobUrl);
+    }
+    setPdfPreview({ open: false, url: '', name: '', blobUrl: '' });
+  };
 
   const downloadFile = async (e, url, filename) => {
     e.preventDefault();
@@ -278,9 +382,19 @@ export default function Dashboard() {
   useEffect(() => {
     if (!lightboxOpen && !videoPreview.open && !pdfPreview.open) return;
     const handleKey = (e) => {
-      if (e.key === 'Escape') { closeLightbox(); setVideoPreview({ open: false, url: '', name: '' }); closePdfPreview(); }
-      if (lightboxOpen && e.key === 'ArrowLeft') { setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }
-      if (lightboxOpen && e.key === 'ArrowRight') { setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }
+      if (e.key === 'Escape') { 
+        closeLightbox(); 
+        setVideoPreview({ open: false, url: '', name: '' }); 
+        closePdfPreview(); 
+      }
+      if (lightboxOpen && e.key === 'ArrowLeft') { 
+        setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); 
+        setLightboxZoom(1); 
+      }
+      if (lightboxOpen && e.key === 'ArrowRight') { 
+        setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); 
+        setLightboxZoom(1); 
+      }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
@@ -374,36 +488,26 @@ export default function Dashboard() {
           </div>
           <div className="chat-search"><Search size={18} /><input placeholder="Поиск..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
           <div className="chat-list">
-            {loading ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(c => (
-              <div key={c.id} className={`chat-item ${activeChat?.id === c.id ? 'active' : ''} ${c.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(c)}>
-                <div className={`chat-item-avatar ${c.type === 'group' ? 'group' : ''}`}>
-                  {getChatAvatar(c) ? <img src={getAvatarUrl(getChatAvatar(c))} alt="" /> : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
-                </div>
+            {loading ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(chatItem => (
+              <div key={chatItem.id} className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(chatItem)}>
+                <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
                 <div className="chat-item-content">
-                  <div className="chat-item-header">
-                    <span className="chat-item-name">{c.displayName}</span>
-                    <span className="chat-item-time">{formatTime(c.lastMessageAt)}</span>
-                  </div>
-                  <div className="chat-item-preview">
-                    {c.type === 'group' && <span className="chat-type-badge">Группа · </span>}
-                    {c.lastMessage || 'Нет сообщений'}
-                  </div>
+                  <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
+                  <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
                 </div>
-                {c.unreadCount > 0 && <div className="chat-item-unread">{c.unreadCount > 99 ? '99+' : c.unreadCount}</div>}
+                {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
               </div>
-            )) : <div className="chat-empty"><MessageCircle size={48} /><p>Нет чатов</p><button className="btn btn-primary btn-sm" onClick={() => { setShowNewChat(true); loadUsers(); }}>Начать общение</button></div>}
+            )) : <div className="chat-empty">Нет чатов</div>}
           </div>
         </div>
 
-        <div className={`chat-main ${activeChat ? 'active' : ''}`}>
+        <div className="chat-main">
           {activeChat ? (
             <>
               <div className="chat-main-header">
-                <button className="mobile-back btn-icon-chat" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
-                <div className={`chat-main-avatar ${activeChat.type === 'group' ? 'group' : ''}`} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
-                  {getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={24} /> : <User size={24} />)}
-                </div>
-                <div className="chat-main-info" onClick={() => activeChat.type === 'group' && setShowChatInfo(true)} style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }}>
+                <button className="btn-icon-chat mobile-only" onClick={() => setActiveChat(null)}><ArrowLeft size={20} /></button>
+                <div className="chat-main-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={20} /> : <User size={20} />)}</div>
+                <div className="chat-main-info" style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
                   <div className="chat-main-status">{activeChat.type === 'group' ? `${activeChat.members?.length || 0} участников` : ''}</div>
                 </div>
@@ -416,7 +520,7 @@ export default function Dashboard() {
                   const showDateSeparator = shouldShowDateSeparator(msg, messages[idx - 1]);
                   
                   const hasAttachments = msg.attachments && msg.attachments.length > 0;
-                  const hasText = msg.content && !msg.content.startsWith('📎') && !msg.content.startsWith('📷');
+                  const hasText = msg.content && msg.content !== 'Сообщение удалено';
                   
                   return (
                     <React.Fragment key={msg.id}>
@@ -428,13 +532,20 @@ export default function Dashboard() {
                       {msg.type === 'system' ? (
                         <div className="message-system">{msg.content}</div>
                       ) : (
-                        <div className={`message ${isOwn ? 'own' : ''}`}>
+                        <div 
+                          className={`message ${isOwn ? 'own' : ''}`}
+                          onContextMenu={(e) => handleContextMenu(e, msg)}
+                        >
                           {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
                           <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
                             {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
                             {renderAttachments(msg.attachments, isOwn)}
                             {hasText && <div className="message-content">{msg.content}</div>}
-                            <div className="message-meta"><span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>{isOwn && <span className="message-status"><CheckCheck size={14} /></span>}</div>
+                            <div className="message-meta">
+                              <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
+                              {msg.isEdited && <span className="message-edited">изменено</span>}
+                              {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -454,12 +565,53 @@ export default function Dashboard() {
                   ))}
                 </div>
               )}
+              {editingMessage && (
+                <div className="editing-message-banner">
+                  <div className="editing-message-info">
+                    <Edit2 size={16} />
+                    <span>Редактирование сообщения</span>
+                  </div>
+                  <button onClick={cancelEdit}><X size={16} /></button>
+                </div>
+              )}
               <form className="chat-input" onSubmit={handleSendMessage}>
                 <input type="file" ref={fileInputRef} hidden multiple onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
-                <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">{uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}</button>
-                <input placeholder="Введите сообщение..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
-                <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}><Send size={20} /></button>
+                {!editingMessage && (
+                  <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
+                    {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
+                  </button>
+                )}
+                <div className="chat-input-wrapper">
+                  <input 
+                    ref={messageInputRef}
+                    placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."} 
+                    value={newMessage} 
+                    onChange={(e) => setNewMessage(e.target.value)} 
+                  />
+                  <button 
+                    type="button" 
+                    className="btn-icon-chat emoji-picker-button" 
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    title="Эмодзи"
+                  >
+                    <Smile size={20} />
+                  </button>
+                </div>
+                <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}>
+                  <Send size={20} />
+                </button>
               </form>
+              {showEmojiPicker && (
+                <div className="emoji-picker-container" ref={emojiPickerRef}>
+                  <EmojiPicker 
+                    onEmojiClick={handleEmojiClick}
+                    width="100%"
+                    height={350}
+                    searchPlaceholder="Поиск эмодзи..."
+                    previewConfig={{ showPreview: false }}
+                  />
+                </div>
+              )}
             </>
           ) : <div className="chat-placeholder"><MessageCircle size={64} /><h3>Alfa Чат</h3><p>Выберите чат или начните новый</p></div>}
         </div>
@@ -498,6 +650,24 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {/* Context Menu */}
+      {contextMenu.visible && (
+        <div 
+          ref={contextMenuRef}
+          className="message-context-menu"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+        >
+          <button onClick={() => { startEditMessage(contextMenu.message); }}>
+            <Edit2 size={16} />
+            Редактировать
+          </button>
+          <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null }); }} className="danger">
+            <Trash2 size={16} />
+            Удалить
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       {showNewChat && (
@@ -565,14 +735,25 @@ export default function Dashboard() {
       {lightboxOpen && (
         <div className="lightbox-overlay" onClick={closeLightbox}>
           <button className="lightbox-close" onClick={closeLightbox}><X size={24} /></button>
-          <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}><ChevronLeft size={32} /></button>
-          <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}><ChevronRight size={32} /></button>
+          {lightboxImages.length > 1 && (
+            <>
+              <button className="lightbox-prev" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i > 0 ? i - 1 : lightboxImages.length - 1); setLightboxZoom(1); }}><ChevronLeft size={32} /></button>
+              <button className="lightbox-next" onClick={(e) => { e.stopPropagation(); setLightboxIndex(i => i < lightboxImages.length - 1 ? i + 1 : 0); setLightboxZoom(1); }}><ChevronRight size={32} /></button>
+            </>
+          )}
           <div className="lightbox-controls">
             <button onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.max(0.5, z - 0.25)); }}><ZoomOut size={20} /></button>
             <span>{Math.round(lightboxZoom * 100)}%</span>
             <button onClick={(e) => { e.stopPropagation(); setLightboxZoom(z => Math.min(3, z + 0.25)); }}><ZoomIn size={20} /></button>
+            {lightboxImages.length > 1 && <span className="lightbox-counter">{lightboxIndex + 1} / {lightboxImages.length}</span>}
+            <button className="lightbox-download" onClick={(e) => { e.stopPropagation(); downloadFile(e, lightboxImages[lightboxIndex], `image-${lightboxIndex + 1}.jpg`); }}><Download size={20} /></button>
           </div>
-          <img src={lightboxImages[lightboxIndex]} alt="" onClick={(e) => e.stopPropagation()} style={{ transform: `scale(${lightboxZoom})`, maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain' }} />
+          <img 
+            src={lightboxImages[lightboxIndex]} 
+            alt="" 
+            onClick={(e) => e.stopPropagation()} 
+            style={{ transform: `scale(${lightboxZoom})`, maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', transition: 'transform 0.2s' }} 
+          />
         </div>
       )}
 
@@ -604,7 +785,7 @@ export default function Dashboard() {
                 <button onClick={closePdfPreview}><X size={20} /></button>
               </div>
             </div>
-            <iframe src={pdfPreview.blobUrl} style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} title={pdfPreview.name} />
+            <embed src={pdfPreview.blobUrl} type="application/pdf" style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} />
           </div>
         </div>
       )}

@@ -48,7 +48,6 @@ router.get('/', authenticate, async (req, res) => {
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    // Подсчитываем непрочитанные для каждого чата
     const chats = await Promise.all(memberships.map(async (m) => {
       const chat = m.chat.toJSON();
       
@@ -63,7 +62,6 @@ router.get('/', authenticate, async (req, res) => {
         chat.displayName = chat.name;
       }
 
-      // Подсчёт непрочитанных сообщений
       const whereCondition = {
         chatId: chat.id,
         senderId: { [Op.ne]: req.user.id }
@@ -120,7 +118,7 @@ router.get('/unread/count', authenticate, async (req, res) => {
 router.post('/private/:userId', authenticate, async (req, res) => {
   try {
     const { userId } = req.params;
-    
+   
     if (userId === req.user.id) {
       return res.status(400).json({ error: 'Cannot create chat with yourself' });
     }
@@ -394,6 +392,115 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Send message error:', error);
     res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Edit message
+router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    const message = await Message.findOne({
+      where: { id: messageId, chatId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.senderId !== req.user.id) {
+      return res.status(403).json({ error: 'Can only edit own messages' });
+    }
+
+    if (message.type === 'system') {
+      return res.status(400).json({ error: 'Cannot edit system messages' });
+    }
+
+    await message.update({
+      content: content.trim(),
+      isEdited: true
+    });
+
+    const updatedMessage = await Message.findByPk(message.id, {
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+      ]
+    });
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error('Edit message error:', error);
+    res.status(500).json({ error: 'Failed to edit message' });
+  }
+});
+
+// Delete message
+router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+
+    const message = await Message.findOne({
+      where: { id: messageId, chatId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.senderId !== req.user.id) {
+      return res.status(403).json({ error: 'Can only delete own messages' });
+    }
+
+    if (message.type === 'system') {
+      return res.status(400).json({ error: 'Cannot delete system messages' });
+    }
+
+    // Вместо физического удаления, помечаем как удалённое
+    await message.update({
+      content: 'Сообщение удалено',
+      attachments: [],
+      type: 'system'
+    });
+
+    const updatedMessage = await Message.findByPk(message.id, {
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+      ]
+    });
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error('Delete message error:', error);
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Mark chat as read
+router.post('/:chatId/read', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    await membership.update({ lastReadAt: new Date() });
+
+    res.json({ message: 'Marked as read' });
+  } catch (error) {
+    console.error('Mark as read error:', error);
+    res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
 
