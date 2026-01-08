@@ -1,37 +1,54 @@
 const express = require('express');
+const router = express.Router();
 const { Op } = require('sequelize');
 const multer = require('multer');
+const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
-const sharp = require('sharp');
-const { Chat, ChatMember, Message, User } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { Chat, ChatMember, Message, User } = require('../models');
 
-const router = express.Router();
-
-// Multer setup for chat avatar
+// File upload configuration
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/chat-avatars');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    const uploadDir = 'uploads/chat-attachments';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `chat-${req.params.chatId}-${Date.now()}${ext}`);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-const upload = multer({
+const upload = multer({ 
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    cb(null, allowed.includes(file.mimetype));
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB
+});
+
+// Avatar upload configuration
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = 'uploads/chat-avatars';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '.jpg');
   }
 });
 
-// Get all chats for current user
+const avatarUpload = multer({ 
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
+
+// Get user's chats
 router.get('/', authenticate, async (req, res) => {
   try {
     const memberships = await ChatMember.findAll({
@@ -48,33 +65,37 @@ router.get('/', authenticate, async (req, res) => {
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    const chats = await Promise.all(memberships.map(async (m) => {
-      const chat = m.chat.toJSON();
+    const chats = memberships.map(m => {
+      const chat = m.chat;
+      const otherMembers = chat.members.filter(member => member.userId !== req.user.id);
       
-      if (chat.type === 'private') {
-        const otherMember = chat.members.find(member => member.userId !== req.user.id);
-        if (otherMember) {
-          chat.displayName = otherMember.user.displayName || otherMember.user.username;
-          chat.avatar = otherMember.user.avatar;
-          chat.otherUser = otherMember.user;
-        }
-      } else {
-        chat.displayName = chat.name;
+      let displayName = chat.name;
+      let avatar = chat.avatar;
+
+      if (chat.type === 'private' && otherMembers.length > 0) {
+        const otherUser = otherMembers[0].user;
+        displayName = otherUser.displayName || otherUser.username;
+        avatar = otherUser.avatar;
       }
 
-      const whereCondition = {
-        chatId: chat.id,
-        senderId: { [Op.ne]: req.user.id }
+      const lastMessage = chat.messages?.[0];
+      const unreadCount = lastMessage ? 
+        (new Date(lastMessage.createdAt) > new Date(m.lastReadAt || 0) ? 1 : 0) : 0;
+
+      return {
+        id: chat.id,
+        name: chat.name,
+        type: chat.type,
+        avatar: chat.avatar,
+        displayName,
+        avatarUrl: avatar,
+        lastMessage: chat.lastMessage,
+        lastMessageAt: chat.lastMessageAt,
+        members: chat.members,
+        unreadCount,
+        createdBy: chat.createdBy
       };
-      
-      if (m.lastReadAt) {
-        whereCondition.createdAt = { [Op.gt]: m.lastReadAt };
-      }
-
-      chat.unreadCount = await Message.count({ where: whereCondition });
-      
-      return chat;
-    }));
+    });
 
     res.json(chats);
   } catch (error) {
@@ -83,42 +104,285 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Get total unread messages count
+// Get unread messages count
 router.get('/unread/count', authenticate, async (req, res) => {
   try {
     const memberships = await ChatMember.findAll({
       where: { userId: req.user.id },
-      attributes: ['chatId', 'lastReadAt']
+      include: [{
+        model: Chat,
+        as: 'chat',
+        include: [{
+          model: Message,
+          as: 'messages',
+          limit: 1,
+          order: [['createdAt', 'DESC']]
+        }]
+      }]
     });
 
     let totalUnread = 0;
-
-    for (const membership of memberships) {
-      const whereCondition = {
-        chatId: membership.chatId,
-        senderId: { [Op.ne]: req.user.id }
-      };
-      
-      if (membership.lastReadAt) {
-        whereCondition.createdAt = { [Op.gt]: membership.lastReadAt };
+    memberships.forEach(m => {
+      const lastMessage = m.chat.messages?.[0];
+      if (lastMessage && new Date(lastMessage.createdAt) > new Date(m.lastReadAt || 0)) {
+        totalUnread++;
       }
+    });
 
-      const count = await Message.count({ where: whereCondition });
-      totalUnread += count;
-    }
-
-    res.json({ unreadCount: totalUnread });
+    res.json({ count: totalUnread });
   } catch (error) {
     console.error('Get unread count error:', error);
     res.status(500).json({ error: 'Failed to get unread count' });
   }
 });
 
-// Get or create private chat with user
-router.post('/private/:userId', authenticate, async (req, res) => {
+// Get messages for a chat
+router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {
-    const { userId } = req.params;
-   
+    const { chatId } = req.params;
+    const { limit = 50, before } = req.query;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    const whereClause = { chatId };
+    if (before) {
+      whereClause.createdAt = { [Op.lt]: new Date(before) };
+    }
+
+    const messages = await Message.findAll({
+      where: whereClause,
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { 
+          model: Message, 
+          as: 'replyTo',
+          include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }]
+        }
+      ],
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit)
+    });
+
+    res.json(messages.reverse());
+  } catch (error) {
+    console.error('Get messages error:', error);
+    res.status(500).json({ error: 'Failed to load messages' });
+  }
+});
+
+// Upload attachment
+router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    let thumbnailPath = null;
+    
+    if (req.file.mimetype.startsWith('image/')) {
+      const thumbnailFilename = `thumb-${req.file.filename}`;
+      thumbnailPath = path.join('uploads/chat-attachments', thumbnailFilename);
+      
+      await sharp(req.file.path)
+        .resize(200, 200, { fit: 'cover' })
+        .jpeg({ quality: 80 })
+        .toFile(thumbnailPath);
+    }
+
+    res.json({
+      id: Date.now().toString(),
+      name: req.file.originalname,
+      path: req.file.path.replace(/\\/g, '/'),
+      thumbnailPath: thumbnailPath ? thumbnailPath.replace(/\\/g, '/') : null,
+      mimeType: req.file.mimetype,
+      size: req.file.size
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// Send message
+router.post('/:chatId/messages', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { content, attachments = [], replyToId } = req.body;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    let messageType = 'text';
+    if (attachments.length > 0) {
+      messageType = attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file';
+    }
+
+    const message = await Message.create({
+      chatId,
+      senderId: req.user.id,
+      content: content?.trim() || '',
+      type: messageType,
+      attachments: attachments,
+      replyToId
+    });
+
+    let lastMessagePreview = content?.trim() || '';
+    if (attachments.length > 0 && !lastMessagePreview) {
+      const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
+      lastMessagePreview = allImages 
+        ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
+        : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
+    }
+
+    await Chat.update(
+      { lastMessage: lastMessagePreview, lastMessageAt: new Date() },
+      { where: { id: chatId } }
+    );
+
+    const fullMessage = await Message.findByPk(message.id, {
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+      ]
+    });
+
+    res.status(201).json(fullMessage);
+  } catch (error) {
+    console.error('Send message error:', error);
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
+// Edit message
+router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    const message = await Message.findOne({
+      where: { id: messageId, chatId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.senderId !== req.user.id) {
+      return res.status(403).json({ error: 'Can only edit own messages' });
+    }
+
+    if (message.type === 'system') {
+      return res.status(400).json({ error: 'Cannot edit system messages' });
+    }
+
+    await message.update({
+      content: content.trim(),
+      isEdited: true,
+      editedAt: new Date()
+    });
+
+    const updatedMessage = await Message.findByPk(message.id, {
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+      ]
+    });
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error('Edit message error:', error);
+    res.status(500).json({ error: 'Failed to edit message' });
+  }
+});
+
+// Delete message
+router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+
+    const message = await Message.findOne({
+      where: { id: messageId, chatId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    if (message.senderId !== req.user.id) {
+      return res.status(403).json({ error: 'Can only delete own messages' });
+    }
+
+    if (message.type === 'system') {
+      return res.status(400).json({ error: 'Cannot delete system messages' });
+    }
+
+    // Вместо физического удаления, помечаем как удалённое
+    await message.update({
+      content: 'Сообщение удалено',
+      attachments: [],
+      type: 'system'
+    });
+
+    const updatedMessage = await Message.findByPk(message.id, {
+      include: [
+        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
+        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
+      ]
+    });
+
+    res.json(updatedMessage);
+  } catch (error) {
+    console.error('Delete message error:', error);
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Mark chat as read
+router.post('/:chatId/read', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    await membership.update({ lastReadAt: new Date() });
+
+    res.json({ message: 'Marked as read' });
+  } catch (error) {
+    console.error('Mark as read error:', error);
+    res.status(500).json({ error: 'Failed to mark as read' });
+  }
+});
+
+// Create private chat
+router.post('/private', authenticate, async (req, res) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
     if (userId === req.user.id) {
       return res.status(400).json({ error: 'Cannot create chat with yourself' });
     }
@@ -203,11 +467,19 @@ router.post('/group', authenticate, async (req, res) => {
 
     await ChatMember.bulkCreate(members);
 
+    const systemMessage = `${req.user.displayName || req.user.username} создал группу "${name.trim()}"`;
+    
     await Message.create({
       chatId: chat.id,
       senderId: req.user.id,
-      content: `${req.user.displayName || req.user.username} создал группу "${name}"`,
+      content: systemMessage,
       type: 'system'
+    });
+
+    // ✅ Обновляем lastMessage для превью чата
+    await chat.update({
+      lastMessage: systemMessage,
+      lastMessageAt: new Date()
     });
 
     const fullChat = await Chat.findByPk(chat.id, {
@@ -226,7 +498,7 @@ router.post('/group', authenticate, async (req, res) => {
 });
 
 // Update group chat avatar
-router.post('/:chatId/avatar', authenticate, upload.single('avatar'), async (req, res) => {
+router.post('/:chatId/avatar', authenticate, avatarUpload.single('avatar'), async (req, res) => {
   try {
     const { chatId } = req.params;
 
@@ -290,217 +562,11 @@ router.delete('/:chatId/avatar', authenticate, async (req, res) => {
     }
 
     await chat.update({ avatar: null });
+
     res.json({ message: 'Avatar deleted' });
   } catch (error) {
     console.error('Delete chat avatar error:', error);
     res.status(500).json({ error: 'Failed to delete avatar' });
-  }
-});
-
-// Get messages for a chat
-router.get('/:chatId/messages', authenticate, async (req, res) => {
-  try {
-    const { chatId } = req.params;
-    const { limit = 50, before } = req.query;
-
-    const membership = await ChatMember.findOne({
-      where: { chatId, userId: req.user.id }
-    });
-
-    if (!membership) {
-      return res.status(403).json({ error: 'Not a member of this chat' });
-    }
-
-    const where = { chatId };
-    if (before) {
-      where.createdAt = { [Op.lt]: new Date(before) };
-    }
-
-    const messages = await Message.findAll({
-      where,
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-      ],
-      order: [['createdAt', 'DESC']],
-      limit: parseInt(limit)
-    });
-
-    await membership.update({ lastReadAt: new Date() });
-
-    res.json(messages.reverse());
-  } catch (error) {
-    console.error('Get messages error:', error);
-    res.status(500).json({ error: 'Failed to fetch messages' });
-  }
-});
-
-// Send message
-router.post('/:chatId/messages', authenticate, async (req, res) => {
-  try {
-    const { chatId } = req.params;
-    const { content, type = 'text', attachments = [], replyToId } = req.body;
-
-    if ((!content || !content.trim()) && attachments.length === 0) {
-      return res.status(400).json({ error: 'Message content or attachments required' });
-    }
-
-    const membership = await ChatMember.findOne({
-      where: { chatId, userId: req.user.id }
-    });
-
-    if (!membership) {
-      return res.status(403).json({ error: 'Not a member of this chat' });
-    }
-
-    let messageType = type;
-    if (attachments.length > 0) {
-      const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
-      messageType = allImages ? 'image' : 'file';
-    }
-
-    const message = await Message.create({
-      chatId,
-      senderId: req.user.id,
-      content: content?.trim() || '',
-      type: messageType,
-      attachments: attachments,
-      replyToId
-    });
-
-    let lastMessagePreview = content?.trim() || '';
-    if (attachments.length > 0 && !lastMessagePreview) {
-      const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
-      lastMessagePreview = allImages 
-        ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
-        : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
-    }
-
-    await Chat.update(
-      { lastMessage: lastMessagePreview, lastMessageAt: new Date() },
-      { where: { id: chatId } }
-    );
-
-    const fullMessage = await Message.findByPk(message.id, {
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-      ]
-    });
-
-    res.status(201).json(fullMessage);
-  } catch (error) {
-    console.error('Send message error:', error);
-    res.status(500).json({ error: 'Failed to send message' });
-  }
-});
-
-// Edit message
-router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
-  try {
-    const { chatId, messageId } = req.params;
-    const { content } = req.body;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({ error: 'Message content is required' });
-    }
-
-    const message = await Message.findOne({
-      where: { id: messageId, chatId }
-    });
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    if (message.senderId !== req.user.id) {
-      return res.status(403).json({ error: 'Can only edit own messages' });
-    }
-
-    if (message.type === 'system') {
-      return res.status(400).json({ error: 'Cannot edit system messages' });
-    }
-
-    await message.update({
-      content: content.trim(),
-      isEdited: true
-    });
-
-    const updatedMessage = await Message.findByPk(message.id, {
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-      ]
-    });
-
-    res.json(updatedMessage);
-  } catch (error) {
-    console.error('Edit message error:', error);
-    res.status(500).json({ error: 'Failed to edit message' });
-  }
-});
-
-// Delete message
-router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => {
-  try {
-    const { chatId, messageId } = req.params;
-
-    const message = await Message.findOne({
-      where: { id: messageId, chatId }
-    });
-
-    if (!message) {
-      return res.status(404).json({ error: 'Message not found' });
-    }
-
-    if (message.senderId !== req.user.id) {
-      return res.status(403).json({ error: 'Can only delete own messages' });
-    }
-
-    if (message.type === 'system') {
-      return res.status(400).json({ error: 'Cannot delete system messages' });
-    }
-
-    // Вместо физического удаления, помечаем как удалённое
-    await message.update({
-      content: 'Сообщение удалено',
-      attachments: [],
-      type: 'system'
-    });
-
-    const updatedMessage = await Message.findByPk(message.id, {
-      include: [
-        { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
-      ]
-    });
-
-    res.json(updatedMessage);
-  } catch (error) {
-    console.error('Delete message error:', error);
-    res.status(500).json({ error: 'Failed to delete message' });
-  }
-});
-
-// Mark chat as read
-router.post('/:chatId/read', authenticate, async (req, res) => {
-  try {
-    const { chatId } = req.params;
-
-    const membership = await ChatMember.findOne({
-      where: { chatId, userId: req.user.id }
-    });
-
-    if (!membership) {
-      return res.status(403).json({ error: 'Not a member of this chat' });
-    }
-
-    await membership.update({ lastReadAt: new Date() });
-
-    res.json({ message: 'Marked as read' });
-  } catch (error) {
-    console.error('Mark as read error:', error);
-    res.status(500).json({ error: 'Failed to mark as read' });
   }
 });
 
@@ -531,12 +597,20 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
     await ChatMember.create({ chatId, userId, role: 'member' });
 
     const user = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
+    const messageContent = `${user.displayName || user.username} добавлен в группу`;
+    
     await Message.create({
       chatId,
       senderId: req.user.id,
-      content: `${user.displayName || user.username} добавлен в группу`,
+      content: messageContent,
       type: 'system'
     });
+
+    // ✅ Обновляем lastMessage
+    await Chat.update(
+      { lastMessage: messageContent, lastMessageAt: new Date() },
+      { where: { id: chatId } }
+    );
 
     res.json({ message: 'Member added' });
   } catch (error) {
@@ -594,6 +668,12 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       type: 'system'
     });
 
+    // ✅ Обновляем lastMessage
+    await Chat.update(
+      { lastMessage: messageContent, lastMessageAt: new Date() },
+      { where: { id: chatId } }
+    );
+
     res.json({ message: 'Member removed' });
   } catch (error) {
     console.error('Remove member error:', error);
@@ -617,12 +697,20 @@ router.delete('/:chatId/leave', authenticate, async (req, res) => {
     const chat = await Chat.findByPk(chatId);
     
     if (chat.type === 'group') {
+      const messageContent = `${req.user.displayName || req.user.username} покинул группу`;
+      
       await Message.create({
         chatId,
         senderId: req.user.id,
-        content: `${req.user.displayName || req.user.username} покинул группу`,
+        content: messageContent,
         type: 'system'
       });
+
+      // ✅ Обновляем lastMessage
+      await Chat.update(
+        { lastMessage: messageContent, lastMessageAt: new Date() },
+        { where: { id: chatId } }
+      );
     }
 
     await membership.destroy();

@@ -65,10 +65,24 @@ export default function Dashboard() {
   const loadMessages = useCallback(async (chatId) => {
     try {
       const { data } = await chat.getMessages(chatId);
+      
+      // ✅ ВРЕМЕННАЯ ОТЛАДКА - потом удали
+      console.log('=== ВСЕ СООБЩЕНИЯ ===');
+      data.forEach(msg => {
+        console.log({
+          id: msg.id,
+          type: msg.type,
+          content: msg.content.substring(0, 50),
+          senderId: msg.senderId
+        });
+      });
+      
       setMessages(data);
       setTimeout(scrollToBottom, 100);
       await chat.markAsRead(chatId);
-    } catch (e) { console.error('Failed to load messages:', e); }
+    } catch (e) { 
+      console.error('Failed to load messages:', e); 
+    }
   }, []);
 
   const refreshActiveChat = async () => {

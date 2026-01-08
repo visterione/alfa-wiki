@@ -11,7 +11,7 @@ const sequelize = new Sequelize(
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
-    timezone: '+00:00',
+    timezone: '+00:00', // Принудительно используем UTC
     dialectOptions: {
       timezone: 'Etc/GMT'
     }
@@ -42,11 +42,26 @@ const User = sequelize.define('User', {
   isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
   lastLogin: { type: DataTypes.DATE },
   settings: { type: DataTypes.JSONB, defaultValue: {} },
-  roleId: { type: DataTypes.UUID },
-  twoFactorEnabled: { type: DataTypes.BOOLEAN, defaultValue: false },
-  twoFactorCode: { type: DataTypes.STRING(6) },
-  twoFactorCodeExpires: { type: DataTypes.DATE },
-  twoFactorAttempts: { type: DataTypes.INTEGER, defaultValue: 0 }
+  
+  // 2FA поля
+  twoFactorEnabled: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    comment: 'Включена ли 2FA для этого пользователя' 
+  },
+  twoFactorCode: { 
+    type: DataTypes.STRING(6),
+    comment: 'Временный код для 2FA' 
+  },
+  twoFactorCodeExpires: { 
+    type: DataTypes.DATE,
+    comment: 'Время истечения кода 2FA' 
+  },
+  twoFactorAttempts: { 
+    type: DataTypes.INTEGER, 
+    defaultValue: 0,
+    comment: 'Количество неудачных попыток ввода кода' 
+  }
 }, { tableName: 'users', timestamps: true });
 
 // === FOLDER MODEL ===
@@ -167,14 +182,16 @@ const Setting = sequelize.define('Setting', {
   key: { type: DataTypes.STRING(100), primaryKey: true },
   value: { type: DataTypes.JSONB },
   description: { type: DataTypes.TEXT }
-}, { tableName: 'settings', timestamps: false });
+}, { tableName: 'settings', timestamps: true });
 
 // === CHAT MODEL ===
 const Chat = sequelize.define('Chat', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name: { type: DataTypes.STRING(255) },
-  type: { type: DataTypes.ENUM('direct', 'group'), defaultValue: 'direct' },
+  type: { type: DataTypes.ENUM('private', 'group'), defaultValue: 'private' },
   avatar: { type: DataTypes.STRING(500) },
+  lastMessage: { type: DataTypes.TEXT },
+  lastMessageAt: { type: DataTypes.DATE },
   createdBy: { type: DataTypes.UUID }
 }, { tableName: 'chats', timestamps: true });
 
@@ -184,13 +201,12 @@ const ChatMember = sequelize.define('ChatMember', {
   chatId: { type: DataTypes.UUID, allowNull: false },
   userId: { type: DataTypes.UUID, allowNull: false },
   role: { type: DataTypes.ENUM('admin', 'member'), defaultValue: 'member' },
-  lastReadAt: { type: DataTypes.DATE }
+  lastReadAt: { type: DataTypes.DATE },
+  isNotificationMuted: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { 
   tableName: 'chat_members', 
   timestamps: true,
-  indexes: [
-    { unique: true, fields: ['chatId', 'userId'] }
-  ]
+  indexes: [{ unique: true, fields: ['chatId', 'userId'] }]
 });
 
 // === MESSAGE MODEL ===
@@ -198,71 +214,74 @@ const Message = sequelize.define('Message', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   chatId: { type: DataTypes.UUID, allowNull: false },
   senderId: { type: DataTypes.UUID, allowNull: false },
-  content: { type: DataTypes.TEXT },
+  content: { type: DataTypes.TEXT, allowNull: false },
+  type: { type: DataTypes.ENUM('text', 'image', 'file', 'system'), defaultValue: 'text' },
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
-  replyToId: { type: DataTypes.UUID },
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
-  editedAt: { type: DataTypes.DATE }
-}, { 
-  tableName: 'messages', 
-  timestamps: true,
-  indexes: [
-    { fields: ['chatId'] },
-    { fields: ['senderId'] },
-    { fields: ['createdAt'] }
-  ]
-});
+  replyToId: { type: DataTypes.UUID }
+}, { tableName: 'messages', timestamps: true });
 
 // === ACCREDITATION MODEL ===
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  organization: { type: DataTypes.STRING(255), allowNull: false },
-  certificateNumber: { type: DataTypes.STRING(255) },
-  issueDate: { type: DataTypes.DATEONLY },
-  expiryDate: { type: DataTypes.DATEONLY },
-  status: { type: DataTypes.ENUM('active', 'expiring', 'expired'), defaultValue: 'active' },
-  documents: { type: DataTypes.JSONB, defaultValue: [] },
-  notes: { type: DataTypes.TEXT },
-  reminderSent: { type: DataTypes.BOOLEAN, defaultValue: false }
+  medCenter: { 
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'), 
+    allowNull: false 
+  },
+  fullName: { type: DataTypes.STRING(255), allowNull: false },
+  specialty: { type: DataTypes.STRING(255), allowNull: false },
+  expirationDate: { type: DataTypes.DATEONLY, allowNull: false },
+  comment: { type: DataTypes.TEXT },
+  reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded7: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { 
   tableName: 'accreditations', 
   timestamps: true,
   indexes: [
-    { fields: ['organization'] },
-    { fields: ['expiryDate'] },
-    { fields: ['status'] }
+    { fields: ['medCenter'] },
+    { fields: ['fullName'] },
+    { fields: ['specialty'] },
+    { fields: ['expirationDate'] }
   ]
 });
 
 // === TELEGRAM SUBSCRIBER MODEL ===
 const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  chatId: { type: DataTypes.STRING(255), allowNull: false, unique: true },
-  username: { type: DataTypes.STRING(255) },
-  firstName: { type: DataTypes.STRING(255) },
-  lastName: { type: DataTypes.STRING(255) },
-  isActive: { type: DataTypes.BOOLEAN, defaultValue: true }
-}, { tableName: 'telegram_subscribers', timestamps: true });
+  chatId: { type: DataTypes.STRING(50), allowNull: false, unique: true },
+  username: { type: DataTypes.STRING(100) },
+  firstName: { type: DataTypes.STRING(100) },
+  lastName: { type: DataTypes.STRING(100) },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
+  subscribedToAccreditations: { type: DataTypes.BOOLEAN, defaultValue: true },
+  subscribedToVehicles: { type: DataTypes.BOOLEAN, defaultValue: true }
+}, { 
+  tableName: 'telegram_subscribers', 
+  timestamps: true 
+});
 
 // === VEHICLE MODEL ===
 const Vehicle = sequelize.define('Vehicle', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   organization: { type: DataTypes.STRING(255), allowNull: false },
-  licensePlate: { type: DataTypes.STRING(50), allowNull: false },
-  brand: { type: DataTypes.STRING(100) },
-  model: { type: DataTypes.STRING(100) },
-  year: { type: DataTypes.INTEGER },
-  vin: { type: DataTypes.STRING(100) },
-  insuranceCompany: { type: DataTypes.STRING(255) },
-  insurancePolicyNumber: { type: DataTypes.STRING(100) },
-  insuranceDate: { type: DataTypes.DATEONLY },
-  insuranceExpiryDate: { type: DataTypes.DATEONLY },
-  technicalInspectionDate: { type: DataTypes.DATEONLY },
-  technicalInspectionExpiryDate: { type: DataTypes.DATEONLY },
-  documents: { type: DataTypes.JSONB, defaultValue: [] },
-  notes: { type: DataTypes.TEXT },
-  status: { type: DataTypes.ENUM('active', 'expiring', 'expired'), defaultValue: 'active' },
-  reminderSent: { type: DataTypes.BOOLEAN, defaultValue: false }
+  carBrand: { type: DataTypes.STRING(255), allowNull: false },
+  licensePlate: { type: DataTypes.STRING(20), allowNull: false },
+  carYear: { type: DataTypes.INTEGER, allowNull: false },
+  mileage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  nextTO: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  insuranceDate: { type: DataTypes.DATEONLY, allowNull: false },
+  condition: { 
+    type: DataTypes.ENUM('Хорошее', 'Удовлетворительное', 'Плохое'), 
+    defaultValue: 'Хорошее' 
+  },
+  comment: { type: DataTypes.TEXT },
+  reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
+  reminded7: { type: DataTypes.BOOLEAN, defaultValue: false },
+  remindedTO: { type: DataTypes.BOOLEAN, defaultValue: false }
 }, { 
   tableName: 'vehicles', 
   timestamps: true,
@@ -297,14 +316,25 @@ const MapMarker = sequelize.define('MapMarker', {
 // === DOCTOR CARD MODEL ===
 const DoctorCard = sequelize.define('DoctorCard', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  pageSlug: { type: DataTypes.STRING(255), allowNull: false },
+  pageSlug: { 
+    type: DataTypes.STRING(255), 
+    allowNull: false,
+    comment: 'Slug страницы wiki, к которой привязаны карточки'
+  },
   fullName: { type: DataTypes.STRING(255), allowNull: false },
   specialty: { type: DataTypes.STRING(255) },
   experience: { type: DataTypes.STRING(100) },
-  profileUrl: { type: DataTypes.STRING(1000) },
+  profileUrl: { 
+    type: DataTypes.STRING(1000),
+    comment: 'Ссылка на страницу врача (wiki или внешняя)'
+  },
   photo: { type: DataTypes.STRING(1000) },
   description: { type: DataTypes.TEXT },
-  phones: { type: DataTypes.JSONB, defaultValue: [] },
+  phones: { 
+    type: DataTypes.JSONB, 
+    defaultValue: [],
+    comment: 'Массив телефонов: [{type: "internal", number: "123"}]'
+  },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   metadata: { type: DataTypes.JSONB, defaultValue: {} }
 }, { 
@@ -414,7 +444,7 @@ const CourseProgress = sequelize.define('CourseProgress', {
 User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
 Role.hasMany(User, { foreignKey: 'roleId', as: 'users' });
 
-// Folder hierarchy
+// Folder hierarchy (self-referencing)
 Folder.belongsTo(Folder, { foreignKey: 'parentId', as: 'parent' });
 Folder.hasMany(Folder, { foreignKey: 'parentId', as: 'children' });
 Folder.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
