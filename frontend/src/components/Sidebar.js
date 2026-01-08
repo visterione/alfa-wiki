@@ -21,7 +21,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus
+  Minus, GraduationCap, Map as MapIcon
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -194,21 +194,23 @@ function QuickAccessButtons({ onClose }) {
   }, []);
 
   const loadUnreadCount = async () => {
-  try {
-    const { data } = await chat.getUnreadCount();
-    setUnreadCount(data.unreadCount || 0);  // Было: data.count
-  } catch (error) {
-    console.error('Failed to load unread count:', error);
-  }
-};
+    try {
+      const { data } = await chat.getUnreadCount();
+      setUnreadCount(data.unreadCount || 0);
+    } catch (error) {
+      console.error('Failed to load unread count:', error);
+    }
+  };
 
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/admin/pages';
+  const isOnCourses = location.pathname.startsWith('/courses');
+  const isOnMap = location.pathname.startsWith('/map');
+  const isOnDoctors = location.pathname.startsWith('/doctors');
 
   const handleClick = (path) => {
     navigate(path);
-    // На мобильных устройствах закрываем sidebar
     if (window.innerWidth <= 768) {
       onClose();
     }
@@ -216,6 +218,7 @@ function QuickAccessButtons({ onClose }) {
 
   return (
     <div className="sidebar-quick-access">
+      {/* Первый ряд */}
       <button 
         className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
         onClick={() => handleClick('/')}
@@ -243,6 +246,31 @@ function QuickAccessButtons({ onClose }) {
         title="Проводник"
       >
         <Folder size={20} />
+      </button>
+
+      {/* Второй ряд */}
+      <button 
+        className={`quick-access-btn courses ${isOnCourses ? 'active' : ''}`}
+        onClick={() => handleClick('/courses')}
+        title="Курсы и обучение"
+      >
+        <GraduationCap size={20} />
+      </button>
+
+      <button 
+        className={`quick-access-btn map ${isOnMap ? 'active' : ''}`}
+        onClick={() => handleClick('/map')}
+        title="Карта"
+      >
+        <MapIcon size={20} />
+      </button>
+
+      <button 
+        className={`quick-access-btn doctors ${isOnDoctors ? 'active' : ''}`}
+        onClick={() => handleClick('/doctors')}
+        title="Врачи"
+      >
+        <Stethoscope size={20} />
       </button>
     </div>
   );

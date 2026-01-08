@@ -27,6 +27,7 @@ const vehiclesRoutes = require('./routes/vehicles');
 const mapRoutes = require('./routes/map');
 const doctorCardsRoutes = require('./routes/doctor-cards');
 const misProxyRoutes = require('./routes/mis-proxy');
+const coursesRoutes = require('./routes/courses');
 
 const app = express();
 
@@ -104,6 +105,7 @@ app.use('/api/vehicles', vehiclesRoutes);
 app.use('/api/map', mapRoutes);
 app.use('/api/doctor-cards', doctorCardsRoutes);
 app.use('/api/mis', misProxyRoutes);
+app.use('/api/courses', coursesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -133,10 +135,10 @@ async function startServer() {
     console.log('✅ Database connected');
 
     // Sync models (in development)
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: false });
-      console.log('✅ Models synchronized');
-    }
+    // if (process.env.NODE_ENV === 'development') {
+    //   await sequelize.sync({ alter: false });
+    //   console.log('✅ Models synchronized');
+    // }
 
     // Initialize Telegram bot
     initBot();

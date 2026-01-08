@@ -240,4 +240,39 @@ export const map = {
   reindex: () => api.post('/map/reindex')
 };
 
+// Courses
+export const courses = {
+  // User endpoints
+  list: () => api.get('/courses'),
+  get: (id) => api.get(`/courses/${id}`),
+  getLesson: (courseId, lessonId) => api.get(`/courses/${courseId}/lessons/${lessonId}`),
+  completeLesson: (courseId, lessonId) => api.post(`/courses/${courseId}/lessons/${lessonId}/complete`),
+  setCurrentLesson: (courseId, lessonId) => api.post(`/courses/${courseId}/current-lesson`, { lessonId }),
+  getTest: (courseId) => api.get(`/courses/${courseId}/test`),
+  submitTest: (courseId, answers) => api.post(`/courses/${courseId}/test/submit`, { answers }),
+  resetProgress: (courseId) => api.post(`/courses/${courseId}/reset`),
+  
+  // Admin endpoints
+  adminList: () => api.get('/courses/admin/all'),
+  adminGet: (id) => api.get(`/courses/admin/${id}/edit`),
+  create: (data) => api.post('/courses/admin', data),
+  update: (id, data) => api.put(`/courses/admin/${id}`, data),
+  delete: (id) => api.delete(`/courses/admin/${id}`),
+  
+  // Lessons
+  createLesson: (courseId, data) => api.post(`/courses/admin/${courseId}/lessons`, data),
+  updateLesson: (id, data) => api.put(`/courses/admin/lessons/${id}`, data),
+  deleteLesson: (id) => api.delete(`/courses/admin/lessons/${id}`),
+  reorderLessons: (courseId, lessonIds) => api.post(`/courses/admin/${courseId}/lessons/reorder`, { lessonIds }),
+  
+  // Test questions
+  createQuestion: (courseId, data) => api.post(`/courses/admin/${courseId}/questions`, data),
+  updateQuestion: (id, data) => api.put(`/courses/admin/questions/${id}`, data),
+  deleteQuestion: (id) => api.delete(`/courses/admin/questions/${id}`),
+  reorderQuestions: (courseId, questionIds) => api.post(`/courses/admin/${courseId}/questions/reorder`, { questionIds }),
+  
+  // Stats
+  getStats: (courseId) => api.get(`/courses/admin/${courseId}/stats`)
+};
+
 export default api;

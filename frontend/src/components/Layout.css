@@ -224,16 +224,15 @@
 
 /* Кнопки быстрого доступа */
 .sidebar-quick-access {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  justify-content: space-between;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
   padding: 8px;
 }
 
 .quick-access-btn {
-  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -292,6 +291,55 @@
 .quick-access-btn.explorer.active {
   background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4) inset;
+}
+
+/* Второй ряд кнопок */
+.quick-access-btn.courses {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+}
+
+.quick-access-btn.courses:hover {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  transform: translateY(-1px);
+}
+
+.quick-access-btn.courses.active {
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4) inset;
+}
+
+.quick-access-btn.map {
+  background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
+}
+
+.quick-access-btn.map:hover {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+  transform: translateY(-1px);
+}
+
+.quick-access-btn.map.active {
+  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) inset;
+}
+
+.quick-access-btn.doctors {
+  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
+}
+
+.quick-access-btn.doctors:hover {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+  transform: translateY(-1px);
+}
+
+.quick-access-btn.doctors.active {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
+  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4) inset;
 }
 
 .quick-access-badge {

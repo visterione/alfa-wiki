@@ -18,6 +18,10 @@ import AdminPages from './pages/admin/AdminPages';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminBackup from './pages/admin/AdminBackup';
 import AdminMedia from './pages/admin/AdminMedia';
+import Courses from './pages/Courses';
+import CourseView from './pages/CourseView';
+import AdminCourses from './pages/admin/AdminCourses';
+import AdminCourseEditor from './pages/admin/AdminCourseEditor';
 import './index.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -56,6 +60,10 @@ function AppRoutes() {
         <Route path="profile" element={<Profile />} />
         <Route path="favorites" element={<Favorites />} />
         
+        {/* КУРСЫ - добавьте эти строки */}
+        <Route path="courses" element={<Courses />} />
+        <Route path="courses/:id" element={<CourseView />} />
+        
         {/* Admin routes */}
         <Route path="admin" element={
           <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
@@ -80,6 +88,14 @@ function AppRoutes() {
         } />
         <Route path="admin/backup" element={
           <ProtectedRoute adminOnly><AdminBackup /></ProtectedRoute>
+        } />
+        
+        {/* АДМИНКА КУРСОВ - добавьте эти строки */}
+        <Route path="admin/courses" element={
+          <ProtectedRoute adminOnly><AdminCourses /></ProtectedRoute>
+        } />
+        <Route path="admin/courses/:id/edit" element={
+          <ProtectedRoute adminOnly><AdminCourseEditor /></ProtectedRoute>
         } />
       </Route>
 

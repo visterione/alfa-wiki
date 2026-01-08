@@ -8,7 +8,8 @@ import {
   Image, 
   Database,
   Settings,
-  ChevronRight
+  ChevronRight,
+  GraduationCap
 } from 'lucide-react';
 import '../Admin.css';
 
@@ -54,6 +55,12 @@ const adminSections = [
     icon: Settings,
     title: 'Настройки',
     description: 'Общие настройки системы'
+  },
+    {
+    to: '/admin/courses',
+    icon: GraduationCap,
+    title: 'Курсы и обучение',
+    description: 'Управление учебными курсами и статистика'
   }
 ];
 
