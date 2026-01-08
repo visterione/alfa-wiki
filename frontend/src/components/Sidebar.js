@@ -399,20 +399,54 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     return <div className="sidebar-divider" style={{ marginLeft: `${14 + level * 16}px` }} />;
   }
 
-  // Page or Link
-  if (item.type === 'page' || item.type === 'link') {
+  // Page
+  if (item.type === 'page') {
+    // Получаем данные страницы
+    const pageSlug = item.page?.slug;
+    const pageTitle = item.title || item.page?.title || 'Без названия';
+    const pageIcon = item.icon || item.page?.icon;
+    
+    // Если нет slug - не отображаем элемент
+    if (!pageSlug) {
+      console.warn('Sidebar page item without slug:', item);
+      return null;
+    }
+    
+    const Icon = pageIcon && iconMap[pageIcon] ? iconMap[pageIcon] : FileText;
+    const pageUrl = `/page/${pageSlug}`;
+    
     return (
       <NavLink
-        to={item.url}
-        target={item.openInNewTab ? '_blank' : undefined}
-        rel={item.openInNewTab ? 'noopener noreferrer' : undefined}
+        to={pageUrl}
         className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >
         <Icon className="sidebar-item-icon" size={18} />
-        <span>{item.title}</span>
+        <span>{pageTitle}</span>
       </NavLink>
+    );
+  }
+
+  // Link
+  if (item.type === 'link') {
+    const linkTitle = item.title || 'Ссылка';
+    const linkUrl = item.externalUrl || '#';
+    const Icon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : ExternalLink;
+    
+    return (
+      <a
+        href={linkUrl}
+        target={item.openInNewTab ? '_blank' : undefined}
+        rel={item.openInNewTab ? 'noopener noreferrer' : undefined}
+        className="sidebar-item"
+        style={{ paddingLeft: `${14 + level * 16}px` }}
+        onClick={handleMobileClick}
+      >
+        <Icon className="sidebar-item-icon" size={18} />
+        <span>{linkTitle}</span>
+        {item.openInNewTab && <ExternalLink className="sidebar-item-external" size={14} />}
+      </a>
     );
   }
 

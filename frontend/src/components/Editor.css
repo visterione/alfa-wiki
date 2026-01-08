@@ -643,3 +643,29 @@
     height: 14px;
   }
 }
+
+/* VK Video embed */
+.editor-content .ProseMirror div[data-vk-video] {
+  margin: 1rem 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.editor-content .ProseMirror div[data-vk-video] iframe {
+  border: none;
+  border-radius: var(--radius-sm);
+}
+
+/* Общие стили для всех video embeds (YouTube + VK) */
+.editor-content .ProseMirror iframe {
+  max-width: 100%;
+  display: block;
+}
+
+/* Responsive video containers */
+@media (max-width: 768px) {
+  .editor-content .ProseMirror div[data-vk-video],
+  .editor-content .ProseMirror div[data-youtube-video] {
+    margin: 0.75rem 0;
+  }
+}

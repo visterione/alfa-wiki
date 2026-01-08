@@ -18,6 +18,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Placeholder from '@tiptap/extension-placeholder';
 import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
+import { VkVideo, getVkVideoEmbedUrl } from './VkVideo';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -25,7 +26,7 @@ import {
   Link as LinkIcon, Image as ImageIcon, Table as TableIcon,
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
-  Maximize2, Minimize2, Paintbrush, Grid
+  Maximize2, Minimize2, Paintbrush, Grid, Video
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -116,42 +117,10 @@ const ResizableImage = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    const { width, height, display, float, align, ...attrs } = HTMLAttributes;
-    
-    // Формируем inline стили
-    let style = '';
-    
-    if (width) style += `width: ${width}px; `;
-    if (height) style += `height: ${height}px; `;
-    
-    // Применяем display
-    if (display === 'block') {
-      style += 'display: block; ';
-      // Применяем выравнивание для блока
-      if (align === 'center') {
-        style += 'margin-left: auto; margin-right: auto; ';
-      } else if (align === 'right') {
-        style += 'margin-left: auto; margin-right: 0; ';
-      } else {
-        style += 'margin-left: 0; margin-right: auto; ';
-      }
-    } else {
-      style += 'display: inline-block; ';
-      // Применяем float
-      if (float === 'left') {
-        style += 'float: left; margin: 0.5em 1em 0.5em 0; ';
-      } else if (float === 'right') {
-        style += 'float: right; margin: 0.5em 0 0.5em 1em; ';
-      }
-    }
-    
-    return ['img', mergeAttributes(attrs, {
-      'data-display': display,
-      'data-float': float,
-      'data-align': align,
-      width: width || undefined,
-      height: height || undefined,
-      style: style.trim()
+    return ['img', mergeAttributes(HTMLAttributes, {
+      'data-display': HTMLAttributes.display,
+      'data-float': HTMLAttributes.float,
+      'data-align': HTMLAttributes.align
     })];
   },
 
@@ -174,86 +143,87 @@ const ResizableImage = Node.create({
   }
 });
 
-// Компонент изменяемого изображения
+// Компонент для изменяемого изображения
 const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) => {
-  const imgRef = useRef(null);
-  const containerRef = useRef(null);
   const [resizing, setResizing] = useState(false);
-  const resizeState = useRef({
-    startX: 0,
-    startY: 0,
-    startWidth: 0,
-    startHeight: 0,
-    aspectRatio: 1,
-    corner: null
+  const [dimensions, setDimensions] = useState({
+    width: node.attrs.width || null,
+    height: node.attrs.height || null
   });
+  const containerRef = useRef(null);
+  const imgRef = useRef(null);
+  const startRef = useRef({ x: 0, y: 0, width: 0, height: 0, aspectRatio: 1 });
 
-  const handleMouseDown = useCallback((e, corner) => {
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete) {
+      if (!node.attrs.width || !node.attrs.height) {
+        startRef.current.aspectRatio = imgRef.current.naturalWidth / imgRef.current.naturalHeight;
+      }
+    }
+  }, [node.attrs.src]);
+
+  const handleMouseDown = (e, corner) => {
     e.preventDefault();
     e.stopPropagation();
-
-    const img = imgRef.current;
-    if (!img) return;
-
-    const rect = img.getBoundingClientRect();
-    
-    resizeState.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: rect.width,
-      startHeight: rect.height,
-      aspectRatio: rect.width / rect.height,
-      corner
-    };
-
     setResizing(true);
 
-    const handleMouseMove = (e) => {
-      const { startX, startWidth, aspectRatio, corner } = resizeState.current;
+    const currentWidth = dimensions.width || imgRef.current?.offsetWidth || 0;
+    const currentHeight = dimensions.height || imgRef.current?.offsetHeight || 0;
+    
+    startRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: currentWidth,
+      height: currentHeight,
+      aspectRatio: currentWidth / currentHeight
+    };
+
+    const handleMouseMove = (moveEvent) => {
+      if (!containerRef.current) return;
+
+      const deltaX = moveEvent.clientX - startRef.current.x;
+      const deltaY = moveEvent.clientY - startRef.current.y;
       
-      let deltaX = e.clientX - startX;
-      
-      // Инвертируем deltaX для левых углов
-      if (corner === 'nw' || corner === 'sw') {
-        deltaX = -deltaX;
+      let newWidth;
+      let newHeight;
+
+      if (corner === 'se' || corner === 'ne') {
+        newWidth = Math.max(100, startRef.current.width + deltaX);
+      } else {
+        newWidth = Math.max(100, startRef.current.width - deltaX);
       }
-      
-      let newWidth = Math.max(50, startWidth + deltaX);
-      const newHeight = newWidth / aspectRatio;
-      
-      updateAttributes({
-        width: Math.round(newWidth),
-        height: Math.round(newHeight)
-      });
+
+      newHeight = newWidth / startRef.current.aspectRatio;
+
+      setDimensions({ width: newWidth, height: newHeight });
     };
 
     const handleMouseUp = () => {
       setResizing(false);
+      updateAttributes({ 
+        width: Math.round(dimensions.width), 
+        height: Math.round(dimensions.height) 
+      });
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [updateAttributes]);
+  };
 
-  const width = node.attrs.width || null;
-  const height = node.attrs.height || null;
   const display = node.attrs.display || 'inline';
   const float = node.attrs.float || 'none';
   const align = node.attrs.align || 'left';
 
-  const imgStyle = {
-    width: width ? `${width}px` : 'auto',
-    height: height ? `${height}px` : 'auto',
-    maxWidth: '100%',
-    display: 'block',
-    borderRadius: 'var(--radius-sm)'
+  const containerStyle = {
+    textAlign: display === 'block' ? align : undefined
   };
 
-  const containerStyle = {
-    display: display === 'block' ? 'block' : 'inline-block',
-    float: float !== 'none' ? float : undefined,
+  const imgStyle = {
+    width: dimensions.width ? `${dimensions.width}px` : undefined,
+    height: dimensions.height ? `${dimensions.height}px` : undefined,
+    float: display === 'inline' ? float : undefined,
     textAlign: display === 'block' ? align : undefined,
     width: display === 'block' ? '100%' : undefined
   };
@@ -356,7 +326,7 @@ function ImageBubbleMenu({ editor }) {
               type="button"
               className={`image-bubble-btn ${float === 'none' ? 'active' : ''}`}
               onClick={(e) => setFloat(e, 'none')}
-              title="Без обтекания"
+              title="Нет"
             >
               Нет
             </button>
@@ -366,7 +336,7 @@ function ImageBubbleMenu({ editor }) {
               onClick={(e) => setFloat(e, 'left')}
               title="Слева"
             >
-              <AlignLeft size={14} />
+              Слева
             </button>
             <button 
               type="button"
@@ -374,7 +344,7 @@ function ImageBubbleMenu({ editor }) {
               onClick={(e) => setFloat(e, 'right')}
               title="Справа"
             >
-              <AlignRight size={14} />
+              Справа
             </button>
           </div>
         )}
@@ -386,7 +356,7 @@ function ImageBubbleMenu({ editor }) {
               type="button"
               className={`image-bubble-btn ${align === 'left' ? 'active' : ''}`}
               onClick={(e) => setAlign(e, 'left')}
-              title="По левому краю"
+              title="Слева"
             >
               <AlignLeft size={14} />
             </button>
@@ -402,29 +372,40 @@ function ImageBubbleMenu({ editor }) {
               type="button"
               className={`image-bubble-btn ${align === 'right' ? 'active' : ''}`}
               onClick={(e) => setAlign(e, 'right')}
-              title="По правому краю"
+              title="Справа"
             >
               <AlignRight size={14} />
             </button>
           </div>
         )}
 
-        <div className="image-bubble-divider" />
-        
-        <button 
-          type="button"
-          className="image-bubble-btn"
-          onClick={resetSize}
-          title="Сбросить размер"
-        >
-          <Maximize2 size={14} />
-          Оригинальный размер
-        </button>
+        <div className="image-bubble-section">
+          <button 
+            type="button"
+            className="image-bubble-btn"
+            onClick={resetSize}
+            title="Сбросить размер"
+          >
+            <Maximize2 size={14} />
+          </button>
+          <button 
+            type="button"
+            className="image-bubble-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              editor.chain().focus().deleteSelection().run();
+            }}
+            title="Удалить"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
     </BubbleMenu>
   );
 }
 
+// Вспомогательные компоненты
 const MenuButton = ({ onClick, isActive, disabled, children, title }) => (
   <button
     type="button"
@@ -607,18 +588,17 @@ function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
   );
 }
 
-// Компонент выбора размера таблицы с сеткой
 function TableSizeSelector({ onSelect }) {
-  const [hover, setHover] = useState({ rows: 0, cols: 0 });
   const maxRows = 10;
   const maxCols = 10;
+  const [hover, setHover] = useState({ rows: 0, cols: 0 });
 
-  const handleCellHover = (row, col) => {
-    setHover({ rows: row + 1, cols: col + 1 });
+  const handleCellHover = (rowIndex, colIndex) => {
+    setHover({ rows: rowIndex + 1, cols: colIndex + 1 });
   };
 
-  const handleCellClick = (row, col) => {
-    onSelect(row + 1, col + 1);
+  const handleCellClick = (rowIndex, colIndex) => {
+    onSelect(rowIndex + 1, colIndex + 1);
   };
 
   return (
@@ -743,25 +723,13 @@ function TableMenuDropdown({ editor, buttonRef }) {
               <button
                 type="button"
                 className="table-menu-item"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowSizeSelector(!showSizeSelector);
-                }}
+                onClick={() => setShowSizeSelector(!showSizeSelector)}
               >
-                <Grid size={14} /> Создать таблицу
+                <Grid size={14} /> Вставить таблицу
               </button>
-              
               {showSizeSelector && (
                 <TableSizeSelector onSelect={handleTableSizeSelect} />
               )}
-              
-              <button
-                type="button"
-                className="table-menu-item"
-                onClick={() => runCommand(() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run())}
-              >
-                Быстрая вставка 3×3
-              </button>
             </>
           ) : (
             <>
@@ -770,84 +738,51 @@ function TableMenuDropdown({ editor, buttonRef }) {
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addColumnBefore().run())}
               >
-                Добавить столбец слева
+                <Plus size={14} /> Добавить столбец слева
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addColumnAfter().run())}
               >
-                Добавить столбец справа
+                <Plus size={14} /> Добавить столбец справа
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().deleteColumn().run())}
               >
-                Удалить столбец
+                <Trash2 size={14} /> Удалить столбец
               </button>
-
               <div className="table-menu-divider" />
-
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addRowBefore().run())}
               >
-                Добавить строку сверху
+                <Plus size={14} /> Добавить строку сверху
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addRowAfter().run())}
               >
-                Добавить строку снизу
+                <Plus size={14} /> Добавить строку снизу
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().deleteRow().run())}
               >
-                Удалить строку
+                <Trash2 size={14} /> Удалить строку
               </button>
-
               <div className="table-menu-divider" />
-
               <button
                 type="button"
                 className="table-menu-item"
-                onClick={() => runCommand(() => editor.chain().focus().toggleHeaderCell().run())}
+                onClick={() => setShowCellColors(!showCellColors)}
               >
-                Переключить заголовок
-              </button>
-              
-              <button
-                type="button"
-                className="table-menu-item"
-                onClick={() => runCommand(() => editor.chain().focus().mergeCells().run())}
-              >
-                Объединить ячейки
-              </button>
-              
-              <button
-                type="button"
-                className="table-menu-item"
-                onClick={() => runCommand(() => editor.chain().focus().splitCell().run())}
-              >
-                Разделить ячейку
-              </button>
-
-              <div className="table-menu-divider" />
-              
-              <button
-                type="button"
-                className="table-menu-item"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowCellColors(!showCellColors);
-                }}
-              >
-                <Paintbrush size={14} /> Цвет ячейки
+                <Paintbrush size={14} /> Цвет фона ячейки
               </button>
               
               {showCellColors && (
@@ -857,7 +792,10 @@ function TableMenuDropdown({ editor, buttonRef }) {
                       key={color}
                       type="button"
                       className="cell-color-item"
-                      style={{ background: color, border: color === 'transparent' ? '1px solid var(--border)' : 'none' }}
+                      style={{ 
+                        background: color,
+                        border: color === 'transparent' ? '1px solid var(--border)' : 'none' 
+                      }}
                       onClick={() => setCellBgColor(color)}
                       title={name}
                     />
@@ -940,6 +878,24 @@ function MenuBar({ editor }) {
     }
   }, [editor]);
 
+  const addVkVideo = useCallback(() => {
+    const url = window.prompt('VK Video URL:');
+    if (!url) return;
+
+    const embedUrl = getVkVideoEmbedUrl(url);
+    if (!embedUrl) {
+      toast.error('Неверный формат URL VK видео');
+      return;
+    }
+
+    editor.commands.setVkVideo({ 
+      src: embedUrl,
+      width: 640,
+      height: 360
+    });
+    toast.success('VK видео добавлено');
+  }, [editor]);
+
   if (!editor) return null;
 
   return (
@@ -955,19 +911,13 @@ function MenuBar({ editor }) {
           value={
             editor.isActive('heading', { level: 1 }) ? '1' :
             editor.isActive('heading', { level: 2 }) ? '2' :
-            editor.isActive('heading', { level: 3 }) ? '3' :
-            editor.isActive('heading', { level: 4 }) ? '4' :
-            editor.isActive('heading', { level: 5 }) ? '5' :
-            editor.isActive('heading', { level: 6 }) ? '6' : 'p'
+            editor.isActive('heading', { level: 3 }) ? '3' : 'p'
           }
         >
           <option value="p">Обычный текст</option>
           <option value="1">Заголовок 1</option>
           <option value="2">Заголовок 2</option>
           <option value="3">Заголовок 3</option>
-          <option value="4">Заголовок 4</option>
-          <option value="5">Заголовок 5</option>
-          <option value="6">Заголовок 6</option>
         </select>
       </div>
 
@@ -980,18 +930,23 @@ function MenuBar({ editor }) {
         <MenuButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} title="Курсив">
           <Italic size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title="Подчёркнутый">
+        <MenuButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title="Подчеркнутый">
           <UnderlineIcon size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Зачёркнутый">
+        <MenuButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Зачеркнутый">
           <Strikethrough size={16} />
         </MenuButton>
+      </div>
+
+      <MenuDivider />
+
+      <div className="editor-menu-group">
         <ColorDropdown 
           editor={editor} 
           type="highlight" 
           buttonRef={highlightButtonRef}
           icon={Highlighter}
-          title="Выделение цветом"
+          title="Цвет выделения"
           colors={highlightColors}
         />
         <ColorDropdown 
@@ -1071,6 +1026,9 @@ function MenuBar({ editor }) {
         <MenuButton onClick={addYoutube} title="YouTube видео">
           <YoutubeIcon size={16} />
         </MenuButton>
+        <MenuButton onClick={addVkVideo} title="VK видео">
+          <Video size={16} />
+        </MenuButton>
         <TableMenuDropdown editor={editor} buttonRef={tableButtonRef} />
       </div>
 
@@ -1107,6 +1065,7 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Superscript,
       FontFamily,
       Youtube.configure({ width: 640, height: 360 }),
+      VkVideo,
       Placeholder.configure({ placeholder })
     ],
     content,
