@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw } from 'lucide-react';
 import { users, roles } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -18,7 +18,7 @@ export default function AdminUsers() {
     roleId: '', 
     isAdmin: false, 
     isActive: true,
-    twoFactorEnabled: false 
+    twoFactorEnabled: true  // По умолчанию включена
   });
 
   useEffect(() => { load(); }, []);
@@ -30,6 +30,103 @@ export default function AdminUsers() {
       setRoleList(r.data);
     } catch (e) { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
+  };
+
+  // Функция транслитерации кириллицы в латиницу
+  const transliterate = (text) => {
+    const map = {
+      'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e', 
+      'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 
+      'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 
+      'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 
+      'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    };
+    
+    return text.toLowerCase().split('').map(char => map[char] || char).join('');
+  };
+
+  // Генерация базового логина из отображаемого имени
+  const generateBaseUsername = (displayName) => {
+    if (!displayName.trim()) return '';
+    
+    // Разбиваем на слова
+    const words = displayName.trim().split(/\s+/);
+    
+    if (words.length === 0) return '';
+    
+    // Первое слово полностью, остальные - первые буквы
+    const firstWord = transliterate(words[0]);
+    const initials = words.slice(1).map(word => transliterate(word[0] || '')).join('_');
+    
+    const username = initials ? `${firstWord}_${initials}` : firstWord;
+    
+    // Убираем все недопустимые символы и приводим к нижнему регистру
+    return username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  };
+
+  // Проверка уникальности логина и добавление суффикса при необходимости
+  const generateUniqueUsername = (displayName) => {
+    const baseUsername = generateBaseUsername(displayName);
+    if (!baseUsername) return '';
+
+    // Собираем все существующие логины (кроме текущего редактируемого пользователя)
+    const existingUsernames = userList
+      .filter(u => !modal.user || u.id !== modal.user.id)
+      .map(u => u.username.toLowerCase());
+
+    // Если базовый логин свободен - используем его
+    if (!existingUsernames.includes(baseUsername)) {
+      return baseUsername;
+    }
+
+    // Иначе ищем первый свободный вариант с суффиксом
+    let counter = 1;
+    let username = `${baseUsername}_${counter}`;
+    
+    while (existingUsernames.includes(username)) {
+      counter++;
+      username = `${baseUsername}_${counter}`;
+      
+      // Защита от бесконечного цикла (на всякий случай)
+      if (counter > 1000) {
+        toast.error('Не удалось сгенерировать уникальный логин');
+        return baseUsername;
+      }
+    }
+
+    // Показываем уведомление, что был добавлен суффикс
+    if (counter > 1) {
+      toast.info(`Логин "${baseUsername}" занят, использован "${username}"`, {
+        duration: 4000
+      });
+    }
+
+    return username;
+  };
+
+  // Генерация безопасного пароля
+  const generatePassword = () => {
+    const length = 12;
+    const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const numbers = '0123456789';
+    const special = '!@#$%^&*';
+    const all = lowercase + uppercase + numbers + special;
+    
+    let password = '';
+    // Гарантируем хотя бы один символ каждого типа
+    password += lowercase[Math.floor(Math.random() * lowercase.length)];
+    password += uppercase[Math.floor(Math.random() * uppercase.length)];
+    password += numbers[Math.floor(Math.random() * numbers.length)];
+    password += special[Math.floor(Math.random() * special.length)];
+    
+    // Заполняем оставшиеся символы
+    for (let i = password.length; i < length; i++) {
+      password += all[Math.floor(Math.random() * all.length)];
+    }
+    
+    // Перемешиваем символы
+    return password.split('').sort(() => Math.random() - 0.5).join('');
   };
 
   const openModal = (user = null) => {
@@ -45,23 +142,71 @@ export default function AdminUsers() {
         twoFactorEnabled: user.twoFactorEnabled || false
       });
     } else {
+      // При создании нового пользователя генерируем пароль и включаем 2FA
+      const newPassword = generatePassword();
       setForm({ 
         username: '', 
-        password: '', 
+        password: newPassword, 
         displayName: '', 
         email: '', 
         roleId: '', 
         isAdmin: false, 
         isActive: true,
-        twoFactorEnabled: false
+        twoFactorEnabled: true  // По умолчанию включена для новых пользователей
       });
     }
     setModal({ open: true, user });
   };
 
+  // Обработчик изменения отображаемого имени
+  const handleDisplayNameChange = (displayName) => {
+    const username = generateUniqueUsername(displayName);
+    setForm({
+      ...form, 
+      displayName,
+      username
+    });
+  };
+
+  // Копирование пароля в буфер обмена
+  const copyPassword = () => {
+    navigator.clipboard.writeText(form.password);
+    toast.success('Пароль скопирован в буфер обмена');
+  };
+
+  // Перегенерация пароля
+  const regeneratePassword = () => {
+    const newPassword = generatePassword();
+    setForm({ ...form, password: newPassword });
+    toast.success('Пароль обновлен');
+  };
+
   const handleSave = async () => {
-    if (!form.username) { toast.error('Введите логин'); return; }
-    if (!modal.user && !form.password) { toast.error('Введите пароль'); return; }
+    // Валидация для нового пользователя
+    if (!modal.user) {
+      if (!form.displayName.trim()) { 
+        toast.error('Введите отображаемое имя'); 
+        return; 
+      }
+      if (!form.username.trim()) { 
+        toast.error('Логин не сгенерирован'); 
+        return; 
+      }
+      if (!form.password) { 
+        toast.error('Пароль не сгенерирован'); 
+        return; 
+      }
+      if (!form.email.trim()) { 
+        toast.error('Email обязателен для новых пользователей (включена 2FA)'); 
+        return; 
+      }
+    } else {
+      // Валидация для редактирования
+      if (!form.username) { 
+        toast.error('Введите логин'); 
+        return; 
+      }
+    }
     
     // Проверка email при включённой 2FA
     if (form.twoFactorEnabled && !form.email) {
@@ -195,27 +340,118 @@ export default function AdminUsers() {
               <h3>{modal.user ? 'Редактировать пользователя' : 'Новый пользователь'}</h3>
             </div>
             <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Логин *</label>
-                <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Пароль {modal.user ? '(оставьте пустым)' : '*'}</label>
-                <input className="input" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Отображаемое имя</label>
-                <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
-              </div>
-              <div className="form-group">
-                <label className="form-label">Email {form.twoFactorEnabled && <span style={{color: 'var(--error)'}}>*</span>}</label>
-                <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
-                {form.twoFactorEnabled && !form.email && (
-                  <small style={{ color: 'var(--error)', marginTop: 4, display: 'block' }}>
-                    Email обязателен для двухфакторной аутентификации
-                  </small>
-                )}
-              </div>
+              {/* Для новых пользователей - сначала отображаемое имя */}
+              {!modal.user && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Отображаемое имя *</label>
+                    <input 
+                      className="input" 
+                      value={form.displayName} 
+                      onChange={e => handleDisplayNameChange(e.target.value)}
+                      placeholder="Иванов Иван Иванович"
+                      autoFocus
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      На основе имени будет автоматически сгенерирован уникальный логин
+                    </small>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Логин (автоматически)</label>
+                    <input 
+                      className="input" 
+                      value={form.username} 
+                      onChange={e => setForm({...form, username: e.target.value})}
+                      placeholder="ivanov_i_i"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      Сгенерирован автоматически, можно изменить вручную
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Пароль (автоматически)</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input 
+                        className="input" 
+                        type="text" 
+                        value={form.password} 
+                        readOnly
+                        style={{ 
+                          flex: 1, 
+                          background: 'var(--bg-secondary)',
+                          fontFamily: 'monospace',
+                          fontSize: 14
+                        }}
+                      />
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={copyPassword}
+                        title="Скопировать пароль"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={regeneratePassword}
+                        title="Сгенерировать новый пароль"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                    </div>
+                    <small style={{ color: 'var(--warning)', marginTop: 4, display: 'block' }}>
+                      ⚠️ Скопируйте пароль - он больше не будет показан
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Email *</label>
+                    <input 
+                      className="input" 
+                      type="email" 
+                      value={form.email} 
+                      onChange={e => setForm({...form, email: e.target.value})}
+                      placeholder="user@example.com"
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      Email обязателен для двухфакторной аутентификации
+                    </small>
+                  </div>
+                </>
+              )}
+
+              {/* Для редактирования - обычный порядок полей */}
+              {modal.user && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Отображаемое имя</label>
+                    <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Логин *</label>
+                    <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Пароль (оставьте пустым)</label>
+                    <input className="input" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Email {form.twoFactorEnabled && <span style={{color: 'var(--error)'}}>*</span>}</label>
+                    <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                    {form.twoFactorEnabled && !form.email && (
+                      <small style={{ color: 'var(--error)', marginTop: 4, display: 'block' }}>
+                        Email обязателен для двухфакторной аутентификации
+                      </small>
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="form-group">
                 <label className="form-label">Роль</label>
                 <select className="select" value={form.roleId} onChange={e => setForm({...form, roleId: e.target.value})}>
@@ -248,9 +484,20 @@ export default function AdminUsers() {
                     type="checkbox" 
                     checked={form.twoFactorEnabled} 
                     onChange={e => setForm({...form, twoFactorEnabled: e.target.checked})} 
+                    disabled={!modal.user} // Для новых пользователей всегда включена
                   />
                   <Shield size={18} style={{ color: form.twoFactorEnabled ? 'var(--primary)' : 'var(--text-secondary)' }} />
                   <span style={{ fontWeight: 500 }}>Двухфакторная аутентификация (2FA)</span>
+                  {!modal.user && (
+                    <span style={{ 
+                      marginLeft: 'auto', 
+                      fontSize: 12, 
+                      color: 'var(--primary)',
+                      fontWeight: 600 
+                    }}>
+                      Включена по умолчанию
+                    </span>
+                  )}
                 </label>
                 <p style={{ 
                   fontSize: 13, 
