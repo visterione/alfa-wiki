@@ -6,6 +6,8 @@ import { LogIn, Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Login.css';
 
+import loginLogo from '../assets/images/logo.png';
+
 export default function Login() {
   const [step, setStep] = useState('credentials'); // 'credentials' | 'twoFactor'
   const [username, setUsername] = useState('');
@@ -135,10 +137,14 @@ export default function Login() {
           <div className="login-header">
             <div className="login-logo">
               <div className="login-logo-icon">
-                {step === 'twoFactor' ? <Shield size={28} /> : <LogIn size={28} />}
+                <img 
+                  src={loginLogo} 
+                  alt="Альфа Вики" 
+                  style={{ width: '48px', height: '48px', objectFit: 'contain' }}
+                />
               </div>
             </div>
-            <h1>Alfa Wiki</h1>
+            <h1>Альфа Вики</h1>
             <p>
               {step === 'twoFactor' 
                 ? 'Подтверждение входа' 

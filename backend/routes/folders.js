@@ -10,18 +10,18 @@ router.get('/browse', authenticate, async (req, res) => {
   try {
     const { parentId } = req.query;
     
-    // Получаем подпапки
+    // Получаем подпапки - сортировка только по алфавиту
     const folders = await Folder.findAll({
       where: { parentId: parentId || null },
       include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }],
-      order: [['sortOrder', 'ASC'], ['title', 'ASC']]
+      order: [['title', 'ASC']]
     });
 
-    // Получаем страницы в этой папке
+    // Получаем страницы в этой папке - сортировка только по алфавиту
     const pages = await Page.findAll({
       where: { folderId: parentId || null },
       include: [{ model: User, as: 'author', attributes: ['id', 'username', 'displayName'] }],
-      order: [['sortOrder', 'ASC'], ['title', 'ASC']]
+      order: [['title', 'ASC']]
     });
 
     // Получаем путь (хлебные крошки)
@@ -53,7 +53,7 @@ router.get('/tree', authenticate, async (req, res) => {
       
       const folders = await Folder.findAll({
         where: { parentId },
-        order: [['sortOrder', 'ASC'], ['title', 'ASC']]
+        order: [['title', 'ASC']]
       });
 
       const result = [];
@@ -183,7 +183,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     }
 
     await folder.update({
-      ...(title !== undefined && { title }),
+      ...(title && { title }),
       ...(icon !== undefined && { icon }),
       ...(parentId !== undefined && { parentId: parentId || null }),
       ...(description !== undefined && { description }),
@@ -191,10 +191,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     });
 
     const updated = await Folder.findByPk(folder.id, {
-      include: [
-        { model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] },
-        { model: Folder, as: 'parent', attributes: ['id', 'title'] }
-      ]
+      include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }]
     });
 
     res.json(updated);
@@ -204,33 +201,24 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
   }
 });
 
-// Переместить элементы (папки и страницы)
+// Переместить элементы (папки/страницы)
 router.post('/move', authenticate, requirePermission('pages', 'write'), async (req, res) => {
   try {
-    const { items } = req.body; // [{ type: 'folder'|'page', id, targetFolderId }]
+    const { items } = req.body; // [{ id, type: 'folder'|'page', targetFolderId }]
 
     for (const item of items) {
       if (item.type === 'folder') {
         const folder = await Folder.findByPk(item.id);
-        if (folder) {
-          // Проверяем вложенность
-          if (item.targetFolderId) {
-            const target = await Folder.findByPk(item.targetFolderId);
-            if (target && target.parentId) {
-              continue; // Пропускаем, если превысит 2 уровня
-            }
-          }
-          await folder.update({ parentId: item.targetFolderId || null });
-        }
+        if (!folder) continue;
+        await folder.update({ parentId: item.targetFolderId || null });
       } else if (item.type === 'page') {
         const page = await Page.findByPk(item.id);
-        if (page) {
-          await page.update({ folderId: item.targetFolderId || null });
-        }
+        if (!page) continue;
+        await page.update({ folderId: item.targetFolderId || null });
       }
     }
 
-    res.json({ message: 'Items moved successfully' });
+    res.json({ message: 'Items moved' });
   } catch (error) {
     console.error('Move items error:', error);
     res.status(500).json({ error: 'Failed to move items' });
