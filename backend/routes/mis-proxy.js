@@ -201,6 +201,55 @@ router.post('/services', authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ПОИСК УСЛУГ (для анализов)
+// ═══════════════════════════════════════════════════════════════
+
+router.post('/search-mis', authenticate, async (req, res) => {
+  try {
+    const { term, clinic_id } = req.body;
+
+    if (!term || term.length < 2) {
+      return res.json({ success: false, data: [], message: 'Минимум 2 символа для поиска' });
+    }
+
+    console.log('🔍 Поиск анализов в МИС:', { term, clinic_id });
+
+    const params = {
+      term: term,
+      limit: 50
+    };
+
+    if (clinic_id) {
+      params.clinic_id = clinic_id;
+    }
+
+    const data = await misRequest('getServices', params);
+
+    if (!data || data.error !== 0 || !Array.isArray(data.data)) {
+      return res.json({ success: false, data: [], message: 'Не удалось получить данные из МИС' });
+    }
+
+    // Фильтруем и форматируем результаты
+    const services = data.data.map(service => ({
+      service_id: service.service_id,
+      code: service.code || service.sub_code || '',
+      title: service.title,
+      price: parseFloat(service.price) || 0,
+      category: service.category_title || '',
+      lab: service.lab || '',
+      preparation: service.preparation || ''
+    }));
+
+    console.log(`✅ Найдено услуг: ${services.length}`);
+
+    res.json({ success: true, data: services });
+  } catch (err) {
+    console.error('❌ Ошибка /mis/search-mis:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка при поиске в МИС' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // КЛИНИКИ
 // ═══════════════════════════════════════════════════════════════
 

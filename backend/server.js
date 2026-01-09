@@ -28,6 +28,7 @@ const mapRoutes = require('./routes/map');
 const doctorCardsRoutes = require('./routes/doctor-cards');
 const misProxyRoutes = require('./routes/mis-proxy');
 const coursesRoutes = require('./routes/courses');
+const analysesRoutes = require('./routes/analyses'); // <-- ДОБАВЛЕНО
 
 const app = express();
 
@@ -70,7 +71,7 @@ app.use(cors({
     return callback(null, true);
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -106,6 +107,7 @@ app.use('/api/map', mapRoutes);
 app.use('/api/doctor-cards', doctorCardsRoutes);
 app.use('/api/mis', misProxyRoutes);
 app.use('/api/courses', coursesRoutes);
+app.use('/api/analyses', analysesRoutes); // <-- ДОБАВЛЕНО
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -145,6 +147,9 @@ async function startServer() {
 
     // Initialize doctor services reindex cron job
     initDoctorReindexJob();
+
+    // Initialize analyses price update cron job
+    require('./cron/analysesCron'); // <-- ДОБАВЛЕНО
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);

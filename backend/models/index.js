@@ -292,6 +292,61 @@ const Vehicle = sequelize.define('Vehicle', {
   ]
 });
 
+// === ANALYSIS MODEL ===
+// Добавь этот код в models/index.js после модели Vehicle и перед модулем exports
+
+const Analysis = sequelize.define('Analysis', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  medCenter: { 
+    type: DataTypes.STRING(50), 
+    allowNull: false,
+    comment: 'Медицинский центр (Альфа, Кидс, Проф, Линия, Смайл, 3К)'
+  },
+  serviceCode: { 
+    type: DataTypes.STRING(100), 
+    allowNull: false,
+    comment: 'Код услуги из МИС'
+  },
+  serviceName: { 
+    type: DataTypes.STRING(500), 
+    allowNull: false,
+    comment: 'Название анализа'
+  },
+  price: { 
+    type: DataTypes.DECIMAL(10, 2), 
+    allowNull: false,
+    comment: 'Стоимость анализа'
+  },
+  isStopped: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    comment: 'Анализ временно не выполняется'
+  },
+  preparationLink: { 
+    type: DataTypes.STRING(1000),
+    comment: 'Ссылка на файл с подготовкой к анализу'
+  },
+  comment: { type: DataTypes.TEXT },
+  misServiceId: { 
+    type: DataTypes.STRING(50),
+    comment: 'ID услуги в МИС для обновления цен'
+  },
+  lastPriceUpdate: { 
+    type: DataTypes.DATE,
+    comment: 'Время последнего обновления цены из МИС'
+  }
+}, { 
+  tableName: 'analyses', 
+  timestamps: true,
+  indexes: [
+    { fields: ['medCenter'] },
+    { fields: ['serviceCode'] },
+    { fields: ['serviceName'] },
+    { fields: ['isStopped'] },
+    { fields: ['misServiceId'] }
+  ]
+});
+
 // === MAP MARKER MODEL ===
 const MapMarker = sequelize.define('MapMarker', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -521,5 +576,6 @@ module.exports = {
   Course,
   Lesson,
   TestQuestion,
-  CourseProgress
+  CourseProgress,
+  Analysis
 };

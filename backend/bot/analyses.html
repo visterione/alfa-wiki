@@ -1,0 +1,1121 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Анализы</title>
+</head>
+<body>
+<div id="analyses-app">
+
+<style>
+#analyses-app {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* Кнопки и фильтры */
+.ana-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.ana-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.ana-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 250px;
+}
+
+.ana-search-box svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.ana-search {
+  width: 100%;
+  padding: 10px 12px 10px 38px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.ana-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.ana-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 150px;
+}
+
+.ana-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.ana-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ana-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ana-btn-primary {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.ana-btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.ana-btn svg { width: 18px; height: 18px; }
+
+/* Таблица */
+.ana-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.ana-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ana-table th {
+  padding: 14px 16px;
+  text-align: center;
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 13px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.ana-table th.sortable { cursor: pointer; user-select: none; }
+.ana-table th.sortable:hover { background: #f1f5f9; }
+.sort-icon { opacity: 0.4; margin-left: 4px; }
+.ana-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
+
+.ana-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+/* Выравнивание по центру для определенных столбцов */
+.ana-table td.center {
+  text-align: center;
+}
+
+/* Ширина столбцов */
+.ana-table th:nth-child(1),
+.ana-table td:nth-child(1) { width: 120px; } /* Медцентр */
+
+.ana-table th:nth-child(2),
+.ana-table td:nth-child(2) { width: 130px; } /* Код */
+
+.ana-table th:nth-child(3),
+.ana-table td:nth-child(3) { width: auto; } /* Название - занимает оставшееся место */
+
+.ana-table th:nth-child(4),
+.ana-table td:nth-child(4) { width: 110px; } /* Стоимость */
+
+.ana-table th:nth-child(5),
+.ana-table td:nth-child(5) { width: 80px; } /* СТОП */
+
+.ana-table th:nth-child(6),
+.ana-table td:nth-child(6) { width: 160px; } /* Действия */
+
+.ana-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.ana-table tr:hover { background: #f8fafc; }
+.ana-table tr:last-child td { border-bottom: none; }
+
+.ana-table tr[data-highlighted="true"] {
+  background: #fef3c7 !important;
+  animation: highlight-fade 2s ease-out 1s forwards;
+}
+
+@keyframes highlight-fade {
+  to { background: transparent !important; }
+}
+
+/* Цвета медцентров */
+.ana-medcenter {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-block;
+}
+.ana-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
+.ana-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
+.ana-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
+.ana-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
+.ana-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
+.ana-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; }
+
+/* Цена */
+.ana-price {
+  font-weight: 600;
+  color: #16a34a;
+}
+
+/* Кнопка СТОП */
+.ana-stop-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.ana-stop-btn svg { width: 20px; height: 20px; }
+
+.ana-stop-btn.stopped {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.ana-stop-btn.stopped:hover {
+  background: #fecaca;
+}
+
+.ana-stop-btn.active {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.ana-stop-btn.active:hover {
+  background: #bbf7d0;
+}
+
+/* Действия */
+.ana-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.ana-action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  color: #6b7280;
+}
+
+.ana-action-btn:hover { background: #e5e7eb; color: #374151; }
+.ana-action-btn svg { width: 16px; height: 16px; }
+
+.ana-action-btn.link { color: #3b82f6; }
+.ana-action-btn.link:hover { background: #dbeafe; }
+
+.ana-action-btn.copy { color: #8b5cf6; }
+.ana-action-btn.copy:hover { background: #ede9fe; }
+
+.ana-action-btn.edit { color: #f59e0b; }
+.ana-action-btn.edit:hover { background: #fef3c7; }
+
+.ana-action-btn.delete { color: #ef4444; }
+.ana-action-btn.delete:hover { background: #fee2e2; }
+
+.ana-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.ana-loading, .ana-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
+
+/* Пагинация */
+.ana-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ana-pagination-info { font-size: 14px; color: #6b7280; }
+
+.ana-pagination-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.ana-pagination-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ana-pagination-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #3b82f6;
+}
+
+.ana-pagination-btn.active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+.ana-pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.ana-pagination-btn svg { width: 16px; height: 16px; }
+
+/* Модальное окно */
+.ana-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.ana-modal-content {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  margin: 16px;
+}
+
+.ana-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.ana-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+
+.ana-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ana-modal-close:hover { background: #e5e7eb; }
+
+#ana-form { padding: 24px; }
+
+.ana-form-group {
+  margin-bottom: 20px;
+}
+
+.ana-form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.ana-form-group label span {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.ana-input, .ana-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.ana-input:focus, .ana-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.ana-textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.ana-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.ana-checkbox-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ana-checkbox-group input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.ana-checkbox-group label {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Поиск МИС */
+.ana-mis-search {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.ana-mis-search-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ana-mis-results {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.ana-mis-result {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ana-mis-result:hover {
+  background: #f8fafc;
+}
+
+.ana-mis-result:last-child {
+  border-bottom: none;
+}
+
+.ana-mis-result-title {
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.ana-mis-result-meta {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.ana-mis-result-price {
+  color: #16a34a;
+  font-weight: 600;
+}
+
+.ana-mis-empty {
+  padding: 24px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.ana-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.ana-btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.ana-btn-secondary:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+/* Toast уведомления */
+.ana-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #fff;
+  padding: 16px 20px;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10001;
+  animation: slideIn 0.3s ease-out;
+  border-left: 4px solid #3b82f6;
+}
+
+.ana-toast.success { border-left-color: #16a34a; }
+.ana-toast.error { border-left-color: #ef4444; }
+
+.ana-toast svg { width: 20px; height: 20px; flex-shrink: 0; }
+.ana-toast.success svg { color: #16a34a; }
+.ana-toast.error svg { color: #ef4444; }
+
+@keyframes slideIn {
+  from { transform: translateX(400px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Адаптив */
+@media (max-width: 768px) {
+  .ana-header { flex-direction: column; align-items: stretch; }
+  .ana-filters { flex-direction: column; }
+  .ana-search-box { min-width: 100%; }
+  .ana-select { min-width: 100%; }
+  .ana-form-row { grid-template-columns: 1fr; }
+  .ana-table-container { overflow-x: auto; }
+  .ana-table { min-width: 900px; }
+  
+  /* Сбрасываем ширину столбцов на мобильных */
+  .ana-table th,
+  .ana-table td { width: auto !important; }
+}
+</style>
+
+  <!-- Заголовок и фильтры -->
+  <div class="ana-header">
+    <div class="ana-filters">
+      <div class="ana-search-box">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" id="filter-search" class="ana-search" placeholder="Поиск по названию, коду..." oninput="anaApp.debounceLoad()">
+      </div>
+      <select id="filter-medcenter" class="ana-select" onchange="anaApp.resetAndLoad()">
+        <option value="">Все медцентры</option>
+      </select>
+      <select id="filter-stopped" class="ana-select" onchange="anaApp.resetAndLoad()">
+        <option value="">Все анализы</option>
+        <option value="false">Выполняются</option>
+        <option value="true">Не выполняются</option>
+      </select>
+    </div>
+    <button class="ana-btn ana-btn-primary" onclick="anaApp.openAddModal()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      Добавить анализ
+    </button>
+  </div>
+
+  <!-- Таблица -->
+  <div class="ana-table-container">
+    <table class="ana-table">
+      <thead>
+        <tr>
+          <th class="sortable sorted" onclick="anaApp.sortTable('medCenter')">Медцентр <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="anaApp.sortTable('serviceCode')">Код <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="anaApp.sortTable('serviceName')">Название <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="anaApp.sortTable('price')">Стоимость <span class="sort-icon">↕</span></th>
+          <th>СТОП</th>
+          <th>Действия</th>
+        </tr>
+      </thead>
+      <tbody id="ana-table-body">
+        <tr><td colspan="6" class="ana-loading">Загрузка...</td></tr>
+      </tbody>
+    </table>
+    <div class="ana-pagination" id="ana-pagination" style="display:none;">
+      <div class="ana-pagination-info" id="pagination-info">Показано 1-20 из 100</div>
+      <div class="ana-pagination-controls" id="pagination-controls"></div>
+    </div>
+  </div>
+
+  <!-- Модальное окно -->
+  <div id="ana-modal" class="ana-modal" style="display:none" onclick="if(event.target===this)anaApp.closeModal()">
+    <div class="ana-modal-content">
+      <div class="ana-modal-header">
+        <h3 id="modal-title">Добавить анализ</h3>
+        <button class="ana-modal-close" onclick="anaApp.closeModal()">&times;</button>
+      </div>
+      <form id="ana-form" onsubmit="anaApp.saveRecord(event)">
+        <input type="hidden" id="edit-id">
+        
+        <!-- Поиск в МИС -->
+        <div class="ana-mis-search" id="mis-search-section">
+          <div class="ana-mis-search-header">
+            <input type="text" id="mis-search-input" class="ana-input" placeholder="Поиск анализа в МИС..." style="flex:1">
+            <button type="button" class="ana-btn ana-btn-primary" onclick="anaApp.searchMIS()">
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+              Найти
+            </button>
+          </div>
+          <div class="ana-mis-results" id="mis-results" style="display:none">
+            <div class="ana-mis-empty">Введите запрос и нажмите "Найти"</div>
+          </div>
+        </div>
+
+        <div class="ana-form-group">
+          <label>Медцентр <span>*</span></label>
+          <select id="edit-medcenter" required class="ana-select">
+            <option value="">Выберите...</option>
+            <option value="Альфа">Альфа</option>
+            <option value="Кидс">Кидс</option>
+            <option value="Проф">Проф</option>
+            <option value="Линия">Линия</option>
+            <option value="Смайл">Смайл</option>
+            <option value="3К">3К</option>
+          </select>
+        </div>
+
+        <div class="ana-form-row">
+          <div class="ana-form-group">
+            <label>Код услуги <span>*</span></label>
+            <input type="text" id="edit-servicecode" required class="ana-input" placeholder="A09.05.003">
+          </div>
+          <div class="ana-form-group">
+            <label>Стоимость <span>*</span></label>
+            <input type="number" id="edit-price" required class="ana-input" min="0" step="0.01" placeholder="1500.00">
+          </div>
+        </div>
+
+        <div class="ana-form-group">
+          <label>Название анализа <span>*</span></label>
+          <input type="text" id="edit-servicename" required class="ana-input" placeholder="Клинический анализ крови">
+        </div>
+
+        <div class="ana-form-group">
+          <label>Ссылка на подготовку</label>
+          <input type="url" id="edit-preplink" class="ana-input" placeholder="https://example.com/preparation.pdf">
+        </div>
+
+        <div class="ana-form-group">
+          <label>Комментарий</label>
+          <textarea id="edit-comment" class="ana-textarea" placeholder="Дополнительная информация..."></textarea>
+        </div>
+
+        <div class="ana-form-group">
+          <div class="ana-checkbox-group">
+            <input type="checkbox" id="edit-isstopped">
+            <label for="edit-isstopped">Анализ не выполняется (СТОП)</label>
+          </div>
+        </div>
+
+        <input type="hidden" id="edit-misserviceid">
+
+        <div class="ana-form-actions">
+          <button type="button" class="ana-btn ana-btn-secondary" onclick="anaApp.closeModal()">Отмена</button>
+          <button type="submit" class="ana-btn ana-btn-primary">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Сохранить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+window.anaApp = (function() {
+  // Backend всегда на порту 9001
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/analyses';
+  var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis';
+  var analyses = [];
+  var medcenters = [];
+  var sortField = 'medCenter';
+  var sortOrder = 'ASC';
+  var currentPage = 1;
+  var pageSize = 20;
+  var debounceTimer;
+  var highlightId = null;
+
+  // === HELPERS ===
+  function getToken() {
+    return localStorage.getItem('token');
+  }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var toast = document.createElement('div');
+    toast.className = 'ana-toast' + (type ? ' ' + type : '');
+    var icon = type === 'success' 
+      ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+      : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    toast.innerHTML = icon + '<span>' + msg + '</span>';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+  }
+
+  function formatPrice(p) {
+    return parseFloat(p).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+  }
+
+  function scrollToRecord(id) {
+    var row = document.querySelector('[data-id="' + id + '"]');
+    if (row) {
+      row.setAttribute('data-highlighted', 'true');
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      highlightId = id;
+    }
+  }
+
+  // === DATA ===
+  function loadData() {
+    var search = document.getElementById('filter-search').value;
+    var medCenter = document.getElementById('filter-medcenter').value;
+    var isStopped = document.getElementById('filter-stopped').value;
+    
+    var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
+    if (search) url += '&search=' + encodeURIComponent(search);
+    if (medCenter) url += '&medCenter=' + encodeURIComponent(medCenter);
+    if (isStopped) url += '&isStopped=' + isStopped;
+
+    fetchAPI(url).then(function(data) {
+      analyses = data;
+      if (currentPage > Math.ceil(analyses.length / pageSize)) {
+        currentPage = 1;
+      }
+      renderTable();
+      renderPagination();
+    }).catch(function(e) { 
+      document.getElementById('ana-table-body').innerHTML = '<tr><td colspan="6" class="ana-empty">Ошибка загрузки данных</td></tr>';
+      showToast('Ошибка: ' + e.message, 'error'); 
+    });
+  }
+
+  function loadMedcenters() {
+    fetchAPI(API_URL + '/medcenters').then(function(centers) {
+      medcenters = centers;
+      var select = document.getElementById('filter-medcenter');
+      centers.forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
+      });
+    });
+  }
+
+  function renderTable() {
+    var tb = document.getElementById('ana-table-body');
+    if (!analyses.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="ana-empty">Нет данных</td></tr>';
+      document.getElementById('ana-pagination').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('ana-pagination').style.display = 'flex';
+
+    var start = (currentPage - 1) * pageSize;
+    var end = Math.min(start + pageSize, analyses.length);
+    var pageData = analyses.slice(start, end);
+    
+    tb.innerHTML = pageData.map(function(a) {
+      var isHighlighted = highlightId && a.id === highlightId;
+      
+      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + '>' +
+        '<td class="center"><span class="ana-medcenter" data-center="' + a.medCenter + '">' + a.medCenter + '</span></td>' +
+        '<td class="center">' + (a.serviceCode || '-') + '</td>' +
+        '<td>' + a.serviceName + '</td>' +
+        '<td class="center ana-price">' + formatPrice(a.price) + '</td>' +
+        '<td class="center">' +
+          '<button class="ana-stop-btn ' + (a.isStopped ? 'stopped' : 'active') + '" onclick="anaApp.toggleStop(\'' + a.id + '\')" title="' + (a.isStopped ? 'Возобновить' : 'Остановить') + '">' +
+            (a.isStopped 
+              ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
+              : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') +
+          '</button>' +
+        '</td>' +
+        '<td class="center">' +
+          '<div class="ana-actions">' +
+            '<button class="ana-action-btn link" onclick="anaApp.openLink(\'' + a.id + '\')" title="Открыть ссылку" ' + (!a.preparationLink ? 'disabled' : '') + '>' +
+              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
+            '</button>' +
+            '<button class="ana-action-btn copy" onclick="anaApp.copyLink(\'' + a.id + '\')" title="Копировать ссылку" ' + (!a.preparationLink ? 'disabled' : '') + '>' +
+              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>' +
+            '</button>' +
+            '<button class="ana-action-btn edit" onclick="anaApp.openEditModal(\'' + a.id + '\')" title="Редактировать">' +
+              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>' +
+            '</button>' +
+            '<button class="ana-action-btn delete" onclick="anaApp.deleteRecord(\'' + a.id + '\')" title="Удалить">' +
+              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' +
+            '</button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    }).join('');
+
+    document.getElementById('pagination-info').textContent = 
+      'Показано ' + (start + 1) + '–' + end + ' из ' + analyses.length;
+  }
+
+  function renderPagination() {
+    var totalPages = Math.ceil(analyses.length / pageSize) || 1;
+    var controls = document.getElementById('pagination-controls');
+    
+    var html = '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>';
+    
+    var startPage = Math.max(1, currentPage - 2);
+    var endPage = Math.min(totalPages, startPage + 4);
+    if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
+    
+    if (startPage > 1) {
+      html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(1)">1</button>';
+      if (startPage > 2) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
+    }
+    
+    for (var i = startPage; i <= endPage; i++) {
+      html += '<button class="ana-pagination-btn' + (i === currentPage ? ' active' : '') + '" onclick="anaApp.goToPage(' + i + ')">' + i + '</button>';
+    }
+    
+    if (endPage < totalPages) {
+      if (endPage < totalPages - 1) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
+      html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
+    }
+    
+    html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>';
+    
+    controls.innerHTML = html;
+  }
+
+  function goToPage(p) {
+    var totalPages = Math.ceil(analyses.length / pageSize) || 1;
+    if (p < 1 || p > totalPages) return;
+    currentPage = p;
+    renderTable();
+    renderPagination();
+  }
+
+  // === МОДАЛКА ===
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Добавить анализ';
+    document.getElementById('ana-form').reset();
+    document.getElementById('edit-id').value = '';
+    document.getElementById('edit-misserviceid').value = '';
+    document.getElementById('mis-search-section').style.display = 'block';
+    document.getElementById('mis-results').style.display = 'none';
+    document.getElementById('ana-modal').style.display = 'flex';
+  }
+
+  function openEditModal(id) {
+    var item = analyses.find(function(a) { return a.id === id; });
+    if (!item) return;
+
+    document.getElementById('modal-title').textContent = 'Редактировать анализ';
+    document.getElementById('edit-id').value = item.id;
+    document.getElementById('edit-medcenter').value = item.medCenter;
+    document.getElementById('edit-servicecode').value = item.serviceCode;
+    document.getElementById('edit-servicename').value = item.serviceName;
+    document.getElementById('edit-price').value = item.price;
+    document.getElementById('edit-preplink').value = item.preparationLink || '';
+    document.getElementById('edit-comment').value = item.comment || '';
+    document.getElementById('edit-isstopped').checked = item.isStopped;
+    document.getElementById('edit-misserviceid').value = item.misServiceId || '';
+    
+    document.getElementById('mis-search-section').style.display = 'none';
+    document.getElementById('ana-modal').style.display = 'flex';
+  }
+
+  function closeModal() {
+    document.getElementById('ana-modal').style.display = 'none';
+  }
+
+  function saveRecord(e) {
+    e.preventDefault();
+    var id = document.getElementById('edit-id').value;
+    var data = {
+      medCenter: document.getElementById('edit-medcenter').value,
+      serviceCode: document.getElementById('edit-servicecode').value,
+      serviceName: document.getElementById('edit-servicename').value,
+      price: parseFloat(document.getElementById('edit-price').value),
+      preparationLink: document.getElementById('edit-preplink').value,
+      comment: document.getElementById('edit-comment').value,
+      isStopped: document.getElementById('edit-isstopped').checked,
+      misServiceId: document.getElementById('edit-misserviceid').value || null
+    };
+
+    var url = id ? API_URL + '/' + id : API_URL;
+    fetchAPI(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) })
+      .then(function() {
+        showToast(id ? 'Обновлено' : 'Добавлено', 'success');
+        closeModal();
+        loadData();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function deleteRecord(id) {
+    if (!confirm('Удалить анализ?')) return;
+    fetchAPI(API_URL + '/' + id, { method: 'DELETE' })
+      .then(function() {
+        showToast('Удалено', 'success');
+        loadData();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // === ПОИСК В МИС ===
+  function searchMIS() {
+    var term = document.getElementById('mis-search-input').value;
+    if (!term || term.length < 2) {
+      showToast('Минимум 2 символа для поиска', 'error');
+      return;
+    }
+
+    var resultsDiv = document.getElementById('mis-results');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="ana-mis-empty">Поиск...</div>';
+
+    fetchAPI(MIS_URL + '/search-mis', { 
+      method: 'POST', 
+      body: JSON.stringify({ term: term }) 
+    })
+    .then(function(res) {
+      if (!res.success || !res.data || res.data.length === 0) {
+        resultsDiv.innerHTML = '<div class="ana-mis-empty">Ничего не найдено</div>';
+        return;
+      }
+
+      resultsDiv.innerHTML = res.data.map(function(s) {
+        return '<div class="ana-mis-result" onclick="anaApp.selectMISService(' + 
+          "'" + (s.service_id || '') + "'," +
+          "'" + (s.code || '').replace(/'/g, "\\'") + "'," +
+          "'" + (s.title || '').replace(/'/g, "\\'") + "'," +
+          s.price +
+        ')">' +
+          '<div class="ana-mis-result-title">' + s.title + '</div>' +
+          '<div class="ana-mis-result-meta">' +
+            'Код: ' + (s.code || '-') + ' | ' +
+            '<span class="ana-mis-result-price">' + formatPrice(s.price) + '</span>' +
+            (s.category ? ' | ' + s.category : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    })
+    .catch(function(e) {
+      resultsDiv.innerHTML = '<div class="ana-mis-empty">Ошибка поиска</div>';
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  function selectMISService(serviceId, code, title, price) {
+    document.getElementById('edit-servicecode').value = code;
+    document.getElementById('edit-servicename').value = title;
+    document.getElementById('edit-price').value = price;
+    document.getElementById('edit-misserviceid').value = serviceId;
+    document.getElementById('mis-results').style.display = 'none';
+    showToast('Данные из МИС загружены', 'success');
+  }
+
+  // === ДЕЙСТВИЯ ===
+  function toggleStop(id) {
+    fetchAPI(API_URL + '/' + id + '/toggle-stop', { method: 'PATCH' })
+      .then(function() {
+        showToast('Статус обновлен', 'success');
+        loadData();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function openLink(id) {
+    var item = analyses.find(function(a) { return a.id === id; });
+    if (item && item.preparationLink) {
+      window.open(item.preparationLink, '_blank');
+    }
+  }
+
+  function copyLink(id) {
+    var item = analyses.find(function(a) { return a.id === id; });
+    if (item && item.preparationLink) {
+      navigator.clipboard.writeText(item.preparationLink).then(function() {
+        showToast('Ссылка скопирована', 'success');
+      }).catch(function() {
+        showToast('Не удалось скопировать', 'error');
+      });
+    }
+  }
+
+  function sortTable(field) {
+    var ths = document.querySelectorAll('.ana-table th');
+    ths.forEach(function(th) { th.classList.remove('sorted'); });
+    
+    if (sortField === field) {
+      sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+    } else {
+      sortField = field;
+      sortOrder = 'ASC';
+    }
+    
+    currentPage = 1;
+    loadData();
+    
+    var th = document.querySelector('.ana-table th.sortable[onclick*="' + field + '"]');
+    if (th) th.classList.add('sorted');
+  }
+
+  function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      currentPage = 1;
+      loadData();
+    }, 300);
+  }
+
+  function resetAndLoad() {
+    currentPage = 1;
+    loadData();
+  }
+
+  // === INIT ===
+  if (!getToken()) {
+    document.getElementById('analyses-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+  } else {
+    var urlParams = new URLSearchParams(window.location.search);
+    var highlightParam = urlParams.get('highlight');
+    
+    loadData();
+    loadMedcenters();
+    
+    if (highlightParam) {
+      var checkAndScroll = setInterval(function() {
+        if (analyses.length > 0) {
+          clearInterval(checkAndScroll);
+          scrollToRecord(highlightParam);
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      }, 100);
+      setTimeout(function() { clearInterval(checkAndScroll); }, 5000);
+    }
+    
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+  }
+
+  return {
+    loadData: loadData,
+    openAddModal: openAddModal,
+    openEditModal: openEditModal,
+    closeModal: closeModal,
+    saveRecord: saveRecord,
+    deleteRecord: deleteRecord,
+    sortTable: sortTable,
+    debounceLoad: debounceLoad,
+    resetAndLoad: resetAndLoad,
+    goToPage: goToPage,
+    scrollToRecord: scrollToRecord,
+    searchMIS: searchMIS,
+    selectMISService: selectMISService,
+    toggleStop: toggleStop,
+    openLink: openLink,
+    copyLink: copyLink
+  };
+})();
+</script>
+
+</body>
+</html>

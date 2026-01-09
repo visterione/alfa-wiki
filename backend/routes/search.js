@@ -130,6 +130,22 @@ const formatIndexedResult = (item, searchTerm) => {
       displayType = 'Услуга';
       icon = 'briefcase';
       break;
+
+    case 'analysis':
+      displayType = 'Анализ';
+      icon = 'test-tube';
+      if (item.metadata) {
+        const meta = item.metadata;
+        const parts = [];
+        if (meta.medCenter) parts.push(`Медцентр: ${meta.medCenter}`);
+        if (meta.serviceCode) parts.push(`Код: ${meta.serviceCode}`);
+        if (meta.price) parts.push(`Цена: ${meta.price} ₽`);
+        if (meta.isStopped) parts.push('⚠️ Не выполняется');
+        if (parts.length > 0) {
+          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+        }
+      }
+      break;  
       
     default:
       displayType = item.entityType;
