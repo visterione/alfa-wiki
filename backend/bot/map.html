@@ -1,0 +1,1069 @@
+<style>
+#map-app {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.map-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 22px;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.map-hint {
+  font-size: 13px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 6px 14px;
+  border-radius: 20px;
+}
+
+.map-container {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e5e7eb;
+}
+
+#map {
+  height: 600px;
+  width: 100%;
+  z-index: 1;
+}
+
+.leaflet-control-attribution { display: none !important; }
+
+/* Легенда */
+.map-legend {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  max-width: 220px;
+  transition: all 0.3s ease;
+}
+
+.map-legend.collapsed { padding: 10px 14px; }
+
+.legend-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  color: #1f2937;
+  user-select: none;
+}
+
+.legend-header svg { width: 16px; height: 16px; }
+.legend-header svg:last-child { margin-left: auto; opacity: 0.5; }
+
+.legend-items { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+
+.legend-item { display: flex; align-items: center; gap: 10px; }
+
+.legend-color { width: 16px; height: 16px; border-radius: 4px; flex-shrink: 0; }
+
+.legend-label { font-size: 13px; color: #4b5563; flex: 1; }
+
+.legend-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* Модальное окно */
+.map-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.map-modal.hidden { display: none; }
+
+.map-modal-content {
+  background: #fff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  margin: 16px;
+  animation: modalSlideIn 0.3s ease;
+}
+
+@keyframes modalSlideIn {
+  from { opacity: 0; transform: translateY(-20px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.map-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.map-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+
+.map-modal-close {
+  width: 32px; height: 32px;
+  border: none; background: #f3f4f6;
+  border-radius: 8px; font-size: 20px;
+  cursor: pointer; color: #6b7280;
+  display: flex; align-items: center; justify-content: center;
+}
+.map-modal-close:hover { background: #e5e7eb; }
+
+.map-modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+
+.map-form-group { margin-bottom: 18px; }
+.map-form-group:last-child { margin-bottom: 0; }
+
+.map-form-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+
+.map-input, .map-textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 14px;
+  transition: all 0.2s;
+  background: #fff;
+  color: #1f2937;
+  box-sizing: border-box;
+}
+
+.map-input:focus, .map-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.map-textarea { resize: vertical; min-height: 80px; }
+
+/* Выбор цвета */
+.color-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.color-btn {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.color-btn:hover { transform: scale(1.1); }
+
+.color-btn.active {
+  border-color: #1f2937;
+  box-shadow: 0 0 0 2px white, 0 0 0 4px #1f2937;
+}
+
+.color-btn.active::after {
+  content: '✓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.selected-category {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #6b7280;
+  padding: 6px 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+
+/* Загрузка файлов */
+.upload-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border: 2px dashed #d1d5db;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.upload-area:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+  background: #eff6ff;
+}
+
+.upload-area svg { width: 18px; height: 18px; }
+
+.media-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.preview-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f3f4f6;
+}
+
+.preview-item.new { border: 2px solid #3b82f6; }
+
+.preview-item img, .preview-item video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+.preview-item .remove-btn {
+  position: absolute;
+  top: 4px; right: 4px;
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.preview-item:hover .remove-btn { opacity: 1; }
+
+.map-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-radius: 0 0 20px 20px;
+}
+
+/* Кнопки */
+.map-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.map-btn svg { width: 16px; height: 16px; }
+
+.map-btn-primary {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: white;
+}
+.map-btn-primary:hover { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.map-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.map-btn-secondary { background: #f3f4f6; color: #374151; }
+.map-btn-secondary:hover { background: #e5e7eb; }
+
+.map-btn-danger { background: #fee2e2; color: #dc2626; }
+.map-btn-danger:hover { background: #fecaca; }
+
+/* Боковая панель */
+.map-sidebar {
+  position: fixed;
+  top: 0; right: 0;
+  width: 400px;
+  height: 100vh;
+  background: #fff;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 10001;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-sidebar.open { transform: translateX(0); }
+
+.sidebar-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  width: 36px; height: 36px;
+  background: #f3f4f6;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 20px;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.sidebar-close:hover { background: #e5e7eb; color: #1f2937; }
+
+.sidebar-content { padding: 24px; overflow-y: auto; flex: 1; }
+
+.sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-right: 40px;
+}
+
+.marker-color-badge {
+  width: 18px; height: 18px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.sidebar-header h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.3;
+}
+
+.sidebar-description {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.6;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+}
+
+.sidebar-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 6px 14px;
+  border-radius: 20px;
+  margin-bottom: 16px;
+}
+
+.sidebar-media {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.media-item {
+  position: relative;
+  aspect-ratio: 4/3;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #f3f4f6;
+}
+
+.media-item img, .media-item video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s;
+}
+
+.media-item:hover img, .media-item:hover video { transform: scale(1.05); }
+
+.video-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  color: white;
+}
+
+.video-overlay svg { width: 32px; height: 32px; }
+
+.sidebar-meta {
+  font-size: 12px;
+  color: #9ca3af;
+  padding-top: 12px;
+  border-top: 1px solid #e5e7eb;
+  margin-bottom: 16px;
+}
+
+.sidebar-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+
+.sidebar-actions button { flex: 1; }
+
+/* Просмотр медиа */
+.media-viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10002;
+  cursor: pointer;
+}
+
+.media-viewer.hidden { display: none; }
+
+.viewer-close {
+  position: absolute;
+  top: 20px; right: 20px;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 32px;
+  opacity: 0.7;
+}
+.viewer-close:hover { opacity: 1; }
+
+.viewer-content { max-width: 90vw; max-height: 90vh; cursor: default; }
+
+.viewer-content img, .viewer-content video {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: 12px;
+}
+
+/* Toast */
+.map-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 20px;
+  background: #1f2937;
+  color: #fff;
+  border-radius: 12px;
+  font-size: 14px;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: all 0.3s;
+  z-index: 10003;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+.map-toast.show { opacity: 1; transform: translateY(0); }
+.map-toast.success { background: #059669; }
+.map-toast.error { background: #dc2626; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  #map { height: 500px; }
+  
+  .map-header { flex-direction: column; align-items: flex-start; }
+  
+  .map-sidebar { width: 100%; }
+  
+  .map-modal-content { max-width: calc(100% - 32px); }
+  
+  .map-legend { bottom: 12px; left: 12px; max-width: 180px; padding: 10px 12px; }
+  
+  .legend-items { gap: 6px; }
+  .legend-label { font-size: 12px; }
+  
+  .sidebar-media { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  #map { height: 400px; }
+  
+  .map-header h2 { font-size: 18px; }
+  
+  .color-picker { gap: 6px; }
+  .color-btn { width: 28px; height: 28px; }
+}
+</style>
+
+<div id="map-app">
+  <div class="map-header">
+    <h2>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+      Интерактивная карта
+    </h2>
+    <span class="map-hint">Нажмите на карту, чтобы добавить метку</span>
+  </div>
+
+  <div class="map-container">
+    <div id="map"></div>
+    
+    <div class="map-legend" id="mapLegend">
+      <div class="legend-header" onclick="mapApp.toggleLegend()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        <span>Легенда</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="legendChevron"><polyline points="15 18 9 12 15 6"/></svg>
+      </div>
+      <div class="legend-items" id="legendItems"></div>
+    </div>
+  </div>
+
+  <!-- Модальное окно -->
+  <div id="markerModal" class="map-modal hidden">
+    <div class="map-modal-content">
+      <div class="map-modal-header">
+        <h3 id="modalTitle">Добавить метку</h3>
+        <button class="map-modal-close" onclick="mapApp.closeModal()">×</button>
+      </div>
+      <div class="map-modal-body">
+        <div class="map-form-group">
+          <label>Название *</label>
+          <input type="text" id="markerTitle" class="map-input" placeholder="Введите название">
+        </div>
+        <div class="map-form-group">
+          <label>Описание</label>
+          <textarea id="markerDesc" class="map-textarea" placeholder="Введите описание" rows="3"></textarea>
+        </div>
+        <div class="map-form-group">
+          <label>Цвет / Категория</label>
+          <div class="color-picker" id="colorPicker"></div>
+          <div class="selected-category" id="selectedCategory" style="display:none"></div>
+        </div>
+        <div class="map-form-group">
+          <label>Медиа файлы</label>
+          <label class="upload-area">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Загрузить файлы
+            <input type="file" id="markerFiles" multiple accept="image/*,video/*" style="display:none" onchange="mapApp.handleFiles(event)">
+          </label>
+          <div class="media-preview" id="previewContainer"></div>
+        </div>
+      </div>
+      <div class="map-modal-footer">
+        <button class="map-btn map-btn-secondary" onclick="mapApp.closeModal()">Отмена</button>
+        <button class="map-btn map-btn-primary" id="saveBtn" onclick="mapApp.saveMarker()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Сохранить
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Боковая панель -->
+  <div id="markerSidebar" class="map-sidebar">
+    <button class="sidebar-close" onclick="mapApp.closeSidebar()">×</button>
+    <div class="sidebar-content" id="sidebarContent"></div>
+  </div>
+
+  <!-- Просмотр медиа -->
+  <div id="mediaViewer" class="media-viewer hidden" onclick="mapApp.closeViewer()">
+    <button class="viewer-close">×</button>
+    <div class="viewer-content" id="viewerContent" onclick="event.stopPropagation()"></div>
+  </div>
+
+  <div id="mapToast" class="map-toast"></div>
+</div>
+
+<script>
+window.mapApp = (function() {
+  var API_BASE = window.location.protocol + '//' + window.location.hostname + ':9001';
+  var API_URL = API_BASE + '/api/map';
+  
+  var map = null;
+  var markersLayer = null;
+  var markers = [];
+  var currentLatLng = null;
+  var currentColor = '#4a90e2';
+  var editingMarker = null;
+  var selectedFiles = [];
+  var existingMedia = [];
+  var legendCollapsed = false;
+
+  // Категории по цветам
+  var colorToCategory = {
+    "#ff4d4d": "Экраны",
+    "#ff6f00": "Партнёрские рекламы",
+    "#cddc39": "Наши экраны",
+    "#1abc9c": "Остановки",
+    "#7e57c2": "Навигация",
+    "#ff80ab": "Фасады",
+    "#9e9e9e": "Сити формат",
+    "#4a90e2": "Прочее"
+  };
+
+  var colorPalette = [
+    "#ff4d4d", "#ff80ab", "#ff6f00", "#ffa726", "#ffd54f",
+    "#f4d03f", "#cddc39", "#8bc34a", "#00bfa5", "#2ecc71",
+    "#1abc9c", "#4a90e2", "#3498db", "#34495e", "#7e57c2",
+    "#ba68c8", "#8e44ad", "#7f5b3a", "#555555", "#9e9e9e"
+  ];
+
+  function getToken() {
+    return localStorage.getItem('token');
+  }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    var headers = { 'Authorization': 'Bearer ' + getToken() };
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json';
+    }
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: headers,
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var t = document.getElementById('mapToast');
+    t.textContent = msg;
+    t.className = 'map-toast show ' + (type || '');
+    setTimeout(function() { t.className = 'map-toast'; }, 3000);
+  }
+
+  function createColorIcon(color) {
+    color = color || '#4a90e2';
+    var svg = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="36" height="46"><path d="M18 0C11.163 0 5.5 5.663 5.5 12.5 5.5 22.125 18 46 18 46s12.5-23.875 12.5-33.5C30.5 5.663 24.837 0 18 0z" fill="' + color + '"/><circle cx="18" cy="12.5" r="5.5" fill="#fff" opacity="0.9"/></svg>');
+    return L.icon({
+      iconUrl: 'data:image/svg+xml;charset=UTF-8,' + svg,
+      iconSize: [36, 46],
+      iconAnchor: [18, 46],
+      popupAnchor: [0, -40]
+    });
+  }
+
+  function initColorPicker() {
+    var picker = document.getElementById('colorPicker');
+    picker.innerHTML = colorPalette.map(function(color) {
+      var active = color === currentColor ? 'active' : '';
+      var title = colorToCategory[color] || color;
+      return '<button class="color-btn ' + active + '" style="background:' + color + '" data-color="' + color + '" title="' + title + '" onclick="mapApp.selectColor(\'' + color + '\')"></button>';
+    }).join('');
+    updateCategoryDisplay();
+  }
+
+  function selectColor(color) {
+    currentColor = color;
+    document.querySelectorAll('.color-btn').forEach(function(btn) {
+      btn.classList.toggle('active', btn.dataset.color === color);
+    });
+    updateCategoryDisplay();
+  }
+
+  function updateCategoryDisplay() {
+    var catEl = document.getElementById('selectedCategory');
+    if (colorToCategory[currentColor]) {
+      catEl.textContent = 'Категория: ' + colorToCategory[currentColor];
+      catEl.style.display = 'block';
+    } else {
+      catEl.style.display = 'none';
+    }
+  }
+
+  function loadMarkers() {
+    fetchAPI(API_URL + '/markers').then(function(data) {
+      markers = data;
+      renderMarkers();
+      updateLegend();
+    }).catch(function(e) {
+      showToast('Ошибка загрузки: ' + e.message, 'error');
+    });
+  }
+
+  function renderMarkers() {
+    if (!markersLayer) return;
+    markersLayer.clearLayers();
+    markers.forEach(function(m) {
+      var color = m.color || '#4a90e2';
+      var marker = L.marker([m.lat, m.lng], { icon: createColorIcon(color) });
+      marker.on('click', function() { openSidebar(m); });
+      markersLayer.addLayer(marker);
+    });
+  }
+
+  function updateLegend() {
+    var stats = {};
+    markers.forEach(function(m) {
+      var color = m.color || '#4a90e2';
+      stats[color] = (stats[color] || 0) + 1;
+    });
+
+    var html = Object.keys(colorToCategory).map(function(color) {
+      return '<div class="legend-item">' +
+        '<div class="legend-color" style="background:' + color + '"></div>' +
+        '<span class="legend-label">' + colorToCategory[color] + '</span>' +
+        '<span class="legend-count">' + (stats[color] || 0) + '</span>' +
+      '</div>';
+    }).join('');
+
+    document.getElementById('legendItems').innerHTML = html;
+  }
+
+  function toggleLegend() {
+    legendCollapsed = !legendCollapsed;
+    var legend = document.getElementById('mapLegend');
+    var items = document.getElementById('legendItems');
+    var chevron = document.getElementById('legendChevron');
+    
+    legend.classList.toggle('collapsed', legendCollapsed);
+    items.style.display = legendCollapsed ? 'none' : 'flex';
+    chevron.innerHTML = legendCollapsed 
+      ? '<polyline points="9 18 15 12 9 6"/>'
+      : '<polyline points="15 18 9 12 15 6"/>';
+  }
+
+  function openModal(latlng, marker) {
+    currentLatLng = latlng;
+    editingMarker = marker || null;
+    selectedFiles = [];
+    existingMedia = marker ? (marker.media || []) : [];
+    
+    document.getElementById('modalTitle').textContent = marker ? 'Редактировать метку' : 'Добавить метку';
+    document.getElementById('markerTitle').value = marker ? marker.title : '';
+    document.getElementById('markerDesc').value = marker ? (marker.description || '') : '';
+    
+    currentColor = marker ? (marker.color || '#4a90e2') : '#4a90e2';
+    initColorPicker();
+    renderPreview();
+    
+    document.getElementById('markerModal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('markerModal').classList.add('hidden');
+    selectedFiles = [];
+    existingMedia = [];
+    editingMarker = null;
+  }
+
+  function handleFiles(e) {
+    var files = Array.from(e.target.files);
+    selectedFiles = selectedFiles.concat(files);
+    renderPreview();
+    e.target.value = '';
+  }
+
+  function removeFile(index, isExisting) {
+    if (isExisting) {
+      existingMedia.splice(index, 1);
+    } else {
+      selectedFiles.splice(index, 1);
+    }
+    renderPreview();
+  }
+
+  function renderPreview() {
+    var container = document.getElementById('previewContainer');
+    var html = '';
+
+    existingMedia.forEach(function(path, i) {
+      var url = getMediaUrl(path);
+      var isVideo = /\.(mp4|webm|ogg)$/i.test(path);
+      html += '<div class="preview-item">';
+      html += isVideo 
+        ? '<video src="' + url + '"></video>'
+        : '<img src="' + url + '">';
+      html += '<button class="remove-btn" onclick="mapApp.removeFile(' + i + ', true)">×</button></div>';
+    });
+
+    selectedFiles.forEach(function(file, i) {
+      var url = URL.createObjectURL(file);
+      var isVideo = file.type.startsWith('video');
+      html += '<div class="preview-item new">';
+      html += isVideo 
+        ? '<video src="' + url + '"></video>'
+        : '<img src="' + url + '">';
+      html += '<button class="remove-btn" onclick="mapApp.removeFile(' + i + ', false)">×</button></div>';
+    });
+
+    container.innerHTML = html;
+  }
+
+  function getMediaUrl(path) {
+    if (path.startsWith('http')) return path;
+    return API_BASE + path;
+  }
+
+  function saveMarker() {
+    var title = document.getElementById('markerTitle').value.trim();
+    if (!title) {
+      showToast('Введите название', 'error');
+      return;
+    }
+
+    var btn = document.getElementById('saveBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Сохранение...';
+
+    var uploadPromise;
+    if (selectedFiles.length > 0) {
+      var formData = new FormData();
+      selectedFiles.forEach(function(f) { formData.append('files', f); });
+      uploadPromise = fetchAPI(API_URL + '/upload', { method: 'POST', body: formData });
+    } else {
+      uploadPromise = Promise.resolve({ files: [] });
+    }
+
+    uploadPromise.then(function(uploadRes) {
+      var mediaList = existingMedia.concat(uploadRes.files || []);
+      var data = {
+        lat: editingMarker ? editingMarker.lat : currentLatLng.lat,
+        lng: editingMarker ? editingMarker.lng : currentLatLng.lng,
+        title: title,
+        description: document.getElementById('markerDesc').value.trim(),
+        color: currentColor,
+        media: mediaList,
+        category: colorToCategory[currentColor] || null
+      };
+
+      var url = editingMarker 
+        ? API_URL + '/markers/' + editingMarker.id 
+        : API_URL + '/markers';
+      var method = editingMarker ? 'PUT' : 'POST';
+
+      return fetchAPI(url, { method: method, body: JSON.stringify(data) });
+    }).then(function() {
+      showToast(editingMarker ? 'Метка обновлена' : 'Метка создана', 'success');
+      closeModal();
+      closeSidebar();
+      loadMarkers();
+    }).catch(function(e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    }).finally(function() {
+      btn.disabled = false;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить';
+    });
+  }
+
+  function openSidebar(marker) {
+    var sidebar = document.getElementById('markerSidebar');
+    var content = document.getElementById('sidebarContent');
+    
+    var mediaHtml = '';
+    if (marker.media && marker.media.length > 0) {
+      mediaHtml = '<div class="sidebar-media">' + marker.media.map(function(path, i) {
+        var url = getMediaUrl(path);
+        var isVideo = /\.(mp4|webm|ogg)$/i.test(path);
+        return '<div class="media-item" onclick="mapApp.openViewer(\'' + url + '\', ' + isVideo + ')">' +
+          (isVideo 
+            ? '<video src="' + url + '"></video><div class="video-overlay"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>'
+            : '<img src="' + url + '">') +
+        '</div>';
+      }).join('') + '</div>';
+    }
+
+    var creatorInfo = marker.creator 
+      ? '<div class="sidebar-meta">Создал: ' + (marker.creator.displayName || marker.creator.username) + '</div>'
+      : '';
+
+    content.innerHTML = 
+      '<div class="sidebar-header">' +
+        '<div class="marker-color-badge" style="background:' + (marker.color || '#4a90e2') + '"></div>' +
+        '<h3>' + escapeHtml(marker.title) + '</h3>' +
+      '</div>' +
+      (marker.description ? '<p class="sidebar-description">' + escapeHtml(marker.description) + '</p>' : '') +
+      (marker.category ? '<div class="sidebar-category"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' + marker.category + '</div>' : '') +
+      mediaHtml +
+      creatorInfo +
+      '<div class="sidebar-actions">' +
+        '<button class="map-btn map-btn-primary" onclick="mapApp.editMarker(\'' + marker.id + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Редактировать</button>' +
+        '<button class="map-btn map-btn-danger" onclick="mapApp.deleteMarker(\'' + marker.id + '\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>Удалить</button>' +
+      '</div>';
+
+    sidebar.classList.add('open');
+    
+    // Сохраняем текущий маркер для редактирования
+    sidebar.dataset.markerId = marker.id;
+  }
+
+  function closeSidebar() {
+    document.getElementById('markerSidebar').classList.remove('open');
+  }
+
+  function editMarker(id) {
+    var marker = markers.find(function(m) { return m.id === id; });
+    if (marker) {
+      closeSidebar();
+      openModal({ lat: marker.lat, lng: marker.lng }, marker);
+    }
+  }
+
+  function deleteMarker(id) {
+    if (!confirm('Вы уверены, что хотите удалить метку?')) return;
+    
+    fetchAPI(API_URL + '/markers/' + id, { method: 'DELETE' })
+      .then(function() {
+        showToast('Метка удалена', 'success');
+        closeSidebar();
+        loadMarkers();
+      })
+      .catch(function(e) {
+        showToast('Ошибка: ' + e.message, 'error');
+      });
+  }
+
+  function openViewer(url, isVideo) {
+    var viewer = document.getElementById('mediaViewer');
+    var content = document.getElementById('viewerContent');
+    
+    content.innerHTML = isVideo
+      ? '<video src="' + url + '" controls autoplay></video>'
+      : '<img src="' + url + '">';
+    
+    viewer.classList.remove('hidden');
+  }
+
+  function closeViewer() {
+    document.getElementById('mediaViewer').classList.add('hidden');
+    document.getElementById('viewerContent').innerHTML = '';
+  }
+
+  function escapeHtml(s) {
+    if (!s) return '';
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function init() {
+    if (!getToken()) {
+      document.getElementById('map-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+      return;
+    }
+
+    // Загрузка Leaflet
+    if (window.L) {
+      initMap();
+    } else {
+      var css = document.createElement('link');
+      css.rel = 'stylesheet';
+      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+      document.head.appendChild(css);
+
+      var script = document.createElement('script');
+      script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+      script.onload = initMap;
+      document.body.appendChild(script);
+    }
+
+    // Закрытие по Escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeModal();
+        closeSidebar();
+        closeViewer();
+      }
+    });
+
+    // Проверка URL параметров для подсветки маркера
+    var urlParams = new URLSearchParams(window.location.search);
+    var highlightId = urlParams.get('marker');
+    if (highlightId) {
+      var checkMarker = setInterval(function() {
+        if (markers.length > 0) {
+          clearInterval(checkMarker);
+          var marker = markers.find(function(m) { return m.id === highlightId; });
+          if (marker && map) {
+            map.setView([marker.lat, marker.lng], 16);
+            openSidebar(marker);
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        }
+      }, 100);
+      setTimeout(function() { clearInterval(checkMarker); }, 5000);
+    }
+  }
+
+  function initMap() {
+    map = L.map('map').setView([44.8860, 37.326], 14);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    markersLayer = L.layerGroup().addTo(map);
+
+    map.on('click', function(e) {
+      openModal(e.latlng, null);
+    });
+
+    initColorPicker();
+    loadMarkers();
+  }
+
+  // Инициализация
+  init();
+
+  return {
+    selectColor: selectColor,
+    toggleLegend: toggleLegend,
+    closeModal: closeModal,
+    handleFiles: handleFiles,
+    removeFile: removeFile,
+    saveMarker: saveMarker,
+    closeSidebar: closeSidebar,
+    editMarker: editMarker,
+    deleteMarker: deleteMarker,
+    openViewer: openViewer,
+    closeViewer: closeViewer
+  };
+})();
+</script>
