@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
-  Award, UserCircle, Briefcase, File, ExternalLink, Car
+  Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -126,6 +126,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return `${BASE_URL}/${theme.logo}`;
   };
 
+  // Получение роли пользователя
+  const getUserRole = () => {
+    if (user?.isAdmin) return 'Администратор';
+    return user?.role?.name || 'Пользователь';
+  };
+
   // Функция для подсветки поискового запроса в тексте
   const highlightText = (text, query) => {
     if (!text) return [{ text: '', highlight: false }];
@@ -172,14 +178,14 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     <header className="header">
       <div className="header-left">
         <button className="header-toggle" onClick={onToggleSidebar}>
-          <Menu size={20} />
-        </button>
-        <Link to="/" className="header-logo">
           {getLogoUrl() ? (
-            <img src={getLogoUrl()} alt={theme?.siteName || 'Wiki'} />
+            <img src={getLogoUrl()} alt="Logo" className="header-toggle-logo" />
           ) : (
-            theme?.siteName || 'Alfa Wiki'
+            <Menu size={20} />
           )}
+        </button>
+        <Link to="/" className="header-site-name">
+          {theme?.siteName || 'Alfa Wiki'}
         </Link>
       </div>
 
@@ -268,14 +274,31 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             
             {showDropdown && (
               <div className="header-dropdown">
+                {/* Блок-миниатюра пользователя */}
+                <div className="header-dropdown-user">
+                  <div className="header-dropdown-avatar">
+                    {getAvatarUrl() ? (
+                      <img src={getAvatarUrl()} alt={user.displayName || user.username} />
+                    ) : (
+                      <div className="header-dropdown-avatar-placeholder">
+                        <User size={24} />
+                      </div>
+                    )}
+                  </div>
+                  <div className="header-dropdown-user-info">
+                    <div className="header-dropdown-user-name">{user.displayName || user.username}</div>
+                    <div className="header-dropdown-user-role">{getUserRole()}</div>
+                  </div>
+                </div>
+                
                 <Link to="/profile" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                  <User size={16} />
-                  Профиль
+                  <Settings size={16} />
+                  Настройки
                 </Link>
                 {isAdmin && (
                   <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Shield size={16} />
-                    Админ-панель
+                    Администратор
                   </Link>
                 )}
                 <div className="header-dropdown-divider" />

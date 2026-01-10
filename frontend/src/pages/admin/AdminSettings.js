@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Save, RefreshCw } from 'lucide-react';
-import { settings, roles } from '../../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { Save, RefreshCw, Upload, X } from 'lucide-react';
+import { settings, roles, media, BASE_URL } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
 export default function AdminSettings() {
   const { reloadTheme } = useTheme();
+  const logoInputRef = useRef(null);
   const [form, setForm] = useState({
     siteName: 'Alfa Wiki',
     siteDescription: '',
@@ -18,6 +19,7 @@ export default function AdminSettings() {
   const [roleList, setRoleList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => { load(); }, []);
 
@@ -61,6 +63,50 @@ export default function AdminSettings() {
     setForm({...form, primaryColor: color});
   };
 
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Выберите изображение');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Максимальный размер файла 2MB');
+      return;
+    }
+
+    setUploadingLogo(true);
+    try {
+      const { data } = await media.upload(file);
+      setForm({ ...form, logo: data.path });
+      toast.success('Логотип загружен');
+    } catch (e) {
+      toast.error('Ошибка загрузки логотипа');
+    } finally {
+      setUploadingLogo(false);
+      if (logoInputRef.current) {
+        logoInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setForm({ ...form, logo: '' });
+    toast.success('Логотип удален');
+  };
+
+  const getLogoPreview = () => {
+    if (!form.logo) return null;
+    if (form.logo.startsWith('http://localhost')) {
+      const path = form.logo.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (form.logo.startsWith('http')) return form.logo;
+    return `${BASE_URL}/${form.logo}`;
+  };
+
   if (loading) {
     return <div className="admin-page"><div className="admin-loading"><div className="loading-spinner" /></div></div>;
   }
@@ -91,8 +137,53 @@ export default function AdminSettings() {
               <textarea className="textarea" value={form.siteDescription} onChange={e => setForm({...form, siteDescription: e.target.value})} rows={3} />
             </div>
             <div className="form-group">
-              <label className="form-label">URL логотипа</label>
-              <input className="input" placeholder="https://..." value={form.logo} onChange={e => setForm({...form, logo: e.target.value})} />
+              <label className="form-label">Логотип</label>
+              
+              {/* Предпросмотр логотипа */}
+              {form.logo && (
+                <div className="logo-preview-container" style={{ marginBottom: 12 }}>
+                  <div className="logo-preview">
+                    <img src={getLogoPreview()} alt="Логотип" />
+                  </div>
+                  <button 
+                    className="btn btn-ghost btn-sm"
+                    onClick={handleRemoveLogo}
+                    type="button"
+                  >
+                    <X size={16} />
+                    Удалить
+                  </button>
+                </div>
+              )}
+              
+              {/* Кнопка загрузки */}
+              <button 
+                className="btn btn-secondary"
+                onClick={() => logoInputRef.current?.click()}
+                disabled={uploadingLogo}
+                type="button"
+                style={{ width: '100%' }}
+              >
+                {uploadingLogo ? (
+                  <>
+                    <div className="loading-spinner" style={{width:16,height:16}} />
+                    Загрузка...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} />
+                    {form.logo ? 'Изменить логотип' : 'Загрузить логотип'}
+                  </>
+                )}
+              </button>
+              <input 
+                ref={logoInputRef}
+                type="file" 
+                accept="image/*" 
+                hidden 
+                onChange={handleLogoUpload}
+              />
+              <small className="form-hint">Рекомендуемый размер: 32x32px, максимум 2MB</small>
             </div>
           </div>
         </div>
@@ -188,6 +279,34 @@ export default function AdminSettings() {
         .theme-preview-box { 
           display: flex; align-items: center; gap: 16px; 
           padding: 16px; background: var(--bg-secondary); border-radius: var(--radius-md); 
+        }
+        
+        .logo-preview-container {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+        }
+
+        .logo-preview {
+          width: 60px;
+          height: 60px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: white;
+          border-radius: var(--radius-sm);
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .logo-preview img {
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
         }
       `}</style>
     </div>
