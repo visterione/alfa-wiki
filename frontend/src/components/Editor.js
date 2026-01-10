@@ -18,6 +18,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Placeholder from '@tiptap/extension-placeholder';
 import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
+import EmojiPicker from 'emoji-picker-react';
 import { VkVideo, getVkVideoEmbedUrl } from './VkVideo';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -26,7 +27,7 @@ import {
   Link as LinkIcon, Image as ImageIcon, Table as TableIcon,
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
-  Maximize2, Minimize2, Paintbrush, Grid, Video
+  Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -183,27 +184,24 @@ const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) =
 
       const deltaX = moveEvent.clientX - startRef.current.x;
       const deltaY = moveEvent.clientY - startRef.current.y;
-      
-      let newWidth;
-      let newHeight;
 
-      if (corner === 'se' || corner === 'ne') {
-        newWidth = Math.max(100, startRef.current.width + deltaX);
+      let newWidth, newHeight;
+      if (corner === 'se' || corner === 'sw') {
+        newWidth = Math.max(50, startRef.current.width + (corner === 'se' ? deltaX : -deltaX));
+        newHeight = newWidth / startRef.current.aspectRatio;
       } else {
-        newWidth = Math.max(100, startRef.current.width - deltaX);
+        newHeight = Math.max(50, startRef.current.height - deltaY);
+        newWidth = newHeight * startRef.current.aspectRatio;
       }
 
-      newHeight = newWidth / startRef.current.aspectRatio;
-
-      setDimensions({ width: newWidth, height: newHeight });
+      setDimensions({ width: Math.round(newWidth), height: Math.round(newHeight) });
     };
 
     const handleMouseUp = () => {
       setResizing(false);
-      updateAttributes({ 
-        width: Math.round(dimensions.width), 
-        height: Math.round(dimensions.height) 
-      });
+      if (dimensions.width && dimensions.height) {
+        updateAttributes({ width: dimensions.width, height: dimensions.height });
+      }
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
@@ -212,43 +210,24 @@ const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) =
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const display = node.attrs.display || 'inline';
-  const float = node.attrs.float || 'none';
-  const align = node.attrs.align || 'left';
+  const imageStyle = {};
+  if (dimensions.width) imageStyle.width = `${dimensions.width}px`;
+  if (dimensions.height) imageStyle.height = `${dimensions.height}px`;
 
-  const containerStyle = {
-    textAlign: display === 'block' ? align : undefined
-  };
-
-  const imgStyle = {
-    width: dimensions.width ? `${dimensions.width}px` : undefined,
-    height: dimensions.height ? `${dimensions.height}px` : undefined,
-    float: display === 'inline' ? float : undefined,
-    textAlign: display === 'block' ? align : undefined,
-    width: display === 'block' ? '100%' : undefined
-  };
-  
-  const wrapperStyle = display === 'block' ? {
-    display: 'inline-block',
-    margin: '0.5em 0'
-  } : {
-    margin: float === 'left' ? '0.5em 1em 0.5em 0' : 
-            float === 'right' ? '0.5em 0 0.5em 1em' : undefined
-  };
+  let containerClass = 'resizable-image-container';
+  if (selected) containerClass += ' selected';
+  if (resizing) containerClass += ' resizing';
 
   return (
-    <NodeViewWrapper style={containerStyle}>
-      <div 
-        ref={containerRef}
-        className={`resizable-image-container ${selected ? 'selected' : ''} ${resizing ? 'resizing' : ''}`}
-        style={wrapperStyle}
-      >
+    <NodeViewWrapper className={containerClass}>
+      <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
         <img
           ref={imgRef}
           src={node.attrs.src}
-          alt={node.attrs.alt || ''}
-          title={node.attrs.title || ''}
-          style={imgStyle}
+          alt={node.attrs.alt}
+          title={node.attrs.title}
+          style={imageStyle}
+          draggable={false}
         />
         {selected && (
           <>
@@ -263,28 +242,54 @@ const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) =
   );
 };
 
-// Меню настроек изображения (появляется при выделении)
+// Bubble Menu для изображений
 function ImageBubbleMenu({ editor }) {
-  if (!editor) return null;
+  const [selectedNode, setSelectedNode] = useState(null);
 
-  const attrs = editor.getAttributes('resizableImage');
-  const display = attrs.display || 'inline';
-  const float = attrs.float || 'none';
-  const align = attrs.align || 'left';
+  useEffect(() => {
+    const updateSelection = () => {
+      const { state } = editor;
+      const { selection } = state;
+      const { $from } = selection;
+      const node = $from.parent.type.name === 'resizableImage' 
+        ? $from.parent 
+        : state.doc.nodeAt(selection.from);
+      
+      if (node && node.type.name === 'resizableImage') {
+        setSelectedNode(node);
+      } else {
+        setSelectedNode(null);
+      }
+    };
 
-  const setDisplay = (e, value) => {
+    editor.on('selectionUpdate', updateSelection);
+    editor.on('update', updateSelection);
+    
+    return () => {
+      editor.off('selectionUpdate', updateSelection);
+      editor.off('update', updateSelection);
+    };
+  }, [editor]);
+
+  if (!selectedNode) return null;
+
+  const display = selectedNode.attrs.display || 'inline';
+  const float = selectedNode.attrs.float || 'none';
+  const align = selectedNode.attrs.align || 'left';
+
+  const setDisplay = (e, val) => {
     e.preventDefault();
-    editor.chain().focus().updateImageAttributes({ display: value }).run();
+    editor.chain().focus().updateImageAttributes({ display: val }).run();
   };
 
-  const setFloat = (e, value) => {
+  const setFloat = (e, val) => {
     e.preventDefault();
-    editor.chain().focus().updateImageAttributes({ float: value }).run();
+    editor.chain().focus().updateImageAttributes({ float: val }).run();
   };
 
-  const setAlign = (e, value) => {
+  const setAlign = (e, val) => {
     e.preventDefault();
-    editor.chain().focus().updateImageAttributes({ align: value }).run();
+    editor.chain().focus().updateImageAttributes({ align: val }).run();
   };
 
   const resetSize = (e) => {
@@ -295,8 +300,10 @@ function ImageBubbleMenu({ editor }) {
   return (
     <BubbleMenu 
       editor={editor} 
-      tippyOptions={{ duration: 100, placement: 'top' }}
-      shouldShow={({ editor }) => editor.isActive('resizableImage')}
+      tippyOptions={{ duration: 100 }}
+      shouldShow={({ editor, state }) => {
+        return editor.isActive('resizableImage');
+      }}
     >
       <div className="image-bubble-menu">
         <div className="image-bubble-section">
@@ -305,19 +312,21 @@ function ImageBubbleMenu({ editor }) {
             type="button"
             className={`image-bubble-btn ${display === 'inline' ? 'active' : ''}`}
             onClick={(e) => setDisplay(e, 'inline')}
-            title="В тексте"
+            title="В строке"
           >
-            В тексте
+            Строка
           </button>
           <button 
             type="button"
             className={`image-bubble-btn ${display === 'block' ? 'active' : ''}`}
             onClick={(e) => setDisplay(e, 'block')}
-            title="Отдельно"
+            title="Блок"
           >
-            Отдельно
+            Блок
           </button>
         </div>
+
+        <div className="image-bubble-divider" />
 
         {display === 'inline' && (
           <div className="image-bubble-section">
@@ -336,7 +345,7 @@ function ImageBubbleMenu({ editor }) {
               onClick={(e) => setFloat(e, 'left')}
               title="Слева"
             >
-              Слева
+              <AlignLeft size={14} />
             </button>
             <button 
               type="button"
@@ -344,7 +353,7 @@ function ImageBubbleMenu({ editor }) {
               onClick={(e) => setFloat(e, 'right')}
               title="Справа"
             >
-              Справа
+              <AlignRight size={14} />
             </button>
           </div>
         )}
@@ -449,7 +458,7 @@ const textColors = [
   { name: 'Черный', color: '#000000' },
   { name: 'Темно-серый', color: '#424242' },
   { name: 'Серый', color: '#666666' },
-  { name: 'Светло-серый', color: '#9E9E9E' },
+  { name: 'Белый', color: '#FFFFFF' },
   { name: 'Красный', color: '#E53935' },
   { name: 'Красный темный', color: '#C62828' },
   { name: 'Оранжевый', color: '#FB8C00' },
@@ -480,6 +489,19 @@ const cellBgColors = [
   { name: 'Светло-розовый', color: '#FCE4EC' },
   { name: 'Светло-фиолетовый', color: '#F3E5F5' },
   { name: 'Светло-бирюзовый', color: '#E0F2F1' }
+];
+
+// Доступные шрифты
+const availableFonts = [
+  { name: 'По умолчанию', value: '' },
+  { name: 'Arial', value: 'Arial, sans-serif' },
+  { name: 'Times New Roman', value: 'Times New Roman, serif' },
+  { name: 'Courier New', value: 'Courier New, monospace' },
+  { name: 'Georgia', value: 'Georgia, serif' },
+  { name: 'Verdana', value: 'Verdana, sans-serif' },
+  { name: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
+  { name: 'Impact', value: 'Impact, fantasy' },
+  { name: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' }
 ];
 
 function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
@@ -582,6 +604,171 @@ function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
           >
             Убрать {type === 'highlight' ? 'выделение' : 'цвет'}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dropdown для выбора шрифта
+function FontFamilyDropdown({ editor, buttonRef }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) && 
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [buttonRef]);
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 200;
+      const viewportWidth = window.innerWidth;
+      
+      let left = rect.left;
+      if (rect.left + menuWidth > viewportWidth - 20) {
+        left = viewportWidth - menuWidth - 20;
+      }
+      
+      setPosition({
+        top: rect.bottom + 4,
+        left: left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const setFont = (fontValue) => {
+    if (fontValue === '') {
+      editor.chain().focus().unsetFontFamily().run();
+    } else {
+      editor.chain().focus().setFontFamily(fontValue).run();
+    }
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="editor-dropdown-wrapper">
+      <button
+        type="button"
+        ref={buttonRef}
+        className="editor-btn"
+        onClick={openMenu}
+        title="Шрифт"
+      >
+        <Type size={16} />
+        <ChevronDown size={10} />
+      </button>
+
+      {isOpen && (
+        <div 
+          ref={menuRef}
+          className="font-picker-dropdown"
+          style={{ 
+            position: 'fixed',
+            top: position.top,
+            left: position.left
+          }}
+        >
+          <div className="font-picker-title">Выбор шрифта</div>
+          <div className="font-picker-list">
+            {availableFonts.map(({ name, value }) => (
+              <button
+                key={value || 'default'}
+                type="button"
+                className={`font-picker-item ${editor.isActive('textStyle', { fontFamily: value }) ? 'active' : ''}`}
+                onClick={() => setFont(value)}
+                style={{ fontFamily: value || 'inherit' }}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dropdown для выбора эмодзи
+function EmojiDropdown({ editor, buttonRef }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) && 
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [buttonRef]);
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 352;
+      const viewportWidth = window.innerWidth;
+      
+      let left = rect.left;
+      if (rect.left + menuWidth > viewportWidth - 20) {
+        left = viewportWidth - menuWidth - 20;
+      }
+      
+      setPosition({
+        top: rect.bottom + 4,
+        left: left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const onEmojiClick = (emojiData) => {
+    editor.chain().focus().insertContent(emojiData.emoji).run();
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="editor-dropdown-wrapper">
+      <button
+        type="button"
+        ref={buttonRef}
+        className="editor-btn"
+        onClick={openMenu}
+        title="Эмодзи"
+      >
+        <Smile size={16} />
+      </button>
+
+      {isOpen && (
+        <div 
+          ref={menuRef}
+          className="emoji-picker-dropdown"
+          style={{ 
+            position: 'fixed',
+            top: position.top,
+            left: position.left,
+            zIndex: 1000
+          }}
+        >
+          <EmojiPicker 
+            onEmojiClick={onEmojiClick}
+            width={350}
+            height={400}
+            searchPlaceholder="Поиск эмодзи..."
+            previewConfig={{ showPreview: false }}
+          />
         </div>
       )}
     </div>
@@ -720,39 +907,47 @@ function TableMenuDropdown({ editor, buttonRef }) {
         >
           {!isInTable ? (
             <>
-              <button
-                type="button"
-                className="table-menu-item"
-                onClick={() => setShowSizeSelector(!showSizeSelector)}
-              >
-                <Grid size={14} /> Вставить таблицу
-              </button>
+              <div className="table-menu-title">Создать таблицу</div>
+              {!showSizeSelector && (
+                <button
+                  type="button"
+                  className="table-menu-item"
+                  onClick={() => setShowSizeSelector(true)}
+                >
+                  <Grid size={16} />
+                  Выбрать размер
+                </button>
+              )}
               {showSizeSelector && (
                 <TableSizeSelector onSelect={handleTableSizeSelect} />
               )}
             </>
           ) : (
             <>
+              <div className="table-menu-title">Редактировать таблицу</div>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addColumnBefore().run())}
               >
-                <Plus size={14} /> Добавить столбец слева
+                <Plus size={16} />
+                Колонку слева
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addColumnAfter().run())}
               >
-                <Plus size={14} /> Добавить столбец справа
+                <Plus size={16} />
+                Колонку справа
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().deleteColumn().run())}
               >
-                <Trash2 size={14} /> Удалить столбец
+                <Trash2 size={16} />
+                Удалить колонку
               </button>
               <div className="table-menu-divider" />
               <button
@@ -760,21 +955,24 @@ function TableMenuDropdown({ editor, buttonRef }) {
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addRowBefore().run())}
               >
-                <Plus size={14} /> Добавить строку сверху
+                <Plus size={16} />
+                Строку выше
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addRowAfter().run())}
               >
-                <Plus size={14} /> Добавить строку снизу
+                <Plus size={16} />
+                Строку ниже
               </button>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().deleteRow().run())}
               >
-                <Trash2 size={14} /> Удалить строку
+                <Trash2 size={16} />
+                Удалить строку
               </button>
               <div className="table-menu-divider" />
               <button
@@ -782,34 +980,31 @@ function TableMenuDropdown({ editor, buttonRef }) {
                 className="table-menu-item"
                 onClick={() => setShowCellColors(!showCellColors)}
               >
-                <Paintbrush size={14} /> Цвет фона ячейки
+                <Paintbrush size={16} />
+                Цвет ячейки
               </button>
-              
               {showCellColors && (
-                <div className="cell-colors-grid">
+                <div className="cell-color-grid">
                   {cellBgColors.map(({ name, color }) => (
                     <button
                       key={color}
                       type="button"
                       className="cell-color-item"
-                      style={{ 
-                        background: color,
-                        border: color === 'transparent' ? '1px solid var(--border)' : 'none' 
-                      }}
+                      style={{ background: color, border: color === 'transparent' ? '2px dashed #ccc' : 'none' }}
                       onClick={() => setCellBgColor(color)}
                       title={name}
                     />
                   ))}
                 </div>
               )}
-
               <div className="table-menu-divider" />
               <button
                 type="button"
-                className="table-menu-item danger"
+                className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().deleteTable().run())}
               >
-                <Trash2 size={14} /> Удалить таблицу
+                <Trash2 size={16} />
+                Удалить таблицу
               </button>
             </>
           )}
@@ -820,19 +1015,25 @@ function TableMenuDropdown({ editor, buttonRef }) {
 }
 
 function MenuBar({ editor }) {
-  const tableButtonRef = useRef(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
   const highlightButtonRef = useRef(null);
   const colorButtonRef = useRef(null);
-  const imageInputRef = useRef(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const tableButtonRef = useRef(null);
+  const fontFamilyButtonRef = useRef(null);
+  const emojiButtonRef = useRef(null);
 
   const setLink = useCallback(() => {
-    const url = window.prompt('URL:', editor.getAttributes('link').href || 'https://');
+    const previousUrl = editor.getAttributes('link').href;
+    const url = window.prompt('URL:', previousUrl);
+
     if (url === null) return;
+
     if (url === '') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run();
       return;
     }
+
     editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   }, [editor]);
 
@@ -911,14 +1112,24 @@ function MenuBar({ editor }) {
           value={
             editor.isActive('heading', { level: 1 }) ? '1' :
             editor.isActive('heading', { level: 2 }) ? '2' :
-            editor.isActive('heading', { level: 3 }) ? '3' : 'p'
+            editor.isActive('heading', { level: 3 }) ? '3' :
+            editor.isActive('heading', { level: 4 }) ? '4' :
+            editor.isActive('heading', { level: 5 }) ? '5' :
+            editor.isActive('heading', { level: 6 }) ? '6' : 'p'
           }
         >
           <option value="p">Обычный текст</option>
           <option value="1">Заголовок 1</option>
           <option value="2">Заголовок 2</option>
           <option value="3">Заголовок 3</option>
+          <option value="4">Заголовок 4</option>
+          <option value="5">Заголовок 5</option>
+          <option value="6">Заголовок 6</option>
         </select>
+      </div>
+
+      <div className="editor-menu-group">
+        <FontFamilyDropdown editor={editor} buttonRef={fontFamilyButtonRef} />
       </div>
 
       <MenuDivider />
@@ -1010,6 +1221,7 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
+        <EmojiDropdown editor={editor} buttonRef={emojiButtonRef} />
         <MenuButton onClick={setLink} isActive={editor.isActive('link')} title="Ссылка">
           <LinkIcon size={16} />
         </MenuButton>

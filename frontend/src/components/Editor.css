@@ -114,34 +114,21 @@
 .editor-content .ProseMirror h2 { font-size: 1.5em; }
 .editor-content .ProseMirror h3 { font-size: 1.25em; }
 .editor-content .ProseMirror h4 { font-size: 1.1em; }
-.editor-content .ProseMirror h5 { font-size: 1em; }
-.editor-content .ProseMirror h6 { font-size: 0.9em; }
+.editor-content .ProseMirror h5 { font-size: 1em; font-weight: 700; }
+.editor-content .ProseMirror h6 { font-size: 0.9em; font-weight: 700; text-transform: uppercase; }
 
 .editor-content .ProseMirror p {
   margin: 0.5em 0;
-  line-height: 1.6;
 }
 
 .editor-content .ProseMirror ul,
 .editor-content .ProseMirror ol {
   padding-left: 2em;
-  margin: 1em 0;
-}
-
-.editor-content .ProseMirror ul {
-  list-style-type: disc;
-}
-
-.editor-content .ProseMirror ol {
-  list-style-type: decimal;
-}
-
-.editor-content .ProseMirror li {
-  margin: 0.25em 0;
+  margin: 0.5em 0;
 }
 
 .editor-content .ProseMirror blockquote {
-  border-left: 3px solid var(--primary);
+  border-left: 3px solid var(--border);
   padding-left: 1em;
   margin: 1em 0;
   color: var(--text-secondary);
@@ -153,13 +140,15 @@
   border-radius: var(--radius-sm);
   padding: 1em;
   overflow-x: auto;
-  margin: 1em 0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
 }
 
 .editor-content .ProseMirror code {
   background: var(--bg-secondary);
   padding: 0.2em 0.4em;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
+  font-family: 'Courier New', monospace;
   font-size: 0.9em;
 }
 
@@ -170,51 +159,52 @@
 
 .editor-content .ProseMirror hr {
   border: none;
-  height: 1px;
-  background: var(--border);
+  border-top: 2px solid var(--border);
   margin: 2em 0;
 }
 
 .editor-content .ProseMirror a {
   color: var(--primary);
   text-decoration: underline;
+  cursor: pointer;
 }
 
-.editor-content .ProseMirror mark {
-  background: #FFEB3B;
-  padding: 0.1em 0.2em;
-  border-radius: 2px;
+.editor-content .ProseMirror a:hover {
+  text-decoration: none;
 }
 
-/* Table styles */
 .editor-content .ProseMirror table {
   border-collapse: collapse;
-  width: 100%;
   margin: 1em 0;
+  width: 100%;
+  overflow: hidden;
 }
 
-.editor-content .ProseMirror th,
-.editor-content .ProseMirror td {
+.editor-content .ProseMirror table td,
+.editor-content .ProseMirror table th {
   border: 1px solid var(--border);
-  padding: 8px 12px;
+  padding: 0.5em;
   text-align: left;
-  min-width: 80px;
   position: relative;
 }
 
-.editor-content .ProseMirror th {
+.editor-content .ProseMirror table th {
   background: var(--bg-secondary);
   font-weight: 600;
 }
 
-.editor-content .ProseMirror .selectedCell {
+.editor-content .ProseMirror table .selectedCell {
   background: var(--primary-light);
 }
 
-/* Ячейки с кастомным цветом фона */
-.editor-content .ProseMirror td[data-background-color],
-.editor-content .ProseMirror th[data-background-color] {
-  /* Цвет применяется через inline style в renderHTML */
+.editor-content .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background-color: var(--primary);
+  pointer-events: none;
 }
 
 /* YouTube embed */
@@ -345,7 +335,7 @@
 
 .image-bubble-btn.active {
   background: var(--primary);
-  color: var(--primary);
+  color: white;
   font-weight: 500;
 }
 
@@ -439,15 +429,15 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
   padding: 12px;
-  z-index: 1000;
   min-width: 240px;
+  z-index: 1000;
 }
 
 .color-picker-title {
   font-size: 13px;
-  font-weight: 500;
-  margin-bottom: 10px;
+  font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 10px;
 }
 
 .color-picker-grid {
@@ -460,25 +450,26 @@
 .color-picker-item {
   width: 36px;
   height: 36px;
-  border-radius: var(--radius-sm);
   border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
+  padding: 0;
 }
 
 .color-picker-item:hover {
   transform: scale(1.1);
   border-color: var(--primary);
-  box-shadow: var(--shadow-md);
+  z-index: 1;
 }
 
 .color-picker-clear {
   width: 100%;
   padding: 8px;
-  border: 1px solid var(--border);
   background: var(--bg-secondary);
-  color: var(--text-primary);
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  color: var(--text-primary);
   font-size: 13px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -489,42 +480,108 @@
   border-color: var(--primary);
 }
 
+/* Font Family Dropdown */
+.font-picker-dropdown {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  min-width: 200px;
+  max-width: 250px;
+  z-index: 1000;
+}
+
+.font-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.font-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.font-picker-item {
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.font-picker-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.font-picker-item.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Emoji Picker Dropdown */
+.emoji-picker-dropdown {
+  z-index: 1000;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.emoji-picker-dropdown aside {
+  border-radius: var(--radius-md) !important;
+}
+
 /* Table Menu Dropdown */
 .table-menu-dropdown {
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
+  padding: 8px;
   min-width: 240px;
   z-index: 1000;
-  overflow: hidden;
+}
+
+.table-menu-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 8px 12px;
+  margin-bottom: 4px;
 }
 
 .table-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  padding: 10px 16px;
-  border: none;
+  padding: 8px 12px;
   background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
+  font-size: 14px;
   text-align: left;
   cursor: pointer;
   transition: all var(--transition-fast);
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .table-menu-item:hover {
   background: var(--bg-hover);
-}
-
-.table-menu-item.danger {
-  color: var(--danger);
-}
-
-.table-menu-item.danger:hover {
-  background: rgba(244, 67, 54, 0.1);
 }
 
 .table-menu-divider {
@@ -533,20 +590,20 @@
   margin: 4px 0;
 }
 
-/* Цвета для ячеек таблицы */
-.cell-colors-grid {
+.cell-color-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   padding: 8px;
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
-  margin-top: 8px;
+  margin: 8px 0;
 }
 
 .cell-color-item {
   width: 32px;
   height: 32px;
+  border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -641,6 +698,10 @@
   .table-size-cell {
     width: 14px;
     height: 14px;
+  }
+
+  .emoji-picker-dropdown {
+    width: 300px !important;
   }
 }
 
