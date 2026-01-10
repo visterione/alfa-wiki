@@ -127,12 +127,31 @@
   margin: 0.5em 0;
 }
 
+/* Типизированные блоки цитат */
 .editor-content .ProseMirror blockquote {
-  border-left: 3px solid var(--border);
-  padding-left: 1em;
+  padding: 1em 1em 1em 1.2em;
   margin: 1em 0;
-  color: var(--text-secondary);
-  font-style: italic;
+  border-radius: var(--radius-sm);
+  font-style: normal;
+  position: relative;
+}
+
+.editor-content .ProseMirror blockquote.blockquote-default {
+  border-left: 4px solid #6B7280;
+  background: #F9FAFB;
+  color: #374151;
+}
+
+.editor-content .ProseMirror blockquote.blockquote-warning {
+  border-left: 4px solid #F59E0B;
+  background: #FFFBEB;
+  color: #92400E;
+}
+
+.editor-content .ProseMirror blockquote.blockquote-danger {
+  border-left: 4px solid #EF4444;
+  background: #FEF2F2;
+  color: #991B1B;
 }
 
 .editor-content .ProseMirror pre {
@@ -531,6 +550,61 @@
   background: var(--primary);
   color: white;
   border-color: var(--primary);
+}
+
+/* Blockquote Type Picker Dropdown */
+.blockquote-picker-dropdown {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 12px;
+  min-width: 220px;
+  z-index: 1000;
+}
+
+.blockquote-picker-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+
+.blockquote-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.blockquote-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  width: 100%;
+}
+
+.blockquote-picker-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary);
+}
+
+.blockquote-picker-item.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.blockquote-picker-item.active svg {
+  color: white !important;
 }
 
 /* Emoji Picker Dropdown */

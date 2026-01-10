@@ -18,6 +18,7 @@ import Superscript from '@tiptap/extension-superscript';
 import Placeholder from '@tiptap/extension-placeholder';
 import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
+import Blockquote from '@tiptap/extension-blockquote';
 import EmojiPicker from 'emoji-picker-react';
 import { VkVideo, getVkVideoEmbedUrl } from './VkVideo';
 import {
@@ -27,11 +28,31 @@ import {
   Link as LinkIcon, Image as ImageIcon, Table as TableIcon,
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
-  Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type
+  Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type,
+  AlertTriangle, AlertCircle
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Editor.css';
+
+// Кастомное расширение Blockquote с типами
+const CustomBlockquote = Blockquote.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      type: {
+        default: 'default',
+        parseHTML: element => element.getAttribute('data-type') || 'default',
+        renderHTML: attributes => {
+          return {
+            'data-type': attributes.type,
+            class: `blockquote-${attributes.type}`
+          };
+        }
+      }
+    };
+  }
+});
 
 // Расширенный TableCell с поддержкой цвета фона
 const TableCell = TipTapTableCell.extend({
@@ -458,7 +479,7 @@ const textColors = [
   { name: 'Черный', color: '#000000' },
   { name: 'Темно-серый', color: '#424242' },
   { name: 'Серый', color: '#666666' },
-  { name: 'Белый', color: '#FFFFFF' },
+  { name: 'Светло-серый', color: '#9E9E9E' },
   { name: 'Красный', color: '#E53935' },
   { name: 'Красный темный', color: '#C62828' },
   { name: 'Оранжевый', color: '#FB8C00' },
@@ -502,6 +523,13 @@ const availableFonts = [
   { name: 'Comic Sans MS', value: 'Comic Sans MS, cursive' },
   { name: 'Impact', value: 'Impact, fantasy' },
   { name: 'Trebuchet MS', value: 'Trebuchet MS, sans-serif' }
+];
+
+// Типы цитат
+const blockquoteTypes = [
+  { name: 'Цитата', value: 'default', icon: Quote, color: '#6B7280' },
+  { name: 'Предупреждение', value: 'warning', icon: AlertTriangle, color: '#F59E0B' },
+  { name: 'Опасность', value: 'danger', icon: AlertCircle, color: '#EF4444' }
 ];
 
 function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
@@ -604,6 +632,103 @@ function ColorDropdown({ editor, type, buttonRef, icon: Icon, title, colors }) {
           >
             Убрать {type === 'highlight' ? 'выделение' : 'цвет'}
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dropdown для выбора типа цитаты
+function BlockquoteDropdown({ editor, buttonRef }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target) && 
+          buttonRef.current && !buttonRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [buttonRef]);
+
+  const openMenu = () => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const menuWidth = 220;
+      const viewportWidth = window.innerWidth;
+      
+      let left = rect.left;
+      if (rect.left + menuWidth > viewportWidth - 20) {
+        left = viewportWidth - menuWidth - 20;
+      }
+      
+      setPosition({
+        top: rect.bottom + 4,
+        left: left
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const setBlockquoteType = (type) => {
+    if (editor.isActive('blockquote')) {
+      editor.chain().focus().updateAttributes('blockquote', { type }).run();
+    } else {
+      editor.chain().focus().toggleBlockquote().updateAttributes('blockquote', { type }).run();
+    }
+    setIsOpen(false);
+  };
+
+  const getCurrentType = () => {
+    if (!editor.isActive('blockquote')) return null;
+    const attrs = editor.getAttributes('blockquote');
+    return attrs.type || 'default';
+  };
+
+  const currentType = getCurrentType();
+  const isActive = editor.isActive('blockquote');
+
+  return (
+    <div className="editor-dropdown-wrapper">
+      <button
+        type="button"
+        ref={buttonRef}
+        className={`editor-btn ${isActive ? 'active' : ''}`}
+        onClick={openMenu}
+        title="Блок цитаты"
+      >
+        <Quote size={16} />
+        <ChevronDown size={10} />
+      </button>
+
+      {isOpen && (
+        <div 
+          ref={menuRef}
+          className="blockquote-picker-dropdown"
+          style={{ 
+            position: 'fixed',
+            top: position.top,
+            left: position.left
+          }}
+        >
+          <div className="blockquote-picker-title">Выбор типа блока</div>
+          <div className="blockquote-picker-list">
+            {blockquoteTypes.map(({ name, value, icon: Icon, color }) => (
+              <button
+                key={value}
+                type="button"
+                className={`blockquote-picker-item ${currentType === value ? 'active' : ''}`}
+                onClick={() => setBlockquoteType(value)}
+              >
+                <Icon size={16} style={{ color }} />
+                <span>{name}</span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -1022,6 +1147,7 @@ function MenuBar({ editor }) {
   const tableButtonRef = useRef(null);
   const fontFamilyButtonRef = useRef(null);
   const emojiButtonRef = useRef(null);
+  const blockquoteButtonRef = useRef(null);
 
   const setLink = useCallback(() => {
     const previousUrl = editor.getAttributes('link').href;
@@ -1196,9 +1322,7 @@ function MenuBar({ editor }) {
         <MenuButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} title="Нумерованный список">
           <ListOrdered size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleBlockquote().run()} isActive={editor.isActive('blockquote')} title="Цитата">
-          <Quote size={16} />
-        </MenuButton>
+        <BlockquoteDropdown editor={editor} buttonRef={blockquoteButtonRef} />
         <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} title="Код">
           <Code size={16} />
         </MenuButton>
@@ -1261,7 +1385,10 @@ function MenuBar({ editor }) {
 export default function Editor({ content, onChange, placeholder = 'Начните писать...' }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        blockquote: false, // Отключаем стандартный blockquote
+      }),
+      CustomBlockquote, // Используем кастомный blockquote
       Underline,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Highlight.configure({ multicolor: true }),

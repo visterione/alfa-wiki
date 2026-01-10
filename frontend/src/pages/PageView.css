@@ -90,12 +90,37 @@
   margin: 0.5em 0;
 }
 
+/* Типизированные блоки цитат */
 .page-content blockquote {
+  padding: 1em 1em 1em 1.2em;
   margin: 1.5em 0;
-  padding: 1em 1.5em;
-  background: var(--bg-secondary);
-  border-left: 4px solid var(--primary);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-radius: var(--radius-sm);
+  font-style: normal;
+}
+
+.page-content blockquote.blockquote-default {
+  border-left: 4px solid #6B7280;
+  background: #F9FAFB;
+  color: #374151;
+}
+
+.page-content blockquote.blockquote-warning {
+  border-left: 4px solid #F59E0B;
+  background: #FFFBEB;
+  color: #92400E;
+}
+
+.page-content blockquote.blockquote-danger {
+  border-left: 4px solid #EF4444;
+  background: #FEF2F2;
+  color: #991B1B;
+}
+
+/* Обратная совместимость - если нет класса типа, применяем серый стиль по умолчанию */
+.page-content blockquote:not([class*="blockquote-"]) {
+  border-left: 4px solid #6B7280;
+  background: #F9FAFB;
+  color: #374151;
 }
 
 .page-content code {
