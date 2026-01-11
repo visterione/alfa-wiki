@@ -22,6 +22,7 @@ import Courses from './pages/Courses';
 import CourseView from './pages/CourseView';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseEditor from './pages/admin/AdminCourseEditor';
+import Calendar from './pages/Calendar';
 import './index.css';
 
 function ProtectedRoute({ children, adminOnly = false }) {
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="new-page" element={<PageEditor />} />
         <Route path="profile" element={<Profile />} />
         <Route path="favorites" element={<Favorites />} />
+        <Route path="calendar" element={<Calendar />} />
         
         {/* КУРСЫ - добавьте эти строки */}
         <Route path="courses" element={<Courses />} />

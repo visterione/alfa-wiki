@@ -148,6 +148,7 @@
 .sidebar-calendar-day {
   aspect-ratio: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   font-size: 13px;
@@ -158,30 +159,20 @@
   position: relative;
 }
 
+/* ВЫХОДНЫЕ ДНИ - СЕРЫЙ ФОН */
 .sidebar-calendar-day.weekend {
+  background: var(--bg-secondary);
   color: var(--text-tertiary);
 }
 
-.sidebar-calendar-day:not(.empty):hover {
+.sidebar-calendar-day:not(.empty):not(.other-month):hover {
   background: var(--primary-light);
   color: var(--primary);
 }
 
-.sidebar-calendar-day.other-month:hover {
-  background: transparent;
-  color: var(--text-tertiary);
-  opacity: 0.4;
-}
-
-.sidebar-calendar-day.weekend:not(.empty):hover {
+.sidebar-calendar-day.weekend:not(.empty):not(.other-month):hover {
   background: var(--primary-light);
   color: var(--primary);
-}
-
-.sidebar-calendar-day.weekend.other-month:hover {
-  background: transparent;
-  color: var(--text-tertiary);
-  opacity: 0.4;
 }
 
 .sidebar-calendar-day.empty {
@@ -220,6 +211,27 @@
   background: var(--primary-light);
   color: var(--primary);
   font-weight: 600;
+}
+
+/* Индикаторы событий */
+.sidebar-calendar-day .event-indicator {
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 6px;
+  color: var(--primary);
+  font-weight: bold;
+  line-height: 1;
+  letter-spacing: -1px;
+}
+
+.sidebar-calendar-day.today .event-indicator {
+  color: white;
+}
+
+.sidebar-calendar-day.other-month .event-indicator {
+  display: none;
 }
 
 /* Кнопки быстрого доступа */

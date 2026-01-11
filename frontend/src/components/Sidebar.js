@@ -23,7 +23,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Map as MapIcon
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 // Маппинг иконок
@@ -76,8 +76,29 @@ const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель'
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
 function SidebarCalendar() {
+  const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [eventIndicators, setEventIndicators] = useState({});
+
+  // Загрузка индикаторов событий для текущего месяца
+  useEffect(() => {
+    loadEventIndicators();
+  }, [currentDate]);
+
+  const loadEventIndicators = async () => {
+    try {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+      const start = new Date(year, month, 1).toISOString();
+      const end = new Date(year, month + 1, 0).toISOString();
+      
+      const { data } = await calendar.getEventIndicators(start, end);
+      setEventIndicators(data);
+    } catch (error) {
+      console.error('Failed to load event indicators:', error);
+    }
+  };
 
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
@@ -137,6 +158,21 @@ function SidebarCalendar() {
     return date.getMonth() !== currentDate.getMonth();
   };
 
+  const handleDateClick = (date) => {
+    if (!date || isOtherMonth(date)) return;
+    
+    setSelectedDate(date);
+    // Переход на страницу календаря с выбранной датой
+    const dateStr = date.toISOString().split('T')[0];
+    navigate(`/calendar?date=${dateStr}`);
+  };
+
+  const getEventCount = (date) => {
+    if (!date) return 0;
+    const dateKey = date.toISOString().split('T')[0];
+    return eventIndicators[dateKey] || 0;
+  };
+
   const days = getDaysInMonth(currentDate);
 
   return (
@@ -164,13 +200,24 @@ function SidebarCalendar() {
         {days.map((date, index) => {
           const isWeekend = date && (date.getDay() === 0 || date.getDay() === 6);
           const otherMonth = isOtherMonth(date);
+          const eventCount = getEventCount(date);
+          
           return (
             <div 
               key={index}
               className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${otherMonth ? 'other-month' : ''}`}
-              onClick={() => date && !otherMonth && setSelectedDate(date)}
+              onClick={() => handleDateClick(date)}
             >
-              {date ? date.getDate() : ''}
+              {date && (
+                <>
+                  <span className="day-number">{date.getDate()}</span>
+                  {eventCount > 0 && !otherMonth && (
+                    <div className="event-indicator">
+                      {eventCount > 3 ? '3+' : '●'.repeat(eventCount)}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           );
         })}

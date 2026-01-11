@@ -28,7 +28,8 @@ const mapRoutes = require('./routes/map');
 const doctorCardsRoutes = require('./routes/doctor-cards');
 const misProxyRoutes = require('./routes/mis-proxy');
 const coursesRoutes = require('./routes/courses');
-const analysesRoutes = require('./routes/analyses'); // <-- ДОБАВЛЕНО
+const analysesRoutes = require('./routes/analyses');
+const calendarRoutes = require('./routes/calendar');
 
 const app = express();
 
@@ -107,7 +108,8 @@ app.use('/api/map', mapRoutes);
 app.use('/api/doctor-cards', doctorCardsRoutes);
 app.use('/api/mis', misProxyRoutes);
 app.use('/api/courses', coursesRoutes);
-app.use('/api/analyses', analysesRoutes); // <-- ДОБАВЛЕНО
+app.use('/api/analyses', analysesRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

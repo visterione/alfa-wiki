@@ -275,4 +275,37 @@ export const courses = {
   getStats: (courseId) => api.get(`/courses/admin/${courseId}/stats`)
 };
 
+// ═══════════════════════════════════════════════════════════════
+// CALENDAR API
+// ═══════════════════════════════════════════════════════════════
+
+export const calendar = {
+  // Получить события за период
+  getEvents: (params) => api.get('/calendar/events', { params }),
+  
+  // Получить индикаторы событий для календаря
+  getEventIndicators: (start, end) => 
+    api.get('/calendar/event-indicators', { params: { start, end } }),
+  
+  // Получить одно событие
+  getEvent: (id) => api.get(`/calendar/events/${id}`),
+  
+  // Создать событие
+  createEvent: (data) => api.post('/calendar/events', data),
+  
+  // Обновить событие
+  updateEvent: (id, data) => api.put(`/calendar/events/${id}`, data),
+  
+  // Удалить событие
+  deleteEvent: (id) => api.delete(`/calendar/events/${id}`),
+  
+  // Получить интегрированные события (аккредитации, ТО)
+  getIntegratedEvents: (start, end, types) => 
+    api.get('/calendar/integrated-events', { params: { start, end, types } }),
+  
+  // Получить предстоящие события
+  getUpcoming: (days = 7) => 
+    api.get('/calendar/upcoming', { params: { days } })
+};
+
 export default api;

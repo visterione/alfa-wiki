@@ -347,6 +347,124 @@ const Analysis = sequelize.define('Analysis', {
   ]
 });
 
+// === CALENDAR EVENT MODEL ===
+// Добавить после модели Analysis и перед MapMarker
+
+const CalendarEvent = sequelize.define('CalendarEvent', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: { 
+    type: DataTypes.STRING(255), 
+    allowNull: false,
+    comment: 'Название события'
+  },
+  description: { 
+    type: DataTypes.TEXT,
+    comment: 'Описание события'
+  },
+  startTime: { 
+    type: DataTypes.DATE, 
+    allowNull: false,
+    comment: 'Время начала события'
+  },
+  endTime: { 
+    type: DataTypes.DATE, 
+    allowNull: false,
+    comment: 'Время окончания события'
+  },
+  allDay: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    comment: 'Событие на весь день'
+  },
+  eventType: { 
+    type: DataTypes.STRING(50), 
+    allowNull: false,
+    defaultValue: 'personal',
+    comment: 'Тип события: personal, meeting, deadline, reminder, accreditation, vehicle_service, doctor_schedule'
+  },
+  priority: { 
+    type: DataTypes.STRING(20), 
+    defaultValue: 'medium',
+    comment: 'Приоритет: low, medium, high, urgent'
+  },
+  status: { 
+    type: DataTypes.STRING(20), 
+    defaultValue: 'planned',
+    comment: 'Статус: planned, in_progress, completed, cancelled'
+  },
+  color: { 
+    type: DataTypes.STRING(20), 
+    defaultValue: '#4a90e2',
+    comment: 'Цвет события в календаре'
+  },
+  location: { 
+    type: DataTypes.STRING(500),
+    comment: 'Место проведения'
+  },
+  isRecurring: { 
+    type: DataTypes.BOOLEAN, 
+    defaultValue: false,
+    comment: 'Повторяющееся событие'
+  },
+  recurrenceRule: { 
+    type: DataTypes.JSONB,
+    comment: 'Правила повторения: {frequency, interval, endDate, daysOfWeek}'
+  },
+  parentEventId: { 
+    type: DataTypes.UUID,
+    comment: 'ID родительского события для экземпляров повторяющихся событий'
+  },
+  participants: { 
+    type: DataTypes.JSONB, 
+    defaultValue: [],
+    comment: 'Участники: [{userId, status: accepted|declined|pending}]'
+  },
+  reminders: { 
+    type: DataTypes.JSONB, 
+    defaultValue: [],
+    comment: 'Напоминания: [{type: notification|email|telegram, minutesBefore}]'
+  },
+  linkedEntityType: { 
+    type: DataTypes.STRING(50),
+    comment: 'Тип связанной сущности: page, doctor, vehicle, accreditation'
+  },
+  linkedEntityId: { 
+    type: DataTypes.UUID,
+    comment: 'ID связанной сущности'
+  },
+  createdBy: { 
+    type: DataTypes.UUID,
+    comment: 'ID пользователя-создателя'
+  },
+  visibility: { 
+    type: DataTypes.STRING(20), 
+    defaultValue: 'private',
+    comment: 'Видимость: private, shared, public'
+  },
+  sharedWith: { 
+    type: DataTypes.JSONB, 
+    defaultValue: [],
+    comment: 'Список ID пользователей/ролей для shared видимости'
+  },
+  lastReminderSent: { 
+    type: DataTypes.DATE,
+    comment: 'Время последней отправки напоминания'
+  }
+}, { 
+  tableName: 'calendar_events', 
+  timestamps: true,
+  indexes: [
+    { fields: ['startTime'] },
+    { fields: ['endTime'] },
+    { fields: ['createdBy'] },
+    { fields: ['eventType'] },
+    { fields: ['status'] },
+    { fields: ['isRecurring'] },
+    { fields: ['linkedEntityType', 'linkedEntityId'] },
+    { fields: ['parentEventId'] }
+  ]
+});
+
 // === MAP MARKER MODEL ===
 const MapMarker = sequelize.define('MapMarker', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -553,6 +671,11 @@ CourseProgress.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 CourseProgress.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 CourseProgress.belongsTo(Lesson, { foreignKey: 'currentLessonId', as: 'currentLesson' });
 
+// CalendarEvent relationships
+CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+CalendarEvent.belongsTo(CalendarEvent, { foreignKey: 'parentEventId', as: 'parentEvent' });
+CalendarEvent.hasMany(CalendarEvent, { foreignKey: 'parentEventId', as: 'instances' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -577,5 +700,6 @@ module.exports = {
   Lesson,
   TestQuestion,
   CourseProgress,
-  Analysis
+  Analysis,
+  CalendarEvent
 };
