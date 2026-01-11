@@ -159,10 +159,20 @@
   position: relative;
 }
 
-/* ВЫХОДНЫЕ ДНИ - СЕРЫЙ ФОН */
+.sidebar-calendar-day .day-number {
+  font-weight: normal !important;
+  font-size: 13px;
+}
+
+/* ВЫХОДНЫЕ ДНИ - СЕРЫЙ ФОН И СЕРЫЙ ТЕКСТ */
 .sidebar-calendar-day.weekend {
   background: var(--bg-secondary);
   color: var(--text-tertiary);
+}
+
+/* ✅ ДОБАВИТЬ: Серый цвет для цифр в выходные дни */
+.sidebar-calendar-day.weekend .day-number {
+  color: var(--text-tertiary) !important;
 }
 
 .sidebar-calendar-day:not(.empty):not(.other-month):hover {
@@ -188,7 +198,11 @@
 .sidebar-calendar-day.today {
   background: var(--primary);
   color: white;
-  font-weight: 600;
+  font-weight: normal;
+}
+
+.sidebar-calendar-day.today .day-number {
+  color: white !important;
 }
 
 .sidebar-calendar-day.today.weekend {
@@ -204,13 +218,18 @@
 .sidebar-calendar-day.selected:not(.today) {
   background: var(--primary-light);
   color: var(--primary);
-  font-weight: 600;
+  font-weight: normal;
 }
 
 .sidebar-calendar-day.selected.weekend:not(.today) {
   background: var(--primary-light);
   color: var(--primary);
-  font-weight: 600;
+  font-weight: normal;
+}
+
+/* ✅ ДОБАВИТЬ: Синий цвет для выбранного выходного дня */
+.sidebar-calendar-day.selected.weekend:not(.today) .day-number {
+  color: var(--primary) !important;
 }
 
 /* Индикаторы событий */
@@ -224,6 +243,21 @@
   font-weight: bold;
   line-height: 1;
   letter-spacing: -1px;
+}
+
+/* ✅ ДОБАВЛЕНО: Стили для отдельных цветных точек */
+.sidebar-calendar-day .event-indicator .event-dot {
+  font-size: 6px;
+  font-weight: bold;
+  line-height: 1;
+}
+
+/* ✅ ДОБАВЛЕНО: Стили для счетчика "3+" */
+.sidebar-calendar-day .event-indicator .event-count {
+  font-size: 8px;
+  font-weight: bold;
+  color: var(--primary);
+  letter-spacing: -0.5px;
 }
 
 .sidebar-calendar-day.today .event-indicator {

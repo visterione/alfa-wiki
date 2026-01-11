@@ -196,10 +196,11 @@ router.get('/event-indicators', authenticate, async (req, res) => {
         startTime: { [Op.gte]: new Date(start) },
         endTime: { [Op.lte]: new Date(end) }
       },
-      attributes: ['id', 'startTime', 'isRecurring', 'recurrenceRule']
+      // ✅ ДОБАВЛЕНО: Получаем цвет события
+      attributes: ['id', 'startTime', 'color', 'isRecurring', 'recurrenceRule']
     });
 
-    // Подсчет событий по дням
+    // ✅ ИЗМЕНЕНО: Теперь возвращаем массивы с цветами вместо количества
     const indicators = {};
     
     events.forEach(event => {
@@ -207,11 +208,17 @@ router.get('/event-indicators', authenticate, async (req, res) => {
         const instances = generateRecurringInstances(event, start, end);
         instances.forEach(instance => {
           const dateKey = instance.startTime.toISOString().split('T')[0];
-          indicators[dateKey] = (indicators[dateKey] || 0) + 1;
+          if (!indicators[dateKey]) {
+            indicators[dateKey] = [];
+          }
+          indicators[dateKey].push({ color: event.color || '#4a90e2' });
         });
       } else {
         const dateKey = new Date(event.startTime).toISOString().split('T')[0];
-        indicators[dateKey] = (indicators[dateKey] || 0) + 1;
+        if (!indicators[dateKey]) {
+          indicators[dateKey] = [];
+        }
+        indicators[dateKey].push({ color: event.color || '#4a90e2' });
       }
     });
 

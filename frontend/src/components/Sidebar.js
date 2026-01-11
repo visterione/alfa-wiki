@@ -81,6 +81,15 @@ function SidebarCalendar() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [eventIndicators, setEventIndicators] = useState({});
 
+  // ✅ ДОБАВИТЬ: Утилита для форматирования даты в локальном часовом поясе
+  const formatLocalDate = (date) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Загрузка индикаторов событий для текущего месяца
   useEffect(() => {
     loadEventIndicators();
@@ -158,19 +167,22 @@ function SidebarCalendar() {
     return date.getMonth() !== currentDate.getMonth();
   };
 
+  // ✅ ИСПРАВЛЕНО: handleDateClick теперь использует formatLocalDate
   const handleDateClick = (date) => {
     if (!date || isOtherMonth(date)) return;
     
     setSelectedDate(date);
-    // Переход на страницу календаря с выбранной датой
-    const dateStr = date.toISOString().split('T')[0];
+    // Используем локальное форматирование для URL
+    const dateStr = formatLocalDate(date);
     navigate(`/calendar?date=${dateStr}`);
   };
 
-  const getEventCount = (date) => {
-    if (!date) return 0;
-    const dateKey = date.toISOString().split('T')[0];
-    return eventIndicators[dateKey] || 0;
+  // ✅ ИСПРАВЛЕНО: getEventCount теперь возвращает массив цветов
+  const getEventColors = (date) => {
+    if (!date) return [];
+    // Используем локальное форматирование вместо UTC
+    const dateKey = formatLocalDate(date);
+    return eventIndicators[dateKey] || [];
   };
 
   const days = getDaysInMonth(currentDate);
@@ -198,22 +210,34 @@ function SidebarCalendar() {
           </div>
         ))}
         {days.map((date, index) => {
-          const isWeekend = date && (date.getDay() === 0 || date.getDay() === 6);
+          const isWeekend = date ? (date.getDay() === 0 || date.getDay() === 6) : false;
           const otherMonth = isOtherMonth(date);
-          const eventCount = getEventCount(date);
+          const eventColors = getEventColors(date);
           
           return (
             <div 
-              key={index}
+              key={index} 
               className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${otherMonth ? 'other-month' : ''}`}
               onClick={() => handleDateClick(date)}
             >
               {date && (
                 <>
                   <span className="day-number">{date.getDate()}</span>
-                  {eventCount > 0 && !otherMonth && (
-                    <div className="event-indicator">
-                      {eventCount > 3 ? '3+' : '●'.repeat(eventCount)}
+                  {eventColors.length > 0 && !otherMonth && (
+                    <div className="event-indicator" title={`${eventColors.length} событие(й)`}>
+                      {eventColors.length > 3 ? (
+                        <span className="event-count">3+</span>
+                      ) : (
+                        eventColors.map((event, i) => (
+                          <span 
+                            key={i} 
+                            className="event-dot" 
+                            style={{ color: event.color }}
+                          >
+                            ●
+                          </span>
+                        ))
+                      )}
                     </div>
                   )}
                 </>
