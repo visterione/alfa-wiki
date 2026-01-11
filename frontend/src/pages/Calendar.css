@@ -311,7 +311,7 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   UPCOMING EVENTS
+   UPCOMING EVENTS - ИСПРАВЛЕННАЯ ВЕРСИЯ
    ═══════════════════════════════════════════════════════════════ */
 
 .upcoming-events {
@@ -373,6 +373,10 @@
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 4px;
+  /* Обрезка длинных названий */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .upcoming-event-time,
@@ -382,14 +386,14 @@
   gap: 6px;
   font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  /* Также обрежем локацию на всякий случай */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* Найдите в файле frontend/src/pages/Calendar.css секцию MONTH VIEW
-   и ЗАМЕНИТЕ её целиком на этот код: */
-
 /* ═══════════════════════════════════════════════════════════════
-   MONTH VIEW
+   MONTH VIEW - ИСПРАВЛЕННАЯ ВЕРСИЯ
    ═══════════════════════════════════════════════════════════════ */
 
 .month-view {
@@ -425,13 +429,16 @@
 }
 
 .month-view-day {
-  min-height: 120px;
+  height: 150px; /* Фиксированная высота вместо min-height */
   padding: 12px;
   background: var(--bg-primary);
   cursor: pointer;
   transition: var(--transition-fast);
   border-right: 1px solid var(--border-light);
   border-bottom: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* Предотвращаем растягивание */
 }
 
 .month-view-day:nth-child(7n) {
@@ -459,12 +466,16 @@
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 8px;
+  flex-shrink: 0; /* Не сжимается */
 }
 
 .day-events {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow: hidden; /* Скрываем лишние события */
+  flex: 1; /* Занимает оставшееся место */
+  min-height: 0; /* Важно для корректного overflow */
 }
 
 .day-event-item {
@@ -478,6 +489,8 @@
   display: flex;
   gap: 6px;
   align-items: baseline;
+  min-width: 0; /* Критически важно для работы ellipsis в flex */
+  flex-shrink: 0; /* Не сжимается по вертикали */
 }
 
 .day-event-item:hover {
@@ -488,7 +501,7 @@
 .day-event-item .event-time {
   font-weight: 600;
   color: var(--text-secondary);
-  flex-shrink: 0;
+  flex-shrink: 0; /* Время не сжимается */
 }
 
 .day-event-item .event-title {
@@ -496,6 +509,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0; /* Критически важно для работы ellipsis */
+  flex: 1; /* Занимает оставшееся место */
 }
 
 .day-events-more {
@@ -503,97 +518,7 @@
   color: var(--text-tertiary);
   margin-top: 4px;
   font-weight: 600;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   WEEK VIEW
-   ═══════════════════════════════════════════════════════════════ */
-
-.week-view {
-  background: var(--bg-primary);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-.week-view-header {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  background: var(--border-light);
-  border-bottom: 2px solid var(--border-light);
-}
-
-.week-view-day-header {
-  padding: 16px;
-  background: var(--bg-secondary);
-  text-align: center;
-}
-
-.week-view-day-header.today {
-  background: var(--primary-light);
-}
-
-.week-view-day-header .day-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.week-view-day-header .day-number {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.week-view-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-  background: var(--border-light);
-}
-
-.week-view-day {
-  min-height: 400px;
-  padding: 12px;
-  background: var(--bg-primary);
-}
-
-.week-event {
-  padding: 8px;
-  margin-bottom: 8px;
-  border-left: 3px solid var(--primary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.week-event:hover {
-  transform: translateX(2px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.week-event-time {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.week-event-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
-}
-
-.week-event-location {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
+  flex-shrink: 0; /* Не сжимается */
 }
 
 /* ═══════════════════════════════════════════════════════════════
