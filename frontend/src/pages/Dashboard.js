@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [usersList, setUsersList] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -306,6 +307,10 @@ export default function Dashboard() {
   };
 
   const filteredChats = chats.filter(c => c.displayName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredUsers = usersList.filter(u => {
+    const displayName = (u.displayName || u.username || '').toLowerCase();
+    return displayName.includes(userSearchQuery.toLowerCase());
+  });
 
   const getAvatarUrl = (avatar) => {
     if (!avatar) return null;
@@ -685,18 +690,26 @@ export default function Dashboard() {
 
       {/* Modals */}
       {showNewChat && (
-        <div className="modal-overlay" onClick={() => setShowNewChat(false)}>
+        <div className="modal-overlay" onClick={() => { setShowNewChat(false); setUserSearchQuery(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Новый чат</h2><button className="modal-close" onClick={() => setShowNewChat(false)}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Новый чат</h2><button className="modal-close" onClick={() => { setShowNewChat(false); setUserSearchQuery(''); }}><X size={20} /></button></div>
             <div className="modal-body">
+              <div className="chat-search" style={{ marginBottom: '16px' }}>
+                <Search size={18} />
+                <input
+                  placeholder="Поиск по ФИО..."
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                />
+              </div>
               <div className="user-list">
-                {usersList.map(u => (
+                {filteredUsers.map(u => (
                   <div key={u.id} className="user-item" onClick={() => startPrivateChat(u.id)}>
                     <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
                     <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
                   </div>
                 ))}
-                {usersList.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
+                {filteredUsers.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
               </div>
             </div>
           </div>
@@ -704,14 +717,22 @@ export default function Dashboard() {
       )}
 
       {showNewGroup && (
-        <div className="modal-overlay" onClick={() => setShowNewGroup(false)}>
+        <div className="modal-overlay" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={() => setShowNewGroup(false)}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}><X size={20} /></button></div>
             <div className="modal-body">
               <div className="form-group"><label className="form-label">Название группы</label><input className="input" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Название группы" /></div>
               <div className="form-group"><label className="form-label">Участники</label>
+                <div className="chat-search" style={{ marginBottom: '12px' }}>
+                  <Search size={18} />
+                  <input
+                    placeholder="Поиск по ФИО..."
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                  />
+                </div>
                 <div className="user-list">
-                  {usersList.map(u => (
+                  {filteredUsers.map(u => (
                     <div key={u.id} className={`user-item ${selectedUsers.includes(u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u.id)}>
                       <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
                       <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
@@ -721,7 +742,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => setShowNewGroup(false)}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
+            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
           </div>
         </div>
       )}
