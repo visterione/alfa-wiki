@@ -166,6 +166,7 @@ export default function Dashboard() {
       setEditingMessage(null);
       setNewMessage('');
       await loadMessages(activeChat.id);
+      await loadChats();
       toast.success('Сообщение изменено');
     } catch (e) { toast.error('Ошибка редактирования'); }
     finally { setSending(false); }
@@ -176,6 +177,7 @@ export default function Dashboard() {
     try {
       await chat.deleteMessage(activeChat.id, messageId);
       await loadMessages(activeChat.id);
+      await loadChats();
       toast.success('Сообщение удалено');
     } catch (e) { toast.error('Ошибка удаления'); }
   };

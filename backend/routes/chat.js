@@ -296,6 +296,27 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
       editedAt: new Date()
     });
 
+    // Обновляем lastMessage в чате, если это последнее сообщение
+    const lastMessage = await Message.findOne({
+      where: { chatId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    if (lastMessage && lastMessage.id === message.id) {
+      let lastMessagePreview = content.trim();
+      if (message.attachments && message.attachments.length > 0 && !lastMessagePreview) {
+        const allImages = message.attachments.every(a => a.mimeType?.startsWith('image/'));
+        lastMessagePreview = allImages
+          ? `📷 Фото${message.attachments.length > 1 ? ` (${message.attachments.length})` : ''}`
+          : `📎 Файл${message.attachments.length > 1 ? ` (${message.attachments.length})` : ''}`;
+      }
+
+      await Chat.update(
+        { lastMessage: lastMessagePreview },
+        { where: { id: chatId } }
+      );
+    }
+
     const updatedMessage = await Message.findByPk(message.id, {
       include: [
         { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
@@ -337,6 +358,19 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
       attachments: [],
       type: 'system'
     });
+
+    // Обновляем lastMessage в чате, если это последнее сообщение
+    const lastMessage = await Message.findOne({
+      where: { chatId },
+      order: [['createdAt', 'DESC']]
+    });
+
+    if (lastMessage && lastMessage.id === message.id) {
+      await Chat.update(
+        { lastMessage: 'Сообщение удалено' },
+        { where: { id: chatId } }
+      );
+    }
 
     const updatedMessage = await Message.findByPk(message.id, {
       include: [
