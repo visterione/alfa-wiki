@@ -165,6 +165,7 @@ export const chat = {
   list: () => api.get('/chat'),
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
+  getUsers: () => api.get('/chat/users'),
   sendMessage: (chatId, content, attachments = []) => {
     const type = attachments.length > 0 
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
@@ -173,7 +174,7 @@ export const chat = {
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
   
-  startPrivate: (userId) => api.post(`/chat/private/${userId}`),
+  startPrivate: (userId) => api.post('/chat/private', { userId }),
   
   createGroup: (name, memberIds) => api.post('/chat/group', { name, memberIds }),
   updateGroup: (chatId, data) => api.put(`/chat/${chatId}`, data),

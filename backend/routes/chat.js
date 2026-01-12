@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, User } = require('../models');
+const { Chat, ChatMember, Message, User, Role } = require('../models');
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -725,6 +725,26 @@ router.delete('/:chatId/leave', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Leave chat error:', error);
     res.status(500).json({ error: 'Failed to leave chat' });
+  }
+});
+
+// Get users for chat (all authenticated users can access)
+router.get('/users', authenticate, async (req, res) => {
+  try {
+    const users = await User.findAll({
+      where: { isActive: true },
+      include: [{ model: Role, as: 'role' }],
+      attributes: ['id', 'username', 'displayName', 'avatar', 'email', 'isActive'],
+      order: [['displayName', 'ASC']]
+    });
+    
+    // Исключаем текущего пользователя
+    const filteredUsers = users.filter(u => u.id !== req.user.id);
+    
+    res.json(filteredUsers);
+  } catch (error) {
+    console.error('Get chat users error:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
 

@@ -106,7 +106,7 @@ export default function Dashboard() {
 
   const loadUsers = async () => {
     try {
-      const { data } = await usersApi.list();
+      const { data } = await chat.getUsers();
       setUsersList(data.filter(u => u.id !== user.id && u.isActive));
     } catch (e) { console.error('Failed to load users:', e); }
   };
