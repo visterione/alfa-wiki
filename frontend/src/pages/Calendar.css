@@ -522,6 +522,118 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
+   WEEK VIEW
+   ═══════════════════════════════════════════════════════════════ */
+
+.week-view {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+}
+
+.week-view-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border-light);
+}
+
+.week-view-day-header {
+  padding: 16px 12px;
+  text-align: center;
+  border-right: 1px solid var(--border-light);
+}
+
+.week-view-day-header:last-child {
+  border-right: none;
+}
+
+.week-view-day-header.today {
+  background: var(--primary-light);
+}
+
+.week-view-day-header .day-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.week-view-day-header .day-number {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.week-view-day-header.today .day-number {
+  color: var(--primary);
+}
+
+.week-view-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.week-view-day {
+  min-height: 500px;
+  padding: 12px;
+  background: var(--bg-primary);
+  border-right: 1px solid var(--border-light);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.week-view-day:last-child {
+  border-right: none;
+}
+
+.week-view-day.today {
+  background: var(--primary-light);
+}
+
+.week-event {
+  padding: 10px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  background: var(--bg-secondary);
+}
+
+.week-event:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.week-event-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.week-event-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.week-event-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════
    DAY VIEW
    ═══════════════════════════════════════════════════════════════ */
 
