@@ -2,7 +2,7 @@
  * Прямая миграция для создания таблиц курсов
  * Удаляет существующие таблицы и создает заново
  * 
- * Запуск: node scripts/migrateCoursesDirect.js
+ * Запуск: node scripts/migrateCourses.js
  */
 
 require('dotenv').config();

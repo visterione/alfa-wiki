@@ -56,19 +56,29 @@ router.get('/', authenticate, async (req, res) => {
       include: [{
         model: Chat,
         as: 'chat',
-        include: [{
-          model: ChatMember,
-          as: 'members',
-          include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
-        }]
+        include: [
+          {
+            model: ChatMember,
+            as: 'members',
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+          },
+          {
+            model: Message,
+            as: 'messages',
+            limit: 1,
+            order: [['createdAt', 'DESC']],
+            separate: true
+          }
+        ]
       }],
       order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
     });
 
-    const chats = memberships.map(m => {
+    // Получаем количество непрочитанных сообщений для каждого чата
+    const chatsWithUnreadCount = await Promise.all(memberships.map(async (m) => {
       const chat = m.chat;
       const otherMembers = chat.members.filter(member => member.userId !== req.user.id);
-      
+
       let displayName = chat.name;
       let avatar = chat.avatar;
 
@@ -78,11 +88,17 @@ router.get('/', authenticate, async (req, res) => {
         avatar = otherUser.avatar;
       }
 
-      const lastMessage = chat.messages?.[0];
-      const unreadCount = lastMessage ? 
-        (new Date(lastMessage.createdAt) > new Date(m.lastReadAt || 0) ? 1 : 0) : 0;
+      // Считаем точное количество непрочитанных сообщений
+      const lastReadDate = new Date(m.lastReadAt || 0);
+      const unreadCount = await Message.count({
+        where: {
+          chatId: chat.id,
+          createdAt: { [Op.gt]: lastReadDate },
+          senderId: { [Op.ne]: req.user.id } // Не считаем свои сообщения
+        }
+      });
 
-      return {
+      const result = {
         id: chat.id,
         name: chat.name,
         type: chat.type,
@@ -95,9 +111,16 @@ router.get('/', authenticate, async (req, res) => {
         unreadCount,
         createdBy: chat.createdBy
       };
-    });
 
-    res.json(chats);
+      // Добавляем otherUser для приватных чатов
+      if (chat.type === 'private' && otherMembers.length > 0) {
+        result.otherUser = otherMembers[0].user;
+      }
+
+      return result;
+    }));
+
+    res.json(chatsWithUnreadCount);
   } catch (error) {
     console.error('Get chats error:', error);
     res.status(500).json({ error: 'Failed to fetch chats' });
@@ -109,27 +132,24 @@ router.get('/unread/count', authenticate, async (req, res) => {
   try {
     const memberships = await ChatMember.findAll({
       where: { userId: req.user.id },
-      include: [{
-        model: Chat,
-        as: 'chat',
-        include: [{
-          model: Message,
-          as: 'messages',
-          limit: 1,
-          order: [['createdAt', 'DESC']]
-        }]
-      }]
+      attributes: ['chatId', 'lastReadAt']
     });
 
+    // Считаем общее количество непрочитанных сообщений во всех чатах
     let totalUnread = 0;
-    memberships.forEach(m => {
-      const lastMessage = m.chat.messages?.[0];
-      if (lastMessage && new Date(lastMessage.createdAt) > new Date(m.lastReadAt || 0)) {
-        totalUnread++;
-      }
-    });
+    for (const m of memberships) {
+      const lastReadDate = new Date(m.lastReadAt || 0);
+      const unreadCount = await Message.count({
+        where: {
+          chatId: m.chatId,
+          createdAt: { [Op.gt]: lastReadDate },
+          senderId: { [Op.ne]: req.user.id } // Не считаем свои сообщения
+        }
+      });
+      totalUnread += unreadCount;
+    }
 
-    res.json({ count: totalUnread });
+    res.json({ unreadCount: totalUnread });
   } catch (error) {
     console.error('Get unread count error:', error);
     res.status(500).json({ error: 'Failed to get unread count' });
