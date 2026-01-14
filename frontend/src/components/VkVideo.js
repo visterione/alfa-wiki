@@ -5,11 +5,8 @@ import { Node, mergeAttributes } from '@tiptap/core';
 
 /**
  * Расширение TipTap для встраивания VK видео
- * Поддерживает форматы:
- * - https://vkvideo.ru/video-XXXXXXXX_XXXXXXXXX (новый домен)
- * - https://vk.com/video-XXXXXXXX_XXXXXXXXX
- * - https://vk.com/video?z=video-XXXXXXXX_XXXXXXXXX
- * - https://vk.com/clip-XXXXXXXX_XXXXXXXXX
+ * Использует iframe-код для встраивания, полученный от ВКонтакте
+ * Формат iframe: <iframe src="https://vk.com/video_ext.php?oid=...&id=...&hash=..." width="..." height="..." ...></iframe>
  */
 export const VkVideo = Node.create({
   name: 'vkVideo',
@@ -83,33 +80,42 @@ export const VkVideo = Node.create({
 });
 
 /**
- * Парсит URL VK видео и возвращает embed URL
- * @param {string} url - URL VK видео
- * @returns {string|null} - Embed URL или null если URL невалиден
+ * Парсит iframe-код VK видео и извлекает параметры для встраивания
+ * @param {string} iframeCode - HTML код iframe для встраивания VK видео
+ * @returns {object|null} - Объект с параметрами { src, width, height } или null если код невалиден
  */
-export function getVkVideoEmbedUrl(url) {
-  if (!url) return null;
+export function parseVkVideoIframe(iframeCode) {
+  if (!iframeCode) return null;
 
-  // Паттерны для разных форматов VK видео
-  const patterns = [
-    // https://vkvideo.ru/video-XXXXXXXX_XXXXXXXXX (новый домен VK Video)
-    /vkvideo\.ru\/video(-?\d+_\d+)/,
-    // https://vk.com/video-XXXXXXXX_XXXXXXXXX
-    /vk\.com\/video(-?\d+_\d+)/,
-    // https://vk.com/video?z=video-XXXXXXXX_XXXXXXXXX
-    /vk\.com\/video\?z=video(-?\d+_\d+)/,
-    // https://vk.com/clip-XXXXXXXX_XXXXXXXXX (клипы)
-    /vk\.com\/clip(-?\d+_\d+)/,
-  ];
+  // Убираем переносы строк и лишние пробелы
+  const cleanedCode = iframeCode.replace(/[\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match) {
-      const videoId = match[1];
-      // VK embed URL формат
-      return `https://vk.com/video_ext.php?oid=${videoId.split('_')[0]}&id=${videoId.split('_')[1]}&hd=2`;
-    }
+  // Ищем iframe с vk.com/video_ext.php
+  const iframeMatch = cleanedCode.match(/<iframe[^>]*src=["']([^"']*vk\.com\/video_ext\.php[^"']*)["'][^>]*>/i);
+
+  if (!iframeMatch) return null;
+
+  const src = iframeMatch[1];
+
+  // Извлекаем width и height из атрибутов или стиля iframe
+  let width = 640; // значение по умолчанию
+  let height = 360; // значение по умолчанию
+
+  // Пробуем извлечь width атрибут
+  const widthMatch = cleanedCode.match(/width=["']?(\d+)["']?/i);
+  if (widthMatch) {
+    width = parseInt(widthMatch[1]);
   }
 
-  return null;
+  // Пробуем извлечь height атрибут
+  const heightMatch = cleanedCode.match(/height=["']?(\d+)["']?/i);
+  if (heightMatch) {
+    height = parseInt(heightMatch[1]);
+  }
+
+  return {
+    src,
+    width,
+    height
+  };
 }

@@ -20,7 +20,7 @@ import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
 import Blockquote from '@tiptap/extension-blockquote';
 import EmojiPicker from 'emoji-picker-react';
-import { VkVideo, getVkVideoEmbedUrl } from './VkVideo';
+import { VkVideo, parseVkVideoIframe } from './VkVideo';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -1206,20 +1206,23 @@ function MenuBar({ editor }) {
   }, [editor]);
 
   const addVkVideo = useCallback(() => {
-    const url = window.prompt('VK Video URL:');
-    if (!url) return;
+    const iframeCode = window.prompt(
+      'Вставьте iframe-код для встраивания VK видео:\n\n' +
+      'Чтобы получить код:\n' +
+      '1. Откройте видео на vk.com\n' +
+      '2. Нажмите "Поделиться" → "Код для встраивания"\n' +
+      '3. Скопируйте и вставьте код сюда'
+    );
 
-    const embedUrl = getVkVideoEmbedUrl(url);
-    if (!embedUrl) {
-      toast.error('Неверный формат URL VK видео');
+    if (!iframeCode) return;
+
+    const videoParams = parseVkVideoIframe(iframeCode);
+    if (!videoParams) {
+      toast.error('Неверный формат iframe-кода. Вставьте код вида: <iframe src="https://vk.com/video_ext.php?..." ...></iframe>');
       return;
     }
 
-    editor.commands.setVkVideo({ 
-      src: embedUrl,
-      width: 640,
-      height: 360
-    });
+    editor.commands.setVkVideo(videoParams);
     toast.success('VK видео добавлено');
   }, [editor]);
 
