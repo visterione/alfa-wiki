@@ -1,20 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
+import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
   Edit2, Trash2, Smile
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { chat, users as usersApi, media, BASE_URL } from '../services/api';
 import { format, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import EmojiPicker from 'emoji-picker-react';
+import ChatNotification from '../components/ChatNotification';
 import './Dashboard.css';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { socket, notifications, removeNotification } = useSocket();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
@@ -42,7 +45,7 @@ export default function Dashboard() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null });
   const [editingMessage, setEditingMessage] = useState(null);
-  
+
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -97,11 +100,36 @@ export default function Dashboard() {
 
   useEffect(() => { loadChats(); loadUsers(); }, [loadChats]);
 
+  // Listen for new messages from Socket.IO context
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleNewMessage = (data) => {
+      console.log('New message received in Dashboard:', data);
+
+      // Update chats list
+      loadChats();
+
+      // If the message is for the active chat, update messages
+      if (activeChatRef.current && data.message.chatId === activeChatRef.current.id) {
+        loadMessages(activeChatRef.current.id);
+      }
+      // Note: Notification is handled by SocketContext and shown in Layout
+    };
+
+    socket.on('new_message', handleNewMessage);
+
+    return () => {
+      socket.off('new_message', handleNewMessage);
+    };
+  }, [socket, loadChats, loadMessages]);
+
+  // Polling fallback (reduced frequency since we have Socket.IO)
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeChatRef.current) loadMessages(activeChatRef.current.id);
       loadChats();
-    }, 5000);
+    }, 10000); // Increased from 5s to 10s since Socket.IO handles real-time updates
     return () => clearInterval(interval);
   }, [loadChats, loadMessages]);
 
@@ -110,6 +138,23 @@ export default function Dashboard() {
       const { data } = await chat.getUsers();
       setUsersList(data.filter(u => u.id !== user.id && u.isActive));
     } catch (e) { console.error('Failed to load users:', e); }
+  };
+
+  const handleNotificationClick = async (notification) => {
+    removeNotification(notification.id);
+
+    // Find the chat in the list
+    const chatItem = chats.find(c => c.id === notification.chat.id);
+    if (chatItem) {
+      await handleSelectChat(chatItem);
+    } else {
+      // Reload chats if not found
+      await loadChats();
+      const updatedChats = chats.find(c => c.id === notification.chat.id);
+      if (updatedChats) {
+        await handleSelectChat(updatedChats);
+      }
+    }
   };
 
   const handleSelectChat = async (chatItem) => {
@@ -826,6 +871,20 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Chat Notifications - Show only for non-active chats */}
+      <div className="chat-notifications-container">
+        {notifications
+          .filter(n => !activeChat || n.chat.id !== activeChat.id)
+          .map(notification => (
+            <ChatNotification
+              key={notification.id}
+              notification={notification}
+              onClose={() => removeNotification(notification.id)}
+              onClick={() => handleNotificationClick(notification)}
+            />
+          ))}
+      </div>
     </div>
   );
 }

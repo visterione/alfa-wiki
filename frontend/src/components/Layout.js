@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
+import ChatNotification from './ChatNotification';
+import { useSocket } from '../context/SocketContext';
 import './Layout.css';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const { notifications, removeNotification } = useSocket();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // Определяем, является ли устройство мобильным
   useEffect(() => {
@@ -31,6 +36,19 @@ export default function Layout() {
     setSidebarOpen(false);
   };
 
+  const handleNotificationClick = (notification) => {
+    removeNotification(notification.id);
+
+    // Navigate to Dashboard/Chat page
+    navigate('/dashboard');
+
+    // If we need to select specific chat, we can use state
+    // This will be handled in Dashboard component
+  };
+
+  // Filter notifications: don't show if we're already on dashboard
+  const shouldShowNotifications = location.pathname !== '/dashboard';
+
   return (
     <div className="layout">
       <Header 
@@ -54,6 +72,20 @@ export default function Layout() {
           </div>
         </main>
       </div>
+
+      {/* Chat Notifications - Show only when not on dashboard */}
+      {shouldShowNotifications && (
+        <div className="chat-notifications-container">
+          {notifications.map(notification => (
+            <ChatNotification
+              key={notification.id}
+              notification={notification}
+              onClose={() => removeNotification(notification.id)}
+              onClick={() => handleNotificationClick(notification)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

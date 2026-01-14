@@ -260,7 +260,7 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
     let lastMessagePreview = content?.trim() || '';
     if (attachments.length > 0 && !lastMessagePreview) {
       const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
-      lastMessagePreview = allImages 
+      lastMessagePreview = allImages
         ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
         : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
     }
@@ -276,6 +276,45 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
         { model: Message, as: 'replyTo', include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }] }
       ]
     });
+
+    // Get chat info for notification
+    const chat = await Chat.findByPk(chatId, {
+      include: [{
+        model: ChatMember,
+        as: 'members',
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+      }]
+    });
+
+    // Emit new message event to all chat members except sender via Socket.IO
+    const io = req.app.get('io');
+    if (io && chat) {
+      chat.members.forEach(member => {
+        if (member.userId !== req.user.id) {
+          // Get chat display name
+          let chatDisplayName = chat.name;
+          let chatAvatar = chat.avatar;
+
+          if (chat.type === 'private') {
+            const otherMember = chat.members.find(m => m.userId === req.user.id);
+            if (otherMember?.user) {
+              chatDisplayName = otherMember.user.displayName || otherMember.user.username;
+              chatAvatar = otherMember.user.avatar;
+            }
+          }
+
+          io.to(`user:${member.userId}`).emit('new_message', {
+            message: fullMessage,
+            chat: {
+              id: chat.id,
+              type: chat.type,
+              displayName: chatDisplayName,
+              avatar: chatAvatar
+            }
+          });
+        }
+      });
+    }
 
     res.status(201).json(fullMessage);
   } catch (error) {
