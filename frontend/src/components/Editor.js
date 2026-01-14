@@ -20,7 +20,7 @@ import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
 import Blockquote from '@tiptap/extension-blockquote';
 import EmojiPicker from 'emoji-picker-react';
-import { VkVideo, parseVkVideoIframe } from './VkVideo';
+import { LocalVideo } from './LocalVideo';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -1141,7 +1141,9 @@ function TableMenuDropdown({ editor, buttonRef }) {
 
 function MenuBar({ editor }) {
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const imageInputRef = useRef(null);
+  const videoInputRef = useRef(null);
   const highlightButtonRef = useRef(null);
   const colorButtonRef = useRef(null);
   const tableButtonRef = useRef(null);
@@ -1205,25 +1207,44 @@ function MenuBar({ editor }) {
     }
   }, [editor]);
 
-  const addVkVideo = useCallback(() => {
-    const iframeCode = window.prompt(
-      'Вставьте iframe-код для встраивания VK видео:\n\n' +
-      'Чтобы получить код:\n' +
-      '1. Откройте видео на vk.com\n' +
-      '2. Нажмите "Поделиться" → "Код для встраивания"\n' +
-      '3. Скопируйте и вставьте код сюда'
-    );
+  const addLocalVideo = useCallback(() => {
+    videoInputRef.current?.click();
+  }, []);
 
-    if (!iframeCode) return;
+  const handleVideoUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const videoParams = parseVkVideoIframe(iframeCode);
-    if (!videoParams) {
-      toast.error('Неверный формат iframe-кода. Вставьте код вида: <iframe src="https://vk.com/video_ext.php?..." ...></iframe>');
+    if (!file.type.startsWith('video/')) {
+      toast.error('Выберите видео файл');
       return;
     }
 
-    editor.commands.setVkVideo(videoParams);
-    toast.success('VK видео добавлено');
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      toast.error('Максимальный размер видео 100MB');
+      return;
+    }
+
+    setUploadingVideo(true);
+    try {
+      const { data } = await media.upload(file);
+      const videoUrl = `${BASE_URL}/${data.path}`;
+      editor.chain().focus().setLocalVideo({
+        src: videoUrl,
+        width: 640,
+        height: 360
+      }).run();
+      toast.success('Видео загружено');
+    } catch (e) {
+      toast.error('Ошибка загрузки видео');
+      console.error(e);
+    } finally {
+      setUploadingVideo(false);
+      if (videoInputRef.current) {
+        videoInputRef.current.value = '';
+      }
+    }
   }, [editor]);
 
   if (!editor) return null;
@@ -1365,9 +1386,16 @@ function MenuBar({ editor }) {
         <MenuButton onClick={addYoutube} title="YouTube видео">
           <YoutubeIcon size={16} />
         </MenuButton>
-        <MenuButton onClick={addVkVideo} title="VK видео">
-          <Video size={16} />
+        <MenuButton onClick={addLocalVideo} disabled={uploadingVideo} title={uploadingVideo ? "Загрузка видео..." : "Загрузить видео"}>
+          {uploadingVideo ? <div className="loading-spinner-small" /> : <Video size={16} />}
         </MenuButton>
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/mp4,video/webm,video/ogg"
+          hidden
+          onChange={handleVideoUpload}
+        />
         <TableMenuDropdown editor={editor} buttonRef={tableButtonRef} />
       </div>
 
@@ -1407,7 +1435,7 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Superscript,
       FontFamily,
       Youtube.configure({ width: 640, height: 360 }),
-      VkVideo,
+      LocalVideo,
       Placeholder.configure({ placeholder })
     ],
     content,
