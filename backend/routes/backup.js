@@ -14,6 +14,47 @@ const router = express.Router();
 const BACKUP_DIR = process.env.BACKUP_PATH || path.join(__dirname, '..', 'backups');
 const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
 
+// PostgreSQL paths - проверяем переменные окружения или используем стандартные пути Windows
+const getPgBinPath = () => {
+  if (process.env.PG_BIN_PATH) return process.env.PG_BIN_PATH;
+
+  // Для Windows ищем в стандартных местах
+  if (process.platform === 'win32') {
+    const commonPaths = [
+      'C:\\Program Files\\PostgreSQL\\18\\bin',
+      'C:\\Program Files\\PostgreSQL\\17\\bin',
+      'C:\\Program Files\\PostgreSQL\\16\\bin',
+      'C:\\Program Files\\PostgreSQL\\15\\bin',
+      'C:\\Program Files (x86)\\PostgreSQL\\18\\bin',
+      'C:\\Program Files (x86)\\PostgreSQL\\17\\bin',
+      'C:\\Program Files (x86)\\PostgreSQL\\16\\bin',
+      'C:\\Program Files (x86)\\PostgreSQL\\15\\bin',
+    ];
+
+    for (const p of commonPaths) {
+      if (fsSync.existsSync(path.join(p, 'pg_dump.exe'))) {
+        return p;
+      }
+    }
+  }
+
+  // Для Linux/Mac предполагаем, что pg_dump в PATH
+  return null;
+};
+
+const PG_BIN_PATH = getPgBinPath();
+const PG_DUMP = PG_BIN_PATH ? `"${path.join(PG_BIN_PATH, 'pg_dump')}"` : 'pg_dump';
+const PSQL = PG_BIN_PATH ? `"${path.join(PG_BIN_PATH, 'psql')}"` : 'psql';
+
+// Логируем найденный путь
+if (PG_BIN_PATH) {
+  console.log(`✓ PostgreSQL found at: ${PG_BIN_PATH}`);
+  console.log(`✓ Using pg_dump: ${PG_DUMP}`);
+  console.log(`✓ Using psql: ${PSQL}`);
+} else {
+  console.log('⚠ PostgreSQL not found in standard locations, using PATH');
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MULTER SETUP
 // ═══════════════════════════════════════════════════════════════
@@ -112,7 +153,7 @@ function runPsqlRestore(sqlFile) {
     ];
 
     const env = { ...process.env, PGPASSWORD: process.env.DB_PASSWORD };
-    const psql = spawn('psql', args, { env, shell: true });
+    const psql = spawn(PSQL, args, { env, shell: true });
     
     let stderr = '';
     let stdout = '';
@@ -225,7 +266,7 @@ async function createTempBackup() {
     ];
 
     const env = { ...process.env, PGPASSWORD: process.env.DB_PASSWORD };
-    const pgDump = spawn('pg_dump', args, { env, shell: true });
+    const pgDump = spawn(PG_DUMP, args, { env, shell: true });
     
     let stderr = '';
     pgDump.stderr.on('data', (data) => { stderr += data.toString(); });
@@ -325,8 +366,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       ];
 
       const env = { ...process.env, PGPASSWORD: process.env.DB_PASSWORD };
-      const pgDump = spawn('pg_dump', args, { env, shell: true });
-      
+      const pgDump = spawn(PG_DUMP, args, { env, shell: true });
+
       let stderr = '';
       pgDump.stderr.on('data', (data) => { stderr += data.toString(); });
 
