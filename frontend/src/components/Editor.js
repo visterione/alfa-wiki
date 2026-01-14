@@ -1220,9 +1220,9 @@ function MenuBar({ editor }) {
       return;
     }
 
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = 200 * 1024 * 1024; // 200MB
     if (file.size > maxSize) {
-      toast.error('Максимальный размер видео 100MB');
+      toast.error('Максимальный размер видео 200MB');
       return;
     }
 
@@ -1231,9 +1231,7 @@ function MenuBar({ editor }) {
       const { data } = await media.upload(file);
       const videoUrl = `${BASE_URL}/${data.path}`;
       editor.chain().focus().setLocalVideo({
-        src: videoUrl,
-        width: 640,
-        height: 360
+        src: videoUrl
       }).run();
       toast.success('Видео загружено');
     } catch (e) {

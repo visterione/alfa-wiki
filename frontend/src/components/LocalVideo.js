@@ -19,12 +19,6 @@ export const LocalVideo = Node.create({
       src: {
         default: null,
       },
-      width: {
-        default: 640,
-      },
-      height: {
-        default: 360,
-      },
       poster: {
         default: null,
       },
@@ -40,25 +34,23 @@ export const LocalVideo = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
-    const { src, width, height, poster } = HTMLAttributes;
+    const { src, poster } = HTMLAttributes;
 
     return [
       'div',
       {
         'data-local-video': '',
-        style: 'position: relative; margin: 1rem 0; max-width: 100%;'
+        style: 'position: relative; margin: 1rem 0; width: 100%;'
       },
       [
         'video',
         mergeAttributes(
           {
             src,
-            width,
-            height,
             poster,
             controls: '',
             preload: 'metadata',
-            style: 'width: 100%; max-width: 640px; height: auto; border-radius: 8px;',
+            style: 'width: 100%; height: auto; border-radius: 8px;',
           }
         ),
         'Ваш браузер не поддерживает воспроизведение видео.'
