@@ -46,8 +46,47 @@ export default function AdminMedia() {
 
   const copyUrl = (item) => {
     const url = `${BASE_URL}/${item.path}`;
-    navigator.clipboard.writeText(url);
-    toast.success('URL скопирован');
+
+    // Проверяем доступность Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url)
+        .then(() => {
+          toast.success('URL скопирован');
+        })
+        .catch(err => {
+          console.error('Ошибка копирования через Clipboard API:', err);
+          fallbackCopyText(url);
+        });
+    } else {
+      // Fallback для старых браузеров или небезопасных контекстов
+      fallbackCopyText(url);
+    }
+  };
+
+  // Fallback метод копирования
+  const fallbackCopyText = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        toast.success('URL скопирован');
+      } else {
+        toast.error('Не удалось скопировать. Попробуйте выделить и скопировать вручную.');
+      }
+    } catch (err) {
+      console.error('Ошибка копирования:', err);
+      toast.error('Копирование не поддерживается в вашем браузере.');
+    } finally {
+      document.body.removeChild(textArea);
+    }
   };
 
   const getIcon = (mime) => {

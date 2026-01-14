@@ -162,16 +162,54 @@ export default function AdminUsers() {
   const handleDisplayNameChange = (displayName) => {
     const username = generateUniqueUsername(displayName);
     setForm({
-      ...form, 
+      ...form,
       displayName,
       username
     });
   };
 
+  // Fallback метод копирования через создание временного элемента
+  const fallbackCopy = () => {
+    const textArea = document.createElement('textarea');
+    textArea.value = form.password;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        toast.success('Пароль скопирован в буфер обмена');
+      } else {
+        toast.error('Не удалось скопировать пароль. Попробуйте выделить и скопировать вручную.');
+      }
+    } catch (err) {
+      console.error('Ошибка копирования:', err);
+      toast.error('Копирование не поддерживается в вашем браузере. Скопируйте пароль вручную.');
+    } finally {
+      document.body.removeChild(textArea);
+    }
+  };
+
   // Копирование пароля в буфер обмена
   const copyPassword = () => {
-    navigator.clipboard.writeText(form.password);
-    toast.success('Пароль скопирован в буфер обмена');
+    // Проверяем доступность Clipboard API
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(form.password)
+        .then(() => {
+          toast.success('Пароль скопирован в буфер обмена');
+        })
+        .catch(err => {
+          console.error('Ошибка копирования через Clipboard API:', err);
+          fallbackCopy();
+        });
+    } else {
+      // Fallback для старых браузеров или небезопасных контекстов
+      fallbackCopy();
+    }
   };
 
   // Перегенерация пароля

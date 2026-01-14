@@ -1033,11 +1033,42 @@ window.anaApp = (function() {
   function copyLink(id) {
     var item = analyses.find(function(a) { return a.id === id; });
     if (item && item.preparationLink) {
-      navigator.clipboard.writeText(item.preparationLink).then(function() {
+      // Проверяем доступность Clipboard API
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(item.preparationLink).then(function() {
+          showToast('Ссылка скопирована', 'success');
+        }).catch(function(err) {
+          console.error('Ошибка копирования через Clipboard API:', err);
+          fallbackCopyLink(item.preparationLink);
+        });
+      } else {
+        fallbackCopyLink(item.preparationLink);
+      }
+    }
+  }
+
+  function fallbackCopyLink(text) {
+    var textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+
+    try {
+      var successful = document.execCommand('copy');
+      if (successful) {
         showToast('Ссылка скопирована', 'success');
-      }).catch(function() {
-        showToast('Не удалось скопировать', 'error');
-      });
+      } else {
+        showToast('Не удалось скопировать. Попробуйте вручную.', 'error');
+      }
+    } catch (err) {
+      console.error('Ошибка копирования:', err);
+      showToast('Копирование не поддерживается в браузере', 'error');
+    } finally {
+      document.body.removeChild(textArea);
     }
   }
 
