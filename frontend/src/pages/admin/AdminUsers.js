@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw } from 'lucide-react';
-import { users, roles } from '../../services/api';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User } from 'lucide-react';
+import { users, roles, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -30,6 +30,18 @@ export default function AdminUsers() {
       setRoleList(r.data);
     } catch (e) { toast.error('Ошибка загрузки'); }
     finally { setLoading(false); }
+  };
+
+  // Получение URL аватара пользователя
+  const getAvatarUrl = (user) => {
+    if (!user?.avatar) return null;
+    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${BASE_URL}/${user.avatar}`;
   };
 
   // Функция транслитерации кириллицы в латиницу
@@ -317,7 +329,13 @@ export default function AdminUsers() {
                 <tr key={user.id}>
                   <td>
                     <div className="user-cell">
-                      <div className="user-avatar">{user.username[0].toUpperCase()}</div>
+                      <div className="user-avatar">
+                        {getAvatarUrl(user) ? (
+                          <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
+                        ) : (
+                          user.username[0].toUpperCase()
+                        )}
+                      </div>
                       <div>
                         <div className="user-name">{user.displayName || user.username}</div>
                         <div className="user-login">@{user.username}</div>

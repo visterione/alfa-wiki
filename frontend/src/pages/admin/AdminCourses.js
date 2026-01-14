@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  BookOpen, Plus, Edit, Trash2, Eye, EyeOff, 
-  Users, BarChart3, ChevronDown, ChevronUp 
+import {
+  BookOpen, Plus, Edit, Trash2, Eye, EyeOff,
+  Users, BarChart3, ChevronDown, ChevronUp, User
 } from 'lucide-react';
-import { courses } from '../../services/api';
+import { courses, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import './AdminCourses.css';
 
@@ -30,6 +30,18 @@ export default function AdminCourses() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Получение URL аватара пользователя
+  const getAvatarUrl = (user) => {
+    if (!user?.avatar) return null;
+    // Если это старый полный URL с localhost - заменяем на текущий BASE_URL
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${BASE_URL}/${user.avatar}`;
   };
 
   const handleCreate = () => {
@@ -218,9 +230,13 @@ export default function AdminCourses() {
                               <tr key={stat.user.id}>
                                 <td>
                                   <div className="stats-user">
-                                    {stat.user.avatar && (
-                                      <img src={stat.user.avatar} alt="" className="stats-avatar" />
-                                    )}
+                                    <div className="stats-avatar">
+                                      {getAvatarUrl(stat.user) ? (
+                                        <img src={getAvatarUrl(stat.user)} alt="" />
+                                      ) : (
+                                        <User size={16} />
+                                      )}
+                                    </div>
                                     <div>
                                       <div className="stats-user-name">
                                         {stat.user.displayName || stat.user.username}

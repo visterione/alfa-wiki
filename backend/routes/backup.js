@@ -186,14 +186,14 @@ async function copyDir(src, dest) {
 // Проверка целостности бэкапа
 async function validateBackup(extractDir) {
   const errors = [];
-  
-  const sqlFile = path.join(extractDir, 'database.sql');
+
+  const backupFile = path.join(extractDir, 'database.backup');
   try {
-    await fs.access(sqlFile);
+    await fs.access(backupFile);
   } catch {
-    errors.push('Отсутствует файл database.sql');
+    errors.push('Отсутствует файл database.backup');
   }
-  
+
   return errors;
 }
 
@@ -211,7 +211,7 @@ async function createTempBackup() {
   }
   
   // Дамп базы
-  const tempDump = path.join(tempBackupDir, 'database.sql');
+  const tempDump = path.join(tempBackupDir, 'database.backup');
   await new Promise((resolve, reject) => {
     const args = [
       '-h', process.env.DB_HOST || 'localhost',
@@ -308,7 +308,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup-${timestamp}.zip`;
     const filepath = path.join(BACKUP_DIR, filename);
-    const dumpFile = path.join(BACKUP_DIR, `db-${timestamp}.sql`);
+    const dumpFile = path.join(BACKUP_DIR, `db-${timestamp}.backup`);
 
     console.log('📦 Creating database dump...');
     
@@ -355,8 +355,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
       archive.on('error', reject);
 
       archive.pipe(output);
-      archive.file(dumpFile, { name: 'database.sql' });
-      
+      archive.file(dumpFile, { name: 'database.backup' });
+
       fs.access(UPLOADS_DIR)
         .then(() => {
           console.log('📁 Adding uploads folder...');
@@ -449,15 +449,15 @@ router.post('/restore/:filename', authenticate, requireAdmin, async (req, res) =
 
     // 4. Восстановление БД
     if (restoreDb) {
-      const sqlFile = path.join(extractDir, 'database.sql');
+      const backupFile = path.join(extractDir, 'database.backup');
       try {
         console.log('🗄️  Restoring database (full clean and restore)...');
         
         // КРИТИЧЕСКИ ВАЖНО: полная очистка
         await cleanDatabase();
-        
+
         // Восстанавливаем
-        const { stdout, stderr } = await runPsqlRestore(sqlFile);
+        const { stdout, stderr } = await runPsqlRestore(backupFile);
         
         results.database = 'success';
         console.log('✅ Database restored successfully');
