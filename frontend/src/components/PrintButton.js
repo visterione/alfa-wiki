@@ -6,6 +6,10 @@ export default function PrintButton({ contentRef, title = 'Документ', cl
   const handlePrint = useReactToPrint({
     contentRef: contentRef,
     documentTitle: title,
+    onPrintError: (error) => {
+      // Игнорируем ошибку, если пользователь отменил печать
+      console.log('Печать отменена или произошла ошибка:', error);
+    },
     pageStyle: `
       @page {
         size: A4;
