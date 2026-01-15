@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [addMemberSearchQuery, setAddMemberSearchQuery] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -405,7 +406,14 @@ export default function Dashboard() {
     return currentDate.toDateString() !== previousDate.toDateString();
   };
 
-  const availableUsersToAdd = activeChat?.type === 'group' ? usersList.filter(u => !activeChat.members?.find(m => m.userId === u.id)) : [];
+  const availableUsersToAdd = activeChat?.type === 'group'
+    ? usersList.filter(u => {
+        const isNotMember = !activeChat.members?.find(m => m.userId === u.id);
+        const displayName = (u.displayName || u.username || '').toLowerCase();
+        const matchesSearch = displayName.includes(addMemberSearchQuery.toLowerCase());
+        return isNotMember && matchesSearch;
+      })
+    : [];
   const fixUrl = (urlOrPath) => getAvatarUrl(urlOrPath);
   const getChatAvatar = (c) => c ? (c.type === 'group' ? c.avatar : c.otherUser?.avatar) : null;
   const isGroupCreator = activeChat?.type === 'group' && activeChat.createdBy === user.id;
@@ -795,10 +803,18 @@ export default function Dashboard() {
       )}
 
       {showAddMember && (
-        <div className="modal-overlay" onClick={() => setShowAddMember(false)}>
+        <div className="modal-overlay" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Добавить участника</h2><button className="modal-close" onClick={() => setShowAddMember(false)}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Добавить участника</h2><button className="modal-close" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); }}><X size={20} /></button></div>
             <div className="modal-body">
+              <div className="chat-search" style={{ marginBottom: '16px' }}>
+                <Search size={18} />
+                <input
+                  placeholder="Поиск по ФИО..."
+                  value={addMemberSearchQuery}
+                  onChange={(e) => setAddMemberSearchQuery(e.target.value)}
+                />
+              </div>
               <div className="user-list">
                 {availableUsersToAdd.map(u => (
                   <div key={u.id} className="user-item" onClick={() => addMemberToGroup(u.id)}>
