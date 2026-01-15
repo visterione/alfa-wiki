@@ -163,6 +163,7 @@ export const backup = {
 // Chat
 export const chat = {
   list: () => api.get('/chat'),
+  search: (query) => api.get('/chat/search', { params: { q: query } }),
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   getUsers: () => api.get('/chat/users'),

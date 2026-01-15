@@ -23,6 +23,8 @@ export default function Dashboard() {
   const [activeChat, setActiveChat] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -46,6 +48,10 @@ export default function Dashboard() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null });
   const [editingMessage, setEditingMessage] = useState(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  const [searchQueryForChat, setSearchQueryForChat] = useState('');
+  const [searchMatches, setSearchMatches] = useState([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -100,6 +106,111 @@ export default function Dashboard() {
   };
 
   useEffect(() => { loadChats(); loadUsers(); }, [loadChats]);
+
+  // Find all matching messages when search query is set
+  useEffect(() => {
+    if (!searchQueryForChat || messages.length === 0) {
+      setSearchMatches([]);
+      setCurrentMatchIndex(0);
+      setHighlightedMessageId(null);
+      return;
+    }
+
+    const searchLower = searchQueryForChat.toLowerCase();
+
+    // Ищем ВСЕ сообщения с совпадениями
+    const foundMessages = messages.filter(msg => {
+      if (msg.type === 'system') return false;
+
+      // Поиск по содержимому
+      if (msg.content?.toLowerCase().includes(searchLower)) return true;
+
+      // Поиск по названиям файлов
+      if (msg.attachments && msg.attachments.length > 0) {
+        return msg.attachments.some(att =>
+          att.name?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return false;
+    });
+
+    setSearchMatches(foundMessages);
+
+    if (foundMessages.length > 0) {
+      setCurrentMatchIndex(0);
+      setHighlightedMessageId(foundMessages[0].id);
+
+      // Wait for DOM to update, then scroll to first match
+      setTimeout(() => {
+        const messageElement = document.getElementById(`message-${foundMessages[0].id}`);
+        if (messageElement) {
+          messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [messages, searchQueryForChat]);
+
+  // Scroll to current match when index changes
+  const scrollToMatch = useCallback((index) => {
+    if (searchMatches.length === 0) return;
+
+    const match = searchMatches[index];
+    if (!match) return;
+
+    setHighlightedMessageId(match.id);
+    setCurrentMatchIndex(index);
+
+    setTimeout(() => {
+      const messageElement = document.getElementById(`message-${match.id}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
+  }, [searchMatches]);
+
+  const goToNextMatch = () => {
+    if (searchMatches.length === 0) return;
+    const nextIndex = (currentMatchIndex + 1) % searchMatches.length;
+    scrollToMatch(nextIndex);
+  };
+
+  const goToPrevMatch = () => {
+    if (searchMatches.length === 0) return;
+    const prevIndex = currentMatchIndex === 0 ? searchMatches.length - 1 : currentMatchIndex - 1;
+    scrollToMatch(prevIndex);
+  };
+
+  const closeSearch = () => {
+    setSearchQueryForChat('');
+    setSearchMatches([]);
+    setCurrentMatchIndex(0);
+    setHighlightedMessageId(null);
+  };
+
+  // Keyboard navigation for search
+  useEffect(() => {
+    if (searchMatches.length === 0) return;
+
+    const handleKeyDown = (e) => {
+      // F3 or Ctrl+G - next match
+      if (e.key === 'F3' || (e.ctrlKey && e.key === 'g')) {
+        e.preventDefault();
+        if (e.shiftKey) {
+          goToPrevMatch();
+        } else {
+          goToNextMatch();
+        }
+      }
+      // Escape - close search
+      if (e.key === 'Escape') {
+        closeSearch();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchMatches.length, currentMatchIndex]);
 
   // Listen for new messages from Socket.IO context
   useEffect(() => {
@@ -158,12 +269,14 @@ export default function Dashboard() {
     }
   };
 
-  const handleSelectChat = async (chatItem) => {
+  const handleSelectChat = async (chatItem, searchTerm = '') => {
     setActiveChat(chatItem);
     setShowChatInfo(false);
     setAttachments([]);
     setEditingMessage(null);
     setNewMessage('');
+    setSearchQueryForChat(searchTerm);
+    setHighlightedMessageId(null);
     await loadMessages(chatItem.id);
   };
 
@@ -354,7 +467,44 @@ export default function Dashboard() {
     setSelectedUsers(prev => prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]);
   };
 
-  const filteredChats = chats.filter(c => c.displayName?.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Поиск по чатам (название чата или содержимое сообщений)
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults([]);
+        return;
+      }
+
+      setSearching(true);
+      try {
+        // Ищем по содержимому сообщений через API
+        const { data } = await chat.search(searchQuery);
+        setSearchResults(data);
+      } catch (e) {
+        console.error('Search error:', e);
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
+      }
+    };
+
+    const debounceTimeout = setTimeout(performSearch, 300);
+    return () => clearTimeout(debounceTimeout);
+  }, [searchQuery]);
+
+  // Фильтруем чаты: если есть поисковый запрос, показываем результаты поиска по сообщениям + фильтр по названию
+  const filteredChats = searchQuery.trim()
+    ? [
+        // Чаты, найденные по содержимому сообщений
+        ...searchResults,
+        // Чаты, найденные по названию (но не дублируем те, что уже есть в searchResults)
+        ...chats.filter(c =>
+          c.displayName?.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          !searchResults.find(r => r.id === c.id)
+        )
+      ]
+    : chats;
+
   const filteredUsers = usersList.filter(u => {
     const displayName = (u.displayName || u.username || '').toLowerCase();
     return displayName.includes(userSearchQuery.toLowerCase());
@@ -560,18 +710,24 @@ export default function Dashboard() {
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
           </div>
-          <div className="chat-search"><Search size={18} /><input placeholder="Поиск..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+          <div className="chat-search"><Search size={18} /><input placeholder="Поиск по чатам, сообщениям и файлам..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
           <div className="chat-list">
-            {loading ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(chatItem => (
-              <div key={chatItem.id} className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(chatItem)}>
-                <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
-                <div className="chat-item-content">
-                  <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
-                  <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
+            {(loading || searching) ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(chatItem => {
+              // Определяем, был ли чат найден по содержимому сообщений
+              const foundByMessage = searchResults.find(r => r.id === chatItem.id);
+              const searchTerm = foundByMessage ? searchQuery : '';
+
+              return (
+                <div key={chatItem.id} className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(chatItem, searchTerm)}>
+                  <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
+                  <div className="chat-item-content">
+                    <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
+                    <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
+                  </div>
+                  {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
                 </div>
-                {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
-              </div>
-            )) : <div className="chat-empty">Нет чатов</div>}
+              );
+            }) : <div className="chat-empty">Нет чатов</div>}
           </div>
         </div>
 
@@ -587,6 +743,19 @@ export default function Dashboard() {
                 </div>
                 {activeChat.type === 'group' && <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}><MoreVertical size={20} /></button>}
               </div>
+              {searchMatches.length > 0 && (
+                <div className="chat-search-bar">
+                  <div className="chat-search-info">
+                    <Search size={16} />
+                    <span>{currentMatchIndex + 1} из {searchMatches.length}</span>
+                  </div>
+                  <div className="chat-search-controls">
+                    <button className="btn-icon-chat sm" onClick={goToPrevMatch} title="Предыдущее"><ChevronLeft size={18} /></button>
+                    <button className="btn-icon-chat sm" onClick={goToNextMatch} title="Следующее"><ChevronRight size={18} /></button>
+                    <button className="btn-icon-chat sm" onClick={closeSearch} title="Закрыть поиск"><X size={18} /></button>
+                  </div>
+                </div>
+              )}
               <div className="chat-messages">
                 {messages.length > 0 ? messages.map((msg, idx) => {
                   const isOwn = msg.senderId === user.id;
@@ -606,8 +775,9 @@ export default function Dashboard() {
                       {msg.type === 'system' ? (
                         <div className="message-system">{msg.content}</div>
                       ) : (
-                        <div 
-                          className={`message ${isOwn ? 'own' : ''}`}
+                        <div
+                          id={`message-${msg.id}`}
+                          className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
                           onContextMenu={(e) => handleContextMenu(e, msg)}
                         >
                           {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}

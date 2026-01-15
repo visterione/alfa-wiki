@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
@@ -46,6 +46,130 @@ const avatarStorage = multer.diskStorage({
 const avatarUpload = multer({ 
   storage: avatarStorage,
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+});
+
+// Search chats by name or message content
+router.get('/search', authenticate, async (req, res) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || !q.trim()) {
+      return res.json([]);
+    }
+
+    const searchQuery = q.trim().toLowerCase();
+
+    // Получаем чаты пользователя
+    const memberships = await ChatMember.findAll({
+      where: { userId: req.user.id },
+      attributes: ['chatId']
+    });
+
+    const chatIds = memberships.map(m => m.chatId);
+
+    if (chatIds.length === 0) {
+      return res.json([]);
+    }
+
+    // Ищем по содержимому сообщений и названиям файлов
+    const messagesWithChats = await Message.findAll({
+      where: {
+        chatId: { [Op.in]: chatIds },
+        [Op.or]: [
+          // Поиск по содержимому сообщения
+          { content: { [Op.iLike]: `%${searchQuery}%` } },
+          // Поиск по названиям файлов в attachments (JSONB поле)
+          // Используем CAST для преобразования JSONB в текст для поиска
+          Sequelize.where(
+            Sequelize.cast(Sequelize.col('attachments'), 'text'),
+            { [Op.iLike]: `%${searchQuery}%` }
+          )
+        ],
+        type: { [Op.ne]: 'system' }
+      },
+      attributes: ['chatId'],
+      group: ['chatId'],
+      raw: true
+    });
+
+    const chatIdsWithMessages = messagesWithChats.map(m => m.chatId);
+
+    // Получаем полную информацию о найденных чатах
+    const chatsData = await ChatMember.findAll({
+      where: {
+        userId: req.user.id,
+        chatId: { [Op.in]: chatIdsWithMessages }
+      },
+      include: [{
+        model: Chat,
+        as: 'chat',
+        include: [
+          {
+            model: ChatMember,
+            as: 'members',
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+          },
+          {
+            model: Message,
+            as: 'messages',
+            limit: 1,
+            order: [['createdAt', 'DESC']],
+            separate: true
+          }
+        ]
+      }],
+      order: [[{ model: Chat, as: 'chat' }, 'lastMessageAt', 'DESC NULLS LAST']]
+    });
+
+    // Форматируем результат
+    const chatsWithUnreadCount = await Promise.all(chatsData.map(async (m) => {
+      const chat = m.chat;
+      const otherMembers = chat.members.filter(member => member.userId !== req.user.id);
+
+      let displayName = chat.name;
+      let avatar = chat.avatar;
+
+      if (chat.type === 'private' && otherMembers.length > 0) {
+        const otherUser = otherMembers[0].user;
+        displayName = otherUser.displayName || otherUser.username;
+        avatar = otherUser.avatar;
+      }
+
+      const lastReadDate = new Date(m.lastReadAt || 0);
+      const unreadCount = await Message.count({
+        where: {
+          chatId: chat.id,
+          createdAt: { [Op.gt]: lastReadDate },
+          senderId: { [Op.ne]: req.user.id }
+        }
+      });
+
+      const result = {
+        id: chat.id,
+        name: chat.name,
+        type: chat.type,
+        avatar: chat.avatar,
+        displayName,
+        avatarUrl: avatar,
+        lastMessage: chat.lastMessage,
+        lastMessageAt: chat.lastMessageAt,
+        members: chat.members,
+        unreadCount,
+        createdBy: chat.createdBy
+      };
+
+      if (chat.type === 'private' && otherMembers.length > 0) {
+        result.otherUser = otherMembers[0].user;
+      }
+
+      return result;
+    }));
+
+    res.json(chatsWithUnreadCount);
+  } catch (error) {
+    console.error('Search chats error:', error);
+    res.status(500).json({ error: 'Failed to search chats' });
+  }
 });
 
 // Get user's chats
