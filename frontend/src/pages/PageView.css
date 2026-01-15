@@ -194,3 +194,46 @@
   gap: 8px;
   margin-top: 24px;
 }
+
+/* Стили для печати */
+.printable-header {
+  display: none;
+}
+
+@media print {
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page-header {
+    display: none !important;
+  }
+
+  .printable-header {
+    display: block !important;
+    margin-bottom: 24px;
+  }
+
+  .printable-header h1 {
+    font-size: 28px !important;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+  }
+
+  .printable-header .page-description {
+    font-size: 14px !important;
+    color: #6b7280;
+  }
+
+  .card {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+  }
+
+  .page-content video,
+  .page-content iframe {
+    display: none !important;
+  }
+}

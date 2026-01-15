@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Edit, ArrowLeft, Star, StarOff } from 'lucide-react';
 import { pages, favorites } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import PrintButton from '../components/PrintButton';
 import './PageView.css';
 
 export default function PageView() {
@@ -16,6 +17,7 @@ export default function PageView() {
   const [error, setError] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const printRef = useRef();
 
   // Cleanup функция
   const cleanupScripts = useCallback(() => {
@@ -174,7 +176,8 @@ export default function PageView() {
           )}
         </div>
         <div className="page-actions">
-          <button 
+          <PrintButton contentRef={printRef} title={page.title} />
+          <button
             className={`btn btn-ghost btn-icon ${favoriteLoading ? 'loading' : ''}`}
             onClick={toggleFavorite}
             title={isFavorite ? 'Убрать из избранного' : 'В избранное'}
@@ -195,12 +198,21 @@ export default function PageView() {
         </div>
       </div>
 
-      <div className="card">
-        <div 
-          ref={contentRefCallback}
-          className="page-content" 
-          dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }} 
-        />
+      <div ref={printRef}>
+        <div className="printable-header">
+          <h1>{page.title}</h1>
+          {page.description && (
+            <p className="page-description">{page.description}</p>
+          )}
+        </div>
+
+        <div className="card">
+          <div
+            ref={contentRefCallback}
+            className="page-content"
+            dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }}
+          />
+        </div>
       </div>
 
       {page.keywords && page.keywords.length > 0 && (

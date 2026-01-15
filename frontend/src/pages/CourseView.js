@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  BookOpen, ChevronLeft, ChevronRight, CheckCircle, 
+import {
+  BookOpen, ChevronLeft, ChevronRight, CheckCircle,
   Circle, PlayCircle, ArrowLeft, Award
 } from 'lucide-react';
 import { courses } from '../services/api';
 import toast from 'react-hot-toast';
+import PrintButton from '../components/PrintButton';
 import './CourseView.css';
 
 export default function CourseView() {
@@ -16,6 +17,7 @@ export default function CourseView() {
   const [loading, setLoading] = useState(true);
   const [lessonContent, setLessonContent] = useState('');
   const [showTest, setShowTest] = useState(false);
+  const printRef = useRef();
 
   useEffect(() => {
     loadCourse();
@@ -220,19 +222,28 @@ export default function CourseView() {
         {/* Основной контент */}
         <div className="course-content">
           <div className="lesson-header">
-            <h2>{currentLesson?.title}</h2>
-            {isCurrentCompleted && (
-              <div className="lesson-completed-badge">
-                <CheckCircle size={16} />
-                Завершено
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h2>{currentLesson?.title}</h2>
+              {isCurrentCompleted && (
+                <div className="lesson-completed-badge">
+                  <CheckCircle size={16} />
+                  Завершено
+                </div>
+              )}
+            </div>
+            <PrintButton
+              contentRef={printRef}
+              title={`${course.title} - ${currentLesson?.title}`}
+            />
           </div>
 
-          <div 
-            className="lesson-content"
-            dangerouslySetInnerHTML={{ __html: lessonContent }}
-          />
+          <div ref={printRef}>
+            <h2 className="printable-lesson-title">{currentLesson?.title}</h2>
+            <div
+              className="lesson-content"
+              dangerouslySetInnerHTML={{ __html: lessonContent }}
+            />
+          </div>
 
           <div className="lesson-navigation">
             <button
