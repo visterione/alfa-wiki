@@ -41,9 +41,11 @@ router.get('/', authenticate, async (req, res) => {
       return items.filter(item => {
         if (parentHidden || !item.isVisible) return false;
         
-        // Role check
+        // Role check - проверяем доступ по всем ролям пользователя
         if (!req.user.isAdmin && item.allowedRoles?.length > 0) {
-          if (!item.allowedRoles.includes(req.user.roleId)) return false;
+          const userRoleIds = req.user.roles?.map(r => r.id) || [];
+          const hasAccess = userRoleIds.some(roleId => item.allowedRoles.includes(roleId));
+          if (!hasAccess) return false;
         }
         
         // Draft check for pages

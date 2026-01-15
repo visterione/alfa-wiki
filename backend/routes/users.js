@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { User, Role } = require('../models');
+const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { send2FADisabledNotification } = require('../services/emailService');
 
@@ -11,12 +11,17 @@ const router = express.Router();
 router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const users = await User.findAll({
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] },
       order: [['createdAt', 'DESC']]
     });
     res.json(users);
   } catch (error) {
+    console.error('Get users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
@@ -25,12 +30,17 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 router.get('/:id', authenticate, requireAdmin, async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
     res.json(user);
   } catch (error) {
+    console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
@@ -46,7 +56,7 @@ router.post('/', authenticate, requireAdmin, [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, isAdmin, isActive, twoFactorEnabled } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -59,7 +69,7 @@ router.post('/', authenticate, requireAdmin, [
       roleId = null;
     }
 
-    // Если roleId передан, проверяем что такая роль существует
+    // Если roleId передан, проверяем что такая роль существует (для обратной совместимости)
     if (roleId) {
       const roleExists = await Role.findByPk(roleId);
       if (!roleExists) {
@@ -67,10 +77,30 @@ router.post('/', authenticate, requireAdmin, [
       }
     }
 
+    // Проверяем множественные роли
+    if (roleIds && Array.isArray(roleIds) && roleIds.length > 0) {
+      for (const rId of roleIds) {
+        const roleExists = await Role.findByPk(rId);
+        if (!roleExists) {
+          return res.status(400).json({ error: `Роль с ID ${rId} не найдена` });
+        }
+      }
+    }
+
+    // Проверяем медцентры
+    if (medCenterIds && Array.isArray(medCenterIds) && medCenterIds.length > 0) {
+      for (const mcId of medCenterIds) {
+        const medCenterExists = await MedCenter.findByPk(mcId);
+        if (!medCenterExists) {
+          return res.status(400).json({ error: `Медцентр с ID ${mcId} не найден` });
+        }
+      }
+    }
+
     // Если включена 2FA, проверяем наличие email
     if (twoFactorEnabled && !email) {
-      return res.status(400).json({ 
-        error: 'Для включения двухфакторной аутентификации необходимо указать email' 
+      return res.status(400).json({
+        error: 'Для включения двухфакторной аутентификации необходимо указать email'
       });
     }
 
@@ -87,8 +117,26 @@ router.post('/', authenticate, requireAdmin, [
       twoFactorEnabled: twoFactorEnabled || false
     });
 
+    // Добавляем множественные роли
+    if (roleIds && Array.isArray(roleIds) && roleIds.length > 0) {
+      await Promise.all(
+        roleIds.map(rId => UserRole.create({ userId: user.id, roleId: rId }))
+      );
+    }
+
+    // Добавляем медцентры
+    if (medCenterIds && Array.isArray(medCenterIds) && medCenterIds.length > 0) {
+      await Promise.all(
+        medCenterIds.map(mcId => UserMedCenter.create({ userId: user.id, medCenterId: mcId }))
+      );
+    }
+
     const created = await User.findByPk(user.id, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
 
@@ -105,7 +153,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, isAdmin, isActive, twoFactorEnabled } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -126,10 +174,30 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
       }
     }
 
+    // Проверяем множественные роли
+    if (roleIds && Array.isArray(roleIds)) {
+      for (const rId of roleIds) {
+        const roleExists = await Role.findByPk(rId);
+        if (!roleExists) {
+          return res.status(400).json({ error: `Роль с ID ${rId} не найдена` });
+        }
+      }
+    }
+
+    // Проверяем медцентры
+    if (medCenterIds && Array.isArray(medCenterIds)) {
+      for (const mcId of medCenterIds) {
+        const medCenterExists = await MedCenter.findByPk(mcId);
+        if (!medCenterExists) {
+          return res.status(400).json({ error: `Медцентр с ID ${mcId} не найден` });
+        }
+      }
+    }
+
     // Если пытаются включить 2FA, проверяем наличие email
     if (twoFactorEnabled && !email && !user.email) {
-      return res.status(400).json({ 
-        error: 'Для включения двухфакторной аутентификации необходимо указать email' 
+      return res.status(400).json({
+        error: 'Для включения двухфакторной аутентификации необходимо указать email'
       });
     }
 
@@ -165,8 +233,36 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 
     await user.update(updateData);
 
+    // Обновляем множественные роли
+    if (roleIds !== undefined && Array.isArray(roleIds)) {
+      // Удаляем старые связи
+      await UserRole.destroy({ where: { userId: user.id } });
+      // Создаём новые
+      if (roleIds.length > 0) {
+        await Promise.all(
+          roleIds.map(rId => UserRole.create({ userId: user.id, roleId: rId }))
+        );
+      }
+    }
+
+    // Обновляем медцентры
+    if (medCenterIds !== undefined && Array.isArray(medCenterIds)) {
+      // Удаляем старые связи
+      await UserMedCenter.destroy({ where: { userId: user.id } });
+      // Создаём новые
+      if (medCenterIds.length > 0) {
+        await Promise.all(
+          medCenterIds.map(mcId => UserMedCenter.create({ userId: user.id, medCenterId: mcId }))
+        );
+      }
+    }
+
     const updated = await User.findByPk(user.id, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
 
@@ -192,6 +288,19 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
     res.json({ message: 'Пользователь удалён' });
   } catch (error) {
     res.status(500).json({ error: 'Ошибка удаления пользователя' });
+  }
+});
+
+// Get all medical centers
+router.get('/medcenters/list', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const medCenters = await MedCenter.findAll({
+      order: [['name', 'ASC']]
+    });
+    res.json(medCenters);
+  } catch (error) {
+    console.error('Get medcenters error:', error);
+    res.status(500).json({ error: 'Ошибка загрузки медицинских центров' });
   }
 });
 

@@ -522,90 +522,92 @@ export default function AdminUsers() {
             </div>
             <div className="modal-body">
               <div className="form-grid">
-                {!modal.user && (
+                {!modal.user ? (
+                  // Для нового пользователя
                   <>
                     <div className="form-group">
                       <label className="form-label">Отображаемое имя *</label>
-                      <input
-                        className="input"
-                        value={form.displayName}
-                        onChange={e => handleDisplayNameChange(e.target.value)}
-                        placeholder="Иванов Иван Иванович"
-                        autoFocus
+                    <input 
+                      className="input" 
+                      value={form.displayName} 
+                      onChange={e => handleDisplayNameChange(e.target.value)}
+                      placeholder="Иванов Иван Иванович"
+                      autoFocus
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      На основе имени будет автоматически сгенерирован уникальный логин
+                    </small>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label className="form-label">Логин (автоматически)</label>
+                    <input 
+                      className="input" 
+                      value={form.username} 
+                      onChange={e => setForm({...form, username: e.target.value})}
+                      placeholder="ivanov_i_i"
+                      style={{ background: 'var(--bg-secondary)' }}
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      Сгенерирован автоматически, можно изменить вручную
+                    </small>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Пароль (автоматически)</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input 
+                        className="input" 
+                        type="text" 
+                        value={form.password} 
+                        readOnly
+                        style={{ 
+                          flex: 1, 
+                          background: 'var(--bg-secondary)',
+                          fontFamily: 'monospace',
+                          fontSize: 14
+                        }}
                       />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        На основе имени будет автоматически сгенерирован уникальный логин
-                      </small>
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={copyPassword}
+                        title="Скопировать пароль"
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-secondary" 
+                        onClick={regeneratePassword}
+                        title="Сгенерировать новый пароль"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
+                    <small style={{ color: 'var(--warning)', marginTop: 4, display: 'block' }}>
+                      ⚠️ Скопируйте пароль - он больше не будет показан
+                    </small>
+                  </div>
 
-                    <div className="form-group">
-                      <label className="form-label">Логин (автоматически)</label>
-                      <input
-                        className="input"
-                        value={form.username}
-                        onChange={e => setForm({...form, username: e.target.value})}
-                        placeholder="ivanov_i_i"
-                        style={{ background: 'var(--bg-secondary)' }}
-                      />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        Сгенерирован автоматически, можно изменить вручную
-                      </small>
-                    </div>
+                  <div className="form-group">
+                    <label className="form-label">Email *</label>
+                    <input 
+                      className="input" 
+                      type="email" 
+                      value={form.email} 
+                      onChange={e => setForm({...form, email: e.target.value})}
+                      placeholder="user@example.com"
+                    />
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      Email обязателен для двухфакторной аутентификации
+                    </small>
+                  </div>
+                </>
+              )}
 
-                    <div className="form-group">
-                      <label className="form-label">Пароль (автоматически)</label>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <input
-                          className="input"
-                          type="text"
-                          value={form.password}
-                          readOnly
-                          style={{
-                            flex: 1,
-                            background: 'var(--bg-secondary)',
-                            fontFamily: 'monospace',
-                            fontSize: 14
-                          }}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={copyPassword}
-                          title="Скопировать пароль"
-                        >
-                          <Copy size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={regeneratePassword}
-                          title="Сгенерировать новый пароль"
-                        >
-                          <RefreshCw size={16} />
-                        </button>
-                      </div>
-                      <small style={{ color: 'var(--warning)', marginTop: 4, display: 'block' }}>
-                        ⚠️ Скопируйте пароль - он больше не будет показан
-                      </small>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Email *</label>
-                      <input
-                        className="input"
-                        type="email"
-                        value={form.email}
-                        onChange={e => setForm({...form, email: e.target.value})}
-                        placeholder="user@example.com"
-                      />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        Email обязателен для двухфакторной аутентификации
-                      </small>
-                    </div>
-                  </>
-                )}
-
-                {modal.user && (
+              {/* Для редактирования - обычный порядок полей */}
+              {modal.user && (
                 <>
                   <div className="form-group">
                     <label className="form-label">Отображаемое имя</label>
@@ -632,26 +634,88 @@ export default function AdminUsers() {
                 </>
               )}
 
-              <MultiSelect
-                label="Роли"
-                placeholder="Выберите роли"
-                value={form.roleIds}
-                onChange={(newIds) => setForm({...form, roleIds: newIds})}
-                options={roleList}
-                optionLabel="name"
-                optionDescription="description"
-              />
+              <div className="form-group">
+                <label className="form-label">Роль (старая система, устарела)</label>
+                <select className="select" value={form.roleId} onChange={e => setForm({...form, roleId: e.target.value})}>
+                  <option value="">Без роли</option>
+                  {roleList.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                </select>
+                <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                  Используйте множественный выбор ролей ниже
+                </small>
+              </div>
 
-              <MultiSelect
-                label="Медицинские центры"
-                placeholder="Выберите медцентры"
-                value={form.medCenterIds}
-                onChange={(newIds) => setForm({...form, medCenterIds: newIds})}
-                options={medCenterList}
-                optionLabel="name"
-                optionDescription="displayName"
-              />
+              <div className="form-group">
+                <label className="form-label">Роли (можно выбрать несколько)</label>
+                <div style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 12,
+                  maxHeight: 200,
+                  overflowY: 'auto'
+                }}>
+                  {roleList.map(role => (
+                    <label key={role.id} className="checkbox-item" style={{ marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.roleIds.includes(role.id)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setForm({...form, roleIds: [...form.roleIds, role.id]});
+                          } else {
+                            setForm({...form, roleIds: form.roleIds.filter(id => id !== role.id)});
+                          }
+                        }}
+                      />
+                      {role.name}
+                      {role.description && (
+                        <small style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>
+                          {role.description}
+                        </small>
+                      )}
+                    </label>
+                  ))}
+                  {roleList.length === 0 && (
+                    <span style={{ color: 'var(--text-tertiary)' }}>Роли не созданы</span>
+                  )}
+                </div>
+              </div>
 
+              <div className="form-group">
+                <label className="form-label">Медицинские центры (можно выбрать несколько)</label>
+                <div style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: 12,
+                  maxHeight: 200,
+                  overflowY: 'auto'
+                }}>
+                  {medCenterList.map(mc => (
+                    <label key={mc.id} className="checkbox-item" style={{ marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={form.medCenterIds.includes(mc.id)}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setForm({...form, medCenterIds: [...form.medCenterIds, mc.id]});
+                          } else {
+                            setForm({...form, medCenterIds: form.medCenterIds.filter(id => id !== mc.id)});
+                          }
+                        }}
+                      />
+                      {mc.name}
+                      {mc.displayName && mc.displayName !== mc.name && (
+                        <small style={{ color: 'var(--text-tertiary)', marginLeft: 8 }}>
+                          ({mc.displayName})
+                        </small>
+                      )}
+                    </label>
+                  ))}
+                  {medCenterList.length === 0 && (
+                    <span style={{ color: 'var(--text-tertiary)' }}>Медцентры не загружены</span>
+                  )}
+                </div>
+              </div>
               <div className="form-group">
                 <label className="checkbox-item">
                   <input type="checkbox" checked={form.isAdmin} onChange={e => setForm({...form, isAdmin: e.target.checked})} />
@@ -698,10 +762,9 @@ export default function AdminUsers() {
                   margin: '8px 0 0 32px', 
                   lineHeight: 1.5 
                 }}>
-                  При входе пользователю будет отправлен код подтверждения на email.
+                  При входе пользователю будет отправлен код подтверждения на email. 
                   Это повышает безопасность учётной записи.
                 </p>
-              </div>
               </div>
             </div>
             <div className="modal-footer">

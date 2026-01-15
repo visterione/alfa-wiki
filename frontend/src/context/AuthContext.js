@@ -64,6 +64,17 @@ export function AuthProvider({ children }) {
   const hasPermission = (resource, action) => {
     if (!user) return false;
     if (user.isAdmin) return true;
+
+    // Проверяем права в множественных ролях
+    if (user.roles && Array.isArray(user.roles)) {
+      for (const role of user.roles) {
+        if (role.permissions?.[resource]?.[action]) {
+          return true;
+        }
+      }
+    }
+
+    // Проверяем старую систему (одна роль)
     return user.role?.permissions?.[resource]?.[action] || false;
   };
 
@@ -71,6 +82,17 @@ export function AuthProvider({ children }) {
     if (!user) return false;
     if (user.isAdmin) return true;
     if (!page.allowedRoles || page.allowedRoles.length === 0) return true;
+
+    // Проверяем множественные роли
+    if (user.roles && Array.isArray(user.roles)) {
+      for (const role of user.roles) {
+        if (page.allowedRoles.includes(role.id)) {
+          return true;
+        }
+      }
+    }
+
+    // Проверяем старую систему (одна роль)
     return page.allowedRoles.includes(user.roleId);
   };
 

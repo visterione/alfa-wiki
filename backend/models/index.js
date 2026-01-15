@@ -347,6 +347,51 @@ const Analysis = sequelize.define('Analysis', {
   ]
 });
 
+// === MED CENTER MODEL ===
+const MedCenter = sequelize.define('MedCenter', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    allowNull: false,
+    unique: true,
+    comment: 'Название медицинского центра'
+  },
+  displayName: {
+    type: DataTypes.STRING(100),
+    comment: 'Полное название для отображения'
+  },
+  description: { type: DataTypes.TEXT }
+}, {
+  tableName: 'med_centers',
+  timestamps: true
+});
+
+// === USER-MEDCENTER MODEL (Many-to-Many) ===
+const UserMedCenter = sequelize.define('UserMedCenter', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  medCenterId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'user_med_centers',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['userId', 'medCenterId'] }
+  ]
+});
+
+// === USER-ROLE MODEL (Many-to-Many) ===
+const UserRole = sequelize.define('UserRole', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  roleId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'user_roles',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['userId', 'roleId'] }
+  ]
+});
+
 // === CALENDAR EVENT MODEL ===
 // Добавить после модели Analysis и перед MapMarker
 
@@ -613,9 +658,17 @@ const CourseProgress = sequelize.define('CourseProgress', {
 // RELATIONSHIPS
 // ═══════════════════════════════════════════════════════════════
 
-// User & Role
+// User & Role (старая связь - оставляем для обратной совместимости, но устарела)
 User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });
 Role.hasMany(User, { foreignKey: 'roleId', as: 'users' });
+
+// User & Role (новаяMany-to-Many связь)
+User.belongsToMany(Role, { through: UserRole, foreignKey: 'userId', as: 'roles' });
+Role.belongsToMany(User, { through: UserRole, foreignKey: 'roleId', as: 'usersWithRole' });
+
+// User & MedCenter (Many-to-Many)
+User.belongsToMany(MedCenter, { through: UserMedCenter, foreignKey: 'userId', as: 'medCenters' });
+MedCenter.belongsToMany(User, { through: UserMedCenter, foreignKey: 'medCenterId', as: 'users' });
 
 // Folder hierarchy (self-referencing)
 Folder.belongsTo(Folder, { foreignKey: 'parentId', as: 'parent' });
@@ -701,5 +754,8 @@ module.exports = {
   TestQuestion,
   CourseProgress,
   Analysis,
-  CalendarEvent
+  CalendarEvent,
+  MedCenter,
+  UserMedCenter,
+  UserRole
 };

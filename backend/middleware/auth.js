@@ -1,5 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { User, Role } = require('../models');
+const { User, Role, MedCenter } = require('../models');
 
 // Verify JWT token
 const authenticate = async (req, res, next) => {
@@ -11,9 +11,13 @@ const authenticate = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+
     const user = await User.findByPk(decoded.userId, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password'] }
     });
 
@@ -39,17 +43,29 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-// Check specific permission
+// Check specific permission - проверяет во всех ролях пользователя
 const requirePermission = (resource, action) => {
   return (req, res, next) => {
     if (req.user.isAdmin) return next();
-    
+
+    // Проверяем права во всех ролях пользователя
+    if (req.user.roles && Array.isArray(req.user.roles)) {
+      for (const role of req.user.roles) {
+        const permissions = role.permissions || {};
+        const resourcePerms = permissions[resource] || {};
+        if (resourcePerms[action]) {
+          return next();
+        }
+      }
+    }
+
+    // Проверяем старую систему для обратной совместимости
     const permissions = req.user.role?.permissions || {};
     const resourcePerms = permissions[resource] || {};
-    
+
     if (!resourcePerms[action]) {
-      return res.status(403).json({ 
-        error: `Permission denied: ${resource}.${action}` 
+      return res.status(403).json({
+        error: `Permission denied: ${resource}.${action}`
       });
     }
     next();
@@ -77,8 +93,9 @@ const checkPageAccess = async (req, res, next) => {
 
     // Check if page has role restrictions
     if (page.allowedRoles && page.allowedRoles.length > 0) {
-      const userRoleId = req.user.roleId;
-      if (!page.allowedRoles.includes(userRoleId)) {
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+      const hasAccess = userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+      if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied to this page' });
       }
     }
@@ -100,9 +117,13 @@ const optionalAuth = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
+
     const user = await User.findByPk(decoded.userId, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password'] }
     });
 

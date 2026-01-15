@@ -26,7 +26,8 @@ router.get('/', authenticate, async (req, res) => {
       if (!fav.page.isPublished && !req.user.isAdmin) return false;
       if (req.user.isAdmin) return true;
       if (!fav.page.allowedRoles || fav.page.allowedRoles.length === 0) return true;
-      return fav.page.allowedRoles.includes(req.user.roleId);
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+      return userRoleIds.some(roleId => fav.page.allowedRoles.includes(roleId));
     });
 
     res.json(accessibleFavorites);

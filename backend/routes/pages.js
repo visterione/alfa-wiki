@@ -82,7 +82,8 @@ router.get('/', authenticate, async (req, res) => {
     if (!req.user.isAdmin) {
       pages.rows = pages.rows.filter(page => {
         if (!page.allowedRoles || page.allowedRoles.length === 0) return true;
-        return page.allowedRoles.includes(req.user.roleId);
+        const userRoleIds = req.user.roles?.map(r => r.id) || [];
+        return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
       });
     }
 
@@ -122,7 +123,9 @@ router.get('/:identifier', authenticate, async (req, res) => {
     }
 
     if (!req.user.isAdmin && page.allowedRoles?.length > 0) {
-      if (!page.allowedRoles.includes(req.user.roleId)) {
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+      const hasAccess = userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+      if (!hasAccess) {
         return res.status(403).json({ error: 'Access denied' });
       }
     }
