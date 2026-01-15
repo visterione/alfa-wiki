@@ -1,18 +1,27 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Role, User } = require('../models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
 // Get all roles with user count
 router.get('/', authenticate, async (req, res) => {
   try {
+    // Проверяем права доступа к ролям или пользователям
+    const hasAccess = req.user.isAdmin ||
+                     req.user.adminAccess?.roles ||
+                     req.user.adminAccess?.users;
+
+    if (!hasAccess) {
+      return res.status(403).json({ error: 'Access denied to roles' });
+    }
+
     const roles = await Role.findAll({
-      include: [{ 
-        model: User, 
-        as: 'users', 
-        attributes: ['id'] 
+      include: [{
+        model: User,
+        as: 'users',
+        attributes: ['id']
       }],
       order: [['name', 'ASC']]
     });
@@ -24,7 +33,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get single role with users
-router.get('/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/:id', authenticate, requireAdminAccess('roles'), async (req, res) => {
   try {
     const role = await Role.findByPk(req.params.id, {
       include: [{ model: User, as: 'users', attributes: ['id', 'username', 'displayName'] }]
@@ -37,7 +46,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Create role
-router.post('/', authenticate, requireAdmin, [
+router.post('/', authenticate, requireAdminAccess('roles'), [
   body('name').trim().notEmpty().withMessage('Role name is required')
 ], async (req, res) => {
   try {
@@ -74,7 +83,7 @@ router.post('/', authenticate, requireAdmin, [
 });
 
 // Update role
-router.put('/:id', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id', authenticate, requireAdminAccess('roles'), async (req, res) => {
   try {
     const role = await Role.findByPk(req.params.id);
     if (!role) return res.status(404).json({ error: 'Role not found' });
@@ -105,7 +114,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Delete role
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAdminAccess('roles'), async (req, res) => {
   try {
     const role = await Role.findByPk(req.params.id);
     if (!role) return res.status(404).json({ error: 'Role not found' });

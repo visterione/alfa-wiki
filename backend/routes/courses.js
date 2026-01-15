@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Course, Lesson, TestQuestion, CourseProgress, User } = require('../models');
-const { authenticate, requirePermission } = require('../middleware/auth');
+const { authenticate, requirePermission, requireAdminAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -382,7 +382,7 @@ router.post('/:courseId/reset', authenticate, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 // Получить все курсы (включая неопубликованные) для админа
-router.get('/admin/all', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.get('/admin/all', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const courses = await Course.findAll({
       include: [
@@ -424,7 +424,7 @@ router.get('/admin/all', authenticate, requirePermission('pages', 'admin'), asyn
 });
 
 // Создать курс
-router.post('/admin', authenticate, requirePermission('pages', 'admin'), [
+router.post('/admin', authenticate, requireAdminAccess('courses'), [
   body('title').notEmpty().withMessage('Title is required'),
 ], async (req, res) => {
   try {
@@ -452,7 +452,7 @@ router.post('/admin', authenticate, requirePermission('pages', 'admin'), [
 });
 
 // Обновить курс
-router.put('/admin/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.put('/admin/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) {
@@ -477,7 +477,7 @@ router.put('/admin/:id', authenticate, requirePermission('pages', 'admin'), asyn
 });
 
 // Удалить курс
-router.delete('/admin/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.delete('/admin/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id);
     if (!course) {
@@ -493,7 +493,7 @@ router.delete('/admin/:id', authenticate, requirePermission('pages', 'admin'), a
 });
 
 // Получить курс для редактирования (со всеми данными)
-router.get('/admin/:id/edit', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.get('/admin/:id/edit', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const course = await Course.findByPk(req.params.id, {
       include: [
@@ -529,7 +529,7 @@ router.get('/admin/:id/edit', authenticate, requirePermission('pages', 'admin'),
 });
 
 // Создать урок
-router.post('/admin/:courseId/lessons', authenticate, requirePermission('pages', 'admin'), [
+router.post('/admin/:courseId/lessons', authenticate, requireAdminAccess('courses'), [
   body('title').notEmpty().withMessage('Title is required'),
 ], async (req, res) => {
   try {
@@ -571,7 +571,7 @@ router.post('/admin/:courseId/lessons', authenticate, requirePermission('pages',
 });
 
 // Обновить урок
-router.put('/admin/lessons/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.put('/admin/lessons/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id);
     if (!lesson) {
@@ -594,7 +594,7 @@ router.put('/admin/lessons/:id', authenticate, requirePermission('pages', 'admin
 });
 
 // Удалить урок
-router.delete('/admin/lessons/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.delete('/admin/lessons/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const lesson = await Lesson.findByPk(req.params.id);
     if (!lesson) {
@@ -610,7 +610,7 @@ router.delete('/admin/lessons/:id', authenticate, requirePermission('pages', 'ad
 });
 
 // Переупорядочить уроки
-router.post('/admin/:courseId/lessons/reorder', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.post('/admin/:courseId/lessons/reorder', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const { courseId } = req.params;
     const { lessonIds } = req.body; // Массив ID в новом порядке
@@ -635,7 +635,7 @@ router.post('/admin/:courseId/lessons/reorder', authenticate, requirePermission(
 });
 
 // Создать вопрос теста
-router.post('/admin/:courseId/questions', authenticate, requirePermission('pages', 'admin'), [
+router.post('/admin/:courseId/questions', authenticate, requireAdminAccess('courses'), [
   body('question').notEmpty().withMessage('Question is required'),
   body('options').isArray({ min: 2 }).withMessage('At least 2 options required'),
   body('correctAnswer').isInt({ min: 0 }).withMessage('Valid correct answer required'),
@@ -684,7 +684,7 @@ router.post('/admin/:courseId/questions', authenticate, requirePermission('pages
 });
 
 // Обновить вопрос теста
-router.put('/admin/questions/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.put('/admin/questions/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const testQuestion = await TestQuestion.findByPk(req.params.id);
     if (!testQuestion) {
@@ -712,7 +712,7 @@ router.put('/admin/questions/:id', authenticate, requirePermission('pages', 'adm
 });
 
 // Удалить вопрос теста
-router.delete('/admin/questions/:id', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.delete('/admin/questions/:id', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const testQuestion = await TestQuestion.findByPk(req.params.id);
     if (!testQuestion) {
@@ -728,7 +728,7 @@ router.delete('/admin/questions/:id', authenticate, requirePermission('pages', '
 });
 
 // Переупорядочить вопросы
-router.post('/admin/:courseId/questions/reorder', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.post('/admin/:courseId/questions/reorder', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const { courseId } = req.params;
     const { questionIds } = req.body;
@@ -752,7 +752,7 @@ router.post('/admin/:courseId/questions/reorder', authenticate, requirePermissio
 });
 
 // Получить статистику по курсу
-router.get('/admin/:courseId/stats', authenticate, requirePermission('pages', 'admin'), async (req, res) => {
+router.get('/admin/:courseId/stats', authenticate, requireAdminAccess('courses'), async (req, res) => {
   try {
     const { courseId } = req.params;
 

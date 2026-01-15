@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { 
+import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
-  Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings
+  Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
+  Layout, Users, Lock, Image, Database, BookOpen
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -295,12 +296,68 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <Settings size={16} />
                   Настройки
                 </Link>
-                {isAdmin && (
-                  <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                    <Shield size={16} />
-                    Администратор
+
+                {/* Админ-разделы - показываем только те, к которым есть доступ */}
+                {(isAdmin || user?.adminAccess?.pages) && (
+                  <Link to="/admin/pages" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <FileText size={16} />
+                    Страницы
                   </Link>
                 )}
+                {(isAdmin || user?.adminAccess?.sidebar) && (
+                  <Link to="/admin/sidebar" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Layout size={16} />
+                    Меню навигации
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.users) && (
+                  <Link to="/admin/users" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Users size={16} />
+                    Пользователи
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.roles) && (
+                  <Link to="/admin/roles" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Lock size={16} />
+                    Роли и права
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.media) && (
+                  <Link to="/admin/media" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Image size={16} />
+                    Медиафайлы
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.backup) && (
+                  <Link to="/admin/backup" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Database size={16} />
+                    Резервные копии
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.settings) && (
+                  <Link to="/admin/settings" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Settings size={16} />
+                    Настройки системы
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.courses) && (
+                  <Link to="/admin/courses" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <BookOpen size={16} />
+                    Курсы
+                  </Link>
+                )}
+
+                {/* Ссылка на главную админ-панель - только для полных админов */}
+                {isAdmin && (
+                  <>
+                    <div className="header-dropdown-divider" />
+                    <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                      <Shield size={16} />
+                      Админ-панель
+                    </Link>
+                  </>
+                )}
+
                 <div className="header-dropdown-divider" />
                 <button className="header-dropdown-item" onClick={handleLogout}>
                   <LogOut size={16} />

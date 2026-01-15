@@ -35,12 +35,32 @@ const authenticate = async (req, res, next) => {
   }
 };
 
-// Check if user is admin
+// Check if user is admin (полный админ доступ)
 const requireAdmin = (req, res, next) => {
   if (!req.user.isAdmin) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   next();
+};
+
+// Check if user has access to specific admin section
+const requireAdminAccess = (section) => {
+  return (req, res, next) => {
+    // Полные админы имеют доступ ко всему
+    if (req.user.isAdmin) {
+      return next();
+    }
+
+    // Проверяем гранулярный доступ
+    const adminAccess = req.user.adminAccess || {};
+    if (!adminAccess[section]) {
+      return res.status(403).json({
+        error: `Access denied to admin section: ${section}`
+      });
+    }
+
+    next();
+  };
 };
 
 // Check specific permission - проверяет во всех ролях пользователя
@@ -139,6 +159,7 @@ const optionalAuth = async (req, res, next) => {
 module.exports = {
   authenticate,
   requireAdmin,
+  requireAdminAccess,
   requirePermission,
   checkPageAccess,
   optionalAuth

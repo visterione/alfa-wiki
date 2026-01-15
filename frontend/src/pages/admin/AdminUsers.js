@@ -105,7 +105,17 @@ export default function AdminUsers() {
     medCenterIds: [],
     isAdmin: false,
     isActive: true,
-    twoFactorEnabled: true  // По умолчанию включена
+    twoFactorEnabled: true,  // По умолчанию включена
+    adminAccess: {
+      pages: false,
+      sidebar: false,
+      users: false,
+      roles: false,
+      media: false,
+      backup: false,
+      settings: false,
+      courses: false
+    }
   });
 
   useEffect(() => { load(); }, []);
@@ -247,7 +257,17 @@ export default function AdminUsers() {
         medCenterIds: user.medCenters ? user.medCenters.map(mc => mc.id) : [],
         isAdmin: user.isAdmin,
         isActive: user.isActive,
-        twoFactorEnabled: user.twoFactorEnabled || false
+        twoFactorEnabled: user.twoFactorEnabled || false,
+        adminAccess: user.adminAccess || {
+          pages: false,
+          sidebar: false,
+          users: false,
+          roles: false,
+          media: false,
+          backup: false,
+          settings: false,
+          courses: false
+        }
       });
     } else {
       // При создании нового пользователя генерируем пароль и включаем 2FA
@@ -261,7 +281,17 @@ export default function AdminUsers() {
         medCenterIds: [],
         isAdmin: false,
         isActive: true,
-        twoFactorEnabled: true  // По умолчанию включена для новых пользователей
+        twoFactorEnabled: true,  // По умолчанию включена для новых пользователей
+        adminAccess: {
+          pages: false,
+          sidebar: false,
+          users: false,
+          roles: false,
+          media: false,
+          backup: false,
+          settings: false,
+          courses: false
+        }
       });
     }
     setModal({ open: true, user });
@@ -658,6 +688,96 @@ export default function AdminUsers() {
                   Администратор
                 </label>
               </div>
+
+              {/* Гранулярный доступ к админ-разделам */}
+              {!form.isAdmin && (
+                <div className="form-group" style={{
+                  background: 'var(--bg-secondary)',
+                  padding: 16,
+                  borderRadius: 'var(--radius-md)',
+                  marginTop: 16
+                }}>
+                  <div style={{ fontWeight: 500, marginBottom: 12, color: 'var(--text-primary)' }}>
+                    Доступ к админ-разделам
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.pages}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, pages: e.target.checked}})}
+                      />
+                      Страницы
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.sidebar}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, sidebar: e.target.checked}})}
+                      />
+                      Меню навигации
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.users}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, users: e.target.checked}})}
+                      />
+                      Пользователи
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.roles}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, roles: e.target.checked}})}
+                      />
+                      Роли и права
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.media}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, media: e.target.checked}})}
+                      />
+                      Медиафайлы
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.backup}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, backup: e.target.checked}})}
+                      />
+                      Резервные копии
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.settings}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, settings: e.target.checked}})}
+                      />
+                      Настройки
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.courses}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, courses: e.target.checked}})}
+                      />
+                      Курсы
+                    </label>
+                  </div>
+                  <p style={{
+                    fontSize: 13,
+                    color: 'var(--text-secondary)',
+                    margin: '8px 0 0 0',
+                    lineHeight: 1.5
+                  }}>
+                    Выберите к каким админ-разделам будет доступ у пользователя.
+                    Полные администраторы имеют доступ ко всем разделам.
+                  </p>
+                </div>
+              )}
+
               <div className="form-group">
                 <label className="checkbox-item">
                   <input type="checkbox" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} />

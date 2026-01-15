@@ -96,6 +96,13 @@ export function AuthProvider({ children }) {
     return page.allowedRoles.includes(user.roleId);
   };
 
+  // Проверка доступа к админ-разделу
+  const hasAdminAccess = (section) => {
+    if (!user) return false;
+    if (user.isAdmin) return true; // Полные админы имеют доступ ко всему
+    return user.adminAccess?.[section] || false;
+  };
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -106,6 +113,7 @@ export function AuthProvider({ children }) {
       refreshUser,
       hasPermission,
       canAccessPage,
+      hasAdminAccess,
       isAdmin: user?.isAdmin || false
     }}>
       {children}

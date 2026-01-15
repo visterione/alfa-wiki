@@ -1,6 +1,6 @@
 const express = require('express');
 const { Setting } = require('../models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -30,7 +30,7 @@ router.get('/:key', authenticate, async (req, res) => {
 });
 
 // Update setting
-router.put('/:key', authenticate, requireAdmin, async (req, res) => {
+router.put('/:key', authenticate, requireAdminAccess('settings'), async (req, res) => {
   try {
     const { value, description } = req.body;
     
@@ -55,7 +55,7 @@ router.put('/:key', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Bulk update settings
-router.post('/bulk', authenticate, requireAdmin, async (req, res) => {
+router.post('/bulk', authenticate, requireAdminAccess('settings'), async (req, res) => {
   try {
     // Поддержка обоих форматов: { settings: {...} } или просто {...}
     const settings = req.body.settings || req.body;
@@ -92,7 +92,7 @@ router.post('/bulk', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Delete setting
-router.delete('/:key', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:key', authenticate, requireAdminAccess('settings'), async (req, res) => {
   try {
     await Setting.destroy({ where: { key: req.params.key } });
     res.json({ message: 'Setting deleted' });
@@ -103,7 +103,7 @@ router.delete('/:key', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Initialize default settings
-router.post('/init', authenticate, requireAdmin, async (req, res) => {
+router.post('/init', authenticate, requireAdminAccess('settings'), async (req, res) => {
   try {
     const defaults = {
       siteName: { value: 'Alfa Wiki', description: 'Site name' },

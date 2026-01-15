@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { SidebarItem, Page, Folder } = require('../models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -83,7 +83,7 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Get all sidebar items (admin)
-router.get('/all', authenticate, requireAdmin, async (req, res) => {
+router.get('/all', authenticate, requireAdminAccess('sidebar'), async (req, res) => {
   try {
     const items = await SidebarItem.findAll({
       where: { parentId: null },
@@ -117,7 +117,7 @@ router.get('/all', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Create sidebar item
-router.post('/', authenticate, requireAdmin, [
+router.post('/', authenticate, requireAdminAccess('sidebar'), [
   body('type').isIn(['page', 'folder', 'header', 'link', 'divider']).withMessage('Invalid type'),
   body('title').if(body('type').isIn(['header', 'link'])).notEmpty().withMessage('Title required')
 ], async (req, res) => {
@@ -175,7 +175,7 @@ router.post('/', authenticate, requireAdmin, [
 });
 
 // Update sidebar item
-router.put('/:id', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id', authenticate, requireAdminAccess('sidebar'), async (req, res) => {
   try {
     const item = await SidebarItem.findByPk(req.params.id);
     if (!item) {
@@ -213,7 +213,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Reorder sidebar items
-router.post('/reorder', authenticate, requireAdmin, async (req, res) => {
+router.post('/reorder', authenticate, requireAdminAccess('sidebar'), async (req, res) => {
   try {
     const { items } = req.body;
     
@@ -232,7 +232,7 @@ router.post('/reorder', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Reorder pages within a folder (for sidebar display)
-router.post('/reorder-folder-pages', authenticate, requireAdmin, async (req, res) => {
+router.post('/reorder-folder-pages', authenticate, requireAdminAccess('sidebar'), async (req, res) => {
   try {
     const { folderId, pages } = req.body; // pages: [{ id, sortOrder }]
     
@@ -251,7 +251,7 @@ router.post('/reorder-folder-pages', authenticate, requireAdmin, async (req, res
 });
 
 // Delete sidebar item
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAdminAccess('sidebar'), async (req, res) => {
   try {
     const item = await SidebarItem.findByPk(req.params.id);
     if (!item) {

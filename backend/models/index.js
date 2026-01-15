@@ -42,6 +42,22 @@ const User = sequelize.define('User', {
   isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
   lastLogin: { type: DataTypes.DATE },
   settings: { type: DataTypes.JSONB, defaultValue: {} },
+
+  // Admin access control (granular permissions for admin sections)
+  adminAccess: {
+    type: DataTypes.JSONB,
+    defaultValue: {
+      pages: false,      // Управление страницами
+      sidebar: false,    // Меню навигации
+      users: false,      // Пользователи
+      roles: false,      // Роли и права
+      media: false,      // Медиафайлы
+      backup: false,     // Резервные копии
+      settings: false,   // Настройки
+      courses: false     // Курсы
+    },
+    comment: 'Гранулярный доступ к админ-разделам'
+  },
   
   // 2FA поля
   twoFactorEnabled: { 

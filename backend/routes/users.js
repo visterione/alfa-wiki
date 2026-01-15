@@ -2,13 +2,13 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification } = require('../services/emailService');
 
 const router = express.Router();
 
 // Get all users (admin only)
-router.get('/', authenticate, requireAdmin, async (req, res) => {
+router.get('/', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const users = await User.findAll({
       include: [
@@ -27,7 +27,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Get single user
-router.get('/:id', authenticate, requireAdmin, async (req, res) => {
+router.get('/:id', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id, {
       include: [
@@ -46,7 +46,7 @@ router.get('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Create user
-router.post('/', authenticate, requireAdmin, [
+router.post('/', authenticate, requireAdminAccess('users'), [
   body('username').trim().isLength({ min: 3 }).withMessage('Логин должен быть минимум 3 символа'),
   body('password').isLength({ min: 6 }).withMessage('Пароль должен быть минимум 6 символов')
 ], async (req, res) => {
@@ -56,7 +56,7 @@ router.post('/', authenticate, requireAdmin, [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -114,7 +114,17 @@ router.post('/', authenticate, requireAdmin, [
       roleId: roleId,
       isAdmin: isAdmin || false,
       isActive: isActive !== false,
-      twoFactorEnabled: twoFactorEnabled || false
+      twoFactorEnabled: twoFactorEnabled || false,
+      adminAccess: adminAccess || {
+        pages: false,
+        sidebar: false,
+        users: false,
+        roles: false,
+        media: false,
+        backup: false,
+        settings: false,
+        courses: false
+      }
     });
 
     // Добавляем множественные роли
@@ -148,12 +158,12 @@ router.post('/', authenticate, requireAdmin, [
 });
 
 // Update user
-router.put('/:id', authenticate, requireAdmin, async (req, res) => {
+router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -208,7 +218,8 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
       ...(roleId !== undefined && { roleId: roleId || null }),
       ...(isAdmin !== undefined && { isAdmin }),
       ...(isActive !== undefined && { isActive }),
-      ...(twoFactorEnabled !== undefined && { twoFactorEnabled })
+      ...(twoFactorEnabled !== undefined && { twoFactorEnabled }),
+      ...(adminAccess !== undefined && { adminAccess })
     };
 
     // Если отключаем 2FA - очищаем коды
@@ -274,7 +285,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Delete user
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
@@ -292,7 +303,7 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Get all medical centers
-router.get('/medcenters/list', authenticate, requireAdmin, async (req, res) => {
+router.get('/medcenters/list', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const medCenters = await MedCenter.findAll({
       order: [['name', 'ASC']]

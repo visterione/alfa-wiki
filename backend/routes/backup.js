@@ -6,7 +6,7 @@ const fsSync = require('fs');
 const archiver = require('archiver');
 const unzipper = require('unzipper');
 const multer = require('multer');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { sequelize } = require('../models');
 
 const router = express.Router();
@@ -315,7 +315,7 @@ async function rollbackFromTemp(tempBackupDir) {
 // ═══════════════════════════════════════════════════════════════
 
 // List backups
-router.get('/', authenticate, requireAdmin, async (req, res) => {
+router.get('/', authenticate, requireAdminAccess('backup'), async (req, res) => {
   try {
     await ensureBackupDir();
     const files = await fs.readdir(BACKUP_DIR);
@@ -342,7 +342,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Create backup
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+router.post('/', authenticate, requireAdminAccess('backup'), async (req, res) => {
   try {
     await ensureBackupDir();
     
@@ -427,7 +427,7 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Upload backup
-router.post('/upload', authenticate, requireAdmin, upload.single('backup'), async (req, res) => {
+router.post('/upload', authenticate, requireAdminAccess('backup'), upload.single('backup'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -447,7 +447,7 @@ router.post('/upload', authenticate, requireAdmin, upload.single('backup'), asyn
 });
 
 // Restore backup
-router.post('/restore/:filename', authenticate, requireAdmin, async (req, res) => {
+router.post('/restore/:filename', authenticate, requireAdminAccess('backup'), async (req, res) => {
   const { filename } = req.params;
   const { restoreDb = true, restoreFiles = true } = req.body;
   
@@ -578,7 +578,7 @@ router.post('/restore/:filename', authenticate, requireAdmin, async (req, res) =
 });
 
 // Download backup
-router.get('/download/:filename', authenticate, requireAdmin, async (req, res) => {
+router.get('/download/:filename', authenticate, requireAdminAccess('backup'), async (req, res) => {
   try {
     const { filename } = req.params;
     
@@ -595,7 +595,7 @@ router.get('/download/:filename', authenticate, requireAdmin, async (req, res) =
 });
 
 // Delete backup
-router.delete('/:filename', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:filename', authenticate, requireAdminAccess('backup'), async (req, res) => {
   try {
     const { filename } = req.params;
     
@@ -612,7 +612,7 @@ router.delete('/:filename', authenticate, requireAdmin, async (req, res) => {
 });
 
 // Clean old backups
-router.post('/cleanup', authenticate, requireAdmin, async (req, res) => {
+router.post('/cleanup', authenticate, requireAdminAccess('backup'), async (req, res) => {
   try {
     const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS) || 30;
     const cutoffDate = new Date();

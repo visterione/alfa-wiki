@@ -26,8 +26,8 @@ import AdminCourseEditor from './pages/admin/AdminCourseEditor';
 import Calendar from './pages/Calendar';
 import './index.css';
 
-function ProtectedRoute({ children, adminOnly = false }) {
-  const { user, loading, isAdmin } = useAuth();
+function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
+  const { user, loading, isAdmin, hasAdminAccess } = useAuth();
 
   if (loading) {
     return (
@@ -38,7 +38,14 @@ function ProtectedRoute({ children, adminOnly = false }) {
   }
 
   if (!user) return <Navigate to="/login" replace />;
+
+  // Проверка полного админ-доступа
   if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+
+  // Проверка гранулярного доступа к админ-разделу
+  if (requireAdminAccess && !hasAdminAccess(requireAdminAccess)) {
+    return <Navigate to="/" replace />;
+  }
 
   return children;
 }
@@ -72,33 +79,33 @@ function AppRoutes() {
           <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
         } />
         <Route path="admin/users" element={
-          <ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="users"><AdminUsers /></ProtectedRoute>
         } />
         <Route path="admin/roles" element={
-          <ProtectedRoute adminOnly><AdminRoles /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="roles"><AdminRoles /></ProtectedRoute>
         } />
         <Route path="admin/sidebar" element={
-          <ProtectedRoute adminOnly><AdminSidebar /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="sidebar"><AdminSidebar /></ProtectedRoute>
         } />
         <Route path="admin/pages" element={
-          <ProtectedRoute adminOnly><AdminPages /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="pages"><AdminPages /></ProtectedRoute>
         } />
         <Route path="admin/media" element={
-          <ProtectedRoute adminOnly><AdminMedia /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="media"><AdminMedia /></ProtectedRoute>
         } />
         <Route path="admin/settings" element={
-          <ProtectedRoute adminOnly><AdminSettings /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="settings"><AdminSettings /></ProtectedRoute>
         } />
         <Route path="admin/backup" element={
-          <ProtectedRoute adminOnly><AdminBackup /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="backup"><AdminBackup /></ProtectedRoute>
         } />
-        
+
         {/* АДМИНКА КУРСОВ - добавьте эти строки */}
         <Route path="admin/courses" element={
-          <ProtectedRoute adminOnly><AdminCourses /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="courses"><AdminCourses /></ProtectedRoute>
         } />
         <Route path="admin/courses/:id/edit" element={
-          <ProtectedRoute adminOnly><AdminCourseEditor /></ProtectedRoute>
+          <ProtectedRoute requireAdminAccess="courses"><AdminCourseEditor /></ProtectedRoute>
         } />
       </Route>
 
