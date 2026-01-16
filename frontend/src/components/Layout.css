@@ -438,6 +438,14 @@
   transition: color var(--transition-fast);
 }
 
+.sidebar-emoji-icon {
+  flex-shrink: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .sidebar-item:hover .sidebar-item-icon,
 .sidebar-item.active .sidebar-item-icon {
   color: var(--primary);

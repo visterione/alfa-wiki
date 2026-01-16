@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { 
-  Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus, 
+import {
+  Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus,
   ChevronDown, ChevronRight, X, Folder, FolderOpen, Type as TypeIcon,
   ExternalLink, Check
 } from 'lucide-react';
 import { sidebar, folders, pages } from '../../services/api';
+import IconPicker from '../../components/IconPicker';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -338,14 +339,15 @@ export default function AdminSidebar() {
   const [pageList, setPageList] = useState([]);
   
   const [modal, setModal] = useState({ open: false, item: null });
-  const [form, setForm] = useState({ 
-    type: 'page', 
-    title: '', 
-    pageId: '', 
+  const [form, setForm] = useState({
+    type: 'page',
+    title: '',
+    icon: '',
+    pageId: '',
     folderId: '',
-    externalUrl: '', 
-    allowedRoles: [], 
-    isVisible: true 
+    externalUrl: '',
+    allowedRoles: [],
+    isVisible: true
   });
 
   useEffect(() => { load(); }, []);
@@ -369,24 +371,26 @@ export default function AdminSidebar() {
 
   const openModal = (item = null) => {
     if (item) {
-      setForm({ 
-        type: item.type, 
-        title: item.title || '', 
-        pageId: item.pageId || '', 
+      setForm({
+        type: item.type,
+        title: item.title || '',
+        icon: item.icon || '',
+        pageId: item.pageId || '',
         folderId: item.folderId || '',
-        externalUrl: item.externalUrl || '', 
-        allowedRoles: item.allowedRoles || [], 
-        isVisible: item.isVisible 
+        externalUrl: item.externalUrl || '',
+        allowedRoles: item.allowedRoles || [],
+        isVisible: item.isVisible
       });
     } else {
-      setForm({ 
-        type: 'page', 
-        title: '', 
-        pageId: '', 
+      setForm({
+        type: 'page',
+        title: '',
+        icon: '',
+        pageId: '',
         folderId: '',
-        externalUrl: '', 
-        allowedRoles: [], 
-        isVisible: true 
+        externalUrl: '',
+        allowedRoles: [],
+        isVisible: true
       });
     }
     setModal({ open: true, item });
@@ -415,6 +419,7 @@ export default function AdminSidebar() {
       const data = {
         type: form.type,
         title: ['header', 'link'].includes(form.type) ? form.title : null,
+        icon: form.icon || null,
         pageId: form.type === 'page' ? form.pageId : null,
         folderId: form.type === 'folder' ? form.folderId : null,
         externalUrl: form.type === 'link' ? form.externalUrl : null,
@@ -658,6 +663,22 @@ export default function AdminSidebar() {
                 <div className="form-group">
                   <label className="form-label">Название</label>
                   <input className="input" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
+                </div>
+              )}
+
+              {/* Выбор эмодзи (для всех типов кроме divider) */}
+              {form.type !== 'divider' && (
+                <div className="form-group">
+                  <label className="form-label">
+                    Эмодзи {form.type === 'page' && '(переопределяет иконку страницы)'}
+                    {form.type === 'folder' && '(переопределяет иконку папки)'}
+                  </label>
+                  <IconPicker
+                    value={form.icon}
+                    onChange={(icon) => setForm({...form, icon})}
+                    placeholder="По умолчанию"
+                  />
+                  <small className="text-muted">Выберите цветной эмодзи для элемента меню</small>
                 </div>
               )}
 

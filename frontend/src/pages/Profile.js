@@ -7,7 +7,7 @@ import './Profile.css';
 
 export default function Profile() {
   const { user, refreshUser } = useAuth();
-  
+
   const [activeTab, setActiveTab] = useState('profile');
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -116,14 +116,14 @@ export default function Profile() {
       </div>
 
       <div className="profile-tabs">
-        <button 
+        <button
           className={`profile-tab ${activeTab === 'profile' ? 'active' : ''}`}
           onClick={() => setActiveTab('profile')}
         >
           <User size={18} />
           Профиль
         </button>
-        <button 
+        <button
           className={`profile-tab ${activeTab === 'security' ? 'active' : ''}`}
           onClick={() => setActiveTab('security')}
         >
@@ -217,8 +217,8 @@ export default function Profile() {
             <div className="card-body">
               <div className="form-group">
                 <label className="form-label">Текущий пароль</label>
-                <input 
-                  className="input" 
+                <input
+                  className="input"
                   type="password"
                   value={passwordForm.currentPassword}
                   onChange={(e) => setPasswordForm({...passwordForm, currentPassword: e.target.value})}
@@ -227,8 +227,8 @@ export default function Profile() {
 
               <div className="form-group">
                 <label className="form-label">Новый пароль</label>
-                <input 
-                  className="input" 
+                <input
+                  className="input"
                   type="password"
                   value={passwordForm.newPassword}
                   onChange={(e) => setPasswordForm({...passwordForm, newPassword: e.target.value})}
@@ -237,16 +237,16 @@ export default function Profile() {
 
               <div className="form-group">
                 <label className="form-label">Подтвердите новый пароль</label>
-                <input 
-                  className="input" 
+                <input
+                  className="input"
                   type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(e) => setPasswordForm({...passwordForm, confirmPassword: e.target.value})}
                 />
               </div>
 
-              <button 
-                className="btn btn-primary" 
+              <button
+                className="btn btn-primary"
                 onClick={handlePasswordChange}
                 disabled={saving || !passwordForm.currentPassword || !passwordForm.newPassword}
               >
@@ -256,6 +256,7 @@ export default function Profile() {
             </div>
           </div>
         )}
+
       </div>
     </div>
   );

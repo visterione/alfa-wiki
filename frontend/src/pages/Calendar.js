@@ -6,15 +6,14 @@ import {
 } from 'lucide-react';
 import { calendar as calendarApi } from '../services/api';
 import toast from 'react-hot-toast';
-import { 
-  EventModal, 
-  MonthView, 
-  MiniCalendar, 
-  EventFilters, 
+import {
+  EventModal,
+  MonthView,
+  EventFilters,
   UpcomingEvents,
   WeekView,
   DayView,
-  AgendaView 
+  AgendaView
 } from '../components/calendar';
 import './Calendar.css';
 
@@ -308,17 +307,12 @@ export default function Calendar() {
       <div className="calendar-body">
         {/* Sidebar */}
         <aside className="calendar-sidebar">
-          <MiniCalendar 
-            selectedDate={currentDate}
-            onDateSelect={setCurrentDate}
-          />
-          
-          <EventFilters 
+          <EventFilters
             filters={filters}
             onChange={setFilters}
           />
 
-          <UpcomingEvents 
+          <UpcomingEvents
             events={upcomingEvents}
             onEventClick={openEventModal}
           />

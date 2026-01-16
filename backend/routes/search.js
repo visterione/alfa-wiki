@@ -189,7 +189,7 @@ router.get('/', authenticate, async (req, res) => {
             { keywords: { [Op.overlap]: [searchTerm] } }
           ]
         },
-        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent'],
+        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon'],
         limit: parseInt(limit)
       });
 
@@ -219,7 +219,7 @@ router.get('/', authenticate, async (req, res) => {
         results.push({
           type: 'page',
           displayType: 'Страница',
-          icon: 'file-text',
+          icon: page.icon || null,
           id: page.id,
           title: page.title,
           description: page.description,
@@ -230,9 +230,10 @@ router.get('/', authenticate, async (req, res) => {
       });
     }
 
-    // Search in search index (for dynamic content)
+    // Search in search index (for dynamic content, excluding pages as they are searched directly)
     if (!type || type !== 'page') {
       const whereClause = {
+        entityType: { [Op.ne]: 'page' }, // Exclude pages from search_index
         [Op.or]: [
           { title: { [Op.iLike]: `%${searchTerm}%` } },
           { content: { [Op.iLike]: `%${searchTerm}%` } },
@@ -299,8 +300,8 @@ router.get('/fulltext', authenticate, async (req, res) => {
 
     // Search in pages with ranking
     const pageResults = await sequelize.query(`
-      SELECT 
-        id, title, slug, description, keywords, "searchContent",
+      SELECT
+        id, title, slug, description, keywords, "searchContent", icon,
         CASE
           WHEN title ILIKE :exactStart THEN 5
           WHEN title ILIKE :likePattern THEN 4
@@ -309,7 +310,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
           ELSE 1
         END as rank
       FROM pages
-      WHERE 
+      WHERE
         "isPublished" = true
         AND (
           title ILIKE :likePattern
@@ -319,17 +320,17 @@ router.get('/fulltext', authenticate, async (req, res) => {
       ORDER BY rank DESC, title ASC
       LIMIT :limit
     `, {
-      replacements: { 
-        likePattern, 
+      replacements: {
+        likePattern,
         exactStart: `${searchQuery}%`,
-        limit: parseInt(limit) 
+        limit: parseInt(limit)
       },
       type: sequelize.QueryTypes.SELECT
     });
 
-    // Search in search index
+    // Search in search index (excluding pages as they are searched directly)
     const indexResults = await sequelize.query(`
-      SELECT 
+      SELECT
         "entityType", "entityId", title, content, keywords, url, metadata,
         CASE
           WHEN title ILIKE :exactStart THEN 4
@@ -338,16 +339,19 @@ router.get('/fulltext', authenticate, async (req, res) => {
           ELSE 1
         END as priority
       FROM search_index
-      WHERE 
-        title ILIKE :likePattern
-        OR content ILIKE :likePattern
+      WHERE
+        "entityType" != 'page'
+        AND (
+          title ILIKE :likePattern
+          OR content ILIKE :likePattern
+        )
       ORDER BY priority DESC
       LIMIT :limit
     `, {
-      replacements: { 
-        likePattern, 
+      replacements: {
+        likePattern,
         exactStart: `${searchQuery}%`,
-        limit: parseInt(limit) 
+        limit: parseInt(limit)
       },
       type: sequelize.QueryTypes.SELECT
     });
@@ -379,7 +383,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
       results.push({
         type: 'page',
         displayType: 'Страница',
-        icon: 'file-text',
+        icon: r.icon || null,
         id: r.id,
         title: r.title,
         description: r.description,

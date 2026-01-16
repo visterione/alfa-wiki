@@ -11,7 +11,6 @@ import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
 import Favorites from './pages/Favorites';
-import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
@@ -75,9 +74,6 @@ function AppRoutes() {
         <Route path="courses/:id" element={<CourseView />} />
         
         {/* Admin routes */}
-        <Route path="admin" element={
-          <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
-        } />
         <Route path="admin/users" element={
           <ProtectedRoute requireAdminAccess="users"><AdminUsers /></ProtectedRoute>
         } />

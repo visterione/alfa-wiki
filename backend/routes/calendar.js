@@ -182,7 +182,7 @@ router.get('/event-indicators', authenticate, async (req, res) => {
     }
 
     const { start, end } = req.query;
-    
+
     const events = await CalendarEvent.findAll({
       where: {
         [Op.or]: [
@@ -202,7 +202,7 @@ router.get('/event-indicators', authenticate, async (req, res) => {
 
     // ✅ ИЗМЕНЕНО: Теперь возвращаем массивы с цветами вместо количества
     const indicators = {};
-    
+
     events.forEach(event => {
       if (event.isRecurring) {
         const instances = generateRecurringInstances(event, start, end);
@@ -221,6 +221,55 @@ router.get('/event-indicators', authenticate, async (req, res) => {
         indicators[dateKey].push({ color: event.color || '#4a90e2' });
       }
     });
+
+    // ✅ ДОБАВЛЕНО: Интегрированные события (аккредитации и ТО)
+    // Аккредитации
+    if (Accreditation) {
+      try {
+        const accreditations = await Accreditation.findAll({
+          where: {
+            expirationDate: {
+              [Op.gte]: new Date(start),
+              [Op.lte]: new Date(end)
+            }
+          }
+        });
+
+        accreditations.forEach(accr => {
+          const dateKey = new Date(accr.expirationDate).toISOString().split('T')[0];
+          if (!indicators[dateKey]) {
+            indicators[dateKey] = [];
+          }
+          indicators[dateKey].push({ color: '#ef4444' }); // Красный цвет для аккредитаций
+        });
+      } catch (error) {
+        console.error('Failed to load accreditations for indicators:', error);
+      }
+    }
+
+    // ТО транспорта
+    if (Vehicle) {
+      try {
+        const vehicles = await Vehicle.findAll({
+          where: {
+            insuranceDate: {
+              [Op.gte]: new Date(start),
+              [Op.lte]: new Date(end)
+            }
+          }
+        });
+
+        vehicles.forEach(vehicle => {
+          const dateKey = new Date(vehicle.insuranceDate).toISOString().split('T')[0];
+          if (!indicators[dateKey]) {
+            indicators[dateKey] = [];
+          }
+          indicators[dateKey].push({ color: '#f59e0b' }); // Оранжевый цвет для ТО
+        });
+      } catch (error) {
+        console.error('Failed to load vehicles for indicators:', error);
+      }
+    }
 
     res.json(indicators);
   } catch (error) {
@@ -437,6 +486,54 @@ router.delete('/events/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete event error:', error);
     res.status(500).json({ error: 'Failed to delete event', details: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CALENDAR SETTINGS
+// ═══════════════════════════════════════════════════════════════
+
+// Получить настройки календаря пользователя
+router.get('/settings', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      attributes: ['settings']
+    });
+
+    const calendarSettings = user?.settings?.calendar || {
+      showAccreditations: false,
+      showVehicles: false
+    };
+
+    res.json(calendarSettings);
+  } catch (error) {
+    console.error('Get calendar settings error:', error);
+    res.status(500).json({ error: 'Failed to get calendar settings' });
+  }
+});
+
+// Обновить настройки календаря пользователя
+router.put('/settings', authenticate, async (req, res) => {
+  try {
+    const { showAccreditations, showVehicles } = req.body;
+
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const settings = user.settings || {};
+    settings.calendar = {
+      showAccreditations: !!showAccreditations,
+      showVehicles: !!showVehicles
+    };
+
+    await user.update({ settings });
+
+    res.json(settings.calendar);
+  } catch (error) {
+    console.error('Update calendar settings error:', error);
+    res.status(500).json({ error: 'Failed to update calendar settings' });
   }
 });
 

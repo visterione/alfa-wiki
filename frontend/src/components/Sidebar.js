@@ -369,11 +369,27 @@ const saveExpandedState = (state) => {
   }
 };
 
+// Вспомогательная функция для рендеринга иконки (эмодзи или Lucide)
+function renderIcon(iconValue, fallbackIconComponent, size = 18) {
+  // Если иконка это эмодзи (1-4 символа и не в iconMap)
+  if (iconValue && iconValue.length <= 4 && !iconMap[iconValue]) {
+    return <span className="sidebar-emoji-icon" style={{ fontSize: `${size}px` }}>{iconValue}</span>;
+  }
+
+  // Если это название Lucide иконки
+  if (iconValue && iconMap[iconValue]) {
+    const IconComponent = iconMap[iconValue];
+    return <IconComponent className="sidebar-item-icon" size={size} />;
+  }
+
+  // Fallback на дефолтную иконку
+  const FallbackIcon = fallbackIconComponent || FileText;
+  return <FallbackIcon className="sidebar-item-icon" size={size} />;
+}
+
 // Компонент элемента сайдбара
 function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggleExpand }) {
   const location = useLocation();
-  const Icon = iconMap[item.icon] || FileText;
-  
   const isExpanded = expandedState[item.id] ?? true;
 
   const handleToggle = (e) => {
@@ -391,43 +407,41 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
   // Folder
   if (item.type === 'folder') {
     const FolderIcon = isExpanded ? FolderOpen : Folder;
-    const DisplayIcon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : 
-                        (item.folder?.icon && iconMap[item.folder.icon] ? iconMap[item.folder.icon] : FolderIcon);
-    
+    const iconToUse = item.icon || item.folder?.icon;
+
     // Страницы из папки проводника
     const folderPages = item.folderPages || item.folder?.pages || [];
     const hasFolderPages = folderPages.length > 0;
-    
+
     // Вложенные элементы sidebar
     const hasChildren = item.children && item.children.length > 0;
-    
+
     // Проверяем есть ли активная страница внутри папки
-    const hasActiveFolderPage = folderPages.some(p => 
+    const hasActiveFolderPage = folderPages.some(p =>
       location.pathname === `/page/${p.slug}`
     );
-    
+
     const folderTitle = item.title || item.folder?.title || 'Папка';
-    
+
     return (
       <div className="sidebar-folder">
-        <div 
+        <div
           className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage ? 'has-active-child' : ''}`}
           style={{ paddingLeft: `${14 + level * 16}px` }}
           onClick={handleToggle}
         >
-          <DisplayIcon className="sidebar-item-icon" size={18} />
+          {renderIcon(iconToUse, FolderIcon, 18)}
           <span>{folderTitle}</span>
           <span className="sidebar-folder-chevron">
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </span>
         </div>
-        
+
         {isExpanded && hasFolderPages && (
           <div className="sidebar-folder-children">
             {folderPages.map(page => {
-              const PageIcon = page.icon && iconMap[page.icon] ? iconMap[page.icon] : FileText;
               const isPageActive = location.pathname === `/page/${page.slug}`;
-              
+
               return (
                 <NavLink
                   key={page.id}
@@ -436,7 +450,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
                   style={{ paddingLeft: `${14 + (level + 1) * 16}px` }}
                   onClick={handleMobileClick}
                 >
-                  <PageIcon className="sidebar-item-icon" size={18} />
+                  {renderIcon(page.icon, FileText, 18)}
                   <span>{page.title}</span>
                 </NavLink>
               );
@@ -476,16 +490,15 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     const pageSlug = item.page?.slug;
     const pageTitle = item.title || item.page?.title || 'Без названия';
     const pageIcon = item.icon || item.page?.icon;
-    
+
     // Если нет slug - не отображаем элемент
     if (!pageSlug) {
       console.warn('Sidebar page item without slug:', item);
       return null;
     }
-    
-    const Icon = pageIcon && iconMap[pageIcon] ? iconMap[pageIcon] : FileText;
+
     const pageUrl = `/page/${pageSlug}`;
-    
+
     return (
       <NavLink
         to={pageUrl}
@@ -493,7 +506,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >
-        <Icon className="sidebar-item-icon" size={18} />
+        {renderIcon(pageIcon, FileText, 18)}
         <span>{pageTitle}</span>
       </NavLink>
     );
@@ -503,8 +516,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
   if (item.type === 'link') {
     const linkTitle = item.title || 'Ссылка';
     const linkUrl = item.externalUrl || '#';
-    const Icon = item.icon && iconMap[item.icon] ? iconMap[item.icon] : ExternalLink;
-    
+
     return (
       <a
         href={linkUrl}
@@ -514,7 +526,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >
-        <Icon className="sidebar-item-icon" size={18} />
+        {renderIcon(item.icon, ExternalLink, 18)}
         <span>{linkTitle}</span>
         {item.openInNewTab && <ExternalLink className="sidebar-item-external" size={14} />}
       </a>

@@ -10,6 +10,9 @@
  * Запуск: node backend/migrations/add-medcenters-and-multiple-roles.js
  */
 
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const { sequelize, MedCenter, UserMedCenter, UserRole, User } = require('../models');
 
 async function migrate() {

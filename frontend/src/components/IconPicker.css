@@ -1,0 +1,115 @@
+.icon-picker {
+  position: relative;
+  width: 100%;
+}
+
+.icon-picker-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-picker-trigger:hover {
+  border-color: var(--primary-color);
+  background: var(--bg-tertiary);
+}
+
+.icon-picker-emoji {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.icon-picker-label {
+  flex: 1;
+  text-align: left;
+  color: var(--text-secondary);
+}
+
+.icon-picker-placeholder {
+  color: var(--text-tertiary);
+  flex: 1;
+  text-align: left;
+}
+
+.icon-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.emoji-picker-wrapper {
+  width: 100%;
+}
+
+/* Переопределяем стили emoji-picker-react для темы */
+.emoji-picker-wrapper aside.EmojiPickerReact {
+  border: none !important;
+  box-shadow: none !important;
+  background: var(--bg-primary) !important;
+}
+
+.emoji-picker-wrapper .epr-search-container input {
+  background: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.emoji-picker-wrapper .epr-category-nav button {
+  background: transparent !important;
+}
+
+.emoji-picker-wrapper .epr-category-nav button:hover,
+.emoji-picker-wrapper .epr-category-nav button.epr-active {
+  background: var(--bg-tertiary) !important;
+}
+
+.emoji-picker-wrapper .epr-emoji-category-label {
+  color: var(--text-primary) !important;
+  background: var(--bg-secondary) !important;
+}
+
+.icon-picker-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.icon-picker-clear-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.icon-picker-clear-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}

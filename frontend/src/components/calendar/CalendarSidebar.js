@@ -117,7 +117,7 @@ export function MiniCalendar({ selectedDate, onDateSelect }) {
 
 // === EVENT FILTERS ===
 export function EventFilters({ filters, onChange }) {
-  const [showFilters, setShowFilters] = React.useState(false);
+  const [showFilters, setShowFilters] = React.useState(true);
 
   const toggleType = (type) => {
     const newTypes = filters.types.includes(type)

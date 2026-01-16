@@ -4,6 +4,7 @@ import { Save, ArrowLeft, Eye, Code, FileText, Settings } from 'lucide-react';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
 import CodeEditor from '../components/CodeEditor';
+import IconPicker from '../components/IconPicker';
 import toast from 'react-hot-toast';
 import './PageEditor.css';
 
@@ -20,6 +21,7 @@ export default function PageEditor() {
   const [form, setForm] = useState({
     title: '',
     slug: '',
+    icon: '',
     content: '',
     contentType: 'wysiwyg',
     description: '',
@@ -48,6 +50,7 @@ export default function PageEditor() {
       setForm({
         title: data.title || '',
         slug: data.slug || '',
+        icon: data.icon || '',
         content: data.content || '',
         contentType: data.contentType || 'wysiwyg',
         description: data.description || '',
@@ -221,6 +224,16 @@ export default function PageEditor() {
                         Создать
                       </button>
                     </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Эмодзи страницы</label>
+                    <IconPicker
+                      value={form.icon}
+                      onChange={(icon) => setForm({ ...form, icon })}
+                      placeholder="Выберите эмодзи"
+                    />
+                    <small className="text-muted">Отображается в меню и проводнике. Цветной эмодзи вместо иконки</small>
                   </div>
 
                   <div className="form-group">

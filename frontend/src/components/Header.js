@@ -28,6 +28,18 @@ const getResultIcon = (type) => {
   }
 };
 
+// Функция для рендеринга иконки/эмодзи в результатах поиска
+const renderSearchIcon = (iconValue, type, size = 16) => {
+  // Если есть эмодзи (1-4 символа Unicode)
+  if (iconValue && iconValue.length <= 4) {
+    return <span className="search-result-emoji" style={{ fontSize: `${size + 2}px` }}>{iconValue}</span>;
+  }
+
+  // Fallback на иконку по типу
+  const IconComponent = getResultIcon(type);
+  return <IconComponent size={size} />;
+};
+
 // Маппинг названий типов
 const getTypeName = (type, displayType) => {
   if (displayType) return displayType;
@@ -203,9 +215,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             <div className="search-dropdown">
               {searchResults.length > 0 ? (
                 searchResults.map((result, idx) => {
-                  const IconComponent = getResultIcon(result.type);
                   const typeName = getTypeName(result.type, result.displayType);
-                  
+
                   return (
                     <div
                       key={`${result.type}-${result.id}-${idx}`}
@@ -213,7 +224,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                       onClick={() => handleResultClick(result)}
                     >
                       <div className="search-result-icon">
-                        <IconComponent size={16} />
+                        {renderSearchIcon(result.icon, result.type, 16)}
                       </div>
                       <div className="search-result-content">
                         <div className="search-result-header">
@@ -345,17 +356,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     <BookOpen size={16} />
                     Курсы
                   </Link>
-                )}
-
-                {/* Ссылка на главную админ-панель - только для полных админов */}
-                {isAdmin && (
-                  <>
-                    <div className="header-dropdown-divider" />
-                    <Link to="/admin" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                      <Shield size={16} />
-                      Админ-панель
-                    </Link>
-                  </>
                 )}
 
                 <div className="header-dropdown-divider" />
