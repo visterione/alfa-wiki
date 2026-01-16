@@ -317,4 +317,49 @@ export const calendar = {
   updateSettings: (settings) => api.put('/calendar/settings', settings)
 };
 
+// Kanban
+export const kanban = {
+  // Получить все задачи
+  getTasks: () => api.get('/kanban/tasks'),
+
+  // Получить одну задачу
+  getTask: (id) => api.get(`/kanban/tasks/${id}`),
+
+  // Создать задачу
+  createTask: (data) => api.post('/kanban/tasks', data),
+
+  // Обновить задачу
+  updateTask: (id, data) => api.put(`/kanban/tasks/${id}`, data),
+
+  // Удалить задачу
+  deleteTask: (id) => api.delete(`/kanban/tasks/${id}`),
+
+  // Переместить задачу
+  moveTask: (id, status, sortOrder) => api.post(`/kanban/tasks/${id}/move`, { status, sortOrder }),
+
+  // Проверить доступ текущего пользователя
+  checkAccess: () => api.get('/kanban/check-access'),
+
+  // Загрузить файл
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/kanban/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+
+  // Удалить файл
+  deleteFile: (fileId, taskId) => api.delete(`/kanban/files/${fileId}?taskId=${taskId}`),
+
+  // Получить архивные задачи
+  getArchive: () => api.get('/kanban/archive'),
+
+  // Восстановить задачу из архива
+  restoreTask: (id) => api.post(`/kanban/tasks/${id}/restore`),
+
+  // Запустить авто-архивацию
+  autoArchive: () => api.post('/kanban/auto-archive')
+};
+
 export default api;

@@ -32,6 +32,7 @@ const misProxyRoutes = require('./routes/mis-proxy');
 const coursesRoutes = require('./routes/courses');
 const analysesRoutes = require('./routes/analyses');
 const calendarRoutes = require('./routes/calendar');
+const kanbanRoutes = require('./routes/kanban');
 
 const app = express();
 const server = http.createServer(app);
@@ -142,6 +143,7 @@ app.use('/api/mis', misProxyRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/analyses', analysesRoutes);
 app.use('/api/calendar', calendarRoutes);
+app.use('/api/kanban', kanbanRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -183,7 +185,10 @@ async function startServer() {
     initDoctorReindexJob();
 
     // Initialize analyses price update cron job
-    require('./cron/analysesCron'); // <-- ДОБАВЛЕНО
+    require('./cron/analysesCron');
+
+    // Initialize kanban auto-archive cron job
+    require('./cron/kanbanArchiveCron');
 
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);

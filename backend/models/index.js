@@ -54,7 +54,8 @@ const User = sequelize.define('User', {
       media: false,      // Медиафайлы
       backup: false,     // Резервные копии
       settings: false,   // Настройки
-      courses: false     // Курсы
+      courses: false,    // Курсы
+      kanban: false      // Канбан-доска
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -745,6 +746,92 @@ CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 CalendarEvent.belongsTo(CalendarEvent, { foreignKey: 'parentEventId', as: 'parentEvent' });
 CalendarEvent.hasMany(CalendarEvent, { foreignKey: 'parentEventId', as: 'instances' });
 
+// === KANBAN TASK MODEL ===
+const KanbanTask = sequelize.define('KanbanTask', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Название задачи'
+  },
+  description: {
+    type: DataTypes.TEXT,
+    comment: 'Подробное описание задачи'
+  },
+  status: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: 'backlog',
+    comment: 'Статус задачи: backlog, todo, in_progress, review, done'
+  },
+  priority: {
+    type: DataTypes.STRING(20),
+    defaultValue: 'medium',
+    comment: 'Приоритет: low, medium, high, urgent'
+  },
+  assigneeIds: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Массив ID исполнителей задачи'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя-создателя задачи'
+  },
+  tags: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Теги задачи: ["тег1", "тег2"]'
+  },
+  attachments: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Прикрепленные файлы: [{id, filename, path, size, uploadedAt, uploadedBy}]'
+  },
+  dueDate: {
+    type: DataTypes.DATE,
+    comment: 'Срок выполнения задачи'
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Порядок сортировки внутри колонки'
+  },
+  metadata: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Дополнительные данные задачи'
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Задача в архиве'
+  },
+  archivedAt: {
+    type: DataTypes.DATE,
+    comment: 'Дата архивации задачи'
+  },
+  completedAt: {
+    type: DataTypes.DATE,
+    comment: 'Дата завершения задачи (переход в статус done)'
+  }
+}, {
+  tableName: 'kanban_tasks',
+  timestamps: true,
+  indexes: [
+    { fields: ['status'] },
+    { fields: ['createdBy'] },
+    { fields: ['priority'] },
+    { fields: ['sortOrder'] },
+    { fields: ['dueDate'] },
+    { fields: ['archived'] },
+    { fields: ['completedAt'] }
+  ]
+});
+
+// KanbanTask relationships
+KanbanTask.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -773,5 +860,6 @@ module.exports = {
   CalendarEvent,
   MedCenter,
   UserMedCenter,
-  UserRole
+  UserRole,
+  KanbanTask
 };

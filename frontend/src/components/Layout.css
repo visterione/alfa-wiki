@@ -356,18 +356,21 @@
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4) inset;
 }
 
-.quick-access-btn.map {
+.quick-access-btn.map,
+.quick-access-btn.kanban {
   background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2);
 }
 
-.quick-access-btn.map:hover {
+.quick-access-btn.map:hover,
+.quick-access-btn.kanban:hover {
   background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
   box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
   transform: translateY(-1px);
 }
 
-.quick-access-btn.map.active {
+.quick-access-btn.map.active,
+.quick-access-btn.kanban.active {
   background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) inset;
 }

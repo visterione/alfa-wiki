@@ -21,7 +21,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Map as MapIcon
+  Minus, GraduationCap, Trello
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -277,7 +277,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/admin/pages';
   const isOnCourses = location.pathname.startsWith('/courses');
-  const isOnMap = location.pathname.startsWith('/map');
+  const isOnKanban = location.pathname.startsWith('/kanban');
   const isOnDoctors = location.pathname.startsWith('/doctors');
 
   const handleClick = (path) => {
@@ -328,12 +328,12 @@ function QuickAccessButtons({ onClose }) {
         <GraduationCap size={20} />
       </button>
 
-      <button 
-        className={`quick-access-btn map ${isOnMap ? 'active' : ''}`}
-        onClick={() => handleClick('/map')}
-        title="Карта"
+      <button
+        className={`quick-access-btn kanban ${isOnKanban ? 'active' : ''}`}
+        onClick={() => handleClick('/kanban')}
+        title="Канбан"
       >
-        <MapIcon size={20} />
+        <Trello size={20} />
       </button>
 
       <button 

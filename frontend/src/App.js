@@ -23,6 +23,8 @@ import CourseView from './pages/CourseView';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseEditor from './pages/admin/AdminCourseEditor';
 import Calendar from './pages/Calendar';
+import Kanban from './pages/Kanban';
+import KanbanArchive from './pages/KanbanArchive';
 import './index.css';
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
@@ -68,7 +70,9 @@ function AppRoutes() {
         <Route path="profile" element={<Profile />} />
         <Route path="favorites" element={<Favorites />} />
         <Route path="calendar" element={<Calendar />} />
-        
+        <Route path="kanban" element={<Kanban />} />
+        <Route path="kanban/archive" element={<KanbanArchive />} />
+
         {/* КУРСЫ - добавьте эти строки */}
         <Route path="courses" element={<Courses />} />
         <Route path="courses/:id" element={<CourseView />} />

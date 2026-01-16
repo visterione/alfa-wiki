@@ -1,0 +1,256 @@
+.archive-page {
+  padding: 2rem;
+  min-height: 100vh;
+  background: var(--bg-primary);
+}
+
+.archive-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid var(--border-color);
+}
+
+.archive-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.archive-title svg {
+  color: var(--text-secondary);
+}
+
+.archive-title h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: var(--text-primary);
+}
+
+.archive-title .task-count {
+  background: var(--bg-tertiary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.btn-icon-lg {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: all 0.2s;
+}
+
+.btn-icon-lg:hover {
+  background: var(--bg-tertiary);
+}
+
+.archive-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+}
+
+.archive-no-access,
+.archive-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.archive-no-access svg,
+.archive-empty svg {
+  margin-bottom: 1.5rem;
+  color: var(--text-tertiary);
+}
+
+.archive-no-access h2,
+.archive-empty h2 {
+  margin: 0.5rem 0;
+  color: var(--text-primary);
+  font-size: 1.5rem;
+}
+
+.archive-no-access p,
+.archive-empty p {
+  margin: 0.5rem 0 1.5rem;
+  max-width: 400px;
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.archive-task {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.archive-task:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.archive-task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.archive-task-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.archive-task-description {
+  margin: 0.75rem 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+
+.archive-task-meta {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.archive-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.archive-tag {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(0, 0, 0, 0.1);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.archive-task-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.archive-assignees {
+  display: flex;
+  align-items: center;
+}
+
+.archive-assignee {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.8);
+  border: 2px solid var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -10px;
+}
+
+.archive-assignee:first-child {
+  margin-left: 0;
+}
+
+.archive-assignee img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.more-assignees {
+  background: rgba(0, 0, 0, 0.15);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.archive-attachments-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+.archive-dates {
+  margin-left: auto;
+}
+
+.archive-date {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .archive-page {
+    padding: 1rem;
+  }
+
+  .archive-title h1 {
+    font-size: 1.25rem;
+  }
+
+  .archive-task {
+    padding: 1rem;
+  }
+
+  .archive-task-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .archive-dates {
+    margin-left: 0;
+  }
+}

@@ -114,7 +114,8 @@ export default function AdminUsers() {
       media: false,
       backup: false,
       settings: false,
-      courses: false
+      courses: false,
+      kanban: false
     }
   });
 
@@ -764,6 +765,14 @@ export default function AdminUsers() {
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, courses: e.target.checked}})}
                       />
                       Курсы
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.adminAccess.kanban}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, kanban: e.target.checked}})}
+                      />
+                      Канбан-доска
                     </label>
                   </div>
                   <p style={{
