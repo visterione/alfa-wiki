@@ -133,7 +133,7 @@ const toLocalDateTimeString = (dateString) => {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 };
 
-export default function EventModal({ event, selectedDate, onSave, onDelete, onClose }) {
+export default function EventModal({ event, selectedDate, currentUser, onSave, onDelete, onClose }) {
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -180,6 +180,11 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
   useEffect(() => {
     if (event) {
       // Редактирование существующего события
+      // Преобразуем participants из формата [{userId, status}] в массив ID
+      const participantIds = Array.isArray(event.participants)
+        ? event.participants.map(p => typeof p === 'string' ? p : p.userId)
+        : [];
+
       setFormData({
         title: event.title || '',
         description: event.description || '',
@@ -201,7 +206,7 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
         reminders: event.reminders || [],
         visibility: event.visibility || 'private',
         sharedWith: event.sharedWith || [],
-        participants: event.participants || []
+        participants: participantIds
       });
     } else if (selectedDate) {
       // Создание нового события с выбранной датой
@@ -213,7 +218,8 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
       setFormData(prev => ({
         ...prev,
         startTime: toLocalDateTimeString(startDate),
-        endTime: toLocalDateTimeString(endDate)
+        endTime: toLocalDateTimeString(endDate),
+        allDay: false
       }));
     } else {
       // Создание нового события без выбранной даты
@@ -223,13 +229,33 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
       setFormData(prev => ({
         ...prev,
         startTime: toLocalDateTimeString(now),
-        endTime: toLocalDateTimeString(endTime)
+        endTime: toLocalDateTimeString(endTime),
+        allDay: false
       }));
     }
   }, [event, selectedDate]);
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    if (field === 'visibility' && value === 'shared') {
+      // Автоматически добавляем текущего пользователя в sharedWith при выборе 'shared'
+      setFormData(prev => {
+        const currentSharedWith = prev.sharedWith || [];
+        const userId = currentUser?.id;
+
+        // Добавляем только если пользователь есть и его еще нет в списке
+        if (userId && !currentSharedWith.includes(userId)) {
+          return {
+            ...prev,
+            [field]: value,
+            sharedWith: [userId, ...currentSharedWith]
+          };
+        }
+
+        return { ...prev, [field]: value };
+      });
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+    }
   };
 
   // Обработчики для recurrenceRule
@@ -293,24 +319,41 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     if (!formData.title.trim()) {
       alert('Введите название события');
       return;
     }
 
-    const startDate = new Date(formData.startTime);
-    const endDate = new Date(formData.endTime);
-    
+    // Функция для корректного преобразования локального datetime в UTC
+    // datetime-local возвращает строку типа "2026-01-19T00:00" без timezone
+    // Нужно интерпретировать её как UTC, а не как локальное время
+    const parseAsUTC = (dateTimeString) => {
+      // Добавляем 'Z' чтобы явно указать UTC
+      return new Date(dateTimeString + 'Z');
+    };
+
+    const startDate = parseAsUTC(formData.startTime);
+    const endDate = parseAsUTC(formData.endTime);
+
     if (endDate <= startDate) {
       alert('Время окончания должно быть позже времени начала');
       return;
     }
 
+    // Преобразуем participants из массива ID в массив объектов с userId и status
+    const participantsData = formData.participants.map(userId => ({
+      userId: userId,
+      status: 'pending'
+    }));
+
     const eventData = {
       ...formData,
       startTime: startDate.toISOString(),
-      endTime: endDate.toISOString()
+      endTime: endDate.toISOString(),
+      participants: participantsData,
+      // sharedWith остаётся массивом ID
+      sharedWith: formData.sharedWith
     };
 
     onSave(eventData);
@@ -318,21 +361,45 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
 
   const handleDelete = () => {
     if (event && event.id) {
-      onDelete(event.id);
+      onDelete(event.id, event);
     }
   };
+
+  // Проверяем, является ли событие экземпляром повторяющегося события
+  const isRecurringInstance = event?.isInstance || (event?.id && event.id.includes('-'));
+
+  // Проверяем, является ли текущий пользователь создателем события
+  const isCreator = !event || event.createdBy === currentUser?.id;
+
+  // Можно редактировать только если пользователь - создатель и это не экземпляр повторяющегося события
+  const canEdit = isCreator && !isRecurringInstance && !event?.isIntegrated;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content event-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>{event ? 'Редактировать событие' : 'Новое событие'}</h2>
+          <h2>{event ? (canEdit ? 'Редактировать событие' : 'Просмотр события') : 'Новое событие'}</h2>
           <button className="modal-close" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
 
+        {isRecurringInstance && (
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #0ea5e9', borderRadius: '4px' }}>
+            <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+            Это экземпляр повторяющегося события. Редактирование отдельных экземпляров пока не поддерживается. Вы можете удалить все повторения.
+          </div>
+        )}
+
+        {event && !isCreator && (
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#fef3c7', border: '1px solid #f59e0b', borderRadius: '4px' }}>
+            <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+            Это событие создано другим пользователем. Вы можете просматривать и удалять его, но не редактировать.
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
+          <fieldset disabled={!canEdit} style={{ border: 'none', padding: 0, margin: 0 }}>
           <div className="modal-body">
             <div className="form-group">
               <label>Название *</label>
@@ -349,18 +416,18 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
               <div className="form-group">
                 <label>Начало *</label>
                 <input
-                  type={formData.allDay ? "date" : "datetime-local"}
-                  value={formData.allDay ? formData.startTime.split('T')[0] : formData.startTime}
-                  onChange={e => handleChange('startTime', formData.allDay ? e.target.value + 'T00:00' : e.target.value)}
+                  type="datetime-local"
+                  value={formData.startTime}
+                  onChange={e => handleChange('startTime', e.target.value)}
                   required
                 />
               </div>
               <div className="form-group">
                 <label>Окончание *</label>
                 <input
-                  type={formData.allDay ? "date" : "datetime-local"}
-                  value={formData.allDay ? formData.endTime.split('T')[0] : formData.endTime}
-                  onChange={e => handleChange('endTime', formData.allDay ? e.target.value + 'T23:59' : e.target.value)}
+                  type="datetime-local"
+                  value={formData.endTime}
+                  onChange={e => handleChange('endTime', e.target.value)}
                   required
                 />
               </div>
@@ -369,7 +436,23 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
                   <input
                     type="checkbox"
                     checked={formData.allDay}
-                    onChange={e => handleChange('allDay', e.target.checked)}
+                    onChange={e => {
+                      const isAllDay = e.target.checked;
+                      if (isAllDay) {
+                        // Устанавливаем время 00:00 - 23:59 при включении "Весь день"
+                        const startDate = formData.startTime.split('T')[0];
+                        const endDate = formData.endTime.split('T')[0];
+                        setFormData(prev => ({
+                          ...prev,
+                          allDay: true,
+                          startTime: startDate + 'T00:00',
+                          endTime: endDate + 'T23:59'
+                        }));
+                      } else {
+                        // Просто снимаем галочку
+                        handleChange('allDay', false);
+                      }
+                    }}
                   />
                   <span>Весь день</span>
                 </label>
@@ -628,11 +711,24 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
                     </div>
                   </div>
                 )}
+
+                <div className="form-group">
+                  <label>Дата окончания повторения (необязательно)</label>
+                  <input
+                    type="date"
+                    value={formData.recurrenceRule.endDate ? formData.recurrenceRule.endDate.split('T')[0] : ''}
+                    onChange={e => handleRecurrenceChange('endDate', e.target.value ? e.target.value : null)}
+                    placeholder="Максимум 3 года"
+                  />
+                  <p className="help-text">Если не указано, событие будет повторяться до 3 лет</p>
+                </div>
               </div>
             )}
           </div>
+          </fieldset>
 
           <div className="modal-footer">
+            {/* Кнопка удаления доступна создателю, участникам и пользователям из sharedWith */}
             {event && !event.isIntegrated && (
               <button
                 type="button"
@@ -650,13 +746,14 @@ export default function EventModal({ event, selectedDate, onSave, onDelete, onCl
               >
                 Отмена
               </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={event && event.isIntegrated}
-              >
-                <Save size={18} /> Сохранить
-              </button>
+              {canEdit && (
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                >
+                  <Save size={18} /> Сохранить
+                </button>
+              )}
             </div>
           </div>
         </form>

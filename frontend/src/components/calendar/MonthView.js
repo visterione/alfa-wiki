@@ -2,6 +2,16 @@ import React from 'react';
 
 const weekDays = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
+// Вспомогательная функция для получения локальной даты из ISO строки
+const getLocalDate = (isoString) => {
+  const date = new Date(isoString);
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth(),
+    date: date.getDate()
+  };
+};
+
 export default function MonthView({ currentDate, events, onEventClick, onCellClick }) {
   const getDaysInMonth = () => {
     const year = currentDate.getFullYear();
@@ -51,14 +61,14 @@ export default function MonthView({ currentDate, events, onEventClick, onCellCli
 
   const getEventsForDay = (date) => {
     if (!events || !Array.isArray(events)) return [];
-    
+
     return events.filter(event => {
       if (!event || !event.startTime) return false;
-      
-      const eventDate = new Date(event.startTime);
-      return eventDate.getDate() === date.getDate() &&
-             eventDate.getMonth() === date.getMonth() &&
-             eventDate.getFullYear() === date.getFullYear();
+
+      const eventLocalDate = getLocalDate(event.startTime);
+      return eventLocalDate.date === date.getDate() &&
+             eventLocalDate.month === date.getMonth() &&
+             eventLocalDate.year === date.getFullYear();
     });
   };
 

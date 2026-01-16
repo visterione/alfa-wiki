@@ -33,57 +33,128 @@ function canAccessEvent(event, userId, isAdmin) {
 // Генерация экземпляров повторяющегося события
 function generateRecurringInstances(event, startDate, endDate) {
   if (!event.isRecurring || !event.recurrenceRule) return [];
-  
+
   const instances = [];
   const rule = event.recurrenceRule;
   const eventDuration = new Date(event.endTime) - new Date(event.startTime);
-  
-  let currentDate = new Date(Math.max(new Date(event.startTime), new Date(startDate)));
-  const end = new Date(Math.min(
-    rule.endDate ? new Date(rule.endDate) : new Date('2099-12-31'),
-    new Date(endDate)
-  ));
 
-  while (currentDate <= end) {
-    let shouldInclude = false;
+  // Начинаем с оригинальной даты события
+  const originalStart = new Date(event.startTime);
+  const requestStart = new Date(startDate);
+  const requestEnd = new Date(endDate);
 
-    switch (rule.frequency) {
-      case 'daily':
-        shouldInclude = true;
-        currentDate.setDate(currentDate.getDate() + (rule.interval || 1));
-        break;
-      
-      case 'weekly':
-        if (rule.daysOfWeek && rule.daysOfWeek.includes(currentDate.getDay())) {
-          shouldInclude = true;
+  // Конечная дата повторения (максимум 3 года от даты создания события)
+  const maxEndDate = new Date(originalStart);
+  maxEndDate.setFullYear(maxEndDate.getFullYear() + 3);
+
+  const recurrenceEnd = rule.endDate ? new Date(rule.endDate) : maxEndDate;
+  const end = recurrenceEnd < requestEnd ? recurrenceEnd : requestEnd;
+
+  // Если событие ещё не началось, не генерируем экземпляры
+  if (originalStart > end) return [];
+
+  const interval = rule.interval || 1;
+  let currentDate = new Date(originalStart);
+
+  // Счётчик для предотвращения бесконечных циклов
+  let iterationCount = 0;
+  const maxIterations = 1000;
+
+  switch (rule.frequency) {
+    case 'daily':
+      while (currentDate <= end && iterationCount < maxIterations) {
+        if (currentDate >= requestStart && currentDate <= end) {
+          instances.push(createInstance(event, currentDate, eventDuration));
         }
-        currentDate.setDate(currentDate.getDate() + 1);
-        break;
-      
-      case 'monthly':
-        shouldInclude = true;
-        currentDate.setMonth(currentDate.getMonth() + (rule.interval || 1));
-        break;
-      
-      case 'yearly':
-        shouldInclude = true;
-        currentDate.setFullYear(currentDate.getFullYear() + (rule.interval || 1));
-        break;
-    }
+        currentDate = new Date(currentDate);
+        currentDate.setDate(currentDate.getDate() + interval);
+        iterationCount++;
+      }
+      break;
 
-    if (shouldInclude && currentDate >= new Date(startDate) && currentDate <= end) {
-      instances.push({
-        ...event.toJSON(),
-        id: `${event.id}-${currentDate.toISOString()}`,
-        startTime: new Date(currentDate),
-        endTime: new Date(currentDate.getTime() + eventDuration),
-        isInstance: true,
-        instanceDate: currentDate.toISOString()
-      });
-    }
+    case 'weekly':
+      // Для weekly нужны дни недели
+      if (!rule.daysOfWeek || rule.daysOfWeek.length === 0) {
+        // Если дни не указаны, используем день оригинального события
+        const originalDay = originalStart.getDay();
+        rule.daysOfWeek = [originalDay === 0 ? 7 : originalDay];
+      }
+
+      // Нормализуем дни недели (1-7, где 1=Пн, 7=Вс)
+      const normalizedDays = rule.daysOfWeek.map(day => day === 0 ? 7 : day).sort();
+
+      // Начинаем с недели, в которую попадает оригинальное событие
+      let weekStart = new Date(originalStart);
+      const dayOfWeek = weekStart.getDay() === 0 ? 7 : weekStart.getDay();
+      weekStart.setDate(weekStart.getDate() - dayOfWeek + 1); // Понедельник этой недели
+
+      let weekCount = 0;
+      while (weekStart <= end && iterationCount < maxIterations) {
+        // Проверяем каждый день на этой неделе
+        for (const day of normalizedDays) {
+          const instanceDate = new Date(weekStart);
+          instanceDate.setDate(weekStart.getDate() + day - 1);
+          instanceDate.setHours(originalStart.getHours(), originalStart.getMinutes(), originalStart.getSeconds());
+
+          if (instanceDate >= originalStart && instanceDate >= requestStart && instanceDate <= end) {
+            instances.push(createInstance(event, instanceDate, eventDuration));
+          }
+        }
+
+        // Переходим к следующей неделе с учётом интервала
+        weekStart.setDate(weekStart.getDate() + 7 * interval);
+        weekCount++;
+        iterationCount++;
+      }
+      break;
+
+    case 'monthly':
+      const originalDay = originalStart.getDate();
+      while (currentDate <= end && iterationCount < maxIterations) {
+        if (currentDate >= requestStart && currentDate <= end) {
+          instances.push(createInstance(event, currentDate, eventDuration));
+        }
+        currentDate = new Date(currentDate);
+        currentDate.setMonth(currentDate.getMonth() + interval);
+
+        // Корректировка для случаев типа 31 января -> февраль
+        // Если день месяца изменился (например, 31->28), восстанавливаем оригинальный день
+        if (currentDate.getDate() !== originalDay) {
+          currentDate.setDate(0); // Последний день предыдущего месяца
+        }
+        iterationCount++;
+      }
+      break;
+
+    case 'yearly':
+      while (currentDate <= end && iterationCount < maxIterations) {
+        if (currentDate >= requestStart && currentDate <= end) {
+          instances.push(createInstance(event, currentDate, eventDuration));
+        }
+        currentDate = new Date(currentDate);
+        currentDate.setFullYear(currentDate.getFullYear() + interval);
+        iterationCount++;
+      }
+      break;
   }
 
   return instances;
+}
+
+// Вспомогательная функция для создания экземпляра события
+function createInstance(event, instanceDate, eventDuration) {
+  const instanceStart = new Date(instanceDate);
+  const instanceEnd = new Date(instanceStart.getTime() + eventDuration);
+
+  return {
+    ...event.toJSON(),
+    id: `${event.id}-${instanceStart.toISOString()}`,
+    startTime: instanceStart,
+    endTime: instanceEnd,
+    isInstance: true,
+    instanceDate: instanceStart.toISOString(),
+    parentEventId: event.id
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -112,9 +183,43 @@ router.get('/events', authenticate, async (req, res) => {
 
     // Фильтр по времени
     if (start && end) {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+
+      // Для обычных событий: события должны пересекаться с запрошенным периодом
+      // Для повторяющихся событий: событие должно начаться до конца периода
+      // И период повторения должен пересекаться с запрошенным периодом
       where[Op.and] = [
-        { startTime: { [Op.lte]: new Date(end) } },
-        { endTime: { [Op.gte]: new Date(start) } }
+        {
+          [Op.or]: [
+            // Обычные события: стандартная проверка пересечения
+            {
+              [Op.and]: [
+                { isRecurring: { [Op.or]: [false, null] } },
+                { startTime: { [Op.lte]: endDate } },
+                { endTime: { [Op.gte]: startDate } }
+              ]
+            },
+            // Повторяющиеся события: проверяем, что событие началось и период повторения активен
+            {
+              [Op.and]: [
+                { isRecurring: true },
+                { startTime: { [Op.lte]: endDate } }, // Событие должно было начаться
+                {
+                  [Op.or]: [
+                    // Нет даты окончания повторения (или она в будущем)
+                    {
+                      [Op.or]: [
+                        { 'recurrenceRule.endDate': { [Op.is]: null } },
+                        { 'recurrenceRule.endDate': { [Op.gte]: startDate } }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
       ];
     }
 
@@ -399,12 +504,13 @@ router.put('/events/:id', authenticate, async (req, res) => {
     }
 
     const event = await CalendarEvent.findByPk(req.params.id);
-    
+
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
 
     // Только создатель или админ может редактировать
+    // (участники и sharedWith пользователи могут только просматривать и удалять)
     if (event.createdBy !== req.user.id && !req.user.isAdmin) {
       return res.status(403).json({ error: 'Access denied' });
     }
@@ -470,13 +576,27 @@ router.delete('/events/:id', authenticate, async (req, res) => {
     }
 
     const event = await CalendarEvent.findByPk(req.params.id);
-    
+
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
 
-    // Только создатель или админ может удалять
-    if (event.createdBy !== req.user.id && !req.user.isAdmin) {
+    // Проверка прав на удаление:
+    // 1. Создатель события
+    // 2. Пользователь в списке sharedWith
+    // 3. Пользователь в списке participants
+    // 4. Администратор
+    const isCreator = event.createdBy === req.user.id;
+    const isSharedWith = event.sharedWith && event.sharedWith.includes(req.user.id);
+    const isParticipant = event.participants && event.participants.some(p => {
+      const userId = typeof p === 'string' ? p : p.userId;
+      return userId === req.user.id;
+    });
+    const isAdmin = req.user.isAdmin;
+
+    const canDelete = isCreator || isSharedWith || isParticipant || isAdmin;
+
+    if (!canDelete) {
       return res.status(403).json({ error: 'Access denied' });
     }
 

@@ -1,6 +1,17 @@
 import React from 'react';
 import { Clock, MapPin, User } from 'lucide-react';
 
+// Вспомогательная функция для получения локальной даты из ISO строки
+const getLocalDate = (isoString) => {
+  const date = new Date(isoString);
+  return {
+    year: date.getFullYear(),
+    month: date.getMonth(),
+    date: date.getDate(),
+    hours: date.getHours()
+  };
+};
+
 // === WEEK VIEW ===
 export function WeekView({ currentDate, events, onEventClick }) {
   const getWeekDays = () => {
@@ -19,10 +30,10 @@ export function WeekView({ currentDate, events, onEventClick }) {
 
   const getEventsForDay = (date) => {
     return events.filter(event => {
-      const eventDate = new Date(event.startTime);
-      return eventDate.getDate() === date.getDate() &&
-        eventDate.getMonth() === date.getMonth() &&
-        eventDate.getFullYear() === date.getFullYear();
+      const eventLocalDate = getLocalDate(event.startTime);
+      return eventLocalDate.date === date.getDate() &&
+        eventLocalDate.month === date.getMonth() &&
+        eventLocalDate.year === date.getFullYear();
     });
   };
 
@@ -98,11 +109,11 @@ export function DayView({ currentDate, events, onEventClick }) {
 
   const getEventsForHour = (hour) => {
     return events.filter(event => {
-      const eventDate = new Date(event.startTime);
-      return eventDate.getDate() === currentDate.getDate() &&
-        eventDate.getMonth() === currentDate.getMonth() &&
-        eventDate.getFullYear() === currentDate.getFullYear() &&
-        eventDate.getHours() === hour;
+      const eventLocalDate = getLocalDate(event.startTime);
+      return eventLocalDate.date === currentDate.getDate() &&
+        eventLocalDate.month === currentDate.getMonth() &&
+        eventLocalDate.year === currentDate.getFullYear() &&
+        eventLocalDate.hours === hour;
     });
   };
 

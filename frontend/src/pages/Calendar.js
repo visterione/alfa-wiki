@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { 
+import {
   ChevronLeft, ChevronRight, Plus, Filter, Calendar as CalendarIcon,
   Clock, MapPin, Users, Tag, AlertCircle, CheckCircle, X
 } from 'lucide-react';
 import { calendar as calendarApi } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import {
   EventModal,
@@ -42,6 +43,7 @@ const STATUSES = {
 };
 
 export default function Calendar() {
+  const { user: currentUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState('month'); // 'month', 'week', 'day', 'agenda'
   const [currentDate, setCurrentDate] = useState(() => {
@@ -234,18 +236,48 @@ export default function Calendar() {
     }
   };
 
-  const handleDeleteEvent = async (eventId) => {
-    if (!window.confirm('Удалить это событие?')) return;
-    
-    try {
-      await calendarApi.deleteEvent(eventId);
-      toast.success('Событие удалено');
-      closeEventModal();
-      loadEvents();
-      loadUpcoming();
-    } catch (error) {
-      console.error('Failed to delete event:', error);
-      toast.error('Ошибка удаления события');
+  const handleDeleteEvent = async (eventId, event) => {
+    // Проверяем, является ли это экземпляром повторяющегося события
+    const isRecurringInstance = event?.isInstance || eventId.includes('-');
+
+    if (isRecurringInstance) {
+      // Это экземпляр повторяющегося события
+      const parentId = event?.parentEventId || eventId.split('-')[0];
+
+      const choice = window.confirm(
+        'Это повторяющееся событие.\n\n' +
+        'OK - Удалить все повторения\n' +
+        'Отмена - Отменить удаление\n\n' +
+        'Примечание: Удаление отдельных экземпляров повторяющихся событий пока не поддерживается.'
+      );
+
+      if (!choice) return;
+
+      // Удаляем родительское событие (все повторения)
+      try {
+        await calendarApi.deleteEvent(parentId);
+        toast.success('Все повторения события удалены');
+        closeEventModal();
+        loadEvents();
+        loadUpcoming();
+      } catch (error) {
+        console.error('Failed to delete recurring event:', error);
+        toast.error('Ошибка удаления повторяющегося события');
+      }
+    } else {
+      // Обычное событие
+      if (!window.confirm('Удалить это событие?')) return;
+
+      try {
+        await calendarApi.deleteEvent(eventId);
+        toast.success('Событие удалено');
+        closeEventModal();
+        loadEvents();
+        loadUpcoming();
+      } catch (error) {
+        console.error('Failed to delete event:', error);
+        toast.error('Ошибка удаления события');
+      }
     }
   };
 
@@ -364,6 +396,7 @@ export default function Calendar() {
         <EventModal
             event={selectedEvent}
             selectedDate={selectedDate}
+            currentUser={currentUser}
             onSave={handleSaveEvent}
             onDelete={handleDeleteEvent}
             onClose={closeEventModal}

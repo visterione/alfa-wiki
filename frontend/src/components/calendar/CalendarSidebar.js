@@ -174,18 +174,34 @@ export function EventFilters({ filters, onChange }) {
 
 // === UPCOMING EVENTS ===
 export function UpcomingEvents({ events, onEventClick }) {
+  // Вспомогательная функция для получения локальной даты из ISO строки
+  const getLocalDate = (isoString) => {
+    const date = new Date(isoString);
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth(),
+      date: date.getDate()
+    };
+  };
+
   const formatDate = (dateStr) => {
-    const date = new Date(dateStr);
+    const eventDate = getLocalDate(dateStr);
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    if (date.toDateString() === today.toDateString()) {
+    // Создаем объекты Date для сравнения только по дате (без времени)
+    const eventDateOnly = new Date(eventDate.year, eventDate.month, eventDate.date);
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const tomorrowOnly = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+
+    if (eventDateOnly.getTime() === todayOnly.getTime()) {
       return 'Сегодня';
-    } else if (date.toDateString() === tomorrow.toDateString()) {
+    } else if (eventDateOnly.getTime() === tomorrowOnly.getTime()) {
       return 'Завтра';
     } else {
-      return date.toLocaleDateString('ru-RU', {
+      // Используем eventDateOnly для форматирования
+      return eventDateOnly.toLocaleDateString('ru-RU', {
         day: 'numeric',
         month: 'short'
       });

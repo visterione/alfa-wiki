@@ -11,7 +11,7 @@ const sequelize = new Sequelize(
     dialect: 'postgres',
     logging: process.env.NODE_ENV === 'development' ? console.log : false,
     pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
-    timezone: '+00:00', // Принудительно используем UTC
+    timezone: '+00:00', // Храним в UTC
     dialectOptions: {
       timezone: 'Etc/GMT'
     }
