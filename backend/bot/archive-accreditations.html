@@ -11,8 +11,8 @@
   align-items: center;
   gap: 20px;
   padding: 20px 24px;
-  background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
-  border: 1px solid #7dd3fc;
+  background: linear-gradient(135deg, #f3e8ff 0%, #ede9fe 100%);
+  border: 1px solid #c084fc;
   border-radius: 12px;
   margin-bottom: 24px;
 }
@@ -40,7 +40,7 @@
 .acc-bot-title {
   font-size: 16px;
   font-weight: 600;
-  color: #0c4a6e;
+  color: #581c87;
   margin-bottom: 6px;
   display: flex;
   align-items: center;
@@ -50,12 +50,12 @@
 .acc-bot-title svg {
   width: 20px;
   height: 20px;
-  color: #0ea5e9;
+  color: #a855f7;
 }
 
 .acc-bot-desc {
   font-size: 14px;
-  color: #075985;
+  color: #6b21a8;
   margin-bottom: 10px;
   line-height: 1.4;
 }
@@ -65,7 +65,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #0ea5e9;
+  background: #a855f7;
   color: #fff !important;
   text-decoration: none;
   border-radius: 8px;
@@ -76,7 +76,7 @@
 
 .acc-bot-link:hover,
 .acc-bot-link:visited {
-  background: #0284c7;
+  background: #9333ea;
   color: #fff !important;
 }
 
@@ -109,10 +109,10 @@
 }
 
 .acc-stat-icon svg { width: 24px; height: 24px; }
-.acc-stat-icon.total { background: #e0f2fe; color: #0284c7; }
+.acc-stat-icon.total { background: #f3e8ff; color: #9333ea; }
 .acc-stat-icon.danger { background: #fee2e2; color: #dc2626; }
 .acc-stat-icon.warning { background: #fef3c7; color: #d97706; }
-.acc-stat-icon.info { background: #dbeafe; color: #2563eb; }
+.acc-stat-icon.info { background: #ede9fe; color: #7c3aed; }
 
 .acc-stat-info { display: flex; flex-direction: column; }
 .acc-stat-value { font-size: 28px; font-weight: 700; color: #1f2937; line-height: 1; }
@@ -189,14 +189,12 @@
   border-radius: 6px;
 }
 
-.acc-btn-edit { background: #dbeafe; color: #2563eb; }
-.acc-btn-edit:hover { background: #bfdbfe; }
 .acc-btn-delete { background: #fee2e2; color: #dc2626; }
 .acc-btn-delete:hover { background: #fecaca; }
 .acc-btn-files { background: #fef3c7; color: #d97706; }
 .acc-btn-files:hover { background: #fde68a; }
-.acc-btn-archive { background: #e0e7ff; color: #6366f1; }
-.acc-btn-archive:hover { background: #c7d2fe; }
+.acc-btn-restore { background: #d1fae5; color: #059669; }
+.acc-btn-restore:hover { background: #a7f3d0; }
 
 .acc-table-container {
   background: #fff;
@@ -305,20 +303,6 @@
 }
 .acc-modal-close:hover { background: #e5e7eb; }
 
-#acc-form { padding: 24px; }
-
-.acc-form-group { margin-bottom: 18px; }
-.acc-form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: #374151; }
-
-.acc-modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
-  margin-top: 8px;
-}
-
 .acc-toast {
   position: fixed;
   bottom: 24px;
@@ -403,45 +387,6 @@
 .acc-file-actions {
   display: flex;
   gap: 6px;
-}
-
-.acc-upload-area {
-  border: 2px dashed #d1d5db;
-  border-radius: 12px;
-  padding: 32px 24px;
-  text-align: center;
-  background: #f9fafb;
-  cursor: pointer;
-  transition: all 0.2s;
-  margin-bottom: 20px;
-}
-
-.acc-upload-area:hover {
-  border-color: #3b82f6;
-  background: #eff6ff;
-}
-
-.acc-upload-area.drag-over {
-  border-color: #3b82f6;
-  background: #dbeafe;
-}
-
-.acc-upload-icon {
-  width: 48px;
-  height: 48px;
-  margin: 0 auto 12px;
-  color: #9ca3af;
-}
-
-.acc-upload-text {
-  font-size: 14px;
-  color: #6b7280;
-  margin-bottom: 4px;
-}
-
-.acc-upload-hint {
-  font-size: 12px;
-  color: #9ca3af;
 }
 
 .acc-no-files {
@@ -545,101 +490,98 @@
 
 /* Мобильные устройства */
 @media (max-width: 768px) {
-  .acc-bot-info { 
-    flex-direction: column; 
-    text-align: center; 
+  .acc-bot-info {
+    flex-direction: column;
+    text-align: center;
     padding: 16px;
     gap: 16px;
   }
   .acc-bot-qr { width: 120px; height: 120px; }
   .acc-bot-desc { font-size: 13px; }
-  
+
   .acc-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
   .acc-stat-card { padding: 14px 12px; gap: 12px; }
   .acc-stat-icon { width: 40px; height: 40px; }
   .acc-stat-icon svg { width: 20px; height: 20px; }
   .acc-stat-value { font-size: 22px; }
   .acc-stat-label { font-size: 11px; }
-  
+
   .acc-toolbar { flex-direction: column; align-items: stretch; gap: 12px; }
   .acc-filters { flex-direction: column; gap: 10px; }
   .acc-filter-group { min-width: 100%; }
-  .acc-btn-primary { width: 100%; justify-content: center; }
-  
+
   .acc-table-container { border-radius: 8px; }
   .acc-table { font-size: 13px; }
-  .acc-table th { 
-    padding: 10px 8px; 
+  .acc-table th {
+    padding: 10px 8px;
     font-size: 11px;
     letter-spacing: 0;
   }
   .acc-table td { padding: 10px 8px; }
-  
+
   .acc-table th:nth-child(5),
   .acc-table td:nth-child(5) { display: none; }
-  
-  .acc-medcenter, .acc-date { 
-    padding: 3px 8px; 
-    font-size: 11px; 
+
+  .acc-medcenter, .acc-date {
+    padding: 3px 8px;
+    font-size: 11px;
   }
-  
+
   .acc-btn-icon { width: 28px; height: 28px; }
   .acc-btn-icon svg { width: 14px; height: 14px; }
-  
-  .acc-modal-content { 
-    margin: 8px; 
+
+  .acc-modal-content {
+    margin: 8px;
     max-height: calc(100vh - 16px);
     border-radius: 12px;
   }
   .acc-modal-header { padding: 16px; }
   .acc-modal-header h3 { font-size: 16px; }
-  #acc-form { padding: 16px; }
-  .acc-form-group { margin-bottom: 14px; }
   .acc-input, .acc-select, .acc-textarea { padding: 12px; font-size: 16px; }
-  
-  .acc-toast { 
-    left: 16px; 
-    right: 16px; 
-    bottom: 16px; 
+
+  .acc-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
     text-align: center;
   }
-  
+
   .acc-pagination { flex-wrap: wrap; justify-content: center; }
 }
 
 /* Маленькие мобильные */
 @media (max-width: 480px) {
   .acc-stats { grid-template-columns: 1fr; gap: 8px; }
-  .acc-stat-card { 
-    flex-direction: row; 
+  .acc-stat-card {
+    flex-direction: row;
     justify-content: flex-start;
     padding: 12px 16px;
   }
-  
+
   .acc-table th:nth-child(3),
   .acc-table td:nth-child(3) { display: none; }
-  
+
   .acc-table th:first-child,
-  .acc-table td:first-child { 
+  .acc-table td:first-child {
     max-width: 70px;
   }
-  
+
   .acc-medcenter {
     max-width: 60px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  
+
   .acc-bot-qr { width: 100px; height: 100px; }
-  .acc-bot-link { 
-    width: 100%; 
+  .acc-bot-link {
+    width: 100%;
     justify-content: center;
     padding: 10px 16px;
   }
-  
-  .acc-pagination { 
-    flex-direction: column; 
+
+  .acc-pagination {
+    flex-direction: column;
     gap: 12px;
     padding: 12px 16px;
   }
@@ -649,30 +591,34 @@
 </style>
 
 <div id="accreditations-app">
-  <!-- Блок с информацией о Telegram боте -->
+  <!-- Блок с информацией о архиве -->
   <div class="acc-bot-info">
     <div class="acc-bot-qr">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://t.me/alfa_appointments_bot" alt="QR код бота">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="84" height="84">
+        <path d="M21 8v13H3V8"/>
+        <path d="M1 3h22v5H1z"/>
+        <path d="M10 12h4"/>
+      </svg>
     </div>
     <div class="acc-bot-content">
       <div class="acc-bot-title">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 00-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.51 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .38z"/></svg>
-        Telegram-бот напоминаний
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 8v13H3V8"/>
+          <path d="M1 3h22v5H1z"/>
+          <path d="M10 12h4"/>
+        </svg>
+        Архив аккредитаций
       </div>
       <div class="acc-bot-desc">
-        Подпишитесь на бота, чтобы получать уведомления об истечении сроков аккредитаций за 90, 60, 30, 14 и 7 дней.
+        Здесь хранятся архивные записи об аккредитациях. Вы можете просмотреть файлы, восстановить записи или удалить их.
       </div>
-      <a href="https://t.me/alfa_appointments_bot" target="_blank" class="acc-bot-link">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        @alfa_appointments_bot
-      </a>
     </div>
   </div>
 
   <div class="acc-stats">
     <div class="acc-stat-card">
       <div class="acc-stat-icon total"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-total">0</span><span class="acc-stat-label">Всего</span></div>
+      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-total">0</span><span class="acc-stat-label">Всего в архиве</span></div>
     </div>
     <div class="acc-stat-card danger">
       <div class="acc-stat-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
@@ -710,16 +656,10 @@
         </select>
       </div>
     </div>
-    <div style="display: flex; gap: 12px;">
-      <button class="acc-btn acc-btn-primary" onclick="accApp.openAddModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Добавить
-      </button>
-      <a href="/page/archive-accreditations" class="acc-btn" style="text-decoration: none; background: #e0e7ff; color: #6366f1; display: inline-flex; align-items: center; gap: 8px;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
-        Архив
-      </a>
-    </div>
+    <a href="/page/accreditations" class="acc-btn" style="text-decoration: none; background: #e5e7eb; color: #374151; display: inline-flex; align-items: center; gap: 8px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="15 18 9 12 15 6"/></svg>
+      Назад к аккредитациям
+    </a>
   </div>
 
   <div class="acc-table-container">
@@ -744,52 +684,7 @@
     </div>
   </div>
 
-  <div id="acc-modal" class="acc-modal" style="display:none" onclick="if(event.target===this)accApp.closeModal()">
-    <div class="acc-modal-content">
-      <div class="acc-modal-header">
-        <h3 id="modal-title">Добавить запись</h3>
-        <button class="acc-modal-close" onclick="accApp.closeModal()">&times;</button>
-      </div>
-      <form id="acc-form" onsubmit="accApp.saveRecord(event)">
-        <input type="hidden" id="edit-id">
-        <div class="acc-form-group">
-          <label>Медцентр *</label>
-          <select id="edit-medcenter" required class="acc-select">
-            <option value="">Выберите...</option>
-            <option value="Альфа">Альфа</option>
-            <option value="Кидс">Кидс</option>
-            <option value="Проф">Проф</option>
-            <option value="Линия">Линия</option>
-            <option value="Смайл">Смайл</option>
-            <option value="3К">3К</option>
-          </select>
-        </div>
-        <div class="acc-form-group">
-          <label>ФИО *</label>
-          <input type="text" id="edit-fullname" required class="acc-input" placeholder="Иванов Иван Иванович">
-        </div>
-        <div class="acc-form-group">
-          <label>Специальность *</label>
-          <input type="text" id="edit-specialty" required class="acc-input" placeholder="Терапия" list="specialties-list">
-          <datalist id="specialties-list"></datalist>
-        </div>
-        <div class="acc-form-group">
-          <label>Срок действия *</label>
-          <input type="date" id="edit-expdate" required class="acc-input">
-        </div>
-        <div class="acc-form-group">
-          <label>Комментарий</label>
-          <textarea id="edit-comment" class="acc-textarea" rows="3" placeholder="Дополнительная информация..."></textarea>
-        </div>
-        <div class="acc-modal-footer">
-          <button type="button" class="acc-btn acc-btn-secondary" onclick="accApp.closeModal()">Отмена</button>
-          <button type="submit" class="acc-btn acc-btn-primary">Сохранить</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Модальное окно для файлов -->
+  <!-- Модальное окно для файлов (только просмотр) -->
   <div id="acc-files-modal" class="acc-modal" style="display:none" onclick="if(event.target===this)accApp.closeFilesModal()">
     <div class="acc-modal-content wide">
       <div class="acc-modal-header">
@@ -799,17 +694,7 @@
       <div style="padding: 24px;">
         <input type="hidden" id="files-accreditation-id">
 
-        <!-- Область загрузки файлов -->
-        <div class="acc-upload-area" id="upload-area" onclick="document.getElementById('file-input').click()">
-          <svg class="acc-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-          </svg>
-          <div class="acc-upload-text">Нажмите или перетащите файлы для загрузки</div>
-          <div class="acc-upload-hint">Разрешены: изображения, PDF, Word, Excel (макс. 50MB)</div>
-          <input type="file" id="file-input" multiple style="display:none" onchange="accApp.uploadFiles(event)">
-        </div>
-
-        <!-- Список файлов -->
+        <!-- Список файлов (только просмотр) -->
         <div class="acc-files-list" id="files-list">
           <div class="acc-no-files">Файлы не прикреплены</div>
         </div>
@@ -882,8 +767,9 @@ window.accApp = (function() {
     var search = document.getElementById('filter-search').value;
     var mc = document.getElementById('filter-medcenter').value;
     var sp = document.getElementById('filter-specialty').value;
-    
-    var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
+
+    // Add archived=true parameter to fetch only archived records
+    var url = API_URL + '?archived=true&sortBy=' + sortField + '&sortOrder=' + sortOrder;
     if (search) url += '&search=' + encodeURIComponent(search);
     if (mc) url += '&medCenter=' + encodeURIComponent(mc);
     if (sp) url += '&specialty=' + encodeURIComponent(sp);
@@ -900,7 +786,8 @@ window.accApp = (function() {
   }
 
   function loadStats() {
-    fetchAPI(API_URL + '/stats').then(function(s) {
+    // Load stats for archived records only
+    fetchAPI(API_URL + '/stats?archived=true').then(function(s) {
       document.getElementById('stat-total').textContent = s.total;
       document.getElementById('stat-expired').textContent = s.expired;
       document.getElementById('stat-soon').textContent = s.expiringSoon;
@@ -909,26 +796,24 @@ window.accApp = (function() {
   }
 
   function loadSpecialties() {
-    fetchAPI(API_URL + '/specialties').then(function(list) {
+    fetchAPI(API_URL + '/specialties?archived=true').then(function(list) {
       var sel = document.getElementById('filter-specialty');
-      var dl = document.getElementById('specialties-list');
       sel.innerHTML = '<option value="">Все специальности</option>' + list.map(function(s) {
         return '<option value="'+s+'">'+s+'</option>';
       }).join('');
-      dl.innerHTML = list.map(function(s) { return '<option value="'+s+'">'; }).join('');
     });
   }
 
   function renderTable() {
     var tb = document.getElementById('acc-table-body');
     if (!accreditations.length) {
-      tb.innerHTML = '<tr><td colspan="6" class="acc-empty">Нет данных</td></tr>';
+      tb.innerHTML = '<tr><td colspan="6" class="acc-empty">Нет данных в архиве</td></tr>';
       return;
     }
     var start = (currentPage - 1) * pageSize;
     var end = start + pageSize;
     var pageData = accreditations.slice(start, end);
-    
+
     tb.innerHTML = pageData.map(function(a) {
       var isHighlighted = highlightId && a.id === highlightId;
       return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' class="acc-highlight"' : '') + '>' +
@@ -939,8 +824,7 @@ window.accApp = (function() {
         '<td>'+escapeHtml(a.comment||'—')+'</td>' +
         '<td style="text-align:center"><div class="acc-actions" style="justify-content:center">' +
           '<button class="acc-btn acc-btn-icon acc-btn-files" onclick="accApp.openFilesModal(\''+a.id+'\')" title="Файлы"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></button>' +
-          '<button class="acc-btn acc-btn-icon acc-btn-edit" onclick="accApp.openEditModal(\''+a.id+'\')" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
-          '<button class="acc-btn acc-btn-icon acc-btn-archive" onclick="accApp.archiveRecord(\''+a.id+'\')" title="В архив"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg></button>' +
+          '<button class="acc-btn acc-btn-icon acc-btn-restore" onclick="accApp.restoreRecord(\''+a.id+'\')" title="Восстановить из архива"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg></button>' +
           '<button class="acc-btn acc-btn-icon acc-btn-delete" onclick="accApp.deleteRecord(\''+a.id+'\')" title="Удалить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>' +
         '</div></td></tr>';
     }).join('');
@@ -956,43 +840,43 @@ window.accApp = (function() {
     var controls = document.getElementById('pagination-controls');
     var total = accreditations.length;
     var totalPages = Math.ceil(total / pageSize);
-    
+
     if (total <= pageSize) {
       pagination.style.display = 'none';
       return;
     }
-    
+
     pagination.style.display = 'flex';
-    
+
     var start = (currentPage - 1) * pageSize + 1;
     var end = Math.min(currentPage * pageSize, total);
     info.textContent = 'Показано ' + start + '-' + end + ' из ' + total;
-    
+
     var html = '';
     html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>';
-    
+
     var startPage = Math.max(1, currentPage - 2);
     var endPage = Math.min(totalPages, startPage + 4);
     if (endPage - startPage < 4) {
       startPage = Math.max(1, endPage - 4);
     }
-    
+
     if (startPage > 1) {
       html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(1)">1</button>';
       if (startPage > 2) html += '<span style="color:#9ca3af">...</span>';
     }
-    
+
     for (var i = startPage; i <= endPage; i++) {
       html += '<button class="acc-pagination-btn ' + (i === currentPage ? 'active' : '') + '" onclick="accApp.goToPage(' + i + ')">' + i + '</button>';
     }
-    
+
     if (endPage < totalPages) {
       if (endPage < totalPages - 1) html += '<span style="color:#9ca3af">...</span>';
       html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
     }
-    
+
     html += '<button class="acc-pagination-btn" onclick="accApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>';
-    
+
     controls.innerHTML = html;
   }
 
@@ -1011,12 +895,12 @@ window.accApp = (function() {
       if (accreditations[i].id === id) { index = i; break; }
     }
     if (index === -1) return false;
-    
+
     highlightId = id;
     currentPage = Math.floor(index / pageSize) + 1;
     renderTable();
     renderPagination();
-    
+
     setTimeout(function() {
       var row = document.querySelector('tr[data-id="' + id + '"]');
       if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1024,64 +908,20 @@ window.accApp = (function() {
     return true;
   }
 
-  function openAddModal() {
-    document.getElementById('modal-title').textContent = 'Добавить запись';
-    document.getElementById('edit-id').value = '';
-    document.getElementById('acc-form').reset();
-    document.getElementById('acc-modal').style.display = 'flex';
-  }
-
-  function openEditModal(id) {
-    var a = accreditations.find(function(x) { return x.id === id; });
-    if (!a) return;
-    document.getElementById('modal-title').textContent = 'Редактировать';
-    document.getElementById('edit-id').value = a.id;
-    document.getElementById('edit-medcenter').value = a.medCenter;
-    document.getElementById('edit-fullname').value = a.fullName;
-    document.getElementById('edit-specialty').value = a.specialty;
-    document.getElementById('edit-expdate').value = a.expirationDate;
-    document.getElementById('edit-comment').value = a.comment || '';
-    document.getElementById('acc-modal').style.display = 'flex';
-  }
-
-  function closeModal() {
-    document.getElementById('acc-modal').style.display = 'none';
-  }
-
-  function saveRecord(e) {
-    e.preventDefault();
-    var id = document.getElementById('edit-id').value;
-    var data = {
-      medCenter: document.getElementById('edit-medcenter').value,
-      fullName: document.getElementById('edit-fullname').value,
-      specialty: document.getElementById('edit-specialty').value,
-      expirationDate: document.getElementById('edit-expdate').value,
-      comment: document.getElementById('edit-comment').value
-    };
-    var url = id ? API_URL + '/' + id : API_URL;
-    fetchAPI(url, { method: id ? 'PUT' : 'POST', body: JSON.stringify(data) })
-      .then(function() {
-        showToast(id ? 'Обновлено' : 'Добавлено', 'success');
-        closeModal();
-        loadData();
-        loadSpecialties();
-      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
-  }
-
-  function archiveRecord(id) {
-    if (!confirm('Переместить запись в архив?')) return;
+  function restoreRecord(id) {
+    if (!confirm('Восстановить запись из архива?')) return;
     fetchAPI(API_URL + '/' + id + '/archive', {
       method: 'PATCH',
-      body: JSON.stringify({ isArchived: true })
+      body: JSON.stringify({ isArchived: false })
     })
       .then(function() {
-        showToast('Перенесено в архив', 'success');
+        showToast('Восстановлено из архива', 'success');
         loadData();
       }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
   }
 
   function deleteRecord(id) {
-    if (!confirm('Удалить запись?')) return;
+    if (!confirm('Удалить запись из архива? Это действие нельзя отменить.')) return;
     fetchAPI(API_URL + '/' + id, { method: 'DELETE' })
       .then(function() {
         showToast('Удалено', 'success');
@@ -1114,7 +954,7 @@ window.accApp = (function() {
     loadData();
   }
 
-  // === FILES MANAGEMENT ===
+  // === FILES MANAGEMENT (READ-ONLY) ===
   var currentAccreditationId = null;
 
   function openFilesModal(id) {
@@ -1127,7 +967,6 @@ window.accApp = (function() {
   function closeFilesModal() {
     document.getElementById('acc-files-modal').style.display = 'none';
     currentAccreditationId = null;
-    document.getElementById('file-input').value = '';
   }
 
   function loadFiles(accId) {
@@ -1147,6 +986,7 @@ window.accApp = (function() {
       return;
     }
 
+    // Read-only file list - only download button, no delete
     container.innerHTML = files.map(function(file) {
       var size = formatFileSize(file.size);
       var date = new Date(file.createdAt).toLocaleDateString('ru-RU');
@@ -1164,17 +1004,11 @@ window.accApp = (function() {
           '</div>' +
         '</div>' +
         '<div class="acc-file-actions">' +
-          '<button class="acc-btn acc-btn-icon acc-btn-edit" onclick="accApp.downloadFile(\'' + file.id + '\')" title="Скачать">' +
+          '<button class="acc-btn acc-btn-icon acc-btn-files" onclick="accApp.downloadFile(\'' + file.id + '\')" title="Скачать">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">' +
               '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
               '<polyline points="7 10 12 15 17 10"/>' +
               '<line x1="12" y1="15" x2="12" y2="3"/>' +
-            '</svg>' +
-          '</button>' +
-          '<button class="acc-btn acc-btn-icon acc-btn-delete" onclick="accApp.deleteFile(\'' + file.id + '\')" title="Удалить">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">' +
-              '<polyline points="3 6 5 6 21 6"/>' +
-              '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
             '</svg>' +
           '</button>' +
         '</div>' +
@@ -1188,42 +1022,6 @@ window.accApp = (function() {
     var sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
     var i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-  }
-
-  function uploadFiles(event) {
-    var files = event.target.files;
-    if (!files || files.length === 0) return;
-
-    var accId = document.getElementById('files-accreditation-id').value;
-    if (!accId) {
-      showToast('Ошибка: ID аккредитации не найден', 'error');
-      return;
-    }
-
-    var formData = new FormData();
-    for (var i = 0; i < files.length; i++) {
-      formData.append('files', files[i]);
-    }
-
-    fetch(API_URL + '/' + accId + '/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + getToken()
-      },
-      body: formData
-    })
-    .then(function(r) {
-      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
-      return r.json();
-    })
-    .then(function(uploadedFiles) {
-      showToast('Файлы загружены: ' + uploadedFiles.length, 'success');
-      loadFiles(accId);
-      document.getElementById('file-input').value = '';
-    })
-    .catch(function(e) {
-      showToast('Ошибка загрузки: ' + e.message, 'error');
-    });
   }
 
   function downloadFile(fileId) {
@@ -1241,27 +1039,19 @@ window.accApp = (function() {
     .then(function(response) {
       if (!response.ok) throw new Error('Download failed');
 
-      // Получаем имя файла из заголовка Content-Disposition
       var contentDisposition = response.headers.get('Content-Disposition');
-      console.log('Content-Disposition:', contentDisposition);
       var filename = 'download.pdf';
 
       if (contentDisposition) {
-        // Пробуем найти filename*=UTF-8''...
         var filenameMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/);
         if (filenameMatch) {
           filename = decodeURIComponent(filenameMatch[1]);
-          console.log('Найдено UTF-8 имя:', filename);
         } else {
-          // Пробуем найти обычный filename="..."
           filenameMatch = contentDisposition.match(/filename="?([^";\n]+)"?/);
           if (filenameMatch) {
             filename = filenameMatch[1];
-            console.log('Найдено обычное имя:', filename);
           }
         }
-      } else {
-        console.log('Content-Disposition header отсутствует!');
       }
 
       return response.blob().then(function(blob) {
@@ -1269,7 +1059,6 @@ window.accApp = (function() {
       });
     })
     .then(function(data) {
-      // Создаем ссылку для скачивания
       var url = window.URL.createObjectURL(data.blob);
       var a = document.createElement('a');
       a.href = url;
@@ -1284,65 +1073,15 @@ window.accApp = (function() {
     });
   }
 
-  function deleteFile(fileId) {
-    if (!confirm('Удалить файл?')) return;
-
-    var accId = currentAccreditationId;
-    if (!accId) return;
-
-    fetchAPI(API_URL + '/' + accId + '/files/' + fileId, { method: 'DELETE' })
-      .then(function() {
-        showToast('Файл удален', 'success');
-        loadFiles(accId);
-      })
-      .catch(function(e) {
-        showToast('Ошибка удаления: ' + e.message, 'error');
-      });
-  }
-
-  // Drag & Drop support
-  var uploadArea = null;
-  function initDragDrop() {
-    uploadArea = document.getElementById('upload-area');
-    if (!uploadArea) return;
-
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(function(eventName) {
-      uploadArea.addEventListener(eventName, function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-      }, false);
-    });
-
-    ['dragenter', 'dragover'].forEach(function(eventName) {
-      uploadArea.addEventListener(eventName, function() {
-        uploadArea.classList.add('drag-over');
-      }, false);
-    });
-
-    ['dragleave', 'drop'].forEach(function(eventName) {
-      uploadArea.addEventListener(eventName, function() {
-        uploadArea.classList.remove('drag-over');
-      }, false);
-    });
-
-    uploadArea.addEventListener('drop', function(e) {
-      var dt = e.dataTransfer;
-      var files = dt.files;
-      document.getElementById('file-input').files = files;
-      uploadFiles({ target: { files: files } });
-    }, false);
-  }
-
   // Init
   if (!getToken()) {
     document.getElementById('accreditations-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
     var urlParams = new URLSearchParams(window.location.search);
     var highlightParam = urlParams.get('highlight');
-    
+
     loadData();
     loadSpecialties();
-    initDragDrop();
 
     if (highlightParam) {
       var checkAndScroll = setInterval(function() {
@@ -1357,7 +1096,6 @@ window.accApp = (function() {
 
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
-        closeModal();
         closeFilesModal();
       }
     });
@@ -1365,11 +1103,7 @@ window.accApp = (function() {
 
   return {
     loadData: loadData,
-    openAddModal: openAddModal,
-    openEditModal: openEditModal,
-    closeModal: closeModal,
-    saveRecord: saveRecord,
-    archiveRecord: archiveRecord,
+    restoreRecord: restoreRecord,
     deleteRecord: deleteRecord,
     sortTable: sortTable,
     debounceLoad: debounceLoad,
@@ -1378,9 +1112,7 @@ window.accApp = (function() {
     scrollToRecord: scrollToRecord,
     openFilesModal: openFilesModal,
     closeFilesModal: closeFilesModal,
-    uploadFiles: uploadFiles,
-    downloadFile: downloadFile,
-    deleteFile: deleteFile
+    downloadFile: downloadFile
   };
 })();
 </script>

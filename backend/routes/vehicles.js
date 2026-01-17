@@ -1,10 +1,56 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Vehicle, SearchIndex } = require('../models');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs').promises;
+const { Vehicle, VehicleFile, SearchIndex } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+// === MULTER CONFIGURATION ===
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(process.env.UPLOAD_PATH || './uploads', 'vehicles');
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'vehicle-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 52428800 // 50MB по умолчанию
+  },
+  fileFilter: (req, file, cb) => {
+    // Разрешенные типы файлов
+    const allowedMimes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый тип файла. Разрешены: изображения, PDF, Word, Excel, текстовые файлы.'));
+    }
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════
 // НАСТРОЙКА: Укажи slug wiki-страницы с ТО
@@ -82,10 +128,20 @@ const reindexAllVehicles = async () => {
 // Получить все ТС с фильтрацией
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { organization, condition, search, sortBy = 'insuranceDate', sortOrder = 'ASC' } = req.query;
-    
+    const { organization, condition, search, sortBy = 'insuranceDate', sortOrder = 'ASC', archived } = req.query;
+
     const where = {};
-    
+
+    // По умолчанию показываем только неархивные записи
+    if (archived === 'true') {
+      where.isArchived = true;
+    } else if (archived === 'false') {
+      where.isArchived = false;
+    } else {
+      // Если параметр не указан, показываем только активные
+      where.isArchived = false;
+    }
+
     if (organization) where.organization = { [Op.iLike]: `%${organization}%` };
     if (condition) where.condition = condition;
     if (search) {
@@ -243,6 +299,25 @@ router.put('/:id', authenticate, [
   }
 });
 
+// Переместить в архив / вернуть из архива
+router.patch('/:id/archive', authenticate, async (req, res) => {
+  try {
+    const vehicle = await Vehicle.findByPk(req.params.id);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    // Переключаем статус архивирования
+    const isArchived = req.body.isArchived !== undefined ? req.body.isArchived : !vehicle.isArchived;
+    await vehicle.update({ isArchived });
+
+    res.json(vehicle);
+  } catch (error) {
+    console.error('Archive vehicle error:', error);
+    res.status(500).json({ error: 'Failed to archive vehicle' });
+  }
+});
+
 // Удалить ТС
 router.delete('/:id', authenticate, async (req, res) => {
   try {
@@ -252,15 +327,147 @@ router.delete('/:id', authenticate, async (req, res) => {
     }
 
     const vehId = vehicle.id;
-    
+
+    // Удаляем все связанные файлы
+    const files = await VehicleFile.findAll({ where: { vehicleId: vehId } });
+    for (const file of files) {
+      try {
+        await fs.unlink(file.path);
+      } catch (err) {
+        console.error('Error deleting file:', err);
+      }
+      await file.destroy();
+    }
+
     await vehicle.destroy();
-    
+
     await removeFromIndex(vehId);
 
     res.json({ message: 'Vehicle deleted' });
   } catch (error) {
     console.error('Delete vehicle error:', error);
     res.status(500).json({ error: 'Failed to delete vehicle' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FILE MANAGEMENT ROUTES
+// ═══════════════════════════════════════════════════════════════
+
+// Получить список файлов ТС
+router.get('/:id/files', authenticate, async (req, res) => {
+  try {
+    const vehicle = await Vehicle.findByPk(req.params.id);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    const files = await VehicleFile.findAll({
+      where: { vehicleId: req.params.id },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json(files);
+  } catch (error) {
+    console.error('Get files error:', error);
+    res.status(500).json({ error: 'Failed to fetch files' });
+  }
+});
+
+// Загрузить файл(ы) к ТС
+router.post('/:id/files', authenticate, upload.array('files', 10), async (req, res) => {
+  try {
+    const vehicle = await Vehicle.findByPk(req.params.id);
+    if (!vehicle) {
+      return res.status(404).json({ error: 'Vehicle not found' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const uploadedFiles = [];
+    for (const file of req.files) {
+      // Исправляем кодировку имени файла (multer передает в latin1, нужно декодировать в utf8)
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+      const vehicleFile = await VehicleFile.create({
+        vehicleId: req.params.id,
+        filename: file.filename,
+        originalName: originalName,
+        mimeType: file.mimetype,
+        size: file.size,
+        path: file.path,
+        uploadedBy: req.user.id
+      });
+      uploadedFiles.push(vehicleFile);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.status(201).json(uploadedFiles);
+  } catch (error) {
+    console.error('Upload files error:', error);
+    res.status(500).json({ error: 'Failed to upload files' });
+  }
+});
+
+// Скачать файл
+router.get('/:id/files/:fileId/download', authenticate, async (req, res) => {
+  try {
+    const file = await VehicleFile.findOne({
+      where: {
+        id: req.params.fileId,
+        vehicleId: req.params.id
+      }
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Правильно кодируем имя файла для поддержки кириллицы
+    const encodedFilename = encodeURIComponent(file.originalName);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+
+    // Резолвим абсолютный путь от текущей директории
+    const absolutePath = path.resolve(file.path);
+    res.sendFile(absolutePath);
+  } catch (error) {
+    console.error('Download file error:', error);
+    res.status(500).json({ error: 'Failed to download file' });
+  }
+});
+
+// Удалить файл
+router.delete('/:id/files/:fileId', authenticate, async (req, res) => {
+  try {
+    const file = await VehicleFile.findOne({
+      where: {
+        id: req.params.fileId,
+        vehicleId: req.params.id
+      }
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Удаляем физический файл
+    try {
+      await fs.unlink(file.path);
+    } catch (err) {
+      console.error('Error deleting physical file:', err);
+    }
+
+    // Удаляем запись из БД
+    await file.destroy();
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('Delete file error:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 

@@ -1,7 +1,10 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { Accreditation, SearchIndex } = require('../models');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs').promises;
+const { Accreditation, AccreditationFile, SearchIndex } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,6 +15,49 @@ const router = express.Router();
 // ═══════════════════════════════════════════════════════════════
 const ACCREDITATIONS_PAGE_SLUG = 'accreditations'; // <-- ЗАМЕНИ НА СВОЙ SLUG
 // ═══════════════════════════════════════════════════════════════
+
+// === MULTER CONFIGURATION ===
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const uploadDir = path.join(process.env.UPLOAD_PATH || './uploads', 'accreditations');
+    try {
+      await fs.mkdir(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    } catch (error) {
+      cb(error);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, 'accred-' + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE) || 52428800 // 50MB по умолчанию
+  },
+  fileFilter: (req, file, cb) => {
+    // Разрешенные типы файлов
+    const allowedMimes = [
+      'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый тип файла. Разрешены: изображения, PDF, Word, Excel, текстовые файлы.'));
+    }
+  }
+});
 
 // === HELPER: Индексация аккредитации для поиска ===
 const indexAccreditation = async (accreditation) => {
@@ -82,10 +128,20 @@ const reindexAllAccreditations = async () => {
 // Получить все аккредитации с фильтрацией
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { medCenter, fullName, specialty, search, sortBy = 'expirationDate', sortOrder = 'ASC' } = req.query;
-    
+    const { medCenter, fullName, specialty, search, sortBy = 'expirationDate', sortOrder = 'ASC', archived } = req.query;
+
     const where = {};
-    
+
+    // По умолчанию показываем только неархивные записи
+    if (archived === 'true') {
+      where.isArchived = true;
+    } else if (archived === 'false') {
+      where.isArchived = false;
+    } else {
+      // Если параметр не указан, показываем только активные
+      where.isArchived = false;
+    }
+
     if (medCenter) where.medCenter = medCenter;
     if (specialty) where.specialty = specialty;
     if (fullName) where.fullName = { [Op.iLike]: `%${fullName}%` };
@@ -224,6 +280,25 @@ router.put('/:id', authenticate, [
   }
 });
 
+// Переместить в архив / вернуть из архива
+router.patch('/:id/archive', authenticate, async (req, res) => {
+  try {
+    const accreditation = await Accreditation.findByPk(req.params.id);
+    if (!accreditation) {
+      return res.status(404).json({ error: 'Accreditation not found' });
+    }
+
+    // Переключаем статус архивирования
+    const isArchived = req.body.isArchived !== undefined ? req.body.isArchived : !accreditation.isArchived;
+    await accreditation.update({ isArchived });
+
+    res.json(accreditation);
+  } catch (error) {
+    console.error('Archive accreditation error:', error);
+    res.status(500).json({ error: 'Failed to archive accreditation' });
+  }
+});
+
 // Удалить аккредитацию
 router.delete('/:id', authenticate, async (req, res) => {
   try {
@@ -233,9 +308,20 @@ router.delete('/:id', authenticate, async (req, res) => {
     }
 
     const accId = accreditation.id;
-    
+
+    // Удаляем все связанные файлы
+    const files = await AccreditationFile.findAll({ where: { accreditationId: accId } });
+    for (const file of files) {
+      try {
+        await fs.unlink(file.path);
+      } catch (err) {
+        console.error('Error deleting file:', err);
+      }
+      await file.destroy();
+    }
+
     await accreditation.destroy();
-    
+
     // Удаляем из индекса
     await removeFromIndex(accId);
 
@@ -243,6 +329,133 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Delete accreditation error:', error);
     res.status(500).json({ error: 'Failed to delete accreditation' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// FILE MANAGEMENT ROUTES
+// ═══════════════════════════════════════════════════════════════
+
+// Получить список файлов аккредитации
+router.get('/:id/files', authenticate, async (req, res) => {
+  try {
+    const accreditation = await Accreditation.findByPk(req.params.id);
+    if (!accreditation) {
+      return res.status(404).json({ error: 'Accreditation not found' });
+    }
+
+    const files = await AccreditationFile.findAll({
+      where: { accreditationId: req.params.id },
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json(files);
+  } catch (error) {
+    console.error('Get files error:', error);
+    res.status(500).json({ error: 'Failed to fetch files' });
+  }
+});
+
+// Загрузить файл(ы) к аккредитации
+router.post('/:id/files', authenticate, upload.array('files', 10), async (req, res) => {
+  try {
+    const accreditation = await Accreditation.findByPk(req.params.id);
+    if (!accreditation) {
+      return res.status(404).json({ error: 'Accreditation not found' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const uploadedFiles = [];
+    for (const file of req.files) {
+      // Исправляем кодировку имени файла (multer передает в latin1, нужно декодировать в utf8)
+      const originalName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+      const accreditationFile = await AccreditationFile.create({
+        accreditationId: req.params.id,
+        filename: file.filename,
+        originalName: originalName,
+        mimeType: file.mimetype,
+        size: file.size,
+        path: file.path,
+        uploadedBy: req.user.id
+      });
+      uploadedFiles.push(accreditationFile);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.status(201).json(uploadedFiles);
+  } catch (error) {
+    console.error('Upload files error:', error);
+    res.status(500).json({ error: 'Failed to upload files' });
+  }
+});
+
+// Скачать файл
+router.get('/:id/files/:fileId/download', authenticate, async (req, res) => {
+  try {
+    const file = await AccreditationFile.findOne({
+      where: {
+        id: req.params.fileId,
+        accreditationId: req.params.id
+      }
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Проверяем существование файла
+    try {
+      await fs.access(file.path);
+    } catch (err) {
+      return res.status(404).json({ error: 'File not found on server' });
+    }
+
+    // Правильно кодируем имя файла для поддержки кириллицы
+    const encodedFilename = encodeURIComponent(file.originalName);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`);
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+
+    // Резолвим абсолютный путь от текущей директории
+    const absolutePath = path.resolve(file.path);
+    res.sendFile(absolutePath);
+  } catch (error) {
+    console.error('Download file error:', error);
+    res.status(500).json({ error: 'Failed to download file' });
+  }
+});
+
+// Удалить файл
+router.delete('/:id/files/:fileId', authenticate, async (req, res) => {
+  try {
+    const file = await AccreditationFile.findOne({
+      where: {
+        id: req.params.fileId,
+        accreditationId: req.params.id
+      }
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Удаляем файл с диска
+    try {
+      await fs.unlink(file.path);
+    } catch (err) {
+      console.error('Error deleting file from disk:', err);
+    }
+
+    await file.destroy();
+
+    res.json({ message: 'File deleted' });
+  } catch (error) {
+    console.error('Delete file error:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 

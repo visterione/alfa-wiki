@@ -241,27 +241,72 @@ const Message = sequelize.define('Message', {
 // === ACCREDITATION MODEL ===
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  medCenter: { 
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'), 
-    allowNull: false 
+  medCenter: {
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    allowNull: false
   },
   fullName: { type: DataTypes.STRING(255), allowNull: false },
   specialty: { type: DataTypes.STRING(255), allowNull: false },
   expirationDate: { type: DataTypes.DATEONLY, allowNull: false },
   comment: { type: DataTypes.TEXT },
+  isArchived: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Запись перенесена в архив' },
   reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded7: { type: DataTypes.BOOLEAN, defaultValue: false }
-}, { 
-  tableName: 'accreditations', 
+}, {
+  tableName: 'accreditations',
   timestamps: true,
   indexes: [
     { fields: ['medCenter'] },
     { fields: ['fullName'] },
     { fields: ['specialty'] },
     { fields: ['expirationDate'] }
+  ]
+});
+
+// === ACCREDITATION FILE MODEL ===
+const AccreditationFile = sequelize.define('AccreditationFile', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  accreditationId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID аккредитации, к которой прикреплен файл'
+  },
+  filename: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Имя файла на сервере'
+  },
+  originalName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Оригинальное имя файла'
+  },
+  mimeType: {
+    type: DataTypes.STRING(100),
+    comment: 'MIME тип файла'
+  },
+  size: {
+    type: DataTypes.INTEGER,
+    comment: 'Размер файла в байтах'
+  },
+  path: {
+    type: DataTypes.STRING(1000),
+    allowNull: false,
+    comment: 'Путь к файлу на сервере'
+  },
+  uploadedBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя, загрузившего файл'
+  }
+}, {
+  tableName: 'accreditation_files',
+  timestamps: true,
+  indexes: [
+    { fields: ['accreditationId'] },
+    { fields: ['uploadedBy'] }
   ]
 });
 
@@ -290,22 +335,67 @@ const Vehicle = sequelize.define('Vehicle', {
   mileage: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   nextTO: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   insuranceDate: { type: DataTypes.DATEONLY, allowNull: false },
-  condition: { 
-    type: DataTypes.ENUM('Хорошее', 'Удовлетворительное', 'Плохое'), 
-    defaultValue: 'Хорошее' 
+  condition: {
+    type: DataTypes.ENUM('Хорошее', 'Удовлетворительное', 'Плохое'),
+    defaultValue: 'Хорошее'
   },
   comment: { type: DataTypes.TEXT },
+  isArchived: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Запись перенесена в архив' },
   reminded30: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded14: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded7: { type: DataTypes.BOOLEAN, defaultValue: false },
   remindedTO: { type: DataTypes.BOOLEAN, defaultValue: false }
-}, { 
-  tableName: 'vehicles', 
+}, {
+  tableName: 'vehicles',
   timestamps: true,
   indexes: [
     { fields: ['organization'] },
     { fields: ['licensePlate'] },
     { fields: ['insuranceDate'] }
+  ]
+});
+
+// === VEHICLE FILE MODEL ===
+const VehicleFile = sequelize.define('VehicleFile', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  vehicleId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID транспортного средства, к которому прикреплен файл'
+  },
+  filename: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Имя файла на сервере'
+  },
+  originalName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Оригинальное имя файла'
+  },
+  mimeType: {
+    type: DataTypes.STRING(100),
+    comment: 'MIME тип файла'
+  },
+  size: {
+    type: DataTypes.INTEGER,
+    comment: 'Размер файла в байтах'
+  },
+  path: {
+    type: DataTypes.STRING(1000),
+    allowNull: false,
+    comment: 'Путь к файлу на сервере'
+  },
+  uploadedBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя, загрузившего файл'
+  }
+}, {
+  tableName: 'vehicle_files',
+  timestamps: true,
+  indexes: [
+    { fields: ['vehicleId'] },
+    { fields: ['uploadedBy'] }
   ]
 });
 
@@ -832,6 +922,16 @@ const KanbanTask = sequelize.define('KanbanTask', {
 // KanbanTask relationships
 KanbanTask.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
+// AccreditationFile relationships
+AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
+AccreditationFile.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
+Accreditation.hasMany(AccreditationFile, { foreignKey: 'accreditationId', as: 'files', onDelete: 'CASCADE' });
+
+// VehicleFile relationships
+VehicleFile.belongsTo(Vehicle, { foreignKey: 'vehicleId', as: 'vehicle' });
+VehicleFile.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
+Vehicle.hasMany(VehicleFile, { foreignKey: 'vehicleId', as: 'files', onDelete: 'CASCADE' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -848,8 +948,10 @@ module.exports = {
   ChatMember,
   Message,
   Accreditation,
+  AccreditationFile,
   TelegramSubscriber,
   Vehicle,
+  VehicleFile,
   MapMarker,
   DoctorCard,
   Course,
