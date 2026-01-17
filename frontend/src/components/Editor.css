@@ -237,77 +237,69 @@
   background: var(--primary-light);
 }
 
-/* Resizable Image Styles */
-.resizable-image-container {
-  position: relative;
-  display: inline-block;
-  line-height: 0;
-  cursor: default;
-  user-select: none;
-}
-
-.resizable-image-container img {
-  display: block;
+/* Image Styles */
+.editor-content .ProseMirror img {
   max-width: 100%;
   height: auto;
-  transition: outline 0.15s ease;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
   user-select: none;
-  pointer-events: none;
 }
 
-.resizable-image-container.selected img {
+.editor-content .ProseMirror img.ProseMirror-selectednode {
   outline: 3px solid var(--primary);
   outline-offset: 2px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-.resizable-image-container.resizing img {
-  outline: 3px solid var(--primary);
-  outline-offset: 2px;
+.editor-content .ProseMirror img:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.resize-handle {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background: var(--primary);
-  border: 2px solid white;
-  border-radius: 50%;
-  cursor: nwse-resize;
-  z-index: 10;
-  opacity: 0;
-  transition: opacity 0.2s;
+.editor-content .ProseMirror img[data-display="block"] {
+  display: block;
+  margin: 1rem 0;
 }
 
-.resizable-image-container.selected .resize-handle,
-.resizable-image-container:hover .resize-handle {
-  opacity: 1;
+.editor-content .ProseMirror img[data-display="inline"] {
+  display: inline-block;
+  margin: 0 0.5rem;
+  vertical-align: middle;
 }
 
-.resize-handle.nw {
-  top: -6px;
-  left: -6px;
-  cursor: nwse-resize;
+.editor-content .ProseMirror img[data-float="left"] {
+  float: left;
+  margin-right: 1rem;
+  margin-bottom: 0.5rem;
 }
 
-.resize-handle.ne {
-  top: -6px;
-  right: -6px;
-  cursor: nesw-resize;
+.editor-content .ProseMirror img[data-float="right"] {
+  float: right;
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
 }
 
-.resize-handle.sw {
-  bottom: -6px;
-  left: -6px;
-  cursor: nesw-resize;
+.editor-content .ProseMirror img[data-align="left"] {
+  margin-left: 0;
+  margin-right: auto;
 }
 
-.resize-handle.se {
-  bottom: -6px;
-  right: -6px;
-  cursor: nwse-resize;
+.editor-content .ProseMirror img[data-align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.editor-content .ProseMirror img[data-align="right"] {
+  margin-left: auto;
+  margin-right: 0;
 }
 
 /* Image Bubble Menu */
+.editor-content {
+  position: relative;
+}
+
 .image-bubble-menu {
   display: flex;
   gap: 8px;
@@ -318,6 +310,7 @@
   box-shadow: var(--shadow-lg);
   flex-wrap: wrap;
   max-width: 500px;
+  pointer-events: all;
 }
 
 .image-bubble-section {
@@ -356,6 +349,61 @@
   background: var(--primary);
   color: white;
   font-weight: 500;
+}
+
+/* Image Resize Slider */
+.image-resize-section {
+  min-width: 200px;
+}
+
+.image-resize-slider {
+  position: relative;
+  width: 120px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  cursor: ew-resize;
+  padding: 0 4px;
+}
+
+.resize-slider-track {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  transition: background-color 0.2s;
+}
+
+.image-resize-slider:hover .resize-slider-track,
+.image-resize-slider.active .resize-slider-track {
+  background: var(--primary);
+}
+
+.resize-slider-thumb {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+  background: var(--bg-primary);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  transition: all 0.2s;
+  pointer-events: none;
+}
+
+.image-resize-slider:hover .resize-slider-thumb {
+  border-color: var(--primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.image-resize-slider.active .resize-slider-thumb {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.2);
+  transform: translateX(-50%) scale(1.2);
 }
 
 .image-bubble-divider {
