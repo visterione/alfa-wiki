@@ -89,9 +89,10 @@ const Folder = sequelize.define('Folder', {
   parentId: { type: DataTypes.UUID, allowNull: true },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
   description: { type: DataTypes.TEXT },
-  createdBy: { type: DataTypes.UUID }
-}, { 
-  tableName: 'folders', 
+  createdBy: { type: DataTypes.UUID },
+  allowedRoles: { type: DataTypes.ARRAY(DataTypes.UUID), defaultValue: [] }
+}, {
+  tableName: 'folders',
   timestamps: true,
   indexes: [
     { fields: ['parentId'] },

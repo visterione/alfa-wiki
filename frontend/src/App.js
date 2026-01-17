@@ -88,7 +88,7 @@ function AppRoutes() {
           <ProtectedRoute requireAdminAccess="sidebar"><AdminSidebar /></ProtectedRoute>
         } />
         <Route path="admin/pages" element={
-          <ProtectedRoute requireAdminAccess="pages"><AdminPages /></ProtectedRoute>
+          <ProtectedRoute><AdminPages /></ProtectedRoute>
         } />
         <Route path="admin/media" element={
           <ProtectedRoute requireAdminAccess="media"><AdminMedia /></ProtectedRoute>

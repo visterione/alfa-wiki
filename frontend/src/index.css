@@ -170,6 +170,15 @@ a:hover {
   outline: none;
 }
 
+/* Prevent checkboxes and radios from inheriting .input styles */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  height: auto;
+  padding: 0;
+  margin: 0;
+}
+
 .input:focus, .textarea:focus, .select:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 3px var(--primary-light);

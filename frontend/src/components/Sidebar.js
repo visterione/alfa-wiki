@@ -254,7 +254,6 @@ function SidebarCalendar() {
 function QuickAccessButtons({ onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAdmin, hasPermission } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
 
   // Загружаем количество непрочитанных сообщений
@@ -303,7 +302,7 @@ function QuickAccessButtons({ onClose }) {
         )}
       </button>
 
-      <button 
+      <button
         className={`quick-access-btn favorites ${isOnFavorites ? 'active' : ''}`}
         onClick={() => handleClick('/favorites')}
         title="Избранное"
@@ -311,7 +310,7 @@ function QuickAccessButtons({ onClose }) {
         <Star size={20} />
       </button>
 
-      <button 
+      <button
         className={`quick-access-btn explorer ${isOnAdminPages ? 'active' : ''}`}
         onClick={() => handleClick('/admin/pages')}
         title="Проводник"
@@ -462,12 +461,12 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         {isExpanded && hasChildren && (
           <div className="sidebar-folder-children">
             {item.children
-              .filter(c => c.type === 'divider' || c.page || c.type === 'link')
+              .filter(c => c.page || c.type === 'link')
               .map(child => (
-                <SidebarItemComponent 
-                  key={child.id} 
-                  item={child} 
-                  level={level + 1} 
+                <SidebarItemComponent
+                  key={child.id}
+                  item={child}
+                  level={level + 1}
                   onClose={onClose}
                   expandedState={expandedState}
                   onToggleExpand={onToggleExpand}
@@ -477,11 +476,6 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         )}
       </div>
     );
-  }
-
-  // Divider
-  if (item.type === 'divider') {
-    return <div className="sidebar-divider" style={{ marginLeft: `${14 + level * 16}px` }} />;
   }
 
   // Page
@@ -573,18 +567,23 @@ export default function Sidebar({ open, onClose }) {
         <SidebarCalendar />
         <QuickAccessButtons onClose={onClose} />
       </div>
-      
+
       {/* Прокручиваемый контент навигации */}
       <div className="sidebar-content">
         {items.length > 0 ? (
-          items.map(item => (
-            <SidebarItemComponent 
-              key={item.id} 
-              item={item} 
-              onClose={onClose}
-              expandedState={expandedState}
-              onToggleExpand={handleToggleExpand}
-            />
+          items.map((item, index) => (
+            <React.Fragment key={item.id}>
+              <SidebarItemComponent
+                item={item}
+                onClose={onClose}
+                expandedState={expandedState}
+                onToggleExpand={handleToggleExpand}
+              />
+              {/* Автоматический разделитель после папок */}
+              {item.type === 'folder' && index < items.length - 1 && (
+                <div className="sidebar-divider" />
+              )}
+            </React.Fragment>
           ))
         ) : (
           <div className="sidebar-empty">

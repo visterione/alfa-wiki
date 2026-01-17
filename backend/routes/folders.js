@@ -5,24 +5,99 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Вспомогательная функция для проверки доступа к папке
+async function canAccessFolder(folder, userRoleIds, isAdmin) {
+  // Админы видят всё
+  if (isAdmin) return true;
+
+  // Если у папки пустой allowedRoles, она доступна всем
+  if (!folder.allowedRoles || folder.allowedRoles.length === 0) {
+    return true;
+  }
+
+  // Проверяем, есть ли у пользователя нужная роль
+  return userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
+}
+
+// Вспомогательная функция для проверки доступа к странице
+function canAccessPage(page, userRoleIds, isAdmin) {
+  // Админы видят всё
+  if (isAdmin) return true;
+
+  // Если у страницы пустой allowedRoles, она доступна всем
+  if (!page.allowedRoles || page.allowedRoles.length === 0) {
+    return true;
+  }
+
+  // Проверяем, есть ли у пользователя нужная роль
+  return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+}
+
+// Вспомогательная функция для проверки доступа к содержимому папки
+async function hasAccessToFolderContent(folderId, userRoleIds, isAdmin) {
+  // Проверяем доступные страницы в папке
+  const pages = await Page.findAll({ where: { folderId } });
+  const hasAccessiblePages = pages.some(page => canAccessPage(page, userRoleIds, isAdmin));
+
+  if (hasAccessiblePages) return true;
+
+  // Проверяем доступные подпапки
+  const subfolders = await Folder.findAll({ where: { parentId: folderId } });
+
+  for (const subfolder of subfolders) {
+    const canAccessSub = await canAccessFolder(subfolder, userRoleIds, isAdmin);
+    if (canAccessSub) {
+      // Проверяем, есть ли доступное содержимое в подпапке
+      const hasContent = await hasAccessToFolderContent(subfolder.id, userRoleIds, isAdmin);
+      if (hasContent) return true;
+    }
+  }
+
+  return false;
+}
+
 // Получить содержимое папки (или корня)
 router.get('/browse', authenticate, async (req, res) => {
   try {
     const { parentId } = req.query;
-    
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const isAdmin = req.user.isAdmin;
+
     // Получаем подпапки - сортировка только по алфавиту
-    const folders = await Folder.findAll({
+    const allFolders = await Folder.findAll({
       where: { parentId: parentId || null },
       include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }],
       order: [['title', 'ASC']]
     });
 
+    // Фильтруем папки по доступу
+    const folders = [];
+    for (const folder of allFolders) {
+      const hasAccess = await canAccessFolder(folder, userRoleIds, isAdmin);
+
+      if (hasAccess) {
+        // Проверяем, есть ли доступное содержимое в папке
+        const hasContent = await hasAccessToFolderContent(folder.id, userRoleIds, isAdmin);
+        // Показываем папку, если есть доступ (даже если пуста)
+        folders.push(folder);
+      } else {
+        // Если нет прямого доступа к папке, проверяем доступ к содержимому
+        const hasContent = await hasAccessToFolderContent(folder.id, userRoleIds, isAdmin);
+        if (hasContent) {
+          folders.push(folder);
+        }
+      }
+    }
+
     // Получаем страницы в этой папке - сортировка только по алфавиту
-    const pages = await Page.findAll({
+    const allPages = await Page.findAll({
       where: { folderId: parentId || null },
       include: [{ model: User, as: 'author', attributes: ['id', 'username', 'displayName'] }],
       order: [['title', 'ASC']]
     });
+
+    // Фильтруем страницы по доступу
+    const pages = allPages.filter(page => canAccessPage(page, userRoleIds, isAdmin));
 
     // Получаем путь (хлебные крошки)
     let breadcrumbs = [];
@@ -109,7 +184,7 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, icon, parentId, description } = req.body;
+    const { title, icon, parentId, description, allowedRoles } = req.body;
 
     // Проверяем уровень вложенности (максимум 2)
     if (parentId) {
@@ -124,8 +199,8 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
     }
 
     // Получаем максимальный sortOrder
-    const maxOrder = await Folder.max('sortOrder', { 
-      where: { parentId: parentId || null } 
+    const maxOrder = await Folder.max('sortOrder', {
+      where: { parentId: parentId || null }
     });
 
     const folder = await Folder.create({
@@ -133,6 +208,7 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       icon: icon || 'folder',
       parentId: parentId || null,
       description,
+      allowedRoles: allowedRoles || [],
       sortOrder: (maxOrder || 0) + 1,
       createdBy: req.user.id
     });
@@ -156,7 +232,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       return res.status(404).json({ error: 'Folder not found' });
     }
 
-    const { title, icon, parentId, description, sortOrder } = req.body;
+    const { title, icon, parentId, description, sortOrder, allowedRoles } = req.body;
 
     // Проверяем уровень вложенности при смене родителя
     if (parentId !== undefined && parentId !== folder.parentId) {
@@ -187,7 +263,8 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       ...(icon !== undefined && { icon }),
       ...(parentId !== undefined && { parentId: parentId || null }),
       ...(description !== undefined && { description }),
-      ...(sortOrder !== undefined && { sortOrder })
+      ...(sortOrder !== undefined && { sortOrder }),
+      ...(allowedRoles !== undefined && { allowedRoles: allowedRoles || [] })
     });
 
     const updated = await Folder.findByPk(folder.id, {

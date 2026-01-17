@@ -180,7 +180,6 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
   };
 
   const getIcon = (type) => {
-    if (type === 'divider') return Minus;
     if (type === 'link') return ExternalLink;
     if (type === 'folder') return expanded ? FolderOpen : Folder;
     if (type === 'header') return TypeIcon;
@@ -192,14 +191,12 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
       page: { label: 'Страница', class: 'badge-info' },
       folder: { label: 'Папка', class: 'badge-warning' },
       header: { label: 'Заголовок', class: 'badge-secondary' },
-      link: { label: 'Ссылка', class: 'badge-primary' },
-      divider: { label: 'Разделитель', class: 'badge-secondary' }
+      link: { label: 'Ссылка', class: 'badge-primary' }
     };
     return badges[type] || { label: type, class: '' };
   };
 
   const getTitle = () => {
-    if (item.type === 'divider') return '— Разделитель —';
     if (item.type === 'folder' && item.folder) return item.title || item.folder.title;
     if (item.type === 'page' && item.page) return item.title || item.page.title;
     return item.title || 'Без названия';
@@ -622,12 +619,10 @@ export default function AdminSidebar() {
                     <TypeIcon size={16} />
                     Заголовок
                   </label>
-                  <label className="radio-item">
-                    <input type="radio" checked={form.type === 'divider'} onChange={() => setForm({...form, type: 'divider'})} />
-                    <Minus size={16} />
-                    Разделитель
-                  </label>
                 </div>
+                <small className="text-muted" style={{ marginTop: '0.5rem', display: 'block' }}>
+                  Разделители автоматически добавляются после папок
+                </small>
               </div>
 
               {/* Выбор страницы */}
@@ -666,21 +661,19 @@ export default function AdminSidebar() {
                 </div>
               )}
 
-              {/* Выбор эмодзи (для всех типов кроме divider) */}
-              {form.type !== 'divider' && (
-                <div className="form-group">
-                  <label className="form-label">
-                    Эмодзи {form.type === 'page' && '(переопределяет иконку страницы)'}
-                    {form.type === 'folder' && '(переопределяет иконку папки)'}
-                  </label>
-                  <IconPicker
-                    value={form.icon}
-                    onChange={(icon) => setForm({...form, icon})}
-                    placeholder="По умолчанию"
-                  />
-                  <small className="text-muted">Выберите цветной эмодзи для элемента меню</small>
-                </div>
-              )}
+              {/* Выбор эмодзи (для всех типов) */}
+              <div className="form-group">
+                <label className="form-label">
+                  Эмодзи {form.type === 'page' && '(переопределяет иконку страницы)'}
+                  {form.type === 'folder' && '(переопределяет иконку папки)'}
+                </label>
+                <IconPicker
+                  value={form.icon}
+                  onChange={(icon) => setForm({...form, icon})}
+                  placeholder="По умолчанию"
+                />
+                <small className="text-muted">Выберите цветной эмодзи для элемента меню</small>
+              </div>
 
               {/* URL для link */}
               {form.type === 'link' && (
@@ -691,14 +684,12 @@ export default function AdminSidebar() {
               )}
 
               {/* Видимость */}
-              {form.type !== 'divider' && (
-                <div className="form-group">
-                  <label className="checkbox-item">
-                    <input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} />
-                    Показывать в меню
-                  </label>
-                </div>
-              )}
+              <div className="form-group">
+                <label className="checkbox-item">
+                  <input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} />
+                  Показывать в меню
+                </label>
+              </div>
             </div>
 
             <div className="modal-footer">

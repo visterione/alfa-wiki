@@ -11,23 +11,23 @@ router.get('/', authenticate, async (req, res) => {
     const items = await SidebarItem.findAll({
       where: { parentId: null },
       include: [
-        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy'] },
-        { 
-          model: Folder, 
-          as: 'folder', 
-          attributes: ['id', 'title', 'icon'],
-          include: [{ 
-            model: Page, 
-            as: 'pages', 
-            attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'sortOrder'],
+        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles'] },
+        {
+          model: Folder,
+          as: 'folder',
+          attributes: ['id', 'title', 'icon', 'allowedRoles'],
+          include: [{
+            model: Page,
+            as: 'pages',
+            attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'sortOrder', 'createdBy', 'allowedRoles'],
             order: [['sortOrder', 'ASC']]
           }]
         },
-        { 
-          model: SidebarItem, 
+        {
+          model: SidebarItem,
           as: 'children',
           include: [
-            { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy'] }
+            { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles'] }
           ],
           separate: true,
           order: [['sortOrder', 'ASC']]
@@ -38,39 +38,71 @@ router.get('/', authenticate, async (req, res) => {
 
     // Filter by role and visibility
     const filterItems = (items, parentHidden = false) => {
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+
       return items.filter(item => {
         if (parentHidden || !item.isVisible) return false;
-        
-        // Role check - проверяем доступ по всем ролям пользователя
+
+        // Role check для самого элемента сайдбара
         if (!req.user.isAdmin && item.allowedRoles?.length > 0) {
-          const userRoleIds = req.user.roles?.map(r => r.id) || [];
           const hasAccess = userRoleIds.some(roleId => item.allowedRoles.includes(roleId));
           if (!hasAccess) return false;
         }
-        
-        // Draft check for pages
-        if (item.type === 'page' && item.page && !item.page.isPublished) {
-          const canView = req.user.isAdmin || 
-                          item.page.createdBy === req.user.id ||
-                          req.user.permissions?.pages?.write;
-          if (!canView) return false;
+
+        // Проверка доступа к странице
+        if (item.type === 'page' && item.page) {
+          // Draft check
+          if (!item.page.isPublished) {
+            const canView = req.user.isAdmin ||
+                            item.page.createdBy === req.user.id ||
+                            req.user.permissions?.pages?.write;
+            if (!canView) return false;
+          }
+
+          // Проверка allowedRoles страницы
+          if (!req.user.isAdmin && item.page.allowedRoles?.length > 0) {
+            const hasPageAccess = userRoleIds.some(roleId => item.page.allowedRoles.includes(roleId));
+            if (!hasPageAccess) return false;
+          }
         }
-        
+
+        // Проверка доступа к папке
+        if (item.type === 'folder' && item.folder) {
+          // Проверка allowedRoles папки
+          if (!req.user.isAdmin && item.folder.allowedRoles?.length > 0) {
+            const hasFolderAccess = userRoleIds.some(roleId => item.folder.allowedRoles.includes(roleId));
+            if (!hasFolderAccess) return false;
+          }
+        }
+
         return true;
       }).map(item => {
         const data = item.toJSON ? item.toJSON() : { ...item };
-        
-        // Для папки из проводника - подставляем страницы как children
+
+        // Для папки из проводника - подставляем страницы как children с фильтрацией
         if (data.type === 'folder' && data.folder?.pages) {
           data.folderPages = data.folder.pages
-            .filter(p => p.isPublished || req.user.isAdmin)
+            .filter(p => {
+              // Draft check
+              if (!p.isPublished && !req.user.isAdmin) {
+                const canView = p.createdBy === req.user.id || req.user.permissions?.pages?.write;
+                if (!canView) return false;
+              }
+
+              // Проверка allowedRoles страницы
+              if (!req.user.isAdmin && p.allowedRoles?.length > 0) {
+                return userRoleIds.some(roleId => p.allowedRoles.includes(roleId));
+              }
+
+              return true;
+            })
             .sort((a, b) => a.sortOrder - b.sortOrder);
         }
-        
+
         if (data.children?.length > 0) {
           data.children = filterItems(data.children);
         }
-        
+
         return data;
       });
     };
@@ -118,7 +150,7 @@ router.get('/all', authenticate, requireAdminAccess('sidebar'), async (req, res)
 
 // Create sidebar item
 router.post('/', authenticate, requireAdminAccess('sidebar'), [
-  body('type').isIn(['page', 'folder', 'header', 'link', 'divider']).withMessage('Invalid type'),
+  body('type').isIn(['page', 'folder', 'header', 'link']).withMessage('Invalid type'),
   body('title').if(body('type').isIn(['header', 'link'])).notEmpty().withMessage('Title required')
 ], async (req, res) => {
   try {
