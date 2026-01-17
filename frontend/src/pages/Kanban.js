@@ -17,7 +17,9 @@ import {
   Paperclip,
   Download,
   Search,
-  Archive
+  Archive,
+  Filter,
+  XCircle
 } from 'lucide-react';
 import './Kanban.css';
 
@@ -58,6 +60,14 @@ function Kanban() {
   const [tagInput, setTagInput] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+
+  // Фильтры
+  const [filters, setFilters] = useState({
+    tags: [],
+    assignees: [],
+    priorities: []
+  });
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -267,6 +277,30 @@ function Kanban() {
   const getTasksByColumn = (columnId) => {
     return tasks
       .filter(task => task.status === columnId)
+      .filter(task => {
+        // Фильтр по тегам
+        if (filters.tags.length > 0) {
+          if (!task.tags || !task.tags.some(tag => filters.tags.includes(tag))) {
+            return false;
+          }
+        }
+
+        // Фильтр по исполнителям
+        if (filters.assignees.length > 0) {
+          if (!task.assigneeIds || !task.assigneeIds.some(id => filters.assignees.includes(id))) {
+            return false;
+          }
+        }
+
+        // Фильтр по приоритетам
+        if (filters.priorities.length > 0) {
+          if (!filters.priorities.includes(task.priority)) {
+            return false;
+          }
+        }
+
+        return true;
+      })
       .sort((a, b) => a.sortOrder - b.sortOrder);
   };
 
@@ -284,6 +318,61 @@ function Kanban() {
   const getAvatarUrl = (avatar) => {
     if (!avatar) return null;
     return `${BASE_URL}/${avatar}`;
+  };
+
+  // Получение всех уникальных тегов
+  const getAllTags = () => {
+    const tagsSet = new Set();
+    tasks.forEach(task => {
+      if (task.tags && Array.isArray(task.tags)) {
+        task.tags.forEach(tag => tagsSet.add(tag));
+      }
+    });
+    return Array.from(tagsSet).sort();
+  };
+
+  // Переключение фильтра по тегу
+  const toggleTagFilter = (tag) => {
+    setFilters(prev => ({
+      ...prev,
+      tags: prev.tags.includes(tag)
+        ? prev.tags.filter(t => t !== tag)
+        : [...prev.tags, tag]
+    }));
+  };
+
+  // Переключение фильтра по исполнителю
+  const toggleAssigneeFilter = (userId) => {
+    setFilters(prev => ({
+      ...prev,
+      assignees: prev.assignees.includes(userId)
+        ? prev.assignees.filter(id => id !== userId)
+        : [...prev.assignees, userId]
+    }));
+  };
+
+  // Переключение фильтра по приоритету
+  const togglePriorityFilter = (priority) => {
+    setFilters(prev => ({
+      ...prev,
+      priorities: prev.priorities.includes(priority)
+        ? prev.priorities.filter(p => p !== priority)
+        : [...prev.priorities, priority]
+    }));
+  };
+
+  // Очистить все фильтры
+  const clearFilters = () => {
+    setFilters({
+      tags: [],
+      assignees: [],
+      priorities: []
+    });
+  };
+
+  // Проверка, есть ли активные фильтры
+  const hasActiveFilters = () => {
+    return filters.tags.length > 0 || filters.assignees.length > 0 || filters.priorities.length > 0;
   };
 
   if (loading) {
@@ -305,6 +394,15 @@ function Kanban() {
       <div className="kanban-header">
         <h1>Доска задач</h1>
         <div className="kanban-header-actions">
+          <button
+            className={`btn-secondary ${hasActiveFilters() ? 'active' : ''}`}
+            onClick={() => setShowFilters(!showFilters)}
+            title="Фильтры"
+          >
+            <Filter size={18} />
+            Фильтры
+            {hasActiveFilters() && <span className="filter-badge">{filters.tags.length + filters.assignees.length + filters.priorities.length}</span>}
+          </button>
           {access.canWrite && (
             <>
               <button className="btn-secondary" onClick={() => navigate('/kanban/archive')}>
@@ -319,6 +417,82 @@ function Kanban() {
           )}
         </div>
       </div>
+
+      {showFilters && (
+        <div className="kanban-filters">
+          <div className="filters-section">
+            <div className="filter-group">
+              <label>
+                <Tag size={16} />
+                Теги
+              </label>
+              <div className="filter-options">
+                {getAllTags().length > 0 ? (
+                  getAllTags().map(tag => (
+                    <button
+                      key={tag}
+                      className={`filter-chip ${filters.tags.includes(tag) ? 'active' : ''}`}
+                      onClick={() => toggleTagFilter(tag)}
+                    >
+                      {tag}
+                    </button>
+                  ))
+                ) : (
+                  <span className="filter-empty">Нет тегов</span>
+                )}
+              </div>
+            </div>
+
+            <div className="filter-group">
+              <label>
+                <User size={16} />
+                Исполнители
+              </label>
+              <div className="filter-options">
+                {usersList.map(u => (
+                  <button
+                    key={u.id}
+                    className={`filter-chip ${filters.assignees.includes(u.id) ? 'active' : ''}`}
+                    onClick={() => toggleAssigneeFilter(u.id)}
+                  >
+                    {u.displayName || u.username}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="filter-group">
+              <label>
+                <AlertCircle size={16} />
+                Приоритет
+              </label>
+              <div className="filter-options">
+                {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                  <button
+                    key={key}
+                    className={`filter-chip ${filters.priorities.includes(key) ? 'active' : ''}`}
+                    onClick={() => togglePriorityFilter(key)}
+                    style={{
+                      backgroundColor: filters.priorities.includes(key) ? config.color : 'transparent',
+                      color: filters.priorities.includes(key) ? config.textColor : 'var(--text-primary)',
+                      border: `1px solid ${config.color}`
+                    }}
+                  >
+                    {config.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {hasActiveFilters() && (
+            <button className="btn-clear-filters" onClick={clearFilters}>
+              <XCircle size={16} />
+              Очистить фильтры
+            </button>
+          )}
+        </div>
+      )}
 
       <DragDropContext onDragEnd={handleDragEnd}>
         <div className="kanban-board">

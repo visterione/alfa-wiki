@@ -391,7 +391,7 @@ router.get('/archive', authenticate, async (req, res) => {
 
 /**
  * POST /api/kanban/auto-archive
- * Автоматическая архивация завершенных задач старше 7 дней
+ * Автоматическая архивация завершенных задач старше 1 дня
  */
 router.post('/auto-archive', authenticate, async (req, res) => {
   try {
@@ -400,15 +400,15 @@ router.post('/auto-archive', authenticate, async (req, res) => {
       return res.status(403).json({ message: 'Доступ запрещен' });
     }
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const oneDayAgo = new Date();
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
     const tasksToArchive = await KanbanTask.findAll({
       where: {
         status: 'done',
         archived: false,
         completedAt: {
-          [require('sequelize').Op.lte]: sevenDaysAgo
+          [require('sequelize').Op.lte]: oneDayAgo
         }
       }
     });

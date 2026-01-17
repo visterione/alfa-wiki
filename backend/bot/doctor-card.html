@@ -2,8 +2,11 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Карточки врачей</title>
+<!-- Quill.js для редактора заметок -->
+<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
 <style>
 :root {
   --dc-primary: #2563eb;
@@ -25,19 +28,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 #doctors-app { max-width: 1200px; margin: 0 auto; padding: 20px; }
 
 .dc-header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
-.dc-header h1 { font-size: 24px; font-weight: 700; flex: 1; min-width: 200px; }
+.dc-header h1 { font-size: 24px; font-weight: 700; flex: 1; min-width: 200px; display: flex; align-items: center; gap: 10px; }
+.dc-header h1 svg { width: 28px; height: 28px; color: var(--dc-primary); }
 .dc-search { flex: 1; min-width: 200px; max-width: 400px; }
-.dc-search input, .dc-input { width: 100%; padding: 10px 14px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 14px; }
+.dc-search input, .dc-input { width: 100%; padding: 8px 12px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 13px; }
 .dc-input:focus { outline: none; border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 
-.dc-filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.dc-filters { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; align-items: center; }
 .dc-select { padding: 8px 12px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 14px; background: white; min-width: 180px; }
 
-.dc-stats { display: flex; gap: 16px; margin-bottom: 20px; padding: 16px; background: var(--dc-card-bg); border-radius: var(--dc-radius); border: 1px solid var(--dc-border); }
-.dc-stat { font-size: 14px; color: var(--dc-text-secondary); }
-.dc-stat strong { color: var(--dc-text); font-weight: 600; }
+/* Filter buttons */
+.dc-filter-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.dc-filter-label { font-size: 12px; color: var(--dc-text-secondary); font-weight: 500; }
+.dc-filter-btn { padding: 6px 12px; border: 1px solid var(--dc-border); border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s; background: white; color: var(--dc-text-secondary); -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.dc-filter-btn:hover { border-color: var(--dc-primary); color: var(--dc-primary); }
+.dc-filter-btn:active { transform: scale(0.96); }
+.dc-filter-btn.active { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
 
-.dc-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.dc-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.dc-btn:active { transform: scale(0.97); }
+.dc-btn svg { width: 16px; height: 16px; }
 .dc-btn-primary { background: var(--dc-primary); color: white; }
 .dc-btn-primary:hover { background: var(--dc-primary-hover); }
 .dc-btn-secondary { background: var(--dc-card-bg); color: var(--dc-text); border: 1px solid var(--dc-border); }
@@ -52,9 +62,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-card:hover { box-shadow: var(--dc-shadow-lg); }
 .dc-card.highlighted { border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.2); }
 
-.dc-clinics { display: flex; gap: 6px; padding: 12px 16px; background: var(--dc-bg); border-bottom: 1px solid var(--dc-border); flex-wrap: wrap; }
-.dc-clinic { min-width: 70px; padding: 5px 10px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: white; background: var(--dc-inactive); transition: all 0.2s; text-align: center; }
+/* Card top section with clinics and tags */
+.dc-card-top { display: flex; gap: 8px; padding: 12px 16px; background: var(--dc-bg); border-bottom: 1px solid var(--dc-border); flex-wrap: wrap; align-items: center; }
+.dc-clinics { display: flex; gap: 6px; flex-wrap: wrap; }
+.dc-clinic { min-width: 60px; padding: 4px 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: white; background: var(--dc-inactive); transition: all 0.2s; text-align: center; }
 .dc-clinic.active { opacity: 1; }
+
+/* Tags */
+.dc-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.dc-tag { padding: 4px 10px; background: #e0f2fe; color: #0369a1; border-radius: 12px; font-size: 11px; font-weight: 500; }
 
 .dc-card-header { display: flex; justify-content: space-between; align-items: flex-start; padding: 16px; gap: 12px; }
 .dc-card-info { flex: 1; min-width: 0; }
@@ -63,20 +79,37 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-card-name a:hover { color: var(--dc-primary); }
 .dc-card-specialty { font-size: 13px; color: var(--dc-primary); font-weight: 500; margin-bottom: 8px; }
 .dc-card-details { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--dc-text-secondary); }
+.dc-card-details > div { display: flex; align-items: center; gap: 4px; }
+.dc-card-details svg { width: 14px; height: 14px; opacity: 0.7; }
 
 .dc-tabs { display: flex; gap: 4px; }
-.dc-tab { padding: 6px 10px; border: none; background: transparent; border-radius: 6px; cursor: pointer; font-size: 16px; transition: all 0.2s; }
+.dc-tab { padding: 6px 10px; border: none; background: transparent; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.dc-tab:active { transform: scale(0.92); }
+.dc-tab svg { width: 18px; height: 18px; }
 .dc-tab:hover { background: var(--dc-bg); }
 .dc-tab.active { background: var(--dc-primary); color: white; }
-.dc-tab.btn-edit:hover { background: #dbeafe; }
-.dc-tab.btn-delete:hover { background: #fee2e2; }
+.dc-tab.btn-edit:hover { background: #dbeafe; color: var(--dc-primary); }
+.dc-tab.btn-delete:hover { background: #fee2e2; color: var(--dc-danger); }
 
 .dc-card-body { padding: 16px; border-top: 1px solid var(--dc-border); }
 .dc-tab-content { display: none; }
 .dc-tab-content.active { display: block; }
-.dc-notes { font-size: 13px; color: var(--dc-text-secondary); line-height: 1.6; margin-bottom: 16px; }
+.dc-notes { font-size: 13px; color: var(--dc-text-secondary); line-height: 1.6; margin-bottom: 12px; }
+.dc-notes p { margin: 0 0 8px 0; }
+.dc-notes ul, .dc-notes ol { margin: 0 0 8px 20px; }
 
-/* Timeline - ИСПРАВЛЕНО */
+/* Collapsible notes */
+.dc-notes-wrapper { position: relative; }
+.dc-notes-content { max-height: 80px; overflow: hidden; transition: max-height 0.3s ease; }
+.dc-notes-content.expanded { max-height: 2000px; }
+.dc-notes-fade { position: absolute; bottom: 0; left: 0; right: 0; height: 40px; background: linear-gradient(transparent, var(--dc-card-bg)); pointer-events: none; transition: opacity 0.3s; }
+.dc-notes-content.expanded + .dc-notes-fade { opacity: 0; }
+.dc-notes-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; font-size: 12px; color: var(--dc-primary); cursor: pointer; border: none; background: none; font-weight: 500; }
+.dc-notes-toggle:hover { text-decoration: underline; }
+.dc-notes-toggle svg { width: 14px; height: 14px; transition: transform 0.3s; }
+.dc-notes-toggle.expanded svg { transform: rotate(180deg); }
+
+/* Timeline */
 .dc-timeline-container { margin-top: 12px; }
 .dc-timeline-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--dc-text-secondary); margin-bottom: 4px; padding: 0; position: relative; height: 20px; }
 .dc-timeline-labels span { position: absolute; transform: translateX(-50%); }
@@ -85,27 +118,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-timeline-period { position: absolute; height: 100%; background: #c8e6c9; border: 2px solid #81c784; z-index: 2; }
 .dc-timeline-busy { position: absolute; height: 100%; background: #ffcdd2; border: 2px solid #e57373; border-radius: 4px; z-index: 10; cursor: pointer; }
 
-.dc-services-container { max-height: 300px; overflow-y: auto; }
+.dc-services-container { max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .dc-services-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dc-services-table th { background: var(--dc-bg); padding: 8px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--dc-border); position: sticky; top: 0; }
 .dc-services-table td { padding: 8px 10px; border-bottom: 1px solid var(--dc-border); color: var(--dc-text-secondary); }
 .dc-services-table tr:hover td { background: #f8fafc; }
 
 /* Modal */
-.dc-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 20px; opacity: 0; visibility: hidden; transition: all 0.3s; }
+.dc-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 16px; opacity: 0; visibility: hidden; transition: all 0.3s; }
 .dc-modal.active { opacity: 1; visibility: visible; }
-.dc-modal-content { background: var(--dc-card-bg); border-radius: var(--dc-radius); width: 100%; max-width: 600px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; transform: scale(0.9); transition: transform 0.3s; }
+.dc-modal-content { background: var(--dc-card-bg); border-radius: var(--dc-radius); width: 100%; max-width: 700px; max-height: calc(100vh - 32px); overflow: hidden; display: flex; flex-direction: column; transform: scale(0.9); transition: transform 0.3s; }
 .dc-modal.active .dc-modal-content { transform: scale(1); }
-.dc-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--dc-border); }
+.dc-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--dc-border); flex-shrink: 0; }
 .dc-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
-.dc-modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--dc-text-secondary); }
-.dc-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-.dc-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--dc-border); background: var(--dc-bg); }
+.dc-modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--dc-text-secondary); line-height: 1; }
+.dc-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
+.dc-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--dc-border); background: var(--dc-bg); flex-shrink: 0; }
 
-.dc-form-group { margin-bottom: 16px; }
-.dc-form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--dc-text); margin-bottom: 5px; }
-.dc-textarea { width: 100%; padding: 9px 12px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 13px; resize: vertical; min-height: 70px; font-family: inherit; }
-.dc-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dc-form-group { margin-bottom: 12px; }
+.dc-form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--dc-text); margin-bottom: 4px; }
+.dc-textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--dc-border); border-radius: 8px; font-size: 13px; resize: vertical; min-height: 60px; font-family: inherit; }
+.dc-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dc-form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
 
 /* Search results */
 .dc-search-wrapper { position: relative; }
@@ -117,13 +151,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-search-result-name { font-weight: 500; color: var(--dc-text); font-size: 13px; }
 .dc-search-result-spec { font-size: 11px; color: var(--dc-text-secondary); margin-top: 2px; }
 
-/* Clinics checkboxes - ОРИГИНАЛ */
-.dc-clinics-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.dc-clinic-check { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 2px solid var(--dc-border); border-radius: 8px; cursor: pointer; transition: all 0.2s; font-size: 13px; }
+/* Clinics checkboxes */
+.dc-clinics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.dc-clinic-check { display: flex; align-items: center; justify-content: center; padding: 6px 8px; border: 1.5px solid var(--dc-border); border-radius: 6px; cursor: pointer; transition: all 0.2s; font-size: 12px; font-weight: 500; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 .dc-clinic-check:hover { border-color: var(--dc-primary); background: #f0f7ff; }
+.dc-clinic-check:active { transform: scale(0.95); }
 .dc-clinic-check.selected { border-color: var(--dc-primary); background: #dbeafe; }
 .dc-clinic-check input { display: none; }
-.dc-clinic-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+
+/* Quill editor styles */
+.dc-editor-container { border: 1px solid var(--dc-border); border-radius: 8px; overflow: hidden; }
+.dc-editor-container .ql-toolbar { border: none; border-bottom: 1px solid var(--dc-border); background: var(--dc-bg); padding: 6px; }
+.dc-editor-container .ql-container { border: none; font-size: 13px; min-height: 80px; }
+.dc-editor-container .ql-editor { min-height: 80px; padding: 8px 10px; }
+.dc-editor-container .ql-editor.ql-blank::before { font-style: normal; color: var(--dc-text-secondary); }
 
 .dc-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; background: #333; color: white; border-radius: 8px; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 10001; }
 .dc-toast.show { opacity: 1; transform: translateY(0); }
@@ -131,29 +172,112 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-toast.error { background: var(--dc-danger); }
 
 @media (max-width: 768px) {
-  .dc-form-row { grid-template-columns: 1fr; }
-  .dc-header { flex-direction: column; align-items: stretch; }
+  #doctors-app { padding: 12px; }
+  
+  .dc-header { flex-direction: column; align-items: stretch; gap: 10px; }
+  .dc-header h1 { font-size: 20px; justify-content: center; }
+  .dc-header h1 svg { width: 24px; height: 24px; }
+  .dc-search { max-width: 100%; }
+  .dc-btn-primary { justify-content: center; }
+  
+  .dc-filters { flex-direction: column; gap: 10px; }
+  .dc-select { width: 100%; }
+  .dc-filter-group { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .dc-filter-group > div { display: flex; flex-wrap: wrap; gap: 6px; }
+  
+  .dc-card-top { padding: 10px 12px; }
+  .dc-clinics { gap: 4px; }
+  .dc-clinic { min-width: 50px; padding: 3px 6px; font-size: 10px; }
+  .dc-tags { margin-left: 0; margin-top: 6px; width: 100%; }
+  .dc-tag { font-size: 10px; padding: 3px 8px; }
+  
+  .dc-card-header { flex-direction: column; padding: 12px; gap: 10px; }
+  .dc-card-info { width: 100%; }
+  .dc-card-name { font-size: 15px; }
+  .dc-card-specialty { font-size: 12px; }
+  .dc-card-details { gap: 8px; font-size: 11px; }
+  .dc-card-details svg { width: 12px; height: 12px; }
+  
+  .dc-tabs { width: 100%; justify-content: space-between; }
+  .dc-tab { flex: 1; justify-content: center; padding: 8px; }
+  .dc-tab svg { width: 20px; height: 20px; }
+  
+  .dc-card-body { padding: 12px; }
+  .dc-notes { font-size: 12px; }
+  .dc-notes-content { max-height: 60px; }
+  
+  .dc-timeline-labels { font-size: 8px; height: 16px; }
+  .dc-timeline { height: 24px; }
+  
+  .dc-services-table { font-size: 11px; }
+  .dc-services-table th, .dc-services-table td { padding: 6px 8px; }
+  
+  /* Modal mobile */
+  .dc-modal { padding: 0; align-items: flex-end; }
+  .dc-modal-content { max-width: 100%; max-height: 90vh; border-radius: 16px 16px 0 0; }
+  .dc-modal-header { padding: 12px 16px; }
+  .dc-modal-header h3 { font-size: 15px; }
+  .dc-modal-body { padding: 12px 16px; }
+  .dc-modal-footer { padding: 10px 16px; }
+  
+  .dc-form-row, .dc-form-row-3 { grid-template-columns: 1fr; }
+  .dc-form-group { margin-bottom: 10px; }
+  .dc-form-group label { font-size: 11px; }
+  .dc-input { padding: 10px 12px; font-size: 16px; } /* 16px prevents iOS zoom */
+  
+  .dc-clinics-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .dc-clinic-check { padding: 8px 6px; font-size: 11px; }
+  
+  .dc-search-results { max-height: 200px; }
+  .dc-search-result { padding: 12px; }
+  .dc-search-result-name { font-size: 14px; }
+  
+  .dc-btn { padding: 10px 16px; font-size: 14px; }
+  .dc-btn-secondary { flex: 1; justify-content: center; }
+  .dc-btn-primary { flex: 2; justify-content: center; }
+  
+  .dc-editor-container .ql-editor { min-height: 100px; font-size: 16px; }
+}
+
+@media (max-width: 400px) {
+  .dc-clinics-grid { grid-template-columns: repeat(2, 1fr); }
+  .dc-clinic { min-width: 40px; font-size: 9px; }
+  .dc-tabs { gap: 2px; }
+  .dc-tab { padding: 6px; }
 }
 </style>
 </head>
 <body>
 <div id="doctors-app">
   <div class="dc-header">
-    <h1>👨‍⚕️ Карточки врачей</h1>
+    <h1>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+      </svg>
+      Карточки врачей
+    </h1>
     <div class="dc-search">
       <input type="text" id="filter-search" placeholder="Поиск по имени..." oninput="dcApp.debounceFilter()">
     </div>
-    <button class="dc-btn dc-btn-primary" onclick="dcApp.openAddModal()">➕ Добавить врача</button>
+    <button class="dc-btn dc-btn-primary" onclick="dcApp.openAddModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Добавить врача
+    </button>
   </div>
 
   <div class="dc-filters">
     <select id="filter-specialty" class="dc-select" onchange="dcApp.filterCards()">
       <option value="">Все специальности</option>
     </select>
-  </div>
-
-  <div class="dc-stats">
-    <div class="dc-stat">Всего: <strong id="stat-total">0</strong></div>
+    <div class="dc-filter-group">
+      <span class="dc-filter-label">Клиника:</span>
+      <div id="filter-clinics"></div>
+    </div>
+    <div class="dc-filter-group" id="filter-tags-container" style="display:none;">
+      <span class="dc-filter-label">Теги:</span>
+      <div id="filter-tags"></div>
+    </div>
   </div>
 
   <div id="dc-cards-container" class="dc-cards"><div class="dc-loading">Загрузка...</div></div>
@@ -169,20 +293,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           <input type="hidden" id="edit-id">
           <input type="hidden" id="edit-mis-user-id">
           
-          <div class="dc-form-group">
-            <label>Поиск врача в МИС</label>
-            <div class="dc-search-wrapper">
-              <input type="text" id="mis-search" class="dc-input" placeholder="Начните вводить ФИО..." oninput="dcApp.searchMIS(this.value)">
-              <div id="mis-search-results" class="dc-search-results"></div>
+          <div class="dc-form-row">
+            <div class="dc-form-group">
+              <label>Поиск врача в МИС</label>
+              <div class="dc-search-wrapper">
+                <input type="text" id="mis-search" class="dc-input" placeholder="Поиск по ФИО..." oninput="dcApp.searchMIS(this.value)">
+                <div id="mis-search-results" class="dc-search-results"></div>
+              </div>
+            </div>
+            <div class="dc-form-group">
+              <label>ФИО *</label>
+              <input type="text" id="edit-fullname" required class="dc-input">
             </div>
           </div>
           
-          <div class="dc-form-group">
-            <label>ФИО *</label>
-            <input type="text" id="edit-fullname" required class="dc-input">
-          </div>
-          
-          <div class="dc-form-row">
+          <div class="dc-form-row-3">
             <div class="dc-form-group">
               <label>Специальность</label>
               <input type="text" id="edit-specialty" class="dc-input">
@@ -191,44 +316,52 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
               <label>Стаж</label>
               <input type="text" id="edit-experience" class="dc-input">
             </div>
-          </div>
-          
-          <div class="dc-form-row">
             <div class="dc-form-group">
-              <label>Возраст пациентов</label>
+              <label>Возраст пац.</label>
               <input type="text" id="edit-age-range" class="dc-input" placeholder="0+">
             </div>
+          </div>
+          
+          <div class="dc-form-row-3">
             <div class="dc-form-group">
-              <label>Ссылка на страницу</label>
-              <input type="text" id="edit-profile-url" class="dc-input">
+              <label>Вн. номер</label>
+              <input type="text" id="edit-internal" class="dc-input">
+            </div>
+            <div class="dc-form-group">
+              <label>Мобильный</label>
+              <input type="text" id="edit-mobile" class="dc-input" placeholder="+7(___) ___-__-__" oninput="dcApp.formatPhone(this)" maxlength="18">
+            </div>
+            <div class="dc-form-group">
+              <label>Ссылка</label>
+              <input type="text" id="edit-profile-url" class="dc-input" placeholder="https://...">
             </div>
           </div>
 
           <div class="dc-form-row">
             <div class="dc-form-group">
-              <label>Внутренний номер</label>
-              <input type="text" id="edit-internal" class="dc-input">
+              <label>Хэштеги (через запятую)</label>
+              <input type="text" id="edit-tags" class="dc-input" placeholder="на дому, УЗИ, КТ">
             </div>
             <div class="dc-form-group">
-              <label>Мобильный</label>
-              <input type="text" id="edit-mobile" class="dc-input">
+              <label>Клиники</label>
+              <div id="clinics-checkboxes" class="dc-clinics-grid"></div>
             </div>
-          </div>
-          
-          <div class="dc-form-group">
-            <label>Клиники</label>
-            <div id="clinics-checkboxes" class="dc-clinics-grid"></div>
           </div>
           
           <div class="dc-form-group">
             <label>Заметки</label>
-            <textarea id="edit-notes" class="dc-textarea" rows="3"></textarea>
+            <div class="dc-editor-container">
+              <div id="edit-notes-editor"></div>
+            </div>
           </div>
         </div>
         
         <div class="dc-modal-footer">
           <button type="button" class="dc-btn dc-btn-secondary" onclick="dcApp.closeModal()">Отмена</button>
-          <button type="submit" class="dc-btn dc-btn-primary">💾 Сохранить</button>
+          <button type="submit" class="dc-btn dc-btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Сохранить
+          </button>
         </div>
       </form>
     </div>
@@ -243,9 +376,13 @@ window.dcApp = (function() {
   var PAGE_SLUG = getPageSlug();
   var cards = [];
   var filteredCards = [];
+  var allTags = [];
   var debounceTimer = null;
   var searchTimer = null;
   var highlightId = null;
+  var selectedFilterClinic = null;
+  var selectedFilterTag = null;
+  var notesEditor = null;
 
   var CLINICS = [
     { id: 1, name: 'Альфа', color: '#FF80AB' },
@@ -255,6 +392,19 @@ window.dcApp = (function() {
     { id: 5, name: '3К', color: '#BA68C8' },
     { id: 6, name: 'Смайл', color: '#555555' }
   ];
+
+  // SVG Icons
+  var ICONS = {
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>',
+    chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    baby: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+    phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>',
+    mobile: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>'
+  };
 
   function getPageSlug() {
     var match = window.location.pathname.match(/\/page\/([^\/\?]+)/);
@@ -296,6 +446,104 @@ window.dcApp = (function() {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  // PHONE MASK
+  // ═══════════════════════════════════════════════════════════════
+
+  function formatPhone(input) {
+    var value = input.value.replace(/\D/g, '');
+    if (value.length === 0) {
+      input.value = '';
+      return;
+    }
+    // Remove leading 7 or 8 if present
+    if (value[0] === '7' || value[0] === '8') {
+      value = value.substring(1);
+    }
+    var formatted = '+7(';
+    if (value.length > 0) formatted += value.substring(0, 3);
+    if (value.length >= 3) formatted += ') ';
+    if (value.length > 3) formatted += value.substring(3, 6);
+    if (value.length >= 6) formatted += '-';
+    if (value.length > 6) formatted += value.substring(6, 8);
+    if (value.length >= 8) formatted += '-';
+    if (value.length > 8) formatted += value.substring(8, 10);
+    input.value = formatted;
+  }
+
+  function getCleanPhone(formatted) {
+    return formatted ? formatted.replace(/\D/g, '') : '';
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // TAGS HELPERS
+  // ═══════════════════════════════════════════════════════════════
+
+  function parseTags(tagsString) {
+    if (!tagsString) return [];
+    return tagsString.split(',').map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+  }
+
+  function collectAllTags() {
+    var tagsSet = {};
+    cards.forEach(function(c) {
+      var cardTags = (c.metadata && c.metadata.tags) || [];
+      cardTags.forEach(function(t) { tagsSet[t] = true; });
+    });
+    allTags = Object.keys(tagsSet).sort();
+  }
+
+  function renderFilterTags() {
+    var container = document.getElementById('filter-tags');
+    var wrapper = document.getElementById('filter-tags-container');
+    if (!container || !wrapper) return;
+
+    if (allTags.length === 0) {
+      wrapper.style.display = 'none';
+      return;
+    }
+    wrapper.style.display = 'flex';
+
+    container.innerHTML = '<button type="button" class="dc-filter-btn' + (!selectedFilterTag ? ' active' : '') + '" data-tag="">Все</button>' +
+      allTags.map(function(tag) {
+        return '<button type="button" class="dc-filter-btn' + (selectedFilterTag === tag ? ' active' : '') + '" data-tag="' + escapeHtml(tag) + '">#' + escapeHtml(tag) + '</button>';
+      }).join('');
+
+    container.querySelectorAll('.dc-filter-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tag = this.dataset.tag;
+        selectedFilterTag = tag || null;
+        container.querySelectorAll('.dc-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        filterCards();
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FILTER CLINICS
+  // ═══════════════════════════════════════════════════════════════
+
+  function renderFilterClinics() {
+    var container = document.getElementById('filter-clinics');
+    if (!container) return;
+    
+    container.innerHTML = '<button type="button" class="dc-filter-btn' + (!selectedFilterClinic ? ' active' : '') + '" data-clinic-id="">Все</button>' +
+      CLINICS.map(function(c) {
+        return '<button type="button" class="dc-filter-btn' + (selectedFilterClinic === c.id ? ' active' : '') + '" data-clinic-id="' + c.id + '">' + c.name + '</button>';
+      }).join('');
+    
+    container.querySelectorAll('.dc-filter-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var cid = this.dataset.clinicId;
+        selectedFilterClinic = cid ? parseInt(cid) : null;
+        container.querySelectorAll('.dc-filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        this.classList.add('active');
+        filterCards();
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   // DATA LOADING
   // ═══════════════════════════════════════════════════════════════
 
@@ -304,10 +552,11 @@ window.dcApp = (function() {
       .then(function(data) {
         cards = data;
         filteredCards = cards.slice();
+        collectAllTags();
         renderCards();
         loadSpecialties();
-        var statEl = document.getElementById('stat-total');
-        if (statEl) statEl.textContent = cards.length;
+        renderFilterClinics();
+        renderFilterTags();
       })
       .catch(function(e) { showToast('Ошибка загрузки: ' + e.message, 'error'); });
   }
@@ -337,6 +586,14 @@ window.dcApp = (function() {
     filteredCards = cards.filter(function(c) {
       if (search && !c.fullName.toLowerCase().includes(search)) return false;
       if (specialty && c.specialty !== specialty) return false;
+      if (selectedFilterClinic) {
+        var cardClinics = (c.metadata && c.metadata.clinics) || [];
+        if (cardClinics.indexOf(selectedFilterClinic) === -1) return false;
+      }
+      if (selectedFilterTag) {
+        var cardTags = (c.metadata && c.metadata.tags) || [];
+        if (cardTags.indexOf(selectedFilterTag) === -1) return false;
+      }
       return true;
     });
     renderCards();
@@ -358,6 +615,7 @@ window.dcApp = (function() {
     container.innerHTML = filteredCards.map(function(card) {
       var meta = card.metadata || {};
       var cardClinics = meta.clinics || [];
+      var cardTags = meta.tags || [];
       var isHighlighted = highlightId && card.id === highlightId;
 
       var clinicBadges = CLINICS.map(function(c) {
@@ -366,49 +624,70 @@ window.dcApp = (function() {
         return '<div class="dc-clinic' + (isActive ? ' active' : '') + '" style="' + style + '">' + c.name + '</div>';
       }).join('');
 
+      var tagBadges = cardTags.length > 0 ? '<div class="dc-tags">' + cardTags.map(function(t) {
+        return '<span class="dc-tag">#' + escapeHtml(t) + '</span>';
+      }).join('') + '</div>' : '';
+
       var nameHtml = card.profileUrl 
         ? '<a href="' + escapeHtml(card.profileUrl) + '">' + escapeHtml(card.fullName) + '</a>'
         : escapeHtml(card.fullName);
 
       return '<div class="dc-card' + (isHighlighted ? ' highlighted' : '') + '" data-id="' + card.id + '">' +
-        '<div class="dc-clinics">' + clinicBadges + '</div>' +
+        '<div class="dc-card-top">' +
+          '<div class="dc-clinics">' + clinicBadges + '</div>' +
+          tagBadges +
+        '</div>' +
         '<div class="dc-card-header">' +
           '<div class="dc-card-info">' +
             '<h3 class="dc-card-name">' + nameHtml + '</h3>' +
             (card.specialty ? '<div class="dc-card-specialty">' + escapeHtml(card.specialty) + '</div>' : '') +
             '<div class="dc-card-details">' +
-              (meta.ageRange ? '<div>👶 ' + escapeHtml(meta.ageRange) + '</div>' : '') +
-              (card.experience ? '<div>📅 ' + escapeHtml(card.experience) + '</div>' : '') +
-              (meta.internalNumber ? '<div>📞 вн. ' + escapeHtml(meta.internalNumber) + '</div>' : '') +
-              (meta.mobileNumber ? '<div>📱 ' + escapeHtml(meta.mobileNumber) + '</div>' : '') +
+              (meta.ageRange ? '<div>' + ICONS.baby + ' ' + escapeHtml(meta.ageRange) + '</div>' : '') +
+              (card.experience ? '<div>' + ICONS.calendar + ' ' + escapeHtml(card.experience) + '</div>' : '') +
+              (meta.internalNumber ? '<div>' + ICONS.phone + ' вн. ' + escapeHtml(meta.internalNumber) + '</div>' : '') +
+              (meta.mobileNumber ? '<div>' + ICONS.mobile + ' ' + escapeHtml(meta.mobileNumber) + '</div>' : '') +
             '</div>' +
           '</div>' +
           '<div class="dc-tabs">' +
-            '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)">📋</button>' +
-            '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="services" onclick="dcApp.switchTab(this)">📊</button>' +
-            '<button type="button" class="dc-tab btn-edit" onclick="dcApp.openEditModal(\'' + card.id + '\')">✏️</button>' +
-            '<button type="button" class="dc-tab btn-delete" onclick="dcApp.deleteCard(\'' + card.id + '\')">🗑️</button>' +
+            '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)">' + ICONS.info + '</button>' +
+            '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="services" onclick="dcApp.switchTab(this)">' + ICONS.chart + '</button>' +
+            '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="schedule" onclick="dcApp.switchTab(this)">' + ICONS.clock + '</button>' +
+            '<button type="button" class="dc-tab btn-edit" onclick="dcApp.openEditModal(\'' + card.id + '\')">' + ICONS.edit + '</button>' +
+            '<button type="button" class="dc-tab btn-delete" onclick="dcApp.deleteCard(\'' + card.id + '\')">' + ICONS.trash + '</button>' +
           '</div>' +
         '</div>' +
         '<div class="dc-card-body" id="body-' + card.id + '">' +
           '<div class="dc-tab-content active" data-tab="info">' +
-            (card.description ? '<div class="dc-notes">' + escapeHtml(card.description).replace(/\n/g, '<br>') + '</div>' : '<div class="dc-notes" style="color:#999">Заметки отсутствуют</div>') +
-            '<div class="dc-timeline-container">' +
-              '<div class="dc-timeline-labels" id="labels-' + card.id + '"></div>' +
-              '<div class="dc-timeline" id="timeline-' + card.id + '"></div>' +
-            '</div>' +
+            (card.description ?
+              '<div class="dc-notes-wrapper">' +
+                '<div class="dc-notes-content" id="notes-content-' + card.id + '">' +
+                  '<div class="dc-notes">' + card.description + '</div>' +
+                '</div>' +
+                '<div class="dc-notes-fade" id="notes-fade-' + card.id + '"></div>' +
+                '<button type="button" class="dc-notes-toggle" id="notes-toggle-' + card.id + '" onclick="dcApp.toggleNotes(\'' + card.id + '\')" style="display:none;">' +
+                  '<span>Показать больше</span>' +
+                  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' +
+                '</button>' +
+              '</div>'
+            : '<div class="dc-notes" style="color:#999">Заметки отсутствуют</div>') +
           '</div>' +
           '<div class="dc-tab-content" data-tab="services">' +
             '<div class="dc-services-container">' +
               '<table class="dc-services-table"><thead><tr><th>Артикул</th><th>Услуга</th><th>Длит.</th><th>Цена</th></tr></thead>' +
-              '<tbody id="services-' + card.id + '"><tr><td colspan="4" style="text-align:center;color:#999">Нажмите 📊</td></tr></tbody></table>' +
+              '<tbody id="services-' + card.id + '"><tr><td colspan="4" style="text-align:center;color:#999">Нажмите на вкладку для загрузки</td></tr></tbody></table>' +
+            '</div>' +
+          '</div>' +
+          '<div class="dc-tab-content" data-tab="schedule">' +
+            '<div class="dc-timeline-container">' +
+              '<div class="dc-timeline-labels" id="labels-' + card.id + '"></div>' +
+              '<div class="dc-timeline" id="timeline-' + card.id + '"></div>' +
             '</div>' +
           '</div>' +
         '</div>' +
       '</div>';
     }).join('');
 
-    loadScheduleForAllCards();
+    checkNotesOverflow();
 
     if (highlightId) {
       setTimeout(function() {
@@ -416,6 +695,39 @@ window.dcApp = (function() {
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // NOTES EXPAND/COLLAPSE
+  // ═══════════════════════════════════════════════════════════════
+
+  function checkNotesOverflow() {
+    filteredCards.forEach(function(card) {
+      var content = document.getElementById('notes-content-' + card.id);
+      var toggle = document.getElementById('notes-toggle-' + card.id);
+      var fade = document.getElementById('notes-fade-' + card.id);
+      if (!content || !toggle) return;
+      
+      // Check if content overflows
+      var maxHeight = parseInt(window.getComputedStyle(content).maxHeight);
+      if (content.scrollHeight > maxHeight + 10) {
+        toggle.style.display = 'inline-flex';
+        if (fade) fade.style.display = 'block';
+      } else {
+        toggle.style.display = 'none';
+        if (fade) fade.style.display = 'none';
+      }
+    });
+  }
+
+  function toggleNotes(cardId) {
+    var content = document.getElementById('notes-content-' + cardId);
+    var toggle = document.getElementById('notes-toggle-' + cardId);
+    if (!content || !toggle) return;
+    
+    var isExpanded = content.classList.toggle('expanded');
+    toggle.classList.toggle('expanded', isExpanded);
+    toggle.querySelector('span').textContent = isExpanded ? 'Скрыть' : 'Показать больше';
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -446,11 +758,56 @@ window.dcApp = (function() {
         if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Врач не привязан к МИС</td></tr>';
       }
     }
+
+    if (tabName === 'schedule') {
+      var cardData = cards.find(function(c) { return c.id === cardId; });
+      if (cardData && cardData.metadata && cardData.metadata.misUserId) {
+        loadScheduleForCard(cardId, cardData.metadata.misUserId);
+      } else {
+        renderEmptyTimeline(cardId);
+      }
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════
   // SCHEDULE
   // ═══════════════════════════════════════════════════════════════
+
+  function loadScheduleForCard(cardId, misUserId) {
+    var now = new Date();
+    var timeStart = formatDateForAPI(now) + ' 00:00';
+    var timeEnd = formatDateForAPI(now) + ' 23:59';
+
+    Promise.all([
+      fetchAPI(API_BASE + '/mis/schedule-periods', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: misUserId, time_start: timeStart, time_end: timeEnd })
+      }),
+      fetchAPI(API_BASE + '/mis/schedule', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: misUserId, time_start: timeStart, time_end: timeEnd, show_busy: true, show_past: false, step: 30 })
+      })
+    ]).then(function(results) {
+      var periodsData = results[0];
+      var slotsData = results[1];
+
+      var periods = [];
+      if (periodsData.error === 0 && periodsData.data) {
+        periods = Array.isArray(periodsData.data) ? periodsData.data.filter(function(p) { return String(p.user_id) === String(misUserId); }) : [];
+      }
+
+      var busySlots = [];
+      if (slotsData.error === 0 && slotsData.data) {
+        var allSlots = Array.isArray(slotsData.data) ? slotsData.data : [];
+        busySlots = allSlots.filter(function(s) { return String(s.user_id) === String(misUserId) && s.is_busy; });
+      }
+
+      renderTimeline(cardId, periods, busySlots);
+    }).catch(function(e) {
+      console.log('Schedule error for card:', e);
+      renderEmptyTimeline(cardId);
+    });
+  }
 
   function loadScheduleForAllCards() {
     var userIds = filteredCards
@@ -484,36 +841,30 @@ window.dcApp = (function() {
         if (!misUserId) { renderEmptyTimeline(card.id); return; }
         
         var periods = [];
-        if (periodsData.error === 0 && Array.isArray(periodsData.data)) {
-          periods = periodsData.data.filter(function(p) { return String(p.user_id) === String(misUserId); });
+        if (periodsData.error === 0 && periodsData.data) {
+          periods = Array.isArray(periodsData.data) ? periodsData.data.filter(function(p) { return String(p.user_id) === String(misUserId); }) : [];
         }
         
-        var slots = [];
+        var busySlots = [];
         if (slotsData.error === 0 && slotsData.data) {
-          if (slotsData.data[misUserId]) {
-            slots = slotsData.data[misUserId];
-          } else if (Array.isArray(slotsData.data)) {
-            slots = slotsData.data.filter(function(s) { return String(s.user_id) === String(misUserId); });
-          }
+          var allSlots = Array.isArray(slotsData.data) ? slotsData.data : [];
+          busySlots = allSlots.filter(function(s) { return String(s.user_id) === String(misUserId) && s.is_busy; });
         }
         
-        renderTimeline(card.id, periods, slots);
+        renderTimeline(card.id, periods, busySlots);
       });
-    }).catch(function(err) {
-      console.error('Ошибка расписания:', err);
+    }).catch(function(e) {
+      console.log('Schedule error:', e);
       filteredCards.forEach(function(card) { renderEmptyTimeline(card.id); });
     });
   }
 
-  function renderTimeline(cardId, periods, slots) {
+  function renderTimeline(cardId, periods, busySlots) {
     var timeline = document.getElementById('timeline-' + cardId);
     var labelsContainer = document.getElementById('labels-' + cardId);
     if (!timeline || !labelsContainer) return;
     
-    var startHour = 8, endHour = 21;
-    var totalMinutes = (endHour - startHour) * 60;
-    var hoursCount = endHour - startHour;
-    
+    var startHour = 8, endHour = 21, hoursCount = endHour - startHour, totalMinutes = hoursCount * 60;
     timeline.innerHTML = '';
     labelsContainer.innerHTML = '';
     labelsContainer.style.position = 'relative';
@@ -521,26 +872,26 @@ window.dcApp = (function() {
     
     for (var h = startHour; h <= endHour; h++) {
       var label = document.createElement('span');
-      var position = ((h - startHour) / hoursCount) * 100;
       label.textContent = h + ':00';
-      label.style.left = position + '%';
+      label.style.left = ((h - startHour) / hoursCount) * 100 + '%';
       labelsContainer.appendChild(label);
       
-      var gridLine = document.createElement('div');
-      gridLine.className = 'dc-timeline-grid';
-      gridLine.style.left = position + '%';
-      timeline.appendChild(gridLine);
+      if (h < endHour) {
+        var grid = document.createElement('div');
+        grid.className = 'dc-timeline-grid';
+        grid.style.left = ((h - startHour) / hoursCount) * 100 + '%';
+        timeline.appendChild(grid);
+      }
     }
     
-    if (Array.isArray(periods)) {
-      periods.forEach(function(period) {
-        if (period.type !== 1) return;
-        var tsp = period.time_start ? period.time_start.split(' ') : [];
-        var tep = period.time_end ? period.time_end.split(' ') : [];
-        if (tsp.length < 2 || tep.length < 2) return;
+    if (periods && periods.length > 0) {
+      periods.forEach(function(p) {
+        var startTime = p.time_start_short || (p.time_start ? p.time_start.split(' ')[1] : null);
+        var endTime = p.time_end_short || (p.time_end ? p.time_end.split(' ')[1] : null);
+        if (!startTime || !endTime) return;
         
-        var st = tsp[1].split(':').map(Number);
-        var et = tep[1].split(':').map(Number);
+        var st = startTime.split(':').map(Number);
+        var et = endTime.split(':').map(Number);
         var startMin = st[0] * 60 + st[1];
         var endMin = et[0] * 60 + et[1];
         
@@ -550,21 +901,17 @@ window.dcApp = (function() {
         var duration = endOffset - startOffset;
         if (duration <= 0) return;
         
-        var wb = document.createElement('div');
-        wb.className = 'dc-timeline-period';
-        wb.style.left = (startOffset / totalMinutes) * 100 + '%';
-        wb.style.width = (duration / totalMinutes) * 100 + '%';
-        wb.title = 'График: ' + st[0] + ':' + String(st[1]).padStart(2,'0') + ' — ' + et[0] + ':' + String(et[1]).padStart(2,'0');
-        timeline.appendChild(wb);
+        var pb = document.createElement('div');
+        pb.className = 'dc-timeline-period';
+        pb.style.left = (startOffset / totalMinutes) * 100 + '%';
+        pb.style.width = (duration / totalMinutes) * 100 + '%';
+        pb.title = 'Рабочее время: ' + startTime + ' — ' + endTime;
+        timeline.appendChild(pb);
       });
     }
     
-    if (Array.isArray(slots)) {
-      slots.forEach(function(s) {
-        var isBusy = s.is_busy === true || s.is_busy === 'true' || s.is_busy === 1 || s.is_busy === '1';
-        var isPast = s.is_past === true || s.is_past === 'true' || s.is_past === 1 || s.is_past === '1';
-        if (!isBusy || isPast) return;
-        
+    if (busySlots && busySlots.length > 0) {
+      busySlots.forEach(function(s) {
         var startTime = s.time_start_short || (s.time_start ? s.time_start.split(' ')[1] : null);
         var endTime = s.time_end_short || (s.time_end ? s.time_end.split(' ')[1] : null);
         if (!startTime || !endTime) return;
@@ -610,7 +957,7 @@ window.dcApp = (function() {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // SERVICES - ОРИГИНАЛЬНАЯ ЛОГИКА
+  // SERVICES
   // ═══════════════════════════════════════════════════════════════
 
   function loadServices(cardId, misUserId) {
@@ -622,7 +969,6 @@ window.dcApp = (function() {
       method: 'POST',
       body: JSON.stringify({ userId: misUserId })
     }).then(function(data) {
-      console.log('Doctor info:', data);
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
         return fetchAPI(API_BASE + '/mis/services', {
           method: 'POST',
@@ -631,7 +977,6 @@ window.dcApp = (function() {
       }
       throw new Error('Нет услуг');
     }).then(function(servData) {
-      console.log('Services:', servData);
       if (servData.error === 0 && servData.data) {
         var services = Array.isArray(servData.data) ? servData.data : [servData.data];
         if (services.length === 0) {
@@ -645,13 +990,12 @@ window.dcApp = (function() {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
       }
     }).catch(function(e) {
-      console.log('Services error:', e);
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет данных об услугах</td></tr>';
     });
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MIS SEARCH - ОРИГИНАЛ
+  // MIS SEARCH
   // ═══════════════════════════════════════════════════════════════
 
   function searchMIS(query) {
@@ -722,7 +1066,38 @@ window.dcApp = (function() {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MODAL - ОРИГИНАЛ
+  // QUILL EDITOR
+  // ═══════════════════════════════════════════════════════════════
+
+  function initEditor() {
+    if (notesEditor) return;
+    notesEditor = new Quill('#edit-notes-editor', {
+      theme: 'snow',
+      placeholder: 'Введите заметки...',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+          ['link'],
+          ['clean']
+        ]
+      }
+    });
+  }
+
+  function setEditorContent(html) {
+    if (!notesEditor) initEditor();
+    notesEditor.root.innerHTML = html || '';
+  }
+
+  function getEditorContent() {
+    if (!notesEditor) return '';
+    var html = notesEditor.root.innerHTML;
+    return html === '<p><br></p>' ? '' : html;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // MODAL
   // ═══════════════════════════════════════════════════════════════
 
   function renderClinicsCheckboxes(selectedClinics) {
@@ -735,7 +1110,7 @@ window.dcApp = (function() {
       var isSelected = selectedClinics.indexOf(c.id) !== -1;
       return '<div class="dc-clinic-check' + (isSelected ? ' selected' : '') + '" data-clinic-id="' + c.id + '">' +
         '<input type="checkbox" value="' + c.id + '"' + (isSelected ? ' checked' : '') + '>' +
-        '<span class="dc-clinic-dot" style="background:' + c.color + '"></span> ' + c.name +
+        c.name +
       '</div>';
     }).join('');
     
@@ -786,7 +1161,10 @@ window.dcApp = (function() {
     document.getElementById('dc-form').reset();
     setValue('edit-id', '');
     setValue('edit-mis-user-id', '');
+    setValue('edit-tags', '');
     renderClinicsCheckboxes([]);
+    initEditor();
+    setEditorContent('');
     document.getElementById('dc-modal').classList.add('active');
   }
 
@@ -804,9 +1182,19 @@ window.dcApp = (function() {
     setValue('edit-age-range', meta.ageRange || '');
     setValue('edit-profile-url', card.profileUrl || '');
     setValue('edit-internal', meta.internalNumber || '');
-    setValue('edit-mobile', meta.mobileNumber || '');
-    setValue('edit-notes', card.description || '');
+    setValue('edit-tags', (meta.tags || []).join(', '));
+    
+    // Format phone for display
+    var mobileEl = document.getElementById('edit-mobile');
+    if (mobileEl && meta.mobileNumber) {
+      mobileEl.value = meta.mobileNumber;
+    } else if (mobileEl) {
+      mobileEl.value = '';
+    }
+    
     renderClinicsCheckboxes(meta.clinics || []);
+    initEditor();
+    setEditorContent(card.description || '');
     document.getElementById('dc-modal').classList.add('active');
   }
 
@@ -817,18 +1205,22 @@ window.dcApp = (function() {
   function saveCard(e) {
     e.preventDefault();
     var id = getValue('edit-id');
+    var tagsInput = getValue('edit-tags');
+    var tags = parseTags(tagsInput);
+    
     var data = {
       pageSlug: PAGE_SLUG,
       fullName: getValue('edit-fullname'),
       specialty: getValue('edit-specialty'),
       experience: getValue('edit-experience'),
       profileUrl: getValue('edit-profile-url'),
-      description: getValue('edit-notes'),
+      description: getEditorContent(),
       misUserId: getValue('edit-mis-user-id') || null,
       ageRange: getValue('edit-age-range'),
       internalNumber: getValue('edit-internal'),
       mobileNumber: getValue('edit-mobile'),
-      clinics: getSelectedClinics()
+      clinics: getSelectedClinics(),
+      tags: tags
     };
 
     var url = id ? API_BASE + '/doctor-cards/' + id : API_BASE + '/doctor-cards';
@@ -844,7 +1236,10 @@ window.dcApp = (function() {
   function deleteCard(id) {
     if (!confirm('Удалить карточку врача?')) return;
     fetchAPI(API_BASE + '/doctor-cards/' + id, { method: 'DELETE' })
-      .then(function() { showToast('Карточка удалена', 'success'); loadCards(); })
+      .then(function() {
+        showToast('Карточка удалена', 'success');
+        loadCards();
+      })
       .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
   }
 
@@ -853,35 +1248,31 @@ window.dcApp = (function() {
   // ═══════════════════════════════════════════════════════════════
 
   function init() {
-    if (!getToken()) {
-      document.getElementById('doctors-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
-      return;
-    }
-
-    var urlParams = new URLSearchParams(window.location.search);
-    highlightId = urlParams.get('highlight');
+    var params = new URLSearchParams(window.location.search);
+    highlightId = params.get('highlight');
     loadCards();
-    if (highlightId) window.history.replaceState({}, '', window.location.pathname);
-
-    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.dc-search-wrapper')) {
-        var results = document.getElementById('mis-search-results');
-        if (results) results.classList.remove('active');
-      }
-    });
-    document.getElementById('dc-modal').addEventListener('click', function(e) {
-      if (e.target === this) closeModal();
-    });
   }
 
-  init();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 
   return {
-    loadCards: loadCards, debounceFilter: debounceFilter, filterCards: filterCards,
-    openAddModal: openAddModal, openEditModal: openEditModal, closeModal: closeModal,
-    saveCard: saveCard, deleteCard: deleteCard, switchTab: switchTab,
-    searchMIS: searchMIS, selectDoctor: selectDoctor
+    loadCards: loadCards,
+    filterCards: filterCards,
+    debounceFilter: debounceFilter,
+    switchTab: switchTab,
+    toggleNotes: toggleNotes,
+    openAddModal: openAddModal,
+    openEditModal: openEditModal,
+    closeModal: closeModal,
+    saveCard: saveCard,
+    deleteCard: deleteCard,
+    searchMIS: searchMIS,
+    selectDoctor: selectDoctor,
+    formatPhone: formatPhone
   };
 })();
 </script>

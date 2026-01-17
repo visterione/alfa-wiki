@@ -114,7 +114,7 @@ function KanbanArchive() {
         <div className="archive-empty">
           <Archive size={64} />
           <h2>Архив пуст</h2>
-          <p>Завершенные задачи автоматически архивируются через 7 дней</p>
+          <p>Завершенные задачи автоматически архивируются через 1 день</p>
         </div>
       ) : (
         <div className="archive-list">
