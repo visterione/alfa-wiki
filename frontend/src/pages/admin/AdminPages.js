@@ -5,37 +5,48 @@ import {
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
   ArrowLeft, Check, X, AlertCircle
 } from 'lucide-react';
-import { folders, pages } from '../../services/api';
+import { folders, pages, roles } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
 export default function AdminPages() {
   const navigate = useNavigate();
-  const { isAdmin, hasPermission } = useAuth();
+  const { isAdmin, hasPermission, hasAdminAccess } = useAuth();
   const [loading, setLoading] = useState(true);
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
   const [openMenuId, setOpenMenuId] = useState(null); // Для отслеживания открытого меню
-  
+  const [allRoles, setAllRoles] = useState([]);
+
   // Modals
   const [folderModal, setFolderModal] = useState({ open: false, folder: null });
   const [pageModal, setPageModal] = useState({ open: false, page: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, type: null, item: null });
-  
+
   // Forms
-  const [folderForm, setFolderForm] = useState({ title: '', icon: 'folder', description: '' });
+  const [folderForm, setFolderForm] = useState({ title: '', icon: 'folder', description: '', allowedRoles: [] });
   const [pageForm, setPageForm] = useState({ title: '', icon: 'file-text' });
 
-  // Проверка прав
-  const canEdit = isAdmin || hasPermission('pages', 'write');
-  const canDelete = isAdmin || hasPermission('pages', 'delete');
+  // Проверка прав: галочка "Страницы" в настройках пользователя ИЛИ права на запись
+  const canEdit = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'write');
+  const canDelete = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'delete');
 
   useEffect(() => {
+    loadRoles();
     loadContent();
   }, [currentFolderId]);
+
+  const loadRoles = async () => {
+    try {
+      const { data } = await roles.list();
+      setAllRoles(data);
+    } catch (error) {
+      console.error('Error loading roles:', error);
+    }
+  };
 
   // Закрытие меню при клике вне его
   useEffect(() => {
@@ -79,7 +90,7 @@ export default function AdminPages() {
       toast.error('У вас нет прав на создание/редактирование папок');
       return;
     }
-    setFolderForm(folder || { title: '', icon: 'folder', description: '' });
+    setFolderForm(folder || { title: '', icon: 'folder', description: '', allowedRoles: [] });
     setFolderModal({ open: true, folder });
   };
 
@@ -372,6 +383,47 @@ export default function AdminPages() {
                   placeholder="Необязательное описание"
                   rows={3}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Доступ по ролям</label>
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
+                  Если не выбрано ни одной роли, папка будет доступна всем пользователям. Администратор всегда имеет доступ.
+                </div>
+                <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem' }}>
+                  {allRoles.map(role => {
+                    const isAdmin = role.name === 'Администратор' || role.name === 'Admin';
+                    const isChecked = isAdmin || folderForm.allowedRoles?.includes(role.id) || false;
+
+                    return (
+                      <label
+                        key={role.id}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.25rem 0',
+                          cursor: isAdmin ? 'not-allowed' : 'pointer',
+                          opacity: isAdmin ? 0.7 : 1,
+                          margin: 0
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          disabled={isAdmin}
+                          onChange={e => {
+                            const newRoles = e.target.checked
+                              ? [...(folderForm.allowedRoles || []), role.id]
+                              : (folderForm.allowedRoles || []).filter(id => id !== role.id);
+                            setFolderForm({ ...folderForm, allowedRoles: newRoles });
+                          }}
+                          style={{ margin: 0, width: 'auto', height: 'auto', flex: 'none' }}
+                        />
+                        <span style={{ flex: 'none' }}>{role.name}{isAdmin ? ' (всегда)' : ''}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
             <div className="modal-footer">
