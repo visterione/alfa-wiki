@@ -27,7 +27,6 @@ const COLUMNS = [
   { id: 'backlog', title: 'В очереди', color: '#94a3b8' },
   { id: 'todo', title: 'К выполнению', color: '#3b82f6' },
   { id: 'in_progress', title: 'В работе', color: '#f59e0b' },
-  { id: 'review', title: 'На проверке', color: '#8b5cf6' },
   { id: 'done', title: 'Завершено', color: '#10b981' }
 ];
 
