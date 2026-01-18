@@ -118,6 +118,58 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-timeline-period { position: absolute; height: 100%; background: #c8e6c9; border: 2px solid #81c784; z-index: 2; }
 .dc-timeline-busy { position: absolute; height: 100%; background: #ffcdd2; border: 2px solid #e57373; border-radius: 4px; z-index: 10; cursor: pointer; }
 
+/* Calendar View */
+.dc-calendar-view { display: flex; flex-direction: column; gap: 10px; }
+.dc-calendar-header { display: flex; justify-content: center; align-items: center; padding: 12px; background: linear-gradient(135deg, var(--dc-primary) 0%, #1d4ed8 100%); border-radius: 8px 8px 0 0; box-shadow: 0 2px 4px rgba(37,99,235,0.1); }
+.dc-calendar-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dc-calendar-title { font-size: 15px; font-weight: 600; color: white; display: flex; align-items: center; gap: 8px; }
+.dc-calendar-title::before { content: '📅'; font-size: 18px; }
+.dc-calendar-nav { display: flex; gap: 8px; }
+.dc-calendar-nav-btn { padding: 4px 8px; border: 1px solid var(--dc-border); border-radius: 6px; background: white; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.dc-calendar-nav-btn:hover { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
+.dc-calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding: 8px 4px; background: #f8fafc; border-radius: 6px; margin-bottom: 4px; }
+.dc-calendar-weekday { text-align: center; font-size: 10px; font-weight: 700; color: #64748b; padding: 4px 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dc-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding: 4px; }
+.dc-calendar-day-label { text-align: center; font-size: 11px; font-weight: 600; color: var(--dc-text-secondary); padding: 4px; }
+.dc-calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid #e2e8f0; border-radius: 10px; background: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; position: relative; min-height: 45px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.dc-calendar-day:hover { background: #f0f7ff; border-color: var(--dc-primary); transform: translateY(-2px); box-shadow: 0 4px 8px rgba(37,99,235,0.15); }
+.dc-calendar-day.today { background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-color: var(--dc-primary); font-weight: 700; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.dc-calendar-day.today::after { content: '•'; position: absolute; bottom: 4px; font-size: 16px; color: var(--dc-primary); line-height: 1; }
+.dc-calendar-day.selected { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
+.dc-calendar-day.other-month { color: var(--dc-text-secondary); opacity: 0.4; }
+.dc-calendar-hint { text-align: center; font-size: 11px; color: var(--dc-text-secondary); margin-top: 4px; }
+
+/* Day Schedule View */
+.dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; }
+.dc-day-schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--dc-bg); border-radius: 8px; }
+.dc-day-schedule-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.dc-day-title { font-size: 14px; font-weight: 600; }
+.dc-back-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--dc-border); border-radius: 6px; background: white; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
+.dc-back-btn:hover { background: var(--dc-bg); }
+.dc-back-btn svg { width: 14px; height: 14px; }
+.dc-day-legend { display: flex; gap: 12px; justify-content: center; padding: 8px 12px; background: var(--dc-bg); border-radius: 8px; }
+.dc-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.dc-legend-box { width: 18px; height: 18px; border-radius: 4px; }
+.dc-legend-free { background: #f0fdf4; border: 1.5px solid #86efac; }
+.dc-legend-busy { background: #fee2e2; border: 1.5px solid #fca5a5; }
+
+.dc-clinic-schedule-empty { text-align: center; padding: 20px; color: var(--dc-text-secondary); font-size: 12px; }
+
+.dc-day-timeline-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--dc-text-secondary); margin-bottom: 4px; padding: 0; position: relative; height: 16px; }
+.dc-day-timeline-labels span { position: absolute; transform: translateX(-50%); }
+.dc-day-timeline { position: relative; height: 28px; background: #f8fafc; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0; }
+.dc-day-timeline-grid { position: absolute; width: 1px; height: 100%; background: #e2e8f0; z-index: 1; }
+.dc-day-slot { position: absolute; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 500; border-radius: 4px; cursor: pointer; transition: all 0.2s; z-index: 2; }
+.dc-day-slot.free { background: #f0fdf4; border: 1.5px solid #86efac; color: #166534; }
+.dc-day-slot.busy { background: #fee2e2; border: 1.5px solid #fca5a5; color: #991b1b; }
+.dc-day-slot:hover { opacity: 0.8; transform: translateY(-1px); }
+
+.dc-schedule-legend { display: flex; gap: 12px; justify-content: center; align-items: center; padding: 8px; background: var(--dc-bg); border-radius: 6px; font-size: 11px; margin-top: 8px; }
+.dc-schedule-legend-item { display: flex; align-items: center; gap: 4px; }
+.dc-schedule-legend-box { width: 16px; height: 16px; border-radius: 3px; border: 1.5px solid; }
+.dc-schedule-legend-box.busy { background: #fee2e2; border-color: #fca5a5; }
+.dc-schedule-legend-box.free { background: #f0fdf4; border-color: #86efac; }
+
 .dc-services-container { max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .dc-services-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dc-services-table th { background: var(--dc-bg); padding: 8px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--dc-border); position: sticky; top: 0; }
@@ -678,9 +730,31 @@ window.dcApp = (function() {
             '</div>' +
           '</div>' +
           '<div class="dc-tab-content" data-tab="schedule">' +
-            '<div class="dc-timeline-container">' +
-              '<div class="dc-timeline-labels" id="labels-' + card.id + '"></div>' +
-              '<div class="dc-timeline" id="timeline-' + card.id + '"></div>' +
+            '<div class="dc-schedule-container">' +
+              // Calendar View (initial state)
+              '<div class="dc-calendar-view" id="calendar-view-' + card.id + '" style="display: block;">' +
+                '<div class="dc-calendar-header">' +
+                  '<span class="dc-calendar-title">Календарь расписания</span>' +
+                '</div>' +
+                '<div class="dc-calendar-weekdays">' +
+                  '<div class="dc-calendar-weekday">Пн</div>' +
+                  '<div class="dc-calendar-weekday">Вт</div>' +
+                  '<div class="dc-calendar-weekday">Ср</div>' +
+                  '<div class="dc-calendar-weekday">Чт</div>' +
+                  '<div class="dc-calendar-weekday">Пт</div>' +
+                  '<div class="dc-calendar-weekday">Сб</div>' +
+                  '<div class="dc-calendar-weekday">Вс</div>' +
+                '</div>' +
+                '<div class="dc-calendar-grid" id="calendar-grid-' + card.id + '"></div>' +
+              '</div>' +
+              // Day Schedule View (shows after day click)
+              '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
+                '<div class="dc-day-schedule-header">' +
+                  '<button class="dc-back-btn" onclick="dcApp.backToCalendar(\'' + card.id + '\')">← Назад к календарю</button>' +
+                  '<span class="dc-day-title" id="day-title-' + card.id + '"></span>' +
+                '</div>' +
+                '<div id="day-schedule-content-' + card.id + '"></div>' +
+              '</div>' +
             '</div>' +
           '</div>' +
         '</div>' +
@@ -762,9 +836,10 @@ window.dcApp = (function() {
     if (tabName === 'schedule') {
       var cardData = cards.find(function(c) { return c.id === cardId; });
       if (cardData && cardData.metadata && cardData.metadata.misUserId) {
-        loadScheduleForCard(cardId, cardData.metadata.misUserId);
+        renderCalendar(cardId, cardData.metadata.misUserId);
       } else {
-        renderEmptyTimeline(cardId);
+        var calendarGrid = document.getElementById('calendar-grid-' + cardId);
+        if (calendarGrid) calendarGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #999;">Врач не привязан к МИС</div>';
       }
     }
   }
@@ -772,6 +847,503 @@ window.dcApp = (function() {
   // ═══════════════════════════════════════════════════════════════
   // SCHEDULE
   // ═══════════════════════════════════════════════════════════════
+
+  // Helper function to get Monday of current week
+  function getMonday(d) {
+    var date = new Date(d);
+    var day = date.getDay();
+    var diff = date.getDate() - day + (day === 0 ? -6 : 1);
+    return new Date(date.setDate(diff));
+  }
+
+  // Render 2-week calendar
+  function renderCalendar(cardId, misUserId) {
+    var calendarGrid = document.getElementById('calendar-grid-' + cardId);
+    var calendarTitle = document.querySelector('#calendar-view-' + cardId + ' .dc-calendar-title');
+    if (!calendarGrid) return;
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var monday = getMonday(today);
+
+    var days = [];
+    for (var i = 0; i < 14; i++) {
+      var date = new Date(monday);
+      date.setDate(monday.getDate() + i);
+      days.push(date);
+    }
+
+    // Update calendar title with current month/year
+    if (calendarTitle) {
+      var monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+      var firstDay = days[0];
+      var lastDay = days[days.length - 1];
+      var titleText = '';
+
+      if (firstDay.getMonth() === lastDay.getMonth()) {
+        titleText = monthNames[firstDay.getMonth()] + ' ' + firstDay.getFullYear();
+      } else {
+        titleText = monthNames[firstDay.getMonth()] + ' — ' + monthNames[lastDay.getMonth()] + ' ' + lastDay.getFullYear();
+      }
+      calendarTitle.textContent = titleText;
+    }
+
+    // Show loading state
+    calendarGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 20px; color: #999;">Загрузка календаря...</div>';
+
+    // Load schedule availability for all 14 days
+    var firstDate = formatDateForAPI(days[0]);
+    var lastDate = formatDateForAPI(days[days.length - 1]);
+    var timeStart = firstDate + ' 00:00';
+    var timeEnd = lastDate + ' 23:59';
+
+    fetchAPI(API_BASE + '/mis/schedule-periods', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: misUserId, time_start: timeStart, time_end: timeEnd })
+    }).then(function(periodsData) {
+      var allPeriods = [];
+      if (periodsData.error === 0 && periodsData.data) {
+        allPeriods = Array.isArray(periodsData.data) ? periodsData.data.filter(function(p) {
+          return String(p.user_id) === String(misUserId);
+        }) : [];
+      }
+
+      // Create a map of dates that have schedule
+      var datesWithSchedule = {};
+      allPeriods.forEach(function(period) {
+        if (period.time_start) {
+          var dateStr = period.time_start.split(' ')[0]; // Extract date part
+          // Convert from "yyyy-mm-dd" or "dd.mm.yyyy" to "dd.mm.yyyy"
+          var normalizedDate;
+          if (dateStr.indexOf('-') !== -1) {
+            // ISO format: "2026-01-18"
+            var parts = dateStr.split('-');
+            normalizedDate = parts[2] + '.' + parts[1] + '.' + parts[0];
+          } else {
+            normalizedDate = dateStr;
+          }
+          datesWithSchedule[normalizedDate] = true;
+        }
+      });
+
+      // Render calendar with availability info
+      calendarGrid.innerHTML = days.map(function(date) {
+        var isToday = date.getTime() === today.getTime();
+        var dayNumber = date.getDate();
+        var dateKey = formatDateForAPI(date);
+        var hasSchedule = datesWithSchedule[dateKey] || false;
+
+        var classes = ['dc-calendar-day'];
+        if (isToday) classes.push('today');
+        if (!hasSchedule) classes.push('other-month'); // Reuse existing style for inactive days
+
+        var onclickAttr = hasSchedule
+          ? 'onclick="dcApp.loadDaySchedule(\'' + cardId + '\', \'' + misUserId + '\', \'' + dateKey + '\')"'
+          : 'style="cursor: not-allowed;"';
+
+        return '<div class="' + classes.join(' ') + '" ' +
+          'data-date="' + dateKey + '" ' +
+          onclickAttr + '>' +
+          '<span style="font-size: 14px;">' + dayNumber + '</span>' +
+          '</div>';
+      }).join('');
+    }).catch(function(e) {
+      console.log('Calendar load error:', e);
+      // Fallback: render calendar without availability info (all clickable)
+      calendarGrid.innerHTML = days.map(function(date) {
+        var isToday = date.getTime() === today.getTime();
+        var dayNumber = date.getDate();
+        var classes = ['dc-calendar-day'];
+        if (isToday) classes.push('today');
+
+        return '<div class="' + classes.join(' ') + '" ' +
+          'data-date="' + formatDateForAPI(date) + '" ' +
+          'onclick="dcApp.loadDaySchedule(\'' + cardId + '\', \'' + misUserId + '\', \'' + formatDateForAPI(date) + '\')">' +
+          '<span style="font-size: 14px;">' + dayNumber + '</span>' +
+          '</div>';
+      }).join('');
+    });
+  }
+
+  // Load and display schedule for a specific day
+  function loadDaySchedule(cardId, misUserId, dateStr) {
+    var calendarView = document.getElementById('calendar-view-' + cardId);
+    var dayScheduleView = document.getElementById('day-schedule-view-' + cardId);
+    var dayTitle = document.getElementById('day-title-' + cardId);
+    var dayScheduleContent = document.getElementById('day-schedule-content-' + cardId);
+
+    if (!calendarView || !dayScheduleView || !dayTitle || !dayScheduleContent) return;
+
+    // Switch views
+    calendarView.style.display = 'none';
+    dayScheduleView.style.display = 'block';
+
+    // Update title
+    var parts = dateStr.split('.');
+    var dateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+    var weekdays = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+    dayTitle.textContent = weekdays[dateObj.getDay()] + ', ' + dateStr;
+
+    // Show loading
+    dayScheduleContent.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Загрузка...</div>';
+
+    var timeStart = dateStr + ' 00:00';
+    var timeEnd = dateStr + ' 23:59';
+
+    // Load schedule data
+    Promise.all([
+      fetchAPI(API_BASE + '/mis/schedule-periods', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: misUserId, time_start: timeStart, time_end: timeEnd })
+      }),
+      fetchAPI(API_BASE + '/mis/schedule', {
+        method: 'POST',
+        body: JSON.stringify({ user_id: misUserId, time_start: timeStart, time_end: timeEnd, show_busy: true, show_past: false, step: 30 })
+      })
+    ]).then(function(results) {
+      var periodsData = results[0];
+      var slotsData = results[1];
+
+      var periods = [];
+      if (periodsData.error === 0 && periodsData.data) {
+        periods = Array.isArray(periodsData.data) ? periodsData.data.filter(function(p) {
+          return String(p.user_id) === String(misUserId);
+        }) : [];
+      }
+
+      var slots = [];
+      if (slotsData.error === 0 && slotsData.data) {
+        // Handle both formats: array or object with user_id as key
+        if (Array.isArray(slotsData.data)) {
+          // Array format: filter by user_id
+          slots = slotsData.data.filter(function(s) {
+            return String(s.user_id) === String(misUserId);
+          });
+        } else if (typeof slotsData.data === 'object') {
+          // Object format: data is grouped by user_id as key
+          slots = slotsData.data[misUserId] || [];
+        }
+      }
+
+      // Detect dynamic step from response
+      var detectedStep = 30;
+      if (slots.length > 0 && slots[0].time_start && slots[0].time_end) {
+        var start = parseAPITime(slots[0].time_start);
+        var end = parseAPITime(slots[0].time_end);
+        if (start && end) {
+          detectedStep = Math.round((end - start) / (60 * 1000));
+        }
+      }
+
+      renderDaySchedule(cardId, periods, slots, detectedStep);
+    }).catch(function(e) {
+      console.log('Day schedule error:', e);
+      dayScheduleContent.innerHTML = '<div style="text-align: center; padding: 20px; color: #999;">Ошибка загрузки расписания</div>';
+    });
+  }
+
+  // Back to calendar view
+  function backToCalendar(cardId) {
+    var calendarView = document.getElementById('calendar-view-' + cardId);
+    var dayScheduleView = document.getElementById('day-schedule-view-' + cardId);
+
+    if (calendarView && dayScheduleView) {
+      calendarView.style.display = 'block';
+      dayScheduleView.style.display = 'none';
+    }
+  }
+
+  // Render day schedule grouped by clinics
+  function renderDaySchedule(cardId, periods, slots, step) {
+    var dayScheduleContent = document.getElementById('day-schedule-content-' + cardId);
+    if (!dayScheduleContent) return;
+
+    // If no periods, show empty state
+    if (!periods || periods.length === 0) {
+      dayScheduleContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">' +
+        '<div style="font-size: 48px; margin-bottom: 12px;">📅</div>' +
+        '<div>Нет расписания на этот день</div>' +
+        '</div>';
+      return;
+    }
+
+    // Render unified timeline for ALL periods across all clinics
+    var timelineHtml = renderUnifiedTimeline(periods, slots, step);
+    dayScheduleContent.innerHTML = timelineHtml;
+  }
+
+  // Render unified timeline for multiple periods across all clinics
+  function renderUnifiedTimeline(periods, slots, step) {
+    if (!periods || periods.length === 0) {
+      return '<div style="color: #999; padding: 8px;">Нет периодов</div>';
+    }
+
+    // Find earliest start and latest end across all periods
+    var earliestStart = null;
+    var latestEnd = null;
+    var validPeriods = [];
+
+    periods.forEach(function(period) {
+      var start = parseAPITime(period.time_start);
+      var end = parseAPITime(period.time_end);
+      if (start && end) {
+        validPeriods.push({ period: period, start: start, end: end });
+        if (!earliestStart || start < earliestStart) earliestStart = start;
+        if (!latestEnd || end > latestEnd) latestEnd = end;
+      }
+    });
+
+    if (validPeriods.length === 0) {
+      return '<div style="color: #999; padding: 8px;">Некорректное время периодов</div>';
+    }
+
+    var startHour = earliestStart.getHours();
+    var startMin = earliestStart.getMinutes();
+    var endHour = latestEnd.getHours();
+    var endMin = latestEnd.getMinutes();
+
+    var startMinutes = startHour * 60 + startMin;
+    var endMinutes = endHour * 60 + endMin;
+    var totalMinutes = endMinutes - startMinutes;
+
+    var html = '<div class="dc-period-block" style="margin-bottom: 12px;">';
+
+    // Time labels
+    html += '<div class="dc-day-timeline-labels">';
+    for (var h = startHour; h <= endHour; h++) {
+      if (h * 60 >= startMinutes && h * 60 <= endMinutes) {
+        var position = ((h * 60 - startMinutes) / totalMinutes) * 100;
+        html += '<span style="left: ' + position + '%;">' + pad(h) + ':00</span>';
+      }
+    }
+    html += '</div>';
+
+    // Timeline container
+    html += '<div class="dc-day-timeline" style="position: relative; height: 32px; background: #f1f5f9; border-radius: 6px; overflow: visible; border: 1px solid #e2e8f0;">';
+
+    // Grid lines
+    for (var h = startHour; h <= endHour; h++) {
+      if (h * 60 >= startMinutes && h * 60 < endMinutes) {
+        var gridPosition = ((h * 60 - startMinutes) / totalMinutes) * 100;
+        html += '<div style="position: absolute; left: ' + gridPosition + '%; width: 1px; height: 100%; background: #ddd; z-index: 1;"></div>';
+      }
+    }
+
+    // Render working periods (green background zones)
+    validPeriods.forEach(function(vp) {
+      var pStartMin = vp.start.getHours() * 60 + vp.start.getMinutes();
+      var pEndMin = vp.end.getHours() * 60 + vp.end.getMinutes();
+      var leftPercent = ((pStartMin - startMinutes) / totalMinutes) * 100;
+      var widthPercent = ((pEndMin - pStartMin) / totalMinutes) * 100;
+
+      html += '<div style="' +
+        'position: absolute; ' +
+        'left: ' + leftPercent + '%; ' +
+        'width: ' + widthPercent + '%; ' +
+        'height: 100%; ' +
+        'background: #c8e6c9; ' +
+        'border: 1px solid #81c784; ' +
+        'z-index: 2;' +
+        '"></div>';
+    });
+
+    // Render busy slots directly from API data (no need to generate all slots)
+    slots.forEach(function(slot) {
+      if (!slot.is_busy) {
+        return;
+      }
+
+      var slotStart = parseAPITime(slot.time_start);
+      var slotEnd = parseAPITime(slot.time_end);
+
+      if (!slotStart || !slotEnd) {
+        return;
+      }
+
+      // Check if slot is within the unified timeline range
+      if (slotEnd <= earliestStart || slotStart >= latestEnd) {
+        return;
+      }
+
+      var slotStartMin = slotStart.getHours() * 60 + slotStart.getMinutes();
+      var slotEndMin = slotEnd.getHours() * 60 + slotEnd.getMinutes();
+      var leftPercent = ((slotStartMin - startMinutes) / totalMinutes) * 100;
+      var widthPercent = ((slotEndMin - slotStartMin) / totalMinutes) * 100;
+
+      // Build tooltip with available slot information
+      var tooltipParts = [];
+
+      // Time
+      var timeStart = pad(slotStart.getHours()) + ':' + pad(slotStart.getMinutes());
+      var timeEnd = pad(slotEnd.getHours()) + ':' + pad(slotEnd.getMinutes());
+      tooltipParts.push('Время: ' + timeStart + ' - ' + timeEnd);
+
+      // Patient name if available
+      if (slot.patient_name) {
+        tooltipParts.push('Пациент: ' + slot.patient_name);
+      }
+
+      // Appointment type if available
+      if (slot.appointment_type) {
+        tooltipParts.push('Тип: ' + slot.appointment_type);
+      }
+
+      // Room/Cabinet if available
+      if (slot.room) {
+        tooltipParts.push('Кабинет: ' + slot.room);
+      }
+
+      // Comment/notes if available
+      if (slot.comment) {
+        tooltipParts.push('Комментарий: ' + slot.comment);
+      }
+
+      var tooltip = tooltipParts.join('\n'); // Newline for multiline tooltip
+
+      html += '<div class="dc-timeline-slot busy" title="' + escapeHtml(tooltip) + '" style="' +
+        'position: absolute; ' +
+        'left: ' + leftPercent + '%; ' +
+        'width: ' + widthPercent + '%; ' +
+        'height: 100%; ' +
+        'background: #ffcdd2; ' +
+        'border-right: 1px solid #e57373; ' +
+        'z-index: 3; ' +
+        'cursor: help;' +
+        '"></div>';
+    });
+
+    html += '</div>'; // Close timeline
+    html += '</div>'; // Close period-block
+    return html;
+  }
+
+  // Legacy function - kept for compatibility but not used
+  function renderPeriodTimeline(period, slots, step) {
+    var start = parseAPITime(period.time_start);
+    var end = parseAPITime(period.time_end);
+
+    if (!start || !end) {
+      return '<div style="color: #999; padding: 8px;">Некорректное время периода</div>';
+    }
+
+    var startHour = start.getHours();
+    var startMin = start.getMinutes();
+    var endHour = end.getHours();
+    var endMin = end.getMinutes();
+
+    // Calculate total minutes for this period
+    var startMinutes = startHour * 60 + startMin;
+    var endMinutes = endHour * 60 + endMin;
+    var totalMinutes = endMinutes - startMinutes;
+
+    var html = '<div class="dc-period-block" style="margin-bottom: 12px;">';
+
+    // Time labels (like original timeline)
+    html += '<div class="dc-day-timeline-labels">';
+    for (var h = startHour; h <= endHour; h++) {
+      if (h * 60 >= startMinutes && h * 60 <= endMinutes) {
+        var position = ((h * 60 - startMinutes) / totalMinutes) * 100;
+        html += '<span style="left: ' + position + '%;">' + pad(h) + ':00</span>';
+      }
+    }
+    html += '</div>';
+
+    // Timeline container
+    html += '<div class="dc-day-timeline" style="position: relative; height: 32px; background: #f1f5f9; border-radius: 6px; overflow: visible; border: 1px solid #e2e8f0;">';
+
+    // Grid lines
+    for (var h = startHour; h <= endHour; h++) {
+      if (h * 60 >= startMinutes && h * 60 < endMinutes) {
+        var gridPosition = ((h * 60 - startMinutes) / totalMinutes) * 100;
+        html += '<div style="position: absolute; left: ' + gridPosition + '%; width: 1px; height: 100%; background: #ddd; z-index: 1;"></div>';
+      }
+    }
+
+    // Generate slots for this period
+    var current = new Date(start);
+    while (current < end) {
+      var slotStart = new Date(current);
+      var slotEnd = new Date(current);
+      slotEnd.setMinutes(slotEnd.getMinutes() + step);
+
+      if (slotEnd > end) slotEnd = end;
+
+      // Calculate position and width
+      var slotStartMin = slotStart.getHours() * 60 + slotStart.getMinutes();
+      var slotEndMin = slotEnd.getHours() * 60 + slotEnd.getMinutes();
+      var leftPercent = ((slotStartMin - startMinutes) / totalMinutes) * 100;
+      var widthPercent = ((slotEndMin - slotStartMin) / totalMinutes) * 100;
+
+      // Check if this slot is busy
+      var isBusy = slots.some(function(slot) {
+        var slotStartTime = parseAPITime(slot.time_start);
+        return slotStartTime && slotStartTime.getTime() === slotStart.getTime() && slot.is_busy;
+      });
+
+      var slotClass = isBusy ? 'busy' : 'free';
+      var bgColor = isBusy ? '#ffcdd2' : '#c8e6c9';
+      var borderColor = isBusy ? '#e57373' : '#81c784';
+
+      html += '<div class="dc-timeline-slot ' + slotClass + '" style="' +
+        'position: absolute; ' +
+        'left: ' + leftPercent + '%; ' +
+        'width: ' + widthPercent + '%; ' +
+        'height: 100%; ' +
+        'background: ' + bgColor + '; ' +
+        'border-right: 1px solid ' + borderColor + '; ' +
+        'z-index: 2;' +
+        '"></div>';
+
+      current.setMinutes(current.getMinutes() + step);
+    }
+
+    html += '</div>'; // Close timeline
+    html += '</div>'; // Close period-block
+    return html;
+  }
+
+  // Helper: parse API time format to Date
+  // Supports two formats:
+  // 1. "dd.mm.yyyy hh:mm" (used by schedule-periods)
+  // 2. "yyyy-mm-dd hh:mm:ss" (used by schedule slots)
+  function parseAPITime(timeStr) {
+    if (!timeStr) return null;
+
+    // Try ISO format first: "2026-01-18 11:00:00"
+    if (timeStr.indexOf('-') !== -1) {
+      var parts = timeStr.split(' ');
+      if (parts.length < 2) return null;
+      var dateParts = parts[0].split('-');
+      var timeParts = parts[1].split(':');
+      if (dateParts.length !== 3 || timeParts.length < 2) return null;
+      return new Date(
+        parseInt(dateParts[0]), // year
+        parseInt(dateParts[1]) - 1, // month
+        parseInt(dateParts[2]), // day
+        parseInt(timeParts[0]), // hour
+        parseInt(timeParts[1])  // minute
+      );
+    }
+
+    // Try DD.MM.YYYY format: "18.01.2026 11:00"
+    var parts = timeStr.split(' ');
+    if (parts.length !== 2) return null;
+    var dateParts = parts[0].split('.');
+    var timeParts = parts[1].split(':');
+    if (dateParts.length !== 3 || timeParts.length !== 2) return null;
+    return new Date(
+      parseInt(dateParts[2]), // year
+      parseInt(dateParts[1]) - 1, // month
+      parseInt(dateParts[0]), // day
+      parseInt(timeParts[0]), // hour
+      parseInt(timeParts[1])  // minute
+    );
+  }
+
+  // Helper: pad number with zero
+  function pad(num) {
+    return num < 10 ? '0' + num : String(num);
+  }
 
   function loadScheduleForCard(cardId, misUserId) {
     var now = new Date();
@@ -1272,7 +1844,9 @@ window.dcApp = (function() {
     deleteCard: deleteCard,
     searchMIS: searchMIS,
     selectDoctor: selectDoctor,
-    formatPhone: formatPhone
+    formatPhone: formatPhone,
+    loadDaySchedule: loadDaySchedule,
+    backToCalendar: backToCalendar
   };
 })();
 </script>
