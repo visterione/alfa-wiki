@@ -1,14 +1,100 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { 
+import {
   Save, ArrowLeft, Plus, Edit, Trash2, GripVertical,
-  BookOpen, FileText, HelpCircle, ChevronDown, ChevronUp
+  BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { courses } from '../../services/api';
+import { courses, roles as rolesApi, users } from '../../services/api';
 import Editor from '../../components/Editor';
 import toast from 'react-hot-toast';
+import '../Admin.css';
 import './AdminCourseEditor.css';
+
+// Компонент для множественного выбора (из AdminUsers)
+function MultiSelect({ label, placeholder, value, onChange, options, optionKey = 'id', optionLabel = 'name', optionDescription = null }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const selectedItems = options.filter(opt => value.includes(opt[optionKey]));
+
+  const toggleOption = (optId) => {
+    if (value.includes(optId)) {
+      onChange(value.filter(id => id !== optId));
+    } else {
+      onChange([...value, optId]);
+    }
+  };
+
+  const removeItem = (optId, e) => {
+    e.stopPropagation();
+    onChange(value.filter(id => id !== optId));
+  };
+
+  return (
+    <div className="form-group">
+      <label className="form-label">{label}</label>
+      <div className="multi-select" ref={dropdownRef}>
+        <div
+          className={`multi-select-trigger ${isOpen ? 'open' : ''}`}
+          onClick={() => setIsOpen(!isOpen)}
+        >
+          {selectedItems.length === 0 ? (
+            <span className="multi-select-placeholder">{placeholder}</span>
+          ) : (
+            <div className="multi-select-values">
+              {selectedItems.map(item => (
+                <span key={item[optionKey]} className="multi-select-value">
+                  {item[optionLabel]}
+                  <button onClick={(e) => removeItem(item[optionKey], e)} type="button">
+                    <XIcon size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <ChevronDown size={18} className={`multi-select-chevron ${isOpen ? 'open' : ''}`} />
+        </div>
+
+        {isOpen && (
+          <div className="multi-select-dropdown">
+            {options.map(option => (
+              <div
+                key={option[optionKey]}
+                className="multi-select-option"
+                onClick={() => toggleOption(option[optionKey])}
+              >
+                <input
+                  type="checkbox"
+                  checked={value.includes(option[optionKey])}
+                  onChange={() => {}}
+                />
+                <div className="multi-select-option-label">
+                  <div>{option[optionLabel]}</div>
+                  {optionDescription && option[optionDescription] && (
+                    <div className="multi-select-option-desc">{option[optionDescription]}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminCourseEditor() {
   const { id } = useParams();
@@ -25,21 +111,42 @@ export default function AdminCourseEditor() {
     description: '',
     icon: 'book-open',
     estimatedDuration: '',
-    isPublished: false
+    isPublished: false,
+    allowedRoleIds: [],
+    allowedMedCenterIds: []
   });
 
   const [lessons, setLessons] = useState([]);
   const [questions, setQuestions] = useState([]);
+
+  // Access control lists
+  const [availableRoles, setAvailableRoles] = useState([]);
+  const [availableMedCenters, setAvailableMedCenters] = useState([]);
 
   // Modals
   const [lessonModal, setLessonModal] = useState(null);
   const [questionModal, setQuestionModal] = useState(null);
 
   useEffect(() => {
+    loadRolesAndMedCenters();
     if (!isNew) {
       loadCourse();
     }
   }, [id]);
+
+  const loadRolesAndMedCenters = async () => {
+    try {
+      const [rolesRes, medCentersRes] = await Promise.all([
+        rolesApi.list(),
+        users.getMedCenters()
+      ]);
+      setAvailableRoles(rolesRes.data || []);
+      setAvailableMedCenters(medCentersRes.data || []);
+    } catch (error) {
+      console.error('Load roles/medcenters error:', error);
+      toast.error('Ошибка загрузки данных для контроля доступа');
+    }
+  };
 
   const loadCourse = async () => {
     try {
@@ -49,7 +156,9 @@ export default function AdminCourseEditor() {
         description: data.description || '',
         icon: data.icon || 'book-open',
         estimatedDuration: data.estimatedDuration || '',
-        isPublished: data.isPublished
+        isPublished: data.isPublished,
+        allowedRoleIds: data.allowedRoles?.map(r => r.id) || [],
+        allowedMedCenterIds: data.allowedMedCenters?.map(m => m.id) || []
       });
       setLessons(data.lessons || []);
       setQuestions(data.testQuestions || []);
@@ -291,9 +400,38 @@ export default function AdminCourseEditor() {
                     Опубликовать курс
                   </label>
                   <p className="form-help">
-                    Опубликованные курсы доступны всем пользователям
+                    Опубликованные курсы доступны пользователям с правами доступа
                   </p>
                 </div>
+              </div>
+
+              <div className="access-control-section">
+                <h3>Контроль доступа</h3>
+                <p className="form-help" style={{ marginBottom: '16px' }}>
+                  Если не выбраны роли или медцентры, курс доступен всем.
+                  При выборе пользователь должен соответствовать ОБОИМ условиям (роль И медцентр).
+                </p>
+
+                <MultiSelect
+                  label="Доступные роли"
+                  placeholder="Выберите роли или оставьте пустым для доступа всем"
+                  value={form.allowedRoleIds}
+                  onChange={(newValue) => setForm({ ...form, allowedRoleIds: newValue })}
+                  options={availableRoles}
+                  optionKey="id"
+                  optionLabel="name"
+                  optionDescription="description"
+                />
+
+                <MultiSelect
+                  label="Доступные медцентры"
+                  placeholder="Выберите медцентры или оставьте пустым для доступа всем"
+                  value={form.allowedMedCenterIds}
+                  onChange={(newValue) => setForm({ ...form, allowedMedCenterIds: newValue })}
+                  options={availableMedCenters}
+                  optionKey="id"
+                  optionLabel="displayName"
+                />
               </div>
 
               {isNew && (

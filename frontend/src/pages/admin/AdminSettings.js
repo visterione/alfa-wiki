@@ -262,56 +262,6 @@ export default function AdminSettings() {
           </div>
         </div>
 
-        <div className="card">
-          <div className="card-header">
-            <h3>Доска задач</h3>
-            <button
-              className="btn btn-primary btn-sm"
-              onClick={handleSaveKanban}
-              disabled={savingKanban}
-            >
-              {savingKanban ? <div className="loading-spinner" style={{width:14,height:14}} /> : <Save size={14} />}
-              Сохранить
-            </button>
-          </div>
-          <div className="card-body">
-            <div className="form-group">
-              <label className="form-label">Доступ на чтение</label>
-              <div style={{ marginBottom: 8 }}>
-                <label className="checkbox-item">
-                  <input
-                    type="radio"
-                    name="readAccess"
-                    checked={kanbanAccess.readAccess === 'all'}
-                    onChange={() => setKanbanAccess({...kanbanAccess, readAccess: 'all'})}
-                  />
-                  Доступно всем
-                </label>
-              </div>
-              <small className="text-muted">Все пользователи могут просматривать Канбан-доску</small>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Роли с правом редактирования</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {roleList.map(role => (
-                  <label key={role.id} className="checkbox-item">
-                    <input
-                      type="checkbox"
-                      checked={kanbanAccess.writeRoles.includes(role.id)}
-                      onChange={() => handleToggleWriteRole(role.id)}
-                    />
-                    {role.name}
-                  </label>
-                ))}
-              </div>
-              <small className="text-muted">
-                Выбранные роли смогут создавать, редактировать и удалять задачи.
-                Если ничего не выбрано, редактировать смогут только администраторы.
-              </small>
-            </div>
-          </div>
-        </div>
       </div>
 
       <style>{`

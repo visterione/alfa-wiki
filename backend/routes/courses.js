@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Course, Lesson, TestQuestion, CourseProgress, User } = require('../models');
-const { authenticate, requirePermission, requireAdminAccess } = require('../middleware/auth');
+const { Course, Lesson, TestQuestion, CourseProgress, User, Role, MedCenter, CourseRole, CourseMedCenter } = require('../models');
+const { authenticate, requirePermission, requireAdminAccess, checkCourseAccess } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -15,34 +15,79 @@ router.get('/', authenticate, async (req, res) => {
     const courses = await Course.findAll({
       where: { isPublished: true },
       include: [
-        { 
-          model: User, 
-          as: 'creator', 
-          attributes: ['id', 'username', 'displayName'] 
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'displayName']
         },
         {
           model: Lesson,
           as: 'lessons',
           attributes: ['id'],
           separate: true
+        },
+        {
+          model: Role,
+          as: 'allowedRoles',
+          through: { attributes: [] }
+        },
+        {
+          model: MedCenter,
+          as: 'allowedMedCenters',
+          through: { attributes: [] }
         }
       ],
       order: [['createdAt', 'DESC']]
     });
 
+    // Фильтруем курсы по доступу пользователя (правило AND)
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const userMedCenterIds = req.user.medCenters?.map(m => m.id) || [];
+
+    const accessibleCourses = courses.filter(course => {
+      // Админ видит все
+      if (req.user.isAdmin) return true;
+
+      const hasRoleRestrictions = course.allowedRoles && course.allowedRoles.length > 0;
+      const hasMedCenterRestrictions = course.allowedMedCenters && course.allowedMedCenters.length > 0;
+
+      // Если нет ограничений вообще, курс доступен всем
+      if (!hasRoleRestrictions && !hasMedCenterRestrictions) return true;
+
+      // Проверяем роль (если есть ограничения по ролям)
+      let hasRoleAccess = !hasRoleRestrictions; // Если нет ограничений, проходит
+      if (hasRoleRestrictions) {
+        const allowedRoleIds = course.allowedRoles.map(r => r.id);
+        hasRoleAccess = userRoleIds.some(roleId => allowedRoleIds.includes(roleId));
+      }
+
+      // Проверяем медцентр (если есть ограничения по медцентрам)
+      let hasMedCenterAccess = !hasMedCenterRestrictions; // Если нет ограничений, проходит
+      if (hasMedCenterRestrictions) {
+        const allowedMedCenterIds = course.allowedMedCenters.map(m => m.id);
+        hasMedCenterAccess = userMedCenterIds.some(mcId => allowedMedCenterIds.includes(mcId));
+      }
+
+      // Оба условия должны быть true (логика AND)
+      return hasRoleAccess && hasMedCenterAccess;
+    });
+
     // Добавляем информацию о прогрессе для текущего пользователя
     const coursesWithProgress = await Promise.all(
-      courses.map(async (course) => {
+      accessibleCourses.map(async (course) => {
         const progress = await CourseProgress.findOne({
-          where: { 
-            userId: req.user.id, 
-            courseId: course.id 
+          where: {
+            userId: req.user.id,
+            courseId: course.id
           }
         });
 
         const courseData = course.toJSON();
         courseData.lessonsCount = courseData.lessons.length;
         delete courseData.lessons;
+        // Удаляем данные о доступе из ответа для обычных пользователей
+        delete courseData.allowedRoles;
+        delete courseData.allowedMedCenters;
 
         if (progress) {
           courseData.userProgress = {
@@ -386,10 +431,10 @@ router.get('/admin/all', authenticate, requireAdminAccess('courses'), async (req
   try {
     const courses = await Course.findAll({
       include: [
-        { 
-          model: User, 
-          as: 'creator', 
-          attributes: ['id', 'username', 'displayName'] 
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'displayName']
         },
         {
           model: Lesson,
@@ -402,6 +447,16 @@ router.get('/admin/all', authenticate, requireAdminAccess('courses'), async (req
           as: 'testQuestions',
           attributes: ['id'],
           separate: true
+        },
+        {
+          model: Role,
+          as: 'allowedRoles',
+          through: { attributes: [] }
+        },
+        {
+          model: MedCenter,
+          as: 'allowedMedCenters',
+          through: { attributes: [] }
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -433,7 +488,7 @@ router.post('/admin', authenticate, requireAdminAccess('courses'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, description, icon, estimatedDuration, isPublished } = req.body;
+    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds } = req.body;
 
     const course = await Course.create({
       title,
@@ -444,7 +499,25 @@ router.post('/admin', authenticate, requireAdminAccess('courses'), [
       createdBy: req.user.id
     });
 
-    res.status(201).json(course);
+    // Сохраняем связи с ролями
+    if (allowedRoleIds && Array.isArray(allowedRoleIds) && allowedRoleIds.length > 0) {
+      await course.setAllowedRoles(allowedRoleIds);
+    }
+
+    // Сохраняем связи с медцентрами
+    if (allowedMedCenterIds && Array.isArray(allowedMedCenterIds) && allowedMedCenterIds.length > 0) {
+      await course.setAllowedMedCenters(allowedMedCenterIds);
+    }
+
+    // Загружаем курс с связями для возврата
+    const courseWithRelations = await Course.findByPk(course.id, {
+      include: [
+        { model: Role, as: 'allowedRoles', through: { attributes: [] } },
+        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } }
+      ]
+    });
+
+    res.status(201).json(courseWithRelations);
   } catch (error) {
     console.error('Create course error:', error);
     res.status(500).json({ error: 'Failed to create course' });
@@ -459,7 +532,7 @@ router.put('/admin/:id', authenticate, requireAdminAccess('courses'), async (req
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    const { title, description, icon, estimatedDuration, isPublished } = req.body;
+    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds } = req.body;
 
     await course.update({
       title: title !== undefined ? title : course.title,
@@ -469,7 +542,35 @@ router.put('/admin/:id', authenticate, requireAdminAccess('courses'), async (req
       isPublished: isPublished !== undefined ? isPublished : course.isPublished
     });
 
-    res.json(course);
+    // Обновляем связи с ролями
+    if (allowedRoleIds !== undefined) {
+      if (Array.isArray(allowedRoleIds) && allowedRoleIds.length > 0) {
+        await course.setAllowedRoles(allowedRoleIds);
+      } else {
+        // Если массив пустой, удаляем все связи
+        await course.setAllowedRoles([]);
+      }
+    }
+
+    // Обновляем связи с медцентрами
+    if (allowedMedCenterIds !== undefined) {
+      if (Array.isArray(allowedMedCenterIds) && allowedMedCenterIds.length > 0) {
+        await course.setAllowedMedCenters(allowedMedCenterIds);
+      } else {
+        // Если массив пустой, удаляем все связи
+        await course.setAllowedMedCenters([]);
+      }
+    }
+
+    // Загружаем курс с связями для возврата
+    const courseWithRelations = await Course.findByPk(course.id, {
+      include: [
+        { model: Role, as: 'allowedRoles', through: { attributes: [] } },
+        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } }
+      ]
+    });
+
+    res.json(courseWithRelations);
   } catch (error) {
     console.error('Update course error:', error);
     res.status(500).json({ error: 'Failed to update course' });
@@ -497,10 +598,10 @@ router.get('/admin/:id/edit', authenticate, requireAdminAccess('courses'), async
   try {
     const course = await Course.findByPk(req.params.id, {
       include: [
-        { 
-          model: User, 
-          as: 'creator', 
-          attributes: ['id', 'username', 'displayName'] 
+        {
+          model: User,
+          as: 'creator',
+          attributes: ['id', 'username', 'displayName']
         },
         {
           model: Lesson,
@@ -513,6 +614,16 @@ router.get('/admin/:id/edit', authenticate, requireAdminAccess('courses'), async
           as: 'testQuestions',
           separate: true,
           order: [['sortOrder', 'ASC']]
+        },
+        {
+          model: Role,
+          as: 'allowedRoles',
+          through: { attributes: [] }
+        },
+        {
+          model: MedCenter,
+          as: 'allowedMedCenters',
+          through: { attributes: [] }
         }
       ]
     });

@@ -156,11 +156,81 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
+// Check course access by roles AND med centers (intersection rule)
+const checkCourseAccess = async (req, res, next) => {
+  try {
+    const { Course } = require('../models');
+    const courseId = req.params.id || req.params.courseId;
+
+    if (!courseId) return next();
+
+    const course = await Course.findByPk(courseId, {
+      include: [
+        { model: require('../models').Role, as: 'allowedRoles', through: { attributes: [] } },
+        { model: require('../models').MedCenter, as: 'allowedMedCenters', through: { attributes: [] } }
+      ]
+    });
+
+    if (!course) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    // Admin has access to everything
+    if (req.user.isAdmin) {
+      req.course = course;
+      return next();
+    }
+
+    // Check if course is published (only applies to non-admins)
+    if (!course.isPublished) {
+      return res.status(403).json({ error: 'Course not published' });
+    }
+
+    const hasRoleRestrictions = course.allowedRoles && course.allowedRoles.length > 0;
+    const hasMedCenterRestrictions = course.allowedMedCenters && course.allowedMedCenters.length > 0;
+
+    // If no restrictions at all, course is public
+    if (!hasRoleRestrictions && !hasMedCenterRestrictions) {
+      req.course = course;
+      return next();
+    }
+
+    // Get user's role IDs and med center IDs
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const userMedCenterIds = req.user.medCenters?.map(m => m.id) || [];
+
+    // Check role access (if role restrictions exist)
+    let hasRoleAccess = !hasRoleRestrictions; // If no role restrictions, pass
+    if (hasRoleRestrictions) {
+      const allowedRoleIds = course.allowedRoles.map(r => r.id);
+      hasRoleAccess = userRoleIds.some(roleId => allowedRoleIds.includes(roleId));
+    }
+
+    // Check med center access (if med center restrictions exist)
+    let hasMedCenterAccess = !hasMedCenterRestrictions; // If no med center restrictions, pass
+    if (hasMedCenterRestrictions) {
+      const allowedMedCenterIds = course.allowedMedCenters.map(m => m.id);
+      hasMedCenterAccess = userMedCenterIds.some(mcId => allowedMedCenterIds.includes(mcId));
+    }
+
+    // Both conditions must be true (AND logic)
+    if (!hasRoleAccess || !hasMedCenterAccess) {
+      return res.status(403).json({ error: 'Access denied to this course' });
+    }
+
+    req.course = course;
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   authenticate,
   requireAdmin,
   requireAdminAccess,
   requirePermission,
   checkPageAccess,
+  checkCourseAccess,
   optionalAuth
 };

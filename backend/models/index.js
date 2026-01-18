@@ -762,6 +762,36 @@ const CourseProgress = sequelize.define('CourseProgress', {
   ]
 });
 
+// === COURSE-ROLE MODEL (Many-to-Many) ===
+const CourseRole = sequelize.define('CourseRole', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  courseId: { type: DataTypes.UUID, allowNull: false },
+  roleId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'course_roles',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['courseId', 'roleId'] },
+    { fields: ['courseId'] },
+    { fields: ['roleId'] }
+  ]
+});
+
+// === COURSE-MEDCENTER MODEL (Many-to-Many) ===
+const CourseMedCenter = sequelize.define('CourseMedCenter', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  courseId: { type: DataTypes.UUID, allowNull: false },
+  medCenterId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'course_medcenters',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['courseId', 'medCenterId'] },
+    { fields: ['courseId'] },
+    { fields: ['medCenterId'] }
+  ]
+});
+
 // ═══════════════════════════════════════════════════════════════
 // RELATIONSHIPS
 // ═══════════════════════════════════════════════════════════════
@@ -831,6 +861,14 @@ TestQuestion.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 CourseProgress.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 CourseProgress.belongsTo(Course, { foreignKey: 'courseId', as: 'course' });
 CourseProgress.belongsTo(Lesson, { foreignKey: 'currentLessonId', as: 'currentLesson' });
+
+// Course & Role (Many-to-Many for access control)
+Course.belongsToMany(Role, { through: CourseRole, foreignKey: 'courseId', as: 'allowedRoles' });
+Role.belongsToMany(Course, { through: CourseRole, foreignKey: 'roleId', as: 'courses' });
+
+// Course & MedCenter (Many-to-Many for access control)
+Course.belongsToMany(MedCenter, { through: CourseMedCenter, foreignKey: 'courseId', as: 'allowedMedCenters' });
+MedCenter.belongsToMany(Course, { through: CourseMedCenter, foreignKey: 'medCenterId', as: 'courses' });
 
 // CalendarEvent relationships
 CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
@@ -959,6 +997,8 @@ module.exports = {
   Lesson,
   TestQuestion,
   CourseProgress,
+  CourseRole,
+  CourseMedCenter,
   Analysis,
   CalendarEvent,
   MedCenter,
