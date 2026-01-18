@@ -268,14 +268,20 @@ function ImageBubbleMenu({ editor }) {
   const [selectedNode, setSelectedNode] = useState(null);
 
   useEffect(() => {
+    // Защита от уже уничтоженного editor
+    if (!editor || editor.isDestroyed) return;
+
     const updateSelection = () => {
+      // Проверяем что editor еще активен
+      if (!editor || editor.isDestroyed) return;
+
       const { state } = editor;
       const { selection } = state;
       const { $from } = selection;
-      const node = $from.parent.type.name === 'resizableImage' 
-        ? $from.parent 
+      const node = $from.parent.type.name === 'resizableImage'
+        ? $from.parent
         : state.doc.nodeAt(selection.from);
-      
+
       if (node && node.type.name === 'resizableImage') {
         setSelectedNode(node);
       } else {
@@ -285,14 +291,18 @@ function ImageBubbleMenu({ editor }) {
 
     editor.on('selectionUpdate', updateSelection);
     editor.on('update', updateSelection);
-    
+
     return () => {
-      editor.off('selectionUpdate', updateSelection);
-      editor.off('update', updateSelection);
+      // Безопасная очистка
+      if (editor && !editor.isDestroyed) {
+        editor.off('selectionUpdate', updateSelection);
+        editor.off('update', updateSelection);
+      }
     };
   }, [editor]);
 
-  if (!selectedNode) return null;
+  // Не показываем BubbleMenu если editor уничтожен
+  if (!editor || editor.isDestroyed || !selectedNode) return null;
 
   const display = selectedNode.attrs.display || 'inline';
   const float = selectedNode.attrs.float || 'none';
@@ -319,14 +329,16 @@ function ImageBubbleMenu({ editor }) {
   };
 
   return (
-    <BubbleMenu 
-      editor={editor} 
-      tippyOptions={{ duration: 100 }}
-      shouldShow={({ editor, state }) => {
-        return editor.isActive('resizableImage');
-      }}
-    >
-      <div className="image-bubble-menu">
+    <div>
+      <BubbleMenu
+        editor={editor}
+        tippyOptions={{ duration: 100 }}
+        shouldShow={({ editor, state }) => {
+          // Дополнительная проверка
+          return editor && !editor.isDestroyed && editor.isActive('resizableImage');
+        }}
+      >
+        <div className="image-bubble-menu">
         <div className="image-bubble-section">
           <span className="image-bubble-label">Режим:</span>
           <button 
@@ -431,7 +443,8 @@ function ImageBubbleMenu({ editor }) {
           </button>
         </div>
       </div>
-    </BubbleMenu>
+      </BubbleMenu>
+    </div>
   );
 }
 

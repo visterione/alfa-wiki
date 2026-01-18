@@ -852,3 +852,31 @@
     margin: 0.75rem 0;
   }
 }
+
+/* Local Video styles - full width in editor */
+.editor-content .ProseMirror video {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 300px;
+  aspect-ratio: 16/9;
+  display: block;
+  margin: 1rem 0;
+  border-radius: var(--radius-md);
+  background-color: #000;
+  object-fit: contain;
+}
+
+/* LocalVideo wrapper */
+.editor-content .ProseMirror .local-video-wrapper {
+  width: 100%;
+  display: block;
+}
+
+.editor-content .ProseMirror .local-video-wrapper video {
+  width: 100%;
+  max-width: 100%;
+  min-height: 300px;
+  aspect-ratio: 16/9;
+  object-fit: contain;
+}

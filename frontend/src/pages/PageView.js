@@ -5,6 +5,7 @@ import { pages, favorites } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import PrintButton from '../components/PrintButton';
+import ContentRenderer from '../components/ContentRenderer';
 import './PageView.css';
 
 export default function PageView() {
@@ -207,11 +208,13 @@ export default function PageView() {
         </div>
 
         <div className="card">
-          <div
-            ref={contentRefCallback}
-            className="page-content"
-            dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }}
-          />
+          <div ref={contentRefCallback} className="page-content">
+            {page.contentType === 'wysiwyg' ? (
+              <ContentRenderer content={page.content} />
+            ) : (
+              <div dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }} />
+            )}
+          </div>
         </div>
       </div>
 

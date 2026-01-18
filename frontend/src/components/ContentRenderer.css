@@ -1,0 +1,29 @@
+/* ContentRenderer.css - Стили для компонента просмотра контента */
+
+.content-renderer {
+  width: 100%;
+}
+
+.content-renderer .ProseMirror {
+  outline: none;
+  padding: 0;
+}
+
+/* Убираем возможность редактирования */
+.content-renderer .ProseMirror[contenteditable="false"] {
+  cursor: default;
+}
+
+/* Стили для видео в режиме просмотра */
+.content-renderer video {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 300px;
+  aspect-ratio: 16/9;
+  display: block;
+  margin: 1rem 0;
+  border-radius: 8px;
+  background-color: #000;
+  object-fit: contain;
+}
