@@ -118,8 +118,24 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
-// Static files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Static files with proper MIME types
+const serveStatic = express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, filePath) => {
+    // Устанавливаем правильные MIME-типы для видео
+    const ext = path.extname(filePath).toLowerCase();
+    if (ext === '.mp4') {
+      res.setHeader('Content-Type', 'video/mp4');
+    } else if (ext === '.webm') {
+      res.setHeader('Content-Type', 'video/webm');
+    } else if (ext === '.ogg') {
+      res.setHeader('Content-Type', 'video/ogg');
+    }
+    // Разрешаем частичную загрузку (Range requests) для видео
+    res.setHeader('Accept-Ranges', 'bytes');
+  }
+});
+
+app.use('/uploads', serveStatic);
 app.use('/uploads/map', express.static(path.join(__dirname, 'uploads/map')));
 
 // API Routes

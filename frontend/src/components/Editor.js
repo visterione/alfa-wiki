@@ -1,11 +1,12 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import TiptapImage from '@tiptap/extension-image';
+import { Node, mergeAttributes } from '@tiptap/core';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
 import TipTapTableCell from '@tiptap/extension-table-cell';
@@ -75,57 +76,78 @@ const TableCell = TipTapTableCell.extend({
   }
 });
 
-// Улучшенное расширение изображений - используем стандартное расширение TipTap
-const ResizableImage = TiptapImage.extend({
+// Улучшенное расширение изображений с правильным парсингом размеров
+const ResizableImage = Node.create({
   name: 'resizableImage',
-
+  group: 'block',
+  draggable: true,
+  
   addAttributes() {
     return {
-      ...this.parent?.(),
-      width: {
+      src: { default: null },
+      alt: { default: null },
+      title: { default: null },
+      width: { 
         default: null,
         parseHTML: element => {
           const width = element.getAttribute('width') || element.style.width;
-          return width ? parseInt(width) : null;
-        },
-        renderHTML: attributes => {
-          if (!attributes.width) return {};
-          return { width: attributes.width };
+          if (width) {
+            return parseInt(width);
+          }
+          return null;
         }
       },
-      height: {
+      height: { 
         default: null,
         parseHTML: element => {
           const height = element.getAttribute('height') || element.style.height;
-          return height ? parseInt(height) : null;
-        },
-        renderHTML: attributes => {
-          if (!attributes.height) return {};
-          return { height: attributes.height };
+          if (height) {
+            return parseInt(height);
+          }
+          return null;
         }
       },
-      display: {
+      display: { 
         default: 'inline',
-        parseHTML: element => element.getAttribute('data-display') || 'inline',
-        renderHTML: attributes => {
-          return { 'data-display': attributes.display };
-        }
+        parseHTML: element => element.getAttribute('data-display') || 'inline'
       },
-      float: {
+      float: { 
         default: 'none',
-        parseHTML: element => element.getAttribute('data-float') || 'none',
-        renderHTML: attributes => {
-          return { 'data-float': attributes.float };
-        }
+        parseHTML: element => element.getAttribute('data-float') || 'none'
       },
-      align: {
+      align: { 
         default: 'left',
-        parseHTML: element => element.getAttribute('data-align') || 'left',
-        renderHTML: attributes => {
-          return { 'data-align': attributes.align };
-        }
+        parseHTML: element => element.getAttribute('data-align') || 'left'
       }
     };
+  },
+
+  parseHTML() {
+    return [{
+      tag: 'img[src]',
+      getAttrs: dom => ({
+        src: dom.getAttribute('src'),
+        alt: dom.getAttribute('alt'),
+        title: dom.getAttribute('title'),
+        width: dom.getAttribute('width') ? parseInt(dom.getAttribute('width')) : null,
+        height: dom.getAttribute('height') ? parseInt(dom.getAttribute('height')) : null,
+        display: dom.getAttribute('data-display') || 'inline',
+        float: dom.getAttribute('data-float') || 'none',
+        align: dom.getAttribute('data-align') || 'left'
+      })
+    }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return ['img', mergeAttributes(HTMLAttributes, {
+      'data-display': HTMLAttributes.display,
+      'data-float': HTMLAttributes.float,
+      'data-align': HTMLAttributes.align
+    })];
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(ResizableImageComponent);
   },
 
   addCommands() {
@@ -143,173 +165,34 @@ const ResizableImage = TiptapImage.extend({
   }
 });
 
-// Кастомное всплывающее меню для изображений (без BubbleMenu)
-function ImageBubbleMenu({ editor }) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
-  const [selectedNode, setSelectedNode] = useState(null);
-  const [selectedPos, setSelectedPos] = useState(null);
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeMode, setResizeMode] = useState(null);
-  const [currentSize, setCurrentSize] = useState({ width: 300, height: 200 });
-  const menuRef = useRef(null);
-  const isMountedRef = useRef(true);
-  const resizeStartRef = useRef({ width: 0, height: 0, x: 0, y: 0, aspectRatio: 1 });
+// Компонент для изменяемого изображения
+const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) => {
+  const [resizing, setResizing] = useState(false);
+  const [dimensions, setDimensions] = useState({
+    width: node.attrs.width || null,
+    height: node.attrs.height || null
+  });
+  const containerRef = useRef(null);
+  const imgRef = useRef(null);
+  const startRef = useRef({ x: 0, y: 0, width: 0, height: 0, aspectRatio: 1 });
 
   useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!editor) return;
-
-    const updateImageMenu = () => {
-      if (!isMountedRef.current || !editor || editor.isDestroyed) {
-        setIsVisible(false);
-        return;
+    if (imgRef.current && imgRef.current.complete) {
+      if (!node.attrs.width || !node.attrs.height) {
+        startRef.current.aspectRatio = imgRef.current.naturalWidth / imgRef.current.naturalHeight;
       }
+    }
+  }, [node.attrs.src]);
 
-      try {
-        const { state, view } = editor;
-        const { selection } = state;
-        const { $from } = selection;
-        const node = $from.parent.type.name === 'resizableImage'
-          ? $from.parent
-          : state.doc.nodeAt(selection.from);
-
-        if (node && node.type.name === 'resizableImage') {
-          setSelectedNode(node);
-          setSelectedPos(selection.from);
-
-          // Обновляем currentSize только если НЕ происходит изменение размера
-          // Это предотвращает сброс позиции ползунка после завершения resize
-          if (!isResizing) {
-            setCurrentSize({
-              width: node.attrs.width || 300,
-              height: node.attrs.height || 200
-            });
-          }
-
-          // Получаем позицию выделенного изображения
-          const { from } = selection;
-          const start = view.coordsAtPos(from);
-          const editorRect = view.dom.getBoundingClientRect();
-
-          setPosition({
-            top: start.top - editorRect.top - 50,
-            left: start.left - editorRect.left
-          });
-          setIsVisible(true);
-        } else {
-          setIsVisible(false);
-          setSelectedNode(null);
-          setSelectedPos(null);
-        }
-      } catch (error) {
-        // Игнорируем ошибки при работе с DOM
-        setIsVisible(false);
-      }
-    };
-
-    const handleTransaction = () => {
-      if (isMountedRef.current && !isResizing) {
-        updateImageMenu();
-      }
-    };
-
-    editor.on('selectionUpdate', handleTransaction);
-    editor.on('transaction', handleTransaction);
-
-    return () => {
-      if (editor && !editor.isDestroyed) {
-        editor.off('selectionUpdate', handleTransaction);
-        editor.off('transaction', handleTransaction);
-      }
-    };
-  }, [editor, isResizing]);
-
-  // Обработчик изменения размера
-  useEffect(() => {
-    if (!isResizing) return;
-
-    const handleMouseMove = (e) => {
-      if (!isMountedRef.current || !editor || editor.isDestroyed) return;
-
-      const deltaX = e.clientX - resizeStartRef.current.x;
-      const deltaY = e.clientY - resizeStartRef.current.y;
-
-      let newWidth, newHeight;
-
-      if (resizeMode === 'width') {
-        newWidth = Math.max(50, resizeStartRef.current.width + deltaX * 2);
-        newHeight = newWidth / resizeStartRef.current.aspectRatio;
-      } else if (resizeMode === 'height') {
-        newHeight = Math.max(50, resizeStartRef.current.height + deltaY * 2);
-        newWidth = newHeight * resizeStartRef.current.aspectRatio;
-      } else {
-        // Пропорциональное изменение
-        const scale = Math.max(50, resizeStartRef.current.width + deltaX * 2) / resizeStartRef.current.width;
-        newWidth = resizeStartRef.current.width * scale;
-        newHeight = resizeStartRef.current.height * scale;
-      }
-
-      const roundedWidth = Math.round(newWidth);
-      const roundedHeight = Math.round(newHeight);
-
-      // Обновляем состояние для отображения ползунка в реальном времени
-      setCurrentSize({ width: roundedWidth, height: roundedHeight });
-
-      if (selectedPos !== null) {
-        editor.commands.setNodeSelection(selectedPos);
-        editor.chain().focus().updateImageAttributes({
-          width: roundedWidth,
-          height: roundedHeight
-        }).run();
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      setResizeMode(null);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, resizeMode, editor, selectedPos]);
-
-  if (!isVisible || !selectedNode || !editor || editor.isDestroyed) return null;
-
-  const display = selectedNode.attrs.display || 'inline';
-  const float = selectedNode.attrs.float || 'none';
-  const align = selectedNode.attrs.align || 'left';
-
-  const startResize = (e, mode) => {
+  const handleMouseDown = (e, corner) => {
     e.preventDefault();
     e.stopPropagation();
+    setResizing(true);
 
-    // Получаем актуальные атрибуты из редактора, а не из selectedNode
-    const { state } = editor;
-    const { selection } = state;
-    const { $from } = selection;
-    const node = $from.parent.type.name === 'resizableImage'
-      ? $from.parent
-      : state.doc.nodeAt(selection.from);
-
-    const currentWidth = node?.attrs.width || 300;
-    const currentHeight = node?.attrs.height || 200;
-
-    // Синхронизируем currentSize с актуальными атрибутами перед началом resize
-    setCurrentSize({ width: currentWidth, height: currentHeight });
-
-    resizeStartRef.current = {
+    const currentWidth = dimensions.width || imgRef.current?.offsetWidth || 0;
+    const currentHeight = dimensions.height || imgRef.current?.offsetHeight || 0;
+    
+    startRef.current = {
       x: e.clientX,
       y: e.clientY,
       width: currentWidth,
@@ -317,201 +200,238 @@ function ImageBubbleMenu({ editor }) {
       aspectRatio: currentWidth / currentHeight
     };
 
-    setResizeMode(mode);
-    setIsResizing(true);
+    const handleMouseMove = (moveEvent) => {
+      if (!containerRef.current) return;
+
+      const deltaX = moveEvent.clientX - startRef.current.x;
+      const deltaY = moveEvent.clientY - startRef.current.y;
+
+      let newWidth, newHeight;
+      if (corner === 'se' || corner === 'sw') {
+        newWidth = Math.max(50, startRef.current.width + (corner === 'se' ? deltaX : -deltaX));
+        newHeight = newWidth / startRef.current.aspectRatio;
+      } else {
+        newHeight = Math.max(50, startRef.current.height - deltaY);
+        newWidth = newHeight * startRef.current.aspectRatio;
+      }
+
+      setDimensions({ width: Math.round(newWidth), height: Math.round(newHeight) });
+    };
+
+    const handleMouseUp = () => {
+      setResizing(false);
+      if (dimensions.width && dimensions.height) {
+        updateAttributes({ width: dimensions.width, height: dimensions.height });
+      }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
+
+  const imageStyle = {};
+  if (dimensions.width) imageStyle.width = `${dimensions.width}px`;
+  if (dimensions.height) imageStyle.height = `${dimensions.height}px`;
+
+  let containerClass = 'resizable-image-container';
+  if (selected) containerClass += ' selected';
+  if (resizing) containerClass += ' resizing';
+
+  return (
+    <NodeViewWrapper className={containerClass}>
+      <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
+        <img
+          ref={imgRef}
+          src={node.attrs.src}
+          alt={node.attrs.alt}
+          title={node.attrs.title}
+          style={imageStyle}
+          draggable={false}
+        />
+        {selected && (
+          <>
+            <div className="resize-handle nw" onMouseDown={(e) => handleMouseDown(e, 'nw')} />
+            <div className="resize-handle ne" onMouseDown={(e) => handleMouseDown(e, 'ne')} />
+            <div className="resize-handle sw" onMouseDown={(e) => handleMouseDown(e, 'sw')} />
+            <div className="resize-handle se" onMouseDown={(e) => handleMouseDown(e, 'se')} />
+          </>
+        )}
+      </div>
+    </NodeViewWrapper>
+  );
+};
+
+// Bubble Menu для изображений
+function ImageBubbleMenu({ editor }) {
+  const [selectedNode, setSelectedNode] = useState(null);
+
+  useEffect(() => {
+    const updateSelection = () => {
+      const { state } = editor;
+      const { selection } = state;
+      const { $from } = selection;
+      const node = $from.parent.type.name === 'resizableImage' 
+        ? $from.parent 
+        : state.doc.nodeAt(selection.from);
+      
+      if (node && node.type.name === 'resizableImage') {
+        setSelectedNode(node);
+      } else {
+        setSelectedNode(null);
+      }
+    };
+
+    editor.on('selectionUpdate', updateSelection);
+    editor.on('update', updateSelection);
+    
+    return () => {
+      editor.off('selectionUpdate', updateSelection);
+      editor.off('update', updateSelection);
+    };
+  }, [editor]);
+
+  if (!selectedNode) return null;
+
+  const display = selectedNode.attrs.display || 'inline';
+  const float = selectedNode.attrs.float || 'none';
+  const align = selectedNode.attrs.align || 'left';
 
   const setDisplay = (e, val) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (editor && !editor.isDestroyed) {
-      editor.chain().focus().updateImageAttributes({ display: val }).run();
-    }
+    editor.chain().focus().updateImageAttributes({ display: val }).run();
   };
 
   const setFloat = (e, val) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (editor && !editor.isDestroyed) {
-      editor.chain().focus().updateImageAttributes({ float: val }).run();
-    }
+    editor.chain().focus().updateImageAttributes({ float: val }).run();
   };
 
   const setAlign = (e, val) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (editor && !editor.isDestroyed) {
-      editor.chain().focus().updateImageAttributes({ align: val }).run();
-    }
+    editor.chain().focus().updateImageAttributes({ align: val }).run();
   };
 
   const resetSize = (e) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (editor && !editor.isDestroyed) {
-      editor.chain().focus().updateImageAttributes({ width: null, height: null }).run();
-    }
-  };
-
-  const deleteImage = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (editor && !editor.isDestroyed) {
-      editor.chain().focus().deleteSelection().run();
-    }
-  };
-
-  const getThumbPosition = () => {
-    // Определяем диапазон размеров: от 50px (минимум) до 1000px (максимум)
-    const minSize = 50;
-    const maxSize = 1000;
-
-    // Всегда используем currentSize, он обновляется и во время resize и при выборе изображения
-    const currentWidth = currentSize.width;
-
-    // Ограничиваем текущую ширину в пределах диапазона
-    const clampedWidth = Math.max(minSize, Math.min(maxSize, currentWidth));
-
-    // Вычисляем позицию в процентах (от 0 до 100)
-    const position = ((clampedWidth - minSize) / (maxSize - minSize)) * 100;
-
-    return position;
+    editor.chain().focus().updateImageAttributes({ width: null, height: null }).run();
   };
 
   return (
-    <div
-      ref={menuRef}
-      className="image-bubble-menu"
-      style={{
-        position: 'absolute',
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-        zIndex: 1000
+    <BubbleMenu 
+      editor={editor} 
+      tippyOptions={{ duration: 100 }}
+      shouldShow={({ editor, state }) => {
+        return editor.isActive('resizableImage');
       }}
-      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="image-bubble-section">
-        <span className="image-bubble-label">Режим:</span>
-        <button
-          type="button"
-          className={`image-bubble-btn ${display === 'inline' ? 'active' : ''}`}
-          onClick={(e) => setDisplay(e, 'inline')}
-          title="В строке"
-        >
-          Строка
-        </button>
-        <button
-          type="button"
-          className={`image-bubble-btn ${display === 'block' ? 'active' : ''}`}
-          onClick={(e) => setDisplay(e, 'block')}
-          title="Блок"
-        >
-          Блок
-        </button>
-      </div>
-
-      <div className="image-bubble-divider" />
-
-      {display === 'inline' && (
+      <div className="image-bubble-menu">
         <div className="image-bubble-section">
-          <span className="image-bubble-label">Обтекание:</span>
-          <button
+          <span className="image-bubble-label">Режим:</span>
+          <button 
             type="button"
-            className={`image-bubble-btn ${float === 'none' ? 'active' : ''}`}
-            onClick={(e) => setFloat(e, 'none')}
-            title="Нет"
+            className={`image-bubble-btn ${display === 'inline' ? 'active' : ''}`}
+            onClick={(e) => setDisplay(e, 'inline')}
+            title="В строке"
           >
-            Нет
+            Строка
           </button>
-          <button
+          <button 
             type="button"
-            className={`image-bubble-btn ${float === 'left' ? 'active' : ''}`}
-            onClick={(e) => setFloat(e, 'left')}
-            title="Слева"
+            className={`image-bubble-btn ${display === 'block' ? 'active' : ''}`}
+            onClick={(e) => setDisplay(e, 'block')}
+            title="Блок"
           >
-            <AlignLeft size={14} />
-          </button>
-          <button
-            type="button"
-            className={`image-bubble-btn ${float === 'right' ? 'active' : ''}`}
-            onClick={(e) => setFloat(e, 'right')}
-            title="Справа"
-          >
-            <AlignRight size={14} />
+            Блок
           </button>
         </div>
-      )}
 
-      {display === 'block' && (
+        <div className="image-bubble-divider" />
+
+        {display === 'inline' && (
+          <div className="image-bubble-section">
+            <span className="image-bubble-label">Обтекание:</span>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${float === 'none' ? 'active' : ''}`}
+              onClick={(e) => setFloat(e, 'none')}
+              title="Нет"
+            >
+              Нет
+            </button>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${float === 'left' ? 'active' : ''}`}
+              onClick={(e) => setFloat(e, 'left')}
+              title="Слева"
+            >
+              <AlignLeft size={14} />
+            </button>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${float === 'right' ? 'active' : ''}`}
+              onClick={(e) => setFloat(e, 'right')}
+              title="Справа"
+            >
+              <AlignRight size={14} />
+            </button>
+          </div>
+        )}
+
+        {display === 'block' && (
+          <div className="image-bubble-section">
+            <span className="image-bubble-label">Выравнивание:</span>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${align === 'left' ? 'active' : ''}`}
+              onClick={(e) => setAlign(e, 'left')}
+              title="Слева"
+            >
+              <AlignLeft size={14} />
+            </button>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${align === 'center' ? 'active' : ''}`}
+              onClick={(e) => setAlign(e, 'center')}
+              title="По центру"
+            >
+              <AlignCenter size={14} />
+            </button>
+            <button 
+              type="button"
+              className={`image-bubble-btn ${align === 'right' ? 'active' : ''}`}
+              onClick={(e) => setAlign(e, 'right')}
+              title="Справа"
+            >
+              <AlignRight size={14} />
+            </button>
+          </div>
+        )}
+
         <div className="image-bubble-section">
-          <span className="image-bubble-label">Выравнивание:</span>
-          <button
+          <button 
             type="button"
-            className={`image-bubble-btn ${align === 'left' ? 'active' : ''}`}
-            onClick={(e) => setAlign(e, 'left')}
-            title="Слева"
+            className="image-bubble-btn"
+            onClick={resetSize}
+            title="Сбросить размер"
           >
-            <AlignLeft size={14} />
+            <Maximize2 size={14} />
           </button>
-          <button
+          <button 
             type="button"
-            className={`image-bubble-btn ${align === 'center' ? 'active' : ''}`}
-            onClick={(e) => setAlign(e, 'center')}
-            title="По центру"
-          >
-            <AlignCenter size={14} />
-          </button>
-          <button
-            type="button"
-            className={`image-bubble-btn ${align === 'right' ? 'active' : ''}`}
-            onClick={(e) => setAlign(e, 'right')}
-            title="Справа"
-          >
-            <AlignRight size={14} />
-          </button>
-        </div>
-      )}
-
-      <div className="image-bubble-divider" />
-
-      <div className="image-bubble-section image-resize-section">
-        <span className="image-bubble-label">Размер:</span>
-        <div
-          className={`image-resize-slider ${isResizing ? 'active' : ''}`}
-          onMouseDown={(e) => startResize(e, 'both')}
-          title="Перетащите для изменения размера"
-        >
-          <div className="resize-slider-track" />
-          <div
-            className="resize-slider-thumb"
-            style={{
-              left: `${getThumbPosition()}%`
+            className="image-bubble-btn"
+            onClick={(e) => {
+              e.preventDefault();
+              editor.chain().focus().deleteSelection().run();
             }}
-          />
+            title="Удалить"
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="image-bubble-btn"
-          onClick={resetSize}
-          title="Сбросить размер"
-        >
-          <Maximize2 size={14} />
-        </button>
       </div>
-
-      <div className="image-bubble-divider" />
-
-      <div className="image-bubble-section">
-        <button
-          type="button"
-          className="image-bubble-btn"
-          onClick={deleteImage}
-          title="Удалить"
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
-    </div>
+    </BubbleMenu>
   );
 }
 
@@ -1267,14 +1187,7 @@ function MenuBar({ editor }) {
     try {
       const { data } = await media.upload(file);
       const imageUrl = `${BASE_URL}/${data.path}`;
-
-      // Используем setTimeout для отложенной вставки после завершения загрузки
-      setTimeout(() => {
-        if (editor && !editor.isDestroyed) {
-          editor.chain().focus().setImage({ src: imageUrl }).run();
-        }
-      }, 0);
-
+      editor.chain().focus().setImage({ src: imageUrl }).run();
       toast.success('Изображение загружено');
     } catch (e) {
       toast.error('Ошибка загрузки изображения');
@@ -1317,16 +1230,9 @@ function MenuBar({ editor }) {
     try {
       const { data } = await media.upload(file);
       const videoUrl = `${BASE_URL}/${data.path}`;
-
-      // Используем setTimeout для отложенной вставки после завершения загрузки
-      setTimeout(() => {
-        if (editor && !editor.isDestroyed) {
-          editor.chain().focus().setLocalVideo({
-            src: videoUrl
-          }).run();
-        }
-      }, 0);
-
+      editor.chain().focus().setLocalVideo({
+        src: videoUrl
+      }).run();
       toast.success('Видео загружено');
     } catch (e) {
       toast.error('Ошибка загрузки видео');
@@ -1536,22 +1442,11 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
     }
   });
 
-  // Очистка редактора при размонтировании компонента
-  useEffect(() => {
-    return () => {
-      if (editor) {
-        editor.destroy();
-      }
-    };
-  }, [editor]);
-
   return (
     <div className="editor-container">
       <MenuBar editor={editor} />
-      <div style={{ position: 'relative' }}>
-        <EditorContent editor={editor} className="editor-content" />
-        {editor && <ImageBubbleMenu editor={editor} />}
-      </div>
+      <EditorContent editor={editor} className="editor-content" />
+      <ImageBubbleMenu editor={editor} />
     </div>
   );
 }
