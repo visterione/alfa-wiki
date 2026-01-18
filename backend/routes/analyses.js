@@ -68,6 +68,7 @@ const indexAnalysis = async (analysis) => {
     keywords: keywords,
     url: `/page/${ANALYSES_PAGE_SLUG}?highlight=${analysis.id}`,
     metadata: {
+      pageSlug: ANALYSES_PAGE_SLUG,
       medCenter: analysis.medCenter,
       serviceCode: analysis.serviceCode,
       serviceName: analysis.serviceName,

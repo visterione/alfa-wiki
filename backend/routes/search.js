@@ -12,9 +12,9 @@ const cleanExcerpt = (text) => {
 };
 
 // Функция для форматирования результатов из SearchIndex
-const formatIndexedResult = (item, searchTerm) => {
+const formatIndexedResult = async (item, searchTerm) => {
   let excerpt = '';
-  
+
   if (item.content) {
     const contentLower = item.content.toLowerCase();
     const index = contentLower.indexOf(searchTerm);
@@ -22,8 +22,8 @@ const formatIndexedResult = (item, searchTerm) => {
       const start = Math.max(0, index - 60);
       const end = Math.min(item.content.length, index + searchTerm.length + 60);
       let rawExcerpt = item.content.substring(start, end);
-      excerpt = (start > 0 ? '...' : '') + 
-               cleanExcerpt(rawExcerpt) + 
+      excerpt = (start > 0 ? '...' : '') +
+               cleanExcerpt(rawExcerpt) +
                (end < item.content.length ? '...' : '');
     } else {
       let rawExcerpt = item.content.substring(0, 150);
@@ -31,14 +31,30 @@ const formatIndexedResult = (item, searchTerm) => {
     }
   }
 
+  // Получаем иконку родительской страницы, если она указана в метаданных
+  let pageIcon = null;
+  if (item.metadata && item.metadata.pageSlug) {
+    try {
+      const parentPage = await Page.findOne({
+        where: { slug: item.metadata.pageSlug },
+        attributes: ['icon']
+      });
+      if (parentPage && parentPage.icon) {
+        pageIcon = parentPage.icon;
+      }
+    } catch (err) {
+      console.error('Error fetching parent page icon:', err);
+    }
+  }
+
   // Специальная обработка для разных типов сущностей
   let displayType = item.entityType;
-  let icon = 'file';
+  let icon = pageIcon || 'file';
   
   switch (item.entityType) {
     case 'accreditation':
       displayType = 'Аккредитация';
-      icon = 'award';
+      if (!pageIcon) icon = 'award'; // Fallback только если нет иконки родительской страницы
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -55,7 +71,7 @@ const formatIndexedResult = (item, searchTerm) => {
     
     case 'vehicle':
       displayType = 'Транспорт';
-      icon = 'car';
+      if (!pageIcon) icon = 'car'; // Fallback только если нет иконки родительской страницы
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -73,7 +89,7 @@ const formatIndexedResult = (item, searchTerm) => {
       
     case 'doctor':
       displayType = 'Врач';
-      icon = 'user';
+      if (!pageIcon) icon = 'user'; // Fallback только если нет иконки родительской страницы
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -128,12 +144,12 @@ const formatIndexedResult = (item, searchTerm) => {
       
     case 'service':
       displayType = 'Услуга';
-      icon = 'briefcase';
+      if (!pageIcon) icon = 'briefcase'; // Fallback только если нет иконки родительской страницы
       break;
 
     case 'analysis':
       displayType = 'Анализ';
-      icon = 'test-tube';
+      if (!pageIcon) icon = 'test-tube'; // Fallback только если нет иконки родительской страницы
       if (item.metadata) {
         const meta = item.metadata;
         const parts = [];
@@ -250,9 +266,9 @@ router.get('/', authenticate, async (req, res) => {
         limit: parseInt(limit)
       });
 
-      indexed.forEach(item => {
-        results.push(formatIndexedResult(item, searchTerm));
-      });
+      for (const item of indexed) {
+        results.push(await formatIndexedResult(item, searchTerm));
+      }
     }
 
     // Sort by relevance
@@ -395,9 +411,9 @@ router.get('/fulltext', authenticate, async (req, res) => {
     });
 
     // Process indexed entities
-    indexResults.forEach(item => {
-      results.push(formatIndexedResult(item, searchTermLower));
-    });
+    for (const item of indexResults) {
+      results.push(await formatIndexedResult(item, searchTermLower));
+    }
 
     // Sort by relevance
     results.sort((a, b) => {

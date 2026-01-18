@@ -691,6 +691,102 @@
   .veh-pagination { flex-wrap: wrap; justify-content: center; }
 }
 
+/* Стили для печати */
+@media print {
+  /* Устанавливаем альбомную ориентацию */
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  /* Убираем заголовок страницы */
+  h1, h2, h3, h4, h5, h6 {
+    display: none !important;
+  }
+
+  /* Скрываем все элементы кроме таблицы */
+  .veh-bot-info,
+  .veh-stats,
+  .veh-toolbar,
+  .veh-pagination,
+  .veh-modal,
+  .veh-toast,
+  .veh-table th:last-child,
+  .veh-table td:last-child {
+    display: none !important;
+  }
+
+  /* Показываем все столбцы таблицы (отменяем скрытие для мобильных) */
+  .veh-table th:nth-child(4),
+  .veh-table td:nth-child(4),
+  .veh-table th:nth-child(5),
+  .veh-table td:nth-child(5) {
+    display: table-cell !important;
+  }
+
+  /* Убираем отступы и тени для таблицы */
+  .veh-table-container {
+    box-shadow: none;
+    border: 1px solid #000;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Отображаем все строки таблицы при печати (отключаем пагинацию) */
+  .veh-table-row {
+    display: table-row !important;
+  }
+
+  /* Оптимизация таблицы для печати */
+  .veh-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .veh-table th,
+  .veh-table td {
+    border: 1px solid #000;
+    padding: 6px;
+    font-size: 9pt;
+  }
+
+  .veh-table th {
+    background: #f0f0f0 !important;
+    font-weight: bold;
+  }
+
+  /* Убираем фон при ховере */
+  .veh-table tr:hover {
+    background: none;
+  }
+
+  /* Печатаем цвета для индикаторов */
+  .veh-date,
+  .veh-mileage,
+  .veh-condition,
+  .veh-organization {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Убираем отступы страницы */
+  #vehicles-app {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Разрешаем разрыв строк таблицы между страницами */
+  .veh-table tr {
+    page-break-inside: avoid;
+  }
+}
+
 /* Маленькие мобильные */
 @media (max-width: 480px) {
   .veh-stats { grid-template-columns: 1fr; gap: 8px; }
@@ -920,7 +1016,7 @@ window.vehApp = (function() {
   var sortOrder = 'ASC';
   var debounceTimer = null;
   var currentPage = 1;
-  var pageSize = 20;
+  var pageSize = 50;
   var highlightId = null;
 
   function getToken() {
@@ -1028,15 +1124,17 @@ window.vehApp = (function() {
     }
     var start = (currentPage - 1) * pageSize;
     var end = Math.min(start + pageSize, vehicles.length);
-    var pageData = vehicles.slice(start, end);
-    
-    tb.innerHTML = pageData.map(function(v) {
+
+    // Для печати: рендерим все записи, но скрываем те, что не на текущей странице
+    tb.innerHTML = vehicles.map(function(v, index) {
       var isHighlighted = highlightId && v.id === highlightId;
+      var isOnCurrentPage = index >= start && index < end;
+      var displayStyle = isOnCurrentPage ? '' : ' style="display:none"';
       var dateClass = getDateClass(v.insuranceDate);
       var mileageClass = getMileageClass(v.mileage, v.nextTO);
       var condClass = getConditionClass(v.condition);
-      
-      return '<tr data-id="' + v.id + '"' + (isHighlighted ? ' class="veh-highlight"' : '') + '>' +
+
+      return '<tr data-id="' + v.id + '"' + (isHighlighted ? ' class="veh-highlight"' : '') + displayStyle + ' class="veh-table-row">' +
         '<td><strong>' + escapeHtml(v.carBrand) + '</strong></td>' +
         '<td><span class="veh-organization">' + escapeHtml(v.organization) + '</span></td>' +
         '<td>' + escapeHtml(v.licensePlate) + '</td>' +

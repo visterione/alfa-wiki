@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   BookOpen, ChevronLeft, ChevronRight, CheckCircle,
-  Circle, PlayCircle, ArrowLeft, Award
+  Circle, PlayCircle, ArrowLeft, Award, Lock
 } from 'lucide-react';
 import { courses } from '../services/api';
 import toast from 'react-hot-toast';
@@ -24,14 +24,14 @@ export default function CourseView() {
   }, [id]);
 
   useEffect(() => {
-    if (course && course.lessons.length > 0) {
-      // Определяем какой урок показать
+    if (course && course.lessons.length > 0 && !currentLesson) {
+      // Определяем какой урок показать только если урок еще не загружен
       let lessonToShow = null;
-      
+
       if (course.userProgress.currentLessonId) {
         lessonToShow = course.lessons.find(l => l.id === course.userProgress.currentLessonId);
       }
-      
+
       if (!lessonToShow) {
         lessonToShow = course.lessons[0];
       }
@@ -89,12 +89,13 @@ export default function CourseView() {
   };
 
   const handleNextLesson = async () => {
-    const currentIndex = course.lessons.findIndex(l => l.id === currentLesson.id);
-    
-    // Отмечаем текущий урок как завершенный
+    // Проверяем что текущий урок завершен
     if (!isLessonCompleted(currentLesson.id)) {
-      await handleCompleteLesson();
+      toast.error('Пожалуйста, отметьте текущий урок как завершенный');
+      return;
     }
+
+    const currentIndex = course.lessons.findIndex(l => l.id === currentLesson.id);
 
     // Если это последний урок - показываем тест
     if (currentIndex === course.lessons.length - 1) {
@@ -117,6 +118,16 @@ export default function CourseView() {
 
   const isLessonCompleted = (lessonId) => {
     return course.userProgress.completedLessons.includes(lessonId);
+  };
+
+  // Проверка доступности урока: доступен только первый урок или следующий после последнего завершенного
+  const isLessonAccessible = (lessonIndex) => {
+    // Первый урок всегда доступен
+    if (lessonIndex === 0) return true;
+
+    // Проверяем, завершен ли предыдущий урок
+    const prevLesson = course.lessons[lessonIndex - 1];
+    return isLessonCompleted(prevLesson.id);
   };
 
   const getProgressPercent = () => {
@@ -177,15 +188,20 @@ export default function CourseView() {
             {course.lessons.map((lesson, index) => {
               const completed = isLessonCompleted(lesson.id);
               const isCurrent = currentLesson?.id === lesson.id;
+              const isAccessible = isLessonAccessible(index);
 
               return (
                 <div
                   key={lesson.id}
-                  className={`lesson-item ${isCurrent ? 'active' : ''} ${completed ? 'completed' : ''}`}
-                  onClick={() => loadLesson(lesson.id)}
+                  className={`lesson-item ${isCurrent ? 'active' : ''} ${completed ? 'completed' : ''} ${!isAccessible ? 'locked' : ''}`}
+                  onClick={() => isAccessible ? loadLesson(lesson.id) : null}
+                  style={{ cursor: isAccessible ? 'pointer' : 'not-allowed' }}
+                  title={!isAccessible ? 'Завершите предыдущий урок для доступа' : ''}
                 >
                   <div className="lesson-item-icon">
-                    {completed ? (
+                    {!isAccessible ? (
+                      <Lock size={18} />
+                    ) : completed ? (
                       <CheckCircle size={18} />
                     ) : isCurrent ? (
                       <PlayCircle size={18} />
@@ -270,6 +286,8 @@ export default function CourseView() {
             <button
               className="btn btn-primary"
               onClick={handleNextLesson}
+              disabled={!isCurrentCompleted}
+              title={!isCurrentCompleted ? 'Отметьте текущий урок как завершенный' : ''}
             >
               {isLastLesson ? (
                 <>

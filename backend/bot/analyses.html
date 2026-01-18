@@ -572,10 +572,84 @@
   .ana-form-row { grid-template-columns: 1fr; }
   .ana-table-container { overflow-x: auto; }
   .ana-table { min-width: 900px; }
-  
+
   /* Сбрасываем ширину столбцов на мобильных */
   .ana-table th,
   .ana-table td { width: auto !important; }
+}
+
+/* Print styles */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    display: none !important;
+  }
+
+  .ana-header,
+  .ana-pagination,
+  .ana-modal,
+  .ana-toast,
+  .ana-table th:last-child,
+  .ana-table td:last-child {
+    display: none !important;
+  }
+
+  .ana-table-container {
+    box-shadow: none;
+    border: none;
+  }
+
+  /* Отображаем все строки таблицы при печати (отключаем пагинацию) */
+  .ana-table-row {
+    display: table-row !important;
+  }
+
+  .ana-table th,
+  .ana-table td {
+    border: 1px solid #000;
+    padding: 6px;
+    font-size: 9pt;
+  }
+
+  .ana-table {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Сохраняем цвета медцентров при печати */
+  .ana-medcenter {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Отображаем статус СТОП текстом при печати */
+  .ana-stop-btn {
+    width: auto !important;
+    height: auto !important;
+    background: transparent !important;
+    border: none !important;
+    font-size: 9pt;
+    font-weight: 600;
+    padding: 2px 6px;
+  }
+
+  .ana-stop-btn svg {
+    display: none !important;
+  }
+
+  .ana-stop-btn.stopped::after {
+    content: "СТОП";
+    color: #dc2626;
+  }
+
+  .ana-stop-btn.active::after {
+    content: "Да";
+    color: #16a34a;
+  }
 }
 </style>
 
@@ -719,7 +793,7 @@ window.anaApp = (function() {
   var sortField = 'medCenter';
   var sortOrder = 'ASC';
   var currentPage = 1;
-  var pageSize = 20;
+  var pageSize = 50;
   var debounceTimer;
   var highlightId = null;
 
@@ -759,12 +833,42 @@ window.anaApp = (function() {
   }
 
   function scrollToRecord(id) {
-    var row = document.querySelector('[data-id="' + id + '"]');
-    if (row) {
-      row.setAttribute('data-highlighted', 'true');
-      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      highlightId = id;
+    // Найти индекс записи в массиве
+    var index = -1;
+    for (var i = 0; i < analyses.length; i++) {
+      if (analyses[i].id === id) {
+        index = i;
+        break;
+      }
     }
+
+    // Если запись не найдена
+    if (index === -1) return false;
+
+    // Установить highlightId для подсветки
+    highlightId = id;
+
+    // Вычислить нужную страницу пагинации
+    currentPage = Math.floor(index / pageSize) + 1;
+
+    // Перерисовать таблицу и пагинацию
+    renderTable();
+    renderPagination();
+
+    // Прокрутить к записи после небольшой задержки (чтобы дать время на рендер)
+    setTimeout(function() {
+      var row = document.querySelector('tr[data-id="' + id + '"]');
+      if (row) {
+        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    // Сбросить highlightId после завершения анимации (3 секунды)
+    setTimeout(function() {
+      highlightId = null;
+    }, 3000);
+
+    return true;
   }
 
   // === DATA ===
@@ -817,11 +921,14 @@ window.anaApp = (function() {
     var start = (currentPage - 1) * pageSize;
     var end = Math.min(start + pageSize, analyses.length);
     var pageData = analyses.slice(start, end);
-    
-    tb.innerHTML = pageData.map(function(a) {
+
+    // Для печати: рендерим все записи, но скрываем те, что не на текущей странице
+    tb.innerHTML = analyses.map(function(a, index) {
       var isHighlighted = highlightId && a.id === highlightId;
-      
-      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + '>' +
+      var isOnCurrentPage = index >= start && index < end;
+      var displayStyle = isOnCurrentPage ? '' : ' style="display:none"';
+
+      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + displayStyle + ' class="ana-table-row">' +
         '<td class="center"><span class="ana-medcenter" data-center="' + a.medCenter + '">' + a.medCenter + '</span></td>' +
         '<td class="center">' + (a.serviceCode || '-') + '</td>' +
         '<td>' + a.serviceName + '</td>' +
@@ -891,8 +998,11 @@ window.anaApp = (function() {
     var totalPages = Math.ceil(analyses.length / pageSize) || 1;
     if (p < 1 || p > totalPages) return;
     currentPage = p;
+    highlightId = null; // Сбросить подсветку при ручной навигации
     renderTable();
     renderPagination();
+    // Прокрутить к началу таблицы
+    document.querySelector('.ana-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // === МОДАЛКА ===

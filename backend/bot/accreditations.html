@@ -607,6 +607,100 @@
   .acc-pagination { flex-wrap: wrap; justify-content: center; }
 }
 
+/* Стили для печати */
+@media print {
+  /* Устанавливаем альбомную ориентацию */
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  /* Убираем заголовок страницы */
+  h1, h2, h3, h4, h5, h6 {
+    display: none !important;
+  }
+
+  /* Скрываем все элементы кроме таблицы */
+  .acc-bot-info,
+  .acc-stats,
+  .acc-toolbar,
+  .acc-pagination,
+  .acc-modal,
+  .acc-toast,
+  .acc-table th:last-child,
+  .acc-table td:last-child {
+    display: none !important;
+  }
+
+  /* Показываем все столбцы таблицы (отменяем скрытие для мобильных) */
+  .acc-table th:nth-child(3),
+  .acc-table td:nth-child(3),
+  .acc-table th:nth-child(5),
+  .acc-table td:nth-child(5) {
+    display: table-cell !important;
+  }
+
+  /* Убираем отступы и тени для таблицы */
+  .acc-table-container {
+    box-shadow: none;
+    border: 1px solid #000;
+    border-radius: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Отображаем все строки таблицы при печати (отключаем пагинацию) */
+  .acc-table-row {
+    display: table-row !important;
+  }
+
+  /* Оптимизация таблицы для печати */
+  .acc-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .acc-table th,
+  .acc-table td {
+    border: 1px solid #000;
+    padding: 6px;
+    font-size: 9pt;
+  }
+
+  .acc-table th {
+    background: #f0f0f0 !important;
+    font-weight: bold;
+  }
+
+  /* Убираем фон при ховере */
+  .acc-table tr:hover {
+    background: none;
+  }
+
+  /* Печатаем цвета для индикаторов */
+  .acc-date,
+  .acc-medcenter {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Убираем отступы страницы */
+  #accreditations-app {
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Разрешаем разрыв строк таблицы между страницами */
+  .acc-table tr {
+    page-break-inside: avoid;
+  }
+}
+
 /* Маленькие мобильные */
 @media (max-width: 480px) {
   .acc-stats { grid-template-columns: 1fr; gap: 8px; }
@@ -828,7 +922,7 @@ window.accApp = (function() {
   var sortOrder = 'ASC';
   var debounceTimer = null;
   var currentPage = 1;
-  var pageSize = 20;
+  var pageSize = 50;
   var highlightId = null;
 
   function getToken() {
@@ -927,11 +1021,14 @@ window.accApp = (function() {
     }
     var start = (currentPage - 1) * pageSize;
     var end = start + pageSize;
-    var pageData = accreditations.slice(start, end);
-    
-    tb.innerHTML = pageData.map(function(a) {
+
+    // Для печати: рендерим все записи, но скрываем те, что не на текущей странице
+    tb.innerHTML = accreditations.map(function(a, index) {
       var isHighlighted = highlightId && a.id === highlightId;
-      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' class="acc-highlight"' : '') + '>' +
+      var isOnCurrentPage = index >= start && index < end;
+      var displayStyle = isOnCurrentPage ? '' : ' style="display:none"';
+
+      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' class="acc-highlight"' : '') + displayStyle + ' class="acc-table-row">' +
         '<td><span class="acc-medcenter" data-center="'+a.medCenter+'">'+a.medCenter+'</span></td>' +
         '<td><strong>'+escapeHtml(a.fullName)+'</strong></td>' +
         '<td>'+escapeHtml(a.specialty)+'</td>' +

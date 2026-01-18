@@ -588,52 +588,56 @@
   .acc-pagination-info { text-align: center; }
   .acc-pagination-btn { min-width: 32px; height: 32px; padding: 0 8px; font-size: 13px; }
 }
+
+/* Print styles */
+@media print {
+  @page {
+    size: landscape;
+    margin: 10mm;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    display: none !important;
+  }
+
+  .acc-bot-info,
+  .acc-stats,
+  .acc-toolbar,
+  .acc-pagination,
+  .acc-modal,
+  .acc-toast,
+  .acc-table th:last-child,
+  .acc-table td:last-child {
+    display: none !important;
+  }
+
+  .acc-table th:nth-child(3),
+  .acc-table td:nth-child(3),
+  .acc-table th:nth-child(5),
+  .acc-table td:nth-child(5) {
+    display: table-cell !important;
+  }
+
+  .acc-table-container {
+    box-shadow: none;
+    border: none;
+  }
+
+  .acc-table th,
+  .acc-table td {
+    border: 1px solid #000;
+    padding: 6px;
+    font-size: 9pt;
+  }
+
+  .acc-table {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
 </style>
 
 <div id="accreditations-app">
-  <!-- Блок с информацией о архиве -->
-  <div class="acc-bot-info">
-    <div class="acc-bot-qr">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="84" height="84">
-        <path d="M21 8v13H3V8"/>
-        <path d="M1 3h22v5H1z"/>
-        <path d="M10 12h4"/>
-      </svg>
-    </div>
-    <div class="acc-bot-content">
-      <div class="acc-bot-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 8v13H3V8"/>
-          <path d="M1 3h22v5H1z"/>
-          <path d="M10 12h4"/>
-        </svg>
-        Архив аккредитаций
-      </div>
-      <div class="acc-bot-desc">
-        Здесь хранятся архивные записи об аккредитациях. Вы можете просмотреть файлы, восстановить записи или удалить их.
-      </div>
-    </div>
-  </div>
-
-  <div class="acc-stats">
-    <div class="acc-stat-card">
-      <div class="acc-stat-icon total"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-total">0</span><span class="acc-stat-label">Всего в архиве</span></div>
-    </div>
-    <div class="acc-stat-card danger">
-      <div class="acc-stat-icon danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
-      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-expired">0</span><span class="acc-stat-label">Просрочено</span></div>
-    </div>
-    <div class="acc-stat-card warning">
-      <div class="acc-stat-icon warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
-      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-soon">0</span><span class="acc-stat-label">Истекает ≤30 дней</span></div>
-    </div>
-    <div class="acc-stat-card info">
-      <div class="acc-stat-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
-      <div class="acc-stat-info"><span class="acc-stat-value" id="stat-90">0</span><span class="acc-stat-label">Истекает ≤90 дней</span></div>
-    </div>
-  </div>
-
   <div class="acc-toolbar">
     <div class="acc-filters">
       <div class="acc-filter-group">
@@ -713,7 +717,7 @@ window.accApp = (function() {
   var sortOrder = 'ASC';
   var debounceTimer = null;
   var currentPage = 1;
-  var pageSize = 20;
+  var pageSize = 50;
   var highlightId = null;
 
   function getToken() {
@@ -786,13 +790,7 @@ window.accApp = (function() {
   }
 
   function loadStats() {
-    // Load stats for archived records only
-    fetchAPI(API_URL + '/stats?archived=true').then(function(s) {
-      document.getElementById('stat-total').textContent = s.total;
-      document.getElementById('stat-expired').textContent = s.expired;
-      document.getElementById('stat-soon').textContent = s.expiringSoon;
-      document.getElementById('stat-90').textContent = s.expiringIn90;
-    });
+    // Stats section removed - no longer needed
   }
 
   function loadSpecialties() {

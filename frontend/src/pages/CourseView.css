@@ -119,6 +119,20 @@
   color: #10b981;
 }
 
+.lesson-item.locked {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.lesson-item.locked .lesson-item-icon {
+  color: #94a3b8;
+}
+
+.lesson-item.locked .lesson-item-title,
+.lesson-item.locked .lesson-item-number {
+  color: var(--text-secondary);
+}
+
 .lesson-item-icon {
   color: var(--text-secondary);
   flex-shrink: 0;
