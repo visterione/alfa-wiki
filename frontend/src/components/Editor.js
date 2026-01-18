@@ -1,15 +1,12 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent, NodeViewWrapper, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
-import TiptapImage from '@tiptap/extension-image';
-import { Node, mergeAttributes } from '@tiptap/core';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
-import TipTapTableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
@@ -18,9 +15,9 @@ import Superscript from '@tiptap/extension-superscript';
 import Placeholder from '@tiptap/extension-placeholder';
 import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
-import Blockquote from '@tiptap/extension-blockquote';
 import EmojiPicker from 'emoji-picker-react';
 import { LocalVideo } from './LocalVideo';
+import { CustomBlockquote, TableCell, ResizableImage } from './EditorExtensions';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -34,234 +31,6 @@ import {
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Editor.css';
-
-// Кастомное расширение Blockquote с типами
-const CustomBlockquote = Blockquote.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      type: {
-        default: 'default',
-        parseHTML: element => element.getAttribute('data-type') || 'default',
-        renderHTML: attributes => {
-          return {
-            'data-type': attributes.type,
-            class: `blockquote-${attributes.type}`
-          };
-        }
-      }
-    };
-  }
-});
-
-// Расширенный TableCell с поддержкой цвета фона
-const TableCell = TipTapTableCell.extend({
-  addAttributes() {
-    return {
-      ...this.parent?.(),
-      backgroundColor: {
-        default: null,
-        parseHTML: element => element.getAttribute('data-background-color') || element.style.backgroundColor,
-        renderHTML: attributes => {
-          if (!attributes.backgroundColor) {
-            return {};
-          }
-          return {
-            'data-background-color': attributes.backgroundColor,
-            style: `background-color: ${attributes.backgroundColor}`
-          };
-        }
-      }
-    };
-  }
-});
-
-// Улучшенное расширение изображений с правильным парсингом размеров
-const ResizableImage = Node.create({
-  name: 'resizableImage',
-  group: 'block',
-  draggable: true,
-  
-  addAttributes() {
-    return {
-      src: { default: null },
-      alt: { default: null },
-      title: { default: null },
-      width: { 
-        default: null,
-        parseHTML: element => {
-          const width = element.getAttribute('width') || element.style.width;
-          if (width) {
-            return parseInt(width);
-          }
-          return null;
-        }
-      },
-      height: { 
-        default: null,
-        parseHTML: element => {
-          const height = element.getAttribute('height') || element.style.height;
-          if (height) {
-            return parseInt(height);
-          }
-          return null;
-        }
-      },
-      display: { 
-        default: 'inline',
-        parseHTML: element => element.getAttribute('data-display') || 'inline'
-      },
-      float: { 
-        default: 'none',
-        parseHTML: element => element.getAttribute('data-float') || 'none'
-      },
-      align: { 
-        default: 'left',
-        parseHTML: element => element.getAttribute('data-align') || 'left'
-      }
-    };
-  },
-
-  parseHTML() {
-    return [{
-      tag: 'img[src]',
-      getAttrs: dom => ({
-        src: dom.getAttribute('src'),
-        alt: dom.getAttribute('alt'),
-        title: dom.getAttribute('title'),
-        width: dom.getAttribute('width') ? parseInt(dom.getAttribute('width')) : null,
-        height: dom.getAttribute('height') ? parseInt(dom.getAttribute('height')) : null,
-        display: dom.getAttribute('data-display') || 'inline',
-        float: dom.getAttribute('data-float') || 'none',
-        align: dom.getAttribute('data-align') || 'left'
-      })
-    }];
-  },
-
-  renderHTML({ HTMLAttributes }) {
-    return ['img', mergeAttributes(HTMLAttributes, {
-      'data-display': HTMLAttributes.display,
-      'data-float': HTMLAttributes.float,
-      'data-align': HTMLAttributes.align
-    })];
-  },
-
-  addNodeView() {
-    return ReactNodeViewRenderer(ResizableImageComponent);
-  },
-
-  addCommands() {
-    return {
-      setImage: (options) => ({ commands }) => {
-        return commands.insertContent({
-          type: this.name,
-          attrs: options
-        });
-      },
-      updateImageAttributes: (attrs) => ({ commands }) => {
-        return commands.updateAttributes(this.name, attrs);
-      }
-    };
-  }
-});
-
-// Компонент для изменяемого изображения
-const ResizableImageComponent = ({ node, updateAttributes, selected, editor }) => {
-  const [resizing, setResizing] = useState(false);
-  const [dimensions, setDimensions] = useState({
-    width: node.attrs.width || null,
-    height: node.attrs.height || null
-  });
-  const containerRef = useRef(null);
-  const imgRef = useRef(null);
-  const startRef = useRef({ x: 0, y: 0, width: 0, height: 0, aspectRatio: 1 });
-
-  useEffect(() => {
-    if (imgRef.current && imgRef.current.complete) {
-      if (!node.attrs.width || !node.attrs.height) {
-        startRef.current.aspectRatio = imgRef.current.naturalWidth / imgRef.current.naturalHeight;
-      }
-    }
-  }, [node.attrs.src]);
-
-  const handleMouseDown = (e, corner) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setResizing(true);
-
-    const currentWidth = dimensions.width || imgRef.current?.offsetWidth || 0;
-    const currentHeight = dimensions.height || imgRef.current?.offsetHeight || 0;
-    
-    startRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      width: currentWidth,
-      height: currentHeight,
-      aspectRatio: currentWidth / currentHeight
-    };
-
-    const handleMouseMove = (moveEvent) => {
-      if (!containerRef.current) return;
-
-      const deltaX = moveEvent.clientX - startRef.current.x;
-      const deltaY = moveEvent.clientY - startRef.current.y;
-
-      let newWidth, newHeight;
-      if (corner === 'se' || corner === 'sw') {
-        newWidth = Math.max(50, startRef.current.width + (corner === 'se' ? deltaX : -deltaX));
-        newHeight = newWidth / startRef.current.aspectRatio;
-      } else {
-        newHeight = Math.max(50, startRef.current.height - deltaY);
-        newWidth = newHeight * startRef.current.aspectRatio;
-      }
-
-      setDimensions({ width: Math.round(newWidth), height: Math.round(newHeight) });
-    };
-
-    const handleMouseUp = () => {
-      setResizing(false);
-      if (dimensions.width && dimensions.height) {
-        updateAttributes({ width: dimensions.width, height: dimensions.height });
-      }
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
-  const imageStyle = {};
-  if (dimensions.width) imageStyle.width = `${dimensions.width}px`;
-  if (dimensions.height) imageStyle.height = `${dimensions.height}px`;
-
-  let containerClass = 'resizable-image-container';
-  if (selected) containerClass += ' selected';
-  if (resizing) containerClass += ' resizing';
-
-  return (
-    <NodeViewWrapper className={containerClass}>
-      <div ref={containerRef} style={{ position: 'relative', display: 'inline-block' }}>
-        <img
-          ref={imgRef}
-          src={node.attrs.src}
-          alt={node.attrs.alt}
-          title={node.attrs.title}
-          style={imageStyle}
-          draggable={false}
-        />
-        {selected && (
-          <>
-            <div className="resize-handle nw" onMouseDown={(e) => handleMouseDown(e, 'nw')} />
-            <div className="resize-handle ne" onMouseDown={(e) => handleMouseDown(e, 'ne')} />
-            <div className="resize-handle sw" onMouseDown={(e) => handleMouseDown(e, 'sw')} />
-            <div className="resize-handle se" onMouseDown={(e) => handleMouseDown(e, 'se')} />
-          </>
-        )}
-      </div>
-    </NodeViewWrapper>
-  );
-};
 
 // Bubble Menu для изображений
 function ImageBubbleMenu({ editor }) {

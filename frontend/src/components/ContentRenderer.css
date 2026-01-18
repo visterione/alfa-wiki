@@ -14,6 +14,11 @@
   cursor: default;
 }
 
+/* Скрываем trailing break в режиме просмотра */
+.content-renderer .ProseMirror .ProseMirror-trailingBreak {
+  display: none;
+}
+
 /* Стили для видео в режиме просмотра */
 .content-renderer video {
   width: 100%;

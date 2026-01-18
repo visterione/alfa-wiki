@@ -2,16 +2,21 @@
 import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
-import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
+import Highlight from '@tiptap/extension-highlight';
+import TextStyle from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import FontFamily from '@tiptap/extension-font-family';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
 import Youtube from '@tiptap/extension-youtube';
 import { LocalVideo } from './LocalVideo';
+import { CustomBlockquote, TableCell, ResizableImageReadOnly } from './EditorExtensions';
 import './Editor.css';
 import './ContentRenderer.css';
 
@@ -22,11 +27,11 @@ import './ContentRenderer.css';
 export default function ContentRenderer({ content }) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
-      Image.configure({
-        inline: true,
-        allowBase64: true,
+      StarterKit.configure({
+        blockquote: false, // Отключаем стандартный blockquote
       }),
+      CustomBlockquote, // Используем кастомный blockquote с типами
+      ResizableImageReadOnly, // Используем кастомное изображение с поддержкой атрибутов
       Link.configure({
         openOnClick: true,
         HTMLAttributes: {
@@ -39,11 +44,17 @@ export default function ContentRenderer({ content }) {
       }),
       TableRow,
       TableHeader,
-      TableCell,
+      TableCell, // Кастомный TableCell с поддержкой backgroundColor
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),
       Underline,
+      Highlight.configure({ multicolor: true }), // Поддержка текстовых выделителей
+      TextStyle, // Необходимо для Color
+      Color, // Поддержка цвета текста
+      FontFamily, // Поддержка разных шрифтов
+      Subscript, // Подстрочный текст
+      Superscript, // Надстрочный текст
       Youtube.configure({
         controls: true,
         nocookie: true,

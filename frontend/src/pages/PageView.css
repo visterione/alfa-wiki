@@ -160,11 +160,16 @@
 }
 
 .page-content th {
-  background: var(--bg-secondary);
   font-weight: 600;
 }
 
-.page-content tr:hover td {
+/* Стандартный фон для th без inline styles */
+.page-content th:not([style*="background"]) {
+  background: var(--bg-secondary);
+}
+
+/* Hover эффект только для ячеек без кастомного фона */
+.page-content tr:hover td:not([style*="background"]) {
   background: var(--bg-secondary);
 }
 
@@ -176,9 +181,14 @@
 }
 
 .page-content mark {
-  background: #FFEB3B;
+  /* Не задаем background здесь - используем inline styles из TipTap */
   padding: 0.1em 0.3em;
   border-radius: 2px;
+}
+
+/* Fallback для mark без inline styles */
+.page-content mark:not([style*="background"]) {
+  background: #FFEB3B;
 }
 
 .page-content video,
