@@ -305,6 +305,15 @@
   gap: 0.25rem;
   font-size: 0.75rem;
   color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.task-attachments-indicator:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary);
 }
 
 /* Modal Styles */
@@ -670,6 +679,43 @@
   font-size: 0.75rem;
   color: var(--text-secondary);
   flex-shrink: 0;
+}
+
+.attachment-actions {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.attachment-actions .btn-icon {
+  padding: 0.25rem;
+}
+
+.attachment-actions .btn-icon:hover {
+  color: var(--primary);
+}
+
+/* Attachments Modal */
+.attachments-modal {
+  max-width: 500px;
+}
+
+.modal-body {
+  padding: 1.5rem;
+}
+
+.task-title-in-modal {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.no-attachments {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 2rem 0;
+  font-style: italic;
 }
 
 /* Responsive */

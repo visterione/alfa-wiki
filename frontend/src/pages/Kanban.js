@@ -59,6 +59,8 @@ function Kanban() {
   const [tagInput, setTagInput] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [selectedTaskAttachments, setSelectedTaskAttachments] = useState(null);
 
   // Фильтры
   const [filters, setFilters] = useState({
@@ -271,6 +273,33 @@ function Kanban() {
       ...formData,
       attachments: formData.attachments.filter(f => f.id !== fileId)
     });
+  };
+
+  const downloadAttachment = (file) => {
+    // Обрабатываем как старые абсолютные пути, так и новые относительные
+    let filePath = file.path;
+
+    // Если путь абсолютный (содержит "backend/uploads" или "C:/"), извлекаем только uploads/...
+    if (filePath.includes('backend/')) {
+      filePath = filePath.substring(filePath.indexOf('uploads/'));
+    } else if (filePath.match(/^[A-Z]:\\/)) {
+      // Windows абсолютный путь
+      filePath = filePath.substring(filePath.indexOf('uploads\\'));
+    }
+
+    const fileUrl = `${BASE_URL}/${filePath}`;
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = file.filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const showTaskAttachments = (task) => {
+    setSelectedTaskAttachments(task);
+    setShowAttachmentsModal(true);
   };
 
   const getTasksByColumn = (columnId) => {
@@ -611,7 +640,14 @@ function Kanban() {
                               )}
 
                               {task.attachments && task.attachments.length > 0 && (
-                                <div className="task-attachments-indicator">
+                                <div
+                                  className="task-attachments-indicator"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    showTaskAttachments(task);
+                                  }}
+                                  title="Просмотреть прикрепленные файлы"
+                                >
                                   <Paperclip size={14} />
                                   {task.attachments.length}
                                 </div>
@@ -812,14 +848,24 @@ function Kanban() {
                         <span className="attachment-size">
                           ({Math.round(file.size / 1024)} KB)
                         </span>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => removeAttachment(file.id)}
-                          title="Удалить файл"
-                        >
-                          <X size={14} />
-                        </button>
+                        <div className="attachment-actions">
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            onClick={() => downloadAttachment(file)}
+                            title="Скачать файл"
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            onClick={() => removeAttachment(file.id)}
+                            title="Удалить файл"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -835,6 +881,45 @@ function Kanban() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAttachmentsModal && selectedTaskAttachments && (
+        <div className="modal-overlay" onClick={() => setShowAttachmentsModal(false)}>
+          <div className="modal-content attachments-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Прикрепленные файлы</h2>
+              <button className="btn-icon" onClick={() => setShowAttachmentsModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <h3 className="task-title-in-modal">{selectedTaskAttachments.title}</h3>
+              {selectedTaskAttachments.attachments && selectedTaskAttachments.attachments.length > 0 ? (
+                <div className="attachments-list">
+                  {selectedTaskAttachments.attachments.map(file => (
+                    <div key={file.id} className="attachment-item">
+                      <Paperclip size={16} />
+                      <span className="attachment-name">{file.filename}</span>
+                      <span className="attachment-size">
+                        ({Math.round(file.size / 1024)} KB)
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-icon"
+                        onClick={() => downloadAttachment(file)}
+                        title="Скачать файл"
+                      >
+                        <Download size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="no-attachments">Нет прикрепленных файлов</p>
+              )}
+            </div>
           </div>
         </div>
       )}

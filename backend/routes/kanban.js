@@ -494,10 +494,12 @@ router.post('/upload', authenticate, upload.single('file'), async (req, res) => 
     }
 
     const originalName = decodeFileName(req.file.originalname);
+    // Получаем относительный путь от корня backend (uploads/kanban/...)
+    const relativePath = path.relative(__dirname, req.file.path).replace(/\\/g, '/');
     const fileData = {
       id: uuidv4(),
       filename: originalName,
-      path: req.file.path.replace(/\\/g, '/'),
+      path: relativePath,
       size: req.file.size,
       mimetype: req.file.mimetype,
       uploadedAt: new Date().toISOString(),
