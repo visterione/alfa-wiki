@@ -814,7 +814,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 100;
+  z-index: 1001;
   animation: slideDown 0.15s ease;
 }
 
@@ -860,6 +860,12 @@
   font-size: 12px;
   color: var(--text-tertiary);
   margin-top: 2px;
+}
+
+/* Disabled option that is checked should remain visible */
+.multi-select-option.disabled input[type="checkbox"]:checked {
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 /* Danger button */

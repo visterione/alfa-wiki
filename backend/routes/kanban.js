@@ -320,10 +320,19 @@ router.post('/tasks/:id/move', authenticate, async (req, res) => {
 
     const { status, sortOrder } = req.body;
 
-    await task.update({
+    const updateData = {
       status: status !== undefined ? status : task.status,
       sortOrder: sortOrder !== undefined ? sortOrder : task.sortOrder
-    });
+    };
+
+    // Отслеживаем переход в статус done при перемещении
+    if (status === 'done' && task.status !== 'done') {
+      updateData.completedAt = new Date();
+    } else if (status !== 'done' && task.status === 'done') {
+      updateData.completedAt = null;
+    }
+
+    await task.update(updateData);
 
     const updatedTask = await KanbanTask.findByPk(task.id, {
       include: [

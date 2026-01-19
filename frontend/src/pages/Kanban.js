@@ -330,6 +330,24 @@ function Kanban() {
     return Array.from(tagsSet).sort();
   };
 
+  // Получение пользователей, которые являются исполнителями в задачах
+  const getAssignedUsers = () => {
+    const assignedUserIds = new Set();
+    tasks.forEach(task => {
+      if (task.assigneeIds && Array.isArray(task.assigneeIds)) {
+        task.assigneeIds.forEach(id => assignedUserIds.add(id));
+      }
+    });
+    // Фильтруем usersList, оставляя только тех, кто есть в задачах
+    return usersList
+      .filter(u => assignedUserIds.has(u.id))
+      .sort((a, b) => {
+        const nameA = (a.displayName || a.username).toLowerCase();
+        const nameB = (b.displayName || b.username).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+  };
+
   // Переключение фильтра по тегу
   const toggleTagFilter = (tag) => {
     setFilters(prev => ({
@@ -448,15 +466,19 @@ function Kanban() {
                 Исполнители
               </label>
               <div className="filter-options">
-                {usersList.map(u => (
-                  <button
-                    key={u.id}
-                    className={`filter-chip ${filters.assignees.includes(u.id) ? 'active' : ''}`}
-                    onClick={() => toggleAssigneeFilter(u.id)}
-                  >
-                    {u.displayName || u.username}
-                  </button>
-                ))}
+                {getAssignedUsers().length > 0 ? (
+                  getAssignedUsers().map(u => (
+                    <button
+                      key={u.id}
+                      className={`filter-chip ${filters.assignees.includes(u.id) ? 'active' : ''}`}
+                      onClick={() => toggleAssigneeFilter(u.id)}
+                    >
+                      {u.displayName || u.username}
+                    </button>
+                  ))
+                ) : (
+                  <span className="filter-empty">Нет исполнителей</span>
+                )}
               </div>
             </div>
 
@@ -471,11 +493,6 @@ function Kanban() {
                     key={key}
                     className={`filter-chip ${filters.priorities.includes(key) ? 'active' : ''}`}
                     onClick={() => togglePriorityFilter(key)}
-                    style={{
-                      backgroundColor: filters.priorities.includes(key) ? config.color : 'transparent',
-                      color: filters.priorities.includes(key) ? config.textColor : 'var(--text-primary)',
-                      border: `1px solid ${config.color}`
-                    }}
                   >
                     {config.label}
                   </button>
@@ -706,11 +723,6 @@ function Kanban() {
                       })
                       .map(u => (
                         <label key={u.id} className="assignee-item">
-                          <input
-                            type="checkbox"
-                            checked={formData.assigneeIds.includes(u.id)}
-                            onChange={() => toggleAssignee(u.id)}
-                          />
                           <div className="assignee-info">
                             {getAvatarUrl(u.avatar) ? (
                               <img src={getAvatarUrl(u.avatar)} alt="" className="assignee-avatar" />
@@ -721,6 +733,11 @@ function Kanban() {
                             )}
                             <span>{u.displayName || u.username}</span>
                           </div>
+                          <input
+                            type="checkbox"
+                            checked={formData.assigneeIds.includes(u.id)}
+                            onChange={() => toggleAssignee(u.id)}
+                          />
                         </label>
                       ))}
                   </div>

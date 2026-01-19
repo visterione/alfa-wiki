@@ -12,7 +12,7 @@ import '../Admin.css';
 import './AdminCourseEditor.css';
 
 // Компонент для множественного выбора (из AdminUsers)
-function MultiSelect({ label, placeholder, value, onChange, options, optionKey = 'id', optionLabel = 'name', optionDescription = null }) {
+function MultiSelect({ label, placeholder, value, onChange, options, optionKey = 'id', optionLabel = 'name', optionDescription = null, disabledOptions = [] }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -31,6 +31,11 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
   const selectedItems = options.filter(opt => value.includes(opt[optionKey]));
 
   const toggleOption = (optId) => {
+    // Не позволяем изменять отключенные опции
+    if (disabledOptions.includes(optId)) {
+      return;
+    }
+
     if (value.includes(optId)) {
       onChange(value.filter(id => id !== optId));
     } else {
@@ -40,6 +45,12 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
 
   const removeItem = (optId, e) => {
     e.stopPropagation();
+
+    // Не позволяем удалять отключенные опции
+    if (disabledOptions.includes(optId)) {
+      return;
+    }
+
     onChange(value.filter(id => id !== optId));
   };
 
@@ -55,14 +66,19 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
             <span className="multi-select-placeholder">{placeholder}</span>
           ) : (
             <div className="multi-select-values">
-              {selectedItems.map(item => (
-                <span key={item[optionKey]} className="multi-select-value">
-                  {item[optionLabel]}
-                  <button onClick={(e) => removeItem(item[optionKey], e)} type="button">
-                    <XIcon size={12} />
-                  </button>
-                </span>
-              ))}
+              {selectedItems.map(item => {
+                const isDisabled = disabledOptions.includes(item[optionKey]);
+                return (
+                  <span key={item[optionKey]} className="multi-select-value">
+                    {item[optionLabel]}
+                    {!isDisabled && (
+                      <button onClick={(e) => removeItem(item[optionKey], e)} type="button">
+                        <XIcon size={12} />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
             </div>
           )}
           <ChevronDown size={18} className={`multi-select-chevron ${isOpen ? 'open' : ''}`} />
@@ -70,25 +86,32 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
 
         {isOpen && (
           <div className="multi-select-dropdown">
-            {options.map(option => (
-              <div
-                key={option[optionKey]}
-                className="multi-select-option"
-                onClick={() => toggleOption(option[optionKey])}
-              >
-                <input
-                  type="checkbox"
-                  checked={value.includes(option[optionKey])}
-                  onChange={() => {}}
-                />
-                <div className="multi-select-option-label">
-                  <div>{option[optionLabel]}</div>
-                  {optionDescription && option[optionDescription] && (
-                    <div className="multi-select-option-desc">{option[optionDescription]}</div>
-                  )}
+            {options.map(option => {
+              const isDisabled = disabledOptions.includes(option[optionKey]);
+              const isChecked = value.includes(option[optionKey]);
+              return (
+                <div
+                  key={option[optionKey]}
+                  className={`multi-select-option ${isDisabled ? 'disabled' : ''}`}
+                  onClick={() => toggleOption(option[optionKey])}
+                  style={isDisabled ? { cursor: 'not-allowed' } : {}}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    disabled={isDisabled}
+                    onChange={() => {}}
+                    style={isDisabled && isChecked ? { opacity: 1 } : {}}
+                  />
+                  <div className="multi-select-option-label">
+                    <div>{option[optionLabel]}</div>
+                    {optionDescription && option[optionDescription] && (
+                      <div className="multi-select-option-desc">{option[optionDescription]}</div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -123,6 +146,9 @@ export default function AdminCourseEditor() {
   const [availableRoles, setAvailableRoles] = useState([]);
   const [availableMedCenters, setAvailableMedCenters] = useState([]);
 
+  // Admin role ID (всегда должна быть выбрана)
+  const [adminRoleId, setAdminRoleId] = useState(null);
+
   // Modals
   const [lessonModal, setLessonModal] = useState(null);
   const [questionModal, setQuestionModal] = useState(null);
@@ -134,14 +160,37 @@ export default function AdminCourseEditor() {
     }
   }, [id]);
 
+  // Автоматически добавляем роль администратора в выбранные роли
+  useEffect(() => {
+    if (adminRoleId && !form.allowedRoleIds.includes(adminRoleId)) {
+      setForm(prev => {
+        // Проверяем еще раз, чтобы избежать лишних обновлений
+        if (!prev.allowedRoleIds.includes(adminRoleId)) {
+          return {
+            ...prev,
+            allowedRoleIds: [...prev.allowedRoleIds, adminRoleId]
+          };
+        }
+        return prev;
+      });
+    }
+  }, [adminRoleId, form.allowedRoleIds]);
+
   const loadRolesAndMedCenters = async () => {
     try {
       const [rolesRes, medCentersRes] = await Promise.all([
         rolesApi.list(),
         users.getMedCenters()
       ]);
-      setAvailableRoles(rolesRes.data || []);
+      const roles = rolesRes.data || [];
+      setAvailableRoles(roles);
       setAvailableMedCenters(medCentersRes.data || []);
+
+      // Находим роль администратора
+      const adminRole = roles.find(r => r.name === 'Администратор');
+      if (adminRole) {
+        setAdminRoleId(adminRole.id);
+      }
     } catch (error) {
       console.error('Load roles/medcenters error:', error);
       toast.error('Ошибка загрузки данных для контроля доступа');
@@ -421,6 +470,7 @@ export default function AdminCourseEditor() {
                   optionKey="id"
                   optionLabel="name"
                   optionDescription="description"
+                  disabledOptions={adminRoleId ? [adminRoleId] : []}
                 />
 
                 <MultiSelect
