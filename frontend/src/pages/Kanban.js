@@ -718,7 +718,7 @@ function Kanban() {
 
       {showTaskModal && (
         <div className="modal-overlay" onClick={() => setShowTaskModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content task-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingTask ? 'Редактировать задачу' : 'Создать задачу'}</h2>
               <button className="btn-icon" onClick={() => setShowTaskModal(false)}>
@@ -748,171 +748,175 @@ function Kanban() {
                 />
               </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Статус</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  >
-                    {COLUMNS.map(col => (
-                      <option key={col.id} value={col.id}>{col.title}</option>
-                    ))}
-                  </select>
+              <div className="form-layout-two-columns">
+                <div className="form-column-left">
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Статус</label>
+                      <select
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      >
+                        {COLUMNS.map(col => (
+                          <option key={col.id} value={col.id}>{col.title}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Приоритет</label>
+                      <select
+                        value={formData.priority}
+                        onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                      >
+                        {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
+                          <option key={key} value={key}>{config.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Исполнители</label>
+                    <div className="assignee-selector">
+                      <div className="assignee-search">
+                        <Search size={16} />
+                        <input
+                          type="text"
+                          value={assigneeSearch}
+                          onChange={(e) => setAssigneeSearch(e.target.value)}
+                          placeholder="Поиск по имени..."
+                        />
+                      </div>
+                      <div className="assignee-list">
+                        {usersList
+                          .filter(u => {
+                            const searchLower = assigneeSearch.toLowerCase();
+                            return (
+                              (u.displayName || '').toLowerCase().includes(searchLower) ||
+                              (u.username || '').toLowerCase().includes(searchLower)
+                            );
+                          })
+                          .sort((a, b) => {
+                            const nameA = (a.displayName || a.username).toLowerCase();
+                            const nameB = (b.displayName || b.username).toLowerCase();
+                            return nameA.localeCompare(nameB);
+                          })
+                          .map(u => (
+                            <label key={u.id} className="assignee-item">
+                              <div className="assignee-info">
+                                {getAvatarUrl(u.avatar) ? (
+                                  <img src={getAvatarUrl(u.avatar)} alt="" className="assignee-avatar" />
+                                ) : (
+                                  <div className="assignee-avatar-placeholder">
+                                    {(u.displayName || u.username).substring(0, 2).toUpperCase()}
+                                  </div>
+                                )}
+                                <span>{u.displayName || u.username}</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={formData.assigneeIds.includes(u.id)}
+                                onChange={() => toggleAssignee(u.id)}
+                              />
+                            </label>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label>Приоритет</label>
-                  <select
-                    value={formData.priority}
-                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                  >
-                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => (
-                      <option key={key} value={key}>{config.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Исполнители</label>
-                <div className="assignee-selector">
-                  <div className="assignee-search">
-                    <Search size={16} />
+                <div className="form-column-right">
+                  <div className="form-group">
+                    <label>Срок выполнения</label>
                     <input
-                      type="text"
-                      value={assigneeSearch}
-                      onChange={(e) => setAssigneeSearch(e.target.value)}
-                      placeholder="Поиск по имени..."
+                      type="datetime-local"
+                      value={formData.dueDate}
+                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                     />
                   </div>
-                  <div className="assignee-list">
-                    {usersList
-                      .filter(u => {
-                        const searchLower = assigneeSearch.toLowerCase();
-                        return (
-                          (u.displayName || '').toLowerCase().includes(searchLower) ||
-                          (u.username || '').toLowerCase().includes(searchLower)
-                        );
-                      })
-                      .sort((a, b) => {
-                        const nameA = (a.displayName || a.username).toLowerCase();
-                        const nameB = (b.displayName || b.username).toLowerCase();
-                        return nameA.localeCompare(nameB);
-                      })
-                      .map(u => (
-                        <label key={u.id} className="assignee-item">
-                          <div className="assignee-info">
-                            {getAvatarUrl(u.avatar) ? (
-                              <img src={getAvatarUrl(u.avatar)} alt="" className="assignee-avatar" />
-                            ) : (
-                              <div className="assignee-avatar-placeholder">
-                                {(u.displayName || u.username).substring(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                            <span>{u.displayName || u.username}</span>
-                          </div>
-                          <input
-                            type="checkbox"
-                            checked={formData.assigneeIds.includes(u.id)}
-                            onChange={() => toggleAssignee(u.id)}
-                          />
-                        </label>
-                      ))}
-                  </div>
-                </div>
-              </div>
 
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Срок выполнения</label>
-                  <input
-                    type="datetime-local"
-                    value={formData.dueDate}
-                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Теги</label>
-                <div className="tags-input">
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                    placeholder="Введите тег и нажмите Enter"
-                  />
-                  <button type="button" onClick={addTag} className="btn-secondary">
-                    Добавить
-                  </button>
-                </div>
-                {formData.tags.length > 0 && (
-                  <div className="tags-list">
-                    {formData.tags.map(tag => (
-                      <span key={tag} className="tag-item">
-                        {tag}
-                        <button type="button" onClick={() => removeTag(tag)}>
-                          <X size={14} />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="form-group">
-                <label>Прикрепленные файлы</label>
-                <div className="attachments-section">
-                  <input
-                    type="file"
-                    id="file-upload"
-                    style={{ display: 'none' }}
-                    onChange={handleFileUpload}
-                    disabled={uploadingFile}
-                  />
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => document.getElementById('file-upload').click()}
-                    disabled={uploadingFile}
-                  >
-                    <Paperclip size={16} />
-                    {uploadingFile ? 'Загрузка...' : 'Прикрепить файл'}
-                  </button>
-                </div>
-                {formData.attachments && formData.attachments.length > 0 && (
-                  <div className="attachments-list">
-                    {formData.attachments.map(file => (
-                      <div key={file.id} className="attachment-item">
-                        <Paperclip size={14} />
-                        <span className="attachment-name">{file.filename}</span>
-                        <span className="attachment-size">
-                          ({Math.round(file.size / 1024)} KB)
-                        </span>
-                        <div className="attachment-actions">
-                          <button
-                            type="button"
-                            className="btn-icon"
-                            onClick={() => downloadAttachment(file)}
-                            title="Скачать файл"
-                          >
-                            <Download size={14} />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-icon"
-                            onClick={() => removeAttachment(file.id)}
-                            title="Удалить файл"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
+                  <div className="form-group">
+                    <label>Теги</label>
+                    <div className="tags-input">
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                        placeholder="Введите тег и нажмите Enter"
+                      />
+                      <button type="button" onClick={addTag} className="btn-secondary">
+                        Добавить
+                      </button>
+                    </div>
+                    {formData.tags.length > 0 && (
+                      <div className="tags-list">
+                        {formData.tags.map(tag => (
+                          <span key={tag} className="tag-item">
+                            {tag}
+                            <button type="button" onClick={() => removeTag(tag)}>
+                              <X size={14} />
+                            </button>
+                          </span>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
+
+                  <div className="form-group">
+                    <label>Прикрепленные файлы</label>
+                    <div className="attachments-section">
+                      <input
+                        type="file"
+                        id="file-upload"
+                        style={{ display: 'none' }}
+                        onChange={handleFileUpload}
+                        disabled={uploadingFile}
+                      />
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => document.getElementById('file-upload').click()}
+                        disabled={uploadingFile}
+                      >
+                        <Paperclip size={16} />
+                        {uploadingFile ? 'Загрузка...' : 'Прикрепить файл'}
+                      </button>
+                    </div>
+                    {formData.attachments && formData.attachments.length > 0 && (
+                      <div className="attachments-list">
+                        {formData.attachments.map(file => (
+                          <div key={file.id} className="attachment-item">
+                            <Paperclip size={14} />
+                            <span className="attachment-name">{file.filename}</span>
+                            <span className="attachment-size">
+                              ({Math.round(file.size / 1024)} KB)
+                            </span>
+                            <div className="attachment-actions">
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => downloadAttachment(file)}
+                                title="Скачать файл"
+                              >
+                                <Download size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-icon"
+                                onClick={() => removeAttachment(file.id)}
+                                title="Удалить файл"
+                              >
+                                <X size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="modal-actions">

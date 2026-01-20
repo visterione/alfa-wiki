@@ -5,20 +5,6 @@ const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Вспомогательная функция для проверки доступа к папке
-async function canAccessFolder(folder, userRoleIds, isAdmin) {
-  // Админы видят всё
-  if (isAdmin) return true;
-
-  // Если у папки пустой allowedRoles, она доступна всем
-  if (!folder.allowedRoles || folder.allowedRoles.length === 0) {
-    return true;
-  }
-
-  // Проверяем, есть ли у пользователя нужная роль
-  return userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
-}
-
 // Вспомогательная функция для проверки доступа к странице
 function canAccessPage(page, userRoleIds, isAdmin) {
   // Админы видят всё
@@ -33,28 +19,6 @@ function canAccessPage(page, userRoleIds, isAdmin) {
   return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
 }
 
-// Вспомогательная функция для проверки доступа к содержимому папки
-async function hasAccessToFolderContent(folderId, userRoleIds, isAdmin) {
-  // Проверяем доступные страницы в папке
-  const pages = await Page.findAll({ where: { folderId } });
-  const hasAccessiblePages = pages.some(page => canAccessPage(page, userRoleIds, isAdmin));
-
-  if (hasAccessiblePages) return true;
-
-  // Проверяем доступные подпапки
-  const subfolders = await Folder.findAll({ where: { parentId: folderId } });
-
-  for (const subfolder of subfolders) {
-    const canAccessSub = await canAccessFolder(subfolder, userRoleIds, isAdmin);
-    if (canAccessSub) {
-      // Проверяем, есть ли доступное содержимое в подпапке
-      const hasContent = await hasAccessToFolderContent(subfolder.id, userRoleIds, isAdmin);
-      if (hasContent) return true;
-    }
-  }
-
-  return false;
-}
 
 // Получить содержимое папки (или корня)
 router.get('/browse', authenticate, async (req, res) => {
@@ -70,23 +34,20 @@ router.get('/browse', authenticate, async (req, res) => {
       order: [['title', 'ASC']]
     });
 
-    // Фильтруем папки по доступу
+    // Фильтруем папки по доступу (строгая проверка как в Sidebar)
     const folders = [];
     for (const folder of allFolders) {
-      const hasAccess = await canAccessFolder(folder, userRoleIds, isAdmin);
-
-      if (hasAccess) {
-        // Проверяем, есть ли доступное содержимое в папке
-        const hasContent = await hasAccessToFolderContent(folder.id, userRoleIds, isAdmin);
-        // Показываем папку, если есть доступ (даже если пуста)
-        folders.push(folder);
-      } else {
-        // Если нет прямого доступа к папке, проверяем доступ к содержимому
-        const hasContent = await hasAccessToFolderContent(folder.id, userRoleIds, isAdmin);
-        if (hasContent) {
-          folders.push(folder);
+      // Если пользователь не админ и у папки есть ограничения по ролям
+      if (!isAdmin && folder.allowedRoles && folder.allowedRoles.length > 0) {
+        // Проверяем, есть ли у пользователя нужная роль
+        const hasAccess = userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
+        if (!hasAccess) {
+          // Нет доступа к этой папке - пропускаем
+          continue;
         }
       }
+      // Если дошли сюда - доступ есть, добавляем папку
+      folders.push(folder);
     }
 
     // Получаем страницы в этой папке - сортировка только по алфавиту

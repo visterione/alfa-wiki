@@ -375,6 +375,11 @@
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
 }
 
+.modal-content.task-modal {
+  width: 70%;
+  max-width: 1400px;
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -451,12 +456,28 @@
 
 .form-group textarea {
   resize: vertical;
+  font-size: 0.95rem !important;
+  font-family: inherit !important;
+  line-height: 1.5;
 }
 
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+.form-layout-two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.form-column-left,
+.form-column-right {
+  display: flex;
+  flex-direction: column;
 }
 
 .tags-input {
@@ -772,6 +793,20 @@
 
   .form-row {
     grid-template-columns: 1fr;
+  }
+
+  .form-layout-two-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content,
+  .modal-content.task-modal {
+    width: 95%;
+    max-width: 95%;
+  }
+
+  .modal-overlay {
+    padding: 1rem;
   }
 }
 

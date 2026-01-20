@@ -199,7 +199,6 @@ function KanbanArchive() {
                 <th className="col-status">Статус</th>
                 <th className="col-priority">Приоритет</th>
                 <th className="col-assignees">Исполнители</th>
-                <th className="col-tags">Теги</th>
                 <th className="col-date">Дата архивации</th>
                 <th className="col-actions no-print">Действия</th>
               </tr>
@@ -234,17 +233,6 @@ function KanbanArchive() {
                           <div key={assignee.id} className="assignee-name">
                             {assignee.displayName || assignee.username}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="no-data">—</span>
-                    )}
-                  </td>
-                  <td className="col-tags">
-                    {task.tags && task.tags.length > 0 ? (
-                      <div className="tags-list">
-                        {task.tags.map(tag => (
-                          <span key={tag} className="tag-badge">{tag}</span>
                         ))}
                       </div>
                     ) : (

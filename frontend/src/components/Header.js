@@ -309,12 +309,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </Link>
 
                 {/* Админ-разделы - показываем только те, к которым есть доступ */}
-                {(isAdmin || user?.adminAccess?.pages) && (
-                  <Link to="/admin/pages" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                    <FileText size={16} />
-                    Страницы
-                  </Link>
-                )}
                 {(isAdmin || user?.adminAccess?.sidebar) && (
                   <Link to="/admin/sidebar" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Layout size={16} />

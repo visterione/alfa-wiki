@@ -274,7 +274,7 @@ function QuickAccessButtons({ onClose }) {
 
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
-  const isOnAdminPages = location.pathname === '/admin/pages';
+  const isOnAdminPages = location.pathname === '/explorer';
   const isOnCourses = location.pathname.startsWith('/courses');
   const isOnKanban = location.pathname.startsWith('/kanban');
   const isOnDoctors = location.pathname.startsWith('/doctors');
@@ -312,7 +312,7 @@ function QuickAccessButtons({ onClose }) {
 
       <button
         className={`quick-access-btn explorer ${isOnAdminPages ? 'active' : ''}`}
-        onClick={() => handleClick('/admin/pages')}
+        onClick={() => handleClick('/explorer')}
         title="Проводник"
       >
         <Folder size={20} />

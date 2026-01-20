@@ -205,17 +205,6 @@ export default function AdminPages() {
         )}
       </div>
 
-      {/* Информационное сообщение для пользователей без прав */}
-      {!canEdit && (
-        <div className="info-banner">
-          <AlertCircle size={20} />
-          <div>
-            <strong>Режим просмотра</strong>
-            <p>У вас нет прав на создание и редактирование страниц. Вы можете только просматривать существующий контент.</p>
-          </div>
-        </div>
-      )}
-
       {/* Breadcrumbs */}
       <div className="explorer-breadcrumbs">
         <button 
