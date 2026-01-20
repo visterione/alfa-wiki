@@ -876,6 +876,69 @@ CalendarEvent.belongsTo(CalendarEvent, { foreignKey: 'parentEventId', as: 'paren
 CalendarEvent.hasMany(CalendarEvent, { foreignKey: 'parentEventId', as: 'instances' });
 
 // === KANBAN TASK MODEL ===
+// KanbanBoard model - represents a Kanban board
+const KanbanBoard = sequelize.define('KanbanBoard', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Название доски'
+  },
+  description: {
+    type: DataTypes.TEXT,
+    comment: 'Описание доски'
+  },
+  ownerId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID владельца доски'
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Доска в архиве'
+  }
+}, {
+  tableName: 'kanban_boards',
+  timestamps: true,
+  indexes: [
+    { fields: ['ownerId'] },
+    { fields: ['archived'] }
+  ]
+});
+
+// BoardPermission model - represents access permissions to boards
+const BoardPermission = sequelize.define('BoardPermission', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  boardId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID доски'
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя'
+  },
+  role: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    validate: {
+      isIn: [['owner', 'editor', 'viewer']]
+    },
+    comment: 'Роль пользователя: owner, editor, viewer'
+  }
+}, {
+  tableName: 'board_permissions',
+  timestamps: true,
+  indexes: [
+    { fields: ['boardId'] },
+    { fields: ['userId'] },
+    { fields: ['role'] },
+    { unique: true, fields: ['boardId', 'userId'] }
+  ]
+});
+
 const KanbanTask = sequelize.define('KanbanTask', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   title: {
@@ -906,6 +969,10 @@ const KanbanTask = sequelize.define('KanbanTask', {
   createdBy: {
     type: DataTypes.UUID,
     comment: 'ID пользователя-создателя задачи'
+  },
+  boardId: {
+    type: DataTypes.UUID,
+    comment: 'ID доски Kanban'
   },
   tags: {
     type: DataTypes.JSONB,
@@ -950,6 +1017,7 @@ const KanbanTask = sequelize.define('KanbanTask', {
   indexes: [
     { fields: ['status'] },
     { fields: ['createdBy'] },
+    { fields: ['boardId'] },
     { fields: ['priority'] },
     { fields: ['sortOrder'] },
     { fields: ['dueDate'] },
@@ -958,8 +1026,18 @@ const KanbanTask = sequelize.define('KanbanTask', {
   ]
 });
 
+// KanbanBoard relationships
+KanbanBoard.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
+KanbanBoard.hasMany(KanbanTask, { foreignKey: 'boardId', as: 'tasks', onDelete: 'CASCADE' });
+KanbanBoard.hasMany(BoardPermission, { foreignKey: 'boardId', as: 'permissions', onDelete: 'CASCADE' });
+
+// BoardPermission relationships
+BoardPermission.belongsTo(KanbanBoard, { foreignKey: 'boardId', as: 'board' });
+BoardPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 // KanbanTask relationships
 KanbanTask.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+KanbanTask.belongsTo(KanbanBoard, { foreignKey: 'boardId', as: 'board' });
 
 // AccreditationFile relationships
 AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
@@ -1004,5 +1082,7 @@ module.exports = {
   MedCenter,
   UserMedCenter,
   UserRole,
+  KanbanBoard,
+  BoardPermission,
   KanbanTask
 };

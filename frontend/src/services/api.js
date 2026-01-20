@@ -319,8 +319,38 @@ export const calendar = {
 
 // Kanban
 export const kanban = {
-  // Получить все задачи
-  getTasks: () => api.get('/kanban/tasks'),
+  // === BOARDS ===
+  // Получить все доски пользователя
+  getBoards: () => api.get('/kanban/boards'),
+
+  // Получить конкретную доску
+  getBoard: (id) => api.get(`/kanban/boards/${id}`),
+
+  // Создать новую доску
+  createBoard: (data) => api.post('/kanban/boards', data),
+
+  // Обновить доску
+  updateBoard: (id, data) => api.put(`/kanban/boards/${id}`, data),
+
+  // Удалить доску
+  deleteBoard: (id) => api.delete(`/kanban/boards/${id}`),
+
+  // === BOARD PERMISSIONS ===
+  // Получить разрешения доски
+  getBoardPermissions: (boardId) => api.get(`/kanban/boards/${boardId}/permissions`),
+
+  // Добавить пользователя к доске
+  addBoardPermission: (boardId, data) => api.post(`/kanban/boards/${boardId}/permissions`, data),
+
+  // Изменить роль пользователя
+  updateBoardPermission: (boardId, permId, data) => api.put(`/kanban/boards/${boardId}/permissions/${permId}`, data),
+
+  // Удалить доступ пользователя
+  deleteBoardPermission: (boardId, permId) => api.delete(`/kanban/boards/${boardId}/permissions/${permId}`),
+
+  // === TASKS ===
+  // Получить все задачи конкретной доски
+  getTasks: (boardId) => api.get(`/kanban/tasks?boardId=${boardId}`),
 
   // Получить одну задачу
   getTask: (id) => api.get(`/kanban/tasks/${id}`),
@@ -337,9 +367,10 @@ export const kanban = {
   // Переместить задачу
   moveTask: (id, status, sortOrder) => api.post(`/kanban/tasks/${id}/move`, { status, sortOrder }),
 
-  // Проверить доступ текущего пользователя
-  checkAccess: () => api.get('/kanban/check-access'),
+  // Архивировать задачу вручную
+  archiveTask: (id) => api.post(`/kanban/tasks/${id}/archive`),
 
+  // === FILES ===
   // Загрузить файл
   uploadFile: (file) => {
     const formData = new FormData();
@@ -352,14 +383,16 @@ export const kanban = {
   // Удалить файл
   deleteFile: (fileId, taskId) => api.delete(`/kanban/files/${fileId}?taskId=${taskId}`),
 
-  // Получить архивные задачи
-  getArchive: () => api.get('/kanban/archive'),
+  // === ARCHIVE ===
+  // Получить архивные задачи конкретной доски
+  getArchive: (boardId) => api.get(`/kanban/archive?boardId=${boardId}`),
 
   // Восстановить задачу из архива
   restoreTask: (id) => api.post(`/kanban/tasks/${id}/restore`),
 
-  // Запустить авто-архивацию
-  autoArchive: () => api.post('/kanban/auto-archive')
+  // === LEGACY ===
+  // Проверить доступ текущего пользователя (устарело)
+  checkAccess: () => api.get('/kanban/check-access')
 };
 
 export default api;

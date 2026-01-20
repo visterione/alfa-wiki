@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { kanban, users, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +19,8 @@ import {
   Search,
   Archive,
   Filter,
-  XCircle
+  XCircle,
+  ArrowLeft
 } from 'lucide-react';
 import './Kanban.css';
 
@@ -40,6 +41,8 @@ const PRIORITY_CONFIG = {
 function Kanban() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { id: boardId } = useParams();
+  const [board, setBoard] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,24 +74,30 @@ function Kanban() {
   const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
+    if (!boardId) {
+      navigate('/kanban');
+      return;
+    }
     loadData();
-  }, []);
+  }, [boardId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
 
-      // Проверяем доступ
-      const accessRes = await kanban.checkAccess();
-      setAccess(accessRes.data);
+      // Загружаем информацию о доске
+      const boardRes = await kanban.getBoard(boardId);
+      setBoard(boardRes.data);
 
-      if (!accessRes.data.canRead) {
-        toast.error('У вас нет доступа к Канбану');
-        return;
-      }
+      // Определяем права доступа на основе роли
+      const userRole = boardRes.data.userRole;
+      setAccess({
+        canRead: true,
+        canWrite: userRole === 'owner' || userRole === 'editor'
+      });
 
-      // Загружаем задачи
-      const tasksRes = await kanban.getTasks();
+      // Загружаем задачи доски
+      const tasksRes = await kanban.getTasks(boardId);
       setTasks(tasksRes.data);
 
       // Загружаем список пользователей для назначения
@@ -96,7 +105,15 @@ function Kanban() {
       setUsersList(usersRes.data);
     } catch (error) {
       console.error('Error loading kanban data:', error);
-      toast.error('Ошибка при загрузке данных');
+      if (error.response?.status === 403) {
+        toast.error('У вас нет доступа к этой доске');
+        navigate('/kanban');
+      } else if (error.response?.status === 404) {
+        toast.error('Доска не найдена');
+        navigate('/kanban');
+      } else {
+        toast.error('Ошибка при загрузке данных');
+      }
     } finally {
       setLoading(false);
     }
@@ -178,6 +195,7 @@ function Kanban() {
     try {
       const dataToSend = {
         ...formData,
+        boardId: boardId,
         assigneeIds: formData.assigneeIds || [],
         dueDate: formData.dueDate || null,
         attachments: formData.attachments || []
@@ -209,6 +227,19 @@ function Kanban() {
     } catch (error) {
       console.error('Error deleting task:', error);
       toast.error('Ошибка при удалении задачи');
+    }
+  };
+
+  const handleArchive = async (taskId) => {
+    if (!window.confirm('Отправить задачу в архив?')) return;
+
+    try {
+      await kanban.archiveTask(taskId);
+      toast.success('Задача отправлена в архив');
+      loadData();
+    } catch (error) {
+      console.error('Error archiving task:', error);
+      toast.error('Ошибка при архивировании задачи');
     }
   };
 
@@ -438,7 +469,16 @@ function Kanban() {
   return (
     <div className="kanban-page">
       <div className="kanban-header">
-        <h1>Доска задач</h1>
+        <div className="kanban-header-title">
+          <button
+            className="btn-back-to-list"
+            onClick={() => navigate('/kanban')}
+            title="Вернуться к списку досок"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <h1>{board?.name || 'Доска задач'}</h1>
+        </div>
         <div className="kanban-header-actions">
           <button
             className={`btn-secondary ${hasActiveFilters() ? 'active' : ''}`}
@@ -451,7 +491,7 @@ function Kanban() {
           </button>
           {access.canWrite && (
             <>
-              <button className="btn-secondary" onClick={() => navigate('/kanban/archive')}>
+              <button className="btn-secondary" onClick={() => navigate(`/kanban/board/${boardId}/archive`)}>
                 <Archive size={18} />
                 Архив
               </button>
@@ -589,6 +629,9 @@ function Kanban() {
                                 <div className="task-actions">
                                   <button onClick={() => openEditModal(task)} title="Редактировать">
                                     <Edit2 size={14} />
+                                  </button>
+                                  <button onClick={() => handleArchive(task.id)} title="В архив">
+                                    <Archive size={14} />
                                   </button>
                                   <button onClick={() => handleDelete(task.id)} title="Удалить">
                                     <Trash2 size={14} />

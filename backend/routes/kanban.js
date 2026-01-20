@@ -4,8 +4,9 @@ const path = require('path');
 const fs = require('fs').promises;
 const { v4: uuidv4 } = require('uuid');
 const router = express.Router();
-const { KanbanTask, User } = require('../models');
+const { KanbanTask, KanbanBoard, BoardPermission, User } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { Op } = require('sequelize');
 
 // ============================================================================
 // MULTER CONFIGURATION
@@ -71,7 +72,7 @@ const upload = multer({
 // ============================================================================
 
 /**
- * Проверка прав доступа к Канбану
+ * Проверка прав доступа к Канбану (устаревшая функция, оставлена для совместимости)
  */
 function checkKanbanAccess(user, accessType = 'read') {
   // Админы всегда имеют полный доступ
@@ -88,6 +89,38 @@ function checkKanbanAccess(user, accessType = 'read') {
   }
 
   return false;
+}
+
+/**
+ * Проверка прав доступа к конкретной доске
+ * @param {Object} board - Объект доски
+ * @param {string} userId - ID пользователя
+ * @param {string} requiredRole - Требуемая роль: 'viewer', 'editor', 'owner'
+ * @returns {Promise<Object|null>} - Возвращает permission объект или null
+ */
+async function checkBoardAccess(board, userId, requiredRole = 'viewer') {
+  // Владелец имеет полный доступ
+  if (board.ownerId === userId) {
+    return { role: 'owner', hasAccess: true };
+  }
+
+  // Проверяем разрешения
+  const permission = await BoardPermission.findOne({
+    where: {
+      boardId: board.id,
+      userId: userId
+    }
+  });
+
+  if (!permission) {
+    return null;
+  }
+
+  // Проверяем достаточность прав
+  const roleHierarchy = { viewer: 1, editor: 2, owner: 3 };
+  const hasAccess = roleHierarchy[permission.role] >= roleHierarchy[requiredRole];
+
+  return { role: permission.role, hasAccess };
 }
 
 /**
@@ -112,18 +145,33 @@ async function getAssigneesData(assigneeIds) {
 
 /**
  * GET /api/kanban/tasks
- * Получение всех задач Канбана
+ * Получение всех задач конкретной доски
+ * Требует параметр boardId
  */
 router.get('/tasks', authenticate, async (req, res) => {
   try {
-    // Проверяем права доступа на чтение
-    const hasAccess = checkKanbanAccess(req.user, 'read');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
+    const { boardId } = req.query;
+
+    if (!boardId) {
+      return res.status(400).json({ message: 'boardId обязателен' });
+    }
+
+    // Проверяем существование доски и права доступа
+    const board = await KanbanBoard.findByPk(boardId);
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    const access = await checkBoardAccess(board, req.user.id, 'viewer');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ к доске запрещен' });
     }
 
     const tasks = await KanbanTask.findAll({
-      where: { archived: false },
+      where: {
+        boardId: boardId,
+        archived: false
+      },
       include: [
         { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] }
       ],
@@ -150,19 +198,21 @@ router.get('/tasks', authenticate, async (req, res) => {
  */
 router.get('/tasks/:id', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'read');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
-    }
-
     const task = await KanbanTask.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] }
+        { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] },
+        { model: KanbanBoard, as: 'board' }
       ]
     });
 
     if (!task) {
       return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    // Проверяем права доступа к доске
+    const access = await checkBoardAccess(task.board, req.user.id, 'viewer');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ к доске запрещен' });
     }
 
     const taskData = task.toJSON();
@@ -181,18 +231,29 @@ router.get('/tasks/:id', authenticate, async (req, res) => {
  */
 router.post('/tasks', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен. Только определенные роли могут создавать задачи.' });
-    }
+    const { boardId, title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments } = req.body;
 
-    const { title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments } = req.body;
+    if (!boardId) {
+      return res.status(400).json({ message: 'boardId обязателен' });
+    }
 
     if (!title) {
       return res.status(400).json({ message: 'Название задачи обязательно' });
     }
 
+    // Проверяем существование доски и права доступа (editor или owner)
+    const board = await KanbanBoard.findByPk(boardId);
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    const access = await checkBoardAccess(board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
+    }
+
     const task = await KanbanTask.create({
+      boardId,
       title,
       description,
       status: status || 'backlog',
@@ -228,14 +289,18 @@ router.post('/tasks', authenticate, async (req, res) => {
  */
 router.put('/tasks/:id', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен. Только определенные роли могут редактировать задачи.' });
-    }
+    const task = await KanbanTask.findByPk(req.params.id, {
+      include: [{ model: KanbanBoard, as: 'board' }]
+    });
 
-    const task = await KanbanTask.findByPk(req.params.id);
     if (!task) {
       return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    // Проверяем права доступа к доске (editor или owner)
+    const access = await checkBoardAccess(task.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
     }
 
     const { title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments } = req.body;
@@ -284,14 +349,18 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
  */
 router.delete('/tasks/:id', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен. Только определенные роли могут удалять задачи.' });
-    }
+    const task = await KanbanTask.findByPk(req.params.id, {
+      include: [{ model: KanbanBoard, as: 'board' }]
+    });
 
-    const task = await KanbanTask.findByPk(req.params.id);
     if (!task) {
       return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    // Проверяем права доступа к доске (editor или owner)
+    const access = await checkBoardAccess(task.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
     }
 
     await task.destroy();
@@ -308,14 +377,18 @@ router.delete('/tasks/:id', authenticate, async (req, res) => {
  */
 router.post('/tasks/:id/move', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
-    }
+    const task = await KanbanTask.findByPk(req.params.id, {
+      include: [{ model: KanbanBoard, as: 'board' }]
+    });
 
-    const task = await KanbanTask.findByPk(req.params.id);
     if (!task) {
       return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    // Проверяем права доступа к доске (editor или owner)
+    const access = await checkBoardAccess(task.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
     }
 
     const { status, sortOrder } = req.body;
@@ -368,17 +441,33 @@ router.get('/check-access', authenticate, async (req, res) => {
 
 /**
  * GET /api/kanban/archive
- * Получение всех архивных задач
+ * Получение всех архивных задач конкретной доски
+ * Требует параметр boardId
  */
 router.get('/archive', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write'); // Только с правами редактирования
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
+    const { boardId } = req.query;
+
+    if (!boardId) {
+      return res.status(400).json({ message: 'boardId обязателен' });
+    }
+
+    // Проверяем существование доски и права доступа
+    const board = await KanbanBoard.findByPk(boardId);
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    const access = await checkBoardAccess(board, req.user.id, 'viewer');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ к доске запрещен' });
     }
 
     const tasks = await KanbanTask.findAll({
-      where: { archived: true },
+      where: {
+        boardId: boardId,
+        archived: true
+      },
       include: [
         { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] }
       ],
@@ -399,45 +488,43 @@ router.get('/archive', authenticate, async (req, res) => {
 });
 
 /**
- * POST /api/kanban/auto-archive
- * Автоматическая архивация завершенных задач старше 1 дня
+ * POST /api/kanban/tasks/:id/archive
+ * Ручная архивация задачи
  */
-router.post('/auto-archive', authenticate, async (req, res) => {
+router.post('/tasks/:id/archive', authenticate, async (req, res) => {
   try {
-    // Только админы могут запускать авто-архивацию
-    if (!req.user.isAdmin) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
+    const task = await KanbanTask.findByPk(req.params.id, {
+      include: [{ model: KanbanBoard, as: 'board' }]
+    });
+
+    if (!task) {
+      return res.status(404).json({ message: 'Задача не найдена' });
     }
 
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+    // Проверяем права доступа к доске (editor или owner)
+    const access = await checkBoardAccess(task.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
+    }
 
-    const tasksToArchive = await KanbanTask.findAll({
-      where: {
-        status: 'done',
-        archived: false,
-        completedAt: {
-          [require('sequelize').Op.lte]: oneDayAgo
-        }
-      }
+    await task.update({
+      archived: true,
+      archivedAt: new Date()
     });
 
-    const archivedCount = tasksToArchive.length;
-
-    await Promise.all(tasksToArchive.map(task =>
-      task.update({
-        archived: true,
-        archivedAt: new Date()
-      })
-    ));
-
-    res.json({
-      message: `Архивировано задач: ${archivedCount}`,
-      count: archivedCount
+    const archivedTask = await KanbanTask.findByPk(task.id, {
+      include: [
+        { model: User, as: 'creator', attributes: ['id', 'displayName', 'username', 'avatar'] }
+      ]
     });
+
+    const taskData = archivedTask.toJSON();
+    taskData.assignees = await getAssigneesData(taskData.assigneeIds);
+
+    res.json(taskData);
   } catch (error) {
-    console.error('Error auto-archiving tasks:', error);
-    res.status(500).json({ message: 'Ошибка при архивации задач' });
+    console.error('Error archiving task:', error);
+    res.status(500).json({ message: 'Ошибка при архивации задачи' });
   }
 });
 
@@ -447,14 +534,18 @@ router.post('/auto-archive', authenticate, async (req, res) => {
  */
 router.post('/tasks/:id/restore', authenticate, async (req, res) => {
   try {
-    const hasAccess = checkKanbanAccess(req.user, 'write');
-    if (!hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен' });
-    }
+    const task = await KanbanTask.findByPk(req.params.id, {
+      include: [{ model: KanbanBoard, as: 'board' }]
+    });
 
-    const task = await KanbanTask.findByPk(req.params.id);
     if (!task) {
       return res.status(404).json({ message: 'Задача не найдена' });
+    }
+
+    // Проверяем права доступа к доске (editor или owner)
+    const access = await checkBoardAccess(task.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
     }
 
     await task.update({
@@ -554,6 +645,438 @@ router.delete('/files/:fileId', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error deleting kanban file:', error);
     res.status(500).json({ message: 'Ошибка при удалении файла' });
+  }
+});
+
+// ============================================================================
+// BOARD MANAGEMENT ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/kanban/boards
+ * Получить список всех досок, доступных пользователю
+ */
+router.get('/boards', authenticate, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Получаем доски, где пользователь является владельцем
+    const ownedBoards = await KanbanBoard.findAll({
+      where: {
+        ownerId: userId,
+        archived: false
+      },
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Получаем доски, к которым у пользователя есть доступ через permissions
+    const sharedPermissions = await BoardPermission.findAll({
+      where: { userId },
+      include: [
+        {
+          model: KanbanBoard,
+          as: 'board',
+          where: { archived: false },
+          include: [
+            {
+              model: User,
+              as: 'owner',
+              attributes: ['id', 'displayName', 'email']
+            }
+          ]
+        }
+      ]
+    });
+
+    const sharedBoards = sharedPermissions.map(p => ({
+      ...p.board.toJSON(),
+      userRole: p.role
+    }));
+
+    // Объединяем и добавляем статистику
+    const allBoards = [
+      ...ownedBoards.map(b => ({ ...b.toJSON(), userRole: 'owner' })),
+      ...sharedBoards
+    ];
+
+    // Добавляем количество задач для каждой доски
+    for (let board of allBoards) {
+      const taskCount = await KanbanTask.count({
+        where: {
+          boardId: board.id,
+          archived: false
+        }
+      });
+      board.taskCount = taskCount;
+    }
+
+    res.json(allBoards);
+  } catch (error) {
+    console.error('Error fetching boards:', error);
+    res.status(500).json({ message: 'Ошибка при получении списка досок' });
+  }
+});
+
+/**
+ * POST /api/kanban/boards
+ * Создать новую доску
+ */
+router.post('/boards', authenticate, async (req, res) => {
+  try {
+    const { name, description } = req.body;
+
+    if (!name || name.trim() === '') {
+      return res.status(400).json({ message: 'Название доски обязательно' });
+    }
+
+    const board = await KanbanBoard.create({
+      name: name.trim(),
+      description: description?.trim() || null,
+      ownerId: req.user.id
+    });
+
+    const boardWithOwner = await KanbanBoard.findByPk(board.id, {
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ]
+    });
+
+    res.status(201).json({
+      ...boardWithOwner.toJSON(),
+      userRole: 'owner',
+      taskCount: 0
+    });
+  } catch (error) {
+    console.error('Error creating board:', error);
+    res.status(500).json({ message: 'Ошибка при создании доски' });
+  }
+});
+
+/**
+ * GET /api/kanban/boards/:id
+ * Получить конкретную доску
+ */
+router.get('/boards/:id', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.id, {
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ]
+    });
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Проверяем права доступа
+    const access = await checkBoardAccess(board, req.user.id, 'viewer');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ message: 'Доступ к доске запрещен' });
+    }
+
+    const taskCount = await KanbanTask.count({
+      where: {
+        boardId: board.id,
+        archived: false
+      }
+    });
+
+    res.json({
+      ...board.toJSON(),
+      userRole: access.role,
+      taskCount
+    });
+  } catch (error) {
+    console.error('Error fetching board:', error);
+    res.status(500).json({ message: 'Ошибка при получении доски' });
+  }
+});
+
+/**
+ * PUT /api/kanban/boards/:id
+ * Обновить доску (только владелец)
+ */
+router.put('/boards/:id', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.id);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может редактировать
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Только владелец может редактировать доску' });
+    }
+
+    const { name, description } = req.body;
+
+    if (name !== undefined) {
+      if (!name || name.trim() === '') {
+        return res.status(400).json({ message: 'Название доски не может быть пустым' });
+      }
+      board.name = name.trim();
+    }
+
+    if (description !== undefined) {
+      board.description = description?.trim() || null;
+    }
+
+    await board.save();
+
+    const updatedBoard = await KanbanBoard.findByPk(board.id, {
+      include: [
+        {
+          model: User,
+          as: 'owner',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ]
+    });
+
+    res.json({
+      ...updatedBoard.toJSON(),
+      userRole: 'owner'
+    });
+  } catch (error) {
+    console.error('Error updating board:', error);
+    res.status(500).json({ message: 'Ошибка при обновлении доски' });
+  }
+});
+
+/**
+ * DELETE /api/kanban/boards/:id
+ * Удалить доску (только владелец)
+ * Удаляет доску и все связанные задачи (CASCADE)
+ */
+router.delete('/boards/:id', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.id);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может удалить
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Только владелец может удалить доску' });
+    }
+
+    await board.destroy();
+
+    res.json({ message: 'Доска успешно удалена' });
+  } catch (error) {
+    console.error('Error deleting board:', error);
+    res.status(500).json({ message: 'Ошибка при удалении доски' });
+  }
+});
+
+// ============================================================================
+// BOARD PERMISSIONS ENDPOINTS
+// ============================================================================
+
+/**
+ * GET /api/kanban/boards/:id/permissions
+ * Получить список всех разрешений для доски
+ */
+router.get('/boards/:id/permissions', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.id);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может просматривать разрешения
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const permissions = await BoardPermission.findAll({
+      where: { boardId: req.params.id },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ],
+      order: [['createdAt', 'ASC']]
+    });
+
+    res.json(permissions);
+  } catch (error) {
+    console.error('Error fetching permissions:', error);
+    res.status(500).json({ message: 'Ошибка при получении разрешений' });
+  }
+});
+
+/**
+ * POST /api/kanban/boards/:id/permissions
+ * Добавить пользователю доступ к доске
+ */
+router.post('/boards/:id/permissions', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.id);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может добавлять разрешения
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const { userId, role } = req.body;
+
+    if (!userId || !role) {
+      return res.status(400).json({ message: 'userId и role обязательны' });
+    }
+
+    if (!['editor', 'viewer'].includes(role)) {
+      return res.status(400).json({ message: 'Роль должна быть editor или viewer' });
+    }
+
+    // Проверяем существование пользователя
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'Пользователь не найден' });
+    }
+
+    // Нельзя добавить владельца
+    if (userId === board.ownerId) {
+      return res.status(400).json({ message: 'Владелец уже имеет полный доступ' });
+    }
+
+    // Проверяем, нет ли уже разрешения
+    const existing = await BoardPermission.findOne({
+      where: {
+        boardId: req.params.id,
+        userId: userId
+      }
+    });
+
+    if (existing) {
+      return res.status(409).json({ message: 'Пользователь уже имеет доступ к этой доске' });
+    }
+
+    const permission = await BoardPermission.create({
+      boardId: req.params.id,
+      userId,
+      role
+    });
+
+    const permissionWithUser = await BoardPermission.findByPk(permission.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ]
+    });
+
+    res.status(201).json(permissionWithUser);
+  } catch (error) {
+    console.error('Error creating permission:', error);
+    res.status(500).json({ message: 'Ошибка при добавлении разрешения' });
+  }
+});
+
+/**
+ * PUT /api/kanban/boards/:boardId/permissions/:permId
+ * Изменить роль пользователя
+ */
+router.put('/boards/:boardId/permissions/:permId', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.boardId);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может изменять разрешения
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const permission = await BoardPermission.findByPk(req.params.permId);
+
+    if (!permission || permission.boardId !== req.params.boardId) {
+      return res.status(404).json({ message: 'Разрешение не найдено' });
+    }
+
+    const { role } = req.body;
+
+    if (!role || !['editor', 'viewer'].includes(role)) {
+      return res.status(400).json({ message: 'Роль должна быть editor или viewer' });
+    }
+
+    permission.role = role;
+    await permission.save();
+
+    const updatedPermission = await BoardPermission.findByPk(permission.id, {
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'displayName', 'email']
+        }
+      ]
+    });
+
+    res.json(updatedPermission);
+  } catch (error) {
+    console.error('Error updating permission:', error);
+    res.status(500).json({ message: 'Ошибка при обновлении разрешения' });
+  }
+});
+
+/**
+ * DELETE /api/kanban/boards/:boardId/permissions/:permId
+ * Удалить доступ пользователя к доске
+ */
+router.delete('/boards/:boardId/permissions/:permId', authenticate, async (req, res) => {
+  try {
+    const board = await KanbanBoard.findByPk(req.params.boardId);
+
+    if (!board) {
+      return res.status(404).json({ message: 'Доска не найдена' });
+    }
+
+    // Только владелец может удалять разрешения
+    if (board.ownerId !== req.user.id) {
+      return res.status(403).json({ message: 'Доступ запрещен' });
+    }
+
+    const permission = await BoardPermission.findByPk(req.params.permId);
+
+    if (!permission || permission.boardId !== req.params.boardId) {
+      return res.status(404).json({ message: 'Разрешение не найдено' });
+    }
+
+    await permission.destroy();
+
+    res.json({ message: 'Доступ успешно удален' });
+  } catch (error) {
+    console.error('Error deleting permission:', error);
+    res.status(500).json({ message: 'Ошибка при удалении разрешения' });
   }
 });
 

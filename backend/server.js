@@ -203,9 +203,6 @@ async function startServer() {
     // Initialize analyses price update cron job
     require('./cron/analysesCron');
 
-    // Initialize kanban auto-archive cron job
-    require('./cron/kanbanArchiveCron');
-
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`✅ Socket.IO initialized`);

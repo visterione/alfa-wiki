@@ -15,6 +15,40 @@
   margin-bottom: 2rem;
 }
 
+.kanban-header-title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.btn-back-to-list {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-back-to-list:hover {
+  background: #f9fafb;
+  border-color: #d1d5db;
+  color: #1f2937;
+}
+
+.btn-back-to-list svg {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.btn-back-to-list:hover svg {
+  transform: translateX(-2px);
+}
+
 .kanban-header h1 {
   margin: 0;
   font-size: 2rem;
