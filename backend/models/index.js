@@ -74,10 +74,17 @@ const User = sequelize.define('User', {
     type: DataTypes.DATE,
     comment: 'Время истечения кода 2FA' 
   },
-  twoFactorAttempts: { 
-    type: DataTypes.INTEGER, 
+  twoFactorAttempts: {
+    type: DataTypes.INTEGER,
     defaultValue: 0,
-    comment: 'Количество неудачных попыток ввода кода' 
+    comment: 'Количество неудачных попыток ввода кода'
+  },
+
+  // Доступ к редактированию карточек врачей
+  canEditDoctorCards: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Разрешение на создание, редактирование и удаление карточек врачей'
   }
 }, { tableName: 'users', timestamps: true });
 

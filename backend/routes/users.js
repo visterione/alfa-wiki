@@ -7,6 +7,21 @@ const { send2FADisabledNotification } = require('../services/emailService');
 
 const router = express.Router();
 
+// Get basic list of users (for assignee selection, etc.) - available to all authenticated users
+router.get('/list', authenticate, async (req, res) => {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'username', 'displayName', 'avatar'],
+      where: { isActive: true },
+      order: [['displayName', 'ASC']]
+    });
+    res.json(users);
+  } catch (error) {
+    console.error('Get users list error:', error);
+    res.status(500).json({ error: 'Failed to fetch users list' });
+  }
+});
+
 // Get all users (admin only)
 router.get('/', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
@@ -56,7 +71,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, adminAccess } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -115,6 +130,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       isAdmin: isAdmin || false,
       isActive: isActive !== false,
       twoFactorEnabled: twoFactorEnabled || false,
+      canEditDoctorCards: canEditDoctorCards || false,
       adminAccess: adminAccess || {
         pages: false,
         sidebar: false,
@@ -163,7 +179,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, adminAccess } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -219,6 +235,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(isAdmin !== undefined && { isAdmin }),
       ...(isActive !== undefined && { isActive }),
       ...(twoFactorEnabled !== undefined && { twoFactorEnabled }),
+      ...(canEditDoctorCards !== undefined && { canEditDoctorCards }),
       ...(adminAccess !== undefined && { adminAccess })
     };
 

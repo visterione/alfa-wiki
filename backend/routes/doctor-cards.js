@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { DoctorCard, SearchIndex } = require('../models');
+const { DoctorCard, SearchIndex, User } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,6 +12,34 @@ const router = express.Router();
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
 const MIS_TIMEOUT = 15000;
+
+// Middleware для проверки прав на редактирование карточек врачей
+const canEditDoctorCards = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    // Администраторы имеют полный доступ
+    if (user.isAdmin) {
+      return next();
+    }
+
+    // Проверяем специальное разрешение
+    if (user.canEditDoctorCards) {
+      return next();
+    }
+
+    return res.status(403).json({
+      error: 'Доступ запрещён',
+      message: 'У вас нет прав на редактирование карточек врачей'
+    });
+  } catch (err) {
+    console.error('canEditDoctorCards middleware error:', err);
+    return res.status(500).json({ error: 'Ошибка проверки прав доступа' });
+  }
+};
 
 // === HELPER: Запрос к MIS API ===
 const misRequest = async (endpoint, params = {}) => {
@@ -267,7 +295,7 @@ router.post('/reindex', authenticate, async (req, res) => {
 });
 
 // Создать карточку
-router.post('/', authenticate, [
+router.post('/', authenticate, canEditDoctorCards, [
   body('pageSlug').trim().notEmpty().withMessage('pageSlug обязателен'),
   body('fullName').trim().notEmpty().withMessage('ФИО обязательно')
 ], async (req, res) => {
@@ -321,7 +349,7 @@ router.post('/', authenticate, [
 });
 
 // Обновить карточку
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
   try {
     const card = await DoctorCard.findByPk(req.params.id);
     if (!card) {
@@ -375,7 +403,7 @@ router.put('/:id', authenticate, async (req, res) => {
 });
 
 // Обновить порядок сортировки (массово)
-router.put('/page/:pageSlug/reorder', authenticate, async (req, res) => {
+router.put('/page/:pageSlug/reorder', authenticate, canEditDoctorCards, async (req, res) => {
   try {
     const { pageSlug } = req.params;
     const { order } = req.body;
@@ -399,7 +427,7 @@ router.put('/page/:pageSlug/reorder', authenticate, async (req, res) => {
 });
 
 // Удалить карточку
-router.delete('/:id', authenticate, async (req, res) => {
+router.delete('/:id', authenticate, canEditDoctorCards, async (req, res) => {
   try {
     const card = await DoctorCard.findByPk(req.params.id);
     if (!card) {
@@ -432,7 +460,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // Принудительное обновление услуг для одной карточки
-router.post('/:id/refresh-services', authenticate, async (req, res) => {
+router.post('/:id/refresh-services', authenticate, canEditDoctorCards, async (req, res) => {
   try {
     const card = await DoctorCard.findByPk(req.params.id);
     if (!card) {

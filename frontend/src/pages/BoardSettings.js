@@ -27,7 +27,7 @@ const BoardSettings = () => {
       const [boardRes, permissionsRes, usersRes] = await Promise.all([
         kanban.getBoard(boardId),
         kanban.getBoardPermissions(boardId),
-        users.list()
+        users.listBasic()
       ]);
       setBoard(boardRes.data);
       setPermissions(permissionsRes.data);

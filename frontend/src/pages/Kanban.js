@@ -101,7 +101,7 @@ function Kanban() {
       setTasks(tasksRes.data);
 
       // Загружаем список пользователей для назначения
-      const usersRes = await users.list();
+      const usersRes = await users.listBasic();
       setUsersList(usersRes.data);
     } catch (error) {
       console.error('Error loading kanban data:', error);

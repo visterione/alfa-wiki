@@ -54,7 +54,8 @@ export const auth = {
 
 // Users
 export const users = {
-  list: (params) => api.get('/users', { params }),
+  list: (params) => api.get('/users', { params }), // Admin only - full user list with all details
+  listBasic: () => api.get('/users/list'), // All authenticated users - basic list for assignee selection
   get: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),

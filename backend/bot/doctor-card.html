@@ -438,6 +438,8 @@ window.dcApp = (function() {
   var selectedFilterClinic = null;
   var selectedFilterTag = null;
   var notesEditor = null;
+  var currentUser = null;
+  var canEdit = false;
 
   var CLINICS = [
     { id: 1, name: 'Альфа', color: '#FF80AB' },
@@ -478,6 +480,29 @@ window.dcApp = (function() {
       if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
       return r.json();
     });
+  }
+
+  function loadCurrentUser() {
+    return fetchAPI(API_BASE + '/auth/me')
+      .then(function(data) {
+        currentUser = data;
+        // Администраторы и пользователи с правом canEditDoctorCards могут редактировать
+        canEdit = currentUser.isAdmin || currentUser.canEditDoctorCards;
+        console.log('Current user loaded:', { isAdmin: currentUser.isAdmin, canEditDoctorCards: currentUser.canEditDoctorCards, canEdit: canEdit });
+        updateUIPermissions();
+      })
+      .catch(function(err) {
+        console.error('Failed to load current user:', err);
+        canEdit = false;
+      });
+  }
+
+  function updateUIPermissions() {
+    // Скрыть/показать кнопку "Добавить врача"
+    var addBtn = document.querySelector('.dc-btn-primary[onclick*="openAddModal"]');
+    if (addBtn) {
+      addBtn.style.display = canEdit ? '' : 'none';
+    }
   }
 
   function showToast(msg, type) {
@@ -707,8 +732,8 @@ window.dcApp = (function() {
             '<button type="button" class="dc-tab active" data-card="' + card.id + '" data-tab="info" onclick="dcApp.switchTab(this)">' + ICONS.info + '</button>' +
             '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="services" onclick="dcApp.switchTab(this)">' + ICONS.chart + '</button>' +
             '<button type="button" class="dc-tab" data-card="' + card.id + '" data-tab="schedule" onclick="dcApp.switchTab(this)">' + ICONS.clock + '</button>' +
-            '<button type="button" class="dc-tab btn-edit" onclick="dcApp.openEditModal(\'' + card.id + '\')">' + ICONS.edit + '</button>' +
-            '<button type="button" class="dc-tab btn-delete" onclick="dcApp.deleteCard(\'' + card.id + '\')">' + ICONS.trash + '</button>' +
+            (canEdit ? '<button type="button" class="dc-tab btn-edit" onclick="dcApp.openEditModal(\'' + card.id + '\')">' + ICONS.edit + '</button>' : '') +
+            (canEdit ? '<button type="button" class="dc-tab btn-delete" onclick="dcApp.deleteCard(\'' + card.id + '\')">' + ICONS.trash + '</button>' : '') +
           '</div>' +
         '</div>' +
         '<div class="dc-card-body" id="body-' + card.id + '">' +
@@ -1822,7 +1847,13 @@ window.dcApp = (function() {
   function init() {
     var params = new URLSearchParams(window.location.search);
     highlightId = params.get('highlight');
-    loadCards();
+    // Сначала загружаем данные пользователя, потом карточки
+    loadCurrentUser().then(function() {
+      loadCards();
+    }).catch(function(err) {
+      console.error('Init error:', err);
+      loadCards(); // Загружаем карточки даже при ошибке
+    });
   }
 
   if (document.readyState === 'loading') {

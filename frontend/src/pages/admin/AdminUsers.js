@@ -106,6 +106,7 @@ export default function AdminUsers() {
     isAdmin: false,
     isActive: true,
     twoFactorEnabled: true,  // По умолчанию включена
+    canEditDoctorCards: false,  // Доступ к редактированию карточек врачей
     adminAccess: {
       pages: false,
       sidebar: false,
@@ -259,6 +260,7 @@ export default function AdminUsers() {
         isAdmin: user.isAdmin,
         isActive: user.isActive,
         twoFactorEnabled: user.twoFactorEnabled || false,
+        canEditDoctorCards: user.canEditDoctorCards || false,
         adminAccess: user.adminAccess || {
           pages: false,
           sidebar: false,
@@ -283,6 +285,7 @@ export default function AdminUsers() {
         isAdmin: false,
         isActive: true,
         twoFactorEnabled: true,  // По умолчанию включена для новых пользователей
+        canEditDoctorCards: false,
         adminAccess: {
           pages: false,
           sidebar: false,
@@ -698,10 +701,10 @@ export default function AdminUsers() {
                   borderRadius: 'var(--radius-md)',
                   marginTop: 16
                 }}>
-                  <div style={{ fontWeight: 500, marginBottom: 12, color: 'var(--text-primary)' }}>
+                  <div style={{ fontWeight: 500, marginBottom: 16, color: 'var(--text-primary)' }}>
                     Доступ к админ-разделам
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 8px' }}>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
@@ -773,6 +776,14 @@ export default function AdminUsers() {
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, kanban: e.target.checked}})}
                       />
                       Канбан-доска
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.canEditDoctorCards}
+                        onChange={e => setForm({...form, canEditDoctorCards: e.target.checked})}
+                      />
+                      Карточки врачей
                     </label>
                   </div>
                   <p style={{
