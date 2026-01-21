@@ -329,26 +329,25 @@ export const ResizableImage = Node.create({
     return [{ tag: 'img[src]' }];
   },
 
-  renderHTML({ node, HTMLAttributes }) {
+  renderHTML({ node }) {
+    // ВАЖНО: Этот метод вызывается при getHTML() для сериализации
     // Формируем атрибуты явно из node.attrs
     const attrs = {
-      src: node.attrs.src,
-      alt: node.attrs.alt || undefined,
-      title: node.attrs.title || undefined,
-      width: node.attrs.width || undefined,
-      height: node.attrs.height || undefined,
-      'data-display': node.attrs.display || 'inline',
-      'data-float': node.attrs.float || 'none',
-      'data-align': node.attrs.align || 'left'
+      src: node.attrs.src
     };
 
-    // Удаляем undefined значения
-    Object.keys(attrs).forEach(key => {
-      if (attrs[key] === undefined) {
-        delete attrs[key];
-      }
-    });
+    // Добавляем опциональные атрибуты
+    if (node.attrs.alt) attrs.alt = node.attrs.alt;
+    if (node.attrs.title) attrs.title = node.attrs.title;
+    if (node.attrs.width) attrs.width = node.attrs.width;
+    if (node.attrs.height) attrs.height = node.attrs.height;
 
+    // Всегда добавляем data- атрибуты даже со значениями по умолчанию
+    attrs['data-display'] = node.attrs.display || 'inline';
+    attrs['data-float'] = node.attrs.float || 'none';
+    attrs['data-align'] = node.attrs.align || 'left';
+
+    console.log('ResizableImage renderHTML:', attrs);
     return ['img', attrs];
   },
 

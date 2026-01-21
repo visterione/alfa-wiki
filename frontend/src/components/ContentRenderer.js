@@ -74,6 +74,25 @@ export default function ContentRenderer({ content }) {
   useEffect(() => {
     if (!editor || editor.isDestroyed || !content) return;
 
+    console.log('=== ContentRenderer: Setting content ===');
+    console.log('Content length:', content.length);
+    // Проверяем изображения во входящем контенте
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = content;
+    const images = tempDiv.querySelectorAll('img');
+    console.log('Images in incoming content:', images.length);
+    images.forEach((img, i) => {
+      console.log(`Image ${i}:`, {
+        src: img.src?.substring(0, 100) + (img.src?.length > 100 ? '...' : ''),
+        srcAttr: img.getAttribute('src')?.substring(0, 100),
+        width: img.getAttribute('width'),
+        height: img.getAttribute('height'),
+        'data-display': img.getAttribute('data-display'),
+        'data-float': img.getAttribute('data-float'),
+        'data-align': img.getAttribute('data-align')
+      });
+    });
+
     // Избегаем бесконечного цикла проверяя текущий контент
     const currentContent = editor.getHTML();
     if (currentContent !== content) {

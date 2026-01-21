@@ -1,5 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useEditor, EditorContent, NodeViewWrapper, BubbleMenu } from '@tiptap/react';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
@@ -31,6 +33,134 @@ import {
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Editor.css';
+
+// Расширение для обработки вставки изображений
+const ImagePasteHandler = Extension.create({
+  name: 'imagePasteHandler',
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey('imagePasteHandler'),
+        props: {
+          handlePaste(view, event) {
+            console.log('=== ProseMirror handlePaste called ===');
+            const items = Array.from(event.clipboardData?.items || []);
+            console.log('Clipboard items:', items.map(i => i.type));
+
+            // Сначала проверяем прямые файлы изображений
+            for (const item of items) {
+              if (item.type.startsWith('image/')) {
+                console.log('Image file found in clipboard');
+                event.preventDefault();
+
+                const file = item.getAsFile();
+                if (!file) {
+                  console.log('No file from imageItem');
+                  return true;
+                }
+
+                console.log('Image file:', file.name, file.size, file.type);
+
+                if (file.size > 10 * 1024 * 1024) {
+                  toast.error('Максимальный размер изображения 10MB');
+                  return true;
+                }
+
+                toast.promise(
+                  media.upload(file).then(({ data }) => {
+                    const imageUrl = `${BASE_URL}/${data.path}`;
+                    console.log('Image uploaded, URL:', imageUrl);
+                    const { schema, tr } = view.state;
+                    const node = schema.nodes.image.create({ src: imageUrl });
+                    const transaction = tr.replaceSelectionWith(node);
+                    view.dispatch(transaction);
+                    console.log('Image node inserted');
+                  }),
+                  {
+                    loading: 'Загрузка изображения...',
+                    success: 'Изображение загружено',
+                    error: 'Ошибка загрузки изображения',
+                  }
+                );
+
+                return true;
+              }
+            }
+
+            // Проверяем HTML на наличие base64 изображений
+            const htmlItem = items.find(item => item.type === 'text/html');
+            if (htmlItem) {
+              // Предотвращаем стандартную вставку если есть HTML
+              event.preventDefault();
+              console.log('HTML item found, checking for base64 images');
+
+              htmlItem.getAsString((html) => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const base64Images = doc.querySelectorAll('img[src^="data:image"]');
+
+                if (base64Images.length > 0) {
+                  console.log(`Found ${base64Images.length} base64 images, uploading to server`);
+
+                  // Обрабатываем каждое base64 изображение
+                  base64Images.forEach((img) => {
+                    const base64Data = img.src;
+                    console.log('Processing base64 image, length:', base64Data.length);
+
+                    // Конвертируем base64 в Blob
+                    fetch(base64Data)
+                      .then(res => res.blob())
+                      .then(blob => {
+                        console.log('Blob created, size:', blob.size);
+
+                        if (blob.size > 10 * 1024 * 1024) {
+                          toast.error('Максимальный размер изображения 10MB');
+                          return;
+                        }
+
+                        // Создаем File из Blob
+                        const file = new File([blob], 'pasted-image.png', { type: blob.type });
+
+                        // Загружаем на сервер
+                        toast.promise(
+                          media.upload(file).then(({ data }) => {
+                            const imageUrl = `${BASE_URL}/${data.path}`;
+                            console.log('Base64 image uploaded, URL:', imageUrl);
+                            const { schema, tr } = view.state;
+                            const node = schema.nodes.image.create({ src: imageUrl });
+                            const transaction = tr.replaceSelectionWith(node);
+                            view.dispatch(transaction);
+                          }),
+                          {
+                            loading: 'Загрузка изображения...',
+                            success: 'Изображение загружено',
+                            error: 'Ошибка загрузки изображения',
+                          }
+                        );
+                      })
+                      .catch(error => {
+                        console.error('Error processing base64 image:', error);
+                      });
+                  });
+                } else {
+                  // Нет base64 изображений, используем стандартную вставку HTML
+                  console.log('No base64 images, using default HTML paste');
+                  // Не делаем ничего - TipTap сам обработает
+                }
+              });
+
+              return true;
+            }
+
+            console.log('No image in clipboard');
+            return false;
+          },
+        },
+      }),
+    ];
+  },
+});
 
 // Bubble Menu для изображений
 function ImageBubbleMenu({ editor }) {
@@ -1216,11 +1346,30 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       FontFamily,
       Youtube.configure({ width: 640, height: 360 }),
       LocalVideo,
+      ImagePasteHandler, // Добавляем обработчик вставки изображений
       Placeholder.configure({ placeholder })
     ],
     content,
     onUpdate: ({ editor }) => {
-      onChange?.(editor.getHTML());
+      const html = editor.getHTML();
+      console.log('=== Editor onUpdate ===');
+      console.log('HTML:', html);
+      // Проверяем изображения
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = html;
+      const images = tempDiv.querySelectorAll('img');
+      console.log('Images found:', images.length);
+      images.forEach((img, i) => {
+        console.log(`Image ${i}:`, {
+          src: img.src.substring(0, 100) + (img.src.length > 100 ? '...' : ''),
+          width: img.getAttribute('width'),
+          height: img.getAttribute('height'),
+          'data-display': img.getAttribute('data-display'),
+          'data-float': img.getAttribute('data-float'),
+          'data-align': img.getAttribute('data-align')
+        });
+      });
+      onChange?.(html);
     }
   });
 
