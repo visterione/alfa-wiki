@@ -48,7 +48,7 @@ const indexAnalysis = async (analysis) => {
     analysis.comment
   ].filter(Boolean).join(' | ');
 
-  const title = `${analysis.serviceName} (${analysis.medCenter})`;
+  const title = analysis.serviceName;
 
   const keywords = [
     analysis.medCenter?.toLowerCase(),

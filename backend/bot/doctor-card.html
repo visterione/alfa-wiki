@@ -123,12 +123,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-calendar-header { display: flex; justify-content: center; align-items: center; padding: 12px; background: linear-gradient(135deg, var(--dc-primary) 0%, #1d4ed8 100%); border-radius: 8px 8px 0 0; box-shadow: 0 2px 4px rgba(37,99,235,0.1); }
 .dc-calendar-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
 .dc-calendar-title { font-size: 15px; font-weight: 600; color: white; display: flex; align-items: center; gap: 8px; }
-.dc-calendar-title::before { content: '📅'; font-size: 18px; }
 .dc-calendar-nav { display: flex; gap: 8px; }
 .dc-calendar-nav-btn { padding: 4px 8px; border: 1px solid var(--dc-border); border-radius: 6px; background: white; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
 .dc-calendar-nav-btn:hover { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
 .dc-calendar-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding: 8px 4px; background: #f8fafc; border-radius: 6px; margin-bottom: 4px; }
 .dc-calendar-weekday { text-align: center; font-size: 10px; font-weight: 700; color: #64748b; padding: 4px 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.dc-calendar-weekday:nth-child(6), .dc-calendar-weekday:nth-child(7) { color: #dc2626; }
 .dc-calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; padding: 4px; }
 .dc-calendar-day-label { text-align: center; font-size: 11px; font-weight: 600; color: var(--dc-text-secondary); padding: 4px; }
 .dc-calendar-day { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 2px solid #e2e8f0; border-radius: 10px; background: white; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; position: relative; min-height: 45px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -137,13 +137,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-calendar-day.today::after { content: '•'; position: absolute; bottom: 4px; font-size: 16px; color: var(--dc-primary); line-height: 1; }
 .dc-calendar-day.selected { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
 .dc-calendar-day.other-month { color: var(--dc-text-secondary); opacity: 0.4; }
+.dc-calendar-day:nth-child(7n+6), .dc-calendar-day:nth-child(7n) { color: #dc2626; }
 .dc-calendar-hint { text-align: center; font-size: 11px; color: var(--dc-text-secondary); margin-top: 4px; }
 
 /* Day Schedule View */
-.dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; }
-.dc-day-schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--dc-bg); border-radius: 8px; }
+.dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 2px solid #e2e8f0; margin-top: 16px; }
+.dc-day-schedule-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; background: transparent; border: none; }
 .dc-day-schedule-header h4 { margin: 0; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
-.dc-day-title { font-size: 14px; font-weight: 600; }
+.dc-day-title { font-size: 14px; font-weight: 600; color: var(--dc-text); }
+.dc-close-schedule-btn { display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent; cursor: pointer; font-size: 16px; font-weight: 600; color: #64748b; transition: all 0.2s; line-height: 1; padding: 0; }
+.dc-close-schedule-btn:hover { background: #f1f5f9; color: #e11d48; transform: scale(1.1); }
 .dc-back-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border: 1px solid var(--dc-border); border-radius: 6px; background: white; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s; }
 .dc-back-btn:hover { background: var(--dc-bg); }
 .dc-back-btn svg { width: 14px; height: 14px; }
@@ -746,14 +749,14 @@ window.dcApp = (function() {
                   '<div class="dc-calendar-weekday">Вс</div>' +
                 '</div>' +
                 '<div class="dc-calendar-grid" id="calendar-grid-' + card.id + '"></div>' +
-              '</div>' +
-              // Day Schedule View (shows after day click)
-              '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
-                '<div class="dc-day-schedule-header">' +
-                  '<button class="dc-back-btn" onclick="dcApp.backToCalendar(\'' + card.id + '\')">← Назад к календарю</button>' +
-                  '<span class="dc-day-title" id="day-title-' + card.id + '"></span>' +
+                // Day Schedule View (shows after day click, now inside calendar view)
+                '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
+                  '<div class="dc-day-schedule-header">' +
+                    '<span class="dc-day-title" id="day-title-' + card.id + '"></span>' +
+                    '<button class="dc-close-schedule-btn" onclick="dcApp.backToCalendar(\'' + card.id + '\')" title="Закрыть расписание">✕</button>' +
+                  '</div>' +
+                  '<div id="day-schedule-content-' + card.id + '"></div>' +
                 '</div>' +
-                '<div id="day-schedule-content-' + card.id + '"></div>' +
               '</div>' +
             '</div>' +
           '</div>' +
@@ -974,8 +977,7 @@ window.dcApp = (function() {
 
     if (!calendarView || !dayScheduleView || !dayTitle || !dayScheduleContent) return;
 
-    // Switch views
-    calendarView.style.display = 'none';
+    // Show timeline below calendar (don't hide calendar anymore)
     dayScheduleView.style.display = 'block';
 
     // Update title
@@ -1042,13 +1044,11 @@ window.dcApp = (function() {
     });
   }
 
-  // Back to calendar view
+  // Hide day schedule (timeline stays below calendar)
   function backToCalendar(cardId) {
-    var calendarView = document.getElementById('calendar-view-' + cardId);
     var dayScheduleView = document.getElementById('day-schedule-view-' + cardId);
 
-    if (calendarView && dayScheduleView) {
-      calendarView.style.display = 'block';
+    if (dayScheduleView) {
       dayScheduleView.style.display = 'none';
     }
   }

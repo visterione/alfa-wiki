@@ -97,10 +97,18 @@ export default function CourseView() {
 
     const currentIndex = course.lessons.findIndex(l => l.id === currentLesson.id);
 
-    // Если это последний урок - показываем тест
+    // Если это последний урок
     if (currentIndex === course.lessons.length - 1) {
-      setShowTest(true);
-      return;
+      // Если есть вопросы теста - показываем тест
+      if (course.testQuestions.length > 0) {
+        setShowTest(true);
+        return;
+      } else {
+        // Если вопросов нет - курс просто для ознакомления
+        toast.success('Вы завершили просмотр курса!');
+        navigate('/courses');
+        return;
+      }
     }
 
     // Переходим к следующему уроку
@@ -290,10 +298,17 @@ export default function CourseView() {
               title={!isCurrentCompleted ? 'Отметьте текущий урок как завершенный' : ''}
             >
               {isLastLesson ? (
-                <>
-                  Перейти к тесту
-                  <Award size={18} />
-                </>
+                course.testQuestions.length > 0 ? (
+                  <>
+                    Перейти к тесту
+                    <Award size={18} />
+                  </>
+                ) : (
+                  <>
+                    Завершить курс
+                    <CheckCircle size={18} />
+                  </>
+                )
               ) : (
                 <>
                   Следующий урок
@@ -320,10 +335,39 @@ function CourseTest({ course, onBack, onComplete }) {
     loadTest();
   }, []);
 
+  // Функция для перемешивания массива (алгоритм Фишера-Йетса)
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
   const loadTest = async () => {
     try {
       const { data } = await courses.getTest(course.id);
-      setQuestions(data);
+
+      // Перемешиваем варианты ответов для каждого вопроса
+      const questionsWithShuffledOptions = data.map(question => {
+        // Создаем массив с индексами и значениями опций
+        const indexedOptions = question.options.map((option, index) => ({
+          option,
+          originalIndex: index
+        }));
+
+        // Перемешиваем
+        const shuffledIndexedOptions = shuffleArray(indexedOptions);
+
+        return {
+          ...question,
+          shuffledOptions: shuffledIndexedOptions.map(item => item.option),
+          indexMapping: shuffledIndexedOptions.map(item => item.originalIndex)
+        };
+      });
+
+      setQuestions(questionsWithShuffledOptions);
     } catch (error) {
       console.error('Load test error:', error);
       toast.error('Ошибка загрузки теста');
@@ -341,7 +385,16 @@ function CourseTest({ course, onBack, onComplete }) {
 
     setSubmitting(true);
     try {
-      const { data } = await courses.submitTest(course.id, answers);
+      // Конвертируем перемешанные индексы обратно в оригинальные
+      const originalAnswers = {};
+      questions.forEach(question => {
+        const shuffledIndex = answers[question.id];
+        if (shuffledIndex !== undefined) {
+          originalAnswers[question.id] = question.indexMapping[shuffledIndex];
+        }
+      });
+
+      const { data } = await courses.submitTest(course.id, originalAnswers);
       setResult(data);
       
       if (data.passed) {
@@ -469,7 +522,7 @@ function CourseTest({ course, onBack, onComplete }) {
             </div>
             <div className="test-question-text">{question.question}</div>
             <div className="test-question-options">
-              {question.options.map((option, optionIndex) => (
+              {question.shuffledOptions.map((option, optionIndex) => (
                 <label key={optionIndex} className="test-option">
                   <input
                     type="radio"

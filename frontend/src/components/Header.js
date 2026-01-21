@@ -8,6 +8,13 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { search as searchApi, BASE_URL } from '../services/api';
+import {
+  VehicleSearchResult,
+  AccreditationSearchResult,
+  AnalysisSearchResult,
+  DoctorSearchResult,
+  DefaultSearchResult
+} from './SearchResultComponents';
 import './Header.css';
 
 // Маппинг иконок для разных типов результатов
@@ -217,6 +224,22 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 searchResults.map((result, idx) => {
                   const typeName = getTypeName(result.type, result.displayType);
 
+                  // Определяем какой компонент использовать для отображения контента
+                  const renderResultContent = () => {
+                    switch (result.type) {
+                      case 'vehicle':
+                        return <VehicleSearchResult result={result} searchQuery={searchQuery} />;
+                      case 'accreditation':
+                        return <AccreditationSearchResult result={result} searchQuery={searchQuery} />;
+                      case 'analysis':
+                        return <AnalysisSearchResult result={result} searchQuery={searchQuery} />;
+                      case 'doctor':
+                        return <DoctorSearchResult result={result} searchQuery={searchQuery} />;
+                      default:
+                        return <DefaultSearchResult result={result} searchQuery={searchQuery} />;
+                    }
+                  };
+
                   return (
                     <div
                       key={`${result.type}-${result.id}-${idx}`}
@@ -241,17 +264,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                             {typeName}
                           </span>
                         </div>
-                        {(result.excerpt || result.description) && (
-                          <div className="search-result-excerpt">
-                            {highlightText(result.excerpt || result.description || '', searchQuery).map((part, i) => (
-                              part.highlight ? (
-                                <mark key={i}>{part.text}</mark>
-                              ) : (
-                                <span key={i}>{part.text}</span>
-                              )
-                            ))}
-                          </div>
-                        )}
+                        {renderResultContent()}
                       </div>
                     </div>
                   );

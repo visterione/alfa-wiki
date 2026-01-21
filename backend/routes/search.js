@@ -50,13 +50,20 @@ const formatIndexedResult = async (item, searchTerm) => {
   // Специальная обработка для разных типов сущностей
   let displayType = item.entityType;
   let icon = pageIcon || 'file';
-  
+  let structuredData = null; // Новое поле для структурированных данных
+
   switch (item.entityType) {
     case 'accreditation':
       displayType = 'Аккредитация';
-      if (!pageIcon) icon = 'award'; // Fallback только если нет иконки родительской страницы
+      if (!pageIcon) icon = 'award';
       if (item.metadata) {
         const meta = item.metadata;
+        structuredData = {
+          medCenter: meta.medCenter || null,
+          specialty: meta.specialty || null,
+          expirationDate: meta.expirationDate || null
+        };
+        // Оставляем старый excerpt для совместимости
         const parts = [];
         if (meta.medCenter) parts.push(`Медцентр: ${meta.medCenter}`);
         if (meta.expirationDate) {
@@ -68,12 +75,19 @@ const formatIndexedResult = async (item, searchTerm) => {
         }
       }
       break;
-    
+
     case 'vehicle':
       displayType = 'Транспорт';
-      if (!pageIcon) icon = 'car'; // Fallback только если нет иконки родительской страницы
+      if (!pageIcon) icon = 'car';
       if (item.metadata) {
         const meta = item.metadata;
+        structuredData = {
+          organization: meta.organization || null,
+          licensePlate: meta.licensePlate || null,
+          insuranceDate: meta.insuranceDate || null,
+          model: meta.model || null
+        };
+        // Оставляем старый excerpt для совместимости
         const parts = [];
         if (meta.organization) parts.push(`Орг: ${meta.organization}`);
         if (meta.licensePlate) parts.push(`${meta.licensePlate}`);
@@ -86,23 +100,41 @@ const formatIndexedResult = async (item, searchTerm) => {
         }
       }
       break;
-      
+
     case 'doctor':
       displayType = 'Врач';
-      if (!pageIcon) icon = 'user'; // Fallback только если нет иконки родительской страницы
+      if (!pageIcon) icon = 'user';
       if (item.metadata) {
         const meta = item.metadata;
+
+        // Поиск совпадающей услуги
+        let matchedService = null;
+        if (item.content) {
+          const searchLower = searchTerm.toLowerCase();
+          const contentParts = item.content.split(' | ');
+
+          for (const part of contentParts) {
+            if (part.toLowerCase().includes(searchLower) &&
+                !part.toLowerCase().includes(item.title?.toLowerCase() || '')) {
+              matchedService = part.substring(0, 80);
+              break;
+            }
+          }
+        }
+
+        structuredData = {
+          specialty: meta.specialty || null,
+          servicesCount: meta.servicesCount || 0,
+          pageSlug: meta.pageSlug || null,
+          matchedService: matchedService
+        };
+
+        // Оставляем старый excerpt для совместимости
         const parts = [];
-        
-        // Специальность
         if (meta.specialty) parts.push(meta.specialty);
-        
-        // Кол-во услуг
         if (meta.servicesCount && meta.servicesCount > 0) {
           parts.push(`${meta.servicesCount} услуг`);
         }
-        
-        // Раздел
         if (meta.pageSlug) {
           const pageNames = {
             'stomatologi': 'Стоматологи',
@@ -118,40 +150,33 @@ const formatIndexedResult = async (item, searchTerm) => {
           const pageName = pageNames[meta.pageSlug] || meta.pageSlug;
           parts.push(`Раздел: ${pageName}`);
         }
-        
         if (parts.length > 0) {
           excerpt = parts.join(' • ');
         }
-        
-        // Если поиск совпал с услугой, показываем какая именно
-        if (item.content) {
-          const searchLower = searchTerm.toLowerCase();
-          const contentParts = item.content.split(' | ');
-          
-          // Ищем совпадение в услугах (обычно в конце контента)
-          for (const part of contentParts) {
-            if (part.toLowerCase().includes(searchLower) && 
-                !part.toLowerCase().includes(item.title?.toLowerCase() || '')) {
-              // Это совпадение в услуге, а не в имени
-              excerpt += excerpt ? ' | ' : '';
-              excerpt += `Услуга: ${cleanExcerpt(part.substring(0, 80))}${part.length > 80 ? '...' : ''}`;
-              break;
-            }
-          }
+        if (matchedService) {
+          excerpt += excerpt ? ' | ' : '';
+          excerpt += `Услуга: ${cleanExcerpt(matchedService)}${matchedService.length >= 80 ? '...' : ''}`;
         }
       }
       break;
-      
+
     case 'service':
       displayType = 'Услуга';
-      if (!pageIcon) icon = 'briefcase'; // Fallback только если нет иконки родительской страницы
+      if (!pageIcon) icon = 'briefcase';
       break;
 
     case 'analysis':
       displayType = 'Анализ';
-      if (!pageIcon) icon = 'test-tube'; // Fallback только если нет иконки родительской страницы
+      if (!pageIcon) icon = 'test-tube';
       if (item.metadata) {
         const meta = item.metadata;
+        structuredData = {
+          medCenter: meta.medCenter || null,
+          serviceCode: meta.serviceCode || null,
+          price: meta.price || null,
+          isStopped: meta.isStopped || false
+        };
+        // Оставляем старый excerpt для совместимости
         const parts = [];
         if (meta.medCenter) parts.push(`Медцентр: ${meta.medCenter}`);
         if (meta.serviceCode) parts.push(`Код: ${meta.serviceCode}`);
@@ -161,8 +186,8 @@ const formatIndexedResult = async (item, searchTerm) => {
           excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
         }
       }
-      break;  
-      
+      break;
+
     default:
       displayType = item.entityType;
       icon = 'file';
@@ -177,7 +202,8 @@ const formatIndexedResult = async (item, searchTerm) => {
     excerpt: excerpt,
     url: item.url,
     keywords: item.keywords,
-    metadata: item.metadata
+    metadata: item.metadata,
+    structuredData: structuredData // Новое поле
   };
 };
 
