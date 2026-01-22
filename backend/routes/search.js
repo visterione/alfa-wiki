@@ -5,6 +5,20 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Функция проверки доступа к странице
+function canAccessPage(page, userRoleIds, isAdmin) {
+  // Админы видят всё
+  if (isAdmin) return true;
+
+  // Если у страницы пустой allowedRoles, она доступна всем
+  if (!page.allowedRoles || page.allowedRoles.length === 0) {
+    return true;
+  }
+
+  // Проверяем, есть ли у пользователя нужная роль
+  return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+}
+
 // Функция для очистки и форматирования excerpt
 const cleanExcerpt = (text) => {
   if (!text) return '';
@@ -211,13 +225,17 @@ const formatIndexedResult = async (item, searchTerm) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const { q, type, limit = 20 } = req.query;
-    
+
     if (!q || q.trim().length < 2) {
       return res.json({ results: [], total: 0, query: q });
     }
 
     const searchTerm = q.trim().toLowerCase();
     const results = [];
+
+    // Получаем роли пользователя для проверки доступа
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const isAdmin = req.user.isAdmin;
 
     // Search in pages
     if (!type || type === 'all' || type === 'page') {
@@ -231,11 +249,15 @@ router.get('/', authenticate, async (req, res) => {
             { keywords: { [Op.overlap]: [searchTerm] } }
           ]
         },
-        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon'],
+        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon', 'allowedRoles'],
         limit: parseInt(limit)
       });
 
       pages.forEach(page => {
+        // Проверяем доступ пользователя к странице
+        if (!canAccessPage(page, userRoleIds, isAdmin)) {
+          return; // Пропускаем страницы без доступа
+        }
         let excerpt = '';
         const content = page.searchContent || '';
         const index = content.toLowerCase().indexOf(searchTerm);
@@ -292,7 +314,50 @@ router.get('/', authenticate, async (req, res) => {
         limit: parseInt(limit)
       });
 
+      // Фильтруем результаты по доступу к родительской странице
       for (const item of indexed) {
+        // DEBUG: Логируем indexed item
+        console.log('Indexed item check:', {
+          entityType: item.entityType,
+          title: item.title,
+          hasMetadata: !!item.metadata,
+          pageSlug: item.metadata?.pageSlug
+        });
+
+        // Проверяем доступ к родительской странице (если указана в metadata)
+        if (item.metadata && item.metadata.pageSlug) {
+          const parentPage = await Page.findOne({
+            where: { slug: item.metadata.pageSlug },
+            attributes: ['allowedRoles']
+          });
+
+          console.log('Parent page check:', {
+            pageSlug: item.metadata.pageSlug,
+            found: !!parentPage,
+            allowedRoles: parentPage?.allowedRoles
+          });
+
+          // Если родительская страница найдена, проверяем доступ к ней
+          if (parentPage) {
+            const hasAccess = canAccessPage(parentPage, userRoleIds, isAdmin);
+            console.log('Access check result:', hasAccess);
+
+            if (!hasAccess) {
+              console.log('→ BLOCKED: No access to parent page');
+              continue; // Пропускаем элементы с недоступной родительской страницей
+            }
+          }
+        } else {
+          // Нет pageSlug в metadata
+          if (!isAdmin) {
+            // Для обычных пользователей - скрываем элементы без привязки к странице
+            console.log('→ BLOCKED: No pageSlug in metadata, item hidden (non-admin)');
+            continue;
+          }
+          // Для админов - показываем все элементы
+          console.log('→ ALLOWED: No pageSlug but user is admin');
+        }
+
         results.push(await formatIndexedResult(item, searchTerm));
       }
     }
@@ -332,7 +397,7 @@ router.get('/', authenticate, async (req, res) => {
 router.get('/fulltext', authenticate, async (req, res) => {
   try {
     const { q, limit = 20 } = req.query;
-    
+
     if (!q || q.trim().length < 2) {
       return res.json({ results: [], total: 0, query: q });
     }
@@ -340,10 +405,14 @@ router.get('/fulltext', authenticate, async (req, res) => {
     const searchQuery = q.trim();
     const likePattern = `%${searchQuery}%`;
 
-    // Search in pages with ranking
+    // Получаем роли пользователя для проверки доступа
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const isAdmin = req.user.isAdmin;
+
+    // Search in pages with ranking (включаем allowedRoles для проверки доступа)
     const pageResults = await sequelize.query(`
       SELECT
-        id, title, slug, description, keywords, "searchContent", icon,
+        id, title, slug, description, keywords, "searchContent", icon, "allowedRoles",
         CASE
           WHEN title ILIKE :exactStart THEN 5
           WHEN title ILIKE :likePattern THEN 4
@@ -403,16 +472,21 @@ router.get('/fulltext', authenticate, async (req, res) => {
 
     // Process pages
     pageResults.forEach(r => {
+      // Проверяем доступ пользователя к странице
+      if (!canAccessPage(r, userRoleIds, isAdmin)) {
+        return; // Пропускаем страницы без доступа
+      }
+
       let excerpt = '';
-      
+
       if (r.searchContent) {
         const index = r.searchContent.toLowerCase().indexOf(searchTermLower);
         if (index !== -1) {
           const start = Math.max(0, index - 60);
           const end = Math.min(r.searchContent.length, index + searchQuery.length + 60);
           let rawExcerpt = r.searchContent.substring(start, end);
-          excerpt = (start > 0 ? '...' : '') + 
-                   cleanExcerpt(rawExcerpt) + 
+          excerpt = (start > 0 ? '...' : '') +
+                   cleanExcerpt(rawExcerpt) +
                    (end < r.searchContent.length ? '...' : '');
         } else {
           let rawExcerpt = r.searchContent.substring(0, 150);
@@ -438,6 +512,28 @@ router.get('/fulltext', authenticate, async (req, res) => {
 
     // Process indexed entities
     for (const item of indexResults) {
+      // Проверяем доступ к родительской странице (если указана в metadata)
+      if (item.metadata && item.metadata.pageSlug) {
+        const parentPage = await Page.findOne({
+          where: { slug: item.metadata.pageSlug },
+          attributes: ['allowedRoles']
+        });
+
+        // Если родительская страница найдена, проверяем доступ к ней
+        if (parentPage) {
+          if (!canAccessPage(parentPage, userRoleIds, isAdmin)) {
+            continue; // Пропускаем элементы с недоступной родительской страницей
+          }
+        }
+      } else {
+        // Нет pageSlug в metadata
+        if (!isAdmin) {
+          // Для обычных пользователей - скрываем элементы без привязки к странице
+          continue;
+        }
+        // Для админов - показываем все элементы
+      }
+
       results.push(await formatIndexedResult(item, searchTermLower));
     }
 
@@ -510,20 +606,24 @@ router.delete('/index/:entityType/:entityId', authenticate, async (req, res) => 
 router.get('/suggest', authenticate, async (req, res) => {
   try {
     const { q, limit = 10 } = req.query;
-    
+
     if (!q || q.trim().length < 2) {
       return res.json([]);
     }
 
     const searchTerm = q.trim();
 
-    // Search pages
+    // Получаем роли пользователя для проверки доступа
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const isAdmin = req.user.isAdmin;
+
+    // Search pages (включаем allowedRoles для проверки доступа)
     const pages = await Page.findAll({
       where: {
         isPublished: true,
         title: { [Op.iLike]: `%${searchTerm}%` }
       },
-      attributes: ['title', 'slug'],
+      attributes: ['title', 'slug', 'allowedRoles'],
       order: [
         [sequelize.literal(`CASE WHEN title ILIKE '${searchTerm}%' THEN 0 ELSE 1 END`)],
         ['title', 'ASC']
@@ -531,22 +631,48 @@ router.get('/suggest', authenticate, async (req, res) => {
       limit: Math.floor(parseInt(limit) / 2)
     });
 
+    // Фильтруем страницы по доступу
+    const filteredPages = pages.filter(page => canAccessPage(page, userRoleIds, isAdmin));
+
     // Search index
     const indexed = await SearchIndex.findAll({
       where: {
         title: { [Op.iLike]: `%${searchTerm}%` }
       },
-      attributes: ['title', 'url', 'entityType'],
+      attributes: ['title', 'url', 'entityType', 'metadata'],
       limit: Math.floor(parseInt(limit) / 2)
     });
 
+    // Фильтруем indexed items по доступу к родительским страницам
+    const filteredIndexed = [];
+    for (const item of indexed) {
+      // Элементы без pageSlug
+      if (!item.metadata || !item.metadata.pageSlug) {
+        // Показываем только админам
+        if (isAdmin) {
+          filteredIndexed.push(item);
+        }
+        continue;
+      }
+
+      // Проверяем доступ к родительской странице
+      const parentPage = await Page.findOne({
+        where: { slug: item.metadata.pageSlug },
+        attributes: ['allowedRoles']
+      });
+
+      if (parentPage && canAccessPage(parentPage, userRoleIds, isAdmin)) {
+        filteredIndexed.push(item);
+      }
+    }
+
     const suggestions = [
-      ...pages.map(p => ({
+      ...filteredPages.map(p => ({
         title: p.title,
         url: `/page/${p.slug}`,
         type: 'page'
       })),
-      ...indexed.map(i => ({
+      ...filteredIndexed.map(i => ({
         title: i.title,
         url: i.url,
         type: i.entityType

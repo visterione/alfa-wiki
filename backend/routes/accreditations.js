@@ -89,6 +89,7 @@ const indexAccreditation = async (accreditation) => {
     keywords: keywords,
     url: `/page/${ACCREDITATIONS_PAGE_SLUG}?highlight=${accreditation.id}`,
     metadata: {
+      pageSlug: ACCREDITATIONS_PAGE_SLUG, // <-- Добавлена привязка к родительской странице
       medCenter: accreditation.medCenter,
       specialty: accreditation.specialty,
       expirationDate: accreditation.expirationDate,

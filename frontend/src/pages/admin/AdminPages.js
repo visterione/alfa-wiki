@@ -376,12 +376,11 @@ export default function AdminPages() {
               <div className="form-group">
                 <label className="form-label">Доступ по ролям</label>
                 <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                  Если не выбрано ни одной роли, папка будет доступна всем пользователям. Администратор всегда имеет доступ.
+                  Если не выбрано ни одной роли, папка будет доступна всем пользователям. Администраторы видят все папки независимо от настроек.
                 </div>
                 <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem' }}>
                   {allRoles.map(role => {
-                    const isAdmin = role.name === 'Администратор' || role.name === 'Admin';
-                    const isChecked = isAdmin || folderForm.allowedRoles?.includes(role.id) || false;
+                    const isChecked = folderForm.allowedRoles?.includes(role.id) || false;
 
                     return (
                       <label
@@ -391,15 +390,13 @@ export default function AdminPages() {
                           alignItems: 'center',
                           gap: '0.5rem',
                           padding: '0.25rem 0',
-                          cursor: isAdmin ? 'not-allowed' : 'pointer',
-                          opacity: isAdmin ? 0.7 : 1,
+                          cursor: 'pointer',
                           margin: 0
                         }}
                       >
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          disabled={isAdmin}
                           onChange={e => {
                             const newRoles = e.target.checked
                               ? [...(folderForm.allowedRoles || []), role.id]
@@ -408,7 +405,7 @@ export default function AdminPages() {
                           }}
                           style={{ margin: 0, width: 'auto', height: 'auto', flex: 'none' }}
                         />
-                        <span style={{ flex: 'none' }}>{role.name}{isAdmin ? ' (всегда)' : ''}</span>
+                        <span style={{ flex: 'none' }}>{role.name}</span>
                       </label>
                     );
                   })}

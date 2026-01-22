@@ -90,6 +90,7 @@ const indexVehicle = async (vehicle) => {
     keywords: keywords,
     url: `/page/${VEHICLES_PAGE_SLUG}?highlight=${vehicle.id}`,
     metadata: {
+      pageSlug: VEHICLES_PAGE_SLUG, // <-- Добавлена привязка к родительской странице
       organization: vehicle.organization,
       licensePlate: vehicle.licensePlate,
       carBrand: vehicle.carBrand,
