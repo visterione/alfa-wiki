@@ -481,6 +481,83 @@ const MedCenter = sequelize.define('MedCenter', {
   timestamps: true
 });
 
+// === PRICE COMPARISON MODEL ===
+const PriceComparison = sequelize.define('PriceComparison', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Название сравнения (напр. "Сравнение цен январь 2026")'
+  },
+  description: {
+    type: DataTypes.TEXT,
+    comment: 'Описание сравнения'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя-создателя'
+  },
+  competitors: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Массив названий конкурентов: ["Неомед", "МедГрад", "АйКлиник"]'
+  },
+  ownMedCenters: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Массив своих медцентров для сравнения: ["Альфа", "Кидс"]'
+  }
+}, {
+  tableName: 'price_comparisons',
+  timestamps: true,
+  indexes: [
+    { fields: ['createdBy'] },
+    { fields: ['name'] }
+  ]
+});
+
+// === PRICE COMPARISON ITEM MODEL ===
+const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  comparisonId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID сравнения'
+  },
+  serviceCode: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    comment: 'Код услуги (артикул)'
+  },
+  serviceName: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Название услуги'
+  },
+  misServiceId: {
+    type: DataTypes.STRING(50),
+    comment: 'ID услуги в МИС'
+  },
+  prices: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Объект с ценами: {"Альфа": 300, "Неомед": 330, "МедГрад": 290}'
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Порядок сортировки в списке'
+  }
+}, {
+  tableName: 'price_comparison_items',
+  timestamps: true,
+  indexes: [
+    { fields: ['comparisonId'] },
+    { fields: ['serviceCode'] },
+    { fields: ['sortOrder'] }
+  ]
+});
+
 // === USER-MEDCENTER MODEL (Many-to-Many) ===
 const UserMedCenter = sequelize.define('UserMedCenter', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -1056,6 +1133,11 @@ VehicleFile.belongsTo(Vehicle, { foreignKey: 'vehicleId', as: 'vehicle' });
 VehicleFile.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
 Vehicle.hasMany(VehicleFile, { foreignKey: 'vehicleId', as: 'files', onDelete: 'CASCADE' });
 
+// PriceComparison relationships
+PriceComparison.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+PriceComparison.hasMany(PriceComparisonItem, { foreignKey: 'comparisonId', as: 'items', onDelete: 'CASCADE' });
+PriceComparisonItem.belongsTo(PriceComparison, { foreignKey: 'comparisonId', as: 'comparison' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -1091,5 +1173,7 @@ module.exports = {
   UserRole,
   KanbanBoard,
   BoardPermission,
-  KanbanTask
+  KanbanTask,
+  PriceComparison,
+  PriceComparisonItem
 };

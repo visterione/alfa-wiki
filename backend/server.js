@@ -33,6 +33,7 @@ const coursesRoutes = require('./routes/courses');
 const analysesRoutes = require('./routes/analyses');
 const calendarRoutes = require('./routes/calendar');
 const kanbanRoutes = require('./routes/kanban');
+const priceComparisonsRoutes = require('./routes/price-comparisons');
 
 const app = express();
 const server = http.createServer(app);
@@ -160,6 +161,7 @@ app.use('/api/courses', coursesRoutes);
 app.use('/api/analyses', analysesRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/kanban', kanbanRoutes);
+app.use('/api/price-comparisons', priceComparisonsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
