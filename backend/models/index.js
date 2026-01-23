@@ -175,7 +175,7 @@ const Media = sequelize.define('Media', {
   filename: { type: DataTypes.STRING(255), allowNull: false },
   originalName: { type: DataTypes.STRING(255) },
   mimeType: { type: DataTypes.STRING(100) },
-  size: { type: DataTypes.INTEGER },
+  size: { type: DataTypes.BIGINT },
   path: { type: DataTypes.STRING(1000), allowNull: false },
   thumbnailPath: { type: DataTypes.STRING(1000) },
   alt: { type: DataTypes.STRING(500) },
@@ -297,7 +297,7 @@ const AccreditationFile = sequelize.define('AccreditationFile', {
     comment: 'MIME тип файла'
   },
   size: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     comment: 'Размер файла в байтах'
   },
   path: {
@@ -386,7 +386,7 @@ const VehicleFile = sequelize.define('VehicleFile', {
     comment: 'MIME тип файла'
   },
   size: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.BIGINT,
     comment: 'Размер файла в байтах'
   },
   path: {

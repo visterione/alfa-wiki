@@ -85,18 +85,44 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Upload single file
-router.post('/upload', authenticate, requirePermission('media', 'upload'), 
+router.post('/upload', authenticate, requirePermission('media', 'upload'),
   upload.single('file'), async (req, res) => {
+  let uploadedFilePath = null;
+  let thumbnailFilePath = null;
+
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    uploadedFilePath = req.file.path;
     const { alt, description } = req.body;
-    
+
     // Декодируем имя файла для корректного отображения кириллицы
     const originalName = decodeFileName(req.file.originalname);
-    
+
+    // Check for duplicate file (same filename and size within last 5 minutes)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const existingMedia = await Media.findOne({
+      where: {
+        filename: req.file.filename,
+        size: req.file.size,
+        uploadedBy: req.user.id,
+        createdAt: { [require('sequelize').Op.gte]: fiveMinutesAgo }
+      }
+    });
+
+    if (existingMedia) {
+      console.warn('Duplicate upload detected, returning existing media:', existingMedia.id);
+      // Clean up the newly uploaded duplicate file
+      await fs.unlink(uploadedFilePath);
+      return res.status(200).json({
+        ...existingMedia.toJSON(),
+        url: `/${existingMedia.path}`,
+        thumbnailUrl: existingMedia.thumbnailPath ? `/${existingMedia.thumbnailPath}` : null
+      });
+    }
+
     const relativePath = path.relative(
       path.join(__dirname, '..'),
       req.file.path
@@ -106,21 +132,27 @@ router.post('/upload', authenticate, requirePermission('media', 'upload'),
 
     // Generate thumbnail for images
     if (req.file.mimetype.startsWith('image/') && !req.file.mimetype.includes('svg')) {
-      const thumbDir = path.join(path.dirname(req.file.path), 'thumbs');
-      await fs.mkdir(thumbDir, { recursive: true });
-      
-      const thumbFilename = `thumb_${req.file.filename}`;
-      const thumbPath = path.join(thumbDir, thumbFilename);
-      
-      await sharp(req.file.path)
-        .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toFile(thumbPath);
-      
-      thumbnailPath = path.relative(
-        path.join(__dirname, '..'),
-        thumbPath
-      ).replace(/\\/g, '/');
+      try {
+        const thumbDir = path.join(path.dirname(req.file.path), 'thumbs');
+        await fs.mkdir(thumbDir, { recursive: true });
+
+        const thumbFilename = `thumb_${req.file.filename}`;
+        const thumbPath = path.join(thumbDir, thumbFilename);
+        thumbnailFilePath = thumbPath;
+
+        await sharp(req.file.path)
+          .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 80 })
+          .toFile(thumbPath);
+
+        thumbnailPath = path.relative(
+          path.join(__dirname, '..'),
+          thumbPath
+        ).replace(/\\/g, '/');
+      } catch (thumbError) {
+        console.error('Thumbnail generation failed:', thumbError);
+        // Continue without thumbnail
+      }
     }
 
     const media = await Media.create({
@@ -142,13 +174,30 @@ router.post('/upload', authenticate, requirePermission('media', 'upload'),
     });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
+
+    // Cleanup uploaded files on error
+    try {
+      if (uploadedFilePath) {
+        await fs.unlink(uploadedFilePath);
+        console.log('Cleaned up uploaded file:', uploadedFilePath);
+      }
+      if (thumbnailFilePath) {
+        await fs.unlink(thumbnailFilePath);
+        console.log('Cleaned up thumbnail:', thumbnailFilePath);
+      }
+    } catch (cleanupError) {
+      console.error('Error during cleanup:', cleanupError);
+    }
+
+    res.status(500).json({ error: 'Failed to upload file', details: error.message });
   }
 });
 
 // Upload multiple files
 router.post('/upload-multiple', authenticate, requirePermission('media', 'upload'),
   upload.array('files', 10), async (req, res) => {
+  const uploadedFiles = [];
+
   try {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ error: 'No files uploaded' });
@@ -157,55 +206,92 @@ router.post('/upload-multiple', authenticate, requirePermission('media', 'upload
     const results = [];
 
     for (const file of req.files) {
-      // Декодируем имя файла
-      const originalName = decodeFileName(file.originalname);
-      
-      const relativePath = path.relative(
-        path.join(__dirname, '..'),
-        file.path
-      ).replace(/\\/g, '/');
+      let thumbnailFilePath = null;
+      uploadedFiles.push({ path: file.path, thumbnail: null });
+      const currentFileIndex = uploadedFiles.length - 1;
 
-      let thumbnailPath = null;
+      try {
+        // Декодируем имя файла
+        const originalName = decodeFileName(file.originalname);
 
-      if (file.mimetype.startsWith('image/') && !file.mimetype.includes('svg')) {
-        const thumbDir = path.join(path.dirname(file.path), 'thumbs');
-        await fs.mkdir(thumbDir, { recursive: true });
-        
-        const thumbFilename = `thumb_${file.filename}`;
-        const thumbPathFull = path.join(thumbDir, thumbFilename);
-        
-        await sharp(file.path)
-          .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
-          .jpeg({ quality: 80 })
-          .toFile(thumbPathFull);
-        
-        thumbnailPath = path.relative(
+        const relativePath = path.relative(
           path.join(__dirname, '..'),
-          thumbPathFull
+          file.path
         ).replace(/\\/g, '/');
+
+        let thumbnailPath = null;
+
+        if (file.mimetype.startsWith('image/') && !file.mimetype.includes('svg')) {
+          try {
+            const thumbDir = path.join(path.dirname(file.path), 'thumbs');
+            await fs.mkdir(thumbDir, { recursive: true });
+
+            const thumbFilename = `thumb_${file.filename}`;
+            const thumbPathFull = path.join(thumbDir, thumbFilename);
+            thumbnailFilePath = thumbPathFull;
+            uploadedFiles[currentFileIndex].thumbnail = thumbnailFilePath;
+
+            await sharp(file.path)
+              .resize(300, 300, { fit: 'inside', withoutEnlargement: true })
+              .jpeg({ quality: 80 })
+              .toFile(thumbPathFull);
+
+            thumbnailPath = path.relative(
+              path.join(__dirname, '..'),
+              thumbPathFull
+            ).replace(/\\/g, '/');
+          } catch (thumbError) {
+            console.error('Thumbnail generation failed for', file.originalname, ':', thumbError);
+            // Continue without thumbnail
+          }
+        }
+
+        const media = await Media.create({
+          filename: file.filename,
+          originalName: originalName, // Используем декодированное имя
+          mimeType: file.mimetype,
+          size: file.size,
+          path: relativePath,
+          thumbnailPath,
+          uploadedBy: req.user.id
+        });
+
+        results.push({
+          ...media.toJSON(),
+          url: `/${relativePath}`,
+          thumbnailUrl: thumbnailPath ? `/${thumbnailPath}` : null
+        });
+      } catch (fileError) {
+        console.error('Error processing file', file.originalname, ':', fileError);
+        // Continue processing other files
       }
+    }
 
-      const media = await Media.create({
-        filename: file.filename,
-        originalName: originalName, // Используем декодированное имя
-        mimeType: file.mimetype,
-        size: file.size,
-        path: relativePath,
-        thumbnailPath,
-        uploadedBy: req.user.id
-      });
-
-      results.push({
-        ...media.toJSON(),
-        url: `/${relativePath}`,
-        thumbnailUrl: thumbnailPath ? `/${thumbnailPath}` : null
-      });
+    if (results.length === 0) {
+      throw new Error('No files were successfully uploaded');
     }
 
     res.status(201).json(results);
   } catch (error) {
     console.error('Upload multiple error:', error);
-    res.status(500).json({ error: 'Failed to upload files' });
+
+    // Cleanup all uploaded files on error
+    for (const fileInfo of uploadedFiles) {
+      try {
+        if (fileInfo.path) {
+          await fs.unlink(fileInfo.path);
+          console.log('Cleaned up uploaded file:', fileInfo.path);
+        }
+        if (fileInfo.thumbnail) {
+          await fs.unlink(fileInfo.thumbnail);
+          console.log('Cleaned up thumbnail:', fileInfo.thumbnail);
+        }
+      } catch (cleanupError) {
+        console.error('Error during cleanup:', cleanupError);
+      }
+    }
+
+    res.status(500).json({ error: 'Failed to upload files', details: error.message });
   }
 });
 
