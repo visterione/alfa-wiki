@@ -110,8 +110,8 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '10gb' }));
+app.use(express.urlencoded({ extended: true, limit: '10gb' }));
 
 // Logging
 if (process.env.NODE_ENV !== 'test') {

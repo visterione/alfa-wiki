@@ -1132,9 +1132,9 @@ function MenuBar({ editor }) {
       return;
     }
 
-    const maxSize = 200 * 1024 * 1024; // 200MB
+    const maxSize = 10 * 1024 * 1024 * 1024; // 10GB
     if (file.size > maxSize) {
-      toast.error('Максимальный размер видео 200MB');
+      toast.error('Максимальный размер видео 10GB');
       return;
     }
 
