@@ -3,16 +3,10 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { Analysis, SearchIndex } = require('../models');
+const { Service, SearchIndex } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
-
-// ═══════════════════════════════════════════════════════════════
-// НАСТРОЙКА: Укажи slug wiki-страницы с анализами
-// ═══════════════════════════════════════════════════════════════
-const ANALYSES_PAGE_SLUG = 'analyses'; // <-- ЗАМЕНИ НА СВОЙ SLUG
-// ═══════════════════════════════════════════════════════════════
 
 // MIS API конфигурация
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
@@ -37,43 +31,42 @@ const misRequest = async (endpoint, params = {}) => {
   }
 };
 
-// === HELPER: Индексация анализа для поиска ===
-const indexAnalysis = async (analysis) => {
+// === HELPER: Индексация услуги для поиска ===
+const indexService = async (service) => {
   const searchContent = [
-    analysis.lab,
-    analysis.serviceCode,
-    analysis.serviceName,
-    analysis.price ? `${analysis.price} руб` : '',
-    analysis.isStopped ? 'не выполняется' : 'выполняется',
-    analysis.comment
+    service.medCenter,
+    service.serviceCode,
+    service.serviceName,
+    service.price ? `${service.price} руб` : '',
+    service.isStopped ? 'не выполняется' : 'выполняется',
+    service.comment
   ].filter(Boolean).join(' | ');
 
-  const title = analysis.serviceName;
+  const title = service.serviceName;
 
   const keywords = [
-    analysis.lab?.toLowerCase(),
-    analysis.serviceCode?.toLowerCase(),
-    analysis.serviceName?.toLowerCase().split(' '),
-    'анализ',
-    'лаборатория',
-    'исследование',
-    'диагностика'
+    service.medCenter?.toLowerCase(),
+    service.serviceCode?.toLowerCase(),
+    service.serviceName?.toLowerCase().split(' '),
+    'услуга',
+    'сервис',
+    'медицинская услуга'
   ].flat().filter(Boolean);
 
   await SearchIndex.upsert({
-    entityType: 'analysis',
-    entityId: analysis.id,
+    entityType: 'service',
+    entityId: service.id,
     title: title,
     content: searchContent,
     keywords: keywords,
-    url: `/page/${ANALYSES_PAGE_SLUG}?highlight=${analysis.id}`,
+    url: `/page/${service.pageSlug}?highlight=${service.id}`,
     metadata: {
-      pageSlug: ANALYSES_PAGE_SLUG,
-      lab: analysis.lab,
-      serviceCode: analysis.serviceCode,
-      serviceName: analysis.serviceName,
-      price: analysis.price,
-      isStopped: analysis.isStopped
+      pageSlug: service.pageSlug,
+      medCenter: service.medCenter,
+      serviceCode: service.serviceCode,
+      serviceName: service.serviceName,
+      price: service.price,
+      isStopped: service.isStopped
     }
   });
 };
@@ -82,13 +75,14 @@ const indexAnalysis = async (analysis) => {
 // ROUTES
 // ═══════════════════════════════════════════════════════════════
 
-// GET /api/analyses - Получить все анализы с фильтрацией и сортировкой
+// GET /api/services - Получить все услуги с фильтрацией и сортировкой
 router.get('/', authenticate, async (req, res) => {
   try {
     const {
       search = '',
-      lab = '',
+      medCenter = '',
       isStopped = '',
+      pageSlug = '',
       sortBy = 'serviceName',
       sortOrder = 'ASC'
     } = req.query;
@@ -103,26 +97,31 @@ router.get('/', authenticate, async (req, res) => {
       ];
     }
 
-    if (lab) {
-      where.lab = lab;
+    if (medCenter) {
+      where.medCenter = medCenter;
     }
 
     if (isStopped !== '') {
       where.isStopped = isStopped === 'true';
     }
 
-    const validSortFields = ['lab', 'serviceCode', 'serviceName', 'price', 'isStopped', 'createdAt'];
+    if (pageSlug) {
+      where.pageSlug = pageSlug;
+    }
+
+    const validSortFields = ['medCenter', 'serviceCode', 'serviceName', 'price', 'isStopped', 'createdAt'];
     const validSortOrders = ['ASC', 'DESC'];
 
     const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'serviceName';
     const finalSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : 'ASC';
 
-    const analyses = await Analysis.findAll({
+    const services = await Service.findAll({
       where,
       order: [[finalSortBy, finalSortOrder]],
       attributes: [
         'id',
-        'lab',
+        'pageSlug',
+        'medCenter',
         'serviceCode',
         'serviceName',
         'price',
@@ -135,23 +134,31 @@ router.get('/', authenticate, async (req, res) => {
       ]
     });
 
-    res.json(analyses);
+    res.json(services);
   } catch (error) {
-    console.error('Error fetching analyses:', error);
-    res.status(500).json({ error: 'Ошибка при получении данных анализов' });
+    console.error('Error fetching services:', error);
+    res.status(500).json({ error: 'Ошибка при получении данных услуг' });
   }
 });
 
-// GET /api/analyses/stats - Статистика
+// GET /api/services/stats - Статистика по конкретной странице
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const [stats] = await Analysis.sequelize.query(`
+    const { pageSlug } = req.query;
+
+    let whereClause = '';
+    if (pageSlug) {
+      whereClause = `WHERE "pageSlug" = '${pageSlug}'`;
+    }
+
+    const [stats] = await Service.sequelize.query(`
       SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE "isStopped" = true) as stopped,
-        COUNT(DISTINCT "lab") as centers,
+        COUNT(DISTINCT "medCenter") as centers,
         ROUND(AVG(price), 2) as avg_price
-      FROM analyses
+      FROM services
+      ${whereClause}
     `);
 
     res.json(stats[0]);
@@ -161,23 +168,31 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/analyses/labs - Список уникальных лабораторий
-router.get('/labs', authenticate, async (req, res) => {
+// GET /api/services/medcenters - Список уникальных медцентров для конкретной страницы
+router.get('/medcenters', authenticate, async (req, res) => {
   try {
-    const [labs] = await Analysis.sequelize.query(`
-      SELECT DISTINCT "lab"
-      FROM analyses
-      ORDER BY "lab"
+    const { pageSlug } = req.query;
+
+    let whereClause = '';
+    if (pageSlug) {
+      whereClause = `WHERE "pageSlug" = '${pageSlug}'`;
+    }
+
+    const [centers] = await Service.sequelize.query(`
+      SELECT DISTINCT "medCenter"
+      FROM services
+      ${whereClause}
+      ORDER BY "medCenter"
     `);
 
-    res.json(labs.map(c => c.lab));
+    res.json(centers.map(c => c.medCenter));
   } catch (error) {
-    console.error('Error fetching labs:', error);
-    res.status(500).json({ error: 'Ошибка при получении списка лабораторий' });
+    console.error('Error fetching medcenters:', error);
+    res.status(500).json({ error: 'Ошибка при получении списка медцентров' });
   }
 });
 
-// POST /api/analyses/search-mis - Поиск анализов в МИС API
+// POST /api/services/search-mis - Поиск услуг в МИС API
 router.post('/search-mis', authenticate, async (req, res) => {
   try {
     const { term, clinic_id } = req.body;
@@ -186,7 +201,7 @@ router.post('/search-mis', authenticate, async (req, res) => {
       return res.json({ success: false, data: [], message: 'Минимум 2 символа для поиска' });
     }
 
-    console.log('🔍 Поиск анализов в МИС:', { term, clinic_id });
+    console.log('🔍 Поиск услуг в МИС:', { term, clinic_id });
 
     const params = {
       term: term,
@@ -203,29 +218,28 @@ router.post('/search-mis', authenticate, async (req, res) => {
       return res.json({ success: false, data: [], message: 'Не удалось получить данные из МИС' });
     }
 
-    // Фильтруем только лабораторные анализы (можно настроить по категориям)
-    const analyses = misData.data.map(service => ({
+    const services = misData.data.map(service => ({
       service_id: service.service_id,
       code: service.code || service.sub_code || '',
       title: service.title,
       price: parseFloat(service.price) || 0,
       category: service.category_title || '',
-      lab: service.lab || '',
       preparation: service.preparation || ''
     }));
 
-    res.json({ success: true, data: analyses });
+    res.json({ success: true, data: services });
   } catch (error) {
     console.error('Error searching MIS:', error);
     res.status(500).json({ success: false, error: 'Ошибка при поиске в МИС' });
   }
 });
 
-// POST /api/analyses - Создать анализ
+// POST /api/services - Создать услугу
 router.post('/',
   authenticate,
   [
-    body('lab').notEmpty().withMessage('Лаборатория обязательна'),
+    body('pageSlug').notEmpty().withMessage('Slug страницы обязателен'),
+    body('medCenter').notEmpty().withMessage('Медцентр обязателен'),
     body('serviceCode').notEmpty().withMessage('Код услуги обязателен'),
     body('serviceName').notEmpty().withMessage('Название обязательно'),
     body('price').isFloat({ min: 0 }).withMessage('Цена должна быть положительным числом')
@@ -238,7 +252,8 @@ router.post('/',
 
     try {
       const {
-        lab,
+        pageSlug,
+        medCenter,
         serviceCode,
         serviceName,
         price,
@@ -248,8 +263,9 @@ router.post('/',
         misServiceId = null
       } = req.body;
 
-      const analysis = await Analysis.create({
-        lab,
+      const service = await Service.create({
+        pageSlug,
+        medCenter,
         serviceCode,
         serviceName,
         price,
@@ -261,21 +277,22 @@ router.post('/',
       });
 
       // Индексация для поиска
-      await indexAnalysis(analysis);
+      await indexService(service);
 
-      res.status(201).json(analysis);
+      res.status(201).json(service);
     } catch (error) {
-      console.error('Error creating analysis:', error);
-      res.status(500).json({ error: 'Ошибка при создании анализа' });
+      console.error('Error creating service:', error);
+      res.status(500).json({ error: 'Ошибка при создании услуги' });
     }
   }
 );
 
-// PUT /api/analyses/:id - Обновить анализ
+// PUT /api/services/:id - Обновить услугу
 router.put('/:id',
   authenticate,
   [
-    body('lab').notEmpty().withMessage('Лаборатория обязательна'),
+    body('pageSlug').notEmpty().withMessage('Slug страницы обязателен'),
+    body('medCenter').notEmpty().withMessage('Медцентр обязателен'),
     body('serviceCode').notEmpty().withMessage('Код услуги обязателен'),
     body('serviceName').notEmpty().withMessage('Название обязательно'),
     body('price').isFloat({ min: 0 }).withMessage('Цена должна быть положительным числом')
@@ -289,7 +306,8 @@ router.put('/:id',
     try {
       const { id } = req.params;
       const {
-        lab,
+        pageSlug,
+        medCenter,
         serviceCode,
         serviceName,
         price,
@@ -299,13 +317,14 @@ router.put('/:id',
         misServiceId
       } = req.body;
 
-      const analysis = await Analysis.findByPk(id);
-      if (!analysis) {
-        return res.status(404).json({ error: 'Анализ не найден' });
+      const service = await Service.findByPk(id);
+      if (!service) {
+        return res.status(404).json({ error: 'Услуга не найдена' });
       }
 
-      await analysis.update({
-        lab,
+      await service.update({
+        pageSlug,
+        medCenter,
         serviceCode,
         serviceName,
         price,
@@ -316,80 +335,86 @@ router.put('/:id',
       });
 
       // Обновляем индекс
-      await indexAnalysis(analysis);
+      await indexService(service);
 
-      res.json(analysis);
+      res.json(service);
     } catch (error) {
-      console.error('Error updating analysis:', error);
-      res.status(500).json({ error: 'Ошибка при обновлении анализа' });
+      console.error('Error updating service:', error);
+      res.status(500).json({ error: 'Ошибка при обновлении услуги' });
     }
   }
 );
 
-// PATCH /api/analyses/:id/toggle-stop - Переключить статус СТОП
+// PATCH /api/services/:id/toggle-stop - Переключить статус СТОП
 router.patch('/:id/toggle-stop', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const analysis = await Analysis.findByPk(id);
-    if (!analysis) {
-      return res.status(404).json({ error: 'Анализ не найден' });
+    const service = await Service.findByPk(id);
+    if (!service) {
+      return res.status(404).json({ error: 'Услуга не найдена' });
     }
 
-    await analysis.update({ isStopped: !analysis.isStopped });
-    await indexAnalysis(analysis);
+    await service.update({ isStopped: !service.isStopped });
+    await indexService(service);
 
-    res.json(analysis);
+    res.json(service);
   } catch (error) {
     console.error('Error toggling stop status:', error);
     res.status(500).json({ error: 'Ошибка при обновлении статуса' });
   }
 });
 
-// DELETE /api/analyses/:id - Удалить анализ
+// DELETE /api/services/:id - Удалить услугу
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const analysis = await Analysis.findByPk(id);
-    if (!analysis) {
-      return res.status(404).json({ error: 'Анализ не найден' });
+    const service = await Service.findByPk(id);
+    if (!service) {
+      return res.status(404).json({ error: 'Услуга не найдена' });
     }
 
     // Удаляем из индекса
     await SearchIndex.destroy({
       where: {
-        entityType: 'analysis',
+        entityType: 'service',
         entityId: id
       }
     });
 
-    await analysis.destroy();
+    await service.destroy();
 
-    res.json({ message: 'Анализ удален' });
+    res.json({ message: 'Услуга удалена' });
   } catch (error) {
-    console.error('Error deleting analysis:', error);
-    res.status(500).json({ error: 'Ошибка при удалении анализа' });
+    console.error('Error deleting service:', error);
+    res.status(500).json({ error: 'Ошибка при удалении услуги' });
   }
 });
 
-// POST /api/analyses/update-prices - Обновить цены из МИС (для cron)
+// POST /api/services/update-prices - Обновить цены из МИС (для cron)
 router.post('/update-prices', authenticate, async (req, res) => {
   try {
-    console.log('🔄 Запуск обновления цен анализов из МИС...');
+    const { pageSlug } = req.body;
 
-    const analysesWithMisId = await Analysis.findAll({
-      where: {
-        misServiceId: { [Op.ne]: null }
-      }
-    });
+    console.log('🔄 Запуск обновления цен услуг из МИС...');
 
-    if (analysesWithMisId.length === 0) {
-      return res.json({ message: 'Нет анализов с привязкой к МИС', updated: 0 });
+    const where = {
+      misServiceId: { [Op.ne]: null }
+    };
+
+    if (pageSlug) {
+      where.pageSlug = pageSlug;
+    }
+
+    const servicesWithMisId = await Service.findAll({ where });
+
+    if (servicesWithMisId.length === 0) {
+      return res.json({ message: 'Нет услуг с привязкой к МИС', updated: 0 });
     }
 
     // Группируем ID услуг для массового запроса
-    const serviceIds = analysesWithMisId.map(a => a.misServiceId).join(',');
+    const serviceIds = servicesWithMisId.map(s => s.misServiceId).join(',');
 
     const misData = await misRequest('getServices', {
       service_id: serviceIds
@@ -407,24 +432,24 @@ router.post('/update-prices', authenticate, async (req, res) => {
 
     // Обновляем цены
     let updated = 0;
-    for (const analysis of analysesWithMisId) {
-      const newPrice = priceMap.get(analysis.misServiceId);
-      if (newPrice !== undefined && newPrice !== analysis.price) {
-        await analysis.update({
+    for (const service of servicesWithMisId) {
+      const newPrice = priceMap.get(service.misServiceId);
+      if (newPrice !== undefined && newPrice !== service.price) {
+        await service.update({
           price: newPrice,
           lastPriceUpdate: new Date()
         });
-        await indexAnalysis(analysis);
+        await indexService(service);
         updated++;
       }
     }
 
-    console.log(`✅ Обновлено цен: ${updated} из ${analysesWithMisId.length}`);
+    console.log(`✅ Обновлено цен: ${updated} из ${servicesWithMisId.length}`);
 
-    res.json({ 
-      message: 'Цены обновлены', 
-      total: analysesWithMisId.length,
-      updated: updated 
+    res.json({
+      message: 'Цены обновлены',
+      total: servicesWithMisId.length,
+      updated: updated
     });
   } catch (error) {
     console.error('Error updating prices:', error);

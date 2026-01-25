@@ -21,7 +21,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   User, UserPlus, UserCheck, UserCircle, Contact,
   Timer, Hourglass, CalendarDays, CalendarCheck,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
-  Minus, GraduationCap, Trello
+  Minus, GraduationCap, Trello, Maximize2, Minimize2
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -71,15 +71,29 @@ const iconMap = {
 };
 
 // Компонент календаря
-const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 
+const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const weekDays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+
+// Ключ для сохранения режима отображения календаря
+const CALENDAR_VIEW_KEY = 'alfa-wiki-calendar-view';
 
 function SidebarCalendar() {
   const navigate = useNavigate();
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [eventIndicators, setEventIndicators] = useState({});
+  // Состояние для переключения между месячным и недельным видом
+  const [calendarView, setCalendarView] = useState(() => {
+    try {
+      return localStorage.getItem(CALENDAR_VIEW_KEY) || 'month';
+    } catch {
+      return 'month';
+    }
+  });
+  // Состояния для анимаций
+  const [animationDirection, setAnimationDirection] = useState(null);
+  const [isViewChanging, setIsViewChanging] = useState(false);
 
   // ✅ ДОБАВИТЬ: Утилита для форматирования даты в локальном часовом поясе
   const formatLocalDate = (date) => {
@@ -99,9 +113,13 @@ function SidebarCalendar() {
     try {
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth();
-      const start = new Date(year, month, 1).toISOString();
-      const end = new Date(year, month + 1, 0).toISOString();
-      
+
+      // Загружаем индикаторы с учетом дней из соседних месяцев
+      // Начало - первый день предыдущего месяца
+      const start = new Date(year, month - 1, 1).toISOString();
+      // Конец - последний день через 3 года от текущего месяца (для повторяющихся событий)
+      const end = new Date(year + 3, month + 1, 0, 23, 59, 59).toISOString();
+
       const { data } = await calendar.getEventIndicators(start, end);
       setEventIndicators(data);
     } catch (error) {
@@ -109,9 +127,44 @@ function SidebarCalendar() {
     }
   };
 
+  const toggleCalendarView = () => {
+    const newView = calendarView === 'month' ? 'week' : 'month';
+    setIsViewChanging(true);
+    setCalendarView(newView);
+    try {
+      localStorage.setItem(CALENDAR_VIEW_KEY, newView);
+    } catch {
+      // Ignore localStorage errors
+    }
+    // Сброс анимации после завершения
+    setTimeout(() => setIsViewChanging(false), 350);
+  };
+
   const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
+
+    // Если режим "неделя", показываем только текущую неделю
+    if (calendarView === 'week') {
+      const days = [];
+      const today = new Date(date);
+      const dayOfWeek = today.getDay() === 0 ? 6 : today.getDay() - 1; // Понедельник = 0
+
+      // Начало недели (понедельник)
+      const weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - dayOfWeek);
+
+      // Генерируем 7 дней текущей недели
+      for (let i = 0; i < 7; i++) {
+        const day = new Date(weekStart);
+        day.setDate(weekStart.getDate() + i);
+        days.push(day);
+      }
+
+      return days;
+    }
+
+    // Режим "месяц" - показываем весь месяц
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const firstDayOfWeek = firstDay.getDay() === 0 ? 6 : firstDay.getDay() - 1;
@@ -122,12 +175,12 @@ function SidebarCalendar() {
     for (let i = 0; i < firstDayOfWeek; i++) {
       days.push(null);
     }
-    
+
     // Дни текущего месяца
     for (let i = 1; i <= daysInMonth; i++) {
       days.push(new Date(year, month, i));
     }
-    
+
     // Дни следующего месяца для заполнения недель
     const remainingCells = 7 - (days.length % 7);
     if (remainingCells < 7) {
@@ -135,16 +188,38 @@ function SidebarCalendar() {
         days.push(new Date(year, month + 1, i));
       }
     }
-    
+
     return days;
   };
 
-  const goToPreviousMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  const goToPrevious = () => {
+    setAnimationDirection('prev');
+    if (calendarView === 'week') {
+      // Переключаем на предыдущую неделю
+      const newDate = new Date(currentDate);
+      newDate.setDate(currentDate.getDate() - 7);
+      setCurrentDate(newDate);
+    } else {
+      // Переключаем на предыдущий месяц
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+    }
+    // Сброс анимации
+    setTimeout(() => setAnimationDirection(null), 300);
   };
 
-  const goToNextMonth = () => {
-    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  const goToNext = () => {
+    setAnimationDirection('next');
+    if (calendarView === 'week') {
+      // Переключаем на следующую неделю
+      const newDate = new Date(currentDate);
+      newDate.setDate(currentDate.getDate() + 7);
+      setCurrentDate(newDate);
+    } else {
+      // Переключаем на следующий месяц
+      setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+    }
+    // Сброс анимации
+    setTimeout(() => setAnimationDirection(null), 300);
   };
 
   const isToday = (date) => {
@@ -169,8 +244,9 @@ function SidebarCalendar() {
 
   // ✅ ИСПРАВЛЕНО: handleDateClick теперь использует formatLocalDate
   const handleDateClick = (date) => {
-    if (!date || isOtherMonth(date)) return;
-    
+    // В недельном виде все дни кликабельны, в месячном - только дни текущего месяца
+    if (!date || (calendarView === 'month' && isOtherMonth(date))) return;
+
     setSelectedDate(date);
     // Используем локальное форматирование для URL
     const dateStr = formatLocalDate(date);
@@ -190,20 +266,43 @@ function SidebarCalendar() {
   return (
     <div className="sidebar-calendar">
       <div className="sidebar-calendar-header">
-        <button className="sidebar-calendar-nav" onClick={goToPreviousMonth} title="Предыдущий месяц">
+        <button
+          className="sidebar-calendar-nav"
+          onClick={goToPrevious}
+          title={calendarView === 'week' ? 'Предыдущая неделя' : 'Предыдущий месяц'}
+        >
           <ChevronLeft size={16} />
         </button>
         <div className="sidebar-calendar-title">
           {monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}
         </div>
-        <button className="sidebar-calendar-nav" onClick={goToNextMonth} title="Следующий месяц">
+        <button
+          className="sidebar-calendar-nav"
+          onClick={goToNext}
+          title={calendarView === 'week' ? 'Следующая неделя' : 'Следующий месяц'}
+        >
           <ChevronRight size={16} />
         </button>
+        <button
+          className="sidebar-calendar-nav"
+          onClick={toggleCalendarView}
+          title={calendarView === 'month' ? 'Показать только неделю' : 'Показать весь месяц'}
+        >
+          {calendarView === 'month' ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
       </div>
-      <div className="sidebar-calendar-grid">
+      <div
+        className={`sidebar-calendar-grid ${
+          animationDirection === 'prev' ? 'slide-in-reverse' :
+          animationDirection === 'next' ? 'slide-in' : ''
+        } ${
+          isViewChanging ? 'view-changing' : ''
+        }`}
+        key={`${currentDate.getMonth()}-${currentDate.getFullYear()}-${calendarView}`}
+      >
         {weekDays.map((day, index) => (
-          <div 
-            key={day} 
+          <div
+            key={day}
             className={`sidebar-calendar-weekday ${index >= 5 ? 'weekend' : ''}`}
           >
             {day}
@@ -211,27 +310,28 @@ function SidebarCalendar() {
         ))}
         {days.map((date, index) => {
           const isWeekend = date ? (date.getDay() === 0 || date.getDay() === 6) : false;
-          const otherMonth = isOtherMonth(date);
+          // В недельном виде не применяем класс other-month
+          const otherMonth = calendarView === 'month' && isOtherMonth(date);
           const eventColors = getEventColors(date);
-          
+
           return (
-            <div 
-              key={index} 
+            <div
+              key={index}
               className={`sidebar-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${otherMonth ? 'other-month' : ''}`}
               onClick={() => handleDateClick(date)}
             >
               {date && (
                 <>
                   <span className="day-number">{date.getDate()}</span>
-                  {eventColors.length > 0 && !otherMonth && (
+                  {eventColors.length > 0 && (
                     <div className="event-indicator" title={`${eventColors.length} событие(й)`}>
                       {eventColors.length > 3 ? (
                         <span className="event-count">3+</span>
                       ) : (
                         eventColors.map((event, i) => (
-                          <span 
-                            key={i} 
-                            className="event-dot" 
+                          <span
+                            key={i}
+                            className="event-dot"
                             style={{ color: event.color }}
                           >
                             ●
@@ -390,11 +490,22 @@ function renderIcon(iconValue, fallbackIconComponent, size = 18) {
 function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggleExpand }) {
   const location = useLocation();
   const isExpanded = expandedState[item.id] ?? true;
+  const [isClosing, setIsClosing] = useState(false);
 
   const handleToggle = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    onToggleExpand(item.id);
+
+    // Если папка открыта, сначала запускаем анимацию закрытия
+    if (isExpanded) {
+      setIsClosing(true);
+      setTimeout(() => {
+        onToggleExpand(item.id);
+        setIsClosing(false);
+      }, 200); // Длительность анимации закрытия
+    } else {
+      onToggleExpand(item.id);
+    }
   };
 
   const handleMobileClick = () => {
@@ -423,21 +534,21 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     const folderTitle = item.title || item.folder?.title || 'Папка';
 
     return (
-      <div className="sidebar-folder">
+      <div className={`sidebar-folder ${isExpanded ? 'expanded' : 'collapsed'}`}>
         <div
-          className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage ? 'has-active-child' : ''}`}
+          className={`sidebar-item sidebar-folder-toggle ${hasActiveFolderPage ? 'has-active-child' : ''} ${isExpanded ? 'expanded' : ''}`}
           style={{ paddingLeft: `${14 + level * 16}px` }}
           onClick={handleToggle}
         >
           {renderIcon(iconToUse, FolderIcon, 18)}
           <span>{folderTitle}</span>
-          <span className="sidebar-folder-chevron">
-            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <span className={`sidebar-folder-chevron ${isExpanded ? 'expanded' : ''}`}>
+            <ChevronDown size={16} />
           </span>
         </div>
 
-        {isExpanded && hasFolderPages && (
-          <div className="sidebar-folder-children">
+        {(isExpanded || isClosing) && hasFolderPages && (
+          <div className={`sidebar-folder-children ${isClosing ? 'closing' : ''}`}>
             {folderPages.map(page => {
               const isPageActive = location.pathname === `/page/${page.slug}`;
 
@@ -458,8 +569,8 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         )}
         
         {/* Также показываем вложенные SidebarItem если есть */}
-        {isExpanded && hasChildren && (
-          <div className="sidebar-folder-children">
+        {(isExpanded || isClosing) && hasChildren && (
+          <div className={`sidebar-folder-children ${isClosing ? 'closing' : ''}`}>
             {item.children
               .filter(c => c.page || c.type === 'link')
               .map(child => (

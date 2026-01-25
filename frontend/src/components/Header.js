@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Image, Database, BookOpen
+  Layout, Users, Lock, Image, Database, BookOpen, TestTube
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -12,6 +12,7 @@ import {
   VehicleSearchResult,
   AccreditationSearchResult,
   AnalysisSearchResult,
+  ServiceSearchResult,
   DoctorSearchResult,
   DefaultSearchResult
 } from './SearchResultComponents';
@@ -30,6 +31,8 @@ const getResultIcon = (type) => {
       return UserCircle;
     case 'service':
       return Briefcase;
+    case 'analysis':
+      return TestTube;
     default:
       return File;
   }
@@ -61,6 +64,8 @@ const getTypeName = (type, displayType) => {
       return 'Врач';
     case 'service':
       return 'Услуга';
+    case 'analysis':
+      return 'Анализ';
     default:
       return type;
   }
@@ -233,6 +238,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                         return <AccreditationSearchResult result={result} searchQuery={searchQuery} />;
                       case 'analysis':
                         return <AnalysisSearchResult result={result} searchQuery={searchQuery} />;
+                      case 'service':
+                        return <ServiceSearchResult result={result} searchQuery={searchQuery} />;
                       case 'doctor':
                         return <DoctorSearchResult result={result} searchQuery={searchQuery} />;
                       default:
@@ -282,8 +289,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       <div className="header-right">
         {user && (
           <div className="header-user" ref={dropdownRef}>
-            <button 
-              className="header-user-btn"
+            <button
+              className={`header-user-btn ${showDropdown ? 'active' : ''}`}
               onClick={() => setShowDropdown(!showDropdown)}
             >
               {getAvatarUrl() ? (
@@ -294,7 +301,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 </div>
               )}
               <span className="header-username">{user.displayName || user.username}</span>
-              <ChevronDown size={16} />
+              <ChevronDown size={16} className="header-chevron" />
             </button>
             
             {showDropdown && (

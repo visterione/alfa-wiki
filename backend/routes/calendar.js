@@ -4,13 +4,14 @@ const { authenticate } = require('../middleware/auth');
 const { Op } = require('sequelize');
 
 // Импортируем модели безопасно
-let CalendarEvent, User, Accreditation, Vehicle;
+let CalendarEvent, User, Accreditation, Vehicle, Page;
 try {
   const models = require('../models');
   CalendarEvent = models.CalendarEvent;
   User = models.User;
   Accreditation = models.Accreditation;
   Vehicle = models.Vehicle;
+  Page = models.Page;
 } catch (error) {
   console.error('Failed to import models:', error);
 }
@@ -30,6 +31,32 @@ function canAccessEvent(event, userId, isAdmin) {
   return false;
 }
 
+// Проверка доступа пользователя к странице по slug
+async function canAccessPage(slug, user) {
+  if (!Page) return false;
+  if (user.isAdmin) return true;
+
+  try {
+    const page = await Page.findOne({
+      where: { slug },
+      attributes: ['id', 'slug', 'allowedRoles', 'isPublished']
+    });
+
+    if (!page) return false;
+    if (!page.isPublished) return false;
+
+    // Если у страницы нет ограничений по ролям - доступ есть у всех
+    if (!page.allowedRoles || page.allowedRoles.length === 0) return true;
+
+    // Проверяем роли пользователя
+    const userRoleIds = user.roles?.map(r => r.id) || [];
+    return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+  } catch (error) {
+    console.error('Error checking page access:', error);
+    return false;
+  }
+}
+
 // Генерация экземпляров повторяющегося события
 function generateRecurringInstances(event, startDate, endDate) {
   if (!event.isRecurring || !event.recurrenceRule) return [];
@@ -37,6 +64,12 @@ function generateRecurringInstances(event, startDate, endDate) {
   const instances = [];
   const rule = event.recurrenceRule;
   const eventDuration = new Date(event.endTime) - new Date(event.startTime);
+
+  // Получаем список исключенных дат
+  const exceptions = event.exceptions || [];
+  const exceptionDates = new Set(
+    exceptions.map(dateStr => new Date(dateStr).toISOString().split('T')[0])
+  );
 
   // Начинаем с оригинальной даты события
   const originalStart = new Date(event.startTime);
@@ -64,7 +97,10 @@ function generateRecurringInstances(event, startDate, endDate) {
     case 'daily':
       while (currentDate <= end && iterationCount < maxIterations) {
         if (currentDate >= requestStart && currentDate <= end) {
-          instances.push(createInstance(event, currentDate, eventDuration));
+          const dateKey = currentDate.toISOString().split('T')[0];
+          if (!exceptionDates.has(dateKey)) {
+            instances.push(createInstance(event, currentDate, eventDuration));
+          }
         }
         currentDate = new Date(currentDate);
         currentDate.setDate(currentDate.getDate() + interval);
@@ -97,7 +133,10 @@ function generateRecurringInstances(event, startDate, endDate) {
           instanceDate.setHours(originalStart.getHours(), originalStart.getMinutes(), originalStart.getSeconds());
 
           if (instanceDate >= originalStart && instanceDate >= requestStart && instanceDate <= end) {
-            instances.push(createInstance(event, instanceDate, eventDuration));
+            const dateKey = instanceDate.toISOString().split('T')[0];
+            if (!exceptionDates.has(dateKey)) {
+              instances.push(createInstance(event, instanceDate, eventDuration));
+            }
           }
         }
 
@@ -112,7 +151,10 @@ function generateRecurringInstances(event, startDate, endDate) {
       const originalDay = originalStart.getDate();
       while (currentDate <= end && iterationCount < maxIterations) {
         if (currentDate >= requestStart && currentDate <= end) {
-          instances.push(createInstance(event, currentDate, eventDuration));
+          const dateKey = currentDate.toISOString().split('T')[0];
+          if (!exceptionDates.has(dateKey)) {
+            instances.push(createInstance(event, currentDate, eventDuration));
+          }
         }
         currentDate = new Date(currentDate);
         currentDate.setMonth(currentDate.getMonth() + interval);
@@ -129,7 +171,10 @@ function generateRecurringInstances(event, startDate, endDate) {
     case 'yearly':
       while (currentDate <= end && iterationCount < maxIterations) {
         if (currentDate >= requestStart && currentDate <= end) {
-          instances.push(createInstance(event, currentDate, eventDuration));
+          const dateKey = currentDate.toISOString().split('T')[0];
+          if (!exceptionDates.has(dateKey)) {
+            instances.push(createInstance(event, currentDate, eventDuration));
+          }
         }
         currentDate = new Date(currentDate);
         currentDate.setFullYear(currentDate.getFullYear() + interval);
@@ -287,6 +332,8 @@ router.get('/event-indicators', authenticate, async (req, res) => {
     }
 
     const { start, end } = req.query;
+    const startDate = new Date(start);
+    const endDate = new Date(end);
 
     const events = await CalendarEvent.findAll({
       where: {
@@ -298,11 +345,41 @@ router.get('/event-indicators', authenticate, async (req, res) => {
             sharedWith: { [Op.contains]: [req.user.id] }
           }
         ],
-        startTime: { [Op.gte]: new Date(start) },
-        endTime: { [Op.lte]: new Date(end) }
+        [Op.and]: [
+          {
+            [Op.or]: [
+              // Обычные события: стандартная проверка пересечения
+              {
+                [Op.and]: [
+                  { isRecurring: { [Op.or]: [false, null] } },
+                  { startTime: { [Op.lte]: endDate } },
+                  { endTime: { [Op.gte]: startDate } }
+                ]
+              },
+              // Повторяющиеся события: проверяем, что событие началось и период повторения активен
+              {
+                [Op.and]: [
+                  { isRecurring: true },
+                  { startTime: { [Op.lte]: endDate } }, // Событие должно было начаться
+                  {
+                    [Op.or]: [
+                      // Нет даты окончания повторения (или она в будущем)
+                      {
+                        [Op.or]: [
+                          { 'recurrenceRule.endDate': { [Op.is]: null } },
+                          { 'recurrenceRule.endDate': { [Op.gte]: startDate } }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
-      // ✅ ДОБАВЛЕНО: Получаем цвет события
-      attributes: ['id', 'startTime', 'color', 'isRecurring', 'recurrenceRule']
+      // ✅ ДОБАВЛЕНО: Получаем цвет события и exceptions для повторяющихся событий
+      attributes: ['id', 'startTime', 'endTime', 'color', 'isRecurring', 'recurrenceRule', 'exceptions']
     });
 
     // ✅ ИЗМЕНЕНО: Теперь возвращаем массивы с цветами вместо количества
@@ -328,8 +405,12 @@ router.get('/event-indicators', authenticate, async (req, res) => {
     });
 
     // ✅ ДОБАВЛЕНО: Интегрированные события (аккредитации и ТО)
-    // Аккредитации
-    if (Accreditation) {
+    // Проверяем доступ к страницам
+    const canAccessAccreditations = await canAccessPage('accreditations', req.user);
+    const canAccessVehicles = await canAccessPage('vehicles', req.user);
+
+    // Аккредитации - показываем только если есть доступ к странице
+    if (Accreditation && canAccessAccreditations) {
       try {
         const accreditations = await Accreditation.findAll({
           where: {
@@ -352,8 +433,8 @@ router.get('/event-indicators', authenticate, async (req, res) => {
       }
     }
 
-    // ТО транспорта
-    if (Vehicle) {
+    // ТО транспорта - показываем только если есть доступ к странице
+    if (Vehicle && canAccessVehicles) {
       try {
         const vehicles = await Vehicle.findAll({
           where: {
@@ -609,6 +690,60 @@ router.delete('/events/:id', authenticate, async (req, res) => {
   }
 });
 
+// Удалить отдельный экземпляр повторяющегося события
+router.delete('/events/:id/instance', authenticate, async (req, res) => {
+  try {
+    if (!CalendarEvent) {
+      return res.status(500).json({ error: 'CalendarEvent model not available' });
+    }
+
+    const { instanceDate } = req.body;
+
+    if (!instanceDate) {
+      return res.status(400).json({ error: 'Instance date is required' });
+    }
+
+    const event = await CalendarEvent.findByPk(req.params.id);
+
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (!event.isRecurring) {
+      return res.status(400).json({ error: 'Event is not recurring' });
+    }
+
+    // Проверка прав на удаление (те же, что и для обычного удаления)
+    const isCreator = event.createdBy === req.user.id;
+    const isSharedWith = event.sharedWith && event.sharedWith.includes(req.user.id);
+    const isParticipant = event.participants && event.participants.some(p => {
+      const userId = typeof p === 'string' ? p : p.userId;
+      return userId === req.user.id;
+    });
+    const isAdmin = req.user.isAdmin;
+
+    const canDelete = isCreator || isSharedWith || isParticipant || isAdmin;
+
+    if (!canDelete) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Добавляем дату в массив исключений
+    const exceptions = event.exceptions || [];
+    const dateToExclude = new Date(instanceDate).toISOString();
+
+    if (!exceptions.includes(dateToExclude)) {
+      exceptions.push(dateToExclude);
+      await event.update({ exceptions });
+    }
+
+    res.json({ message: 'Instance deleted successfully', event });
+  } catch (error) {
+    console.error('Delete instance error:', error);
+    res.status(500).json({ error: 'Failed to delete instance', details: error.message });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // CALENDAR SETTINGS
 // ═══════════════════════════════════════════════════════════════
@@ -668,12 +803,16 @@ router.get('/integrated-events', authenticate, async (req, res) => {
     const requestedTypes = types ? types.split(',') : ['accreditation', 'vehicle'];
     const events = [];
 
-    // Аккредитации
-    if (requestedTypes.includes('accreditation') && Accreditation) {
+    // Проверяем доступ к страницам
+    const canAccessAccreditations = await canAccessPage('accreditations', req.user);
+    const canAccessVehicles = await canAccessPage('vehicles', req.user);
+
+    // Аккредитации - показываем только если есть доступ к странице accreditations
+    if (requestedTypes.includes('accreditation') && Accreditation && canAccessAccreditations) {
       try {
         const accreditations = await Accreditation.findAll({
           where: {
-            expirationDate: { // Исправлено: expirationDate вместо expiryDate
+            expirationDate: {
               [Op.gte]: new Date(start),
               [Op.lte]: new Date(end)
             }
@@ -681,7 +820,7 @@ router.get('/integrated-events', authenticate, async (req, res) => {
         });
 
         accreditations.forEach(accr => {
-          const expiryDate = new Date(accr.expirationDate); // Исправлено
+          const expiryDate = new Date(accr.expirationDate);
           events.push({
             id: `accr-${accr.id}`,
             title: `Аккредитация: ${accr.fullName}`,
@@ -702,8 +841,8 @@ router.get('/integrated-events', authenticate, async (req, res) => {
       }
     }
 
-    // ТО транспорта
-    if (requestedTypes.includes('vehicle') && Vehicle) {
+    // ТО транспорта - показываем только если есть доступ к странице vehicles
+    if (requestedTypes.includes('vehicle') && Vehicle && canAccessVehicles) {
       try {
         const vehicles = await Vehicle.findAll({
           where: {

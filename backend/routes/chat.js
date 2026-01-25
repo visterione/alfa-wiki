@@ -59,9 +59,12 @@ router.get('/search', authenticate, async (req, res) => {
 
     const searchQuery = q.trim().toLowerCase();
 
-    // Получаем чаты пользователя
+    // Получаем чаты пользователя (не показываем скрытые)
     const memberships = await ChatMember.findAll({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+        isHidden: false
+      },
       attributes: ['chatId']
     });
 
@@ -176,7 +179,10 @@ router.get('/search', authenticate, async (req, res) => {
 router.get('/', authenticate, async (req, res) => {
   try {
     const memberships = await ChatMember.findAll({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+        isHidden: false // Фильтруем скрытые чаты
+      },
       include: [{
         model: Chat,
         as: 'chat',
@@ -954,14 +960,37 @@ router.get('/users', authenticate, async (req, res) => {
       attributes: ['id', 'username', 'displayName', 'avatar', 'email', 'isActive'],
       order: [['displayName', 'ASC']]
     });
-    
+
     // Исключаем текущего пользователя
     const filteredUsers = users.filter(u => u.id !== req.user.id);
-    
+
     res.json(filteredUsers);
   } catch (error) {
     console.error('Get chat users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Hide/unhide chat for current user
+router.patch('/:chatId/hide', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { hidden } = req.body;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this chat' });
+    }
+
+    await membership.update({ isHidden: hidden !== undefined ? hidden : true });
+
+    res.json({ message: hidden ? 'Chat hidden' : 'Chat shown', isHidden: membership.isHidden });
+  } catch (error) {
+    console.error('Hide chat error:', error);
+    res.status(500).json({ error: 'Failed to hide chat' });
   }
 });
 

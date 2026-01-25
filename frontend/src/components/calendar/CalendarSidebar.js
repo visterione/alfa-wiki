@@ -18,6 +18,7 @@ const EVENT_TYPES = {
 // === MINI CALENDAR ===
 export function MiniCalendar({ selectedDate, onDateSelect }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date(selectedDate));
+  const [animationDirection, setAnimationDirection] = React.useState(null);
 
   const getDaysInMonth = () => {
     const year = currentMonth.getFullYear();
@@ -67,11 +68,15 @@ export function MiniCalendar({ selectedDate, onDateSelect }) {
   };
 
   const goToPreviousMonth = () => {
+    setAnimationDirection('prev');
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1));
+    setTimeout(() => setAnimationDirection(null), 350);
   };
 
   const goToNextMonth = () => {
+    setAnimationDirection('next');
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1));
+    setTimeout(() => setAnimationDirection(null), 350);
   };
 
   const days = getDaysInMonth();
@@ -90,7 +95,13 @@ export function MiniCalendar({ selectedDate, onDateSelect }) {
         </button>
       </div>
 
-      <div className="mini-calendar-grid">
+      <div
+        className={`mini-calendar-grid ${
+          animationDirection === 'prev' ? 'slide-in-reverse' :
+          animationDirection === 'next' ? 'slide-in' : ''
+        }`}
+        key={`${currentMonth.getMonth()}-${currentMonth.getFullYear()}`}
+      >
         {weekDays.map(day => (
           <div key={day} className="mini-calendar-weekday">
             {day}
@@ -134,7 +145,7 @@ export function EventFilters({ filters, onChange }) {
       >
         <Filter size={18} />
         <span>Фильтры</span>
-        {(filters.types.length > 0 || !filters.showIntegrated) && (
+        {filters.types.length > 0 && (
           <span className="filter-badge">{filters.types.length}</span>
         )}
       </button>
@@ -154,17 +165,6 @@ export function EventFilters({ filters, onChange }) {
                 <span>{label}</span>
               </label>
             ))}
-          </div>
-
-          <div className="filter-section">
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={filters.showIntegrated}
-                onChange={e => onChange({ ...filters, showIntegrated: e.target.checked })}
-              />
-              <span>Показать интегрированные события</span>
-            </label>
           </div>
         </div>
       )}

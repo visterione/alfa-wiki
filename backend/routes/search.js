@@ -177,6 +177,25 @@ const formatIndexedResult = async (item, searchTerm) => {
     case 'service':
       displayType = 'Услуга';
       if (!pageIcon) icon = 'briefcase';
+      if (item.metadata) {
+        const meta = item.metadata;
+        structuredData = {
+          pageSlug: meta.pageSlug || null,
+          medCenter: meta.medCenter || null,
+          serviceCode: meta.serviceCode || null,
+          price: meta.price || null,
+          isStopped: meta.isStopped || false
+        };
+        // Оставляем старый excerpt для совместимости
+        const parts = [];
+        if (meta.medCenter) parts.push(`Медцентр: ${meta.medCenter}`);
+        if (meta.serviceCode) parts.push(`Код: ${meta.serviceCode}`);
+        if (meta.price) parts.push(`Цена: ${meta.price} ₽`);
+        if (meta.isStopped) parts.push('⚠️ Не выполняется');
+        if (parts.length > 0) {
+          excerpt = parts.join(' • ') + (excerpt ? ' | ' + excerpt : '');
+        }
+      }
       break;
 
     case 'analysis':
@@ -288,7 +307,7 @@ router.get('/', authenticate, async (req, res) => {
           title: page.title,
           description: page.description,
           excerpt: excerpt,
-          url: `/page/${page.slug}`,
+          url: `/page/${page.slug}?search=${encodeURIComponent(searchTerm)}`,
           keywords: page.keywords
         });
       });
@@ -316,14 +335,6 @@ router.get('/', authenticate, async (req, res) => {
 
       // Фильтруем результаты по доступу к родительской странице
       for (const item of indexed) {
-        // DEBUG: Логируем indexed item
-        console.log('Indexed item check:', {
-          entityType: item.entityType,
-          title: item.title,
-          hasMetadata: !!item.metadata,
-          pageSlug: item.metadata?.pageSlug
-        });
-
         // Проверяем доступ к родительской странице (если указана в metadata)
         if (item.metadata && item.metadata.pageSlug) {
           const parentPage = await Page.findOne({
@@ -331,19 +342,11 @@ router.get('/', authenticate, async (req, res) => {
             attributes: ['allowedRoles']
           });
 
-          console.log('Parent page check:', {
-            pageSlug: item.metadata.pageSlug,
-            found: !!parentPage,
-            allowedRoles: parentPage?.allowedRoles
-          });
-
           // Если родительская страница найдена, проверяем доступ к ней
           if (parentPage) {
             const hasAccess = canAccessPage(parentPage, userRoleIds, isAdmin);
-            console.log('Access check result:', hasAccess);
 
             if (!hasAccess) {
-              console.log('→ BLOCKED: No access to parent page');
               continue; // Пропускаем элементы с недоступной родительской страницей
             }
           }
@@ -351,11 +354,9 @@ router.get('/', authenticate, async (req, res) => {
           // Нет pageSlug в metadata
           if (!isAdmin) {
             // Для обычных пользователей - скрываем элементы без привязки к странице
-            console.log('→ BLOCKED: No pageSlug in metadata, item hidden (non-admin)');
             continue;
           }
           // Для админов - показываем все элементы
-          console.log('→ ALLOWED: No pageSlug but user is admin');
         }
 
         results.push(await formatIndexedResult(item, searchTerm));
@@ -364,21 +365,30 @@ router.get('/', authenticate, async (req, res) => {
 
     // Sort by relevance
     results.sort((a, b) => {
+      // Приоритет 1: Специализированные сущности (НЕ страницы) показываем выше
+      const aIsSpecialized = a.type !== 'page';
+      const bIsSpecialized = b.type !== 'page';
+
+      if (aIsSpecialized && !bIsSpecialized) return -1;
+      if (!aIsSpecialized && bIsSpecialized) return 1;
+
+      // Приоритет 2: Совпадение в заголовке
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
       const aTitleMatch = aTitle.includes(searchTerm);
       const bTitleMatch = bTitle.includes(searchTerm);
-      
+
       if (aTitleMatch && !bTitleMatch) return -1;
       if (!aTitleMatch && bTitleMatch) return 1;
-      
+
+      // Приоритет 3: Начинается ли заголовок с поискового запроса
       if (aTitleMatch && bTitleMatch) {
         const aStartsWith = aTitle.startsWith(searchTerm);
         const bStartsWith = bTitle.startsWith(searchTerm);
         if (aStartsWith && !bStartsWith) return -1;
         if (!aStartsWith && bStartsWith) return 1;
       }
-      
+
       return 0;
     });
 
@@ -504,7 +514,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
         title: r.title,
         description: r.description,
         excerpt: excerpt,
-        url: `/page/${r.slug}`,
+        url: `/page/${r.slug}?search=${encodeURIComponent(searchTermLower)}`,
         keywords: r.keywords,
         rank: r.rank
       });
@@ -539,14 +549,23 @@ router.get('/fulltext', authenticate, async (req, res) => {
 
     // Sort by relevance
     results.sort((a, b) => {
+      // Приоритет 1: Специализированные сущности (НЕ страницы) показываем выше
+      const aIsSpecialized = a.type !== 'page';
+      const bIsSpecialized = b.type !== 'page';
+
+      if (aIsSpecialized && !bIsSpecialized) return -1;
+      if (!aIsSpecialized && bIsSpecialized) return 1;
+
+      // Приоритет 2: Совпадение в заголовке
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
       const aTitleMatch = aTitle.includes(searchTermLower);
       const bTitleMatch = bTitle.includes(searchTermLower);
-      
+
       if (aTitleMatch && !bTitleMatch) return -1;
       if (!aTitleMatch && bTitleMatch) return 1;
-      
+
+      // Приоритет 3: Rank (для страниц)
       return (b.rank || 0) - (a.rank || 0);
     });
 
@@ -667,15 +686,17 @@ router.get('/suggest', authenticate, async (req, res) => {
     }
 
     const suggestions = [
-      ...filteredPages.map(p => ({
-        title: p.title,
-        url: `/page/${p.slug}`,
-        type: 'page'
-      })),
+      // Сначала специализированные сущности (анализы, аккредитации, транспорт, врачи)
       ...filteredIndexed.map(i => ({
         title: i.title,
         url: i.url,
         type: i.entityType
+      })),
+      // Потом обычные страницы
+      ...filteredPages.map(p => ({
+        title: p.title,
+        url: `/page/${p.slug}`,
+        type: 'page'
       }))
     ];
 

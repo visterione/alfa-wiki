@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Анализы</title>
+  <title>Услуги</title>
 </head>
 <body>
-<div id="analyses-app">
+<div id="services-app">
 
 <style>
-#analyses-app {
+#services-app {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   max-width: 100%;
   margin: 0 auto;
 }
 
 /* Кнопки и фильтры */
-.ana-header {
+.srv-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -25,20 +25,20 @@
   flex-wrap: wrap;
 }
 
-.ana-filters {
+.srv-filters {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   flex: 1;
 }
 
-.ana-search-box {
+.srv-search-box {
   position: relative;
   flex: 1;
   min-width: 250px;
 }
 
-.ana-search-box svg {
+.srv-search-box svg {
   position: absolute;
   left: 12px;
   top: 50%;
@@ -49,7 +49,7 @@
   pointer-events: none;
 }
 
-.ana-search {
+.srv-search {
   width: 100%;
   padding: 10px 12px 10px 38px;
   border: 1px solid #d1d5db;
@@ -58,13 +58,13 @@
   transition: all 0.2s;
 }
 
-.ana-search:focus {
+.srv-search:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
 
-.ana-select {
+.srv-select {
   padding: 10px 12px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -75,13 +75,13 @@
   min-width: 150px;
 }
 
-.ana-select:focus {
+.srv-select:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
 
-.ana-btn {
+.srv-btn {
   padding: 10px 20px;
   border: none;
   border-radius: 8px;
@@ -94,24 +94,24 @@
   gap: 6px;
 }
 
-.ana-btn:disabled {
+.srv-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.ana-btn-primary {
+.srv-btn-primary {
   background: #3b82f6;
   color: #fff;
 }
 
-.ana-btn-primary:hover:not(:disabled) {
+.srv-btn-primary:hover:not(:disabled) {
   background: #2563eb;
 }
 
-.ana-btn svg { width: 18px; height: 18px; }
+.srv-btn svg { width: 18px; height: 18px; }
 
 /* Таблица */
-.ana-table-container {
+.srv-table-container {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
@@ -119,12 +119,12 @@
   overflow: hidden;
 }
 
-.ana-table {
+.srv-table {
   width: 100%;
   border-collapse: collapse;
 }
 
-.ana-table th {
+.srv-table th {
   padding: 14px 16px;
   text-align: center;
   background: #f8fafc;
@@ -138,12 +138,12 @@
   white-space: nowrap;
 }
 
-.ana-table th.sortable { cursor: pointer; user-select: none; }
-.ana-table th.sortable:hover { background: #f1f5f9; }
+.srv-table th.sortable { cursor: pointer; user-select: none; }
+.srv-table th.sortable:hover { background: #f1f5f9; }
 .sort-icon { opacity: 0.4; margin-left: 4px; }
-.ana-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
+.srv-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
 
-.ana-table td {
+.srv-table td {
   padding: 14px 16px;
   border-bottom: 1px solid #f1f5f9;
   font-size: 14px;
@@ -152,30 +152,30 @@
 }
 
 /* Выравнивание по центру для определенных столбцов */
-.ana-table td.center {
+.srv-table td.center {
   text-align: center;
 }
 
 /* Ширина столбцов */
-.ana-table th:nth-child(1),
-.ana-table td:nth-child(1) { width: 120px; } /* Лаборатория */
+.srv-table th:nth-child(1),
+.srv-table td:nth-child(1) { width: 120px; } /* Медцентр */
 
-.ana-table th:nth-child(2),
-.ana-table td:nth-child(2) { width: 130px; } /* Код */
+.srv-table th:nth-child(2),
+.srv-table td:nth-child(2) { width: 130px; } /* Код */
 
-.ana-table th:nth-child(3),
-.ana-table td:nth-child(3) { width: auto; } /* Название - занимает оставшееся место */
+.srv-table th:nth-child(3),
+.srv-table td:nth-child(3) { width: auto; } /* Название - занимает оставшееся место */
 
-.ana-table th:nth-child(4),
-.ana-table td:nth-child(4) { width: 110px; } /* Стоимость */
+.srv-table th:nth-child(4),
+.srv-table td:nth-child(4) { width: 110px; } /* Стоимость */
 
-.ana-table th:nth-child(5),
-.ana-table td:nth-child(5) { width: 80px; } /* СТОП */
+.srv-table th:nth-child(5),
+.srv-table td:nth-child(5) { width: 80px; } /* СТОП */
 
-.ana-table th:nth-child(6),
-.ana-table td:nth-child(6) { width: 160px; } /* Действия */
+.srv-table th:nth-child(6),
+.srv-table td:nth-child(6) { width: 160px; } /* Действия */
 
-.ana-table td {
+.srv-table td {
   padding: 14px 16px;
   border-bottom: 1px solid #f1f5f9;
   font-size: 14px;
@@ -183,10 +183,10 @@
   vertical-align: middle;
 }
 
-.ana-table tr:hover { background: #f8fafc; }
-.ana-table tr:last-child td { border-bottom: none; }
+.srv-table tr:hover { background: #f8fafc; }
+.srv-table tr:last-child td { border-bottom: none; }
 
-.ana-table tr[data-highlighted="true"] {
+.srv-table tr[data-highlighted="true"] {
   background: #fef3c7 !important;
   animation: highlight-fade 2s ease-out 1s forwards;
 }
@@ -195,29 +195,29 @@
   to { background: transparent !important; }
 }
 
-/* Цвета лабораторий */
-.ana-lab {
+/* Цвета медцентров */
+.srv-medcenter {
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 500;
   display: inline-block;
 }
-.ana-lab[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
-.ana-lab[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
-.ana-lab[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
-.ana-lab[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
-.ana-lab[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
-.ana-lab[data-center="Линия"] { background: #fef3c7; color: #92400e; }
+.srv-medcenter[data-center="Альфа"] { background: #fce7f3; color: #be185d; }
+.srv-medcenter[data-center="Кидс"] { background: #ffedd5; color: #c2410c; }
+.srv-medcenter[data-center="Проф"] { background: #ede9fe; color: #6d28d9; }
+.srv-medcenter[data-center="3К"] { background: #fdf4ff; color: #a21caf; }
+.srv-medcenter[data-center="Смайл"] { background: #f3f4f6; color: #4b5563; }
+.srv-medcenter[data-center="Линия"] { background: #fef3c7; color: #92400e; }
 
 /* Цена */
-.ana-price {
+.srv-price {
   font-weight: 600;
   color: #16a34a;
 }
 
 /* Кнопка СТОП */
-.ana-stop-btn {
+.srv-stop-btn {
   width: 32px;
   height: 32px;
   border: none;
@@ -230,34 +230,34 @@
   transition: all 0.2s;
 }
 
-.ana-stop-btn svg { width: 20px; height: 20px; }
+.srv-stop-btn svg { width: 20px; height: 20px; }
 
-.ana-stop-btn.stopped {
+.srv-stop-btn.stopped {
   background: #fee2e2;
   color: #dc2626;
 }
 
-.ana-stop-btn.stopped:hover {
+.srv-stop-btn.stopped:hover {
   background: #fecaca;
 }
 
-.ana-stop-btn.active {
+.srv-stop-btn.active {
   background: #dcfce7;
   color: #16a34a;
 }
 
-.ana-stop-btn.active:hover {
+.srv-stop-btn.active:hover {
   background: #bbf7d0;
 }
 
 /* Действия */
-.ana-actions {
+.srv-actions {
   display: flex;
   gap: 6px;
   justify-content: center;
 }
 
-.ana-action-btn {
+.srv-action-btn {
   width: 32px;
   height: 32px;
   border: none;
@@ -271,30 +271,30 @@
   color: #6b7280;
 }
 
-.ana-action-btn:hover { background: #e5e7eb; color: #374151; }
-.ana-action-btn svg { width: 16px; height: 16px; }
+.srv-action-btn:hover { background: #e5e7eb; color: #374151; }
+.srv-action-btn svg { width: 16px; height: 16px; }
 
-.ana-action-btn.link { color: #3b82f6; }
-.ana-action-btn.link:hover { background: #dbeafe; }
+.srv-action-btn.link { color: #3b82f6; }
+.srv-action-btn.link:hover { background: #dbeafe; }
 
-.ana-action-btn.copy { color: #8b5cf6; }
-.ana-action-btn.copy:hover { background: #ede9fe; }
+.srv-action-btn.copy { color: #8b5cf6; }
+.srv-action-btn.copy:hover { background: #ede9fe; }
 
-.ana-action-btn.edit { color: #f59e0b; }
-.ana-action-btn.edit:hover { background: #fef3c7; }
+.srv-action-btn.edit { color: #f59e0b; }
+.srv-action-btn.edit:hover { background: #fef3c7; }
 
-.ana-action-btn.delete { color: #ef4444; }
-.ana-action-btn.delete:hover { background: #fee2e2; }
+.srv-action-btn.delete { color: #ef4444; }
+.srv-action-btn.delete:hover { background: #fee2e2; }
 
-.ana-action-btn:disabled {
+.srv-action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
 }
 
-.ana-loading, .ana-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
+.srv-loading, .srv-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
 
 /* Пагинация */
-.ana-pagination {
+.srv-pagination {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -302,14 +302,14 @@
   border-top: 1px solid #e5e7eb;
 }
 
-.ana-pagination-info { font-size: 14px; color: #6b7280; }
+.srv-pagination-info { font-size: 14px; color: #6b7280; }
 
-.ana-pagination-controls {
+.srv-pagination-controls {
   display: flex;
   gap: 4px;
 }
 
-.ana-pagination-btn {
+.srv-pagination-btn {
   min-width: 36px;
   height: 36px;
   padding: 0 8px;
@@ -325,26 +325,26 @@
   justify-content: center;
 }
 
-.ana-pagination-btn:hover:not(:disabled) {
+.srv-pagination-btn:hover:not(:disabled) {
   background: #f9fafb;
   border-color: #3b82f6;
 }
 
-.ana-pagination-btn.active {
+.srv-pagination-btn.active {
   background: #3b82f6;
   color: #fff;
   border-color: #3b82f6;
 }
 
-.ana-pagination-btn:disabled {
+.srv-pagination-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
-.ana-pagination-btn svg { width: 16px; height: 16px; }
+.srv-pagination-btn svg { width: 16px; height: 16px; }
 
 /* Модальное окно */
-.ana-modal {
+.srv-modal {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.5);
@@ -355,7 +355,7 @@
   backdrop-filter: blur(4px);
 }
 
-.ana-modal-content {
+.srv-modal-content {
   background: #fff;
   border-radius: 16px;
   width: 100%;
@@ -366,7 +366,7 @@
   margin: 16px;
 }
 
-.ana-modal-header {
+.srv-modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -374,9 +374,9 @@
   border-bottom: 1px solid #e5e7eb;
 }
 
-.ana-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+.srv-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
 
-.ana-modal-close {
+.srv-modal-close {
   width: 32px;
   height: 32px;
   border: none;
@@ -389,15 +389,15 @@
   align-items: center;
   justify-content: center;
 }
-.ana-modal-close:hover { background: #e5e7eb; }
+.srv-modal-close:hover { background: #e5e7eb; }
 
-#ana-form { padding: 24px; }
+#srv-form { padding: 24px; }
 
-.ana-form-group {
+.srv-form-group {
   margin-bottom: 20px;
 }
 
-.ana-form-group label {
+.srv-form-group label {
   display: block;
   margin-bottom: 6px;
   font-size: 14px;
@@ -405,12 +405,12 @@
   color: #374151;
 }
 
-.ana-form-group label span {
+.srv-form-group label span {
   color: #ef4444;
   margin-left: 2px;
 }
 
-.ana-input, .ana-textarea {
+.srv-input, .srv-textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #d1d5db;
@@ -420,42 +420,42 @@
   transition: all 0.2s;
 }
 
-.ana-input:focus, .ana-textarea:focus {
+.srv-input:focus, .srv-textarea:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
 
-.ana-textarea {
+.srv-textarea {
   resize: vertical;
   min-height: 80px;
 }
 
-.ana-form-row {
+.srv-form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
-.ana-checkbox-group {
+.srv-checkbox-group {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.ana-checkbox-group input[type="checkbox"] {
+.srv-checkbox-group input[type="checkbox"] {
   width: 18px;
   height: 18px;
   cursor: pointer;
 }
 
-.ana-checkbox-group label {
+.srv-checkbox-group label {
   margin: 0;
   cursor: pointer;
 }
 
 /* Поиск МИС */
-.ana-mis-search {
+.srv-mis-search {
   margin-bottom: 20px;
   padding: 16px;
   background: #f9fafb;
@@ -463,13 +463,13 @@
   border: 1px solid #e5e7eb;
 }
 
-.ana-mis-search-header {
+.srv-mis-search-header {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
 }
 
-.ana-mis-results {
+.srv-mis-results {
   max-height: 300px;
   overflow-y: auto;
   border: 1px solid #e5e7eb;
@@ -477,45 +477,45 @@
   background: #fff;
 }
 
-.ana-mis-result {
+.srv-mis-result {
   padding: 12px;
   border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
   transition: background 0.2s;
 }
 
-.ana-mis-result:hover {
+.srv-mis-result:hover {
   background: #f8fafc;
 }
 
-.ana-mis-result:last-child {
+.srv-mis-result:last-child {
   border-bottom: none;
 }
 
-.ana-mis-result-title {
+.srv-mis-result-title {
   font-weight: 500;
   color: #111827;
   margin-bottom: 4px;
 }
 
-.ana-mis-result-meta {
+.srv-mis-result-meta {
   font-size: 13px;
   color: #6b7280;
 }
 
-.ana-mis-result-price {
+.srv-mis-result-price {
   color: #16a34a;
   font-weight: 600;
 }
 
-.ana-mis-empty {
+.srv-mis-empty {
   padding: 24px;
   text-align: center;
   color: #9ca3af;
   font-size: 14px;
 }
 
-.ana-form-actions {
+.srv-form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -524,18 +524,18 @@
   background: #f9fafb;
 }
 
-.ana-btn-secondary {
+.srv-btn-secondary {
   background: #fff;
   color: #374151;
   border: 1px solid #d1d5db;
 }
 
-.ana-btn-secondary:hover:not(:disabled) {
+.srv-btn-secondary:hover:not(:disabled) {
   background: #f9fafb;
 }
 
 /* Toast уведомления */
-.ana-toast {
+.srv-toast {
   position: fixed;
   bottom: 24px;
   right: 24px;
@@ -551,12 +551,12 @@
   border-left: 4px solid #3b82f6;
 }
 
-.ana-toast.success { border-left-color: #16a34a; }
-.ana-toast.error { border-left-color: #ef4444; }
+.srv-toast.success { border-left-color: #16a34a; }
+.srv-toast.error { border-left-color: #ef4444; }
 
-.ana-toast svg { width: 20px; height: 20px; flex-shrink: 0; }
-.ana-toast.success svg { color: #16a34a; }
-.ana-toast.error svg { color: #ef4444; }
+.srv-toast svg { width: 20px; height: 20px; flex-shrink: 0; }
+.srv-toast.success svg { color: #16a34a; }
+.srv-toast.error svg { color: #ef4444; }
 
 @keyframes slideIn {
   from { transform: translateX(400px); opacity: 0; }
@@ -565,17 +565,17 @@
 
 /* Адаптив */
 @media (max-width: 768px) {
-  .ana-header { flex-direction: column; align-items: stretch; }
-  .ana-filters { flex-direction: column; }
-  .ana-search-box { min-width: 100%; }
-  .ana-select { min-width: 100%; }
-  .ana-form-row { grid-template-columns: 1fr; }
-  .ana-table-container { overflow-x: auto; }
-  .ana-table { min-width: 900px; }
+  .srv-header { flex-direction: column; align-items: stretch; }
+  .srv-filters { flex-direction: column; }
+  .srv-search-box { min-width: 100%; }
+  .srv-select { min-width: 100%; }
+  .srv-form-row { grid-template-columns: 1fr; }
+  .srv-table-container { overflow-x: auto; }
+  .srv-table { min-width: 900px; }
 
   /* Сбрасываем ширину столбцов на мобильных */
-  .ana-table th,
-  .ana-table td { width: auto !important; }
+  .srv-table th,
+  .srv-table td { width: auto !important; }
 }
 
 /* Print styles */
@@ -589,45 +589,45 @@
     display: none !important;
   }
 
-  .ana-header,
-  .ana-pagination,
-  .ana-modal,
-  .ana-toast,
-  .ana-table th:last-child,
-  .ana-table td:last-child {
+  .srv-header,
+  .srv-pagination,
+  .srv-modal,
+  .srv-toast,
+  .srv-table th:last-child,
+  .srv-table td:last-child {
     display: none !important;
   }
 
-  .ana-table-container {
+  .srv-table-container {
     box-shadow: none;
     border: none;
   }
 
   /* Отображаем все строки таблицы при печати (отключаем пагинацию) */
-  .ana-table-row {
+  .srv-table-row {
     display: table-row !important;
   }
 
-  .ana-table th,
-  .ana-table td {
+  .srv-table th,
+  .srv-table td {
     border: 1px solid #000;
     padding: 6px;
     font-size: 9pt;
   }
 
-  .ana-table {
+  .srv-table {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Сохраняем цвета лабораторий при печати */
-  .ana-lab {
+  /* Сохраняем цвета медцентров при печати */
+  .srv-medcenter {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   /* Отображаем статус СТОП текстом при печати */
-  .ana-stop-btn {
+  .srv-stop-btn {
     width: auto !important;
     height: auto !important;
     background: transparent !important;
@@ -637,16 +637,16 @@
     padding: 2px 6px;
   }
 
-  .ana-stop-btn svg {
+  .srv-stop-btn svg {
     display: none !important;
   }
 
-  .ana-stop-btn.stopped::after {
+  .srv-stop-btn.stopped::after {
     content: "СТОП";
     color: #dc2626;
   }
 
-  .ana-stop-btn.active::after {
+  .srv-stop-btn.active::after {
     content: "Да";
     color: #16a34a;
   }
@@ -654,119 +654,126 @@
 </style>
 
   <!-- Заголовок и фильтры -->
-  <div class="ana-header">
-    <div class="ana-filters">
-      <div class="ana-search-box">
+  <div class="srv-header">
+    <div class="srv-filters">
+      <div class="srv-search-box">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-        <input type="text" id="filter-search" class="ana-search" placeholder="Поиск по названию, коду..." oninput="anaApp.debounceLoad()">
+        <input type="text" id="filter-search" class="srv-search" placeholder="Поиск по названию, коду..." oninput="servicesApp.debounceLoad()">
       </div>
-      <select id="filter-lab" class="ana-select" onchange="anaApp.resetAndLoad()">
-        <option value="">Все лаборатории</option>
+      <select id="filter-medcenter" class="srv-select" onchange="servicesApp.resetAndLoad()">
+        <option value="">Все медцентры</option>
       </select>
-      <select id="filter-stopped" class="ana-select" onchange="anaApp.resetAndLoad()">
-        <option value="">Все анализы</option>
+      <select id="filter-stopped" class="srv-select" onchange="servicesApp.resetAndLoad()">
+        <option value="">Все услуги</option>
         <option value="false">Выполняются</option>
         <option value="true">Не выполняются</option>
       </select>
     </div>
-    <button class="ana-btn ana-btn-primary" onclick="anaApp.openAddModal()">
+    <button class="srv-btn srv-btn-primary" onclick="servicesApp.openAddModal()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      Добавить анализ
+      Добавить услугу
     </button>
   </div>
 
   <!-- Таблица -->
-  <div class="ana-table-container">
-    <table class="ana-table">
+  <div class="srv-table-container">
+    <table class="srv-table">
       <thead>
         <tr>
-          <th class="sortable sorted" onclick="anaApp.sortTable('lab')">Лаборатория <span class="sort-icon">↕</span></th>
-          <th class="sortable" onclick="anaApp.sortTable('serviceCode')">Код <span class="sort-icon">↕</span></th>
-          <th class="sortable" onclick="anaApp.sortTable('serviceName')">Название <span class="sort-icon">↕</span></th>
-          <th class="sortable" onclick="anaApp.sortTable('price')">Стоимость <span class="sort-icon">↕</span></th>
+          <th class="sortable sorted" onclick="servicesApp.sortTable('medCenter')">Медцентр <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="servicesApp.sortTable('serviceCode')">Код <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="servicesApp.sortTable('serviceName')">Название <span class="sort-icon">↕</span></th>
+          <th class="sortable" onclick="servicesApp.sortTable('price')">Стоимость <span class="sort-icon">↕</span></th>
           <th>СТОП</th>
           <th>Действия</th>
         </tr>
       </thead>
-      <tbody id="ana-table-body">
-        <tr><td colspan="6" class="ana-loading">Загрузка...</td></tr>
+      <tbody id="srv-table-body">
+        <tr><td colspan="6" class="srv-loading">Загрузка...</td></tr>
       </tbody>
     </table>
-    <div class="ana-pagination" id="ana-pagination" style="display:none;">
-      <div class="ana-pagination-info" id="pagination-info">Показано 1-20 из 100</div>
-      <div class="ana-pagination-controls" id="pagination-controls"></div>
+    <div class="srv-pagination" id="srv-pagination" style="display:none;">
+      <div class="srv-pagination-info" id="pagination-info">Показано 1-20 из 100</div>
+      <div class="srv-pagination-controls" id="pagination-controls"></div>
     </div>
   </div>
 
   <!-- Модальное окно -->
-  <div id="ana-modal" class="ana-modal" style="display:none" onclick="if(event.target===this)anaApp.closeModal()">
-    <div class="ana-modal-content">
-      <div class="ana-modal-header">
-        <h3 id="modal-title">Добавить анализ</h3>
-        <button class="ana-modal-close" onclick="anaApp.closeModal()">&times;</button>
+  <div id="srv-modal" class="srv-modal" style="display:none" onclick="if(event.target===this)servicesApp.closeModal()">
+    <div class="srv-modal-content">
+      <div class="srv-modal-header">
+        <h3 id="modal-title">Добавить услугу</h3>
+        <button class="srv-modal-close" onclick="servicesApp.closeModal()">&times;</button>
       </div>
-      <form id="ana-form" onsubmit="anaApp.saveRecord(event)">
+      <form id="srv-form" onsubmit="servicesApp.saveRecord(event)">
         <input type="hidden" id="edit-id">
-        
+        <input type="hidden" id="edit-pageslug">
+
         <!-- Поиск в МИС -->
-        <div class="ana-mis-search" id="mis-search-section">
-          <div class="ana-mis-search-header">
-            <input type="text" id="mis-search-input" class="ana-input" placeholder="Поиск анализа в МИС..." style="flex:1">
-            <button type="button" class="ana-btn ana-btn-primary" onclick="anaApp.searchMIS()">
+        <div class="srv-mis-search" id="mis-search-section">
+          <div class="srv-mis-search-header">
+            <input type="text" id="mis-search-input" class="srv-input" placeholder="Поиск услуги в МИС..." style="flex:1">
+            <button type="button" class="srv-btn srv-btn-primary" onclick="servicesApp.searchMIS()">
               <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
               Найти
             </button>
           </div>
-          <div class="ana-mis-results" id="mis-results" style="display:none">
-            <div class="ana-mis-empty">Введите запрос и нажмите "Найти"</div>
+          <div class="srv-mis-results" id="mis-results" style="display:none">
+            <div class="srv-mis-empty">Введите запрос и нажмите "Найти"</div>
           </div>
         </div>
 
-        <div class="ana-form-group">
-          <label>Лаборатория <span>*</span></label>
-          <select id="edit-lab" required class="ana-select">
+        <div class="srv-form-group">
+          <label>Медцентр <span>*</span></label>
+          <select id="edit-medcenter" required class="srv-select">
             <option value="">Выберите...</option>
+            <option value="Альфа">Альфа</option>
+            <option value="Кидс">Кидс</option>
+            <option value="Проф">Проф</option>
+            <option value="Линия">Линия</option>
+            <option value="Смайл">Смайл</option>
+            <option value="3К">3К</option>
           </select>
         </div>
 
-        <div class="ana-form-row">
-          <div class="ana-form-group">
+        <div class="srv-form-row">
+          <div class="srv-form-group">
             <label>Код услуги <span>*</span></label>
-            <input type="text" id="edit-servicecode" required class="ana-input" placeholder="A09.05.003">
+            <input type="text" id="edit-servicecode" required class="srv-input" placeholder="A09.05.003">
           </div>
-          <div class="ana-form-group">
+          <div class="srv-form-group">
             <label>Стоимость <span>*</span></label>
-            <input type="number" id="edit-price" required class="ana-input" min="0" step="0.01" placeholder="1500.00">
+            <input type="number" id="edit-price" required class="srv-input" min="0" step="0.01" placeholder="1500.00">
           </div>
         </div>
 
-        <div class="ana-form-group">
-          <label>Название анализа <span>*</span></label>
-          <input type="text" id="edit-servicename" required class="ana-input" placeholder="Клинический анализ крови">
+        <div class="srv-form-group">
+          <label>Название услуги <span>*</span></label>
+          <input type="text" id="edit-servicename" required class="srv-input" placeholder="Медицинская услуга">
         </div>
 
-        <div class="ana-form-group">
+        <div class="srv-form-group">
           <label>Ссылка на подготовку</label>
-          <input type="url" id="edit-preplink" class="ana-input" placeholder="https://example.com/preparation.pdf">
+          <input type="url" id="edit-preplink" class="srv-input" placeholder="https://example.com/preparation.pdf">
         </div>
 
-        <div class="ana-form-group">
+        <div class="srv-form-group">
           <label>Комментарий</label>
-          <textarea id="edit-comment" class="ana-textarea" placeholder="Дополнительная информация..."></textarea>
+          <textarea id="edit-comment" class="srv-textarea" placeholder="Дополнительная информация..."></textarea>
         </div>
 
-        <div class="ana-form-group">
-          <div class="ana-checkbox-group">
+        <div class="srv-form-group">
+          <div class="srv-checkbox-group">
             <input type="checkbox" id="edit-isstopped">
-            <label for="edit-isstopped">Анализ не выполняется (СТОП)</label>
+            <label for="edit-isstopped">Услуга не выполняется (СТОП)</label>
           </div>
         </div>
 
         <input type="hidden" id="edit-misserviceid">
 
-        <div class="ana-form-actions">
-          <button type="button" class="ana-btn ana-btn-secondary" onclick="anaApp.closeModal()">Отмена</button>
-          <button type="submit" class="ana-btn ana-btn-primary">
+        <div class="srv-form-actions">
+          <button type="button" class="srv-btn srv-btn-secondary" onclick="servicesApp.closeModal()">Отмена</button>
+          <button type="submit" class="srv-btn srv-btn-primary">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
             Сохранить
           </button>
@@ -778,18 +785,36 @@
 </div>
 
 <script>
-window.anaApp = (function() {
+window.servicesApp = (function() {
   // Backend всегда на порту 9001
-  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/analyses';
-  var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis';
-  var analyses = [];
-  var labs = [];
-  var sortField = 'lab';
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
+  var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
+  var services = [];
+  var medcenters = [];
+  var sortField = 'medCenter';
   var sortOrder = 'ASC';
   var currentPage = 1;
   var pageSize = 50;
   var debounceTimer;
   var highlightId = null;
+  var currentPageSlug = ''; // Slug текущей страницы
+
+  // === INIT: Получить slug страницы из URL или data-атрибута ===
+  function initPageSlug() {
+    // Вариант 1: Из data-атрибута на элементе
+    var appEl = document.getElementById('services-app');
+    if (appEl && appEl.dataset.pageSlug) {
+      currentPageSlug = appEl.dataset.pageSlug;
+      return;
+    }
+
+    // Вариант 2: Из URL (например, /page/services-stomatology)
+    var pathParts = window.location.pathname.split('/');
+    var pageIndex = pathParts.indexOf('page');
+    if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
+      currentPageSlug = pathParts[pageIndex + 1];
+    }
+  }
 
   // === HELPERS ===
   function getToken() {
@@ -813,8 +838,8 @@ window.anaApp = (function() {
 
   function showToast(msg, type) {
     var toast = document.createElement('div');
-    toast.className = 'ana-toast' + (type ? ' ' + type : '');
-    var icon = type === 'success' 
+    toast.className = 'srv-toast' + (type ? ' ' + type : '');
+    var icon = type === 'success'
       ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
       : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
     toast.innerHTML = icon + '<span>' + msg + '</span>';
@@ -827,29 +852,22 @@ window.anaApp = (function() {
   }
 
   function scrollToRecord(id) {
-    // Найти индекс записи в массиве
     var index = -1;
-    for (var i = 0; i < analyses.length; i++) {
-      if (analyses[i].id === id) {
+    for (var i = 0; i < services.length; i++) {
+      if (services[i].id === id) {
         index = i;
         break;
       }
     }
 
-    // Если запись не найдена
     if (index === -1) return false;
 
-    // Установить highlightId для подсветки
     highlightId = id;
-
-    // Вычислить нужную страницу пагинации
     currentPage = Math.floor(index / pageSize) + 1;
 
-    // Перерисовать таблицу и пагинацию
     renderTable();
     renderPagination();
 
-    // Прокрутить к записи после небольшой задержки (чтобы дать время на рендер)
     setTimeout(function() {
       var row = document.querySelector('tr[data-id="' + id + '"]');
       if (row) {
@@ -857,7 +875,6 @@ window.anaApp = (function() {
       }
     }, 100);
 
-    // Сбросить highlightId после завершения анимации (3 секунды)
     setTimeout(function() {
       highlightId = null;
     }, 3000);
@@ -868,100 +885,87 @@ window.anaApp = (function() {
   // === DATA ===
   function loadData() {
     var search = document.getElementById('filter-search').value;
-    var lab = document.getElementById('filter-lab').value;
+    var medCenter = document.getElementById('filter-medcenter').value;
     var isStopped = document.getElementById('filter-stopped').value;
 
     var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
+    if (currentPageSlug) url += '&pageSlug=' + encodeURIComponent(currentPageSlug);
     if (search) url += '&search=' + encodeURIComponent(search);
-    if (lab) url += '&lab=' + encodeURIComponent(lab);
+    if (medCenter) url += '&medCenter=' + encodeURIComponent(medCenter);
     if (isStopped) url += '&isStopped=' + isStopped;
 
     fetchAPI(url).then(function(data) {
-      analyses = data;
-      if (currentPage > Math.ceil(analyses.length / pageSize)) {
+      services = data;
+      if (currentPage > Math.ceil(services.length / pageSize)) {
         currentPage = 1;
       }
       renderTable();
       renderPagination();
-    }).catch(function(e) { 
-      document.getElementById('ana-table-body').innerHTML = '<tr><td colspan="6" class="ana-empty">Ошибка загрузки данных</td></tr>';
-      showToast('Ошибка: ' + e.message, 'error'); 
+    }).catch(function(e) {
+      document.getElementById('srv-table-body').innerHTML = '<tr><td colspan="6" class="srv-empty">Ошибка загрузки данных</td></tr>';
+      showToast('Ошибка: ' + e.message, 'error');
     });
   }
 
-  function loadLabs() {
-    fetchAPI(API_URL + '/labs').then(function(centers) {
-      labs = centers;
-      var filterSelect = document.getElementById('filter-lab');
-      var editSelect = document.getElementById('edit-lab');
+  function loadMedcenters() {
+    var url = API_URL + '/medcenters';
+    if (currentPageSlug) url += '?pageSlug=' + encodeURIComponent(currentPageSlug);
 
-      // Очищаем списки, сохраняя первую опцию (placeholder)
-      var filterFirstOption = filterSelect.options[0];
-      var editFirstOption = editSelect.options[0];
-      filterSelect.innerHTML = '';
-      editSelect.innerHTML = '';
-      filterSelect.appendChild(filterFirstOption);
-      editSelect.appendChild(editFirstOption);
-
-      // Добавляем лаборатории
+    fetchAPI(url).then(function(centers) {
+      medcenters = centers;
+      var select = document.getElementById('filter-medcenter');
       centers.forEach(function(c) {
-        var opt1 = document.createElement('option');
-        opt1.value = c;
-        opt1.textContent = c;
-        filterSelect.appendChild(opt1);
-
-        var opt2 = document.createElement('option');
-        opt2.value = c;
-        opt2.textContent = c;
-        editSelect.appendChild(opt2);
+        var opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
       });
     });
   }
 
   function renderTable() {
-    var tb = document.getElementById('ana-table-body');
-    if (!analyses.length) {
-      tb.innerHTML = '<tr><td colspan="6" class="ana-empty">Нет данных</td></tr>';
-      document.getElementById('ana-pagination').style.display = 'none';
+    var tb = document.getElementById('srv-table-body');
+    if (!services.length) {
+      tb.innerHTML = '<tr><td colspan="6" class="srv-empty">Нет данных</td></tr>';
+      document.getElementById('srv-pagination').style.display = 'none';
       return;
     }
 
-    document.getElementById('ana-pagination').style.display = 'flex';
+    document.getElementById('srv-pagination').style.display = 'flex';
 
     var start = (currentPage - 1) * pageSize;
-    var end = Math.min(start + pageSize, analyses.length);
-    var pageData = analyses.slice(start, end);
+    var end = Math.min(start + pageSize, services.length);
+    var pageData = services.slice(start, end);
 
-    // Для печати: рендерим все записи, но скрываем те, что не на текущей странице
-    tb.innerHTML = analyses.map(function(a, index) {
-      var isHighlighted = highlightId && a.id === highlightId;
+    tb.innerHTML = services.map(function(s, index) {
+      var isHighlighted = highlightId && s.id === highlightId;
       var isOnCurrentPage = index >= start && index < end;
       var displayStyle = isOnCurrentPage ? '' : ' style="display:none"';
 
-      return '<tr data-id="' + a.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + displayStyle + ' class="ana-table-row">' +
-        '<td class="center"><span class="ana-lab" data-center="' + a.lab + '">' + a.lab + '</span></td>' +
-        '<td class="center">' + (a.serviceCode || '-') + '</td>' +
-        '<td>' + a.serviceName + '</td>' +
-        '<td class="center ana-price">' + formatPrice(a.price) + '</td>' +
+      return '<tr data-id="' + s.id + '"' + (isHighlighted ? ' data-highlighted="true"' : '') + displayStyle + ' class="srv-table-row">' +
+        '<td class="center"><span class="srv-medcenter" data-center="' + s.medCenter + '">' + s.medCenter + '</span></td>' +
+        '<td class="center">' + (s.serviceCode || '-') + '</td>' +
+        '<td>' + s.serviceName + '</td>' +
+        '<td class="center srv-price">' + formatPrice(s.price) + '</td>' +
         '<td class="center">' +
-          '<button class="ana-stop-btn ' + (a.isStopped ? 'stopped' : 'active') + '" onclick="anaApp.toggleStop(\'' + a.id + '\')" title="' + (a.isStopped ? 'Возобновить' : 'Остановить') + '">' +
-            (a.isStopped 
+          '<button class="srv-stop-btn ' + (s.isStopped ? 'stopped' : 'active') + '" onclick="servicesApp.toggleStop(\'' + s.id + '\')" title="' + (s.isStopped ? 'Возобновить' : 'Остановить') + '">' +
+            (s.isStopped
               ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
               : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') +
           '</button>' +
         '</td>' +
         '<td class="center">' +
-          '<div class="ana-actions">' +
-            '<button class="ana-action-btn link" onclick="anaApp.openLink(\'' + a.id + '\')" title="Открыть ссылку" ' + (!a.preparationLink ? 'disabled' : '') + '>' +
+          '<div class="srv-actions">' +
+            '<button class="srv-action-btn link" onclick="servicesApp.openLink(\'' + s.id + '\')" title="Открыть ссылку" ' + (!s.preparationLink ? 'disabled' : '') + '>' +
               '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
             '</button>' +
-            '<button class="ana-action-btn copy" onclick="anaApp.copyLink(\'' + a.id + '\')" title="Копировать ссылку" ' + (!a.preparationLink ? 'disabled' : '') + '>' +
+            '<button class="srv-action-btn copy" onclick="servicesApp.copyLink(\'' + s.id + '\')" title="Копировать ссылку" ' + (!s.preparationLink ? 'disabled' : '') + '>' +
               '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>' +
             '</button>' +
-            '<button class="ana-action-btn edit" onclick="anaApp.openEditModal(\'' + a.id + '\')" title="Редактировать">' +
+            '<button class="srv-action-btn edit" onclick="servicesApp.openEditModal(\'' + s.id + '\')" title="Редактировать">' +
               '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>' +
             '</button>' +
-            '<button class="ana-action-btn delete" onclick="anaApp.deleteRecord(\'' + a.id + '\')" title="Удалить">' +
+            '<button class="srv-action-btn delete" onclick="servicesApp.deleteRecord(\'' + s.id + '\')" title="Удалить">' +
               '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>' +
             '</button>' +
           '</div>' +
@@ -969,70 +973,71 @@ window.anaApp = (function() {
       '</tr>';
     }).join('');
 
-    document.getElementById('pagination-info').textContent = 
-      'Показано ' + (start + 1) + '–' + end + ' из ' + analyses.length;
+    document.getElementById('pagination-info').textContent =
+      'Показано ' + (start + 1) + '–' + end + ' из ' + services.length;
   }
 
   function renderPagination() {
-    var totalPages = Math.ceil(analyses.length / pageSize) || 1;
+    var totalPages = Math.ceil(services.length / pageSize) || 1;
     var controls = document.getElementById('pagination-controls');
-    
-    var html = '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>' +
+
+    var html = '<button class="srv-pagination-btn" onclick="servicesApp.goToPage(' + (currentPage - 1) + ')" ' + (currentPage === 1 ? 'disabled' : '') + '>' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>';
-    
+
     var startPage = Math.max(1, currentPage - 2);
     var endPage = Math.min(totalPages, startPage + 4);
     if (endPage - startPage < 4) startPage = Math.max(1, endPage - 4);
-    
+
     if (startPage > 1) {
-      html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(1)">1</button>';
+      html += '<button class="srv-pagination-btn" onclick="servicesApp.goToPage(1)">1</button>';
       if (startPage > 2) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
     }
-    
+
     for (var i = startPage; i <= endPage; i++) {
-      html += '<button class="ana-pagination-btn' + (i === currentPage ? ' active' : '') + '" onclick="anaApp.goToPage(' + i + ')">' + i + '</button>';
+      html += '<button class="srv-pagination-btn' + (i === currentPage ? ' active' : '') + '" onclick="servicesApp.goToPage(' + i + ')">' + i + '</button>';
     }
-    
+
     if (endPage < totalPages) {
       if (endPage < totalPages - 1) html += '<span style="color:#9ca3af;padding:0 4px;">...</span>';
-      html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
+      html += '<button class="srv-pagination-btn" onclick="servicesApp.goToPage(' + totalPages + ')">' + totalPages + '</button>';
     }
-    
-    html += '<button class="ana-pagination-btn" onclick="anaApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>' +
+
+    html += '<button class="srv-pagination-btn" onclick="servicesApp.goToPage(' + (currentPage + 1) + ')" ' + (currentPage === totalPages ? 'disabled' : '') + '>' +
       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></button>';
-    
+
     controls.innerHTML = html;
   }
 
   function goToPage(p) {
-    var totalPages = Math.ceil(analyses.length / pageSize) || 1;
+    var totalPages = Math.ceil(services.length / pageSize) || 1;
     if (p < 1 || p > totalPages) return;
     currentPage = p;
-    highlightId = null; // Сбросить подсветку при ручной навигации
+    highlightId = null;
     renderTable();
     renderPagination();
-    // Прокрутить к началу таблицы
-    document.querySelector('.ana-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelector('.srv-table-container').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // === МОДАЛКА ===
   function openAddModal() {
-    document.getElementById('modal-title').textContent = 'Добавить анализ';
-    document.getElementById('ana-form').reset();
+    document.getElementById('modal-title').textContent = 'Добавить услугу';
+    document.getElementById('srv-form').reset();
     document.getElementById('edit-id').value = '';
+    document.getElementById('edit-pageslug').value = currentPageSlug;
     document.getElementById('edit-misserviceid').value = '';
     document.getElementById('mis-search-section').style.display = 'block';
     document.getElementById('mis-results').style.display = 'none';
-    document.getElementById('ana-modal').style.display = 'flex';
+    document.getElementById('srv-modal').style.display = 'flex';
   }
 
   function openEditModal(id) {
-    var item = analyses.find(function(a) { return a.id === id; });
+    var item = services.find(function(s) { return s.id === id; });
     if (!item) return;
 
-    document.getElementById('modal-title').textContent = 'Редактировать анализ';
+    document.getElementById('modal-title').textContent = 'Редактировать услугу';
     document.getElementById('edit-id').value = item.id;
-    document.getElementById('edit-lab').value = item.lab;
+    document.getElementById('edit-pageslug').value = item.pageSlug;
+    document.getElementById('edit-medcenter').value = item.medCenter;
     document.getElementById('edit-servicecode').value = item.serviceCode;
     document.getElementById('edit-servicename').value = item.serviceName;
     document.getElementById('edit-price').value = item.price;
@@ -1040,20 +1045,21 @@ window.anaApp = (function() {
     document.getElementById('edit-comment').value = item.comment || '';
     document.getElementById('edit-isstopped').checked = item.isStopped;
     document.getElementById('edit-misserviceid').value = item.misServiceId || '';
-    
+
     document.getElementById('mis-search-section').style.display = 'none';
-    document.getElementById('ana-modal').style.display = 'flex';
+    document.getElementById('srv-modal').style.display = 'flex';
   }
 
   function closeModal() {
-    document.getElementById('ana-modal').style.display = 'none';
+    document.getElementById('srv-modal').style.display = 'none';
   }
 
   function saveRecord(e) {
     e.preventDefault();
     var id = document.getElementById('edit-id').value;
     var data = {
-      lab: document.getElementById('edit-lab').value,
+      pageSlug: document.getElementById('edit-pageslug').value || currentPageSlug,
+      medCenter: document.getElementById('edit-medcenter').value,
       serviceCode: document.getElementById('edit-servicecode').value,
       serviceName: document.getElementById('edit-servicename').value,
       price: parseFloat(document.getElementById('edit-price').value),
@@ -1069,12 +1075,11 @@ window.anaApp = (function() {
         showToast(id ? 'Обновлено' : 'Добавлено', 'success');
         closeModal();
         loadData();
-        loadLabs(); // Обновляем список лабораторий на случай добавления новой
       }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
   }
 
   function deleteRecord(id) {
-    if (!confirm('Удалить анализ?')) return;
+    if (!confirm('Удалить услугу?')) return;
     fetchAPI(API_URL + '/' + id, { method: 'DELETE' })
       .then(function() {
         showToast('Удалено', 'success');
@@ -1092,69 +1097,45 @@ window.anaApp = (function() {
 
     var resultsDiv = document.getElementById('mis-results');
     resultsDiv.style.display = 'block';
-    resultsDiv.innerHTML = '<div class="ana-mis-empty">Поиск...</div>';
+    resultsDiv.innerHTML = '<div class="srv-mis-empty">Поиск...</div>';
 
-    fetchAPI(MIS_URL + '/search-mis', { 
-      method: 'POST', 
-      body: JSON.stringify({ term: term }) 
+    fetchAPI(MIS_URL + '/search-mis', {
+      method: 'POST',
+      body: JSON.stringify({ term: term })
     })
     .then(function(res) {
       if (!res.success || !res.data || res.data.length === 0) {
-        resultsDiv.innerHTML = '<div class="ana-mis-empty">Ничего не найдено</div>';
+        resultsDiv.innerHTML = '<div class="srv-mis-empty">Ничего не найдено</div>';
         return;
       }
 
       resultsDiv.innerHTML = res.data.map(function(s) {
-        return '<div class="ana-mis-result" onclick="anaApp.selectMISService(' +
+        return '<div class="srv-mis-result" onclick="servicesApp.selectMISService(' +
           "'" + (s.service_id || '') + "'," +
           "'" + (s.code || '').replace(/'/g, "\\'") + "'," +
           "'" + (s.title || '').replace(/'/g, "\\'") + "'," +
-          s.price + "," +
-          "'" + (s.lab || '').replace(/'/g, "\\'") + "'" +
+          s.price +
         ')">' +
-          '<div class="ana-mis-result-title">' + s.title + '</div>' +
-          '<div class="ana-mis-result-meta">' +
+          '<div class="srv-mis-result-title">' + s.title + '</div>' +
+          '<div class="srv-mis-result-meta">' +
             'Код: ' + (s.code || '-') + ' | ' +
-            '<span class="ana-mis-result-price">' + formatPrice(s.price) + '</span>' +
+            '<span class="srv-mis-result-price">' + formatPrice(s.price) + '</span>' +
             (s.category ? ' | ' + s.category : '') +
-            (s.lab ? ' | <strong>Лаб: ' + s.lab + '</strong>' : '') +
           '</div>' +
         '</div>';
       }).join('');
     })
     .catch(function(e) {
-      resultsDiv.innerHTML = '<div class="ana-mis-empty">Ошибка поиска</div>';
+      resultsDiv.innerHTML = '<div class="srv-mis-empty">Ошибка поиска</div>';
       showToast('Ошибка: ' + e.message, 'error');
     });
   }
 
-  function selectMISService(serviceId, code, title, price, lab) {
+  function selectMISService(serviceId, code, title, price) {
     document.getElementById('edit-servicecode').value = code;
     document.getElementById('edit-servicename').value = title;
     document.getElementById('edit-price').value = price;
     document.getElementById('edit-misserviceid').value = serviceId;
-
-    if (lab) {
-      var labSelect = document.getElementById('edit-lab');
-
-      // Проверяем, есть ли такая опция в списке
-      var optionExists = Array.from(labSelect.options).some(function(opt) {
-        return opt.value === lab;
-      });
-
-      // Если опции нет - добавляем её
-      if (!optionExists) {
-        var newOption = document.createElement('option');
-        newOption.value = lab;
-        newOption.textContent = lab;
-        labSelect.appendChild(newOption);
-        console.log('Добавлена новая лаборатория в список: ' + lab);
-      }
-
-      // Теперь устанавливаем значение
-      labSelect.value = lab;
-    }
-
     document.getElementById('mis-results').style.display = 'none';
     showToast('Данные из МИС загружены', 'success');
   }
@@ -1169,16 +1150,15 @@ window.anaApp = (function() {
   }
 
   function openLink(id) {
-    var item = analyses.find(function(a) { return a.id === id; });
+    var item = services.find(function(s) { return s.id === id; });
     if (item && item.preparationLink) {
       window.open(item.preparationLink, '_blank');
     }
   }
 
   function copyLink(id) {
-    var item = analyses.find(function(a) { return a.id === id; });
+    var item = services.find(function(s) { return s.id === id; });
     if (item && item.preparationLink) {
-      // Проверяем доступность Clipboard API
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(item.preparationLink).then(function() {
           showToast('Ссылка скопирована', 'success');
@@ -1218,20 +1198,20 @@ window.anaApp = (function() {
   }
 
   function sortTable(field) {
-    var ths = document.querySelectorAll('.ana-table th');
+    var ths = document.querySelectorAll('.srv-table th');
     ths.forEach(function(th) { th.classList.remove('sorted'); });
-    
+
     if (sortField === field) {
       sortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
     } else {
       sortField = field;
       sortOrder = 'ASC';
     }
-    
+
     currentPage = 1;
     loadData();
-    
-    var th = document.querySelector('.ana-table th.sortable[onclick*="' + field + '"]');
+
+    var th = document.querySelector('.srv-table th.sortable[onclick*="' + field + '"]');
     if (th) th.classList.add('sorted');
   }
 
@@ -1250,17 +1230,19 @@ window.anaApp = (function() {
 
   // === INIT ===
   if (!getToken()) {
-    document.getElementById('analyses-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+    document.getElementById('services-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
+    initPageSlug();
+
     var urlParams = new URLSearchParams(window.location.search);
     var highlightParam = urlParams.get('highlight');
-    
+
     loadData();
-    loadLabs();
-    
+    loadMedcenters();
+
     if (highlightParam) {
       var checkAndScroll = setInterval(function() {
-        if (analyses.length > 0) {
+        if (services.length > 0) {
           clearInterval(checkAndScroll);
           scrollToRecord(highlightParam);
           window.history.replaceState({}, '', window.location.pathname);
@@ -1268,7 +1250,7 @@ window.anaApp = (function() {
       }, 100);
       setTimeout(function() { clearInterval(checkAndScroll); }, 5000);
     }
-    
+
     document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
   }
 

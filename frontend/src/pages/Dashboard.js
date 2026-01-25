@@ -47,6 +47,7 @@ export default function Dashboard() {
   const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', name: '', blobUrl: '' });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null });
+  const [chatContextMenu, setChatContextMenu] = useState({ visible: false, x: 0, y: 0, chatId: null, chat: null });
   const [editingMessage, setEditingMessage] = useState(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [searchQueryForChat, setSearchQueryForChat] = useState('');
@@ -59,6 +60,7 @@ export default function Dashboard() {
   const avatarInputRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const contextMenuRef = useRef(null);
+  const chatContextMenuRef = useRef(null);
   const messageInputRef = useRef(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -378,6 +380,9 @@ export default function Dashboard() {
       if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
         setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null });
       }
+      if (chatContextMenuRef.current && !chatContextMenuRef.current.contains(e.target)) {
+        setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
+      }
       if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target)) {
         const emojiButton = document.querySelector('.emoji-picker-button');
         if (!emojiButton?.contains(e.target)) {
@@ -441,6 +446,41 @@ export default function Dashboard() {
       await loadChats();
       toast.success('Вы покинули группу');
     } catch (e) { toast.error('Ошибка'); }
+  };
+
+  const handleChatContextMenu = (e, chatItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setChatContextMenu({
+      visible: true,
+      x: e.clientX,
+      y: e.clientY,
+      chatId: chatItem.id,
+      chat: chatItem
+    });
+  };
+
+  const handleHideChat = async () => {
+    const { chatId } = chatContextMenu;
+    if (!chatId) return;
+
+    setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
+
+    try {
+      await chat.hideChat(chatId, true);
+
+      // Если скрываем активный чат, сбрасываем его
+      if (activeChat && activeChat.id === chatId) {
+        setActiveChat(null);
+      }
+
+      await loadChats();
+      toast.success('Чат скрыт');
+    } catch (e) {
+      console.error('Hide chat error:', e);
+      toast.error('Ошибка скрытия чата');
+    }
   };
 
   const handleAvatarChange = async (e) => {
@@ -718,7 +758,12 @@ export default function Dashboard() {
               const searchTerm = foundByMessage ? searchQuery : '';
 
               return (
-                <div key={chatItem.id} className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`} onClick={() => handleSelectChat(chatItem, searchTerm)}>
+                <div
+                  key={chatItem.id}
+                  className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`}
+                  onClick={() => handleSelectChat(chatItem, searchTerm)}
+                  onContextMenu={(e) => handleChatContextMenu(e, chatItem)}
+                >
                   <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
                   <div className="chat-item-content">
                     <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
@@ -895,9 +940,9 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Context Menu */}
+      {/* Context Menu for Messages */}
       {contextMenu.visible && (
-        <div 
+        <div
           ref={contextMenuRef}
           className="message-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
@@ -909,6 +954,20 @@ export default function Dashboard() {
           <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null }); }} className="danger">
             <Trash2 size={16} />
             Удалить
+          </button>
+        </div>
+      )}
+
+      {/* Context Menu for Chats */}
+      {chatContextMenu.visible && (
+        <div
+          ref={chatContextMenuRef}
+          className="message-context-menu"
+          style={{ top: chatContextMenu.y, left: chatContextMenu.x }}
+        >
+          <button onClick={handleHideChat}>
+            <X size={16} />
+            Удалить чат
           </button>
         </div>
       )}

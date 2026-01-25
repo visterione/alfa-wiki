@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Trash2, AlertCircle, Plus, Trash, Users as UsersIcon, Bell, ChevronDown, Search } from 'lucide-react';
-import { users as usersApi } from '../../services/api';
+import { X, Save, Trash2, AlertCircle, Plus, Trash, Users as UsersIcon, Bell, ChevronDown, Search, Edit } from 'lucide-react';
+import { users as usersApi, calendar as calendarApi } from '../../services/api';
+import toast from 'react-hot-toast';
 
 // Компонент мультиселекта с поиском
 function UserMultiSelect({ users, selectedIds, onChange, placeholder }) {
@@ -160,6 +161,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
 
   const [allUsers, setAllUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
+  const [editingSeries, setEditingSeries] = useState(false);
 
   // Загрузка пользователей
   useEffect(() => {
@@ -320,8 +322,14 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    // Валидация формы
     if (!formData.title.trim()) {
-      alert('Введите название события');
+      toast.error('Введите название события');
+      return;
+    }
+
+    if (!formData.startTime || !formData.endTime) {
+      toast.error('Укажите время начала и окончания события');
       return;
     }
 
@@ -336,9 +344,31 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
     const startDate = parseAsUTC(formData.startTime);
     const endDate = parseAsUTC(formData.endTime);
 
-    if (endDate <= startDate) {
-      alert('Время окончания должно быть позже времени начала');
+    // Проверка валидности дат
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      toast.error('Некорректный формат даты');
       return;
+    }
+
+    if (endDate <= startDate) {
+      toast.error('Время окончания должно быть позже времени начала');
+      return;
+    }
+
+    // Проверка для повторяющихся событий
+    if (formData.isRecurring) {
+      if (formData.recurrenceRule.frequency === 'weekly' && formData.recurrenceRule.daysOfWeek.length === 0) {
+        toast.error('Выберите хотя бы один день недели для еженедельного повторения');
+        return;
+      }
+
+      if (formData.recurrenceRule.endDate) {
+        const recurrenceEndDate = new Date(formData.recurrenceRule.endDate);
+        if (recurrenceEndDate < startDate) {
+          toast.error('Дата окончания повторения должна быть позже даты начала события');
+          return;
+        }
+      }
     }
 
     // Преобразуем participants из массива ID в массив объектов с userId и status
@@ -356,7 +386,12 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
       sharedWith: formData.sharedWith
     };
 
-    onSave(eventData);
+    // Если редактируем серию экземпляра повторяющегося события
+    if (editingSeries && event?.parentEventId) {
+      onSave(eventData, event.parentEventId);
+    } else {
+      onSave(eventData);
+    }
   };
 
   const handleDelete = () => {
@@ -365,6 +400,52 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
     }
   };
 
+  // Функция для загрузки родительского события и переключения в режим редактирования
+  const handleEditSeries = async () => {
+    const parentId = event?.parentEventId;
+    if (!parentId) return;
+
+    try {
+      const { data: parentEvent } = await calendarApi.getEvent(parentId);
+
+      // Преобразуем participants из формата [{userId, status}] в массив ID
+      const participantIds = Array.isArray(parentEvent.participants)
+        ? parentEvent.participants.map(p => typeof p === 'string' ? p : p.userId)
+        : [];
+
+      setFormData({
+        title: parentEvent.title || '',
+        description: parentEvent.description || '',
+        startTime: toLocalDateTimeString(parentEvent.startTime),
+        endTime: toLocalDateTimeString(parentEvent.endTime),
+        allDay: parentEvent.allDay || false,
+        eventType: parentEvent.eventType || 'personal',
+        priority: parentEvent.priority || 'medium',
+        status: parentEvent.status || 'planned',
+        color: parentEvent.color || '#4a90e2',
+        location: parentEvent.location || '',
+        isRecurring: parentEvent.isRecurring || false,
+        recurrenceRule: parentEvent.recurrenceRule || {
+          frequency: 'daily',
+          interval: 1,
+          daysOfWeek: [],
+          endDate: null
+        },
+        reminders: parentEvent.reminders || [],
+        visibility: parentEvent.visibility || 'private',
+        sharedWith: parentEvent.sharedWith || [],
+        participants: participantIds
+      });
+
+      setEditingSeries(true);
+      toast.success('Загружена вся серия для редактирования');
+    } catch (error) {
+      console.error('Failed to load parent event:', error);
+      toast.error('Ошибка загрузки родительского события');
+    }
+  };
+
+
   // Проверяем, является ли событие экземпляром повторяющегося события
   const isRecurringInstance = event?.isInstance || (event?.id && event.id.includes('-'));
 
@@ -372,7 +453,8 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
   const isCreator = !event || event.createdBy === currentUser?.id;
 
   // Можно редактировать только если пользователь - создатель и это не экземпляр повторяющегося события
-  const canEdit = isCreator && !isRecurringInstance && !event?.isIntegrated;
+  // ИЛИ если включен режим редактирования серии
+  const canEdit = (isCreator && !isRecurringInstance && !event?.isIntegrated) || editingSeries;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -384,10 +466,44 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
           </button>
         </div>
 
-        {isRecurringInstance && (
-          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #0ea5e9', borderRadius: '4px' }}>
+        {isRecurringInstance && !editingSeries && (
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #0ea5e9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+              Это экземпляр повторяющегося события. Редактирование отдельных экземпляров не поддерживается.
+            </div>
+            {isCreator && (
+              <button
+                type="button"
+                onClick={handleEditSeries}
+                style={{
+                  padding: '6px 12px',
+                  background: '#0ea5e9',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#0284c7'}
+                onMouseLeave={(e) => e.target.style.background = '#0ea5e9'}
+              >
+                <Edit size={14} />
+                Редактировать всю серию
+              </button>
+            )}
+          </div>
+        )}
+
+        {editingSeries && (
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#dcfce7', border: '1px solid #22c55e', borderRadius: '4px' }}>
             <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
-            Это экземпляр повторяющегося события. Редактирование отдельных экземпляров пока не поддерживается. Вы можете удалить все повторения.
+            Режим редактирования серии: изменения будут применены ко всем повторениям этого события.
           </div>
         )}
 

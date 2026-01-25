@@ -60,9 +60,27 @@ export default function Calendar() {
   const [filters, setFilters] = useState({
     types: [],
     statuses: [],
-    priorities: [],
-    showIntegrated: true
+    priorities: []
   });
+
+  // Синхронизация currentDate с URL параметром date
+  useEffect(() => {
+    const dateParam = searchParams.get('date');
+    if (dateParam) {
+      const newDate = new Date(dateParam);
+      // Проверяем что дата валидна и отличается от текущей
+      if (!isNaN(newDate.getTime())) {
+        const isDifferent =
+          newDate.getDate() !== currentDate.getDate() ||
+          newDate.getMonth() !== currentDate.getMonth() ||
+          newDate.getFullYear() !== currentDate.getFullYear();
+
+        if (isDifferent) {
+          setCurrentDate(newDate);
+        }
+      }
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadEvents();
@@ -73,13 +91,13 @@ export default function Calendar() {
     try {
       setLoading(true);
       const { start, end } = getDateRange();
-      
+
       // Загрузка событий календаря
       const params = {
         start: start.toISOString(),
         end: end.toISOString()
       };
-      
+
       if (filters.types.length > 0) {
         params.types = filters.types.join(',');
       }
@@ -93,20 +111,25 @@ export default function Calendar() {
       const { data: eventsData } = await calendarApi.getEvents(params);
       setEvents(eventsData);
 
-      // Загрузка интегрированных событий
-      if (filters.showIntegrated) {
+      // Загрузка интегрированных событий (бэкенд фильтрует по доступу к страницам)
+      try {
         const { data: integratedData } = await calendarApi.getIntegratedEvents(
           start.toISOString(),
           end.toISOString(),
           'accreditation,vehicle'
         );
         setIntegratedEvents(integratedData);
-      } else {
+      } catch (integratedError) {
+        console.warn('Failed to load integrated events:', integratedError);
+        // Не показываем ошибку пользователю, так как это не критично
         setIntegratedEvents([]);
       }
     } catch (error) {
       console.error('Failed to load events:', error);
-      toast.error('Ошибка загрузки событий');
+      const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Ошибка загрузки событий';
+      toast.error(errorMessage);
+      setEvents([]);
+      setIntegratedEvents([]);
     } finally {
       setLoading(false);
     }
@@ -218,11 +241,14 @@ export default function Calendar() {
     };
 
 
-  const handleSaveEvent = async (eventData) => {
+  const handleSaveEvent = async (eventData, parentEventId) => {
     try {
-      if (selectedEvent) {
-        await calendarApi.updateEvent(selectedEvent.id, eventData);
-        toast.success('Событие обновлено');
+      // Если передан parentEventId, значит редактируем родительское событие (всю серию)
+      const eventIdToUpdate = parentEventId || selectedEvent?.id;
+
+      if (eventIdToUpdate) {
+        await calendarApi.updateEvent(eventIdToUpdate, eventData);
+        toast.success(parentEventId ? 'Серия событий обновлена' : 'Событие обновлено');
       } else {
         await calendarApi.createEvent(eventData);
         toast.success('Событие создано');
@@ -232,7 +258,8 @@ export default function Calendar() {
       loadUpcoming();
     } catch (error) {
       console.error('Failed to save event:', error);
-      toast.error('Ошибка сохранения события');
+      const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Ошибка сохранения события';
+      toast.error(errorMessage);
     }
   };
 
@@ -243,27 +270,141 @@ export default function Calendar() {
     if (isRecurringInstance) {
       // Это экземпляр повторяющегося события
       const parentId = event?.parentEventId || eventId.split('-')[0];
+      const instanceDate = event?.instanceDate || event?.startTime;
 
-      const choice = window.confirm(
-        'Это повторяющееся событие.\n\n' +
-        'OK - Удалить все повторения\n' +
-        'Отмена - Отменить удаление\n\n' +
-        'Примечание: Удаление отдельных экземпляров повторяющихся событий пока не поддерживается.'
-      );
+      // Создаем кастомный диалог выбора
+      const dialog = document.createElement('div');
+      dialog.style.cssText = `
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10001;
+        backdrop-filter: blur(4px);
+      `;
 
-      if (!choice) return;
+      dialog.innerHTML = `
+        <div style="
+          background: white;
+          border-radius: 12px;
+          padding: 24px;
+          max-width: 480px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        ">
+          <h3 style="margin: 0 0 16px 0; font-size: 18px; font-weight: 600; color: #1f2937;">
+            Удалить повторяющееся событие
+          </h3>
+          <p style="margin: 0 0 24px 0; font-size: 14px; color: #6b7280; line-height: 1.5;">
+            Это событие является частью серии повторяющихся событий. Что вы хотите сделать?
+          </p>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button id="delete-instance-btn" style="
+              padding: 12px 20px;
+              background: #3b82f6;
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.2s;
+            ">
+              Удалить только этот экземпляр
+            </button>
+            <button id="delete-all-btn" style="
+              padding: 12px 20px;
+              background: #ef4444;
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.2s;
+            ">
+              Удалить все повторения
+            </button>
+            <button id="cancel-btn" style="
+              padding: 12px 20px;
+              background: #f3f4f6;
+              color: #374151;
+              border: 1px solid #d1d5db;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: all 0.2s;
+            ">
+              Отмена
+            </button>
+          </div>
+        </div>
+      `;
 
-      // Удаляем родительское событие (все повторения)
-      try {
-        await calendarApi.deleteEvent(parentId);
-        toast.success('Все повторения события удалены');
-        closeEventModal();
-        loadEvents();
-        loadUpcoming();
-      } catch (error) {
-        console.error('Failed to delete recurring event:', error);
-        toast.error('Ошибка удаления повторяющегося события');
-      }
+      document.body.appendChild(dialog);
+
+      // Обработчики кнопок
+      const handleChoice = async (choice) => {
+        document.body.removeChild(dialog);
+
+        if (choice === 'instance') {
+          try {
+            await calendarApi.deleteEventInstance(parentId, instanceDate);
+            toast.success('Экземпляр события удален');
+            closeEventModal();
+            loadEvents();
+            loadUpcoming();
+          } catch (error) {
+            console.error('Failed to delete event instance:', error);
+            const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Ошибка удаления экземпляра события';
+            toast.error(errorMessage);
+          }
+        } else if (choice === 'all') {
+          try {
+            await calendarApi.deleteEvent(parentId);
+            toast.success('Все повторения события удалены');
+            closeEventModal();
+            loadEvents();
+            loadUpcoming();
+          } catch (error) {
+            console.error('Failed to delete recurring event:', error);
+            const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Ошибка удаления повторяющегося события';
+            toast.error(errorMessage);
+          }
+        }
+      };
+
+      dialog.querySelector('#delete-instance-btn').onclick = () => handleChoice('instance');
+      dialog.querySelector('#delete-all-btn').onclick = () => handleChoice('all');
+      dialog.querySelector('#cancel-btn').onclick = () => handleChoice('cancel');
+      dialog.onclick = (e) => {
+        if (e.target === dialog) handleChoice('cancel');
+      };
+
+      // Добавляем hover эффекты
+      const buttons = dialog.querySelectorAll('button');
+      buttons.forEach(btn => {
+        btn.onmouseenter = () => {
+          if (btn.id === 'delete-instance-btn') {
+            btn.style.background = '#2563eb';
+          } else if (btn.id === 'delete-all-btn') {
+            btn.style.background = '#dc2626';
+          } else {
+            btn.style.background = '#e5e7eb';
+          }
+        };
+        btn.onmouseleave = () => {
+          if (btn.id === 'delete-instance-btn') {
+            btn.style.background = '#3b82f6';
+          } else if (btn.id === 'delete-all-btn') {
+            btn.style.background = '#ef4444';
+          } else {
+            btn.style.background = '#f3f4f6';
+          }
+        };
+      });
     } else {
       // Обычное событие
       if (!window.confirm('Удалить это событие?')) return;
@@ -276,7 +417,8 @@ export default function Calendar() {
         loadUpcoming();
       } catch (error) {
         console.error('Failed to delete event:', error);
-        toast.error('Ошибка удаления события');
+        const errorMessage = error.response?.data?.error || error.response?.data?.details || 'Ошибка удаления события';
+        toast.error(errorMessage);
       }
     }
   };

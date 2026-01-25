@@ -175,6 +175,53 @@ export const AnalysisSearchResult = ({ result, searchQuery }) => {
   );
 };
 
+// Компонент для отображения результата типа "Услуга"
+export const ServiceSearchResult = ({ result, searchQuery }) => {
+  const data = result.structuredData;
+  if (!data) return null;
+
+  return (
+    <div className="search-result-structured">
+      <div className="search-result-row">
+        {data.serviceCode && (
+          <>
+            <span className="search-result-field-label">Код:</span>
+            <span className="search-result-field-value search-result-code">
+              {highlightText(data.serviceCode, searchQuery).map((part, i) => (
+                part.highlight ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>
+              ))}
+            </span>
+          </>
+        )}
+        {data.medCenter && (
+          <>
+            <span className="search-result-divider">|</span>
+            <span className="search-result-field-label">Медцентр:</span>
+            <span className="search-result-field-value">
+              {highlightText(data.medCenter, searchQuery).map((part, i) => (
+                part.highlight ? <mark key={i}>{part.text}</mark> : <span key={i}>{part.text}</span>
+              ))}
+            </span>
+          </>
+        )}
+        {data.price && (
+          <>
+            <span className="search-result-divider">|</span>
+            <span className="search-result-field-label">Цена:</span>
+            <span className="search-result-field-value search-result-price">
+              {data.price} ₽
+            </span>
+          </>
+        )}
+        <span className="search-result-divider">|</span>
+        <span className={`search-result-status ${data.isStopped ? 'stopped' : 'active'}`}>
+          {data.isStopped ? '✖' : '✓'}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 // Компонент для отображения результата типа "Врач"
 export const DoctorSearchResult = ({ result, searchQuery }) => {
   // Используем старый excerpt вместо structuredData

@@ -204,7 +204,8 @@ export const chat = {
     });
   },
   editMessage: (chatId, messageId, content) => api.put(`/chat/${chatId}/messages/${messageId}`, { content }),
-  deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`)
+  deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`),
+  hideChat: (chatId, hidden = true) => api.patch(`/chat/${chatId}/hide`, { hidden })
 };
 
 // Accreditations
@@ -302,6 +303,11 @@ export const calendar = {
 
   // Удалить событие
   deleteEvent: (id) => api.delete(`/calendar/events/${id}`),
+
+  // Удалить отдельный экземпляр повторяющегося события
+  deleteEventInstance: (id, instanceDate) => api.delete(`/calendar/events/${id}/instance`, {
+    data: { instanceDate }
+  }),
 
   // Получить интегрированные события (аккредитации, ТО)
   getIntegratedEvents: (start, end, types) =>

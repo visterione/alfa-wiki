@@ -227,9 +227,10 @@ const ChatMember = sequelize.define('ChatMember', {
   userId: { type: DataTypes.UUID, allowNull: false },
   role: { type: DataTypes.ENUM('admin', 'member'), defaultValue: 'member' },
   lastReadAt: { type: DataTypes.DATE },
-  isNotificationMuted: { type: DataTypes.BOOLEAN, defaultValue: false }
-}, { 
-  tableName: 'chat_members', 
+  isNotificationMuted: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isHidden: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат скрыт у пользователя' }
+}, {
+  tableName: 'chat_members',
   timestamps: true,
   indexes: [{ unique: true, fields: ['chatId', 'userId'] }]
 });
@@ -412,48 +413,107 @@ const VehicleFile = sequelize.define('VehicleFile', {
 
 const Analysis = sequelize.define('Analysis', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  medCenter: { 
-    type: DataTypes.STRING(50), 
+  lab: {
+    type: DataTypes.STRING(50),
     allowNull: false,
-    comment: 'Медицинский центр (Альфа, Кидс, Проф, Линия, Смайл, 3К)'
+    comment: 'Лаборатория (Альфа, Кидс, Проф, Линия, Смайл, 3К)'
   },
-  serviceCode: { 
-    type: DataTypes.STRING(100), 
+  serviceCode: {
+    type: DataTypes.STRING(100),
     allowNull: false,
     comment: 'Код услуги из МИС'
   },
-  serviceName: { 
-    type: DataTypes.STRING(500), 
+  serviceName: {
+    type: DataTypes.STRING(500),
     allowNull: false,
     comment: 'Название анализа'
   },
-  price: { 
-    type: DataTypes.DECIMAL(10, 2), 
+  price: {
+    type: DataTypes.DECIMAL(10, 2),
     allowNull: false,
     comment: 'Стоимость анализа'
   },
-  isStopped: { 
-    type: DataTypes.BOOLEAN, 
+  isStopped: {
+    type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'Анализ временно не выполняется'
   },
-  preparationLink: { 
+  preparationLink: {
     type: DataTypes.STRING(1000),
     comment: 'Ссылка на файл с подготовкой к анализу'
   },
   comment: { type: DataTypes.TEXT },
-  misServiceId: { 
+  misServiceId: {
     type: DataTypes.STRING(50),
     comment: 'ID услуги в МИС для обновления цен'
   },
-  lastPriceUpdate: { 
+  lastPriceUpdate: {
     type: DataTypes.DATE,
     comment: 'Время последнего обновления цены из МИС'
   }
-}, { 
-  tableName: 'analyses', 
+}, {
+  tableName: 'analyses',
   timestamps: true,
   indexes: [
+    { fields: ['lab'] },
+    { fields: ['serviceCode'] },
+    { fields: ['serviceName'] },
+    { fields: ['isStopped'] },
+    { fields: ['misServiceId'] }
+  ]
+});
+
+// === SERVICE MODEL ===
+const Service = sequelize.define('Service', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  pageSlug: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Slug страницы wiki, к которой привязаны услуги'
+  },
+  medCenter: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'Медицинский центр (Альфа, Кидс, Проф, Линия, Смайл, 3К)'
+  },
+  serviceCode: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    comment: 'Код услуги из МИС'
+  },
+  serviceName: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Название услуги'
+  },
+  price: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    comment: 'Стоимость услуги'
+  },
+  isStopped: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Услуга временно не выполняется'
+  },
+  preparationLink: {
+    type: DataTypes.STRING(1000),
+    comment: 'Ссылка на файл с подготовкой к услуге'
+  },
+  comment: { type: DataTypes.TEXT },
+  misServiceId: {
+    type: DataTypes.STRING(50),
+    comment: 'ID услуги в МИС для обновления цен'
+  },
+  lastPriceUpdate: {
+    type: DataTypes.DATE,
+    comment: 'Время последнего обновления цены из МИС'
+  }
+}, {
+  tableName: 'services',
+  timestamps: true,
+  indexes: [
+    { fields: ['pageSlug'] },
     { fields: ['medCenter'] },
     { fields: ['serviceCode'] },
     { fields: ['serviceName'] },
@@ -643,11 +703,16 @@ const CalendarEvent = sequelize.define('CalendarEvent', {
     defaultValue: false,
     comment: 'Повторяющееся событие'
   },
-  recurrenceRule: { 
+  recurrenceRule: {
     type: DataTypes.JSONB,
     comment: 'Правила повторения: {frequency, interval, endDate, daysOfWeek}'
   },
-  parentEventId: { 
+  exceptions: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Массив дат (ISO строк) когда повторяющееся событие НЕ должно происходить'
+  },
+  parentEventId: {
     type: DataTypes.UUID,
     comment: 'ID родительского события для экземпляров повторяющихся событий'
   },
@@ -1167,6 +1232,7 @@ module.exports = {
   CourseRole,
   CourseMedCenter,
   Analysis,
+  Service,
   CalendarEvent,
   MedCenter,
   UserMedCenter,

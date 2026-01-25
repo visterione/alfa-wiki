@@ -40,7 +40,7 @@ const misRequest = async (endpoint, params = {}) => {
 // === HELPER: Индексация анализа ===
 const indexAnalysis = async (analysis) => {
   const searchContent = [
-    analysis.medCenter,
+    analysis.lab,
     analysis.serviceCode,
     analysis.serviceName,
     analysis.price ? `${analysis.price} руб` : '',
@@ -48,10 +48,10 @@ const indexAnalysis = async (analysis) => {
     analysis.comment
   ].filter(Boolean).join(' | ');
 
-  const title = `${analysis.serviceName} (${analysis.medCenter})`;
+  const title = `${analysis.serviceName} (${analysis.lab})`;
 
   const keywords = [
-    analysis.medCenter?.toLowerCase(),
+    analysis.lab?.toLowerCase(),
     analysis.serviceCode?.toLowerCase(),
     analysis.serviceName?.toLowerCase().split(' '),
     'анализ',
@@ -69,7 +69,7 @@ const indexAnalysis = async (analysis) => {
     url: `/page/${ANALYSES_PAGE_SLUG}?highlight=${analysis.id}`,
     metadata: {
       pageSlug: ANALYSES_PAGE_SLUG,
-      medCenter: analysis.medCenter,
+      lab: analysis.lab,
       serviceCode: analysis.serviceCode,
       serviceName: analysis.serviceName,
       price: analysis.price,
