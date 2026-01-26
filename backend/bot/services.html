@@ -170,10 +170,10 @@
 .srv-table td:nth-child(4) { width: 110px; } /* Стоимость */
 
 .srv-table th:nth-child(5),
-.srv-table td:nth-child(5) { width: 80px; } /* СТОП */
+.srv-table td:nth-child(5) { width: 200px; } /* Комментарий */
 
 .srv-table th:nth-child(6),
-.srv-table td:nth-child(6) { width: 160px; } /* Действия */
+.srv-table td:nth-child(6) { width: 100px; } /* Действия */
 
 .srv-table td {
   padding: 14px 16px;
@@ -216,38 +216,14 @@
   color: #16a34a;
 }
 
-/* Кнопка СТОП */
-.srv-stop-btn {
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.srv-stop-btn svg { width: 20px; height: 20px; }
-
-.srv-stop-btn.stopped {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.srv-stop-btn.stopped:hover {
-  background: #fecaca;
-}
-
-.srv-stop-btn.active {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.srv-stop-btn.active:hover {
-  background: #bbf7d0;
+/* Комментарий в таблице */
+.srv-comment {
+  font-size: 13px;
+  color: #6b7280;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Действия */
@@ -273,12 +249,6 @@
 
 .srv-action-btn:hover { background: #e5e7eb; color: #374151; }
 .srv-action-btn svg { width: 16px; height: 16px; }
-
-.srv-action-btn.link { color: #3b82f6; }
-.srv-action-btn.link:hover { background: #dbeafe; }
-
-.srv-action-btn.copy { color: #8b5cf6; }
-.srv-action-btn.copy:hover { background: #ede9fe; }
 
 .srv-action-btn.edit { color: #f59e0b; }
 .srv-action-btn.edit:hover { background: #fef3c7; }
@@ -625,31 +595,6 @@
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-
-  /* Отображаем статус СТОП текстом при печати */
-  .srv-stop-btn {
-    width: auto !important;
-    height: auto !important;
-    background: transparent !important;
-    border: none !important;
-    font-size: 9pt;
-    font-weight: 600;
-    padding: 2px 6px;
-  }
-
-  .srv-stop-btn svg {
-    display: none !important;
-  }
-
-  .srv-stop-btn.stopped::after {
-    content: "СТОП";
-    color: #dc2626;
-  }
-
-  .srv-stop-btn.active::after {
-    content: "Да";
-    color: #16a34a;
-  }
 }
 </style>
 
@@ -662,11 +607,6 @@
       </div>
       <select id="filter-medcenter" class="srv-select" onchange="servicesApp.resetAndLoad()">
         <option value="">Все медцентры</option>
-      </select>
-      <select id="filter-stopped" class="srv-select" onchange="servicesApp.resetAndLoad()">
-        <option value="">Все услуги</option>
-        <option value="false">Выполняются</option>
-        <option value="true">Не выполняются</option>
       </select>
     </div>
     <button class="srv-btn srv-btn-primary" onclick="servicesApp.openAddModal()">
@@ -684,7 +624,7 @@
           <th class="sortable" onclick="servicesApp.sortTable('serviceCode')">Код <span class="sort-icon">↕</span></th>
           <th class="sortable" onclick="servicesApp.sortTable('serviceName')">Название <span class="sort-icon">↕</span></th>
           <th class="sortable" onclick="servicesApp.sortTable('price')">Стоимость <span class="sort-icon">↕</span></th>
-          <th>СТОП</th>
+          <th>Комментарий</th>
           <th>Действия</th>
         </tr>
       </thead>
@@ -760,13 +700,6 @@
         <div class="srv-form-group">
           <label>Комментарий</label>
           <textarea id="edit-comment" class="srv-textarea" placeholder="Дополнительная информация..."></textarea>
-        </div>
-
-        <div class="srv-form-group">
-          <div class="srv-checkbox-group">
-            <input type="checkbox" id="edit-isstopped">
-            <label for="edit-isstopped">Услуга не выполняется (СТОП)</label>
-          </div>
         </div>
 
         <input type="hidden" id="edit-misserviceid">
@@ -886,13 +819,11 @@ window.servicesApp = (function() {
   function loadData() {
     var search = document.getElementById('filter-search').value;
     var medCenter = document.getElementById('filter-medcenter').value;
-    var isStopped = document.getElementById('filter-stopped').value;
 
     var url = API_URL + '?sortBy=' + sortField + '&sortOrder=' + sortOrder;
     if (currentPageSlug) url += '&pageSlug=' + encodeURIComponent(currentPageSlug);
     if (search) url += '&search=' + encodeURIComponent(search);
     if (medCenter) url += '&medCenter=' + encodeURIComponent(medCenter);
-    if (isStopped) url += '&isStopped=' + isStopped;
 
     fetchAPI(url).then(function(data) {
       services = data;
@@ -947,21 +878,9 @@ window.servicesApp = (function() {
         '<td class="center">' + (s.serviceCode || '-') + '</td>' +
         '<td>' + s.serviceName + '</td>' +
         '<td class="center srv-price">' + formatPrice(s.price) + '</td>' +
-        '<td class="center">' +
-          '<button class="srv-stop-btn ' + (s.isStopped ? 'stopped' : 'active') + '" onclick="servicesApp.toggleStop(\'' + s.id + '\')" title="' + (s.isStopped ? 'Возобновить' : 'Остановить') + '">' +
-            (s.isStopped
-              ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
-              : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>') +
-          '</button>' +
-        '</td>' +
+        '<td><span class="srv-comment" title="' + (s.comment || '') + '">' + (s.comment || '-') + '</span></td>' +
         '<td class="center">' +
           '<div class="srv-actions">' +
-            '<button class="srv-action-btn link" onclick="servicesApp.openLink(\'' + s.id + '\')" title="Открыть ссылку" ' + (!s.preparationLink ? 'disabled' : '') + '>' +
-              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>' +
-            '</button>' +
-            '<button class="srv-action-btn copy" onclick="servicesApp.copyLink(\'' + s.id + '\')" title="Копировать ссылку" ' + (!s.preparationLink ? 'disabled' : '') + '>' +
-              '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>' +
-            '</button>' +
             '<button class="srv-action-btn edit" onclick="servicesApp.openEditModal(\'' + s.id + '\')" title="Редактировать">' +
               '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>' +
             '</button>' +
@@ -1043,7 +962,6 @@ window.servicesApp = (function() {
     document.getElementById('edit-price').value = item.price;
     document.getElementById('edit-preplink').value = item.preparationLink || '';
     document.getElementById('edit-comment').value = item.comment || '';
-    document.getElementById('edit-isstopped').checked = item.isStopped;
     document.getElementById('edit-misserviceid').value = item.misServiceId || '';
 
     document.getElementById('mis-search-section').style.display = 'none';
@@ -1065,7 +983,6 @@ window.servicesApp = (function() {
       price: parseFloat(document.getElementById('edit-price').value),
       preparationLink: document.getElementById('edit-preplink').value,
       comment: document.getElementById('edit-comment').value,
-      isStopped: document.getElementById('edit-isstopped').checked,
       misServiceId: document.getElementById('edit-misserviceid').value || null
     };
 
@@ -1141,62 +1058,6 @@ window.servicesApp = (function() {
   }
 
   // === ДЕЙСТВИЯ ===
-  function toggleStop(id) {
-    fetchAPI(API_URL + '/' + id + '/toggle-stop', { method: 'PATCH' })
-      .then(function() {
-        showToast('Статус обновлен', 'success');
-        loadData();
-      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
-  }
-
-  function openLink(id) {
-    var item = services.find(function(s) { return s.id === id; });
-    if (item && item.preparationLink) {
-      window.open(item.preparationLink, '_blank');
-    }
-  }
-
-  function copyLink(id) {
-    var item = services.find(function(s) { return s.id === id; });
-    if (item && item.preparationLink) {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(item.preparationLink).then(function() {
-          showToast('Ссылка скопирована', 'success');
-        }).catch(function(err) {
-          console.error('Ошибка копирования через Clipboard API:', err);
-          fallbackCopyLink(item.preparationLink);
-        });
-      } else {
-        fallbackCopyLink(item.preparationLink);
-      }
-    }
-  }
-
-  function fallbackCopyLink(text) {
-    var textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.left = '-999999px';
-    textArea.style.top = '-999999px';
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-
-    try {
-      var successful = document.execCommand('copy');
-      if (successful) {
-        showToast('Ссылка скопирована', 'success');
-      } else {
-        showToast('Не удалось скопировать. Попробуйте вручную.', 'error');
-      }
-    } catch (err) {
-      console.error('Ошибка копирования:', err);
-      showToast('Копирование не поддерживается в браузере', 'error');
-    } finally {
-      document.body.removeChild(textArea);
-    }
-  }
-
   function sortTable(field) {
     var ths = document.querySelectorAll('.srv-table th');
     ths.forEach(function(th) { th.classList.remove('sorted'); });
@@ -1267,10 +1128,7 @@ window.servicesApp = (function() {
     goToPage: goToPage,
     scrollToRecord: scrollToRecord,
     searchMIS: searchMIS,
-    selectMISService: selectMISService,
-    toggleStop: toggleStop,
-    openLink: openLink,
-    copyLink: copyLink
+    selectMISService: selectMISService
   };
 })();
 </script>

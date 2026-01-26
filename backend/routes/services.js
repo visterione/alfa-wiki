@@ -257,7 +257,6 @@ router.post('/',
         serviceCode,
         serviceName,
         price,
-        isStopped = false,
         preparationLink = '',
         comment = '',
         misServiceId = null
@@ -269,7 +268,7 @@ router.post('/',
         serviceCode,
         serviceName,
         price,
-        isStopped,
+        isStopped: false,
         preparationLink,
         comment,
         misServiceId,
@@ -311,7 +310,6 @@ router.put('/:id',
         serviceCode,
         serviceName,
         price,
-        isStopped,
         preparationLink,
         comment,
         misServiceId
@@ -328,7 +326,6 @@ router.put('/:id',
         serviceCode,
         serviceName,
         price,
-        isStopped,
         preparationLink,
         comment,
         misServiceId
@@ -344,26 +341,6 @@ router.put('/:id',
     }
   }
 );
-
-// PATCH /api/services/:id/toggle-stop - Переключить статус СТОП
-router.patch('/:id/toggle-stop', authenticate, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const service = await Service.findByPk(id);
-    if (!service) {
-      return res.status(404).json({ error: 'Услуга не найдена' });
-    }
-
-    await service.update({ isStopped: !service.isStopped });
-    await indexService(service);
-
-    res.json(service);
-  } catch (error) {
-    console.error('Error toggling stop status:', error);
-    res.status(500).json({ error: 'Ошибка при обновлении статуса' });
-  }
-});
 
 // DELETE /api/services/:id - Удалить услугу
 router.delete('/:id', authenticate, async (req, res) => {
