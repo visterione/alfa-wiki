@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { BASE_URL } from '../services/api';
@@ -18,6 +18,62 @@ export function SocketProvider({ children }) {
   const socketRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+
+  // Title notification refs
+  const originalTitleRef = useRef(document.title);
+  const blinkIntervalRef = useRef(null);
+  const isBlinkingRef = useRef(false);
+
+  // Start title blinking
+  const startTitleBlink = useCallback(() => {
+    if (isBlinkingRef.current) return;
+    isBlinkingRef.current = true;
+
+    let showNotification = true;
+    blinkIntervalRef.current = setInterval(() => {
+      document.title = showNotification ? '● Новое сообщение' : originalTitleRef.current;
+      showNotification = !showNotification;
+    }, 1000);
+  }, []);
+
+  // Stop title blinking
+  const stopTitleBlink = useCallback(() => {
+    if (blinkIntervalRef.current) {
+      clearInterval(blinkIntervalRef.current);
+      blinkIntervalRef.current = null;
+    }
+    isBlinkingRef.current = false;
+    document.title = originalTitleRef.current;
+  }, []);
+
+  // Handle visibility change - stop blinking when user returns to tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        stopTitleBlink();
+      }
+    };
+
+    const handleFocus = () => {
+      stopTitleBlink();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      stopTitleBlink();
+    };
+  }, [stopTitleBlink]);
+
+  // Stop blinking when all notifications are cleared
+  useEffect(() => {
+    if (notifications.length === 0) {
+      stopTitleBlink();
+    }
+  }, [notifications.length, stopTitleBlink]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -64,6 +120,9 @@ export function SocketProvider({ children }) {
 
       setNotifications(prev => [...prev, notification]);
 
+      // Start title blinking for new message
+      startTitleBlink();
+
       // Play notification sound
       try {
         const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGe77eafTRALUKfj8LZjHAY4ktjyzXksBSR3x/DdkUAKFF607OunVRQKRZ/f8r5sIQUsgc7y2Ik2CBhnu+3mnk0QC1Cn4/C2YhwGOJLY8s15LAUkd8fw3ZFAChRet'
@@ -77,7 +136,7 @@ export function SocketProvider({ children }) {
       socket.disconnect();
       setIsConnected(false);
     };
-  }, [user?.id]);
+  }, [user?.id, startTitleBlink]);
 
   const removeNotification = (id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));

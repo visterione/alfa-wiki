@@ -247,6 +247,9 @@ const Message = sequelize.define('Message', {
   replyToId: { type: DataTypes.UUID }
 }, { tableName: 'messages', timestamps: true });
 
+// === MESSAGE REACTION MODEL ===
+const MessageReaction = require('./messageReaction')(sequelize, DataTypes);
+
 // === ACCREDITATION MODEL ===
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -994,6 +997,12 @@ Message.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(Message, { foreignKey: 'replyToId', as: 'replyTo' });
 
+// Message & MessageReaction
+Message.hasMany(MessageReaction, { foreignKey: 'messageId', as: 'reactions', onDelete: 'CASCADE' });
+MessageReaction.belongsTo(Message, { foreignKey: 'messageId', as: 'message' });
+MessageReaction.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(MessageReaction, { foreignKey: 'userId', as: 'messageReactions' });
+
 // MapMarker & User
 MapMarker.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 
@@ -1218,6 +1227,7 @@ module.exports = {
   Chat,
   ChatMember,
   Message,
+  MessageReaction,
   Accreditation,
   AccreditationFile,
   TelegramSubscriber,

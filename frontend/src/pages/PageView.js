@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Edit, ArrowLeft, Star, StarOff } from 'lucide-react';
 import { pages, favorites } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -11,6 +11,7 @@ import './PageView.css';
 export default function PageView() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, hasPermission } = useAuth();
 
   const [page, setPage] = useState(null);
@@ -27,10 +28,91 @@ export default function PageView() {
     document.querySelectorAll('script[data-page-script]').forEach(s => s.remove());
   }, []);
 
+  // Функция для подсветки текста на странице
+  const highlightSearchText = useCallback((node, searchText) => {
+    if (!node || !searchText || searchText.trim().length < 2) return;
+
+    const searchLower = searchText.toLowerCase().trim();
+
+    // Рекурсивная функция для обхода текстовых узлов
+    const highlightInNode = (element) => {
+      if (!element || !element.childNodes) return;
+
+      const nodesToProcess = Array.from(element.childNodes);
+
+      nodesToProcess.forEach(child => {
+        // Пропускаем уже подсвеченные элементы, скрипты и стили
+        if (child.nodeType === 1) { // Element node
+          const tagName = child.tagName?.toLowerCase();
+          if (tagName === 'mark' || tagName === 'script' || tagName === 'style') {
+            return;
+          }
+          // Рекурсивно обрабатываем дочерние элементы
+          highlightInNode(child);
+        } else if (child.nodeType === 3) { // Text node
+          const text = child.textContent;
+          const textLower = text.toLowerCase();
+          const index = textLower.indexOf(searchLower);
+
+          if (index !== -1) {
+            // Создаем новые узлы с подсветкой
+            const beforeText = text.substring(0, index);
+            const matchedText = text.substring(index, index + searchText.length);
+            const afterText = text.substring(index + searchText.length);
+
+            const fragment = document.createDocumentFragment();
+
+            if (beforeText) {
+              fragment.appendChild(document.createTextNode(beforeText));
+            }
+
+            const mark = document.createElement('mark');
+            mark.className = 'search-highlight';
+            mark.textContent = matchedText;
+            fragment.appendChild(mark);
+
+            if (afterText) {
+              const afterNode = document.createTextNode(afterText);
+              fragment.appendChild(afterNode);
+              // Продолжаем поиск в оставшейся части текста
+              const tempSpan = document.createElement('span');
+              tempSpan.appendChild(afterNode);
+              highlightInNode(tempSpan);
+              while (tempSpan.firstChild) {
+                fragment.appendChild(tempSpan.firstChild);
+              }
+            }
+
+            child.parentNode.replaceChild(fragment, child);
+          }
+        }
+      });
+    };
+
+    // Удаляем предыдущие подсветки
+    node.querySelectorAll('mark.search-highlight').forEach(mark => {
+      const text = mark.textContent;
+      mark.replaceWith(document.createTextNode(text));
+    });
+
+    // Применяем подсветку
+    highlightInNode(node);
+
+    // Прокручиваем к первому вхождению
+    setTimeout(() => {
+      const firstMark = node.querySelector('mark.search-highlight');
+      if (firstMark) {
+        firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Добавляем анимацию пульсации для первого вхождения
+        firstMark.classList.add('search-highlight-first');
+      }
+    }, 100);
+  }, []);
+
   // Callback ref - вызывается когда DOM элемент создан
   const contentRefCallback = useCallback((node) => {
     if (!node || !page) return;
-    
+
     console.log('=== contentRefCallback called ===');
     console.log('page.contentType:', page.contentType);
 
@@ -48,25 +130,25 @@ export default function PageView() {
     // Для HTML-страниц: извлекаем и выполняем скрипты
     if (page.contentType === 'html' && page.content) {
       console.log('=== Processing HTML scripts ===');
-      
+
       const parser = new DOMParser();
       const doc = parser.parseFromString(page.content, 'text/html');
       const scripts = doc.querySelectorAll('script');
-      
+
       console.log('Found scripts:', scripts.length);
-      
+
       scripts.forEach((scriptEl, index) => {
         console.log(`Script ${index} content:`, scriptEl.textContent?.substring(0, 50));
-        
+
         const newScript = document.createElement('script');
         newScript.setAttribute('data-page-script', 'true');
-        
+
         if (scriptEl.src) {
           newScript.src = scriptEl.src;
         } else {
           newScript.textContent = scriptEl.textContent;
         }
-        
+
         document.body.appendChild(newScript);
         console.log(`Script ${index} appended`);
       });
@@ -80,7 +162,22 @@ export default function PageView() {
       script.textContent = page.customJs;
       document.body.appendChild(script);
     }
-  }, [page, cleanupScripts]);
+
+    // Подсвечиваем поисковый запрос, если он есть в URL
+    const searchQuery = searchParams.get('search');
+    if (searchQuery) {
+      setTimeout(() => {
+        highlightSearchText(node, searchQuery);
+        // Удаляем параметр search из URL
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.delete('search');
+        const newUrl = newSearchParams.toString()
+          ? `${window.location.pathname}?${newSearchParams.toString()}`
+          : window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }, 500); // Даем время на рендер контента
+    }
+  }, [page, cleanupScripts, searchParams, highlightSearchText]);
 
   // Cleanup при размонтировании
   useEffect(() => {

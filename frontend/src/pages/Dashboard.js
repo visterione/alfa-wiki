@@ -13,6 +13,9 @@ import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import EmojiPicker from 'emoji-picker-react';
 import ChatNotification from '../components/ChatNotification';
+import MessageReactions from '../components/chat/MessageReactions';
+import ReactionMenu from '../components/chat/ReactionMenu';
+import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -46,13 +49,15 @@ export default function Dashboard() {
   const [videoPreview, setVideoPreview] = useState({ open: false, url: '', name: '' });
   const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', name: '', blobUrl: '' });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null });
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
   const [chatContextMenu, setChatContextMenu] = useState({ visible: false, x: 0, y: 0, chatId: null, chat: null });
   const [editingMessage, setEditingMessage] = useState(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState(null);
   const [searchQueryForChat, setSearchQueryForChat] = useState('');
   const [searchMatches, setSearchMatches] = useState([]);
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  const [reactionMenu, setReactionMenu] = useState(null);
+  const [reactionDetailsModal, setReactionDetailsModal] = useState(null);
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -233,8 +238,22 @@ export default function Dashboard() {
 
     socket.on('new_message', handleNewMessage);
 
+    const handleReactionUpdate = (data) => {
+      if (data.chatId === activeChatRef.current?.id) {
+        // Update reactions for the specific message
+        setMessages(prev => prev.map(msg =>
+          msg.id === data.messageId
+            ? { ...msg, reactions: data.reactions }
+            : msg
+        ));
+      }
+    };
+
+    socket.on('message_reaction_updated', handleReactionUpdate);
+
     return () => {
       socket.off('new_message', handleNewMessage);
+      socket.off('message_reaction_updated', handleReactionUpdate);
     };
   }, [socket, loadChats, loadMessages]);
 
@@ -345,15 +364,51 @@ export default function Dashboard() {
 
   const handleContextMenu = (e, msg) => {
     e.preventDefault();
-    if (msg.senderId !== user.id || msg.type === 'system') return;
-    
+    if (msg.type === 'system') return;
+
+    // Открываем единое контекстное меню с реакциями и опциями редактирования/удаления
     setContextMenu({
       visible: true,
       x: e.clientX,
       y: e.clientY,
       messageId: msg.id,
-      message: msg
+      message: msg,
+      isOwnMessage: msg.senderId === user.id
     });
+  };
+
+  // Reactions handlers
+  const handleAddReaction = async (messageId, emoji) => {
+    try {
+      await chat.addReaction(activeChat.id, messageId, emoji);
+      setReactionMenu(null);
+    } catch (error) {
+      console.error('Failed to add reaction:', error);
+      toast.error('Не удалось добавить реакцию');
+    }
+  };
+
+  const handleReactionClick = async (messageId, emoji, hasReacted) => {
+    try {
+      if (hasReacted) {
+        await chat.removeReaction(activeChat.id, messageId);
+      } else {
+        await chat.addReaction(activeChat.id, messageId, emoji);
+      }
+    } catch (error) {
+      console.error('Failed to toggle reaction:', error);
+      toast.error('Ошибка при изменении реакции');
+    }
+  };
+
+  const handleShowReactionDetails = async (messageId) => {
+    try {
+      const { data } = await chat.getReactionDetails(activeChat.id, messageId);
+      setReactionDetailsModal({ messageId, reactions: data.reactions });
+    } catch (error) {
+      console.error('Failed to load reaction details:', error);
+      toast.error('Не удалось загрузить детали реакций');
+    }
   };
 
   const handleEmojiClick = (emojiData) => {
@@ -365,7 +420,7 @@ export default function Dashboard() {
   const startEditMessage = (msg) => {
     setEditingMessage(msg);
     setNewMessage(msg.content);
-    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null });
+    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
     messageInputRef.current?.focus();
   };
 
@@ -378,7 +433,7 @@ export default function Dashboard() {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (contextMenuRef.current && !contextMenuRef.current.contains(e.target)) {
-        setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null });
+        setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
       }
       if (chatContextMenuRef.current && !chatContextMenuRef.current.contains(e.target)) {
         setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
@@ -394,6 +449,33 @@ export default function Dashboard() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Корректировка позиции контекстного меню чтобы не выходило за границы экрана
+  useEffect(() => {
+    if (contextMenu.visible && contextMenuRef.current) {
+      const menu = contextMenuRef.current;
+      const rect = menu.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+
+      let newX = contextMenu.x;
+      let newY = contextMenu.y;
+
+      // Если выходит за правый край - показываем слева от курсора
+      if (rect.right > viewportWidth - 10) {
+        newX = viewportWidth - rect.width - 10;
+      }
+      // Если выходит за нижний край - показываем выше
+      if (rect.bottom > viewportHeight - 10) {
+        newY = viewportHeight - rect.height - 10;
+      }
+
+      if (newX !== contextMenu.x || newY !== contextMenu.y) {
+        menu.style.left = `${newX}px`;
+        menu.style.top = `${newY}px`;
+      }
+    }
+  }, [contextMenu.visible, contextMenu.x, contextMenu.y]);
 
   const startPrivateChat = async (userId) => {
     try {
@@ -826,6 +908,13 @@ export default function Dashboard() {
                           onContextMenu={(e) => handleContextMenu(e, msg)}
                         >
                           {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
+                          {isOwn && (
+                            <MessageReactions
+                              reactions={msg.reactions}
+                              onReactionClick={(emoji, hasReacted) => handleReactionClick(msg.id, emoji, hasReacted)}
+                              onShowDetails={() => handleShowReactionDetails(msg.id)}
+                            />
+                          )}
                           <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
                             {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
                             {renderAttachments(msg.attachments, isOwn)}
@@ -836,6 +925,13 @@ export default function Dashboard() {
                               {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
                             </div>
                           </div>
+                          {!isOwn && (
+                            <MessageReactions
+                              reactions={msg.reactions}
+                              onReactionClick={(emoji, hasReacted) => handleReactionClick(msg.id, emoji, hasReacted)}
+                              onShowDetails={() => handleShowReactionDetails(msg.id)}
+                            />
+                          )}
                         </div>
                       )}
                     </React.Fragment>
@@ -947,14 +1043,35 @@ export default function Dashboard() {
           className="message-context-menu"
           style={{ top: contextMenu.y, left: contextMenu.x }}
         >
-          <button onClick={() => { startEditMessage(contextMenu.message); }}>
-            <Edit2 size={16} />
-            Редактировать
-          </button>
-          <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null }); }} className="danger">
-            <Trash2 size={16} />
-            Удалить
-          </button>
+          {/* Реакции */}
+          <div className="context-menu-reactions">
+            {['👍', '👎', '❤️', '😂', '😮', '🎉', '🔥'].map(emoji => (
+              <button
+                key={emoji}
+                className="context-menu-reaction-btn"
+                onClick={() => {
+                  handleAddReaction(contextMenu.messageId, emoji);
+                  setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+                }}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+          {/* Опции редактирования/удаления (только для своих сообщений) */}
+          {contextMenu.isOwnMessage && (
+            <>
+              <div className="context-menu-divider" />
+              <button onClick={() => { startEditMessage(contextMenu.message); }}>
+                <Edit2 size={16} />
+                Редактировать
+              </button>
+              <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false }); }} className="danger">
+                <Trash2 size={16} />
+                Удалить
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -1115,6 +1232,24 @@ export default function Dashboard() {
             <embed src={pdfPreview.blobUrl} type="application/pdf" style={{ width: '100%', height: 'calc(100% - 60px)', border: 'none' }} />
           </div>
         </div>
+      )}
+
+      {/* Reaction Menu */}
+      {reactionMenu && (
+        <ReactionMenu
+          x={reactionMenu.x}
+          y={reactionMenu.y}
+          onSelect={(emoji) => handleAddReaction(reactionMenu.messageId, emoji)}
+          onClose={() => setReactionMenu(null)}
+        />
+      )}
+
+      {/* Reaction Details Modal */}
+      {reactionDetailsModal && (
+        <ReactionDetailsModal
+          reactions={reactionDetailsModal.reactions}
+          onClose={() => setReactionDetailsModal(null)}
+        />
       )}
 
       {/* Chat Notifications - Show only for non-active chats */}

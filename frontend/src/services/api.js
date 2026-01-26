@@ -205,7 +205,12 @@ export const chat = {
   },
   editMessage: (chatId, messageId, content) => api.put(`/chat/${chatId}/messages/${messageId}`, { content }),
   deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`),
-  hideChat: (chatId, hidden = true) => api.patch(`/chat/${chatId}/hide`, { hidden })
+  hideChat: (chatId, hidden = true) => api.patch(`/chat/${chatId}/hide`, { hidden }),
+
+  // Message reactions
+  addReaction: (chatId, messageId, emoji) => api.post(`/chat/${chatId}/messages/${messageId}/reactions`, { emoji }),
+  removeReaction: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}/reactions`),
+  getReactionDetails: (chatId, messageId) => api.get(`/chat/${chatId}/messages/${messageId}/reactions`)
 };
 
 // Accreditations

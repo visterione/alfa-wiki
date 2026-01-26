@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, User, Role } = require('../models');
+const { Chat, ChatMember, Message, MessageReaction, User, Role } = require('../models');
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -309,17 +309,50 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
       where: whereClause,
       include: [
         { model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] },
-        { 
-          model: Message, 
+        {
+          model: Message,
           as: 'replyTo',
           include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }]
+        },
+        {
+          model: MessageReaction,
+          as: 'reactions',
+          include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username'] }]
         }
       ],
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit)
     });
 
-    res.json(messages.reverse());
+    // Process reactions for each message
+    const messagesWithReactions = messages.map(msg => {
+      const messageData = msg.toJSON();
+
+      // Group reactions by emoji
+      const grouped = {};
+      if (messageData.reactions && messageData.reactions.length > 0) {
+        messageData.reactions.forEach(r => {
+          if (!grouped[r.emoji]) {
+            grouped[r.emoji] = {
+              emoji: r.emoji,
+              count: 0,
+              userIds: [],
+              hasReacted: false
+            };
+          }
+          grouped[r.emoji].count++;
+          grouped[r.emoji].userIds.push(r.userId);
+          if (r.userId === req.user.id) {
+            grouped[r.emoji].hasReacted = true;
+          }
+        });
+      }
+
+      messageData.reactions = Object.values(grouped);
+      return messageData;
+    });
+
+    res.json(messagesWithReactions.reverse());
   } catch (error) {
     console.error('Get messages error:', error);
     res.status(500).json({ error: 'Failed to load messages' });
@@ -398,6 +431,12 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
     await Chat.update(
       { lastMessage: lastMessagePreview, lastMessageAt: new Date() },
       { where: { id: chatId } }
+    );
+
+    // При новом сообщении восстанавливаем чат для всех участников, у кого он был скрыт
+    await ChatMember.update(
+      { isHidden: false },
+      { where: { chatId, isHidden: true } }
     );
 
     const fullMessage = await Message.findByPk(message.id, {
@@ -991,6 +1030,208 @@ router.patch('/:chatId/hide', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Hide chat error:', error);
     res.status(500).json({ error: 'Failed to hide chat' });
+  }
+});
+
+// ====================================================================
+// MESSAGE REACTIONS
+// ====================================================================
+
+// Helper: Aggregate reactions for a message
+async function aggregateReactions(messageId, currentUserId) {
+  const reactions = await MessageReaction.findAll({
+    where: { messageId },
+    include: [{
+      model: User,
+      as: 'user',
+      attributes: ['id', 'displayName', 'username', 'avatar']
+    }]
+  });
+
+  // Group by emoji
+  const grouped = {};
+  reactions.forEach(r => {
+    if (!grouped[r.emoji]) {
+      grouped[r.emoji] = {
+        emoji: r.emoji,
+        count: 0,
+        users: [],
+        hasReacted: false
+      };
+    }
+    grouped[r.emoji].count++;
+    grouped[r.emoji].users.push({
+      id: r.user.id,
+      displayName: r.user.displayName || r.user.username,
+      avatar: r.user.avatar
+    });
+    if (r.userId === currentUserId) {
+      grouped[r.emoji].hasReacted = true;
+    }
+  });
+
+  return Object.values(grouped);
+}
+
+// Add or update reaction on a message
+router.post('/:chatId/messages/:messageId/reactions', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const { emoji } = req.body;
+
+    // Validate emoji
+    const allowedEmojis = ['👍', '👎', '❤️', '😂', '😮', '🎉', '🔥'];
+    if (!emoji || !allowedEmojis.includes(emoji)) {
+      return res.status(400).json({ error: 'Invalid emoji. Allowed: 👍 👎 ❤️ 😂 😮 🎉 🔥' });
+    }
+
+    // Check membership
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Check message exists in this chat
+    const message = await Message.findOne({
+      where: { id: messageId, chatId }
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Upsert reaction (update if exists, create if not)
+    const [reaction, created] = await MessageReaction.upsert(
+      {
+        messageId,
+        userId: req.user.id,
+        emoji
+      },
+      {
+        returning: true
+      }
+    );
+
+    // Get aggregated reactions
+    const aggregated = await aggregateReactions(messageId, req.user.id);
+
+    // Emit Socket.IO event to all chat members
+    const io = req.app.get('io');
+    if (io) {
+      const chat = await Chat.findByPk(chatId, {
+        include: [{ model: ChatMember, as: 'members' }]
+      });
+
+      if (chat) {
+        chat.members.forEach(member => {
+          io.to(`user:${member.userId}`).emit('message_reaction_updated', {
+            chatId,
+            messageId,
+            reactions: aggregated.map(({ emoji, count, hasReacted, users }) => ({
+              emoji,
+              count,
+              hasReacted: users.some(u => u.id === member.userId)
+            }))
+          });
+        });
+      }
+    }
+
+    res.json({
+      message: created ? 'Reaction added' : 'Reaction updated',
+      reactions: aggregated
+    });
+  } catch (error) {
+    console.error('Add reaction error:', error);
+    res.status(500).json({ error: 'Failed to add reaction' });
+  }
+});
+
+// Remove reaction from a message
+router.delete('/:chatId/messages/:messageId/reactions', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+
+    // Check membership
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Delete reaction
+    const deleted = await MessageReaction.destroy({
+      where: {
+        messageId,
+        userId: req.user.id
+      }
+    });
+
+    if (deleted === 0) {
+      return res.status(404).json({ error: 'Reaction not found' });
+    }
+
+    // Get updated aggregated reactions
+    const aggregated = await aggregateReactions(messageId, req.user.id);
+
+    // Emit Socket.IO event to all chat members
+    const io = req.app.get('io');
+    if (io) {
+      const chat = await Chat.findByPk(chatId, {
+        include: [{ model: ChatMember, as: 'members' }]
+      });
+
+      if (chat) {
+        chat.members.forEach(member => {
+          io.to(`user:${member.userId}`).emit('message_reaction_updated', {
+            chatId,
+            messageId,
+            reactions: aggregated.map(({ emoji, count, hasReacted, users }) => ({
+              emoji,
+              count,
+              hasReacted: users.some(u => u.id === member.userId)
+            }))
+          });
+        });
+      }
+    }
+
+    res.json({
+      message: 'Reaction removed',
+      reactions: aggregated
+    });
+  } catch (error) {
+    console.error('Remove reaction error:', error);
+    res.status(500).json({ error: 'Failed to remove reaction' });
+  }
+});
+
+// Get detailed reactions for a message (shows who reacted)
+router.get('/:chatId/messages/:messageId/reactions', authenticate, async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+
+    // Check membership
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Get aggregated reactions with full user info
+    const aggregated = await aggregateReactions(messageId, req.user.id);
+
+    res.json({ reactions: aggregated });
+  } catch (error) {
+    console.error('Get reactions error:', error);
+    res.status(500).json({ error: 'Failed to fetch reactions' });
   }
 });
 

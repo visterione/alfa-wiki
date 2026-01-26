@@ -760,7 +760,6 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  min-width: 180px;
   padding: 6px;
   z-index: 1000;
   animation: fadeIn 0.15s ease;
@@ -792,6 +791,38 @@
 
 .message-context-menu button.danger:hover {
   background: rgba(239, 68, 68, 0.1);
+}
+
+.context-menu-reactions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 6px;
+}
+
+.context-menu-reaction-btn {
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 26px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.context-menu-reaction-btn:hover {
+  background: var(--bg-secondary);
+  transform: scale(1.15);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 6px 0;
 }
 
 /* ========== CHAT INFO PANEL ========== */
@@ -1469,5 +1500,270 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+/* ====================================================================
+   MESSAGE REACTIONS
+   ==================================================================== */
+
+/* Контекстное меню реакций */
+.reaction-menu {
+  position: fixed;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+  padding: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 10000;
+  animation: reactionMenuAppear 0.15s ease-out;
+}
+
+.reaction-menu-item {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  font-size: 24px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reaction-menu-item:hover {
+  background: #f3f4f6;
+  transform: scale(1.2);
+}
+
+/* Баджи реакций под сообщением */
+.message-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.reaction-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: #f3f4f6;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reaction-badge:hover {
+  background: #e5e7eb;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.reaction-badge.active {
+  background: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.reaction-badge .emoji {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reaction-badge .count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  min-width: 12px;
+  text-align: center;
+}
+
+/* Модальное окно деталей реакций */
+.reaction-details-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  backdrop-filter: blur(4px);
+}
+
+.reaction-details-modal {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  margin: 16px;
+  animation: reactionModalAppear 0.2s ease-out;
+}
+
+.reaction-details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.reaction-details-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.reaction-details-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.reaction-details-close:hover {
+  background: #e5e7eb;
+}
+
+.reaction-details-content {
+  padding: 24px;
+}
+
+.reaction-group {
+  margin-bottom: 20px;
+}
+
+.reaction-group:last-child {
+  margin-bottom: 0;
+}
+
+.reaction-emoji-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.emoji-large {
+  font-size: 28px;
+}
+
+.reaction-emoji-header .count {
+  font-size: 16px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.user-item:hover {
+  background: #f9fafb;
+}
+
+.user-item img {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #e5e7eb;
+}
+
+.user-item span {
+  font-size: 14px;
+  color: #374151;
+  font-weight: 500;
+}
+
+.reaction-details-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #9ca3af;
+}
+
+.reaction-details-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Анимации */
+@keyframes reactionMenuAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes reactionModalAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Адаптив для мобильных */
+@media (max-width: 768px) {
+  .reaction-menu {
+    padding: 6px;
+  }
+
+  .reaction-menu-item {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+
+  .reaction-badge {
+    padding: 3px 6px;
+  }
+
+  .reaction-badge .emoji {
+    font-size: 14px;
+  }
+
+  .reaction-badge .count {
+    font-size: 12px;
+  }
+
+  .reaction-details-modal {
+    max-width: calc(100% - 32px);
+    max-height: calc(100vh - 32px);
   }
 }

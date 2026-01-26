@@ -90,22 +90,7 @@ app.use(helmet({
 
 // CORS configuration
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    
-    if (process.env.NODE_ENV === 'production') {
-      const allowedOrigins = process.env.FRONTEND_URL 
-        ? process.env.FRONTEND_URL.split(',') 
-        : ['http://localhost:3000'];
-      
-      if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
-        return callback(null, true);
-      }
-      return callback(new Error('Not allowed by CORS'));
-    }
-    
-    return callback(null, true);
-  },
+  origin: true, // Allow all origins (API is protected by JWT auth)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -180,10 +165,23 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
-});
+// Serve frontend static files in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'build');
+
+  // Serve static files from frontend build
+  app.use(express.static(frontendBuildPath));
+
+  // Handle React Router - serve index.html for all non-API routes
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendBuildPath, 'index.html'));
+  });
+} else {
+  // 404 handler for development (API only)
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+}
 
 const PORT = process.env.PORT || 9001;
 
