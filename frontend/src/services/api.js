@@ -79,7 +79,8 @@ export const pages = {
   create: (data) => api.post('/pages', data),
   update: (id, data) => api.put(`/pages/${id}`, data),
   delete: (id) => api.delete(`/pages/${id}`),
-  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`)
+  toggleFavorite: (id) => api.post(`/pages/${id}/favorite`),
+  getHistory: (id) => api.get(`/pages/${id}/history`)
 };
 
 // Folders

@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const sanitizeHtml = require('sanitize-html');
-const { Page, User, SearchIndex, Folder, SidebarItem } = require('../models');
+const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
@@ -197,6 +197,18 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       url: `/page/${page.slug}`
     });
 
+    // Записываем в историю
+    await PageHistory.create({
+      pageId: page.id,
+      userId: req.user.id,
+      action: 'created',
+      changesSummary: `Создана страница "${title}"`,
+      metadata: {
+        isPublished: page.isPublished,
+        folderId: page.folderId
+      }
+    });
+
     const created = await Page.findByPk(page.id, {
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
@@ -257,6 +269,25 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       updateData.searchContent = searchContent;
     }
 
+    // Определяем изменения для истории
+    const changedFields = [];
+    let historyAction = 'updated';
+
+    if (title && title !== page.title) changedFields.push('заголовок');
+    if (content !== undefined) changedFields.push('содержимое');
+    if (slug && slug !== page.slug) changedFields.push('slug');
+    if (description !== undefined && description !== page.description) changedFields.push('описание');
+    if (icon !== undefined && icon !== page.icon) changedFields.push('иконка');
+    if (customCss !== undefined) changedFields.push('CSS');
+    if (customJs !== undefined) changedFields.push('JavaScript');
+    if (folderId !== undefined && folderId !== page.folderId) changedFields.push('папка');
+
+    // Отдельно отслеживаем изменение статуса публикации
+    if (isPublished !== undefined && isPublished !== page.isPublished) {
+      historyAction = isPublished ? 'published' : 'unpublished';
+      changedFields.push('статус публикации');
+    }
+
     await page.update(updateData);
 
     await SearchIndex.upsert({
@@ -267,6 +298,24 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       keywords: page.keywords,
       url: `/page/${page.slug}`
     });
+
+    // Записываем в историю только если были изменения
+    if (changedFields.length > 0) {
+      const changesSummary = historyAction === 'updated'
+        ? `Изменено: ${changedFields.join(', ')}`
+        : isPublished ? 'Страница опубликована' : 'Публикация отменена';
+
+      await PageHistory.create({
+        pageId: page.id,
+        userId: req.user.id,
+        action: historyAction,
+        changesSummary,
+        metadata: {
+          changedFields,
+          isPublished: page.isPublished
+        }
+      });
+    }
 
     const updated = await Page.findByPk(page.id, {
       include: [
@@ -280,6 +329,41 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
   } catch (error) {
     console.error('Update page error:', error);
     res.status(500).json({ error: 'Failed to update page' });
+  }
+});
+
+// Get page history
+router.get('/:id/history', authenticate, async (req, res) => {
+  try {
+    const page = await Page.findByPk(req.params.id);
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    // Проверяем права доступа к странице
+    if (!req.user.isAdmin && !page.isPublished) {
+      const canView = page.createdBy === req.user.id || req.user.permissions?.pages?.write;
+      if (!canView) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    const history = await PageHistory.findAll({
+      where: { pageId: req.params.id },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'displayName', 'username', 'avatar']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    res.json(history);
+  } catch (error) {
+    console.error('Get page history error:', error);
+    res.status(500).json({ error: 'Failed to fetch page history' });
   }
 });
 

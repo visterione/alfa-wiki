@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, ArrowLeft, Eye, Code, FileText, Settings } from 'lucide-react';
+import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock } from 'lucide-react';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
 import CodeEditor from '../components/CodeEditor';
 import IconPicker from '../components/IconPicker';
+import PageHistoryModal from '../components/PageHistoryModal';
 import toast from 'react-hot-toast';
 import './PageEditor.css';
 
@@ -16,6 +17,7 @@ export default function PageEditor() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [allRoles, setAllRoles] = useState([]);
   
   const [form, setForm] = useState({
@@ -139,14 +141,24 @@ export default function PageEditor() {
               Настройки
             </button>
             {!isNew && (
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => window.open(`/page/${form.slug}`, '_blank')}
-              >
-                <Eye size={18} />
-                Просмотр
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setShowHistory(true)}
+                >
+                  <Clock size={18} />
+                  Журнал изменений
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => window.open(`/page/${form.slug}`, '_blank')}
+                >
+                  <Eye size={18} />
+                  Просмотр
+                </button>
+              </>
             )}
             <button type="submit" className="btn btn-primary" disabled={saving}>
               {saving ? <div className="loading-spinner" style={{width:18,height:18}} /> : <Save size={18} />}
@@ -322,6 +334,14 @@ export default function PageEditor() {
           )}
         </div>
       </form>
+
+      {/* Модальное окно истории */}
+      {showHistory && form.id && (
+        <PageHistoryModal
+          pageId={form.id}
+          onClose={() => setShowHistory(false)}
+        />
+      )}
     </div>
   );
 }

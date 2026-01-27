@@ -130,7 +130,7 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
  * Отправка напоминания о календарном событии
  */
 async function sendCalendarReminder(userId, event, minutesBefore) {
-  const messageText = `📅 Напоминание о событии: **${event.title}**\n\nНачало: ${new Date(event.startTime).toLocaleString('ru-RU')}`;
+  const messageText = `📅 Напоминание о событии: ${event.title}\n\nНачало: ${new Date(event.startTime).toLocaleString('ru-RU')}`;
 
   const metadata = {
     type: 'calendar_reminder',
@@ -145,7 +145,7 @@ async function sendCalendarReminder(userId, event, minutesBefore) {
  * Отправка напоминания об аккредитации
  */
 async function sendAccreditationReminder(userId, accreditation, daysLeft) {
-  const messageText = `🎓 Напоминание об аккредитации: **${accreditation.fullName}**\n\nИстекает: ${new Date(accreditation.expirationDate).toLocaleDateString('ru-RU')}\nОсталось дней: ${daysLeft}`;
+  const messageText = `🎓 Напоминание об аккредитации: ${accreditation.fullName}\n\nИстекает: ${new Date(accreditation.expirationDate).toLocaleDateString('ru-RU')}\nОсталось дней: ${daysLeft}`;
 
   const metadata = {
     type: 'accreditation_reminder',
@@ -160,7 +160,7 @@ async function sendAccreditationReminder(userId, accreditation, daysLeft) {
  * Отправка напоминания о страховке транспорта
  */
 async function sendVehicleInsuranceReminder(userId, vehicle, daysLeft) {
-  const messageText = `🚗 Напоминание о страховке: **${vehicle.carBrand}${vehicle.carModel ? ' ' + vehicle.carModel : ''} (${vehicle.licensePlate})**\n\nИстекает: ${new Date(vehicle.insuranceExpiryDate).toLocaleDateString('ru-RU')}\nОсталось дней: ${daysLeft}`;
+  const messageText = `🚗 Напоминание о страховке: ${vehicle.carBrand}${vehicle.carModel ? ' ' + vehicle.carModel : ''} (${vehicle.licensePlate})\n\nИстекает: ${new Date(vehicle.insuranceExpiryDate).toLocaleDateString('ru-RU')}\nОсталось дней: ${daysLeft}`;
 
   const metadata = {
     type: 'vehicle_insurance_reminder',
@@ -175,7 +175,7 @@ async function sendVehicleInsuranceReminder(userId, vehicle, daysLeft) {
  * Отправка напоминания о ТО транспорта
  */
 async function sendVehicleTOReminder(userId, vehicle, kmLeft) {
-  const messageText = `🚗 Напоминание о техническом обслуживании: **${vehicle.carBrand}${vehicle.carModel ? ' ' + vehicle.carModel : ''} (${vehicle.licensePlate})**\n\nДо следующего ТО осталось: ${kmLeft} км\nТекущий пробег: ${vehicle.currentMileage} км\nПробег следующего ТО: ${vehicle.nextTOMileage} км`;
+  const messageText = `🚗 Напоминание о техническом обслуживании: ${vehicle.carBrand}${vehicle.carModel ? ' ' + vehicle.carModel : ''} (${vehicle.licensePlate})\n\nДо следующего ТО осталось: ${kmLeft} км\nТекущий пробег: ${vehicle.currentMileage} км\nПробег следующего ТО: ${vehicle.nextTOMileage} км`;
 
   const metadata = {
     type: 'vehicle_to_reminder',

@@ -146,6 +146,37 @@ const Page = sequelize.define('Page', {
   ]
 });
 
+// === PAGE HISTORY MODEL ===
+const PageHistory = sequelize.define('PageHistory', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  pageId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  action: {
+    type: DataTypes.ENUM('created', 'updated', 'published', 'unpublished'),
+    allowNull: false,
+    comment: 'Тип действия: created - создание, updated - редактирование, published/unpublished - изменение статуса публикации'
+  },
+  changesSummary: {
+    type: DataTypes.TEXT,
+    comment: 'Краткое описание изменений (опционально)'
+  },
+  metadata: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Дополнительные данные: измененные поля, старые/новые значения и т.д.'
+  }
+}, {
+  tableName: 'page_history',
+  timestamps: true,
+  updatedAt: false, // Отключаем updatedAt, т.к. история не должна меняться
+  indexes: [
+    { fields: ['pageId'] },
+    { fields: ['userId'] },
+    { fields: ['createdAt'] },
+    { fields: ['action'] }
+  ]
+});
+
 // === USER FAVORITE MODEL ===
 const UserFavorite = sequelize.define('UserFavorite', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -985,6 +1016,12 @@ Folder.hasMany(Page, { foreignKey: 'folderId', as: 'pages' });
 Page.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
 Page.belongsTo(User, { foreignKey: 'updatedBy', as: 'editor' });
 
+// PageHistory relationships
+PageHistory.belongsTo(Page, { foreignKey: 'pageId', as: 'page' });
+PageHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+Page.hasMany(PageHistory, { foreignKey: 'pageId', as: 'history', onDelete: 'CASCADE' });
+User.hasMany(PageHistory, { foreignKey: 'userId', as: 'pageHistory' });
+
 // SidebarItem relationships
 SidebarItem.belongsTo(Page, { foreignKey: 'pageId', as: 'page' });
 SidebarItem.belongsTo(Folder, { foreignKey: 'folderId', as: 'folder' });
@@ -1231,6 +1268,7 @@ module.exports = {
   User,
   Folder,
   Page,
+  PageHistory,
   UserFavorite,
   SidebarItem,
   Media,

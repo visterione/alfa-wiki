@@ -333,16 +333,15 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
       return;
     }
 
-    // Функция для корректного преобразования локального datetime в UTC
-    // datetime-local возвращает строку типа "2026-01-19T00:00" без timezone
-    // Нужно интерпретировать её как UTC, а не как локальное время
-    const parseAsUTC = (dateTimeString) => {
-      // Добавляем 'Z' чтобы явно указать UTC
-      return new Date(dateTimeString + 'Z');
+    // Функция для корректного преобразования локального datetime
+    // datetime-local возвращает строку типа "2026-01-19T14:00" в локальном времени
+    // Нужно просто создать Date объект - он автоматически интерпретирует это как локальное время
+    const parseAsLocal = (dateTimeString) => {
+      return new Date(dateTimeString);
     };
 
-    const startDate = parseAsUTC(formData.startTime);
-    const endDate = parseAsUTC(formData.endTime);
+    const startDate = parseAsLocal(formData.startTime);
+    const endDate = parseAsLocal(formData.endTime);
 
     // Проверка валидности дат
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
