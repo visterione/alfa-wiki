@@ -265,11 +265,12 @@ export default function Calendar() {
 
   const handleDeleteEvent = async (eventId, event) => {
     // Проверяем, является ли это экземпляром повторяющегося события
-    const isRecurringInstance = event?.isInstance || eventId.includes('-');
+    // Используем :: как разделитель (UUID содержит дефисы, поэтому нельзя использовать -)
+    const isRecurringInstance = event?.isInstance || eventId.includes('::');
 
     if (isRecurringInstance) {
       // Это экземпляр повторяющегося события
-      const parentId = event?.parentEventId || eventId.split('-')[0];
+      const parentId = event?.parentEventId || eventId.split('::')[0];
       const instanceDate = event?.instanceDate || event?.startTime;
 
       // Создаем кастомный диалог выбора

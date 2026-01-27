@@ -85,6 +85,13 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'Разрешение на создание, редактирование и удаление карточек врачей'
+  },
+
+  // Флаг системного бота (Ассистент)
+  isBot: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Системный бот-пользователь (Ассистент для уведомлений)'
   }
 }, { tableName: 'users', timestamps: true });
 
@@ -751,11 +758,16 @@ const CalendarEvent = sequelize.define('CalendarEvent', {
     defaultValue: [],
     comment: 'Список ID пользователей/ролей для shared видимости'
   },
-  lastReminderSent: { 
+  lastReminderSent: {
     type: DataTypes.DATE,
     comment: 'Время последней отправки напоминания'
+  },
+  sentReminders: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Отправленные напоминания: [{minutesBefore, recipientId, sentAt}]'
   }
-}, { 
+}, {
   tableName: 'calendar_events', 
   timestamps: true,
   indexes: [

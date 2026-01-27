@@ -22,6 +22,12 @@ const router = express.Router();
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════
 
+// Валидация UUID
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isValidUUID(id) {
+  return id && UUID_REGEX.test(id);
+}
+
 // Проверка прав доступа к событию
 function canAccessEvent(event, userId, isAdmin) {
   if (isAdmin) return true;
@@ -187,13 +193,14 @@ function generateRecurringInstances(event, startDate, endDate) {
 }
 
 // Вспомогательная функция для создания экземпляра события
+// Используем :: как разделитель (не - потому что UUID содержит дефисы)
 function createInstance(event, instanceDate, eventDuration) {
   const instanceStart = new Date(instanceDate);
   const instanceEnd = new Date(instanceStart.getTime() + eventDuration);
 
   return {
     ...event.toJSON(),
-    id: `${event.id}-${instanceStart.toISOString()}`,
+    id: `${event.id}::${instanceStart.toISOString()}`,
     startTime: instanceStart,
     endTime: instanceEnd,
     isInstance: true,
@@ -471,6 +478,10 @@ router.get('/events/:id', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'CalendarEvent model not available' });
     }
 
+    if (!isValidUUID(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid event ID format' });
+    }
+
     const includeUser = User ? [
       { 
         model: User, 
@@ -584,6 +595,10 @@ router.put('/events/:id', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'CalendarEvent model not available' });
     }
 
+    if (!isValidUUID(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid event ID format' });
+    }
+
     const event = await CalendarEvent.findByPk(req.params.id);
 
     if (!event) {
@@ -656,6 +671,10 @@ router.delete('/events/:id', authenticate, async (req, res) => {
       return res.status(500).json({ error: 'CalendarEvent model not available' });
     }
 
+    if (!isValidUUID(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid event ID format' });
+    }
+
     const event = await CalendarEvent.findByPk(req.params.id);
 
     if (!event) {
@@ -695,6 +714,10 @@ router.delete('/events/:id/instance', authenticate, async (req, res) => {
   try {
     if (!CalendarEvent) {
       return res.status(500).json({ error: 'CalendarEvent model not available' });
+    }
+
+    if (!isValidUUID(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid event ID format' });
     }
 
     const { instanceDate } = req.body;

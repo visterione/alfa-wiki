@@ -10,6 +10,7 @@ require('dotenv').config();
 const { sequelize } = require('./models');
 const { initBot } = require('./bot/telegramBot');
 const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
+const notificationService = require('./services/notificationService');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -205,9 +206,19 @@ async function startServer() {
     // Initialize analyses price update cron job
     require('./cron/analysesCron');
 
+    // Initialize notification service with Socket.IO
+    notificationService.init(io);
+
+    // Initialize calendar reminders cron job
+    require('./cron/calendarRemindersCron');
+
+    // Initialize accreditations/vehicles reminders cron job (sends to chat)
+    require('./cron/accreditationsVehiclesCron');
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`✅ Socket.IO initialized`);
+      console.log(`✅ Notification service initialized`);
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error);

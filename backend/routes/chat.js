@@ -7,6 +7,10 @@ const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
 const { Chat, ChatMember, Message, MessageReaction, User, Role } = require('../models');
+const notificationService = require('../services/notificationService');
+
+// ID Ассистента
+const ASSISTANT_ID = notificationService.ASSISTANT_ID;
 
 // File upload configuration
 const storage = multer.diskStorage({
@@ -178,6 +182,17 @@ router.get('/search', authenticate, async (req, res) => {
 // Get user's chats
 router.get('/', authenticate, async (req, res) => {
   try {
+    // Убедимся, что у пользователя есть чат с Ассистентом (создастся если нет)
+    // Не создаём для ботов
+    const currentUser = await User.findByPk(req.user.id);
+    if (currentUser && !currentUser.isBot) {
+      try {
+        await notificationService.getOrCreateAssistantChat(req.user.id);
+      } catch (err) {
+        console.error('Failed to ensure assistant chat:', err);
+      }
+    }
+
     const memberships = await ChatMember.findAll({
       where: {
         userId: req.user.id,
@@ -190,7 +205,7 @@ router.get('/', authenticate, async (req, res) => {
           {
             model: ChatMember,
             as: 'members',
-            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot'] }]
           },
           {
             model: Message,
@@ -211,11 +226,14 @@ router.get('/', authenticate, async (req, res) => {
 
       let displayName = chat.name;
       let avatar = chat.avatar;
+      let isAssistantChat = false;
 
       if (chat.type === 'private' && otherMembers.length > 0) {
         const otherUser = otherMembers[0].user;
         displayName = otherUser.displayName || otherUser.username;
         avatar = otherUser.avatar;
+        // Проверяем, является ли это чатом с Ассистентом
+        isAssistantChat = otherUser.id === ASSISTANT_ID || otherUser.isBot === true;
       }
 
       // Считаем точное количество непрочитанных сообщений
@@ -239,7 +257,8 @@ router.get('/', authenticate, async (req, res) => {
         lastMessageAt: chat.lastMessageAt,
         members: chat.members,
         unreadCount,
-        createdBy: chat.createdBy
+        createdBy: chat.createdBy,
+        isAssistantChat // Флаг для закрепления вверху
       };
 
       // Добавляем otherUser для приватных чатов
@@ -249,6 +268,17 @@ router.get('/', authenticate, async (req, res) => {
 
       return result;
     }));
+
+    // Сортируем: Ассистент всегда вверху, остальные по времени последнего сообщения
+    chatsWithUnreadCount.sort((a, b) => {
+      // Ассистент всегда первый
+      if (a.isAssistantChat && !b.isAssistantChat) return -1;
+      if (!a.isAssistantChat && b.isAssistantChat) return 1;
+      // Остальные по дате
+      const dateA = a.lastMessageAt ? new Date(a.lastMessageAt) : new Date(0);
+      const dateB = b.lastMessageAt ? new Date(b.lastMessageAt) : new Date(0);
+      return dateB - dateA;
+    });
 
     res.json(chatsWithUnreadCount);
   } catch (error) {
@@ -994,7 +1024,10 @@ router.delete('/:chatId/leave', authenticate, async (req, res) => {
 router.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        [Op.or]: [{ isBot: false }, { isBot: null }] // Исключаем ботов
+      },
       include: [{ model: Role, as: 'role' }],
       attributes: ['id', 'username', 'displayName', 'avatar', 'email', 'isActive'],
       order: [['displayName', 'ASC']]
