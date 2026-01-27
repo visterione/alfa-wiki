@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification } = require('../services/emailService');
+const notificationService = require('../services/notificationService');
 
 const router = express.Router();
 
@@ -165,6 +166,15 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
+
+    // Отправляем приветственное сообщение от Ассистента
+    try {
+      await notificationService.sendWelcomeMessage(user.id);
+      console.log(`✅ Welcome message sent to user ${user.username}`);
+    } catch (welcomeError) {
+      console.error('Failed to send welcome message:', welcomeError);
+      // Не блокируем создание пользователя из-за ошибки отправки сообщения
+    }
 
     res.status(201).json(created);
   } catch (error) {

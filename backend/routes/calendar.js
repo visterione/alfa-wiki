@@ -958,4 +958,86 @@ router.get('/upcoming', authenticate, async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// TEST ENDPOINTS - Manually trigger reminder check and diagnostics
+// ═══════════════════════════════════════════════════════════════
+router.post('/test-reminders', authenticate, async (req, res) => {
+  try {
+    const { checkAndSendReminders } = require('../cron/calendarRemindersCron');
+    console.log('🧪 Manual reminder check triggered by user:', req.user.username);
+
+    const result = await checkAndSendReminders();
+
+    res.json({
+      message: 'Reminder check completed',
+      ...result
+    });
+  } catch (error) {
+    console.error('Test reminders error:', error);
+    res.status(500).json({ error: 'Failed to test reminders', details: error.message });
+  }
+});
+
+// Diagnostic endpoint to check upcoming events with reminders
+router.get('/reminder-diagnostics', authenticate, async (req, res) => {
+  try {
+    const now = new Date();
+    const maxLookAhead = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+    const events = await CalendarEvent.findAll({
+      where: {
+        startTime: {
+          [Op.gte]: now,
+          [Op.lte]: maxLookAhead
+        },
+        status: { [Op.notIn]: ['cancelled', 'completed'] },
+        reminders: { [Op.ne]: null }
+      },
+      attributes: ['id', 'title', 'startTime', 'reminders', 'sentReminders', 'createdBy', 'visibility', 'sharedWith', 'participants'],
+      limit: 20
+    });
+
+    const diagnostics = events.map(event => {
+      const notificationReminders = event.reminders?.filter(r => r.type === 'notification') || [];
+      const reminderTimes = notificationReminders.map(r => {
+        const minutesBefore = r.minutesBefore || 15;
+        const reminderTime = new Date(new Date(event.startTime).getTime() - minutesBefore * 60 * 1000);
+
+        // Используем ту же логику, что и в cron
+        const timeElapsed = now.getTime() - reminderTime.getTime();
+        const shouldSend = timeElapsed >= 0 && timeElapsed < 2 * 60 * 1000;
+
+        return {
+          minutesBefore,
+          reminderTime: reminderTime.toISOString(),
+          timeElapsedSeconds: Math.round(timeElapsed / 1000),
+          shouldSendNow: shouldSend,
+          alreadySent: event.sentReminders?.some(s => s.minutesBefore === minutesBefore) || false
+        };
+      });
+
+      return {
+        id: event.id,
+        title: event.title,
+        startTime: event.startTime,
+        createdBy: event.createdBy,
+        visibility: event.visibility,
+        hasReminders: notificationReminders.length > 0,
+        reminderDetails: reminderTimes,
+        sentReminders: event.sentReminders || []
+      };
+    });
+
+    res.json({
+      currentTime: now.toISOString(),
+      checkWindow: `${now.toISOString()} to ${maxLookAhead.toISOString()}`,
+      eventsFound: events.length,
+      events: diagnostics
+    });
+  } catch (error) {
+    console.error('Reminder diagnostics error:', error);
+    res.status(500).json({ error: 'Failed to get diagnostics', details: error.message });
+  }
+});
+
 module.exports = router;

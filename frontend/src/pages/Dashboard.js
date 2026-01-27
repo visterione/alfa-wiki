@@ -80,10 +80,10 @@ export default function Dashboard() {
     finally { setLoading(false); }
   }, []);
 
-  const loadMessages = useCallback(async (chatId) => {
+  const loadMessages = useCallback(async (chatId, shouldScroll = false) => {
     try {
       const { data } = await chat.getMessages(chatId);
-      
+
       // ✅ ВРЕМЕННАЯ ОТЛАДКА - потом удали
       console.log('=== ВСЕ СООБЩЕНИЯ ===');
       data.forEach(msg => {
@@ -94,12 +94,14 @@ export default function Dashboard() {
           senderId: msg.senderId
         });
       });
-      
+
       setMessages(data);
-      setTimeout(scrollToBottom, 100);
+      if (shouldScroll) {
+        setTimeout(scrollToBottom, 100);
+      }
       await chat.markAsRead(chatId);
-    } catch (e) { 
-      console.error('Failed to load messages:', e); 
+    } catch (e) {
+      console.error('Failed to load messages:', e);
     }
   }, []);
 
@@ -231,7 +233,7 @@ export default function Dashboard() {
 
       // If the message is for the active chat, update messages
       if (activeChatRef.current && data.message.chatId === activeChatRef.current.id) {
-        loadMessages(activeChatRef.current.id);
+        loadMessages(activeChatRef.current.id, true); // Прокручиваем при новом сообщении
       }
       // Note: Notification is handled by SocketContext and shown in Layout
     };
@@ -260,7 +262,7 @@ export default function Dashboard() {
   // Polling fallback (reduced frequency since we have Socket.IO)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (activeChatRef.current) loadMessages(activeChatRef.current.id);
+      if (activeChatRef.current) loadMessages(activeChatRef.current.id, false); // НЕ прокручиваем при автообновлении
       loadChats();
     }, 10000); // Increased from 5s to 10s since Socket.IO handles real-time updates
     return () => clearInterval(interval);
@@ -298,7 +300,7 @@ export default function Dashboard() {
     setNewMessage('');
     setSearchQueryForChat(searchTerm);
     setHighlightedMessageId(null);
-    await loadMessages(chatItem.id);
+    await loadMessages(chatItem.id, true); // Прокручиваем при выборе чата
   };
 
   const handleFileSelect = async (e) => {
@@ -332,7 +334,7 @@ export default function Dashboard() {
       await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments);
       setNewMessage('');
       setAttachments([]);
-      await loadMessages(activeChat.id);
+      await loadMessages(activeChat.id, true); // Прокручиваем после отправки
       await refreshActiveChat();
     } catch (e) { toast.error('Ошибка отправки'); }
     finally { setSending(false); }
@@ -345,7 +347,7 @@ export default function Dashboard() {
       await chat.editMessage(activeChat.id, editingMessage.id, newMessage.trim());
       setEditingMessage(null);
       setNewMessage('');
-      await loadMessages(activeChat.id);
+      await loadMessages(activeChat.id, false); // НЕ прокручиваем после редактирования
       await loadChats();
       toast.success('Сообщение изменено');
     } catch (e) { toast.error('Ошибка редактирования'); }
@@ -356,7 +358,7 @@ export default function Dashboard() {
     if (!window.confirm('Удалить сообщение?')) return;
     try {
       await chat.deleteMessage(activeChat.id, messageId);
-      await loadMessages(activeChat.id);
+      await loadMessages(activeChat.id, false); // НЕ прокручиваем после удаления
       await loadChats();
       toast.success('Сообщение удалено');
     } catch (e) { toast.error('Ошибка удаления'); }
@@ -484,7 +486,7 @@ export default function Dashboard() {
       const fullChat = chats.find(c => c.id === data.id) || { ...data, displayName: usersList.find(u => u.id === userId)?.displayName };
       setActiveChat(fullChat);
       setShowNewChat(false);
-      await loadMessages(data.id);
+      await loadMessages(data.id, true); // Прокручиваем при создании чата
     } catch (e) { toast.error('Ошибка создания чата'); }
   };
 
@@ -497,7 +499,7 @@ export default function Dashboard() {
       setShowNewGroup(false);
       setGroupName('');
       setSelectedUsers([]);
-      await loadMessages(data.id);
+      await loadMessages(data.id, true); // Прокручиваем при создании группы
     } catch (e) { toast.error('Ошибка создания группы'); }
   };
 

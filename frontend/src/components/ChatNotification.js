@@ -58,6 +58,12 @@ export default function ChatNotification({ notification, onClose, onClick }) {
 
   const { chat, message } = notification;
 
+  // Защита от undefined chat
+  if (!chat || !message) {
+    console.error('ChatNotification: missing chat or message', notification);
+    return null;
+  }
+
   return (
     <div
       className={`chat-notification ${isExiting ? 'exiting' : ''}`}
@@ -72,7 +78,7 @@ export default function ChatNotification({ notification, onClose, onClick }) {
       </div>
       <div className="chat-notification-content">
         <div className="chat-notification-header">
-          <span className="chat-notification-name">{chat.displayName}</span>
+          <span className="chat-notification-name">{chat.displayName || 'Неизвестный чат'}</span>
         </div>
         <div className="chat-notification-message">
           {message.sender && chat.type === 'group' && (

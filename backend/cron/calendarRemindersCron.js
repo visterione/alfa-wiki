@@ -70,9 +70,18 @@ function wasReminderSent(event, minutesBefore, recipientId) {
     return false;
   }
 
-  return event.sentReminders.some(r =>
+  const wasSent = event.sentReminders.some(r =>
     r.minutesBefore === minutesBefore && r.recipientId === recipientId
   );
+
+  if (wasSent) {
+    const sentRecord = event.sentReminders.find(r =>
+      r.minutesBefore === minutesBefore && r.recipientId === recipientId
+    );
+    console.log(`[Calendar Reminders] Reminder already sent at ${sentRecord.sentAt}`);
+  }
+
+  return wasSent;
 }
 
 /**
@@ -82,17 +91,30 @@ function wasReminderSent(event, minutesBefore, recipientId) {
  * @param {string} recipientId - ID получателя
  */
 async function markReminderSent(event, minutesBefore, recipientId) {
-  const sentReminders = event.sentReminders || [];
+  // ВАЖНО: Создаем новый массив, чтобы Sequelize распознал изменение JSONB поля
+  const sentReminders = [...(event.sentReminders || [])];
   sentReminders.push({
     minutesBefore,
     recipientId,
     sentAt: new Date().toISOString()
   });
 
+  // Помечаем поле как измененное для Sequelize
+  event.changed('sentReminders', true);
+
   await event.update({
     sentReminders,
     lastReminderSent: new Date()
+  }, {
+    // Явно указываем, что нужно обновить JSONB поле
+    fields: ['sentReminders', 'lastReminderSent']
   });
+
+  // Обновляем объект события в памяти, чтобы последующие проверки в этом же цикле работали
+  event.sentReminders = sentReminders;
+
+  console.log(`[Calendar Reminders] Marked reminder as sent: event="${event.title}", minutesBefore=${minutesBefore}, recipient=${recipientId}`);
+  console.log(`[Calendar Reminders] Updated sentReminders:`, JSON.stringify(sentReminders));
 }
 
 /**
@@ -125,6 +147,9 @@ async function checkAndSendReminders() {
     let remindersSent = 0;
 
     for (const event of events) {
+      console.log(`[Calendar Reminders] Processing event "${event.title}" (ID: ${event.id})`);
+      console.log(`[Calendar Reminders] Current sentReminders:`, JSON.stringify(event.sentReminders || []));
+
       // Пропускаем события без напоминаний
       if (!event.reminders || !Array.isArray(event.reminders) || event.reminders.length === 0) {
         continue;
@@ -145,11 +170,18 @@ async function checkAndSendReminders() {
         const reminderTime = eventTime - minutesBefore * 60 * 1000;
 
         // Проверяем, пора ли отправлять напоминание
-        // Отправляем если время напоминания в пределах следующих 2 минут (для тестирования, потом вернуть 60 * 60 * 1000)
-        if (reminderTime >= now.getTime() && reminderTime < now.getTime() + 2 * 60 * 1000) {
+        // Отправляем если время напоминания УЖЕ ПРОШЛО (но не более 2 минут назад, чтобы не отправлять старые)
+        // Это предотвращает дублирование при следующих запусках cron
+        const timeElapsed = now.getTime() - reminderTime;
+        const shouldSend = timeElapsed >= 0 && timeElapsed < 2 * 60 * 1000;
+
+        console.log(`[Calendar Reminders] Checking reminder for "${event.title}": ${minutesBefore} min before, elapsed: ${Math.round(timeElapsed / 1000)}s, shouldSend: ${shouldSend}`);
+
+        if (shouldSend) {
           for (const recipientId of recipients) {
             // Проверяем, не отправляли ли уже это напоминание
             if (wasReminderSent(event, minutesBefore, recipientId)) {
+              console.log(`[Calendar Reminders] Skipping already sent reminder for event "${event.title}" to user ${recipientId} (${minutesBefore} min before)`);
               continue;
             }
 
