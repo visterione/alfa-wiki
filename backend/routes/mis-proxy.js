@@ -200,6 +200,84 @@ router.post('/services', authenticate, async (req, res) => {
   }
 });
 
+// Получить категории услуг (для массовой загрузки)
+router.post('/get-service-categories', authenticate, async (req, res) => {
+  try {
+    console.log('📂 Запрос категорий услуг');
+
+    const data = await misRequest('getServiceCategories', {});
+
+    res.json(data);
+  } catch (err) {
+    console.error('❌ Ошибка /mis/get-service-categories:', err.message);
+    res.status(500).json({
+      error: 1,
+      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе категорий' }
+    });
+  }
+});
+
+// Получить услуги по категории (для массовой загрузки)
+router.post('/get-services', authenticate, async (req, res) => {
+  try {
+    const { category_id, show_children, clinic_id } = req.body;
+
+    if (!category_id) {
+      return res.status(400).json({
+        error: 1,
+        data: { desc: 'category_id обязателен' }
+      });
+    }
+
+    console.log('📋 Запрос услуг по категории:', category_id, show_children ? '(с подкатегориями)' : '');
+
+    const params = {
+      category_id: category_id,
+      show_children: show_children !== undefined ? show_children : true
+    };
+
+    if (clinic_id) {
+      params.clinic_id = clinic_id;
+    }
+
+    try {
+      const data = await misRequest('getServices', params);
+      res.json(data);
+    } catch (apiErr) {
+      // Если ошибка ECONNRESET и запрос был с show_children, попробуем без подкатегорий
+      if (apiErr.code === 'ECONNRESET' && params.show_children) {
+        console.log('⚠️ ECONNRESET - пробуем без подкатегорий...');
+        params.show_children = false;
+
+        try {
+          const retryData = await misRequest('getServices', params);
+          console.log('✅ Успешно получено без подкатегорий');
+          res.json(retryData);
+        } catch (retryErr) {
+          throw retryErr; // Пробрасываем ошибку дальше
+        }
+      } else {
+        throw apiErr; // Пробрасываем ошибку дальше
+      }
+    }
+  } catch (err) {
+    console.error('❌ Ошибка /mis/get-services:', err.message);
+
+    // Более информативное сообщение об ошибке
+    let errorDesc = 'Ошибка при запросе услуг по категории';
+    if (err.code === 'ECONNRESET') {
+      errorDesc = 'Слишком большая категория - МИС не смог обработать запрос. Попробуйте выбрать более конкретную подкатегорию.';
+    } else if (err.code === 'ETIMEDOUT' || err.code === 'ECONNABORTED') {
+      errorDesc = 'Превышено время ожидания ответа от МИС. Попробуйте снова или выберите меньшую категорию.';
+    }
+
+    res.status(500).json({
+      error: 1,
+      data: { code: err.code || 'SERVER_ERROR', desc: errorDesc }
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // ПОИСК УСЛУГ (для анализов)
 // ═══════════════════════════════════════════════════════════════

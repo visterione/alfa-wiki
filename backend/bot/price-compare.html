@@ -100,6 +100,37 @@
   box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
 }
 
+.price-category-select {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.price-category-select option {
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.price-category-select option[data-level="0"] {
+  font-weight: 600;
+  color: #1f2937;
+  background: #f9fafb;
+}
+
+.price-category-select option[data-level="1"] {
+  padding-left: 24px;
+  color: #374151;
+}
+
+.price-category-select option[data-level="2"] {
+  padding-left: 48px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
 .price-input {
   width: 100%;
   padding: 10px 12px;
@@ -500,6 +531,37 @@
   background: #f9fafb;
 }
 
+/* Вкладки */
+.price-tab-btn {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.price-tab-btn:hover {
+  color: #374151;
+}
+
+.price-tab-btn.active {
+  color: #3b82f6;
+  border-bottom-color: #3b82f6;
+}
+
+.price-tab-content {
+  animation: fadeIn 0.2s ease-in;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* Toast уведомления */
 .price-toast {
   position: fixed;
@@ -794,17 +856,57 @@
         <button class="price-modal-close" onclick="priceApp.closeModal('add-service-modal')">&times;</button>
       </div>
       <div class="price-modal-body">
-        <!-- Поиск в МИС -->
-        <div class="price-mis-search">
-          <div class="price-mis-search-header">
-            <input type="text" id="mis-search-input" class="price-input" placeholder="Поиск услуги в МИС..." style="flex:1">
-            <button type="button" class="price-btn price-btn-primary" onclick="priceApp.searchMIS()">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-              Найти
-            </button>
+        <!-- Вкладки -->
+        <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
+          <button class="price-tab-btn active" onclick="priceApp.switchTab('search')" id="tab-search">
+            Поиск услуги
+          </button>
+          <button class="price-tab-btn" onclick="priceApp.switchTab('category')" id="tab-category">
+            По категории
+          </button>
+        </div>
+
+        <!-- Вкладка: Поиск в МИС -->
+        <div id="tab-content-search" class="price-tab-content">
+          <div class="price-mis-search">
+            <div class="price-mis-search-header">
+              <input type="text" id="mis-search-input" class="price-input" placeholder="Поиск услуги в МИС..." style="flex:1">
+              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.searchMIS()">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Найти
+              </button>
+            </div>
+            <div class="price-mis-results" id="mis-results" style="display:none">
+              <div class="price-mis-empty">Введите запрос и нажмите "Найти"</div>
+            </div>
           </div>
-          <div class="price-mis-results" id="mis-results" style="display:none">
-            <div class="price-mis-empty">Введите запрос и нажмите "Найти"</div>
+        </div>
+
+        <!-- Вкладка: Выбор по категории -->
+        <div id="tab-content-category" class="price-tab-content" style="display:none">
+          <div class="price-mis-search">
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: #374151;">
+                Выберите категорию услуг
+              </label>
+              <select id="category-select" class="price-select price-category-select" onchange="priceApp.onCategorySelected()">
+                <option value="">Загрузка категорий...</option>
+              </select>
+            </div>
+            <div id="category-info" style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; display: none;">
+              <div style="font-size: 13px; color: #0369a1;">
+                <strong>Выбрана категория:</strong> <span id="selected-category-name"></span>
+              </div>
+              <div style="font-size: 12px; color: #075985; margin-top: 4px;">
+                При нажатии кнопки будут загружены и добавлены все услуги из этой категории.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.addAllCategoryServices()" id="add-category-btn" disabled>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Добавить все услуги
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1318,7 +1420,197 @@ window.priceApp = (function() {
     }
     document.getElementById('mis-search-input').value = '';
     document.getElementById('mis-results').style.display = 'none';
+
+    // Сброс вкладки категорий
+    document.getElementById('category-select').value = '';
+    document.getElementById('category-info').style.display = 'none';
+    document.getElementById('add-category-btn').disabled = true;
+
+    // Загрузка категорий при первом открытии
+    if (document.getElementById('category-select').options.length <= 1) {
+      loadCategories();
+    }
+
     openModal('add-service-modal');
+  }
+
+  function switchTab(tabName) {
+    // Переключение активной кнопки
+    document.getElementById('tab-search').classList.remove('active');
+    document.getElementById('tab-category').classList.remove('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+
+    // Переключение контента
+    document.getElementById('tab-content-search').style.display = tabName === 'search' ? 'block' : 'none';
+    document.getElementById('tab-content-category').style.display = tabName === 'category' ? 'block' : 'none';
+  }
+
+  function loadCategories() {
+    var select = document.getElementById('category-select');
+    select.innerHTML = '<option value="">Загрузка категорий...</option>';
+
+    fetchAPI(MIS_URL + '/get-service-categories', {
+      method: 'POST',
+      body: JSON.stringify({})
+    })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || res.data.length === 0) {
+        select.innerHTML = '<option value="">Категории не найдены</option>';
+        return;
+      }
+
+      select.innerHTML = '<option value="">Выберите категорию...</option>';
+
+      // Функция для рекурсивного добавления категорий
+      function addCategories(categories, level) {
+        level = level || 0;
+        categories.forEach(function(cat) {
+          var opt = document.createElement('option');
+          opt.value = cat.id;
+
+          // Визуальная вложенность через отступы
+          var indent = level === 0 ? '' : '　'.repeat(level); // Используем широкий пробел для отступа
+          opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
+
+          opt.setAttribute('data-count', cat.services_count || 0);
+          opt.setAttribute('data-level', level);
+          opt.setAttribute('data-name', cat.title);
+          select.appendChild(opt);
+
+          // Добавляем вложенные категории
+          if (cat.children && cat.children.length > 0) {
+            addCategories(cat.children, level + 1);
+          }
+        });
+      }
+
+      addCategories(res.data);
+    })
+    .catch(function(e) {
+      showToast('Ошибка загрузки категорий: ' + e.message, 'error');
+      select.innerHTML = '<option value="">Ошибка загрузки</option>';
+    });
+  }
+
+  function onCategorySelected() {
+    var select = document.getElementById('category-select');
+    var categoryId = select.value;
+    var infoDiv = document.getElementById('category-info');
+    var addBtn = document.getElementById('add-category-btn');
+
+    if (!categoryId) {
+      infoDiv.style.display = 'none';
+      addBtn.disabled = true;
+      return;
+    }
+
+    // Получаем название выбранной категории
+    var selectedOption = select.options[select.selectedIndex];
+    var categoryName = selectedOption.getAttribute('data-name') || selectedOption.textContent;
+
+    // Показываем информацию о выбранной категории
+    document.getElementById('selected-category-name').textContent = categoryName;
+    infoDiv.style.display = 'block';
+    addBtn.disabled = false;
+  }
+
+  function addAllCategoryServices() {
+    if (!currentComparison) {
+      showToast('Сначала создайте сравнение', 'error');
+      return;
+    }
+
+    var select = document.getElementById('category-select');
+    var categoryId = select.value;
+
+    if (!categoryId) {
+      showToast('Выберите категорию', 'error');
+      return;
+    }
+
+    var addBtn = document.getElementById('add-category-btn');
+    addBtn.disabled = true;
+    addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Загрузка услуг...';
+
+    // Сначала загружаем услуги из категории
+    fetchAPI(MIS_URL + '/get-services', {
+      method: 'POST',
+      body: JSON.stringify({
+        category_id: categoryId,
+        show_children: true
+      })
+    })
+    .then(function(res) {
+      if (res.error !== 0) {
+        var errorMsg = res.data && res.data.desc ? res.data.desc : 'Ошибка загрузки услуг';
+        showToast(errorMsg, 'error');
+        addBtn.disabled = false;
+        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+        return;
+      }
+
+      if (!res.data || res.data.length === 0) {
+        showToast('В категории нет услуг', 'error');
+        addBtn.disabled = false;
+        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+        return;
+      }
+
+      // Услуги загружены, теперь добавляем их
+      var services = res.data;
+      addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавление ' + services.length + ' услуг...';
+
+      var addedCount = 0;
+      var errorCount = 0;
+      var promises = [];
+
+      services.forEach(function(service) {
+        // Создаем объект цен с ценой для своих медцентров
+        var prices = {};
+        currentComparison.ownMedCenters.forEach(function(mc) {
+          prices[mc] = service.price;
+        });
+
+        var promise = fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
+          method: 'POST',
+          body: JSON.stringify({
+            serviceCode: service.code || '',
+            serviceName: service.title,
+            misServiceId: service.service_id,
+            prices: prices
+          })
+        })
+        .then(function() {
+          addedCount++;
+        })
+        .catch(function(e) {
+          errorCount++;
+          console.error('Ошибка добавления услуги:', service.title, e);
+        });
+
+        promises.push(promise);
+      });
+
+      Promise.all(promises).then(function() {
+        if (addedCount > 0) {
+          showToast('Добавлено услуг: ' + addedCount, 'success');
+        }
+        if (errorCount > 0) {
+          showToast('Ошибок при добавлении: ' + errorCount, 'error');
+        }
+
+        closeModal('add-service-modal');
+        loadComparison();
+
+        addBtn.disabled = false;
+        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+      });
+    })
+    .catch(function(e) {
+      showToast('Ошибка загрузки услуг: ' + e.message, 'error');
+      addBtn.disabled = false;
+      addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+    });
   }
 
   function searchMIS() {
@@ -1670,7 +1962,10 @@ window.priceApp = (function() {
     deleteItem: deleteItem,
     filterTable: filterTable,
     exportToExcel: exportToExcel,
-    closeModal: closeModal
+    closeModal: closeModal,
+    switchTab: switchTab,
+    onCategorySelected: onCategorySelected,
+    addAllCategoryServices: addAllCategoryServices
   };
 })();
 </script>
