@@ -641,11 +641,16 @@
   opacity: 0.4;
 }
 
-.column-chip input[type="checkbox"] {
+.column-chip input[type="radio"] {
   position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  opacity: 1;
+  margin: 0;
 }
 
 .column-chip button {
@@ -782,9 +787,6 @@
     <h4>Управление колонками</h4>
     <div class="columns-list" id="columns-list"></div>
     <div style="display: flex; gap: 8px;">
-      <button class="price-btn price-btn-secondary" onclick="priceApp.openAddOwnMedCenterModal()">
-        + Свой медцентр
-      </button>
       <button class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
         + Конкурент
       </button>
@@ -913,38 +915,6 @@
     </div>
   </div>
 
-  <!-- Модальное окно: Добавить свой медцентр -->
-  <div id="add-own-medcenter-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-own-medcenter-modal')">
-    <div class="price-modal-content">
-      <div class="price-modal-header">
-        <h3>Добавить свой медцентр</h3>
-        <button class="price-modal-close" onclick="priceApp.closeModal('add-own-medcenter-modal')">&times;</button>
-      </div>
-      <form class="price-modal-body" onsubmit="priceApp.addOwnMedCenter(event)">
-        <div class="price-form-group">
-          <label>Медцентр <span>*</span></label>
-          <select id="own-medcenter-select" required class="price-select">
-            <option value="">Выберите...</option>
-            <option value="Альфа">Альфа</option>
-            <option value="Кидс">Кидс</option>
-            <option value="Проф">Проф</option>
-            <option value="Линия">Линия</option>
-            <option value="3К">3К</option>
-            <option value="Смайл">Смайл</option>
-            <option value="КДЛ">КДЛ</option>
-            <option value="Инвитро">Инвитро</option>
-            <option value="CL-Lab">CL-Lab</option>
-            <option value="СМЛаб">СМЛаб</option>
-          </select>
-        </div>
-        <div class="price-form-actions">
-          <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.closeModal('add-own-medcenter-modal')">Отмена</button>
-          <button type="submit" class="price-btn price-btn-primary">Добавить</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Модальное окно: Добавить конкурента -->
   <div id="add-competitor-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-competitor-modal')">
     <div class="price-modal-content">
@@ -977,6 +947,8 @@ window.priceApp = (function() {
   var currentItems = [];
   var allColumns = []; // Список всех колонок (своих + конкурентов)
   var hiddenColumns = []; // Список скрытых колонок
+  var availableClinics = []; // Список клиник из МИС
+  var baseColumnName = null; // Базовая колонка для расчета разницы
 
   // === HELPERS ===
   function getToken() {
@@ -1065,9 +1037,24 @@ window.priceApp = (function() {
       currentComparison = comparison;
       currentItems = comparison.items || [];
 
+      // Автоматически определяем клиники из загруженных услуг
+      var ownMedCentersSet = {};
+      currentItems.forEach(function(item) {
+        if (item.prices) {
+          Object.keys(item.prices).forEach(function(clinicName) {
+            // Проверяем, что это не конкурент
+            if ((comparison.competitors || []).indexOf(clinicName) < 0) {
+              ownMedCentersSet[clinicName] = true;
+            }
+          });
+        }
+      });
+
+      var detectedOwnMedCenters = Object.keys(ownMedCentersSet);
+
       // Формируем список всех колонок
       allColumns = [];
-      (comparison.ownMedCenters || []).forEach(function(mc) {
+      detectedOwnMedCenters.forEach(function(mc) {
         allColumns.push({ name: mc, type: 'own' });
       });
       (comparison.competitors || []).forEach(function(comp) {
@@ -1091,23 +1078,50 @@ window.priceApp = (function() {
     var list = document.getElementById('columns-list');
     list.innerHTML = '';
 
+    // Если нет базовой колонки, устанавливаем первую видимую
+    if (!baseColumnName && allColumns.length > 0) {
+      baseColumnName = allColumns[0].name;
+    }
+
     allColumns.forEach(function(col, idx) {
       var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+      var isBase = col.name === baseColumnName;
+
       var chip = document.createElement('div');
       chip.className = 'column-chip ' + col.type + (isHidden ? ' hidden-col' : '');
       chip.style.cursor = 'pointer';
+      chip.style.position = 'relative';
+      chip.style.paddingLeft = '28px'; // Делаем место для радио-кнопки
+
+      // Радио-кнопка для выбора базовой колонки
+      var radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'base-column';
+      radio.checked = isBase;
+      radio.style.position = 'absolute';
+      radio.style.left = '8px';
+      radio.style.top = '50%';
+      radio.style.transform = 'translateY(-50%)';
+      radio.style.cursor = 'pointer';
+      radio.style.width = '14px';
+      radio.style.height = '14px';
+      radio.style.opacity = '1';
+      radio.onclick = function(e) {
+        e.stopPropagation();
+        priceApp.setBaseColumn(col.name);
+      };
 
       // Клик по всему чипу для переключения видимости
       chip.onclick = function(e) {
-        // Если клик по кнопке удаления, не переключаем видимость
-        if (e.target.tagName === 'BUTTON' || e.target.closest('button')) {
+        // Если клик по радио-кнопке или кнопке удаления, не переключаем видимость
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) {
           return;
         }
         priceApp.toggleColumn(col.name);
       };
 
       var label = document.createElement('span');
-      label.textContent = col.name;
+      label.textContent = col.name + (isBase ? ' (эталон)' : '');
 
       var removeBtn = document.createElement('button');
       removeBtn.innerHTML = '&times;';
@@ -1116,6 +1130,7 @@ window.priceApp = (function() {
         priceApp.removeColumn(idx);
       };
 
+      chip.appendChild(radio);
       chip.appendChild(label);
       chip.appendChild(removeBtn);
       list.appendChild(chip);
@@ -1124,25 +1139,20 @@ window.priceApp = (function() {
 
   function toggleColumn(columnName) {
     var idx = hiddenColumns.indexOf(columnName);
-    var col = allColumns.find(function(c) { return c.name === columnName; });
 
     if (idx >= 0) {
       // Показываем колонку
       hiddenColumns.splice(idx, 1);
-
-      // Если это свой медцентр, скрываем все остальные свои медцентры
-      if (col && col.type === 'own') {
-        allColumns.forEach(function(otherCol) {
-          if (otherCol.type === 'own' && otherCol.name !== columnName) {
-            if (hiddenColumns.indexOf(otherCol.name) < 0) {
-              hiddenColumns.push(otherCol.name);
-            }
-          }
-        });
-      }
     } else {
+      // Скрываем колонку
       hiddenColumns.push(columnName);
     }
+    renderColumnsManager();
+    renderTable();
+  }
+
+  function setBaseColumn(columnName) {
+    baseColumnName = columnName;
     renderColumnsManager();
     renderTable();
   }
@@ -1153,30 +1163,51 @@ window.priceApp = (function() {
 
     if (!currentComparison || allColumns.length === 0) {
       thead.innerHTML = '<tr><th class="col-code">Артикул</th><th class="col-service">Название услуги</th><th class="col-actions"></th></tr>';
-      tbody.innerHTML = '<tr><td colspan="3" class="price-empty">Создайте сравнение и добавьте колонки медцентров</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="3" class="price-empty">Добавьте услуги для начала работы</td></tr>';
       return;
     }
 
+    // Переупорядочиваем колонки: базовая колонка всегда первая
+    var orderedColumns = [];
+    var baseCol = null;
+    var otherCols = [];
+
+    allColumns.forEach(function(col) {
+      if (col.name === baseColumnName) {
+        baseCol = col;
+      } else {
+        otherCols.push(col);
+      }
+    });
+
+    if (baseCol) {
+      orderedColumns.push(baseCol);
+    }
+    orderedColumns = orderedColumns.concat(otherCols);
+
     // Заголовок таблицы - одна строка
     var headerRow = '<tr>';
-    var colCount = 2;
 
     // Артикул и Название услуги
     headerRow += '<th class="col-code">Артикул</th>';
     headerRow += '<th class="col-service">Название услуги</th>';
 
-    allColumns.forEach(function(col) {
+    // Считаем общее количество колонок для colspan
+    var totalDataCols = 0;
+
+    orderedColumns.forEach(function(col) {
       var isHidden = hiddenColumns.indexOf(col.name) >= 0;
       var hiddenClass = isHidden ? ' hidden' : '';
+      var isBase = col.name === baseColumnName;
 
-      if (col.type === 'own') {
-        // Для своих медцентров - одна колонка
-        headerRow += '<th class="col-price' + hiddenClass + '">' + col.name + '</th>';
-        colCount++;
+      if (isBase) {
+        // Эталонная колонка - только 1 колонка (без разницы)
+        headerRow += '<th class="col-price-competitor' + hiddenClass + '">' + col.name + ' (эталон)</th>';
+        totalDataCols += 1;
       } else {
-        // Для конкурентов - две колонки без подзаголовков
+        // Остальные колонки имеют 2 подколонки (цена и разница), но без подзаголовков
         headerRow += '<th class="col-price-competitor' + hiddenClass + '" colspan="2">' + col.name + '</th>';
-        colCount += 2;
+        totalDataCols += 2;
       }
     });
 
@@ -1186,8 +1217,11 @@ window.priceApp = (function() {
     thead.innerHTML = headerRow;
 
     // Тело таблицы
+    // Считаем общее количество колонок: Артикул + Название + totalDataCols + Действия
+    var totalCols = 2 + totalDataCols + 1;
+
     if (currentItems.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="' + (colCount + 1) + '" class="price-empty">Нет услуг. Добавьте услугу для сравнения.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="price-empty">Нет услуг. Добавьте услугу для сравнения.</td></tr>';
       return;
     }
 
@@ -1199,7 +1233,7 @@ window.priceApp = (function() {
     });
 
     if (filteredItems.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="' + (colCount + 1) + '" class="price-empty">Ничего не найдено</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="price-empty">Ничего не найдено</td></tr>';
       return;
     }
 
@@ -1208,34 +1242,31 @@ window.priceApp = (function() {
       html += '<td class="center">' + (item.serviceCode || '-') + '</td>';
       html += '<td>' + item.serviceName + '</td>';
 
-      // Базовая цена (первая видимая колонка) для расчета разницы
-      var basePrice = null;
-      for (var i = 0; i < allColumns.length; i++) {
-        if (hiddenColumns.indexOf(allColumns[i].name) < 0) {
-          basePrice = item.prices[allColumns[i].name] || null;
-          break;
-        }
-      }
+      // Базовая цена для расчета разницы
+      var basePrice = item.prices[baseColumnName] || null;
 
-      // Колонки с ценами
-      allColumns.forEach(function(col, idx) {
+      // Колонки с ценами (используем переупорядоченный массив)
+      orderedColumns.forEach(function(col) {
         var isHidden = hiddenColumns.indexOf(col.name) >= 0;
         var hiddenClass = isHidden ? ' hidden' : '';
+        var isBase = col.name === baseColumnName;
         var price = item.prices[col.name] || null;
 
+        // Колонка с ценой
+        html += '<td class="center' + hiddenClass + '">';
         if (col.type === 'own') {
-          // Для своих медцентров - одна ячейка с ценой
-          html += '<td class="center' + hiddenClass + '">';
+          // Для своих медцентров - показываем как текст (цена из МИС)
           html += '<span class="price-value">' + formatPrice(price) + '</span>';
-          html += '</td>';
         } else {
-          // Для конкурентов - две ячейки (цена и разница)
-          html += '<td class="center' + hiddenClass + '">';
+          // Для конкурентов - инпут для ввода
           html += '<input type="number" class="price-value-input" value="' + (price || '') + '" ';
           html += 'onchange="priceApp.updatePrice(\'' + item.id + '\', \'' + col.name + '\', this.value)" ';
           html += 'placeholder="Введите цену">';
-          html += '</td>';
+        }
+        html += '</td>';
 
+        // Колонка с разницей (только для НЕ эталонных колонок)
+        if (!isBase) {
           html += '<td class="center' + hiddenClass + '">';
           if (basePrice && price) {
             var diff = calculateDiff(basePrice, price);
@@ -1313,40 +1344,22 @@ window.priceApp = (function() {
   }
 
   // === УПРАВЛЕНИЕ КОЛОНКАМИ ===
-  function openAddOwnMedCenterModal() {
-    document.getElementById('own-medcenter-select').value = '';
-    openModal('add-own-medcenter-modal');
-  }
+  function loadClinics() {
+    fetchAPI(MIS_URL + '/get-clinics', {
+      method: 'POST',
+      body: JSON.stringify({})
+    })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || res.data.length === 0) {
+        console.warn('Не удалось загрузить клиники');
+        return;
+      }
 
-  function addOwnMedCenter(e) {
-    e.preventDefault();
-
-    if (!currentComparison) return;
-
-    var medCenter = document.getElementById('own-medcenter-select').value;
-
-    // Проверяем, не добавлен ли уже
-    if (allColumns.some(function(col) { return col.name === medCenter; })) {
-      showToast('Этот медцентр уже добавлен', 'error');
-      return;
-    }
-
-    var newOwnMedCenters = currentComparison.ownMedCenters.concat([medCenter]);
-
-    fetchAPI(API_URL + '/' + currentComparison.id, {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: currentComparison.name,
-        description: currentComparison.description,
-        ownMedCenters: newOwnMedCenters,
-        competitors: currentComparison.competitors
-      })
-    }).then(function() {
-      showToast('Медцентр добавлен', 'success');
-      closeModal('add-own-medcenter-modal');
-      loadComparison();
-    }).catch(function(e) {
-      showToast('Ошибка: ' + e.message, 'error');
+      availableClinics = res.data;
+      console.log('✅ Загружено клиник:', availableClinics.length);
+    })
+    .catch(function(e) {
+      console.error('Ошибка загрузки клиник:', e);
     });
   }
 
@@ -1393,23 +1406,62 @@ window.priceApp = (function() {
     if (!currentComparison || !confirm('Удалить колонку?')) return;
 
     var col = allColumns[idx];
-    var newOwnMedCenters = currentComparison.ownMedCenters.filter(function(mc) { return mc !== col.name; });
-    var newCompetitors = currentComparison.competitors.filter(function(comp) { return comp !== col.name; });
 
-    fetchAPI(API_URL + '/' + currentComparison.id, {
-      method: 'PUT',
-      body: JSON.stringify({
-        name: currentComparison.name,
-        description: currentComparison.description,
-        ownMedCenters: newOwnMedCenters,
-        competitors: newCompetitors
-      })
-    }).then(function() {
-      showToast('Колонка удалена', 'success');
-      loadComparison();
-    }).catch(function(e) {
-      showToast('Ошибка: ' + e.message, 'error');
-    });
+    // Если удаляется базовая колонка, выбираем новую базовую
+    if (col.name === baseColumnName) {
+      var newBase = null;
+      for (var i = 0; i < allColumns.length; i++) {
+        if (allColumns[i].name !== col.name) {
+          newBase = allColumns[i].name;
+          break;
+        }
+      }
+      baseColumnName = newBase;
+    }
+
+    if (col.type === 'own') {
+      // Для своих медцентров удаляем цены из всех услуг
+      var updatePromises = [];
+
+      currentItems.forEach(function(item) {
+        if (item.prices && item.prices[col.name] !== undefined) {
+          var newPrices = Object.assign({}, item.prices);
+          delete newPrices[col.name];
+
+          var promise = fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + item.id, {
+            method: 'PUT',
+            body: JSON.stringify({ prices: newPrices })
+          });
+
+          updatePromises.push(promise);
+        }
+      });
+
+      Promise.all(updatePromises).then(function() {
+        showToast('Колонка удалена', 'success');
+        loadComparison();
+      }).catch(function(e) {
+        showToast('Ошибка: ' + e.message, 'error');
+      });
+    } else {
+      // Для конкурентов удаляем из списка competitors
+      var newCompetitors = currentComparison.competitors.filter(function(comp) { return comp !== col.name; });
+
+      fetchAPI(API_URL + '/' + currentComparison.id, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: currentComparison.name,
+          description: currentComparison.description,
+          ownMedCenters: currentComparison.ownMedCenters,
+          competitors: newCompetitors
+        })
+      }).then(function() {
+        showToast('Колонка удалена', 'success');
+        loadComparison();
+      }).catch(function(e) {
+        showToast('Ошибка: ' + e.message, 'error');
+      });
+    }
   }
 
   // === ПОИСК В МИС ===
@@ -1528,56 +1580,102 @@ window.priceApp = (function() {
       return;
     }
 
+    // ВСЕГДА загружаем цены для всех клиник из МИС
+    // Это позволяет автоматически подтягивать новые медцентры при добавлении услуг
+    if (availableClinics.length === 0) {
+      showToast('Загрузка списка клиник...', 'error');
+      return;
+    }
+
+    var ownMedCenterNames = availableClinics.map(function(c) { return c.title; });
+
     var addBtn = document.getElementById('add-category-btn');
     addBtn.disabled = true;
     addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Загрузка услуг...';
 
-    // Сначала загружаем услуги из категории
-    fetchAPI(MIS_URL + '/get-services', {
-      method: 'POST',
-      body: JSON.stringify({
-        category_id: categoryId,
-        show_children: true
-      })
-    })
-    .then(function(res) {
-      if (res.error !== 0) {
-        var errorMsg = res.data && res.data.desc ? res.data.desc : 'Ошибка загрузки услуг';
-        showToast(errorMsg, 'error');
-        addBtn.disabled = false;
-        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
-        return;
-      }
+    // Загружаем услуги для каждой клиники параллельно
+    var clinicRequests = [];
 
-      if (!res.data || res.data.length === 0) {
+    ownMedCenterNames.forEach(function(clinicName) {
+      // Находим clinic_id по названию
+      var clinic = availableClinics.find(function(c) { return c.title === clinicName; });
+      var clinicId = clinic ? clinic.id : null;
+
+      var request = fetchAPI(MIS_URL + '/get-services', {
+        method: 'POST',
+        body: JSON.stringify({
+          category_id: categoryId,
+          show_children: true,
+          clinic_id: clinicId
+        })
+      }).then(function(res) {
+        return {
+          clinicName: clinicName,
+          clinicId: clinicId,
+          success: res.error === 0,
+          data: res.data || []
+        };
+      }).catch(function(err) {
+        console.error('Ошибка загрузки услуг для', clinicName, err);
+        return {
+          clinicName: clinicName,
+          clinicId: clinicId,
+          success: false,
+          data: []
+        };
+      });
+
+      clinicRequests.push(request);
+    });
+
+    Promise.all(clinicRequests).then(function(results) {
+      // Объединяем услуги по service_id
+      var servicesMap = {};
+
+      results.forEach(function(result) {
+        if (!result.success) return;
+
+        result.data.forEach(function(service) {
+          var serviceId = service.service_id || service.code;
+
+          if (!servicesMap[serviceId]) {
+            servicesMap[serviceId] = {
+              service_id: service.service_id,
+              code: service.code,
+              title: service.title,
+              prices: {}
+            };
+          }
+
+          // Сохраняем цену для этой клиники
+          servicesMap[serviceId].prices[result.clinicName] = service.price;
+        });
+      });
+
+      var services = Object.values(servicesMap);
+
+      if (services.length === 0) {
         showToast('В категории нет услуг', 'error');
         addBtn.disabled = false;
         addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
         return;
       }
 
-      // Услуги загружены, теперь добавляем их
-      var services = res.data;
       addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавление ' + services.length + ' услуг...';
 
+      // Добавляем услуги в таблицу
       var addedCount = 0;
       var errorCount = 0;
       var promises = [];
 
       services.forEach(function(service) {
-        // Создаем объект цен с ценой для своих медцентров
-        var prices = {};
-        currentComparison.ownMedCenters.forEach(function(mc) {
-          prices[mc] = service.price;
-        });
-
         var promise = fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
           method: 'POST',
           body: JSON.stringify({
             serviceCode: service.code || '',
             serviceName: service.title,
             misServiceId: service.service_id,
-            prices: prices
+            prices: service.prices
           })
         })
         .then(function() {
@@ -1659,9 +1757,86 @@ window.priceApp = (function() {
   function selectMISService(serviceId, code, title, price) {
     if (!currentComparison) return;
 
-    // Создаем объект цен с ценой для своих медцентров
+    // ВСЕГДА загружаем цены для всех клиник из МИС
+    // Это позволяет автоматически подтягивать новые медцентры при добавлении услуг
+    if (availableClinics.length === 0) {
+      showToast('Загрузка списка клиник...', 'error');
+      return;
+    }
+
+    var ownMedCenterNames = availableClinics.map(function(c) { return c.title; });
+
+    // Если есть несколько клиник и clinic_id известны - загружаем для каждой
+    if (ownMedCenterNames.length > 1) {
+      var clinicRequests = [];
+
+      ownMedCenterNames.forEach(function(clinicName) {
+        var clinic = availableClinics.find(function(c) { return c.title === clinicName; });
+        var clinicId = clinic ? clinic.id : null;
+
+        if (!clinicId) {
+          // Если clinic_id не найден, используем общую цену
+          return;
+        }
+
+        var request = fetchAPI(MIS_URL + '/get-services', {
+          method: 'POST',
+          body: JSON.stringify({
+            service_id: serviceId,
+            clinic_id: clinicId
+          })
+        }).then(function(res) {
+          return {
+            clinicName: clinicName,
+            price: (res.error === 0 && res.data && res.data[0]) ? res.data[0].price : price
+          };
+        }).catch(function() {
+          return {
+            clinicName: clinicName,
+            price: price
+          };
+        });
+
+        clinicRequests.push(request);
+      });
+
+      if (clinicRequests.length > 0) {
+        Promise.all(clinicRequests).then(function(results) {
+          var prices = {};
+          results.forEach(function(result) {
+            prices[result.clinicName] = result.price;
+          });
+
+          // Добавляем цены для клиник, которые не вернулись
+          ownMedCenterNames.forEach(function(mc) {
+            if (!prices[mc]) {
+              prices[mc] = price;
+            }
+          });
+
+          fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
+            method: 'POST',
+            body: JSON.stringify({
+              serviceCode: code,
+              serviceName: title,
+              misServiceId: serviceId,
+              prices: prices
+            })
+          }).then(function() {
+            showToast('Услуга добавлена', 'success');
+            closeModal('add-service-modal');
+            loadComparison();
+          }).catch(function(e) {
+            showToast('Ошибка: ' + e.message, 'error');
+          });
+        });
+        return;
+      }
+    }
+
+    // Если только одна клиника или clinic_id не известны - используем общую цену
     var prices = {};
-    currentComparison.ownMedCenters.forEach(function(mc) {
+    ownMedCenterNames.forEach(function(mc) {
       prices[mc] = price;
     });
 
@@ -1746,53 +1921,52 @@ window.priceApp = (function() {
       return hiddenColumns.indexOf(col.name) < 0;
     });
 
-    // Первая строка заголовков (с объединенными ячейками для конкурентов)
-    var headerRow1 = ['Артикул', 'Название услуги'];
-    var currentCol = 3; // Начинаем с колонки C (1=A, 2=B, 3=C)
+    // Переупорядочиваем колонки: базовая колонка всегда первая
+    var orderedVisibleColumns = [];
+    var baseCol = null;
+    var otherCols = [];
 
     visibleColumns.forEach(function(col) {
-      if (col.type === 'own') {
-        headerRow1.push(col.name);
-        currentCol++;
+      if (col.name === baseColumnName) {
+        baseCol = col;
       } else {
-        headerRow1.push(col.name);
-        headerRow1.push(''); // Пустая ячейка для объединения
-        currentCol += 2;
+        otherCols.push(col);
       }
     });
 
-    worksheet.addRow(headerRow1);
+    if (baseCol) {
+      orderedVisibleColumns.push(baseCol);
+    }
+    orderedVisibleColumns = orderedVisibleColumns.concat(otherCols);
 
-    // Вторая строка заголовков (подзаголовки для конкурентов)
-    var headerRow2 = ['', '']; // Пустые для Артикул и Название (они объединены по вертикали)
-    currentCol = 3;
+    // Одна строка заголовков
+    var headerRow = ['Артикул', 'Название услуги'];
 
-    visibleColumns.forEach(function(col) {
-      if (col.type === 'own') {
-        headerRow2.push(''); // Пустая ячейка (объединена с верхней)
-        currentCol++;
+    orderedVisibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      if (isBase) {
+        // Эталонная колонка - одна колонка без разделения
+        headerRow.push(col.name + ' (эталон)');
       } else {
-        headerRow2.push('Цена');
-        headerRow2.push('Разница');
-        currentCol += 2;
+        // Обычная колонка - две ячейки, объединяем
+        headerRow.push(col.name);
+        headerRow.push(''); // Пустая ячейка для объединения
       }
     });
 
-    worksheet.addRow(headerRow2);
+    worksheet.addRow(headerRow);
 
-    // Объединяем ячейки заголовков
-    worksheet.mergeCells('A1:A2'); // Артикул
-    worksheet.mergeCells('B1:B2'); // Название услуги
-
-    currentCol = 3;
-    visibleColumns.forEach(function(col) {
+    // Объединяем ячейки для не-эталонных колонок (объединяем по горизонтали)
+    var currentCol = 3;
+    orderedVisibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
       var colLetter = String.fromCharCode(64 + currentCol);
-      if (col.type === 'own') {
-        // Объединяем свой медцентр по вертикали
-        worksheet.mergeCells(colLetter + '1:' + colLetter + '2');
-        currentCol++;
+
+      if (isBase) {
+        // Эталонная колонка - ничего не объединяем
+        currentCol += 1;
       } else {
-        // Объединяем конкурента по горизонтали в первой строке
+        // Обычная колонка - объединяем две ячейки по горизонтали
         var nextColLetter = String.fromCharCode(64 + currentCol + 1);
         worksheet.mergeCells(colLetter + '1:' + nextColLetter + '1');
         currentCol += 2;
@@ -1809,43 +1983,33 @@ window.priceApp = (function() {
     var headerFont = { bold: true };
     var headerAlignment = { vertical: 'middle', horizontal: 'center' };
 
-    for (var r = 1; r <= 2; r++) {
-      var row = worksheet.getRow(r);
-      row.eachCell(function(cell) {
-        cell.fill = headerFill;
-        cell.font = headerFont;
-        cell.alignment = headerAlignment;
-        cell.border = borderStyle;
-      });
-      row.height = 20;
-    }
-
-    // Базовая цена для расчета разниц
-    var basePrice = null;
-    for (var i = 0; i < visibleColumns.length; i++) {
-      basePrice = visibleColumns[i].name;
-      break;
-    }
+    var headerRow = worksheet.getRow(1);
+    headerRow.eachCell(function(cell) {
+      cell.fill = headerFill;
+      cell.font = headerFont;
+      cell.alignment = headerAlignment;
+      cell.border = borderStyle;
+    });
+    headerRow.height = 20;
 
     // Данные
-    var startRow = 3;
+    var startRow = 2;
     currentItems.forEach(function(item, itemIdx) {
       var row = [item.serviceCode || '', item.serviceName];
       var rowData = [];
 
-      var basePriceValue = basePrice ? (item.prices[basePrice] || null) : null;
+      var basePriceValue = item.prices[baseColumnName] || null;
 
-      visibleColumns.forEach(function(col) {
+      orderedVisibleColumns.forEach(function(col) {
         var price = item.prices[col.name] || null;
+        var isBase = col.name === baseColumnName;
 
-        if (col.type === 'own') {
-          row.push(price || '');
-          rowData.push({ type: 'price', value: price });
-        } else {
-          row.push(price || '');
-          rowData.push({ type: 'price', value: price });
+        // Цена
+        row.push(price || '');
+        rowData.push({ type: 'price', value: price });
 
-          // Фактическая разница в цене
+        // Разница (только для НЕ эталонных колонок)
+        if (!isBase) {
           var diffValue = null;
           var diffText = '-';
           if (basePriceValue && price) {
@@ -1873,7 +2037,8 @@ window.priceApp = (function() {
         // Применяем цветное форматирование для разниц
         var dataIdx = colNumber - 3; // Смещение от начала данных
         if (dataIdx >= 0 && dataIdx < rowData.length && rowData[dataIdx].type === 'diff') {
-          var diffVal = rowData[dataIdx].value;
+          var diffData = rowData[dataIdx];
+          var diffVal = diffData.value;
           if (diffVal !== null && !isNaN(diffVal)) {
             if (diffVal > 0) {
               // Положительная разница - зеленый фон
@@ -1933,11 +2098,11 @@ window.priceApp = (function() {
     document.getElementById('price-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
     loadComparisons();
+    loadClinics();
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         closeModal('new-comparison-modal');
         closeModal('add-service-modal');
-        closeModal('add-own-medcenter-modal');
         closeModal('add-competitor-modal');
       }
     });
@@ -1949,12 +2114,11 @@ window.priceApp = (function() {
     openNewComparisonModal: openNewComparisonModal,
     createComparison: createComparison,
     deleteComparison: deleteComparison,
-    openAddOwnMedCenterModal: openAddOwnMedCenterModal,
-    addOwnMedCenter: addOwnMedCenter,
     openAddCompetitorModal: openAddCompetitorModal,
     addCompetitor: addCompetitor,
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,
+    setBaseColumn: setBaseColumn,
     openAddServiceModal: openAddServiceModal,
     searchMIS: searchMIS,
     selectMISService: selectMISService,

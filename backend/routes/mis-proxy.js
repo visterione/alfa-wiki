@@ -200,6 +200,25 @@ router.post('/services', authenticate, async (req, res) => {
   }
 });
 
+// Получить список клиник
+router.post('/get-clinics', authenticate, async (req, res) => {
+  try {
+    console.log('🏥 Запрос списка клиник');
+
+    const data = await misRequest('getClinics', {
+      show_all: 1
+    });
+
+    res.json(data);
+  } catch (err) {
+    console.error('❌ Ошибка /mis/get-clinics:', err.message);
+    res.status(500).json({
+      error: 1,
+      data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе клиник' }
+    });
+  }
+});
+
 // Получить категории услуг (для массовой загрузки)
 router.post('/get-service-categories', authenticate, async (req, res) => {
   try {
