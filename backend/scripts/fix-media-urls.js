@@ -1,3 +1,6 @@
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const { sequelize, Page, Lesson, Message, MapMarker, DoctorCard, KanbanTask } = require('../models');
 
 const OLD_URL = 'http://192.168.10.55:9001';
