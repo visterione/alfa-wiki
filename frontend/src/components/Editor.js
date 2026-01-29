@@ -1141,9 +1141,10 @@ function MenuBar({ editor }) {
     setUploadingVideo(true);
     try {
       const { data } = await media.upload(file);
-      const videoUrl = `${BASE_URL}/${data.path}`;
+      // Сохраняем относительный путь вместо полного URL
+      const videoPath = data.path.startsWith('/') ? data.path : `/${data.path}`;
       editor.chain().focus().setLocalVideo({
-        src: videoUrl
+        src: videoPath
       }).run();
       toast.success('Видео загружено');
     } catch (e) {

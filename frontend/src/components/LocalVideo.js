@@ -35,6 +35,12 @@ const VideoComponent = ({ node }) => {
   const videoSrc = src?.startsWith('/uploads/') ? `${BASE_URL}${src}` : src;
   const videoPoster = poster?.startsWith('/uploads/') ? `${BASE_URL}${poster}` : poster;
 
+  console.log('🎬 VideoComponent render:', {
+    originalSrc: src,
+    finalSrc: videoSrc,
+    BASE_URL
+  });
+
   // Обычное HTML5 видео с preload="none"
   return (
     <NodeViewWrapper>
