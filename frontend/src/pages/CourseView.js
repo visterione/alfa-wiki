@@ -7,6 +7,7 @@ import {
 import { courses } from '../services/api';
 import toast from 'react-hot-toast';
 import PrintButton from '../components/PrintButton';
+import ContentRenderer from '../components/ContentRenderer';
 import './CourseView.css';
 
 export default function CourseView() {
@@ -263,10 +264,9 @@ export default function CourseView() {
 
           <div ref={printRef}>
             <h2 className="printable-lesson-title">{currentLesson?.title}</h2>
-            <div
-              className="lesson-content"
-              dangerouslySetInnerHTML={{ __html: lessonContent }}
-            />
+            <div className="lesson-content">
+              <ContentRenderer content={lessonContent} />
+            </div>
           </div>
 
           <div className="lesson-navigation">
