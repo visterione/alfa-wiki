@@ -108,12 +108,22 @@ export const LocalVideo = Node.create({
   renderHTML({ HTMLAttributes }) {
     const { src, poster } = HTMLAttributes;
 
+    // Формируем полные URL (аналогично VideoComponent)
+    const videoSrc = src?.startsWith('/uploads/') ? `${BASE_URL}${src}` : src;
+    const videoPoster = poster?.startsWith('/uploads/') ? `${BASE_URL}${poster}` : poster;
+
+    console.log('🎬 LocalVideo renderHTML:', {
+      originalSrc: src,
+      finalSrc: videoSrc,
+      BASE_URL
+    });
+
     // Возвращаем обычный video элемент для статического HTML
     return [
       'video',
       {
-        src,
-        poster: poster || undefined,
+        src: videoSrc,
+        poster: videoPoster || undefined,
         controls: '',
         preload: 'none',
         style: 'width: 100%; max-width: 100%; height: auto; min-height: 300px; aspect-ratio: 16/9; display: block; margin: 1rem 0; border-radius: 8px; background-color: #000; object-fit: contain;'
