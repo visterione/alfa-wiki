@@ -380,6 +380,34 @@ export const ResizableImage = Node.create({
 export const ResizableImageReadOnly = TiptapImage.extend({
   name: 'image',
 
+  parseHTML() {
+    return [
+      {
+        tag: 'img[src]',
+        getAttrs: (dom) => {
+          let src = dom.getAttribute('src');
+
+          // Исправляем относительные пути при парсинге
+          if (src && src.startsWith('/uploads/')) {
+            src = `${BASE_URL}${src}`;
+            console.log('🖼️ ResizableImageReadOnly parseHTML: Fixed src', src);
+          }
+
+          return {
+            src,
+            alt: dom.getAttribute('alt'),
+            title: dom.getAttribute('title'),
+            width: dom.getAttribute('width') ? parseInt(dom.getAttribute('width')) : null,
+            height: dom.getAttribute('height') ? parseInt(dom.getAttribute('height')) : null,
+            display: dom.getAttribute('data-display') || 'inline',
+            float: dom.getAttribute('data-float') || 'none',
+            align: dom.getAttribute('data-align') || 'left',
+          };
+        },
+      },
+    ];
+  },
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -430,5 +458,24 @@ export const ResizableImageReadOnly = TiptapImage.extend({
         }
       }
     };
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    console.log('🖼️ ResizableImageReadOnly renderHTML:', HTMLAttributes);
+
+    // Пути уже исправлены в parseHTML, просто рендерим все атрибуты
+    const attrs = {
+      src: HTMLAttributes.src,
+    };
+
+    if (HTMLAttributes.alt) attrs.alt = HTMLAttributes.alt;
+    if (HTMLAttributes.title) attrs.title = HTMLAttributes.title;
+    if (HTMLAttributes.width) attrs.width = HTMLAttributes.width;
+    if (HTMLAttributes.height) attrs.height = HTMLAttributes.height;
+    if (HTMLAttributes.display) attrs['data-display'] = HTMLAttributes.display;
+    if (HTMLAttributes.float) attrs['data-float'] = HTMLAttributes.float;
+    if (HTMLAttributes.align) attrs['data-align'] = HTMLAttributes.align;
+
+    return ['img', attrs];
   }
 });
