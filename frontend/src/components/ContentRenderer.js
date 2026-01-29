@@ -17,8 +17,43 @@ import Superscript from '@tiptap/extension-superscript';
 import Youtube from '@tiptap/extension-youtube';
 import { LocalVideo } from './LocalVideo';
 import { CustomBlockquote, TableCell, ResizableImageReadOnly } from './EditorExtensions';
+import { BASE_URL } from '../services/api';
 import './Editor.css';
 import './ContentRenderer.css';
+
+/**
+ * Преобразует относительные пути медиа в абсолютные
+ */
+function fixMediaPaths(htmlContent) {
+  if (!htmlContent) return htmlContent;
+
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlContent;
+
+  // Исправляем src изображений
+  const images = tempDiv.querySelectorAll('img');
+  images.forEach(img => {
+    const src = img.getAttribute('src');
+    if (src && src.startsWith('/uploads/')) {
+      img.setAttribute('src', `${BASE_URL}${src}`);
+    }
+  });
+
+  // Исправляем src видео
+  const videos = tempDiv.querySelectorAll('video');
+  videos.forEach(video => {
+    const src = video.getAttribute('src');
+    if (src && src.startsWith('/uploads/')) {
+      video.setAttribute('src', `${BASE_URL}${src}`);
+    }
+    const poster = video.getAttribute('poster');
+    if (poster && poster.startsWith('/uploads/')) {
+      video.setAttribute('poster', `${BASE_URL}${poster}`);
+    }
+  });
+
+  return tempDiv.innerHTML;
+}
 
 /**
  * Компонент для отображения контента в режиме просмотра
@@ -76,9 +111,13 @@ export default function ContentRenderer({ content }) {
 
     console.log('=== ContentRenderer: Setting content ===');
     console.log('Content length:', content.length);
+
+    // Преобразуем относительные пути медиа в абсолютные
+    const fixedContent = fixMediaPaths(content);
+
     // Проверяем изображения во входящем контенте
     const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = content;
+    tempDiv.innerHTML = fixedContent;
     const images = tempDiv.querySelectorAll('img');
     console.log('Images in incoming content:', images.length);
     images.forEach((img, i) => {
@@ -95,9 +134,9 @@ export default function ContentRenderer({ content }) {
 
     // Избегаем бесконечного цикла проверяя текущий контент
     const currentContent = editor.getHTML();
-    if (currentContent !== content) {
+    if (currentContent !== fixedContent) {
       // emitUpdate: false предотвращает лишние события
-      editor.commands.setContent(content, false);
+      editor.commands.setContent(fixedContent, false);
     }
   }, [editor, content]);
 

@@ -3,6 +3,7 @@
 
 import { Node } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
+import { BASE_URL } from '../services/api';
 
 /**
  * React компонент для отображения видео
@@ -30,12 +31,16 @@ const VideoComponent = ({ node }) => {
     );
   }
 
+  // Формируем полные URL для видео и постера
+  const videoSrc = src?.startsWith('/uploads/') ? `${BASE_URL}${src}` : src;
+  const videoPoster = poster?.startsWith('/uploads/') ? `${BASE_URL}${poster}` : poster;
+
   // Обычное HTML5 видео с preload="none"
   return (
     <NodeViewWrapper>
       <video
-        src={src}
-        poster={poster}
+        src={videoSrc}
+        poster={videoPoster}
         controls
         preload="none"
         style={{

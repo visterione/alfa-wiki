@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from 'react';
 import Blockquote from '@tiptap/extension-blockquote';
 import TipTapTableCell from '@tiptap/extension-table-cell';
 import TiptapImage from '@tiptap/extension-image';
+import { BASE_URL } from '../services/api';
 
 // Кастомное расширение Blockquote с типами
 export const CustomBlockquote = Blockquote.extend({
@@ -152,6 +153,11 @@ function ResizableImageComponent({ node, updateAttributes }) {
     }
   };
 
+  // Формируем полный URL для изображения
+  const imgSrc = node.attrs.src?.startsWith('/uploads/')
+    ? `${BASE_URL}${node.attrs.src}`
+    : node.attrs.src;
+
   return (
     <NodeViewWrapper>
       <div
@@ -165,7 +171,7 @@ function ResizableImageComponent({ node, updateAttributes }) {
       >
         <img
           ref={imgRef}
-          src={node.attrs.src}
+          src={imgSrc}
           alt={node.attrs.alt || ''}
           title={node.attrs.title || ''}
           onLoad={handleImageLoad}
