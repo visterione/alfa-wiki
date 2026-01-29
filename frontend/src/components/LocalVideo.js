@@ -96,9 +96,22 @@ export const LocalVideo = Node.create({
       {
         tag: 'video[src]',
         getAttrs: (dom) => {
+          let src = dom.getAttribute('src');
+          let poster = dom.getAttribute('poster');
+
+          // Исправляем относительные пути при парсинге
+          if (src && src.startsWith('/uploads/')) {
+            src = `${BASE_URL}${src}`;
+            console.log('🎬 LocalVideo parseHTML: Fixed src', src);
+          }
+          if (poster && poster.startsWith('/uploads/')) {
+            poster = `${BASE_URL}${poster}`;
+            console.log('🎬 LocalVideo parseHTML: Fixed poster', poster);
+          }
+
           return {
-            src: dom.getAttribute('src'),
-            poster: dom.getAttribute('poster') || null,
+            src,
+            poster: poster || null,
           };
         },
       },
@@ -108,22 +121,14 @@ export const LocalVideo = Node.create({
   renderHTML({ HTMLAttributes }) {
     const { src, poster } = HTMLAttributes;
 
-    // Формируем полные URL (аналогично VideoComponent)
-    const videoSrc = src?.startsWith('/uploads/') ? `${BASE_URL}${src}` : src;
-    const videoPoster = poster?.startsWith('/uploads/') ? `${BASE_URL}${poster}` : poster;
+    console.log('🎬 LocalVideo renderHTML:', { src, poster, BASE_URL });
 
-    console.log('🎬 LocalVideo renderHTML:', {
-      originalSrc: src,
-      finalSrc: videoSrc,
-      BASE_URL
-    });
-
-    // Возвращаем обычный video элемент для статического HTML
+    // Пути уже исправлены в parseHTML, просто рендерим
     return [
       'video',
       {
-        src: videoSrc,
-        poster: videoPoster || undefined,
+        src: src,
+        poster: poster || undefined,
         controls: '',
         preload: 'none',
         style: 'width: 100%; max-width: 100%; height: auto; min-height: 300px; aspect-ratio: 16/9; display: block; margin: 1rem 0; border-radius: 8px; background-color: #000; object-fit: contain;'
