@@ -23,7 +23,8 @@ const SpreadsheetEditor = forwardRef(({
   const workbookRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const contentRef = useRef(content);
-  const [initialized, setInitialized] = useState(false);
+  const initializedRef = useRef(false);
+  const [isReady, setIsReady] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
@@ -36,7 +37,7 @@ const SpreadsheetEditor = forwardRef(({
   }, [onChange, content]);
 
   // Конвертация данных Luckysheet → Univer (для обратной совместимости)
-  const convertLuckysheetToUniver = useCallback((luckysheetData) => {
+  const convertLuckysheetToUniver = (luckysheetData) => {
     try {
       const parsed = typeof luckysheetData === 'string'
         ? JSON.parse(luckysheetData)
@@ -117,10 +118,10 @@ const SpreadsheetEditor = forwardRef(({
       console.error('Error converting Luckysheet to Univer:', error);
       return null;
     }
-  }, []);
+  };
 
   // Инициализация Univer
-  const initializeUniver = useCallback(() => {
+  const initializeUniver = () => {
     console.log('initializeUniver() called');
 
     if (!containerRef.current) {
@@ -188,6 +189,7 @@ const SpreadsheetEditor = forwardRef(({
 
     try {
       console.log('Creating Univer instance with locale:', LocaleType.RU_RU);
+      console.log('Workbook data:', workbookData);
 
       const { univerAPI } = createUniver({
         locale: LocaleType.RU_RU,
@@ -203,13 +205,15 @@ const SpreadsheetEditor = forwardRef(({
         ]
       });
 
+      console.log('✅ createUniver completed');
       univerAPIRef.current = univerAPI;
 
       // Создаем workbook с данными
+      console.log('Creating workbook...');
       const workbook = univerAPI.createUniverSheet(workbookData);
       workbookRef.current = workbook;
 
-      console.log('✅ Univer instance created successfully');
+      console.log('✅ Univer instance and workbook created successfully');
 
       // Настройка read-only режима
       if (readOnly) {
@@ -238,18 +242,20 @@ const SpreadsheetEditor = forwardRef(({
         });
       }
 
-      setInitialized(true);
+      initializedRef.current = true;
+      setIsReady(true);
       console.log('=== Univer initialization complete ===');
 
     } catch (error) {
       console.error('❌ Error initializing Univer:', error);
       toast.error('Ошибка инициализации таблицы: ' + error.message);
     }
-  }, [content, readOnly, convertLuckysheetToUniver]);
+  };
 
   // Инициализация при монтировании
   useEffect(() => {
-    if (!containerRef.current || initialized) {
+    if (initializedRef.current) {
+      console.log('Already initialized, skipping');
       return;
     }
 
@@ -257,17 +263,32 @@ const SpreadsheetEditor = forwardRef(({
     console.log('readOnly:', readOnly);
     console.log('content length:', content?.length);
 
-    const initTimer = setTimeout(() => {
-      initializeUniver();
-    }, 100);
+    // Используем requestAnimationFrame для гарантии что DOM полностью отрендерился
+    let rafId;
+    let timerId;
 
-    return () => clearTimeout(initTimer);
-  }, [initializeUniver, initialized]);
+    rafId = requestAnimationFrame(() => {
+      timerId = setTimeout(() => {
+        console.log('After RAF: containerRef.current exists:', !!containerRef.current);
+        if (!containerRef.current) {
+          console.error('⚠️ Container not found after RAF!');
+          return;
+        }
+        initializeUniver();
+      }, 100);
+    });
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (timerId) clearTimeout(timerId);
+    };
+  }, []);
 
   // Очистка при размонтировании
   useEffect(() => {
     return () => {
-      console.log('Cleaning up Univer...');
+      console.log('⚠️ COMPONENT UNMOUNTING - Cleaning up Univer...');
+      console.trace('Unmount stack trace');
       if (univerAPIRef.current) {
         try {
           univerAPIRef.current.dispose();
@@ -278,7 +299,8 @@ const SpreadsheetEditor = forwardRef(({
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
-      setInitialized(false);
+      initializedRef.current = false;
+      setIsReady(false);
     };
   }, []);
 
@@ -428,25 +450,6 @@ const SpreadsheetEditor = forwardRef(({
     }
   };
 
-  if (!initialized) {
-    return (
-      <div className="spreadsheet-editor">
-        <div style={{
-          padding: '40px',
-          textAlign: 'center',
-          color: '#666'
-        }}>
-          <div className="loading-spinner-small" style={{
-            margin: '0 auto 16px',
-            width: '32px',
-            height: '32px'
-          }} />
-          <p>Загрузка таблицы...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="spreadsheet-editor">
       {!readOnly && (
@@ -489,14 +492,51 @@ const SpreadsheetEditor = forwardRef(({
         </div>
       )}
       <div
-        ref={containerRef}
         className={readOnly ? 'univer-container readonly' : 'univer-container'}
         style={{
           width: '100%',
           height: readOnly ? '700px' : 'calc(100vh - 300px)',
-          minHeight: '500px'
+          minHeight: '500px',
+          position: 'relative'
         }}
-      />
+      >
+        {/* Отдельный контейнер для Univer - React не будет трогать его содержимое */}
+        <div
+          ref={containerRef}
+          style={{
+            width: '100%',
+            height: '100%',
+            position: 'absolute',
+            top: 0,
+            left: 0
+          }}
+        />
+        {/* Loading overlay - рендерится отдельно */}
+        {!isReady && (
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#fff',
+            zIndex: 1000,
+            pointerEvents: 'none'
+          }}>
+            <div style={{ textAlign: 'center', color: '#666', pointerEvents: 'auto' }}>
+              <div className="loading-spinner-small" style={{
+                margin: '0 auto 16px',
+                width: '32px',
+                height: '32px'
+              }} />
+              <p>Загрузка таблицы...</p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 });

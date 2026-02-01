@@ -81,17 +81,40 @@ export default function PageEditor() {
       return;
     }
 
-    // Если редактируем таблицу, сохраняем изменения принудительно
-    if (form.contentType === 'spreadsheet' && spreadsheetRef.current) {
-      spreadsheetRef.current.forceSave();
-      // Небольшая задержка чтобы onChange успел обновить form.content
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
     setSaving(true);
     try {
+      // Если редактируем таблицу, получаем актуальные данные синхронно
+      let finalContent = form.content;
+      console.log('=== handleSubmit START ===');
+      console.log('contentType:', form.contentType);
+      console.log('form.content length:', form.content?.length);
+
+      if (form.contentType === 'spreadsheet' && spreadsheetRef.current) {
+        console.log('Spreadsheet detected, calling forceSave...');
+        try {
+          // Сначала вызываем forceSave для сохранения через onChange
+          const savedData = await spreadsheetRef.current.forceSave();
+          console.log('forceSave returned data length:', savedData?.length);
+
+          // Затем получаем данные напрямую для гарантии актуальности
+          const currentData = spreadsheetRef.current.getData();
+          console.log('getData returned data length:', currentData?.length);
+
+          if (currentData) {
+            finalContent = currentData;
+          } else if (savedData) {
+            finalContent = savedData;
+          }
+
+          console.log('Final content length:', finalContent?.length);
+        } catch (error) {
+          console.error('Error saving spreadsheet:', error);
+        }
+      }
+
       const payload = {
         ...form,
+        content: finalContent,
         keywords: form.keywords.split(',').map(k => k.trim()).filter(Boolean)
       };
 
@@ -224,9 +247,14 @@ export default function PageEditor() {
               />
             ) : form.contentType === 'spreadsheet' ? (
               <SpreadsheetEditor
+                key="spreadsheet-editor"
                 ref={spreadsheetRef}
                 content={form.content}
-                onChange={(content) => setForm({ ...form, content })}
+                onChange={(content) => {
+                  console.log('SpreadsheetEditor onChange called, content length:', content?.length);
+                  setForm(prev => ({ ...prev, content }));
+                  console.log('Form state updated');
+                }}
                 pageId={form.id}
               />
             ) : (
