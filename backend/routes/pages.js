@@ -7,7 +7,7 @@ const fs = require('fs');
 const XLSX = require('xlsx');
 const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
-const { convertXlsxToLuckysheet, convertLuckysheetToXlsx } = require('../utils/xlsxConverter');
+const { convertXlsxToUniver, convertUniverToXlsx } = require('../utils/xlsxConverter');
 
 const router = express.Router();
 
@@ -448,12 +448,12 @@ router.post('/:id/import-xlsx', authenticate, requirePermission('pages', 'write'
     // Парсим Excel файл
     const workbook = XLSX.readFile(req.file.path);
 
-    // Конвертируем в формат Luckysheet
-    const luckysheetData = convertXlsxToLuckysheet(workbook);
+    // Конвертируем в формат Univer
+    const univerData = convertXlsxToUniver(workbook);
 
     // Сохраняем в БД
     await page.update({
-      content: JSON.stringify(luckysheetData),
+      content: JSON.stringify(univerData),
       updatedBy: req.user.id
     });
 
@@ -472,7 +472,7 @@ router.post('/:id/import-xlsx', authenticate, requirePermission('pages', 'write'
     // Очищаем временный файл
     fs.unlinkSync(req.file.path);
 
-    res.json({ success: true, data: luckysheetData });
+    res.json({ success: true, data: univerData });
   } catch (error) {
     console.error('Import xlsx error:', error);
     // Очистка файла при ошибке
@@ -505,11 +505,11 @@ router.get('/:id/export-xlsx', authenticate, async (req, res) => {
       }
     }
 
-    // Парсим Luckysheet данные
-    const luckysheetData = JSON.parse(page.content || '[]');
+    // Парсим Univer данные
+    const univerData = JSON.parse(page.content || '{}');
 
     // Конвертируем в Excel
-    const workbook = convertLuckysheetToXlsx(luckysheetData);
+    const workbook = convertUniverToXlsx(univerData);
 
     // Генерируем буфер
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });

@@ -1,12 +1,16 @@
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from 'react';
+import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
 import { Upload, Download } from 'lucide-react';
 import { pages } from '../services/api';
 import toast from 'react-hot-toast';
 import './SpreadsheetEditor.css';
 
-// Luckysheet загружается как UMD модуль через <script> в index.html
-// Доступен как window.luckysheet
-// jQuery предоставляется глобально через webpack ProvidePlugin
+// Univer imports
+import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
+import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import UniverPresetSheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-RU';
+
+// Univer styles
+import '@univerjs/preset-sheets-core/lib/index.css';
 
 const SpreadsheetEditor = forwardRef(({
   content,
@@ -15,227 +19,330 @@ const SpreadsheetEditor = forwardRef(({
   readOnly = false
 }, ref) => {
   const containerRef = useRef(null);
+  const univerAPIRef = useRef(null);
+  const workbookRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const contentRef = useRef(content);
   const [initialized, setInitialized] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [isLuckysheetReady, setIsLuckysheetReady] = useState(false);
   const fileInputRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // Обновляем ref при изменении onChange
+  // Обновляем ref при изменении onChange и content
   useEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    contentRef.current = content;
+  }, [onChange, content]);
 
-  // Ожидание загрузки Luckysheet
-  useEffect(() => {
-    const checkLuckysheet = () => {
-      console.log('Checking Luckysheet:', {
-        luckysheet: !!window.luckysheet,
-        create: typeof window.luckysheet?.create,
-        jQuery: !!window.$
+  // Конвертация данных Luckysheet → Univer (для обратной совместимости)
+  const convertLuckysheetToUniver = useCallback((luckysheetData) => {
+    try {
+      const parsed = typeof luckysheetData === 'string'
+        ? JSON.parse(luckysheetData)
+        : luckysheetData;
+
+      // Проверяем, это уже Univer формат?
+      if (parsed && parsed.id && parsed.sheets && !Array.isArray(parsed)) {
+        return parsed;
+      }
+
+      // Конвертируем Luckysheet → Univer
+      if (!Array.isArray(parsed)) {
+        throw new Error('Invalid format');
+      }
+
+      const sheets = {};
+      parsed.forEach((sheet, index) => {
+        const sheetId = sheet.index || `sheet${index}`;
+        const cellData = {};
+
+        // Конвертируем celldata[] в cellData{}
+        if (sheet.celldata && Array.isArray(sheet.celldata)) {
+          sheet.celldata.forEach(cell => {
+            const row = cell.r;
+            const col = cell.c;
+
+            if (!cellData[row]) {
+              cellData[row] = {};
+            }
+
+            cellData[row][col] = {
+              v: cell.v?.v,
+              t: cell.v?.ct?.t === 's' ? 1 :
+                 cell.v?.ct?.t === 'n' ? 2 : 0,
+              ...(cell.v?.f && { f: cell.v.f })
+            };
+          });
+        }
+
+        sheets[sheetId] = {
+          id: sheetId,
+          name: sheet.name || `Sheet${index + 1}`,
+          tabColor: '',
+          hidden: 0,
+          rowCount: sheet.row || 1000,
+          columnCount: sheet.column || 26,
+          zoomRatio: sheet.zoomRatio || 1,
+          scrollTop: sheet.scrollTop || 0,
+          scrollLeft: sheet.scrollLeft || 0,
+          defaultColumnWidth: 88,
+          defaultRowHeight: 24,
+          status: parseInt(sheet.status) || 0,
+          cellData,
+          rowData: {},
+          columnData: {},
+          mergeData: [],
+          rowHeader: {
+            width: 46,
+            hidden: 0
+          },
+          columnHeader: {
+            height: 20,
+            hidden: 0
+          }
+        };
       });
 
-      if (window.luckysheet && typeof window.luckysheet.create === 'function') {
-        console.log('✅ Luckysheet loaded successfully');
-        setIsLuckysheetReady(true);
-        return true;
-      }
-      return false;
-    };
+      return {
+        id: 'workbook',
+        name: 'Workbook',
+        appVersion: '0.1.0',
+        locale: LocaleType.RU_RU,
+        styles: {},
+        sheets,
+        sheetOrder: Object.keys(sheets)
+      };
+    } catch (error) {
+      console.error('Error converting Luckysheet to Univer:', error);
+      return null;
+    }
+  }, []);
 
-    if (checkLuckysheet()) {
+  // Инициализация Univer
+  const initializeUniver = useCallback(() => {
+    console.log('initializeUniver() called');
+
+    if (!containerRef.current) {
+      console.error('Container not found');
       return;
     }
 
-    // Проверяем каждые 200ms до 10 секунд
-    let attempts = 0;
-    const maxAttempts = 50;
-    const interval = setInterval(() => {
-      attempts++;
-      if (checkLuckysheet()) {
-        clearInterval(interval);
-      } else if (attempts >= maxAttempts) {
-        clearInterval(interval);
-        console.error('❌ Luckysheet failed to load. State:', {
-          luckysheet: window.luckysheet,
-          jQuery: window.$,
-          attempts
-        });
-        toast.error('Не удалось загрузить таблицу. Проверьте консоль и обновите страницу.');
+    // Очистка предыдущего экземпляра
+    if (univerAPIRef.current) {
+      try {
+        console.log('Disposing previous Univer instance...');
+        univerAPIRef.current.dispose();
+      } catch (error) {
+        console.warn('Error disposing previous instance:', error);
       }
-    }, 200);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Инициализация Luckysheet
-  useEffect(() => {
-    if (!containerRef.current || initialized || !isLuckysheetReady) return;
-
-    let data;
-    try {
-      data = content ? JSON.parse(content) : [
-        {
-          name: 'Sheet1',
-          index: '0',
-          status: '1',
-          order: '0',
-          celldata: [],
-          row: 84,
-          column: 60,
-          config: {},
-          scrollLeft: 0,
-          scrollTop: 0,
-          zoomRatio: 1
-        }
-      ];
-    } catch (error) {
-      console.error('Error parsing content:', error);
-      data = [
-        {
-          name: 'Sheet1',
-          index: '0',
-          status: '1',
-          order: '0',
-          celldata: [],
-          row: 84,
-          column: 60,
-          config: {},
-          scrollLeft: 0,
-          scrollTop: 0,
-          zoomRatio: 1
-        }
-      ];
+      univerAPIRef.current = null;
+      workbookRef.current = null;
     }
 
-    try {
-      const options = {
-        container: 'luckysheet-container',
-        data,
-        title: 'Таблица',
-        lang: 'en',
-        showtoolbar: !readOnly,
-        showinfobar: false,
-        showsheetbar: true,
-        showstatisticBar: false,
-        enableAddRow: !readOnly,
-        enableAddCol: !readOnly,
-        userInfo: false,
-        showConfigWindowResize: false,
-        forceCalculation: false,
-        allowEdit: !readOnly,
-        showtoolbarConfig: {
-          undoRedo: true,
-          paintFormat: true,
-          font: true,
-          fontSize: true,
-          bold: true,
-          italic: true,
-          strikethrough: true,
-          underline: true,
-          textColor: true,
-          fillColor: true,
-          border: true,
-          mergeCell: true,
-          horizontalAlignMode: true,
-          verticalAlignMode: true,
-          textWrapMode: true
-        },
-        hook: {
-          cellUpdated: function(r, c, oldValue, newValue, isRefresh) {
-            if (!readOnly && !isRefresh) {
-              // Сохраняем изменения с задержкой
-              if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-              }
-              saveTimeoutRef.current = setTimeout(() => {
-                saveData();
-              }, 2000);
+    // Подготовка данных
+    let workbookData;
+
+    if (content && content.trim().length > 0) {
+      workbookData = convertLuckysheetToUniver(content);
+    }
+
+    if (!workbookData) {
+      // Дефолтная рабочая книга
+      workbookData = {
+        id: 'workbook',
+        name: 'Workbook',
+        appVersion: '0.1.0',
+        locale: LocaleType.RU_RU,
+        styles: {},
+        sheets: {
+          'sheet-01': {
+            id: 'sheet-01',
+            name: 'Лист1',
+            tabColor: '',
+            hidden: 0,
+            rowCount: 1000,
+            columnCount: 26,
+            zoomRatio: 1,
+            scrollTop: 0,
+            scrollLeft: 0,
+            defaultColumnWidth: 88,
+            defaultRowHeight: 24,
+            cellData: {},
+            rowData: {},
+            columnData: {},
+            mergeData: [],
+            rowHeader: {
+              width: 46,
+              hidden: 0
+            },
+            columnHeader: {
+              height: 20,
+              hidden: 0
             }
           }
-        }
+        },
+        sheetOrder: ['sheet-01']
       };
-
-      window.luckysheet.create(options);
-      setInitialized(true);
-    } catch (error) {
-      console.error('Error initializing Luckysheet:', error);
-      toast.error('Ошибка инициализации таблицы');
     }
 
-    return () => {
-      // Очистка при размонтировании
-      try {
-        if (window.luckysheet) {
-          window.luckysheet.destroy();
-        }
-      } catch (error) {
-        console.error('Error destroying Luckysheet:', error);
+    try {
+      console.log('Creating Univer instance with locale:', LocaleType.RU_RU);
+
+      const { univerAPI } = createUniver({
+        locale: LocaleType.RU_RU,
+        locales: {
+          [LocaleType.RU_RU]: mergeLocales(
+            UniverPresetSheetsCoreRuRU
+          )
+        },
+        presets: [
+          UniverSheetsCorePreset({
+            container: containerRef.current
+          })
+        ]
+      });
+
+      univerAPIRef.current = univerAPI;
+
+      // Создаем workbook с данными
+      const workbook = univerAPI.createUniverSheet(workbookData);
+      workbookRef.current = workbook;
+
+      console.log('✅ Univer instance created successfully');
+
+      // Настройка read-only режима
+      if (readOnly) {
+        setTimeout(() => {
+          try {
+            const permission = workbook.getWorkbookPermission();
+            if (permission && permission.setReadOnly) {
+              permission.setReadOnly();
+              console.log('✅ Read-only mode enabled');
+            }
+          } catch (err) {
+            console.warn('Could not set read-only mode:', err);
+          }
+        }, 500);
       }
 
+      // Подписка на изменения (для автосохранения)
+      if (!readOnly) {
+        univerAPI.addEvent(univerAPI.Event.CommandExecuted, () => {
+          if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+          }
+          saveTimeoutRef.current = setTimeout(() => {
+            saveData();
+          }, 2000);
+        });
+      }
+
+      setInitialized(true);
+      console.log('=== Univer initialization complete ===');
+
+    } catch (error) {
+      console.error('❌ Error initializing Univer:', error);
+      toast.error('Ошибка инициализации таблицы: ' + error.message);
+    }
+  }, [content, readOnly, convertLuckysheetToUniver]);
+
+  // Инициализация при монтировании
+  useEffect(() => {
+    if (!containerRef.current || initialized) {
+      return;
+    }
+
+    console.log('=== Starting Univer initialization ===');
+    console.log('readOnly:', readOnly);
+    console.log('content length:', content?.length);
+
+    const initTimer = setTimeout(() => {
+      initializeUniver();
+    }, 100);
+
+    return () => clearTimeout(initTimer);
+  }, [initializeUniver, initialized]);
+
+  // Очистка при размонтировании
+  useEffect(() => {
+    return () => {
+      console.log('Cleaning up Univer...');
+      if (univerAPIRef.current) {
+        try {
+          univerAPIRef.current.dispose();
+        } catch (error) {
+          console.error('Error disposing Univer:', error);
+        }
+      }
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
       setInitialized(false);
     };
-  }, [content, readOnly, isLuckysheetReady]);
+  }, []);
 
   // Функция сохранения данных
   const saveData = () => {
-    if (readOnly) return;
+    if (readOnly) return null;
 
     try {
-      const allSheets = window.luckysheet.getAllSheets();
-      const jsonData = JSON.stringify(allSheets);
-      onChangeRef.current?.(jsonData);
+      if (!workbookRef.current) {
+        console.error('Workbook not initialized');
+        return null;
+      }
+
+      const snapshot = workbookRef.current.getSnapshot();
+      console.log('saveData: Got snapshot from Univer');
+
+      const jsonData = JSON.stringify(snapshot);
+      console.log('saveData: JSON length:', jsonData?.length);
+
+      if (onChangeRef.current) {
+        console.log('saveData: Calling onChange callback');
+        onChangeRef.current(jsonData);
+      } else {
+        console.warn('saveData: onChange callback is not defined');
+      }
+
+      contentRef.current = jsonData;
+      console.log('saveData: Updated contentRef');
+
+      return jsonData;
     } catch (error) {
       console.error('Error saving data:', error);
       toast.error('Ошибка сохранения данных');
+      return null;
     }
   };
 
-  // Экспозиция метода для принудительного сохранения (вызывается из PageEditor)
+  // Экспозиция методов для родительского компонента
   useImperativeHandle(ref, () => ({
     forceSave: () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      return new Promise((resolve) => {
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+
+        const savedData = saveData();
+
+        setTimeout(() => {
+          resolve(savedData);
+        }, 100);
+      });
+    },
+    getData: () => {
+      if (readOnly) return contentRef.current;
+      try {
+        if (!workbookRef.current) return contentRef.current;
+        const snapshot = workbookRef.current.getSnapshot();
+        return JSON.stringify(snapshot);
+      } catch (error) {
+        console.error('Error getting data:', error);
+        return contentRef.current;
       }
-      saveData();
     }
   }), [readOnly]);
-
-  // Пересчет размеров после инициализации
-  useEffect(() => {
-    if (!initialized || !window.luckysheet) return;
-
-    // Для режима просмотра нужна большая задержка чтобы DOM успел отрендериться
-    const delay = readOnly ? 500 : 300;
-
-    const timer = setTimeout(() => {
-      try {
-        window.luckysheet.resize();
-        console.log('Luckysheet resized (readOnly:', readOnly, ')');
-
-        // Дополнительный resize для режима просмотра
-        if (readOnly) {
-          setTimeout(() => {
-            try {
-              window.luckysheet.resize();
-              console.log('Luckysheet double resized for readonly mode');
-            } catch (error) {
-              console.error('Error in double resize:', error);
-            }
-          }, 200);
-        }
-      } catch (error) {
-        console.error('Error resizing Luckysheet:', error);
-      }
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [initialized, readOnly]);
 
   // Импорт Excel файла
   const handleImportClick = () => {
@@ -262,12 +369,6 @@ const SpreadsheetEditor = forwardRef(({
       formData.append('file', file);
 
       const { data } = await pages.importXlsx(pageId, formData);
-
-      // Перезагружаем Luckysheet с новыми данными
-      if (window.luckysheet) {
-        window.luckysheet.destroy();
-      }
-      setInitialized(false);
 
       // Обновляем content
       onChange?.(JSON.stringify(data.data));
@@ -327,8 +428,7 @@ const SpreadsheetEditor = forwardRef(({
     }
   };
 
-  // Показываем индикатор загрузки пока Luckysheet не загружен
-  if (!isLuckysheetReady) {
+  if (!initialized) {
     return (
       <div className="spreadsheet-editor">
         <div style={{
@@ -389,9 +489,8 @@ const SpreadsheetEditor = forwardRef(({
         </div>
       )}
       <div
-        id="luckysheet-container"
         ref={containerRef}
-        className={readOnly ? 'readonly' : ''}
+        className={readOnly ? 'univer-container readonly' : 'univer-container'}
         style={{
           width: '100%',
           height: readOnly ? '700px' : 'calc(100vh - 300px)',
