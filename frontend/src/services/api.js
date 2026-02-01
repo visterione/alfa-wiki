@@ -80,7 +80,13 @@ export const pages = {
   update: (id, data) => api.put(`/pages/${id}`, data),
   delete: (id) => api.delete(`/pages/${id}`),
   toggleFavorite: (id) => api.post(`/pages/${id}/favorite`),
-  getHistory: (id) => api.get(`/pages/${id}/history`)
+  getHistory: (id) => api.get(`/pages/${id}/history`),
+  importXlsx: (id, formData) =>
+    api.post(`/pages/${id}/import-xlsx`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    }),
+  exportXlsx: (id) =>
+    api.get(`/pages/${id}/export-xlsx`, { responseType: 'blob' })
 };
 
 // Folders

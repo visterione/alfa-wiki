@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock } from 'lucide-react';
+import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock, Grid } from 'lucide-react';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
 import CodeEditor from '../components/CodeEditor';
+import SpreadsheetEditor from '../components/SpreadsheetEditor';
 import IconPicker from '../components/IconPicker';
 import PageHistoryModal from '../components/PageHistoryModal';
 import toast from 'react-hot-toast';
@@ -13,6 +14,8 @@ export default function PageEditor() {
   const { slug } = useParams();
   const navigate = useNavigate();
   const isNew = !slug || slug === 'new';
+
+  const spreadsheetRef = useRef(null);
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -76,6 +79,13 @@ export default function PageEditor() {
     if (!form.title.trim()) {
       toast.error('Введите заголовок');
       return;
+    }
+
+    // Если редактируем таблицу, сохраняем изменения принудительно
+    if (form.contentType === 'spreadsheet' && spreadsheetRef.current) {
+      spreadsheetRef.current.forceSave();
+      // Небольшая задержка чтобы onChange успел обновить form.content
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     setSaving(true);
@@ -196,6 +206,14 @@ export default function PageEditor() {
                 <Code size={16} />
                 HTML / CSS / JS
               </button>
+              <button
+                type="button"
+                className={`editor-type-tab ${form.contentType === 'spreadsheet' ? 'active' : ''}`}
+                onClick={() => setForm({ ...form, contentType: 'spreadsheet' })}
+              >
+                <Grid size={16} />
+                Таблица (Excel)
+              </button>
             </div>
 
             {form.contentType === 'wysiwyg' ? (
@@ -203,6 +221,13 @@ export default function PageEditor() {
                 content={form.content}
                 onChange={(content) => setForm({ ...form, content })}
                 placeholder="Начните писать..."
+              />
+            ) : form.contentType === 'spreadsheet' ? (
+              <SpreadsheetEditor
+                ref={spreadsheetRef}
+                content={form.content}
+                onChange={(content) => setForm({ ...form, content })}
+                pageId={form.id}
               />
             ) : (
               <div className="html-editor">

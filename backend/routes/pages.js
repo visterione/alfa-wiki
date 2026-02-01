@@ -1,10 +1,32 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const sanitizeHtml = require('sanitize-html');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const XLSX = require('xlsx');
 const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
+const { convertXlsxToLuckysheet, convertLuckysheetToXlsx } = require('../utils/xlsxConverter');
 
 const router = express.Router();
+
+// Multer configuration for file uploads
+const upload = multer({
+  dest: 'uploads/temp/',
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only Excel files are allowed'));
+    }
+  }
+});
 
 // Sanitize config for WYSIWYG content
 const sanitizeConfig = {
@@ -400,6 +422,106 @@ router.post('/:id/favorite', authenticate, async (req, res) => {
     res.json({ isFavorite: page.isFavorite });
   } catch (error) {
     res.status(500).json({ error: 'Failed to toggle favorite' });
+  }
+});
+
+// Import Excel file to Luckysheet format
+router.post('/:id/import-xlsx', authenticate, requirePermission('pages', 'write'), upload.single('file'), async (req, res) => {
+  try {
+    const page = await Page.findByPk(req.params.id);
+
+    if (!page) {
+      // Очистка загруженного файла
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    if (page.contentType !== 'spreadsheet') {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Page must be of type spreadsheet' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Парсим Excel файл
+    const workbook = XLSX.readFile(req.file.path);
+
+    // Конвертируем в формат Luckysheet
+    const luckysheetData = convertXlsxToLuckysheet(workbook);
+
+    // Сохраняем в БД
+    await page.update({
+      content: JSON.stringify(luckysheetData),
+      updatedBy: req.user.id
+    });
+
+    // Создаем запись в истории
+    await PageHistory.create({
+      pageId: page.id,
+      userId: req.user.id,
+      action: 'updated',
+      changesSummary: `Импортирован Excel файл: ${req.file.originalname}`,
+      metadata: {
+        changedFields: ['content'],
+        importedFile: req.file.originalname
+      }
+    });
+
+    // Очищаем временный файл
+    fs.unlinkSync(req.file.path);
+
+    res.json({ success: true, data: luckysheetData });
+  } catch (error) {
+    console.error('Import xlsx error:', error);
+    // Очистка файла при ошибке
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+    res.status(500).json({ error: 'Failed to import xlsx file' });
+  }
+});
+
+// Export Luckysheet to Excel file
+router.get('/:id/export-xlsx', authenticate, async (req, res) => {
+  try {
+    const page = await Page.findByPk(req.params.id);
+
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    if (page.contentType !== 'spreadsheet') {
+      return res.status(400).json({ error: 'Page must be of type spreadsheet' });
+    }
+
+    // Проверка доступа по ролям
+    if (!req.user.isAdmin && page.allowedRoles?.length > 0) {
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+      const hasAccess = userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    // Парсим Luckysheet данные
+    const luckysheetData = JSON.parse(page.content || '[]');
+
+    // Конвертируем в Excel
+    const workbook = convertLuckysheetToXlsx(luckysheetData);
+
+    // Генерируем буфер
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+
+    // Отправляем файл
+    const filename = `${page.slug || 'spreadsheet'}_${Date.now()}.xlsx`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export xlsx error:', error);
+    res.status(500).json({ error: 'Failed to export xlsx file' });
   }
 });
 

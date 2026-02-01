@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import PrintButton from '../components/PrintButton';
 import ContentRenderer from '../components/ContentRenderer';
+import SpreadsheetEditor from '../components/SpreadsheetEditor';
 import './PageView.css';
 
 export default function PageView() {
@@ -308,6 +309,12 @@ export default function PageView() {
           <div ref={contentRefCallback} className="page-content">
             {page.contentType === 'wysiwyg' ? (
               <ContentRenderer content={page.content} />
+            ) : page.contentType === 'spreadsheet' ? (
+              <SpreadsheetEditor
+                content={page.content}
+                pageId={page.id}
+                readOnly={true}
+              />
             ) : (
               <div dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }} />
             )}

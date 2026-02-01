@@ -120,7 +120,7 @@ const Page = sequelize.define('Page', {
   slug: { type: DataTypes.STRING(255), allowNull: false, unique: true },
   title: { type: DataTypes.STRING(500), allowNull: false },
   content: { type: DataTypes.TEXT },
-  contentType: { type: DataTypes.ENUM('wysiwyg', 'html'), defaultValue: 'wysiwyg' },
+  contentType: { type: DataTypes.ENUM('wysiwyg', 'html', 'spreadsheet'), defaultValue: 'wysiwyg' },
   description: { type: DataTypes.TEXT },
   keywords: { type: DataTypes.ARRAY(DataTypes.STRING), defaultValue: [] },
   searchContent: { type: DataTypes.TEXT },
