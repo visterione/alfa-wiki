@@ -4,7 +4,7 @@ const sanitizeHtml = require('sanitize-html');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const XLSX = require('xlsx');
+const XLSX = require('xlsx-js-style');
 const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { convertXlsxToUniver, convertUniverToXlsx } = require('../utils/xlsxConverter');
@@ -507,6 +507,9 @@ router.get('/:id/export-xlsx', authenticate, async (req, res) => {
 
     // Парсим Univer данные
     const univerData = JSON.parse(page.content || '{}');
+
+    // Логирование для отладки
+    console.log('Export XLSX - styles:', JSON.stringify(univerData.styles, null, 2));
 
     // Конвертируем в Excel
     const workbook = convertUniverToXlsx(univerData);

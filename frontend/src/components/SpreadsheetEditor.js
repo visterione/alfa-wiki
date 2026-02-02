@@ -7,10 +7,42 @@ import './SpreadsheetEditor.css';
 // Univer imports
 import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
+import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
+import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
+import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
+import { UniverSheetsDataValidationPreset } from '@univerjs/preset-sheets-data-validation';
+import { UniverSheetsFindReplacePreset } from '@univerjs/preset-sheets-find-replace';
+import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
+import { UniverSheetsNotePreset } from '@univerjs/preset-sheets-note';
+import { UniverSheetsThreadCommentPreset } from '@univerjs/preset-sheets-thread-comment';
+import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
+import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
+
+// Локализации
 import UniverPresetSheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-RU';
+import UniverPresetSheetsDrawingRuRU from '@univerjs/preset-sheets-drawing/locales/ru-RU';
+import UniverPresetSheetsFilterRuRU from '@univerjs/preset-sheets-filter/locales/ru-RU';
+import UniverPresetSheetsConditionalFormattingRuRU from '@univerjs/preset-sheets-conditional-formatting/locales/ru-RU';
+import UniverPresetSheetsDataValidationRuRU from '@univerjs/preset-sheets-data-validation/locales/ru-RU';
+import UniverPresetSheetsFindReplaceRuRU from '@univerjs/preset-sheets-find-replace/locales/ru-RU';
+import UniverPresetSheetsHyperLinkRuRU from '@univerjs/preset-sheets-hyper-link/locales/ru-RU';
+import UniverPresetSheetsNoteRuRU from '@univerjs/preset-sheets-note/locales/ru-RU';
+import UniverPresetSheetsThreadCommentRuRU from '@univerjs/preset-sheets-thread-comment/locales/ru-RU';
+import UniverPresetSheetsSortRuRU from '@univerjs/preset-sheets-sort/locales/ru-RU';
+import UniverPresetSheetsTableRuRU from '@univerjs/preset-sheets-table/locales/ru-RU';
 
 // Univer styles
 import '@univerjs/preset-sheets-core/lib/index.css';
+import '@univerjs/preset-sheets-drawing/lib/index.css';
+import '@univerjs/preset-sheets-filter/lib/index.css';
+import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
+import '@univerjs/preset-sheets-data-validation/lib/index.css';
+import '@univerjs/preset-sheets-find-replace/lib/index.css';
+import '@univerjs/preset-sheets-hyper-link/lib/index.css';
+import '@univerjs/preset-sheets-note/lib/index.css';
+import '@univerjs/preset-sheets-thread-comment/lib/index.css';
+import '@univerjs/preset-sheets-sort/lib/index.css';
+import '@univerjs/preset-sheets-table/lib/index.css';
 
 const SpreadsheetEditor = forwardRef(({
   content,
@@ -195,13 +227,33 @@ const SpreadsheetEditor = forwardRef(({
         locale: LocaleType.RU_RU,
         locales: {
           [LocaleType.RU_RU]: mergeLocales(
-            UniverPresetSheetsCoreRuRU
+            UniverPresetSheetsCoreRuRU,
+            UniverPresetSheetsDrawingRuRU,
+            UniverPresetSheetsFilterRuRU,
+            UniverPresetSheetsConditionalFormattingRuRU,
+            UniverPresetSheetsDataValidationRuRU,
+            UniverPresetSheetsFindReplaceRuRU,
+            UniverPresetSheetsHyperLinkRuRU,
+            UniverPresetSheetsNoteRuRU,
+            UniverPresetSheetsThreadCommentRuRU,
+            UniverPresetSheetsSortRuRU,
+            UniverPresetSheetsTableRuRU
           )
         },
         presets: [
           UniverSheetsCorePreset({
             container: containerRef.current
-          })
+          }),
+          UniverSheetsDrawingPreset(),
+          UniverSheetsFilterPreset(),
+          UniverSheetsConditionalFormattingPreset(),
+          UniverSheetsDataValidationPreset(),
+          UniverSheetsFindReplacePreset(),
+          UniverSheetsHyperLinkPreset(),
+          UniverSheetsNotePreset(),
+          UniverSheetsThreadCommentPreset(),
+          UniverSheetsSortPreset(),
+          UniverSheetsTablePreset()
         ]
       });
 
