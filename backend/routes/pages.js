@@ -508,9 +508,6 @@ router.get('/:id/export-xlsx', authenticate, async (req, res) => {
     // Парсим Univer данные
     const univerData = JSON.parse(page.content || '{}');
 
-    // Логирование для отладки
-    console.log('Export XLSX - styles:', JSON.stringify(univerData.styles, null, 2));
-
     // Конвертируем в Excel
     const workbook = convertUniverToXlsx(univerData);
 

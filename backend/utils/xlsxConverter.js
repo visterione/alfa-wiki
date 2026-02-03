@@ -105,7 +105,7 @@ function convertUniverStyleToXlsx(univerStyle) {
   }
 
   // Выравнивание
-  if (univerStyle.ht || univerStyle.vt) {
+  if (univerStyle.ht || univerStyle.vt || univerStyle.tb || univerStyle.tr) {
     xlsxStyle.alignment = {};
 
     const hAlignMap = { 0: 'left', 1: 'left', 2: 'center', 3: 'right' };
@@ -116,6 +116,18 @@ function convertUniverStyleToXlsx(univerStyle) {
     }
     if (univerStyle.vt !== undefined) {
       xlsxStyle.alignment.vertical = vAlignMap[univerStyle.vt] || 'top';
+    }
+
+    // Поворот текста (text rotation)
+    if (univerStyle.tr && univerStyle.tr.a !== undefined) {
+      // Univer хранит угол в градусах, Excel тоже использует градусы
+      xlsxStyle.alignment.textRotation = univerStyle.tr.a;
+    }
+
+    // Перенос текста (wrap text)
+    if (univerStyle.tb && univerStyle.tb.v !== undefined) {
+      // tb.v = 1 означает vertical, 2 = overflow, 3 = wrap
+      xlsxStyle.alignment.wrapText = univerStyle.tb.v === 3;
     }
   }
 
@@ -201,6 +213,16 @@ function convertXlsxStyleToUniver(xlsxCell) {
     if (s.alignment.vertical) {
       univerStyle.vt = vAlignMap[s.alignment.vertical] || 1;
     }
+
+    // Поворот текста
+    if (s.alignment.textRotation !== undefined) {
+      univerStyle.tr = { a: s.alignment.textRotation };
+    }
+
+    // Перенос текста
+    if (s.alignment.wrapText) {
+      univerStyle.tb = { v: 3 }; // 3 = wrap
+    }
   }
 
   return Object.keys(univerStyle).length > 0 ? univerStyle : null;
@@ -256,8 +278,18 @@ function convertXlsxToUniver(workbook) {
           // Стиль
           const univerStyle = convertXlsxStyleToUniver(cell);
           if (univerStyle) {
+            // Добавляем числовой формат если есть
+            if (cell.z) {
+              univerStyle.n = { pattern: cell.z };
+            }
+
             const styleId = `style-${styleCounter++}`;
             styles[styleId] = univerStyle;
+            univerCell.s = styleId;
+          } else if (cell.z) {
+            // Если стиля нет, но есть числовой формат
+            const styleId = `style-${styleCounter++}`;
+            styles[styleId] = { n: { pattern: cell.z } };
             univerCell.s = styleId;
           }
 
@@ -421,6 +453,12 @@ function convertUniverToXlsx(univerData) {
               const xlsxStyle = convertUniverStyleToXlsx(univerData.styles[cell.s]);
               if (xlsxStyle) {
                 excelCell.s = xlsxStyle;
+              }
+
+              // Числовой формат (например, процентный)
+              const univerStyle = univerData.styles[cell.s];
+              if (univerStyle.n && univerStyle.n.pattern) {
+                excelCell.z = univerStyle.n.pattern;
               }
             }
 

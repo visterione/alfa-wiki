@@ -173,6 +173,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-schedule-legend-box.busy { background: #fee2e2; border-color: #fca5a5; }
 .dc-schedule-legend-box.free { background: #f0fdf4; border-color: #86efac; }
 
+/* Clinic timeline header */
+.dc-clinic-timeline-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; margin-top: 12px; }
+.dc-clinic-timeline-header:first-child { margin-top: 0; }
+.dc-clinic-timeline-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; color: white; }
+.dc-clinic-timeline-time { font-size: 11px; color: var(--dc-text-secondary); }
+
 .dc-services-container { max-height: 300px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .dc-services-table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .dc-services-table th { background: var(--dc-bg); padding: 8px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--dc-border); position: sticky; top: 0; }
@@ -442,13 +448,33 @@ window.dcApp = (function() {
   var canEdit = false;
 
   var CLINICS = [
-    { id: 1, name: 'Альфа', color: '#FF80AB' },
-    { id: 2, name: 'Кидс', color: '#FFA726' },
-    { id: 3, name: 'Проф', color: '#7E57C2' },
-    { id: 4, name: 'Линия', color: '#C5E1A5' },
-    { id: 5, name: '3К', color: '#BA68C8' },
-    { id: 6, name: 'Смайл', color: '#555555' }
+    { id: 1, name: 'Проф', color: '#7E57C2' },
+    { id: 2, name: 'Альфа', color: '#FF80AB' },
+    { id: 3, name: 'Кидс', color: '#FFA726' },
+    { id: 4, name: '3К', color: '#BA68C8' },
+    { id: 6, name: 'Линия', color: '#C5E1A5' },
+    { id: 7, name: 'Смайл', color: '#555555' }
   ];
+
+  // Display order for dc-card-top clinic badges (preserves old visual order)
+  var CLINICS_DISPLAY_ORDER = [2, 3, 1, 6, 4, 7]; // Альфа, Кидс, Проф, Линия, 3К, Смайл
+
+  // Mapping old clinic IDs (stored in DB) to new correct IDs (used by API)
+  var OLD_TO_NEW_CLINIC_ID = {
+    1: 2,  // старый Альфа -> новый Альфа
+    2: 3,  // старый Кидс -> новый Кидс
+    3: 1,  // старый Проф -> новый Проф
+    4: 6,  // старый Линия -> новый Линия
+    5: 4,  // старый 3К -> новый 3К
+    6: 7   // старый Смайл -> новый Смайл
+  };
+
+  // Convert old clinic IDs to new ones
+  function convertOldClinicIds(oldIds) {
+    return oldIds.map(function(oldId) {
+      return OLD_TO_NEW_CLINIC_ID[oldId] || oldId;
+    });
+  }
 
   // SVG Icons
   var ICONS = {
@@ -668,7 +694,9 @@ window.dcApp = (function() {
       if (specialty && c.specialty !== specialty) return false;
       if (selectedFilterClinic) {
         var cardClinics = (c.metadata && c.metadata.clinics) || [];
-        if (cardClinics.indexOf(selectedFilterClinic) === -1) return false;
+        // Convert old clinic IDs to new ones for filtering
+        var convertedCardClinics = convertOldClinicIds(cardClinics);
+        if (convertedCardClinics.indexOf(selectedFilterClinic) === -1) return false;
       }
       if (selectedFilterTag) {
         var cardTags = (c.metadata && c.metadata.tags) || [];
@@ -695,11 +723,15 @@ window.dcApp = (function() {
     container.innerHTML = filteredCards.map(function(card) {
       var meta = card.metadata || {};
       var cardClinics = meta.clinics || [];
+      // Convert old clinic IDs to new ones for display
+      var convertedCardClinics = convertOldClinicIds(cardClinics);
       var cardTags = meta.tags || [];
       var isHighlighted = highlightId && card.id === highlightId;
 
-      var clinicBadges = CLINICS.map(function(c) {
-        var isActive = cardClinics.indexOf(c.id) !== -1;
+      var clinicBadges = CLINICS_DISPLAY_ORDER.map(function(clinicId) {
+        var c = CLINICS.find(function(clinic) { return clinic.id === clinicId; });
+        if (!c) return '';
+        var isActive = convertedCardClinics.indexOf(c.id) !== -1;
         var style = isActive ? 'background:' + c.color : '';
         return '<div class="dc-clinic' + (isActive ? ' active' : '') + '" style="' + style + '">' + c.name + '</div>';
       }).join('');
@@ -1078,6 +1110,16 @@ window.dcApp = (function() {
     }
   }
 
+  // Helper: get clinic info by ID
+  function getClinicById(clinicId) {
+    for (var i = 0; i < CLINICS.length; i++) {
+      if (CLINICS[i].id === parseInt(clinicId)) {
+        return CLINICS[i];
+      }
+    }
+    return { id: clinicId, name: 'Клиника ' + clinicId, color: '#94a3b8' };
+  }
+
   // Render day schedule grouped by clinics
   function renderDaySchedule(cardId, periods, slots, step) {
     var dayScheduleContent = document.getElementById('day-schedule-content-' + cardId);
@@ -1092,9 +1134,68 @@ window.dcApp = (function() {
       return;
     }
 
-    // Render unified timeline for ALL periods across all clinics
-    var timelineHtml = renderUnifiedTimeline(periods, slots, step);
-    dayScheduleContent.innerHTML = timelineHtml;
+    // Group periods by clinic_id
+    var clinicPeriods = {};
+    periods.forEach(function(period) {
+      var clinicId = period.clinic_id || 'unknown';
+      if (!clinicPeriods[clinicId]) {
+        clinicPeriods[clinicId] = [];
+      }
+      clinicPeriods[clinicId].push(period);
+    });
+
+    var clinicIds = Object.keys(clinicPeriods);
+
+    // If only one clinic, render unified timeline without clinic header (like before)
+    if (clinicIds.length === 1) {
+      var timelineHtml = renderUnifiedTimeline(periods, slots, step);
+      dayScheduleContent.innerHTML = timelineHtml;
+      return;
+    }
+
+    // Multiple clinics - render separate timeline for each
+    var html = '';
+    clinicIds.forEach(function(clinicId) {
+      var clinic = getClinicById(clinicId);
+      var clinicPeriodsData = clinicPeriods[clinicId];
+
+      // Filter slots for this clinic
+      var clinicSlots = slots.filter(function(slot) {
+        return String(slot.clinic_id) === String(clinicId);
+      });
+
+      // Calculate time range for this clinic
+      var timeRange = '';
+      if (clinicPeriodsData.length > 0) {
+        var starts = [];
+        var ends = [];
+        clinicPeriodsData.forEach(function(p) {
+          var s = parseAPITime(p.time_start);
+          var e = parseAPITime(p.time_end);
+          if (s) starts.push(s);
+          if (e) ends.push(e);
+        });
+        if (starts.length > 0 && ends.length > 0) {
+          var minStart = new Date(Math.min.apply(null, starts));
+          var maxEnd = new Date(Math.max.apply(null, ends));
+          timeRange = pad(minStart.getHours()) + ':' + pad(minStart.getMinutes()) +
+                     ' - ' + pad(maxEnd.getHours()) + ':' + pad(maxEnd.getMinutes());
+        }
+      }
+
+      // Clinic header with badge
+      html += '<div class="dc-clinic-timeline-header">';
+      html += '<span class="dc-clinic-timeline-badge" style="background: ' + clinic.color + ';">' + escapeHtml(clinic.name) + '</span>';
+      if (timeRange) {
+        html += '<span class="dc-clinic-timeline-time">' + timeRange + '</span>';
+      }
+      html += '</div>';
+
+      // Render timeline for this clinic
+      html += renderUnifiedTimeline(clinicPeriodsData, clinicSlots, step);
+    });
+
+    dayScheduleContent.innerHTML = html;
   }
 
   // Render unified timeline for multiple periods across all clinics
@@ -1789,7 +1890,9 @@ window.dcApp = (function() {
       mobileEl.value = '';
     }
     
-    renderClinicsCheckboxes(meta.clinics || []);
+    // Convert old clinic IDs to new ones for editing
+    var convertedClinics = convertOldClinicIds(meta.clinics || []);
+    renderClinicsCheckboxes(convertedClinics);
     initEditor();
     setEditorContent(card.description || '');
     document.getElementById('dc-modal').classList.add('active');
