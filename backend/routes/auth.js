@@ -13,8 +13,8 @@ const twoFactorCodes = new Map();
 
 // Login (Step 1: проверка логина/пароля)
 router.post('/login', [
-  body('username').trim().notEmpty().withMessage('Username is required'),
-  body('password').notEmpty().withMessage('Password is required')
+  body('username').trim().notEmpty().withMessage('Введите логин'),
+  body('password').notEmpty().withMessage('Введите пароль')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -30,16 +30,16 @@ router.post('/login', [
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Неправильные логин или пароль' });
     }
 
     if (!user.isActive) {
-      return res.status(401).json({ error: 'Account is deactivated' });
+      return res.status(401).json({ error: 'Данная учётная запись деактивирована. Вход невозможен' });
     }
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Invalid credentials' });
+      return res.status(401).json({ error: 'Неправильные логин или пароль' });
     }
 
     // Проверяем, включена ли 2FA для пользователя
@@ -47,7 +47,7 @@ router.post('/login', [
       // Проверяем наличие email
       if (!user.email) {
         return res.status(400).json({ 
-          error: 'Two-factor authentication is enabled but no email is configured. Please contact administrator.' 
+          error: 'Не настроена электронная почта для двухфакторной верификации' 
         });
       }
 
@@ -83,7 +83,7 @@ router.post('/login', [
         // Очищаем код при ошибке отправки
         twoFactorCodes.delete(user.id);
         return res.status(500).json({ 
-          error: 'Failed to send verification code. Please try again or contact administrator.' 
+          error: 'Ошибка отправки кода-подтверждения' 
         });
       }
 
@@ -91,7 +91,7 @@ router.post('/login', [
       return res.json({
         requiresTwoFactor: true,
         userId: user.id,
-        message: 'Verification code sent to your email'
+        message: 'Код подтверждения отправлен на вашу эл. почту'
       });
     }
 
@@ -115,7 +115,7 @@ router.post('/login', [
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Ошибка входа' });
   }
 });
 
@@ -167,7 +167,7 @@ router.post('/verify-2fa', [
         twoFactorAttempts: 0
       });
       return res.status(429).json({ 
-        error: 'Too many attempts. Please login again.' 
+        error: 'Слишком много попыток входа' 
       });
     }
 
@@ -183,7 +183,7 @@ router.post('/verify-2fa', [
         twoFactorAttempts: 0
       });
       return res.status(400).json({ 
-        error: 'Verification code has expired. Please login again.' 
+        error: 'Код подтверждения устарел' 
       });
     }
 

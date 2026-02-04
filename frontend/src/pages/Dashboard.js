@@ -1000,7 +1000,7 @@ export default function Dashboard() {
                 </div>
               )}
             </>
-          ) : <div className="chat-placeholder"><MessageCircle size={64} /><h3>Alfa Чат</h3><p>Выберите чат или начните новый</p></div>}
+          ) : <div className="chat-placeholder"><MessageCircle size={64} /><h3>Альфа Чат</h3><p>Выберите чат или начните новый</p></div>}
         </div>
 
         {showChatInfo && activeChat?.type === 'group' && (

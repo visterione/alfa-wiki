@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth as authApi } from '../services/api';
@@ -12,11 +12,13 @@ export default function Login() {
   const [step, setStep] = useState('credentials'); // 'credentials' | 'twoFactor'
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState(['', '', '', '', '', '']);
   const [userId, setUserId] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [attemptsLeft, setAttemptsLeft] = useState(5);
+  const [codeStatus, setCodeStatus] = useState(''); // '' | 'success' | 'error'
+  const inputRefs = useRef([]);
   const navigate = useNavigate();
 
   const handleCredentialsSubmit = async (e) => {
@@ -62,44 +64,65 @@ export default function Login() {
 
   const handleTwoFactorSubmit = async (e) => {
     e.preventDefault();
-    if (twoFactorCode.length !== 6) {
+    const code = twoFactorCode.join('');
+    if (code.length !== 6) {
       toast.error('Введите 6-значный код');
       return;
     }
 
     setLoading(true);
     try {
-      const { data } = await authApi.verify2FA(userId, twoFactorCode);
-      
+      const { data } = await authApi.verify2FA(userId, code);
+
       if (data.token && data.user) {
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        toast.success('Добро пожаловать!');
-        // Небольшая задержка для отображения toast
+        // Показываем успешную валидацию
+        setCodeStatus('success');
+
+        // Задержка для анимации успеха
         setTimeout(() => {
-          navigate('/');
-          window.location.reload(); // Перезагружаем для обновления AuthContext
-        }, 100);
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          toast.success('Добро пожаловать!');
+
+          setTimeout(() => {
+            navigate('/');
+            window.location.reload(); // Перезагружаем для обновления AuthContext
+          }, 100);
+        }, 500);
       } else {
         toast.error('Неожиданный ответ сервера');
       }
     } catch (error) {
       console.error('2FA verification error:', error);
       const errorData = error.response?.data;
-      
+
+      // Показываем ошибку валидации
+      setCodeStatus('error');
+
+      // Сбрасываем код через короткую задержку
+      setTimeout(() => {
+        setTwoFactorCode(['', '', '', '', '', '']);
+        setCodeStatus('');
+        if (inputRefs.current[0]) {
+          inputRefs.current[0].focus();
+        }
+      }, 600);
+
       if (errorData?.attemptsLeft !== undefined) {
         setAttemptsLeft(errorData.attemptsLeft);
         toast.error(`${errorData.error} (осталось попыток: ${errorData.attemptsLeft})`);
       } else {
         toast.error(errorData?.error || 'Неверный код');
       }
-      
+
       // Если код истёк или слишком много попыток - возвращаемся на шаг 1
       if (errorData?.error?.includes('expired') || errorData?.error?.includes('Too many')) {
-        setStep('credentials');
-        setTwoFactorCode('');
-        setUserId(null);
-        setPassword('');
+        setTimeout(() => {
+          setStep('credentials');
+          setTwoFactorCode(['', '', '', '', '', '']);
+          setUserId(null);
+          setPassword('');
+        }, 600);
       }
     } finally {
       setLoading(false);
@@ -108,13 +131,17 @@ export default function Login() {
 
   const handleResendCode = async () => {
     if (!userId) return;
-    
+
     setLoading(true);
     try {
       await authApi.resend2FA(userId);
       toast.success('Новый код отправлен');
-      setTwoFactorCode('');
+      setTwoFactorCode(['', '', '', '', '', '']);
+      setCodeStatus('');
       setAttemptsLeft(5);
+      if (inputRefs.current[0]) {
+        inputRefs.current[0].focus();
+      }
     } catch (error) {
       console.error('Resend error:', error);
       toast.error('Ошибка отправки кода');
@@ -125,13 +152,88 @@ export default function Login() {
 
   const handleBackToLogin = () => {
     setStep('credentials');
-    setTwoFactorCode('');
+    setTwoFactorCode(['', '', '', '', '', '']);
+    setCodeStatus('');
     setUserId(null);
     setAttemptsLeft(5);
   };
 
+  // Обработка ввода в клеточки кода
+  const handleCodeInput = (index, value) => {
+    if (loading || codeStatus) return;
+
+    // Разрешаем только цифры
+    const digit = value.replace(/\D/g, '').slice(-1);
+
+    const newCode = [...twoFactorCode];
+    newCode[index] = digit;
+    setTwoFactorCode(newCode);
+
+    // Автоматический переход к следующему полю
+    if (digit && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  // Обработка клавиш
+  const handleCodeKeyDown = (index, e) => {
+    if (loading || codeStatus) return;
+
+    // Backspace - удаляем и переходим к предыдущему
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      const newCode = [...twoFactorCode];
+
+      if (twoFactorCode[index]) {
+        newCode[index] = '';
+        setTwoFactorCode(newCode);
+      } else if (index > 0) {
+        newCode[index - 1] = '';
+        setTwoFactorCode(newCode);
+        inputRefs.current[index - 1]?.focus();
+      }
+    }
+
+    // Стрелки влево/вправо для навигации
+    if (e.key === 'ArrowLeft' && index > 0) {
+      inputRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowRight' && index < 5) {
+      inputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  // Обработка вставки кода
+  const handleCodePaste = (e) => {
+    e.preventDefault();
+    if (loading || codeStatus) return;
+
+    const pastedData = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    const newCode = pastedData.split('').concat(Array(6).fill('')).slice(0, 6);
+    setTwoFactorCode(newCode);
+
+    // Фокус на последнюю заполненную клеточку или следующую пустую
+    const nextIndex = Math.min(pastedData.length, 5);
+    inputRefs.current[nextIndex]?.focus();
+  };
+
+  // Автоматическая отправка при заполнении всех клеточек
+  useEffect(() => {
+    const code = twoFactorCode.join('');
+    if (code.length === 6 && !loading && !codeStatus && step === 'twoFactor') {
+      // Небольшая задержка для UX
+      const timer = setTimeout(() => {
+        handleTwoFactorSubmit(new Event('submit'));
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [twoFactorCode]);
+
   return (
     <div className="login-page">
+      <div className="lava-blob lava-blob-1"></div>
+      <div className="lava-blob lava-blob-2"></div>
+      <div className="lava-blob lava-blob-3"></div>
       <div className="login-container">
         <div className="login-card">
           <div className="login-header">
@@ -215,19 +317,25 @@ export default function Login() {
 
               <div className="form-group">
                 <label className="form-label">Код подтверждения</label>
-                <input
-                  type="text"
-                  className="input code-input"
-                  placeholder="000000"
-                  value={twoFactorCode}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-                    setTwoFactorCode(value);
-                  }}
-                  maxLength={6}
-                  autoFocus
-                  disabled={loading}
-                />
+                <div className={`code-input-grid ${codeStatus}`}>
+                  {twoFactorCode.map((digit, index) => (
+                    <input
+                      key={index}
+                      ref={(el) => (inputRefs.current[index] = el)}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="\d*"
+                      maxLength={1}
+                      className="code-digit-input"
+                      value={digit}
+                      onChange={(e) => handleCodeInput(index, e.target.value)}
+                      onKeyDown={(e) => handleCodeKeyDown(index, e)}
+                      onPaste={handleCodePaste}
+                      autoFocus={index === 0}
+                      disabled={loading || codeStatus !== ''}
+                    />
+                  ))}
+                </div>
                 {attemptsLeft < 5 && (
                   <small className="form-hint text-warning">
                     Осталось попыток: {attemptsLeft}
@@ -235,27 +343,12 @@ export default function Login() {
                 )}
               </div>
 
-              <button 
-                type="submit" 
-                className="btn btn-primary login-btn"
-                disabled={loading || twoFactorCode.length !== 6}
-              >
-                {loading ? (
-                  <div className="loading-spinner" style={{ width: 20, height: 20 }} />
-                ) : (
-                  <>
-                    <Shield size={18} />
-                    Подтвердить
-                  </>
-                )}
-              </button>
-
               <div className="two-factor-actions">
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={handleResendCode}
-                  disabled={loading}
+                  disabled={loading || codeStatus !== ''}
                 >
                   <RefreshCw size={16} />
                   Отправить код повторно
@@ -264,17 +357,13 @@ export default function Login() {
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={handleBackToLogin}
-                  disabled={loading}
+                  disabled={loading || codeStatus !== ''}
                 >
                   Назад к входу
                 </button>
               </div>
             </form>
           )}
-        </div>
-
-        <div className="login-footer">
-          <p>Альфа Вики - 2026</p>
         </div>
       </div>
     </div>

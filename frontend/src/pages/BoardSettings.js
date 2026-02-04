@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { kanban } from '../services/api';
-import { users } from '../services/api';
-import { ArrowLeft } from 'lucide-react';
+import { kanban, users, BASE_URL } from '../services/api';
+import { ArrowLeft, User } from 'lucide-react';
 import './BoardSettings.css';
 
 const BoardSettings = () => {
@@ -96,6 +95,24 @@ const BoardSettings = () => {
     }
   };
 
+  const getAvatarUrl = (user) => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${BASE_URL}/${user.avatar}`;
+  };
+
+  const handleImageError = (e) => {
+    // Скрываем битое изображение и показываем иконку
+    e.target.style.display = 'none';
+    if (e.target.nextSibling) {
+      e.target.nextSibling.style.display = 'flex';
+    }
+  };
+
   if (loading) {
     return (
       <div className="board-settings-container">
@@ -174,7 +191,7 @@ const BoardSettings = () => {
                         setSearchQuery(user.displayName);
                       }}
                     >
-                      {user.displayName} ({user.email})
+                      {user.displayName}
                     </div>
                   ))}
                 </div>
@@ -201,8 +218,24 @@ const BoardSettings = () => {
           <div className="permissions-list">
             <div className="permission-item owner">
               <div className="permission-user">
-                <span className="user-name">{board.owner?.displayName}</span>
-                <span className="user-email">{board.owner?.email}</span>
+                <div className="user-avatar">
+                  {getAvatarUrl(board.owner) ? (
+                    <>
+                      <img
+                        src={getAvatarUrl(board.owner)}
+                        alt=""
+                        onError={handleImageError}
+                      />
+                      <User size={20} style={{ display: 'none' }} />
+                    </>
+                  ) : (
+                    <User size={20} />
+                  )}
+                </div>
+                <div className="user-info">
+                  <span className="user-name">{board.owner?.displayName}</span>
+                  <span className="user-email">{board.owner?.email}</span>
+                </div>
               </div>
               <div className="permission-role owner-badge">Владелец</div>
             </div>
@@ -210,8 +243,24 @@ const BoardSettings = () => {
             {permissions.map(perm => (
               <div key={perm.id} className="permission-item">
                 <div className="permission-user">
-                  <span className="user-name">{perm.user.displayName}</span>
-                  <span className="user-email">{perm.user.email}</span>
+                  <div className="user-avatar">
+                    {getAvatarUrl(perm.user) ? (
+                      <>
+                        <img
+                          src={getAvatarUrl(perm.user)}
+                          alt=""
+                          onError={handleImageError}
+                        />
+                        <User size={20} style={{ display: 'none' }} />
+                      </>
+                    ) : (
+                      <User size={20} />
+                    )}
+                  </div>
+                  <div className="user-info">
+                    <span className="user-name">{perm.user.displayName}</span>
+                    <span className="user-email">{perm.user.email}</span>
+                  </div>
                 </div>
                 <div className="permission-actions">
                   <select

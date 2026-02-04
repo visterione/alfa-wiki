@@ -50,6 +50,7 @@
   color: white;
   font-size: 18px;
   font-weight: 600;
+  font-family: inherit;
   text-decoration: none;
   white-space: nowrap;
   transition: opacity var(--transition-fast);
@@ -100,6 +101,7 @@
   border: none;
   background: none;
   font-size: 15px;
+  font-family: inherit;
   color: var(--text-primary);
   outline: none;
 }
@@ -189,6 +191,7 @@
 .search-result-title {
   font-weight: 500;
   font-size: 14px;
+  font-family: inherit;
   color: var(--text-primary);
   line-height: 1.4;
   flex: 1;
@@ -213,6 +216,7 @@
 .search-result-type {
   font-size: 11px;
   font-weight: 500;
+  font-family: inherit;
   padding: 2px 8px;
   border-radius: var(--radius-full);
   white-space: nowrap;
@@ -256,6 +260,7 @@
 
 .search-result-excerpt {
   font-size: 13px;
+  font-family: inherit;
   color: var(--text-secondary);
   line-height: 1.6;
   display: -webkit-box;
@@ -280,6 +285,7 @@
 /* Структурированные результаты поиска */
 .search-result-structured {
   font-size: 13px;
+  font-family: inherit;
   line-height: 1.6;
   color: var(--text-secondary);
 }
@@ -298,12 +304,14 @@
 
 .search-result-field-label {
   font-size: 12px;
+  font-family: inherit;
   color: var(--text-tertiary);
   font-weight: 500;
 }
 
 .search-result-field-value {
   font-size: 13px;
+  font-family: inherit;
   color: var(--text-secondary);
   font-weight: 400;
 }
@@ -467,6 +475,7 @@
   text-align: center;
   color: var(--text-tertiary);
   font-size: 14px;
+  font-family: inherit;
 }
 
 /* Right Section */
@@ -523,6 +532,7 @@
   color: white;
   font-size: 10px;
   font-weight: 600;
+  font-family: inherit;
   min-width: 18px;
   height: 18px;
   border-radius: 9px;
@@ -593,6 +603,7 @@
 .header-username {
   font-size: 14px;
   font-weight: 500;
+  font-family: inherit;
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -702,6 +713,7 @@
 .header-dropdown-user-name {
   font-size: 15px;
   font-weight: 600;
+  font-family: inherit;
   color: var(--text-primary);
   margin-bottom: 2px;
   overflow: hidden;
@@ -711,6 +723,7 @@
 
 .header-dropdown-user-role {
   font-size: 13px;
+  font-family: inherit;
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -729,6 +742,7 @@
   width: 100%;
   text-align: left;
   font-size: 14px;
+  font-family: inherit;
   cursor: pointer;
   transition: background var(--transition-fast);
 }

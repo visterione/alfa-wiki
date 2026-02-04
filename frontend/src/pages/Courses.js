@@ -85,10 +85,10 @@ export default function Courses() {
               >
                 <div className="course-card-header">
                   <div className="course-icon">
-                    <BookOpen size={24} />
+                    <BookOpen size={26} />
                   </div>
                   <div className={`course-status status-${status.color}`}>
-                    <StatusIcon size={14} />
+                    <StatusIcon size={15} />
                     {status.text}
                   </div>
                 </div>
@@ -101,12 +101,12 @@ export default function Courses() {
 
                   <div className="course-meta">
                     <div className="course-meta-item">
-                      <BookOpen size={14} />
+                      <BookOpen size={16} />
                       <span>{course.lessonsCount} {course.lessonsCount === 1 ? 'урок' : course.lessonsCount < 5 ? 'урока' : 'уроков'}</span>
                     </div>
                     {course.estimatedDuration && (
                       <div className="course-meta-item">
-                        <Clock size={14} />
+                        <Clock size={16} />
                         <span>~{course.estimatedDuration} мин</span>
                       </div>
                     )}
@@ -126,32 +126,40 @@ export default function Courses() {
                       </div>
                     </div>
                   )}
-
-                  {course.userProgress.testScore !== null && (
-                    <div className="course-test-result">
-                      <span>Результат теста:</span>
-                      <strong className={course.userProgress.testScore >= 80 ? 'text-success' : 'text-danger'}>
-                        {course.userProgress.testScore}%
-                      </strong>
-                    </div>
-                  )}
                 </div>
 
                 <div className="course-card-footer">
-                  {course.userProgress.completedAt ? (
-                    <div className="course-completed-badge">
-                      <CheckCircle size={16} />
-                      Пройден {new Date(course.userProgress.completedAt).toLocaleDateString()}
-                    </div>
-                  ) : course.userProgress.completedLessons > 0 ? (
-                    <button className="btn btn-primary btn-sm">
-                      Продолжить
-                    </button>
-                  ) : (
-                    <button className="btn btn-outline btn-sm">
-                      Начать курс
-                    </button>
-                  )}
+                  <div className="course-footer-left">
+                    {course.userProgress.completedAt ? (
+                      <div className="course-completed-badge">
+                        <CheckCircle size={16} />
+                        Пройден {new Date(course.userProgress.completedAt).toLocaleDateString()}
+                      </div>
+                    ) : null}
+
+                    {course.userProgress.testScore !== null && (
+                      <div className="course-test-result">
+                        <span>Тест:</span>
+                        <strong className={course.userProgress.testScore >= 80 ? 'text-success' : 'text-danger'}>
+                          {course.userProgress.testScore}%
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="course-footer-right">
+                    {!course.userProgress.completedAt && (
+                      course.userProgress.completedLessons > 0 ? (
+                        <button className="btn btn-primary btn-sm">
+                          Продолжить
+                        </button>
+                      ) : (
+                        <button className="btn btn-outline btn-sm">
+                          Начать курс
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               </div>
             );

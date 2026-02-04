@@ -670,7 +670,7 @@ router.get('/boards', authenticate, async (req, res) => {
         {
           model: User,
           as: 'owner',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -688,7 +688,7 @@ router.get('/boards', authenticate, async (req, res) => {
             {
               model: User,
               as: 'owner',
-              attributes: ['id', 'displayName', 'email']
+              attributes: ['id', 'displayName', 'email', 'avatar']
             }
           ]
         }
@@ -747,7 +747,7 @@ router.post('/boards', authenticate, async (req, res) => {
         {
           model: User,
           as: 'owner',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ]
     });
@@ -774,7 +774,7 @@ router.get('/boards/:id', authenticate, async (req, res) => {
         {
           model: User,
           as: 'owner',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ]
     });
@@ -844,7 +844,7 @@ router.put('/boards/:id', authenticate, async (req, res) => {
         {
           model: User,
           as: 'owner',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ]
     });
@@ -913,7 +913,7 @@ router.get('/boards/:id/permissions', authenticate, async (req, res) => {
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ],
       order: [['createdAt', 'ASC']]
@@ -987,7 +987,7 @@ router.post('/boards/:id/permissions', authenticate, async (req, res) => {
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ]
     });
@@ -1036,7 +1036,7 @@ router.put('/boards/:boardId/permissions/:permId', authenticate, async (req, res
         {
           model: User,
           as: 'user',
-          attributes: ['id', 'displayName', 'email']
+          attributes: ['id', 'displayName', 'email', 'avatar']
         }
       ]
     });
