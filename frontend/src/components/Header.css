@@ -224,6 +224,11 @@
   color: #0369a1;
 }
 
+.search-result-type--spreadsheet {
+  background: #d1fae5;
+  color: #059669;
+}
+
 .search-result-type--accreditation {
   background: #fef3c7;
   color: #b45309;

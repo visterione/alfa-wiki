@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Image, Database, BookOpen, TestTube
+  Layout, Users, Lock, Image, Database, BookOpen, TestTube, Table2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -14,7 +14,8 @@ import {
   AnalysisSearchResult,
   ServiceSearchResult,
   DoctorSearchResult,
-  DefaultSearchResult
+  DefaultSearchResult,
+  SpreadsheetSearchResult
 } from './SearchResultComponents';
 import './Header.css';
 
@@ -23,6 +24,8 @@ const getResultIcon = (type) => {
   switch (type) {
     case 'page':
       return FileText;
+    case 'spreadsheet':
+      return Table2;
     case 'accreditation':
       return Award;
     case 'vehicle':
@@ -56,6 +59,8 @@ const getTypeName = (type, displayType) => {
   switch (type) {
     case 'page':
       return 'Страница';
+    case 'spreadsheet':
+      return 'Таблица';
     case 'accreditation':
       return 'Аккредитация';
     case 'vehicle':
@@ -232,6 +237,8 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   // Определяем какой компонент использовать для отображения контента
                   const renderResultContent = () => {
                     switch (result.type) {
+                      case 'spreadsheet':
+                        return <SpreadsheetSearchResult result={result} searchQuery={searchQuery} />;
                       case 'vehicle':
                         return <VehicleSearchResult result={result} searchQuery={searchQuery} />;
                       case 'accreditation':

@@ -268,7 +268,7 @@ router.get('/', authenticate, async (req, res) => {
             { keywords: { [Op.overlap]: [searchTerm] } }
           ]
         },
-        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon', 'allowedRoles'],
+        attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon', 'allowedRoles', 'contentType'],
         limit: parseInt(limit)
       });
 
@@ -277,31 +277,40 @@ router.get('/', authenticate, async (req, res) => {
         if (!canAccessPage(page, userRoleIds, isAdmin)) {
           return; // Пропускаем страницы без доступа
         }
+
         let excerpt = '';
-        const content = page.searchContent || '';
-        const index = content.toLowerCase().indexOf(searchTerm);
-        
-        if (index !== -1) {
-          const start = Math.max(0, index - 60);
-          const end = Math.min(content.length, index + searchTerm.length + 60);
-          let rawExcerpt = content.substring(start, end);
-          excerpt = (start > 0 ? '...' : '') + 
-                   cleanExcerpt(rawExcerpt) + 
-                   (end < content.length ? '...' : '');
-        } else if (page.searchContent && page.searchContent.length > 0) {
-          let rawExcerpt = page.searchContent.substring(0, 150);
-          excerpt = cleanExcerpt(rawExcerpt) + 
-                   (page.searchContent.length > 150 ? '...' : '');
-        } else if (page.description) {
-          excerpt = cleanExcerpt(page.description.substring(0, 120)) + 
-                   (page.description.length > 120 ? '...' : '');
+        let displayType = 'Страница';
+
+        // Для таблиц не показываем excerpt, чтобы не отображать JSON
+        if (page.contentType === 'spreadsheet') {
+          displayType = 'Таблица';
+          excerpt = ''; // Не показываем excerpt для таблиц
         } else {
-          excerpt = 'Нет доступного контента для предпросмотра';
+          const content = page.searchContent || '';
+          const index = content.toLowerCase().indexOf(searchTerm);
+
+          if (index !== -1) {
+            const start = Math.max(0, index - 60);
+            const end = Math.min(content.length, index + searchTerm.length + 60);
+            let rawExcerpt = content.substring(start, end);
+            excerpt = (start > 0 ? '...' : '') +
+                     cleanExcerpt(rawExcerpt) +
+                     (end < content.length ? '...' : '');
+          } else if (page.searchContent && page.searchContent.length > 0) {
+            let rawExcerpt = page.searchContent.substring(0, 150);
+            excerpt = cleanExcerpt(rawExcerpt) +
+                     (page.searchContent.length > 150 ? '...' : '');
+          } else if (page.description) {
+            excerpt = cleanExcerpt(page.description.substring(0, 120)) +
+                     (page.description.length > 120 ? '...' : '');
+          } else {
+            excerpt = 'Нет доступного контента для предпросмотра';
+          }
         }
 
         results.push({
-          type: 'page',
-          displayType: 'Страница',
+          type: page.contentType === 'spreadsheet' ? 'spreadsheet' : 'page',
+          displayType: displayType,
           icon: page.icon || null,
           id: page.id,
           title: page.title,
@@ -422,7 +431,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
     // Search in pages with ranking (включаем allowedRoles для проверки доступа)
     const pageResults = await sequelize.query(`
       SELECT
-        id, title, slug, description, keywords, "searchContent", icon, "allowedRoles",
+        id, title, slug, description, keywords, "searchContent", icon, "allowedRoles", "contentType",
         CASE
           WHEN title ILIKE :exactStart THEN 5
           WHEN title ILIKE :likePattern THEN 4
@@ -488,8 +497,13 @@ router.get('/fulltext', authenticate, async (req, res) => {
       }
 
       let excerpt = '';
+      let displayType = 'Страница';
 
-      if (r.searchContent) {
+      // Для таблиц не показываем excerpt, чтобы не отображать JSON
+      if (r.contentType === 'spreadsheet') {
+        displayType = 'Таблица';
+        excerpt = ''; // Не показываем excerpt для таблиц
+      } else if (r.searchContent) {
         const index = r.searchContent.toLowerCase().indexOf(searchTermLower);
         if (index !== -1) {
           const start = Math.max(0, index - 60);
@@ -507,8 +521,8 @@ router.get('/fulltext', authenticate, async (req, res) => {
       }
 
       results.push({
-        type: 'page',
-        displayType: 'Страница',
+        type: r.contentType === 'spreadsheet' ? 'spreadsheet' : 'page',
+        displayType: displayType,
         icon: r.icon || null,
         id: r.id,
         title: r.title,
@@ -642,7 +656,7 @@ router.get('/suggest', authenticate, async (req, res) => {
         isPublished: true,
         title: { [Op.iLike]: `%${searchTerm}%` }
       },
-      attributes: ['title', 'slug', 'allowedRoles'],
+      attributes: ['title', 'slug', 'allowedRoles', 'contentType'],
       order: [
         [sequelize.literal(`CASE WHEN title ILIKE '${searchTerm}%' THEN 0 ELSE 1 END`)],
         ['title', 'ASC']
@@ -696,7 +710,7 @@ router.get('/suggest', authenticate, async (req, res) => {
       ...filteredPages.map(p => ({
         title: p.title,
         url: `/page/${p.slug}`,
-        type: 'page'
+        type: p.contentType === 'spreadsheet' ? 'spreadsheet' : 'page'
       }))
     ];
 

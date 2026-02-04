@@ -244,3 +244,9 @@ export const DefaultSearchResult = ({ result, searchQuery }) => {
     </div>
   );
 };
+
+// Компонент для отображения результата типа "Таблица"
+export const SpreadsheetSearchResult = () => {
+  // Для таблиц не показываем excerpt, так как это будет JSON структура
+  return null;
+};
