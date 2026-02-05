@@ -366,3 +366,219 @@ input[type="radio"] {
 .justify-between { justify-content: space-between; }
 .gap-1 { gap: 8px; }
 .gap-2 { gap: 16px; }
+
+/* ========================================
+   PRINT STYLES
+   ======================================== */
+@media print {
+  /* Настройки страницы по умолчанию - портретная ориентация */
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  /* Принудительно печатаем цвета фона */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Скрываем UI элементы */
+  .header,
+  .sidebar,
+  .sidebar-overlay,
+  .page-header,
+  .page-actions,
+  .page-keywords,
+  .lesson-navigation,
+  .course-sidebar,
+  .chat-notifications-container,
+  .modal-overlay,
+  .toast,
+  .btn,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-icon {
+    display: none !important;
+  }
+
+  /* Сбрасываем layout */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    font-size: 12pt;
+    line-height: 1.5;
+  }
+
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .layout {
+    display: block !important;
+    min-height: auto !important;
+    height: auto !important;
+  }
+
+  .layout-body {
+    display: block !important;
+    padding-top: 0 !important;
+    height: auto !important;
+  }
+
+  .main-content {
+    margin-left: 0 !important;
+    background: white !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .content-wrapper {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 20px !important;
+    margin: 0 !important;
+  }
+
+  /* Явно показываем контент */
+  .page-view,
+  .course-view {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  /* Карточки без теней и рамок */
+  .card {
+    box-shadow: none !important;
+    border: none !important;
+    background: white !important;
+  }
+
+  /* Контент страницы - ЯВНО показываем */
+  .page-content,
+  .lesson-content {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    color: black !important;
+  }
+
+  /* Все дочерние элементы контента должны быть видимы */
+  .page-content *,
+  .lesson-content * {
+    visibility: visible !important;
+  }
+
+  /* Типографика для печати */
+  .page-content h1,
+  .lesson-content h1 {
+    font-size: 22pt !important;
+    page-break-after: avoid;
+    color: black !important;
+  }
+
+  .page-content h2,
+  .lesson-content h2 {
+    font-size: 18pt !important;
+    page-break-after: avoid;
+    color: black !important;
+  }
+
+  .page-content h3,
+  .lesson-content h3 {
+    font-size: 14pt !important;
+    page-break-after: avoid;
+    color: black !important;
+  }
+
+  .page-content p,
+  .lesson-content p {
+    orphans: 3;
+    widows: 3;
+    color: black !important;
+  }
+
+  /* Изображения */
+  .page-content img,
+  .lesson-content img {
+    max-width: 100% !important;
+    page-break-inside: avoid;
+  }
+
+  /* Таблицы - улучшенный перенос */
+  .page-content table,
+  .lesson-content table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .page-content table thead,
+  .lesson-content table thead {
+    display: table-header-group;
+  }
+
+  .page-content table tr,
+  .lesson-content table tr {
+    page-break-inside: avoid;
+  }
+
+  .page-content td,
+  .page-content th,
+  .lesson-content td,
+  .lesson-content th {
+    color: black !important;
+    padding: 6px 8px !important;
+    border: 1px solid #ccc !important;
+  }
+
+  /* Код */
+  .page-content pre,
+  .lesson-content pre {
+    page-break-inside: avoid;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background: #f5f5f5 !important;
+    color: #333 !important;
+    border: 1px solid #ddd !important;
+    padding: 10px !important;
+    font-size: 9pt !important;
+  }
+
+  .page-content code,
+  .lesson-content code {
+    color: #333 !important;
+  }
+
+  /* Списки */
+  .page-content ul,
+  .page-content ol,
+  .page-content li,
+  .lesson-content ul,
+  .lesson-content ol,
+  .lesson-content li {
+    color: black !important;
+  }
+
+  /* Скрываем видео и iframe */
+  .page-content video,
+  .page-content iframe,
+  .lesson-content video,
+  .lesson-content iframe {
+    display: none !important;
+  }
+
+  /* Ссылки */
+  .page-content a,
+  .lesson-content a {
+    color: #333 !important;
+    text-decoration: underline !important;
+  }
+}

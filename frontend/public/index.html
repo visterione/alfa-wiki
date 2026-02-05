@@ -15,6 +15,19 @@
   <!-- Univer styles will be loaded via imports in React components -->
 
   <title>Альфа Вики</title>
+
+  <style>
+    /* Initial loading styles to prevent white flash */
+    body {
+      margin: 0;
+      background: linear-gradient(135deg, #0a3d62 0%, #1e3799 50%, #4a148c 100%);
+      min-height: 100vh;
+    }
+
+    #root {
+      min-height: 100vh;
+    }
+  </style>
 </head>
 <body>
   <noscript>Для работы приложения необходим JavaScript.</noscript>

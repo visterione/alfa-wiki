@@ -796,3 +796,12 @@
     width: 260px;
   }
 }
+
+/* Print Styles */
+@media print {
+  .header,
+  .header-dropdown,
+  .search-dropdown {
+    display: none !important;
+  }
+}

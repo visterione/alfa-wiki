@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   BookOpen, ChevronLeft, ChevronRight, CheckCircle,
@@ -18,7 +18,6 @@ export default function CourseView() {
   const [loading, setLoading] = useState(true);
   const [lessonContent, setLessonContent] = useState('');
   const [showTest, setShowTest] = useState(false);
-  const printRef = useRef();
 
   useEffect(() => {
     loadCourse();
@@ -256,13 +255,10 @@ export default function CourseView() {
                 </div>
               )}
             </div>
-            <PrintButton
-              contentRef={printRef}
-              title={`${course.title} - ${currentLesson?.title}`}
-            />
+            <PrintButton title={`${course.title} - ${currentLesson?.title}`} />
           </div>
 
-          <div ref={printRef}>
+          <div>
             <h2 className="printable-lesson-title">{currentLesson?.title}</h2>
             <div className="lesson-content">
               <ContentRenderer content={lessonContent} />

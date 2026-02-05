@@ -54,7 +54,22 @@ function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null
 }
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  // Показываем загрузку во время проверки авторизации
+  if (loading) {
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #0a3d62 0%, #1e3799 50%, #4a148c 100%)'
+      }}>
+        <div className="loading-spinner" style={{ width: 48, height: 48 }} />
+      </div>
+    );
+  }
 
   return (
     <Routes>

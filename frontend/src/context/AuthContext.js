@@ -12,8 +12,16 @@ export function AuthProvider({ children }) {
   }, []);
 
   const checkAuth = async () => {
+    const startTime = Date.now();
     const token = localStorage.getItem('token');
+
     if (!token) {
+      // Минимальная задержка для плавного отображения
+      const elapsed = Date.now() - startTime;
+      const minDelay = 300;
+      if (elapsed < minDelay) {
+        await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+      }
       setLoading(false);
       return;
     }
@@ -25,6 +33,12 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
     } finally {
+      // Минимальная задержка для плавного отображения
+      const elapsed = Date.now() - startTime;
+      const minDelay = 300;
+      if (elapsed < minDelay) {
+        await new Promise(resolve => setTimeout(resolve, minDelay - elapsed));
+      }
       setLoading(false);
     }
   };

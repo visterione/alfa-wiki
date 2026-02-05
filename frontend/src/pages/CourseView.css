@@ -529,39 +529,49 @@
 }
 
 @media print {
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
   .course-view-header,
   .course-sidebar,
   .lesson-navigation,
   .lesson-header,
-  .btn-back,
-  button {
+  .btn-back {
     display: none !important;
   }
 
+  .course-view {
+    display: block !important;
+    visibility: visible !important;
+  }
+
   .course-view-layout {
-    flex-direction: column;
+    display: block !important;
+    visibility: visible !important;
   }
 
   .course-content {
+    display: block !important;
+    visibility: visible !important;
     padding: 0 !important;
     max-width: 100% !important;
   }
 
   .printable-lesson-title {
     display: block !important;
-    font-size: 28px !important;
+    visibility: visible !important;
+    font-size: 24pt !important;
     font-weight: 600;
     margin-bottom: 24px;
     margin-top: 0;
+    color: black !important;
   }
 
   .lesson-content {
+    display: block !important;
+    visibility: visible !important;
     line-height: 1.6;
+  }
+
+  .lesson-content * {
+    visibility: visible !important;
   }
 
   .lesson-content img {
@@ -573,6 +583,12 @@
   .lesson-content h2,
   .lesson-content h3 {
     page-break-after: avoid;
+    color: black !important;
+  }
+
+  .lesson-content p,
+  .lesson-content li {
+    color: black !important;
   }
 
   .lesson-content pre,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Edit, ArrowLeft, Star, StarOff } from 'lucide-react';
 import { pages, favorites } from '../services/api';
@@ -20,7 +20,6 @@ export default function PageView() {
   const [error, setError] = useState(null);
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
-  const printRef = useRef();
 
   // Cleanup функция
   const cleanupScripts = useCallback(() => {
@@ -275,7 +274,7 @@ export default function PageView() {
           )}
         </div>
         <div className="page-actions">
-          <PrintButton contentRef={printRef} title={page.title} />
+          <PrintButton title={page.title} />
           <button
             className={`btn btn-ghost btn-icon ${favoriteLoading ? 'loading' : ''}`}
             onClick={toggleFavorite}
@@ -297,7 +296,7 @@ export default function PageView() {
         </div>
       </div>
 
-      <div ref={printRef}>
+      <div>
         <div className="printable-header">
           <h1>{page.title}</h1>
           {page.description && (
