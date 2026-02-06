@@ -603,6 +603,19 @@
   color: var(--primary);
 }
 
+/* Цветные иконки по типу контента */
+.explorer-page .explorer-icon-wysiwyg {
+  color: var(--primary); /* Синий - стандартный редактор */
+}
+
+.explorer-page .explorer-icon-spreadsheet {
+  color: #22c55e; /* Зелёный - таблицы */
+}
+
+.explorer-page .explorer-icon-html {
+  color: #f97316; /* Оранжевый - HTML/CSS/JS */
+}
+
 .explorer-back .explorer-item-icon {
   color: var(--text-tertiary);
 }
@@ -1126,6 +1139,19 @@
 
 .explorer-item.explorer-page .explorer-item-icon {
   color: #60a5fa;
+}
+
+/* Цветные иконки по типу контента страницы */
+.explorer-item.explorer-page .explorer-icon-wysiwyg {
+  color: #60a5fa; /* Синий - стандартный редактор */
+}
+
+.explorer-item.explorer-page .explorer-icon-spreadsheet {
+  color: #22c55e; /* Зелёный - таблицы */
+}
+
+.explorer-item.explorer-page .explorer-icon-html {
+  color: #f97316; /* Оранжевый - HTML/CSS/JS */
 }
 
 .explorer-item.explorer-back .explorer-item-icon {

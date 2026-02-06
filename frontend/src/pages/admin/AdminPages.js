@@ -1,10 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  FolderPlus, FilePlus, Folder, FolderOpen, FileText, 
+import {
+  FolderPlus, FilePlus, Folder, FolderOpen, FileText,
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
-  ArrowLeft, Check, X, AlertCircle
+  ArrowLeft, Check, X, AlertCircle,
+  FileSpreadsheet, FileCode, Table
 } from 'lucide-react';
+
+// Функция для получения иконки и класса в зависимости от типа контента
+const getPageIconInfo = (contentType) => {
+  switch (contentType) {
+    case 'spreadsheet':
+      return {
+        Icon: Table,
+        className: 'explorer-icon-spreadsheet',
+        title: 'Таблица'
+      };
+    case 'html':
+      return {
+        Icon: FileCode,
+        className: 'explorer-icon-html',
+        title: 'HTML-страница'
+      };
+    case 'wysiwyg':
+    default:
+      return {
+        Icon: FileText,
+        className: 'explorer-icon-wysiwyg',
+        title: 'Страница'
+      };
+  }
+};
 import { folders, pages, roles } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -283,14 +309,19 @@ export default function AdminPages() {
             ))}
 
             {/* Pages */}
-            {pageList.map(page => (
-              <div 
-                key={page.id} 
+            {pageList.map(page => {
+              const iconInfo = getPageIconInfo(page.contentType);
+              const IconComponent = iconInfo.Icon;
+
+              return (
+              <div
+                key={page.id}
                 className="explorer-item explorer-page"
                 onDoubleClick={() => navigate(canEdit ? `/page/${page.slug}/edit` : `/page/${page.slug}`)}
+                title={iconInfo.title}
               >
-                <div className="explorer-item-icon">
-                  <FileText size={48} />
+                <div className={`explorer-item-icon ${iconInfo.className}`}>
+                  <IconComponent size={48} />
                 </div>
                 <div className="explorer-item-name">{page.title}</div>
                 <div className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
@@ -325,7 +356,8 @@ export default function AdminPages() {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
 
             {/* Empty state */}
             {folderList.length === 0 && pageList.length === 0 && !currentFolderId && (
