@@ -12,8 +12,9 @@
 <style>
 #price-app {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  max-width: 100%;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 20px 40px;
 }
 
 /* Заголовок и кнопки */
@@ -36,6 +37,8 @@
 .price-header-right {
   display: flex;
   gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .price-comparison-selector {
@@ -591,6 +594,47 @@
   to { transform: translateX(0); opacity: 1; }
 }
 
+/* Tooltip для истории изменений цен */
+.price-history-tooltip {
+  position: absolute;
+  background: #fff;
+  color: #1f2937;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 10000;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  border: 1px solid #d1d5db;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.price-history-tooltip.show {
+  opacity: 1;
+}
+
+.price-history-tooltip::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #fff;
+}
+
+.price-value-input.has-history {
+  background: #f0f9ff;
+  border-color: #3b82f6;
+}
+
+.price-value-input.has-history:hover {
+  background: #e0f2fe;
+  cursor: help;
+}
+
 /* Управление колонками */
 .columns-manager {
   margin-bottom: 20px;
@@ -753,9 +797,22 @@
 
 @media (max-width: 768px) {
   .price-header { flex-direction: column; align-items: stretch; }
+  .price-header-right { justify-content: flex-start; }
   .price-filters { flex-direction: column; }
   .price-search-box { min-width: 100%; }
   .price-select { min-width: 100%; }
+  #creation-date-display {
+    font-size: 12px !important;
+    margin-right: 0 !important;
+    margin-bottom: 8px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .price-header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 </style>
 
@@ -775,6 +832,12 @@
       </button>
     </div>
     <div class="price-header-right">
+      <span id="creation-date-display" style="display:none; font-size:13px; color:#6b7280; white-space: nowrap;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px; height:14px; display:inline-block; vertical-align:middle; margin-right:4px;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <span id="creation-date-text"></span>
+      </span>
       <button class="price-btn price-btn-success" onclick="priceApp.exportToExcel()" id="export-excel-btn" disabled>
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         Excel
@@ -786,7 +849,7 @@
   <div id="columns-manager" class="columns-manager" style="display:none;">
     <h4>Управление колонками</h4>
     <div class="columns-list" id="columns-list"></div>
-    <div style="display: flex; gap: 8px;">
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
       <button class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
         + Конкурент
       </button>
@@ -1029,6 +1092,7 @@ window.priceApp = (function() {
       document.getElementById('price-filters').style.display = 'none';
       document.getElementById('export-excel-btn').disabled = true;
       document.getElementById('delete-comparison-btn').disabled = true;
+      document.getElementById('creation-date-display').style.display = 'none';
       renderTable();
       return;
     }
@@ -1036,6 +1100,15 @@ window.priceApp = (function() {
     fetchAPI(API_URL + '/' + comparisonId).then(function(comparison) {
       currentComparison = comparison;
       currentItems = comparison.items || [];
+
+      // Обрабатываем priceHistory для каждого item
+      currentItems.forEach(function(item) {
+        if (!item.priceHistory) {
+          item.priceHistory = {};
+        }
+        // Отладочный лог для проверки загрузки истории
+        console.log('Item loaded:', item.serviceName, 'priceHistory:', item.priceHistory);
+      });
 
       // Автоматически определяем клиники из загруженных услуг
       var ownMedCentersSet = {};
@@ -1065,6 +1138,22 @@ window.priceApp = (function() {
       document.getElementById('price-filters').style.display = 'flex';
       document.getElementById('export-excel-btn').disabled = false;
       document.getElementById('delete-comparison-btn').disabled = false;
+
+      // Отображение даты создания
+      if (comparison.createdAt) {
+        var createdDate = new Date(comparison.createdAt);
+        var formattedDate = createdDate.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        document.getElementById('creation-date-text').textContent = formattedDate;
+        document.getElementById('creation-date-display').style.display = 'inline-block';
+      } else {
+        document.getElementById('creation-date-display').style.display = 'none';
+      }
 
       renderColumnsManager();
       renderTable();
@@ -1259,9 +1348,34 @@ window.priceApp = (function() {
           html += '<span class="price-value">' + formatPrice(price) + '</span>';
         } else {
           // Для конкурентов - инпут для ввода
-          html += '<input type="number" class="price-value-input" value="' + (price || '') + '" ';
+          var history = item.priceHistory && item.priceHistory[col.name];
+          var hasHistory = history && history.length > 0;
+          var inputClass = 'price-value-input' + (hasHistory ? ' has-history' : '');
+
+          html += '<input type="number" class="' + inputClass + '" value="' + (price || '') + '" ';
           html += 'onchange="priceApp.updatePrice(\'' + item.id + '\', \'' + col.name + '\', this.value)" ';
-          html += 'placeholder="Введите цену">';
+          html += 'placeholder="Введите цену"';
+
+          // Добавляем data-атрибуты для истории изменений
+          if (hasHistory) {
+            var lastChange = history[history.length - 1];
+            var changeDate = new Date(lastChange.changedAt);
+            var formattedDate = changeDate.toLocaleDateString('ru-RU', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+
+            html += ' data-last-user="' + lastChange.username + '"';
+            html += ' data-last-date="' + formattedDate + '"';
+            html += ' data-last-price="' + lastChange.price + '"';
+            html += ' onmouseenter="priceApp.showPriceHistoryTooltip(event)"';
+            html += ' onmouseleave="priceApp.hidePriceHistoryTooltip()"';
+          }
+
+          html += '>';
         }
         html += '</td>';
 
@@ -1870,8 +1984,14 @@ window.priceApp = (function() {
     fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + itemId, {
       method: 'PUT',
       body: JSON.stringify({ prices: newPrices })
-    }).then(function() {
-      item.prices = newPrices;
+    }).then(function(updatedItem) {
+      // Обновляем item с данными, полученными от сервера (включая priceHistory)
+      console.log('Price updated, received item:', updatedItem);
+      console.log('priceHistory:', updatedItem.priceHistory);
+      var itemIndex = currentItems.findIndex(function(i) { return i.id === itemId; });
+      if (itemIndex >= 0) {
+        currentItems[itemIndex] = updatedItem;
+      }
       renderTable();
     }).catch(function(e) {
       showToast('Ошибка: ' + e.message, 'error');
@@ -1916,6 +2036,25 @@ window.priceApp = (function() {
       right: { style: 'thin', color: { argb: 'FF000000' } }
     };
 
+    // Добавляем строку с датой создания
+    if (currentComparison.createdAt) {
+      var createdDate = new Date(currentComparison.createdAt);
+      var formattedDate = createdDate.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      var dateRow = worksheet.addRow(['Дата создания:', formattedDate]);
+      dateRow.getCell(1).font = { bold: true };
+      dateRow.getCell(1).alignment = { vertical: 'middle', horizontal: 'left' };
+      dateRow.getCell(2).alignment = { vertical: 'middle', horizontal: 'left' };
+
+      // Добавляем пустую строку для разделения
+      worksheet.addRow([]);
+    }
+
     // Считаем видимые колонки
     var visibleColumns = allColumns.filter(function(col) {
       return hiddenColumns.indexOf(col.name) < 0;
@@ -1954,7 +2093,8 @@ window.priceApp = (function() {
       }
     });
 
-    worksheet.addRow(headerRow);
+    var headerRowAdded = worksheet.addRow(headerRow);
+    var headerRowNumber = headerRowAdded.number; // Получаем реальный номер строки заголовка
 
     // Объединяем ячейки для не-эталонных колонок (объединяем по горизонтали)
     var currentCol = 3;
@@ -1968,7 +2108,7 @@ window.priceApp = (function() {
       } else {
         // Обычная колонка - объединяем две ячейки по горизонтали
         var nextColLetter = String.fromCharCode(64 + currentCol + 1);
-        worksheet.mergeCells(colLetter + '1:' + nextColLetter + '1');
+        worksheet.mergeCells(colLetter + headerRowNumber + ':' + nextColLetter + headerRowNumber);
         currentCol += 2;
       }
     });
@@ -1983,7 +2123,7 @@ window.priceApp = (function() {
     var headerFont = { bold: true };
     var headerAlignment = { vertical: 'middle', horizontal: 'center' };
 
-    var headerRow = worksheet.getRow(1);
+    var headerRow = worksheet.getRow(headerRowNumber);
     headerRow.eachCell(function(cell) {
       cell.fill = headerFill;
       cell.font = headerFont;
@@ -1993,7 +2133,7 @@ window.priceApp = (function() {
     headerRow.height = 20;
 
     // Данные
-    var startRow = 2;
+    var startRow = headerRowNumber + 1;
     currentItems.forEach(function(item, itemIdx) {
       var row = [item.serviceCode || '', item.serviceName];
       var rowData = [];
@@ -2108,6 +2248,49 @@ window.priceApp = (function() {
     });
   }
 
+  // === TOOLTIP ДЛЯ ИСТОРИИ ЦЕН ===
+  var tooltipElement = null;
+
+  function showPriceHistoryTooltip(event) {
+    var input = event.target;
+    var lastUser = input.getAttribute('data-last-user');
+    var lastDate = input.getAttribute('data-last-date');
+    var lastPrice = input.getAttribute('data-last-price');
+
+    if (!lastUser || !lastDate) return;
+
+    // Создаем tooltip если его нет
+    if (!tooltipElement) {
+      tooltipElement = document.createElement('div');
+      tooltipElement.className = 'price-history-tooltip';
+      document.body.appendChild(tooltipElement);
+    }
+
+    // Устанавливаем контент
+    tooltipElement.innerHTML =
+      '<div style="font-weight:600; margin-bottom:2px;">Последнее изменение:</div>' +
+      '<div>' + lastUser + '</div>' +
+      '<div style="color:#d1d5db; font-size:11px;">' + lastDate + '</div>';
+
+    // Позиционируем tooltip
+    var rect = input.getBoundingClientRect();
+    tooltipElement.style.left = (rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2) + 'px';
+    tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 10 + window.scrollY) + 'px';
+
+    // Показываем tooltip
+    setTimeout(function() {
+      if (tooltipElement) {
+        tooltipElement.classList.add('show');
+      }
+    }, 10);
+  }
+
+  function hidePriceHistoryTooltip() {
+    if (tooltipElement) {
+      tooltipElement.classList.remove('show');
+    }
+  }
+
   return {
     loadComparisons: loadComparisons,
     loadComparison: loadComparison,
@@ -2129,7 +2312,9 @@ window.priceApp = (function() {
     closeModal: closeModal,
     switchTab: switchTab,
     onCategorySelected: onCategorySelected,
-    addAllCategoryServices: addAllCategoryServices
+    addAllCategoryServices: addAllCategoryServices,
+    showPriceHistoryTooltip: showPriceHistoryTooltip,
+    hidePriceHistoryTooltip: hidePriceHistoryTooltip
   };
 })();
 </script>

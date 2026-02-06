@@ -40,7 +40,7 @@ router.get('/:id', authenticate, async (req, res) => {
         {
           model: PriceComparisonItem,
           as: 'items',
-          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'sortOrder'],
+          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'sortOrder'],
           order: [['sortOrder', 'ASC']]
         }
       ]
@@ -275,11 +275,43 @@ router.put('/:id/items/:itemId',
         return res.status(404).json({ error: 'Услуга не найдена' });
       }
 
-      const updateData = { prices };
+      // Обновляем историю изменений цен
+      const oldPrices = item.prices || {};
+      const newPrices = prices || {};
+      const priceHistory = { ...(item.priceHistory || {}) }; // Создаем новый объект
+
+      // Проходим по всем колонкам (медцентрам/конкурентам) и проверяем изменения
+      Object.keys(newPrices).forEach(columnName => {
+        const oldPrice = oldPrices[columnName];
+        const newPrice = newPrices[columnName];
+
+        // Если цена изменилась, добавляем запись в историю
+        if (oldPrice !== newPrice && newPrice !== null && newPrice !== undefined && newPrice !== '') {
+          if (!priceHistory[columnName]) {
+            priceHistory[columnName] = [];
+          }
+
+          priceHistory[columnName].push({
+            price: parseFloat(newPrice),
+            userId: req.user.id,
+            username: req.user.displayName || req.user.username,
+            changedAt: new Date().toISOString()
+          });
+        }
+      });
+
+      const updateData = { prices, priceHistory };
+
+      // Явно помечаем что JSONB поля изменились
+      item.changed('prices', true);
+      item.changed('priceHistory', true);
       if (serviceCode) updateData.serviceCode = serviceCode;
       if (serviceName) updateData.serviceName = serviceName;
 
       await item.update(updateData);
+
+      // Перезагружаем item из БД чтобы убедиться что priceHistory сохранен
+      await item.reload();
 
       res.json(item);
     } catch (error) {
