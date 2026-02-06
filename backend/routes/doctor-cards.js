@@ -386,7 +386,15 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
     if (internalNumber !== undefined) newMetadata.internalNumber = internalNumber;
     if (mobileNumber !== undefined) newMetadata.mobileNumber = mobileNumber;
     if (tags !== undefined) newMetadata.tags = tags;
-    if (metadata) Object.assign(newMetadata, metadata);
+
+    // Merge metadata, preserving serviceOverrides
+    if (metadata) {
+      Object.assign(newMetadata, metadata);
+      // Preserve serviceOverrides from request if provided
+      if (metadata.serviceOverrides !== undefined) {
+        newMetadata.serviceOverrides = metadata.serviceOverrides;
+      }
+    }
     updateData.metadata = newMetadata;
 
     await card.update(updateData);
