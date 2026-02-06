@@ -207,7 +207,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-services-edit-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .dc-services-edit-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-.dc-service-item { display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 10px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.dc-service-item { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 40px 12px 12px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 10px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .dc-service-item:hover { background: #f8fafc; border-color: var(--dc-primary); box-shadow: 0 2px 6px rgba(37,99,235,0.1); transform: translateY(-1px); }
 .dc-service-item.dragging { opacity: 0.4; transform: rotate(2deg); }
 .dc-service-item.drag-over { border-color: var(--dc-primary); background: #dbeafe; border-style: dashed; }
@@ -220,6 +220,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-drag-handle svg { width: 18px; height: 18px; }
 
 .dc-service-info { flex: 1; min-width: 0; }
+.dc-service-content { flex: 1; min-width: 0; }
 .dc-service-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .dc-service-code { display: inline-flex; align-items: center; padding: 2px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
 .dc-service-original-title { font-size: 13px; color: var(--dc-text); font-weight: 500; }
@@ -238,7 +239,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-price { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #dcfce7; color: #16a34a; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .dc-service-price svg { width: 14px; height: 14px; }
 
-.dc-service-actions { display: flex; flex-direction: column; gap: 4px; }
+.dc-service-actions { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
 .dc-service-btn { padding: 8px; border: none; background: white; cursor: pointer; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; border: 1px solid var(--dc-border); }
 .dc-service-btn:hover { transform: scale(1.1); }
 .dc-service-btn svg { width: 18px; height: 18px; }
