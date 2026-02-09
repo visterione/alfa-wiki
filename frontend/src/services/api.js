@@ -414,4 +414,68 @@ export const kanban = {
   checkAccess: () => api.get('/kanban/check-access')
 };
 
+// === REVIEWS API ===
+export const reviews = {
+  // === PLATFORMS ===
+  getPlatforms: () => api.get('/reviews/platforms'),
+  createPlatform: (data) => api.post('/reviews/platforms', data),
+  updatePlatform: (id, data) => api.put(`/reviews/platforms/${id}`, data),
+  deletePlatform: (id) => api.delete(`/reviews/platforms/${id}`),
+
+  // === BOARDS ===
+  getBoards: () => api.get('/reviews/boards'),
+  getBoard: (id) => api.get(`/reviews/boards/${id}`),
+  createBoard: (data) => api.post('/reviews/boards', data),
+  updateBoard: (id, data) => api.put(`/reviews/boards/${id}`, data),
+  deleteBoard: (id) => api.delete(`/reviews/boards/${id}`),
+
+  // === BOARD PERMISSIONS ===
+  getBoardPermissions: (boardId) => api.get(`/reviews/boards/${boardId}/permissions`),
+  addBoardPermission: (boardId, data) => api.post(`/reviews/boards/${boardId}/permissions`, data),
+  updateBoardPermission: (boardId, permId, data) => api.put(`/reviews/boards/${boardId}/permissions/${permId}`, data),
+  deleteBoardPermission: (boardId, permId) => api.delete(`/reviews/boards/${boardId}/permissions/${permId}`),
+
+  // === BOARD ROLES ===
+  getBoardRoles: (boardId) => api.get(`/reviews/boards/${boardId}/roles`),
+  addBoardRole: (boardId, data) => api.post(`/reviews/boards/${boardId}/roles`, data),
+  deleteBoardRole: (boardId, roleId) => api.delete(`/reviews/boards/${boardId}/roles/${roleId}`),
+
+  // === BOARD SETTINGS ===
+  getBoardSettings: (boardId) => api.get(`/reviews/boards/${boardId}/settings`),
+  updateBoardSettings: (boardId, data) => api.put(`/reviews/boards/${boardId}/settings`, data),
+
+  // === REVIEWS ===
+  getReviews: (boardId) => api.get(`/reviews?boardId=${boardId}`),
+  getReview: (id) => api.get(`/reviews/${id}`),
+  createReview: (data) => api.post('/reviews', data),
+  updateReview: (id, data) => api.put(`/reviews/${id}`, data),
+  deleteReview: (id) => api.delete(`/reviews/${id}`),
+  moveReview: (id, status, sortOrder) => api.post(`/reviews/${id}/move`, { status, sortOrder }),
+  assignReview: (id, assigneeIds) => api.post(`/reviews/${id}/assign`, { assigneeIds }),
+  addComment: (id, data) => api.post(`/reviews/${id}/comment`, data),
+  finalizeReview: (id, data) => api.post(`/reviews/${id}/finalize`, data),
+  getReviewPdf: (id) => api.get(`/reviews/${id}/pdf`, { responseType: 'blob' }),
+
+  // === ARCHIVE ===
+  getArchive: (params) => api.get('/reviews/archive', { params }),
+  archiveReview: (id) => api.post(`/reviews/${id}/archive`),
+  restoreReview: (id) => api.post(`/reviews/${id}/restore`),
+
+  // === STATISTICS ===
+  getStats: (params) => api.get('/reviews/stats', { params }),
+
+  // === FILES ===
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/reviews/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  deleteFile: (fileId, reviewId) => api.delete(`/reviews/files/${fileId}?reviewId=${reviewId}`),
+
+  // === DOCTORS AUTOCOMPLETE ===
+  suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } })
+};
+
 export default api;
