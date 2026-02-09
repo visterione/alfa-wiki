@@ -1251,6 +1251,323 @@ BoardPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 KanbanTask.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 KanbanTask.belongsTo(KanbanBoard, { foreignKey: 'boardId', as: 'board' });
 
+// === REVIEW MODULE MODELS ===
+
+// ReviewPlatform model - справочник площадок (ПроДокторов, Яндекс, 2ГИС и т.д.)
+const ReviewPlatform = sequelize.define('ReviewPlatform', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    unique: true,
+    comment: 'Название площадки'
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'Площадка активна'
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Порядок сортировки'
+  }
+}, {
+  tableName: 'review_platforms',
+  timestamps: true,
+  indexes: [
+    { fields: ['isActive'] },
+    { fields: ['sortOrder'] }
+  ]
+});
+
+// ReviewBoard model - доска отзывов (соответствует медцентру)
+const ReviewBoard = sequelize.define('ReviewBoard', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Название доски (медицинский центр)'
+  },
+  description: {
+    type: DataTypes.TEXT,
+    comment: 'Описание доски'
+  },
+  ownerId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID владельца доски'
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Доска в архиве'
+  },
+  notificationSettings: {
+    type: DataTypes.JSONB,
+    defaultValue: {
+      newReview: { roles: ['creator'], users: [] },
+      statusChange: { roles: ['creator', 'negative_handler'], users: [] },
+      assignment: { roles: [], users: [] }
+    },
+    comment: 'Настройки уведомлений'
+  }
+}, {
+  tableName: 'review_boards',
+  timestamps: true,
+  indexes: [
+    { fields: ['ownerId'] },
+    { fields: ['archived'] }
+  ]
+});
+
+// ReviewBoardPermission model - доступ к доскам отзывов
+const ReviewBoardPermission = sequelize.define('ReviewBoardPermission', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  boardId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID доски'
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя'
+  },
+  role: {
+    type: DataTypes.STRING(20),
+    allowNull: false,
+    validate: {
+      isIn: [['owner', 'editor', 'viewer']]
+    },
+    comment: 'Роль: owner, editor, viewer'
+  }
+}, {
+  tableName: 'review_board_permissions',
+  timestamps: true,
+  indexes: [
+    { fields: ['boardId'] },
+    { fields: ['userId'] },
+    { unique: true, fields: ['boardId', 'userId'] }
+  ]
+});
+
+// ReviewBoardRole model - бизнес-роли на доске (создатель, обработчик негатива и т.д.)
+const ReviewBoardRole = sequelize.define('ReviewBoardRole', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  boardId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID доски'
+  },
+  roleName: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    validate: {
+      isIn: [['creator', 'negative_handler', 'reviewer', 'publisher']]
+    },
+    comment: 'Роль: creator, negative_handler, reviewer, publisher'
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя с этой ролью'
+  }
+}, {
+  tableName: 'review_board_roles',
+  timestamps: true,
+  indexes: [
+    { fields: ['boardId'] },
+    { fields: ['roleName'] },
+    { fields: ['userId'] },
+    { unique: true, fields: ['boardId', 'roleName', 'userId'] }
+  ]
+});
+
+// Review model - отзыв
+const Review = sequelize.define('Review', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  boardId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID доски'
+  },
+  patientName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'ФИО пациента'
+  },
+  reviewDate: {
+    type: DataTypes.DATEONLY,
+    allowNull: false,
+    comment: 'Дата отзыва'
+  },
+  platformId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID площадки'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    comment: 'ФИО врача'
+  },
+  rating: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    validate: { min: 1, max: 5 },
+    comment: 'Оценка от 1 до 5'
+  },
+  reviewText: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    comment: 'Текст отзыва'
+  },
+  additionalInfo: {
+    type: DataTypes.TEXT,
+    comment: 'Дополнительная информация'
+  },
+  status: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: 'new',
+    comment: 'Статус: new, in_progress, request_info, verification_done, final'
+  },
+  attachments: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Прикрепленные файлы'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    comment: 'ID создателя'
+  },
+  assigneeIds: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'ID назначенных на этап "Запрос сведений"'
+  },
+  sortOrder: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Порядок сортировки'
+  },
+  archived: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'В архиве'
+  },
+  archivedAt: {
+    type: DataTypes.DATE,
+    comment: 'Дата архивации'
+  },
+  decisionCategory: {
+    type: DataTypes.STRING(50),
+    comment: 'Категория решения: resolved, compensation, refund, clarification, other'
+  },
+  decisionDescription: {
+    type: DataTypes.TEXT,
+    comment: 'Описание решения'
+  },
+  finalizedAt: {
+    type: DataTypes.DATE,
+    comment: 'Дата финализации'
+  },
+  finalizedBy: {
+    type: DataTypes.UUID,
+    comment: 'ID финализировавшего'
+  },
+  reportPdfPath: {
+    type: DataTypes.STRING(1000),
+    comment: 'Путь к PDF отчету'
+  }
+}, {
+  tableName: 'reviews',
+  timestamps: true,
+  indexes: [
+    { fields: ['boardId'] },
+    { fields: ['status'] },
+    { fields: ['platformId'] },
+    { fields: ['rating'] },
+    { fields: ['doctorName'] },
+    { fields: ['reviewDate'] },
+    { fields: ['archived'] },
+    { fields: ['sortOrder'] },
+    { fields: ['createdBy'] }
+  ]
+});
+
+// ReviewHistory model - история действий по отзыву
+const ReviewHistory = sequelize.define('ReviewHistory', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  reviewId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID отзыва'
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя'
+  },
+  action: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'Действие: created, status_change, comment, file_upload, assignment, finalized'
+  },
+  oldValue: {
+    type: DataTypes.TEXT,
+    comment: 'Предыдущее значение'
+  },
+  newValue: {
+    type: DataTypes.TEXT,
+    comment: 'Новое значение'
+  },
+  comment: {
+    type: DataTypes.TEXT,
+    comment: 'Комментарий'
+  },
+  attachments: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Прикрепленные файлы'
+  }
+}, {
+  tableName: 'review_history',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { fields: ['reviewId'] },
+    { fields: ['userId'] },
+    { fields: ['action'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
+// ReviewBoard relationships
+ReviewBoard.belongsTo(User, { foreignKey: 'ownerId', as: 'owner' });
+ReviewBoard.hasMany(Review, { foreignKey: 'boardId', as: 'reviews', onDelete: 'CASCADE' });
+ReviewBoard.hasMany(ReviewBoardPermission, { foreignKey: 'boardId', as: 'permissions', onDelete: 'CASCADE' });
+ReviewBoard.hasMany(ReviewBoardRole, { foreignKey: 'boardId', as: 'roles', onDelete: 'CASCADE' });
+
+// ReviewBoardPermission relationships
+ReviewBoardPermission.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
+ReviewBoardPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// ReviewBoardRole relationships
+ReviewBoardRole.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
+ReviewBoardRole.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// Review relationships
+Review.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
+Review.belongsTo(ReviewPlatform, { foreignKey: 'platformId', as: 'platform' });
+Review.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+Review.belongsTo(User, { foreignKey: 'finalizedBy', as: 'finalizer' });
+Review.hasMany(ReviewHistory, { foreignKey: 'reviewId', as: 'history', onDelete: 'CASCADE' });
+
+// ReviewHistory relationships
+ReviewHistory.belongsTo(Review, { foreignKey: 'reviewId', as: 'review' });
+ReviewHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 // AccreditationFile relationships
 AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
 AccreditationFile.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
@@ -1306,5 +1623,12 @@ module.exports = {
   BoardPermission,
   KanbanTask,
   PriceComparison,
-  PriceComparisonItem
+  PriceComparisonItem,
+  // Reviews module
+  ReviewPlatform,
+  ReviewBoard,
+  ReviewBoardPermission,
+  ReviewBoardRole,
+  Review,
+  ReviewHistory
 };

@@ -27,6 +27,12 @@ import Kanban from './pages/Kanban';
 import KanbanArchive from './pages/KanbanArchive';
 import BoardsList from './pages/BoardsList';
 import BoardSettings from './pages/BoardSettings';
+// Reviews module
+import ReviewBoardsList from './pages/ReviewBoardsList';
+import ReviewBoard from './pages/ReviewBoard';
+import ReviewBoardSettings from './pages/ReviewBoardSettings';
+import ReviewArchive from './pages/ReviewArchive';
+import ReviewStatistics from './pages/ReviewStatistics';
 import './index.css';
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
@@ -91,6 +97,13 @@ function AppRoutes() {
         <Route path="kanban/board/:id" element={<Kanban />} />
         <Route path="kanban/board/:id/settings" element={<BoardSettings />} />
         <Route path="kanban/board/:id/archive" element={<KanbanArchive />} />
+
+        {/* Reviews module */}
+        <Route path="reviews" element={<ReviewBoardsList />} />
+        <Route path="reviews/board/:id" element={<ReviewBoard />} />
+        <Route path="reviews/board/:id/settings" element={<ReviewBoardSettings />} />
+        <Route path="reviews/board/:id/stats" element={<ReviewStatistics />} />
+        <Route path="reviews/archive" element={<ReviewArchive />} />
 
         {/* КУРСЫ - добавьте эти строки */}
         <Route path="courses" element={<Courses />} />

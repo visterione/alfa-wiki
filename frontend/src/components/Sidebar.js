@@ -377,7 +377,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnAdminPages = location.pathname === '/explorer';
   const isOnCourses = location.pathname.startsWith('/courses');
   const isOnKanban = location.pathname.startsWith('/kanban');
-  const isOnDoctors = location.pathname.startsWith('/doctors');
+  const isOnReviews = location.pathname.startsWith('/reviews');
 
   const handleClick = (path) => {
     navigate(path);
@@ -435,12 +435,12 @@ function QuickAccessButtons({ onClose }) {
         <Trello size={20} />
       </button>
 
-      <button 
-        className={`quick-access-btn doctors ${isOnDoctors ? 'active' : ''}`}
-        onClick={() => handleClick('/doctors')}
-        title="Врачи"
+      <button
+        className={`quick-access-btn reviews ${isOnReviews ? 'active' : ''}`}
+        onClick={() => handleClick('/reviews')}
+        title="Отзывы"
       >
-        <Stethoscope size={20} />
+        <MessageSquare size={20} />
       </button>
     </div>
   );

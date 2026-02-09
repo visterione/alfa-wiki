@@ -528,20 +528,20 @@
   box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4) inset;
 }
 
-.quick-access-btn.doctors {
-  background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
+.quick-access-btn.reviews {
+  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.2);
 }
 
-.quick-access-btn.doctors:hover {
-  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
-  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+.quick-access-btn.reviews:hover {
+  background: linear-gradient(135deg, #9333ea 0%, #7e22ce 100%);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
   transform: translateY(-1px);
 }
 
-.quick-access-btn.doctors.active {
-  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
-  box-shadow: 0 2px 8px rgba(6, 182, 212, 0.4) inset;
+.quick-access-btn.reviews.active {
+  background: linear-gradient(135deg, #7e22ce 0%, #6b21a8 100%);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4) inset;
 }
 
 .quick-access-badge {

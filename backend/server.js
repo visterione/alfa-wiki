@@ -36,6 +36,7 @@ const servicesRoutes = require('./routes/services');
 const calendarRoutes = require('./routes/calendar');
 const kanbanRoutes = require('./routes/kanban');
 const priceComparisonsRoutes = require('./routes/price-comparisons');
+const reviewsRoutes = require('./routes/reviews');
 
 const app = express();
 const server = http.createServer(app);
@@ -150,6 +151,7 @@ app.use('/api/services', servicesRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/price-comparisons', priceComparisonsRoutes);
+app.use('/api/reviews', reviewsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
