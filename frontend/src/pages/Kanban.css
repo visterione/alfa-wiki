@@ -403,7 +403,9 @@
 }
 
 .form-group label {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.5rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -912,5 +914,336 @@
 
   .filter-group {
     min-width: 100%;
+  }
+}
+
+/* Progress Bar on Task Cards */
+.task-progress-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.progress-bar-container {
+  flex: 1;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Task View Modal */
+.modal-content.task-view-modal {
+  max-width: 1200px !important;
+  width: 90% !important;
+}
+
+.modal-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.task-view-body {
+  padding: 1.5rem;
+}
+
+.view-section {
+  margin-bottom: 1.5rem;
+}
+
+.view-section:last-child {
+  margin-bottom: 0;
+}
+
+.view-section > label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+}
+
+.view-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.view-field {
+  margin-bottom: 1rem;
+}
+
+.view-field:last-child {
+  margin-bottom: 0;
+}
+
+.view-field label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.view-value {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.view-value.overdue {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+/* Status and Priority Badges in View Modal */
+.status-badge,
+.priority-badge {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+/* Assignees List in View Modal */
+.assignees-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.assignee-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-secondary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.assignee-chip img,
+.assignee-chip .avatar-placeholder-small {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.avatar-placeholder-small {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.assignee-chip span {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+}
+
+/* Tags List in View Modal */
+.tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag-chip {
+  background: var(--bg-secondary);
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+/* Description */
+.view-description {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.description-text {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Subtasks in Form */
+.subtasks-input {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.subtasks-input input {
+  flex: 1;
+}
+
+.subtasks-input button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+}
+
+.subtasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.subtask-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.subtask-item:hover {
+  background: var(--bg-tertiary);
+}
+
+.subtask-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: #10b981;
+}
+
+.subtask-item span {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.subtask-item span.completed {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+.subtask-item .btn-icon {
+  padding: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.subtask-item:hover .btn-icon {
+  opacity: 1;
+}
+
+/* Subtasks in View Modal */
+.view-subtasks {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.subtask-item-view {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.subtask-item-view:hover {
+  background: var(--bg-tertiary);
+}
+
+.subtask-item-view input[type="checkbox"] {
+  margin-top: 0.25rem;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: #10b981;
+}
+
+.subtask-item-view input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.subtask-item-view span {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  word-wrap: break-word;
+}
+
+.subtask-item-view span.completed {
+  text-decoration: line-through;
+  color: var(--text-secondary);
+}
+
+/* Cursor pointer for clickable task cards */
+.kanban-task {
+  cursor: pointer;
+}
+
+.kanban-task.dragging {
+  cursor: grabbing;
+}
+
+/* Responsive View Modal */
+@media (max-width: 768px) {
+  .task-view-modal {
+    max-width: 95%;
+  }
+
+  .view-row {
+    grid-template-columns: 1fr;
+  }
+
+  .assignees-list,
+  .tags-list {
+    flex-direction: column;
   }
 }

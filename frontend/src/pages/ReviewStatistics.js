@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, BarChart3, Calendar, Star, MessageSquare,
-  TrendingUp, Users, Clock, CheckCircle
+  TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { reviews } from '../services/api';
 import { REVIEW_STATUSES, getStatusById } from '../utils/reviewConstants';
@@ -16,15 +16,25 @@ const ReviewStatistics = () => {
   const [board, setBoard] = useState(null);
   const [stats, setStats] = useState(null);
   const [platforms, setPlatforms] = useState([]);
+  const [doctorSort, setDoctorSort] = useState({ field: 'avgRating', direction: 'desc' });
+  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, content: '', type: '' });
 
-  // Даты фильтра (по умолчанию текущий месяц)
+  // Даты фильтра (по умолчанию текущая неделя ПН-ВС)
   const [dateFrom, setDateFrom] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+    const today = new Date();
+    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust for Sunday (0) to be -6
+    const monday = new Date(today);
+    monday.setDate(today.getDate() + diffToMonday);
+    return monday.toISOString().split('T')[0];
   });
   const [dateTo, setDateTo] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0];
+    const today = new Date();
+    const dayOfWeek = today.getDay();
+    const diffToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek; // Days until Sunday
+    const sunday = new Date(today);
+    sunday.setDate(today.getDate() + diffToSunday);
+    return sunday.toISOString().split('T')[0];
   });
 
   useEffect(() => {
@@ -94,7 +104,7 @@ const ReviewStatistics = () => {
     const platformData = platforms.map(p => ({
       ...p,
       count: stats.byPlatform?.[p.id] || 0
-    })).filter(p => p.count > 0);
+    }));
 
     // Распределение по оценкам
     const ratingData = [5, 4, 3, 2, 1].map(r => ({
@@ -125,6 +135,45 @@ const ReviewStatistics = () => {
     });
   };
 
+  const handleDoctorSort = (field) => {
+    setDoctorSort(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  };
+
+  const sortedDoctors = useMemo(() => {
+    if (!stats?.topDoctors) return [];
+
+    const sorted = [...stats.topDoctors].sort((a, b) => {
+      let aVal = a[doctorSort.field];
+      let bVal = b[doctorSort.field];
+
+      // Handle name sorting
+      if (doctorSort.field === 'name') {
+        return doctorSort.direction === 'desc'
+          ? bVal.localeCompare(aVal, 'ru')
+          : aVal.localeCompare(bVal, 'ru');
+      }
+
+      // Handle numeric sorting
+      aVal = aVal || 0;
+      bVal = bVal || 0;
+      return doctorSort.direction === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    return sorted;
+  }, [stats?.topDoctors, doctorSort]);
+
+  const SortIcon = ({ field }) => {
+    if (doctorSort.field !== field) {
+      return <ArrowUpDown size={14} className="sort-icon inactive" />;
+    }
+    return doctorSort.direction === 'desc'
+      ? <ArrowDown size={14} className="sort-icon active" />
+      : <ArrowUp size={14} className="sort-icon active" />;
+  };
+
   if (loading) {
     return (
       <div className="review-stats-loading">
@@ -150,13 +199,7 @@ const ReviewStatistics = () => {
           <button className="btn-back" onClick={() => navigate(`/reviews/board/${boardId}`)}>
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1>
-              <BarChart3 size={24} />
-              Статистика
-            </h1>
-            <p>{board.name}</p>
-          </div>
+          <h1>Статистика</h1>
         </div>
 
         <div className="header-actions">
@@ -262,35 +305,6 @@ const ReviewStatistics = () => {
           </div>
         </div>
 
-        {/* По площадкам */}
-        <div className="stats-card">
-          <h3>
-            <Users size={18} />
-            По площадкам
-          </h3>
-          <div className="chart-container">
-            {chartData?.platformData.length === 0 ? (
-              <div className="no-data">Нет данных</div>
-            ) : (
-              chartData?.platformData.map(platform => (
-                <div key={platform.id} className="bar-row">
-                  <div className="bar-label">{platform.name}</div>
-                  <div className="bar-wrapper">
-                    <div
-                      className="bar"
-                      style={{
-                        width: `${(platform.count / chartData.maxPlatform) * 100}%`,
-                        background: '#a855f7'
-                      }}
-                    />
-                  </div>
-                  <div className="bar-value">{platform.count}</div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
         {/* По оценкам */}
         <div className="stats-card">
           <h3>
@@ -318,27 +332,34 @@ const ReviewStatistics = () => {
               </div>
             ))}
           </div>
+        </div>
 
-          {/* Распределение оценок в процентах */}
-          <div className="rating-distribution">
-            {chartData?.ratingData.map(item => {
-              const percentage = stats?.total ? Math.round((item.count / stats.total) * 100) : 0;
-              return (
-                <div key={item.rating} className="distribution-item">
-                  <span className="dist-rating">{item.rating}★</span>
-                  <div className="dist-bar-wrapper">
+        {/* По площадкам */}
+        <div className="stats-card">
+          <h3>
+            <Users size={18} />
+            По площадкам
+          </h3>
+          <div className="chart-container">
+            {chartData?.platformData.length === 0 ? (
+              <div className="no-data">Нет данных</div>
+            ) : (
+              chartData?.platformData.map(platform => (
+                <div key={platform.id} className="bar-row">
+                  <div className="bar-label">{platform.name}</div>
+                  <div className="bar-wrapper">
                     <div
-                      className="dist-bar"
+                      className="bar"
                       style={{
-                        width: `${percentage}%`,
-                        background: item.rating >= 4 ? '#10b981' : item.rating >= 3 ? '#f59e0b' : '#ef4444'
+                        width: `${(platform.count / chartData.maxPlatform) * 100}%`,
+                        background: '#3b82f6'
                       }}
                     />
                   </div>
-                  <span className="dist-percent">{percentage}%</span>
+                  <div className="bar-value">{platform.count}</div>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
 
@@ -394,27 +415,216 @@ const ReviewStatistics = () => {
         </div>
       </div>
 
-      {/* Топ врачей (если есть данные) */}
+      {/* Динамика по времени */}
+      {stats?.dailyStats?.data && stats.dailyStats.data.length > 0 && (
+        <div className="stats-card full-width">
+          <h3>
+            <TrendingUp size={18} />
+            Динамика {stats.dailyStats.period === 'day' ? 'по дням' : stats.dailyStats.period === 'week' ? 'по неделям' : 'по месяцам'}
+          </h3>
+          <div className="line-chart-container">
+            <div className="line-chart" style={{ position: 'relative' }}>
+              <svg viewBox="0 0 800 250" preserveAspectRatio="none" className="line-chart-svg">
+                {(() => {
+                  const data = stats.dailyStats.data;
+                  const maxPositive = Math.max(...data.map(d => d.positive), 1);
+                  const maxNegative = Math.max(...data.map(d => d.negative), 1);
+                  const maxValue = Math.max(maxPositive, maxNegative, 1);
+
+                  const width = 800;
+                  const height = 200;
+                  const padding = 20;
+                  const chartWidth = width - padding * 2;
+                  const chartHeight = height - padding * 2;
+
+                  const xStep = chartWidth / Math.max(data.length - 1, 1);
+
+                  const positivePoints = data.map((d, i) => {
+                    const x = padding + i * xStep;
+                    const y = padding + chartHeight - (d.positive / maxValue) * chartHeight;
+                    return `${x},${y}`;
+                  }).join(' ');
+
+                  const negativePoints = data.map((d, i) => {
+                    const x = padding + i * xStep;
+                    const y = padding + chartHeight - (d.negative / maxValue) * chartHeight;
+                    return `${x},${y}`;
+                  }).join(' ');
+
+                  return (
+                    <>
+                      {/* Grid lines */}
+                      {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
+                        <line
+                          key={i}
+                          x1={padding}
+                          y1={padding + chartHeight * (1 - ratio)}
+                          x2={width - padding}
+                          y2={padding + chartHeight * (1 - ratio)}
+                          stroke="var(--border-color)"
+                          strokeWidth="1"
+                          opacity="0.3"
+                        />
+                      ))}
+
+                      {/* Positive line */}
+                      <polyline
+                        points={positivePoints}
+                        fill="none"
+                        stroke="#10b981"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {/* Negative line */}
+                      <polyline
+                        points={negativePoints}
+                        fill="none"
+                        stroke="#ef4444"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {/* Data points - Positive */}
+                      {data.map((d, i) => {
+                        const x = padding + i * xStep;
+                        const y = padding + chartHeight - (d.positive / maxValue) * chartHeight;
+                        return (
+                          <circle
+                            key={`pos-${i}`}
+                            cx={x}
+                            cy={y}
+                            r="5"
+                            fill="#10b981"
+                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={(e) => {
+                              const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+                              const dateStr = new Date(d.date).toLocaleDateString('ru-RU', {
+                                day: '2-digit',
+                                month: 'short',
+                                ...(stats.dailyStats.period === 'month' && { year: 'numeric' })
+                              });
+                              setTooltip({
+                                show: true,
+                                x: rect.left + (x / 800) * rect.width,
+                                y: rect.top + (y / 250) * rect.height - 10,
+                                content: `${dateStr}: ${d.positive}`,
+                                type: 'positive'
+                              });
+                            }}
+                            onMouseLeave={() => setTooltip({ show: false, x: 0, y: 0, content: '', type: '' })}
+                          />
+                        );
+                      })}
+
+                      {/* Data points - Negative */}
+                      {data.map((d, i) => {
+                        const x = padding + i * xStep;
+                        const y = padding + chartHeight - (d.negative / maxValue) * chartHeight;
+                        return (
+                          <circle
+                            key={`neg-${i}`}
+                            cx={x}
+                            cy={y}
+                            r="5"
+                            fill="#ef4444"
+                            style={{ cursor: 'pointer' }}
+                            onMouseEnter={(e) => {
+                              const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+                              const dateStr = new Date(d.date).toLocaleDateString('ru-RU', {
+                                day: '2-digit',
+                                month: 'short',
+                                ...(stats.dailyStats.period === 'month' && { year: 'numeric' })
+                              });
+                              setTooltip({
+                                show: true,
+                                x: rect.left + (x / 800) * rect.width,
+                                y: rect.top + (y / 250) * rect.height - 10,
+                                content: `${dateStr}: ${d.negative}`,
+                                type: 'negative'
+                              });
+                            }}
+                            onMouseLeave={() => setTooltip({ show: false, x: 0, y: 0, content: '', type: '' })}
+                          />
+                        );
+                      })}
+                    </>
+                  );
+                })()}
+              </svg>
+
+              {/* Tooltip */}
+              {tooltip.show && (
+                <div
+                  className={`chart-tooltip ${tooltip.type}`}
+                  style={{
+                    position: 'fixed',
+                    left: `${tooltip.x}px`,
+                    top: `${tooltip.y}px`,
+                    transform: 'translate(-50%, -100%)',
+                    pointerEvents: 'none',
+                    zIndex: 1000
+                  }}
+                >
+                  {tooltip.content}
+                </div>
+              )}
+            </div>
+            <div className="line-chart-labels">
+              {stats.dailyStats.data.map((d, i) => {
+                if (i % Math.ceil(stats.dailyStats.data.length / 10) === 0 || i === stats.dailyStats.data.length - 1) {
+                  const dateFormat = stats.dailyStats.period === 'month'
+                    ? { month: 'short', year: 'numeric' }
+                    : stats.dailyStats.period === 'week'
+                    ? { day: '2-digit', month: 'short' }
+                    : { day: '2-digit', month: '2-digit' };
+
+                  return (
+                    <span key={i} className="date-label">
+                      {new Date(d.date).toLocaleDateString('ru-RU', dateFormat)}
+                    </span>
+                  );
+                }
+                return null;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Рейтинг врачей (если есть данные) */}
       {stats?.topDoctors && stats.topDoctors.length > 0 && (
         <div className="stats-card full-width">
           <h3>
             <Users size={18} />
-            Топ врачей по количеству отзывов
+            Рейтинг врачей
           </h3>
           <div className="doctors-table">
             <table>
               <thead>
                 <tr>
                   <th>#</th>
-                  <th>Врач</th>
-                  <th>Отзывов</th>
-                  <th>Средняя оценка</th>
-                  <th>Положительных</th>
-                  <th>Отрицательных</th>
+                  <th className="sortable" onClick={() => handleDoctorSort('name')}>
+                    Врач <SortIcon field="name" />
+                  </th>
+                  <th className="sortable" onClick={() => handleDoctorSort('count')}>
+                    Отзывов <SortIcon field="count" />
+                  </th>
+                  <th className="sortable" onClick={() => handleDoctorSort('avgRating')}>
+                    Средняя оценка <SortIcon field="avgRating" />
+                  </th>
+                  <th className="sortable" onClick={() => handleDoctorSort('positive')}>
+                    Положительных <SortIcon field="positive" />
+                  </th>
+                  <th className="sortable" onClick={() => handleDoctorSort('negative')}>
+                    Отрицательных <SortIcon field="negative" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {stats.topDoctors.map((doc, idx) => (
+                {sortedDoctors.map((doc, idx) => (
                   <tr key={idx}>
                     <td>{idx + 1}</td>
                     <td>{doc.name}</td>

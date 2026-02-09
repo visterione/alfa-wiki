@@ -1196,6 +1196,11 @@ const KanbanTask = sequelize.define('KanbanTask', {
     defaultValue: [],
     comment: 'Прикрепленные файлы: [{id, filename, path, size, uploadedAt, uploadedBy}]'
   },
+  subtasks: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Подзадачи: [{id, text, completed}]'
+  },
   dueDate: {
     type: DataTypes.DATE,
     comment: 'Срок выполнения задачи'

@@ -20,7 +20,9 @@ import {
   Archive,
   Filter,
   XCircle,
-  ArrowLeft
+  ArrowLeft,
+  Eye,
+  CheckSquare
 } from 'lucide-react';
 import './Kanban.css';
 
@@ -38,6 +40,19 @@ const PRIORITY_CONFIG = {
   urgent: { label: 'Срочно', color: '#ffebee', textColor: '#c62828' }
 };
 
+// Utility functions for subtasks handling
+const getSubtasksProgress = (subtasks) => {
+  if (!subtasks || subtasks.length === 0) {
+    return null;
+  }
+
+  const completed = subtasks.filter(st => st.completed).length;
+  const total = subtasks.length;
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  return { completed, total, percent };
+};
+
 function Kanban() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -49,6 +64,8 @@ function Kanban() {
   const [access, setAccess] = useState({ canRead: false, canWrite: false });
   const [showTaskModal, setShowTaskModal] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
+  const [viewingTask, setViewingTask] = useState(null);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -57,9 +74,11 @@ function Kanban() {
     assigneeIds: [],
     tags: [],
     dueDate: '',
-    attachments: []
+    attachments: [],
+    subtasks: []
   });
   const [tagInput, setTagInput] = useState('');
+  const [subtaskInput, setSubtaskInput] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
@@ -162,9 +181,11 @@ function Kanban() {
       assigneeIds: [],
       tags: [],
       dueDate: '',
-      attachments: []
+      attachments: [],
+      subtasks: []
     });
     setAssigneeSearch('');
+    setSubtaskInput('');
     setShowTaskModal(true);
   };
 
@@ -178,10 +199,83 @@ function Kanban() {
       assigneeIds: task.assigneeIds || [],
       tags: task.tags || [],
       dueDate: task.dueDate ? task.dueDate.substring(0, 16) : '',
-      attachments: task.attachments || []
+      attachments: task.attachments || [],
+      subtasks: task.subtasks || []
     });
     setAssigneeSearch('');
+    setSubtaskInput('');
     setShowTaskModal(true);
+  };
+
+  const openViewModal = (task) => {
+    setViewingTask(task);
+    setShowViewModal(true);
+  };
+
+  const canEditTask = (task) => {
+    // Проверяем: имеет ли пользователь права на запись в доске ИЛИ является исполнителем задачи
+    if (access.canWrite) return true;
+    if (task && task.assigneeIds && task.assigneeIds.includes(user.id)) return true;
+    return false;
+  };
+
+  const handleSubtaskToggle = async (subtaskId) => {
+    if (!viewingTask) return;
+
+    const newSubtasks = (viewingTask.subtasks || []).map(st =>
+      st.id === subtaskId ? { ...st, completed: !st.completed } : st
+    );
+
+    try {
+      await kanban.updateTask(viewingTask.id, {
+        ...viewingTask,
+        subtasks: newSubtasks
+      });
+
+      // Update local state
+      setViewingTask({ ...viewingTask, subtasks: newSubtasks });
+      setTasks(prevTasks =>
+        prevTasks.map(t =>
+          t.id === viewingTask.id ? { ...t, subtasks: newSubtasks } : t
+        )
+      );
+
+      toast.success('Подзадача обновлена');
+    } catch (error) {
+      console.error('Error updating subtask:', error);
+      toast.error('Ошибка при обновлении подзадачи');
+    }
+  };
+
+  const addSubtask = () => {
+    if (subtaskInput.trim()) {
+      const newSubtask = {
+        id: crypto.randomUUID(),
+        text: subtaskInput.trim(),
+        completed: false
+      };
+      setFormData({
+        ...formData,
+        subtasks: [...formData.subtasks, newSubtask]
+      });
+      setSubtaskInput('');
+    }
+  };
+
+  const removeSubtask = (subtaskId) => {
+    setFormData({
+      ...formData,
+      subtasks: formData.subtasks.filter(st => st.id !== subtaskId)
+    });
+  };
+
+  const toggleSubtaskInForm = (subtaskId) => {
+    setFormData({
+      ...formData,
+      subtasks: formData.subtasks.map(st =>
+        st.id === subtaskId ? { ...st, completed: !st.completed } : st
+      )
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -622,22 +716,34 @@ function Kanban() {
                               backgroundColor: PRIORITY_CONFIG[task.priority]?.color || '#ffffff',
                               color: PRIORITY_CONFIG[task.priority]?.textColor || '#000000'
                             }}
+                            onClick={() => openViewModal(task)}
                           >
                             <div className="task-header">
                               <h4>{task.title}</h4>
-                              {access.canWrite && (
-                                <div className="task-actions">
-                                  <button onClick={() => openEditModal(task)} title="Редактировать">
-                                    <Edit2 size={14} />
-                                  </button>
-                                  <button onClick={() => handleArchive(task.id)} title="В архив">
-                                    <Archive size={14} />
-                                  </button>
-                                  <button onClick={() => handleDelete(task.id)} title="Удалить">
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
+                              <div className="task-actions">
+                                {access.canWrite && (
+                                  <>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openEditModal(task); }}
+                                      title="Редактировать"
+                                    >
+                                      <Edit2 size={14} />
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleArchive(task.id); }}
+                                      title="В архив"
+                                    >
+                                      <Archive size={14} />
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDelete(task.id); }}
+                                      title="Удалить"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
 
                             {task.description && (
@@ -654,6 +760,23 @@ function Kanban() {
                                 ))}
                               </div>
                             )}
+
+                            {(() => {
+                              const progress = getSubtasksProgress(task.subtasks);
+                              return progress && (
+                                <div className="task-progress-bar">
+                                  <div className="progress-bar-container">
+                                    <div
+                                      className="progress-bar-fill"
+                                      style={{ width: `${progress.percent}%` }}
+                                    />
+                                  </div>
+                                  <span className="progress-text">
+                                    {progress.completed}/{progress.total}
+                                  </span>
+                                </div>
+                              );
+                            })()}
 
                             <div className="task-footer">
                               {task.assignees && task.assignees.length > 0 && (
@@ -738,18 +861,17 @@ function Kanban() {
                 />
               </div>
 
-              <div className="form-group">
-                <label>Описание</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Введите описание задачи"
-                  rows={4}
-                />
-              </div>
-
               <div className="form-layout-two-columns">
                 <div className="form-column-left">
+                  <div className="form-group">
+                    <label>Срок выполнения</label>
+                    <input
+                      type="datetime-local"
+                      value={formData.dueDate}
+                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    />
+                  </div>
+
                   <div className="form-row">
                     <div className="form-group">
                       <label>Статус</label>
@@ -774,6 +896,34 @@ function Kanban() {
                         ))}
                       </select>
                     </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label>Теги</label>
+                    <div className="tags-input">
+                      <input
+                        type="text"
+                        value={tagInput}
+                        onChange={(e) => setTagInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                        placeholder="Введите тег и нажмите Enter"
+                      />
+                      <button type="button" onClick={addTag} className="btn-secondary">
+                        Добавить
+                      </button>
+                    </div>
+                    {formData.tags.length > 0 && (
+                      <div className="tags-list">
+                        {formData.tags.map(tag => (
+                          <span key={tag} className="tag-item">
+                            {tag}
+                            <button type="button" onClick={() => removeTag(tag)}>
+                              <X size={14} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">
@@ -828,37 +978,51 @@ function Kanban() {
 
                 <div className="form-column-right">
                   <div className="form-group">
-                    <label>Срок выполнения</label>
-                    <input
-                      type="datetime-local"
-                      value={formData.dueDate}
-                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    <label>Описание</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="Введите описание задачи"
+                      rows={4}
                     />
                   </div>
 
                   <div className="form-group">
-                    <label>Теги</label>
-                    <div className="tags-input">
+                    <label>Подзадачи</label>
+                    <div className="subtasks-input">
                       <input
                         type="text"
-                        value={tagInput}
-                        onChange={(e) => setTagInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                        placeholder="Введите тег и нажмите Enter"
+                        value={subtaskInput}
+                        onChange={(e) => setSubtaskInput(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                        placeholder="Введите подзадачу и нажмите Enter"
                       />
-                      <button type="button" onClick={addTag} className="btn-secondary">
+                      <button type="button" onClick={addSubtask} className="btn-secondary">
+                        <Plus size={16} />
                         Добавить
                       </button>
                     </div>
-                    {formData.tags.length > 0 && (
-                      <div className="tags-list">
-                        {formData.tags.map(tag => (
-                          <span key={tag} className="tag-item">
-                            {tag}
-                            <button type="button" onClick={() => removeTag(tag)}>
+                    {formData.subtasks && formData.subtasks.length > 0 && (
+                      <div className="subtasks-list">
+                        {formData.subtasks.map(subtask => (
+                          <div key={subtask.id} className="subtask-item">
+                            <input
+                              type="checkbox"
+                              checked={subtask.completed}
+                              onChange={() => toggleSubtaskInForm(subtask.id)}
+                            />
+                            <span className={subtask.completed ? 'completed' : ''}>
+                              {subtask.text}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn-icon"
+                              onClick={() => removeSubtask(subtask.id)}
+                              title="Удалить подзадачу"
+                            >
                               <X size={14} />
                             </button>
-                          </span>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -965,6 +1129,194 @@ function Kanban() {
                 </div>
               ) : (
                 <p className="no-attachments">Нет прикрепленных файлов</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showViewModal && viewingTask && (
+        <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
+          <div className="modal-content task-view-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{viewingTask.title}</h2>
+              <div className="modal-header-actions">
+                {access.canWrite && (
+                  <button
+                    className="btn-icon"
+                    onClick={() => {
+                      setShowViewModal(false);
+                      openEditModal(viewingTask);
+                    }}
+                    title="Редактировать"
+                  >
+                    <Edit2 size={20} />
+                  </button>
+                )}
+                <button className="btn-icon" onClick={() => setShowViewModal(false)}>
+                  <X size={20} />
+                </button>
+              </div>
+            </div>
+
+            <div className="modal-body task-view-body">
+              <div className="view-section">
+                <div className="view-row">
+                  <div className="view-field">
+                    <label>Статус</label>
+                    <div className="view-value">
+                      <span className="status-badge" style={{
+                        backgroundColor: COLUMNS.find(c => c.id === viewingTask.status)?.color || '#ccc',
+                        color: 'white'
+                      }}>
+                        {COLUMNS.find(c => c.id === viewingTask.status)?.title || viewingTask.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="view-field">
+                    <label>Приоритет</label>
+                    <div className="view-value">
+                      <span className="priority-badge" style={{
+                        backgroundColor: PRIORITY_CONFIG[viewingTask.priority]?.color || '#fff',
+                        color: PRIORITY_CONFIG[viewingTask.priority]?.textColor || '#000'
+                      }}>
+                        {PRIORITY_CONFIG[viewingTask.priority]?.label || viewingTask.priority}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="view-row">
+                  {viewingTask.dueDate ? (
+                    <div className="view-field">
+                      <label>
+                        <Calendar size={16} />
+                        Срок выполнения
+                      </label>
+                      <div className={`view-value ${isOverdue(viewingTask.dueDate) ? 'overdue' : ''}`}>
+                        {formatDate(viewingTask.dueDate)}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="view-field">
+                      <label>
+                        <Calendar size={16} />
+                        Срок выполнения
+                      </label>
+                      <div className="view-value" style={{ color: 'var(--text-secondary)' }}>
+                        Не указан
+                      </div>
+                    </div>
+                  )}
+
+                  {viewingTask.assignees && viewingTask.assignees.length > 0 ? (
+                    <div className="view-field">
+                      <label>
+                        <User size={16} />
+                        Исполнители
+                      </label>
+                      <div className="view-value assignees-list">
+                        {viewingTask.assignees.map(assignee => (
+                          <div key={assignee.id} className="assignee-chip">
+                            {getAvatarUrl(assignee.avatar) ? (
+                              <img src={getAvatarUrl(assignee.avatar)} alt="" />
+                            ) : (
+                              <div className="avatar-placeholder-small">
+                                {(assignee.displayName || assignee.username).substring(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                            <span>{assignee.displayName || assignee.username}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="view-field">
+                      <label>
+                        <User size={16} />
+                        Исполнители
+                      </label>
+                      <div className="view-value" style={{ color: 'var(--text-secondary)' }}>
+                        Не назначены
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {viewingTask.tags && viewingTask.tags.length > 0 && (
+                  <div className="view-field">
+                    <label>
+                      <Tag size={16} />
+                      Теги
+                    </label>
+                    <div className="view-value tags-list">
+                      {viewingTask.tags.map(tag => (
+                        <span key={tag} className="tag-chip">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {viewingTask.description && (
+                <div className="view-section">
+                  <label>Описание</label>
+                  <div className="view-description">
+                    <div className="description-text">{viewingTask.description}</div>
+                  </div>
+                </div>
+              )}
+
+              {viewingTask.subtasks && viewingTask.subtasks.length > 0 && (
+                <div className="view-section">
+                  <label>Подзадачи</label>
+                  <div className="view-subtasks">
+                    {viewingTask.subtasks.map(subtask => (
+                      <div key={subtask.id} className="subtask-item-view">
+                        <input
+                          type="checkbox"
+                          checked={subtask.completed}
+                          onChange={() => handleSubtaskToggle(subtask.id)}
+                          disabled={!canEditTask(viewingTask)}
+                        />
+                        <span className={subtask.completed ? 'completed' : ''}>
+                          {subtask.text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {viewingTask.attachments && viewingTask.attachments.length > 0 && (
+                <div className="view-section">
+                  <label>
+                    <Paperclip size={16} />
+                    Прикрепленные файлы
+                  </label>
+                  <div className="attachments-list">
+                    {viewingTask.attachments.map(file => (
+                      <div key={file.id} className="attachment-item">
+                        <Paperclip size={16} />
+                        <span className="attachment-name">{file.filename}</span>
+                        <span className="attachment-size">
+                          ({Math.round(file.size / 1024)} KB)
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => downloadAttachment(file)}
+                          title="Скачать файл"
+                        >
+                          <Download size={16} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>

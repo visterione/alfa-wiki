@@ -679,15 +679,16 @@ const ReviewBoard = () => {
                 </div>
                 <div className="form-group">
                   <label>Оценка *</label>
-                  <div className="rating-selector">
+                  <div className="rating-selector stars">
                     {[1, 2, 3, 4, 5].map(r => (
                       <button
                         key={r}
                         type="button"
-                        className={`rating-btn ${formData.rating === r ? 'selected' : ''} ${r <= 3 ? 'negative' : 'positive'}`}
+                        className={`rating-star-btn ${formData.rating >= r ? 'filled' : ''}`}
                         onClick={() => setFormData(prev => ({ ...prev, rating: r }))}
+                        title={`${r} из 5`}
                       >
-                        {r}
+                        <Star size={28} fill={formData.rating >= r ? '#f59e0b' : 'none'} color={formData.rating >= r ? '#f59e0b' : '#d1d5db'} />
                       </button>
                     ))}
                   </div>

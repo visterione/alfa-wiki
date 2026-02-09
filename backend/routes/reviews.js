@@ -872,10 +872,10 @@ router.get('/archive', authenticate, async (req, res) => {
         { status: 'final' },
         { archived: true }
       ],
-      boardId: boardId ? parseInt(boardId) : { [Op.in]: accessibleBoardIds }
+      boardId: boardId ? boardId : { [Op.in]: accessibleBoardIds }
     };
 
-    if (platformId) where.platformId = parseInt(platformId);
+    if (platformId) where.platformId = platformId;
     if (rating) where.rating = parseInt(rating);
     if (doctor) where.doctorName = { [Op.iLike]: `%${doctor}%` };
     if (search) {
@@ -925,7 +925,13 @@ router.get('/stats', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'boardId обязателен' });
     }
 
-    const board = await ReviewBoard.findByPk(boardId);
+    // Проверяем, что boardId является валидным UUID
+    const parsedBoardId = boardId;
+    if (!parsedBoardId) {
+      return res.status(400).json({ error: 'Неверный формат boardId' });
+    }
+
+    const board = await ReviewBoard.findByPk(parsedBoardId);
     if (!board) {
       return res.status(404).json({ error: 'Доска не найдена' });
     }
@@ -941,7 +947,7 @@ router.get('/stats', authenticate, async (req, res) => {
     dateTo.setHours(23, 59, 59, 999);
 
     const whereBase = {
-      boardId: parseInt(boardId),
+      boardId: parsedBoardId,
       reviewDate: { [Op.between]: [dateFrom, dateTo] }
     };
 
@@ -965,7 +971,7 @@ router.get('/stats', authenticate, async (req, res) => {
     // В работе (не финализированы и не архивированы)
     const pending = await Review.count({
       where: {
-        boardId: parseInt(boardId),
+        boardId: parsedBoardId,
         archived: false,
         status: { [Op.ne]: 'final' }
       }
@@ -973,7 +979,7 @@ router.get('/stats', authenticate, async (req, res) => {
 
     // По статусам
     const statusCounts = await Review.findAll({
-      where: { boardId: parseInt(boardId), archived: false },
+      where: { boardId: parsedBoardId, archived: false },
       attributes: [
         'status',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']
@@ -1037,11 +1043,51 @@ router.get('/stats', authenticate, async (req, res) => {
       attributes: [
         'doctorName',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count'],
-        [Sequelize.fn('AVG', Sequelize.col('rating')), 'avgRating']
+        [Sequelize.fn('AVG', Sequelize.col('rating')), 'avgRating'],
+        [Sequelize.literal("SUM(CASE WHEN \"decisionCategory\" = 'positive' THEN 1 ELSE 0 END)"), 'positive'],
+        [Sequelize.literal("SUM(CASE WHEN \"decisionCategory\" = 'negative' THEN 1 ELSE 0 END)"), 'negative']
       ],
       group: ['doctorName'],
       order: [[Sequelize.literal('count'), 'DESC']],
       limit: 10
+    });
+
+    // Динамика по времени (автоматическая группировка по периоду)
+    const daysDiff = Math.ceil((dateTo - dateFrom) / (1000 * 60 * 60 * 24));
+    let groupByFormat, periodLabel;
+
+    if (daysDiff <= 14) {
+      // До 2 недель - по дням
+      groupByFormat = 'DATE';
+      periodLabel = 'day';
+    } else if (daysDiff <= 60) {
+      // До 2 месяцев - по неделям
+      groupByFormat = 'WEEK';
+      periodLabel = 'week';
+    } else {
+      // Больше 2 месяцев - по месяцам
+      groupByFormat = 'MONTH';
+      periodLabel = 'month';
+    }
+
+    let groupByExpression;
+    if (groupByFormat === 'DATE') {
+      groupByExpression = Sequelize.fn('DATE', Sequelize.col('reviewDate'));
+    } else if (groupByFormat === 'WEEK') {
+      groupByExpression = Sequelize.fn('DATE_TRUNC', 'week', Sequelize.col('reviewDate'));
+    } else {
+      groupByExpression = Sequelize.fn('DATE_TRUNC', 'month', Sequelize.col('reviewDate'));
+    }
+
+    const dailyStats = await Review.findAll({
+      where: whereBase,
+      attributes: [
+        [groupByExpression, 'date'],
+        [Sequelize.literal("SUM(CASE WHEN \"rating\" >= 4 THEN 1 ELSE 0 END)"), 'positive'],
+        [Sequelize.literal("SUM(CASE WHEN \"rating\" <= 3 THEN 1 ELSE 0 END)"), 'negative']
+      ],
+      group: [groupByExpression],
+      order: [[groupByExpression, 'ASC']]
     });
 
     res.json({
@@ -1056,8 +1102,18 @@ router.get('/stats', authenticate, async (req, res) => {
       topDoctors: topDoctors.map(d => ({
         name: d.doctorName,
         count: parseInt(d.dataValues.count),
-        avgRating: parseFloat(d.dataValues.avgRating)
-      }))
+        avgRating: parseFloat(d.dataValues.avgRating),
+        positive: parseInt(d.dataValues.positive) || 0,
+        negative: parseInt(d.dataValues.negative) || 0
+      })),
+      dailyStats: {
+        period: periodLabel,
+        data: dailyStats.map(d => ({
+          date: d.dataValues.date,
+          positive: parseInt(d.dataValues.positive) || 0,
+          negative: parseInt(d.dataValues.negative) || 0
+        }))
+      }
     });
   } catch (error) {
     console.error('Error fetching stats:', error);

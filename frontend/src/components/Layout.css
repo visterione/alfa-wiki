@@ -494,19 +494,19 @@
 
 /* Второй ряд кнопок */
 .quick-access-btn.courses {
-  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+  background: linear-gradient(135deg, #a16207 0%, #854d0e 100%);
+  box-shadow: 0 2px 8px rgba(161, 98, 7, 0.2);
 }
 
 .quick-access-btn.courses:hover {
-  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  background: linear-gradient(135deg, #854d0e 0%, #713f12 100%);
+  box-shadow: 0 4px 12px rgba(161, 98, 7, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.courses.active {
-  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4) inset;
+  background: linear-gradient(135deg, #713f12 0%, #78350f 100%);
+  box-shadow: 0 2px 8px rgba(161, 98, 7, 0.4) inset;
 }
 
 .quick-access-btn.map,
@@ -529,19 +529,19 @@
 }
 
 .quick-access-btn.reviews {
-  background: linear-gradient(135deg, #a855f7 0%, #9333ea 100%);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.2);
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
 }
 
 .quick-access-btn.reviews:hover {
-  background: linear-gradient(135deg, #9333ea 0%, #7e22ce 100%);
-  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
   transform: translateY(-1px);
 }
 
 .quick-access-btn.reviews.active {
-  background: linear-gradient(135deg, #7e22ce 0%, #6b21a8 100%);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.4) inset;
+  background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4) inset;
 }
 
 .quick-access-badge {

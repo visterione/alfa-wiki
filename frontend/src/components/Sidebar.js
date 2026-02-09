@@ -440,7 +440,7 @@ function QuickAccessButtons({ onClose }) {
         onClick={() => handleClick('/reviews')}
         title="Отзывы"
       >
-        <MessageSquare size={20} />
+        <ThumbsUp size={20} />
       </button>
     </div>
   );

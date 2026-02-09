@@ -237,12 +237,12 @@ const ReviewArchive = () => {
         <div className="filters-panel">
           <div className="filters-grid">
             <div className="filter-group">
-              <label>Доска</label>
+              <label>Медцентр</label>
               <select
                 value={filters.boardId}
                 onChange={(e) => handleFilterChange('boardId', e.target.value)}
               >
-                <option value="">Все доски</option>
+                <option value="">Все медцентры</option>
                 {boards.map(board => (
                   <option key={board.id} value={board.id}>{board.name}</option>
                 ))}
@@ -348,7 +348,7 @@ const ReviewArchive = () => {
                 <thead>
                   <tr>
                     <th>Дата отзыва</th>
-                    <th>Доска</th>
+                    <th>Медцентр</th>
                     <th>Пациент</th>
                     <th>Площадка</th>
                     <th>Врач</th>
@@ -454,7 +454,7 @@ const ReviewArchive = () => {
             <div className="modal-body">
               <div className="review-details-grid">
                 <div className="detail-row">
-                  <span className="label">Доска:</span>
+                  <span className="label">Медцентр:</span>
                   <span className="value">{selectedReview.board?.name}</span>
                 </div>
                 <div className="detail-row">

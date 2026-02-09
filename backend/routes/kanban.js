@@ -231,7 +231,7 @@ router.get('/tasks/:id', authenticate, async (req, res) => {
  */
 router.post('/tasks', authenticate, async (req, res) => {
   try {
-    const { boardId, title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments } = req.body;
+    const { boardId, title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments, subtasks } = req.body;
 
     if (!boardId) {
       return res.status(400).json({ message: 'boardId обязателен' });
@@ -264,7 +264,8 @@ router.post('/tasks', authenticate, async (req, res) => {
       dueDate,
       sortOrder: sortOrder || 0,
       metadata: metadata || {},
-      attachments: attachments || []
+      attachments: attachments || [],
+      subtasks: subtasks || []
     });
 
     const taskWithRelations = await KanbanTask.findByPk(task.id, {
@@ -297,13 +298,15 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       return res.status(404).json({ message: 'Задача не найдена' });
     }
 
-    // Проверяем права доступа к доске (editor или owner)
+    // Проверяем права доступа: редактор доски ИЛИ исполнитель задачи
     const access = await checkBoardAccess(task.board, req.user.id, 'editor');
-    if (!access || !access.hasAccess) {
-      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора.' });
+    const isAssignee = task.assigneeIds && task.assigneeIds.includes(req.user.id);
+
+    if (!access.hasAccess && !isAssignee) {
+      return res.status(403).json({ message: 'Доступ запрещен. Требуются права редактора или исполнителя.' });
     }
 
-    const { title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments } = req.body;
+    const { title, description, status, priority, assigneeIds, tags, dueDate, sortOrder, metadata, attachments, subtasks } = req.body;
 
     const updateData = {
       title: title !== undefined ? title : task.title,
@@ -315,7 +318,8 @@ router.put('/tasks/:id', authenticate, async (req, res) => {
       dueDate: dueDate !== undefined ? dueDate : task.dueDate,
       sortOrder: sortOrder !== undefined ? sortOrder : task.sortOrder,
       metadata: metadata !== undefined ? metadata : task.metadata,
-      attachments: attachments !== undefined ? attachments : task.attachments
+      attachments: attachments !== undefined ? attachments : task.attachments,
+      subtasks: subtasks !== undefined ? subtasks : task.subtasks
     };
 
     // Отслеживаем переход в статус done

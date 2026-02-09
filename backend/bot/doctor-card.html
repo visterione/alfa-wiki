@@ -581,10 +581,27 @@ window.dcApp = (function() {
     6: 7   // старый Смайл -> новый Смайл
   };
 
-  // Convert old clinic IDs to new ones
+  // Reverse mapping: new clinic IDs to old IDs (for saving to DB)
+  var NEW_TO_OLD_CLINIC_ID = {
+    2: 1,  // новый Альфа -> старый Альфа
+    3: 2,  // новый Кидс -> старый Кидс
+    1: 3,  // новый Проф -> старый Проф
+    6: 4,  // новый Линия -> старый Линия
+    4: 5,  // новый 3К -> старый 3К
+    7: 6   // новый Смайл -> старый Смайл
+  };
+
+  // Convert old clinic IDs to new ones (for display)
   function convertOldClinicIds(oldIds) {
     return oldIds.map(function(oldId) {
       return OLD_TO_NEW_CLINIC_ID[oldId] || oldId;
+    });
+  }
+
+  // Convert new clinic IDs back to old ones (for saving to DB)
+  function convertNewClinicIdsToOld(newIds) {
+    return newIds.map(function(newId) {
+      return NEW_TO_OLD_CLINIC_ID[newId] || newId;
     });
   }
 
@@ -2327,18 +2344,30 @@ window.dcApp = (function() {
     var tagsInput = getValue('edit-tags');
     var tags = parseTags(tagsInput);
 
-    // Prepare service overrides
-    var preparedOverrides = {};
-    modalServices.forEach(function(service) {
-      if (service.aliasName || service.aliasDuration || service.isHidden || service.sortOrder !== modalServices.indexOf(service)) {
-        preparedOverrides[service.id] = {
-          aliasName: service.aliasName || '',
-          aliasDuration: service.aliasDuration || '',
-          isHidden: service.isHidden || false,
-          sortOrder: service.sortOrder
-        };
+    // Prepare service overrides (only if services were loaded)
+    var metadata = {};
+
+    if (modalServices.length > 0) {
+      // Services tab was opened, save the overrides
+      var preparedOverrides = {};
+      modalServices.forEach(function(service) {
+        if (service.aliasName || service.aliasDuration || service.isHidden || service.sortOrder !== modalServices.indexOf(service)) {
+          preparedOverrides[service.id] = {
+            aliasName: service.aliasName || '',
+            aliasDuration: service.aliasDuration || '',
+            isHidden: service.isHidden || false,
+            sortOrder: service.sortOrder
+          };
+        }
+      });
+      metadata.serviceOverrides = preparedOverrides;
+    } else if (id) {
+      // Services tab was not opened, preserve existing overrides
+      var existingCard = cards.find(function(c) { return c.id === id; });
+      if (existingCard && existingCard.metadata && existingCard.metadata.serviceOverrides) {
+        metadata.serviceOverrides = existingCard.metadata.serviceOverrides;
       }
-    });
+    }
 
     var data = {
       pageSlug: PAGE_SLUG,
@@ -2351,11 +2380,9 @@ window.dcApp = (function() {
       ageRange: getValue('edit-age-range'),
       internalNumber: getValue('edit-internal'),
       mobileNumber: getValue('edit-mobile'),
-      clinics: getSelectedClinics(),
+      clinics: convertNewClinicIdsToOld(getSelectedClinics()),
       tags: tags,
-      metadata: {
-        serviceOverrides: preparedOverrides
-      }
+      metadata: metadata
     };
 
     var url = id ? API_BASE + '/doctor-cards/' + id : API_BASE + '/doctor-cards';
