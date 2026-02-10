@@ -176,10 +176,10 @@ router.post('/professions', authenticate, async (req, res) => {
   }
 });
 
-// Получить услуги по ID - ИСПРАВЛЕНО
+// Получить услуги по ID - с поддержкой clinic_id для корректных цен
 router.post('/services', authenticate, async (req, res) => {
   try {
-    const { service_ids } = req.body;
+    const { service_ids, clinic_id } = req.body;
 
     // Если нет service_ids - возвращаем пустой массив (НЕ все услуги!)
     if (!service_ids || !Array.isArray(service_ids) || service_ids.length === 0) {
@@ -187,11 +187,18 @@ router.post('/services', authenticate, async (req, res) => {
       return res.json({ error: 0, data: [] });
     }
 
-    console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', service_ids.slice(0, 5));
+    console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', clinic_id ? 'clinic_id=' + clinic_id : '(без clinic_id)');
 
-    const data = await misRequest('getServices', {
+    const params = {
       service_id: service_ids.join(',')
-    });
+    };
+
+    // Передаём clinic_id для получения корректных цен по конкретной клинике
+    if (clinic_id) {
+      params.clinic_id = clinic_id;
+    }
+
+    const data = await misRequest('getServices', params);
 
     res.json(data);
   } catch (err) {

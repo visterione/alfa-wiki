@@ -248,6 +248,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-btn-visibility.hidden { color: var(--dc-text-secondary); border-color: var(--dc-border); background: white; }
 .dc-service-btn-visibility.hidden:hover { background: #f1f5f9; }
 
+.dc-service-btn-favorite { color: #94a3b8; border-color: var(--dc-border); background: white; }
+.dc-service-btn-favorite:hover { color: #fbbf24; background: #fffbeb; border-color: #fbbf24; }
+.dc-service-btn-favorite.active { color: #f59e0b; border-color: #f59e0b; background: #fef3c7; }
+.dc-service-btn-favorite.active:hover { background: #fde68a; box-shadow: 0 2px 4px rgba(245,158,11,0.2); }
+
+.dc-favorites-container { margin-bottom: 16px; padding: 12px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; }
+.dc-favorites-title { font-size: 12px; font-weight: 600; color: #b45309; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.dc-favorites-title svg { width: 14px; height: 14px; }
+.dc-favorites-table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; border-radius: 6px; overflow: hidden; }
+.dc-favorites-table th { background: #fef3c7; padding: 6px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid #fde68a; font-size: 11px; }
+.dc-favorites-table td { padding: 6px 10px; border-bottom: 1px solid #fef3c7; color: var(--dc-text-secondary); }
+.dc-favorites-table tr:last-child td { border-bottom: none; }
+.dc-favorites-table tr:hover td { background: #fffbeb; }
+
 .dc-services-empty { text-align: center; padding: 40px 20px; color: var(--dc-text-secondary); font-size: 13px; }
 .dc-services-loading { text-align: center; padding: 20px; color: var(--dc-text-secondary); font-size: 12px; }
 
@@ -555,6 +569,17 @@ window.dcApp = (function() {
   var modalServices = [];
   var serviceOverrides = {};
   var draggedServiceIndex = null;
+  var modalClinicIds = [];  // Список ID клиник для текущей карточки в модальном окне
+
+  // Маппинг новых ID клиник к названиям для отображения цен
+  var CLINIC_SHORT_NAMES = {
+    1: 'Проф',
+    2: 'Альфа',
+    3: 'Кидс',
+    4: '3К',
+    6: 'Линия',
+    7: 'Смайл'
+  };
   var notesEditor = null;
   var currentUser = null;
   var canEdit = false;
@@ -899,6 +924,7 @@ window.dcApp = (function() {
         '</div>' +
         '<div class="dc-card-body" id="body-' + card.id + '">' +
           '<div class="dc-tab-content active" data-tab="info">' +
+            '<div id="favorites-' + card.id + '"></div>' +
             (card.description ?
               '<div class="dc-notes-wrapper">' +
                 '<div class="dc-notes-content" id="notes-content-' + card.id + '">' +
@@ -951,6 +977,7 @@ window.dcApp = (function() {
     }).join('');
 
     checkNotesOverflow();
+    loadAllFavorites();
 
     if (highlightId) {
       setTimeout(function() {
@@ -958,6 +985,15 @@ window.dcApp = (function() {
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
+  }
+
+  function loadAllFavorites() {
+    filteredCards.forEach(function(card) {
+      var misUserId = card.metadata && card.metadata.misUserId;
+      if (misUserId) {
+        loadFavorites(card.id, misUserId);
+      }
+    });
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -1796,64 +1832,223 @@ window.dcApp = (function() {
     var card = cards.find(function(c) { return c.id === cardId; });
     var overrides = (card && card.metadata && card.metadata.serviceOverrides) || {};
 
+    // Получаем ВСЕ clinic_id для фильтрации цен по клиникам
+    var cardClinics = (card && card.metadata && card.metadata.clinics) || [];
+    // Конвертируем старые ID в новые (для API МИС)
+    var clinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
+
     fetchAPI(API_BASE + '/mis/doctor-info', {
       method: 'POST',
       body: JSON.stringify({ userId: misUserId })
     }).then(function(data) {
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
-        return fetchAPI(API_BASE + '/mis/services', {
-          method: 'POST',
-          body: JSON.stringify({ service_ids: data.data.services })
+        var serviceIds = data.data.services;
+
+        // Если нет клиник - делаем один запрос без clinic_id
+        if (clinicIds.length === 0) {
+          return fetchAPI(API_BASE + '/mis/services', {
+            method: 'POST',
+            body: JSON.stringify({ service_ids: serviceIds })
+          }).then(function(servData) {
+            return { clinicResults: [{ clinicId: null, data: servData }] };
+          });
+        }
+
+        // Делаем параллельные запросы для КАЖДОЙ клиники
+        var promises = clinicIds.map(function(clinicId) {
+          return fetchAPI(API_BASE + '/mis/services', {
+            method: 'POST',
+            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId })
+          }).then(function(servData) {
+            return { clinicId: clinicId, data: servData };
+          });
+        });
+
+        return Promise.all(promises).then(function(results) {
+          return { clinicResults: results };
         });
       }
       throw new Error('Нет услуг');
-    }).then(function(servData) {
-      if (servData.error === 0 && servData.data) {
-        var services = Array.isArray(servData.data) ? servData.data : [servData.data];
-        if (services.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
-          return;
+    }).then(function(result) {
+      var clinicResults = result.clinicResults;
+
+      // Собираем услуги со всеми ценами по клиникам
+      var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
+
+      clinicResults.forEach(function(cr) {
+        if (cr.data && cr.data.error === 0 && cr.data.data) {
+          var services = Array.isArray(cr.data.data) ? cr.data.data : [cr.data.data];
+          services.forEach(function(s) {
+            var serviceId = s.service_id || s.id;
+            if (!servicesMap[serviceId]) {
+              servicesMap[serviceId] = {
+                service: s,
+                prices: {}
+              };
+            }
+            // Сохраняем цену для этой клиники
+            if (cr.clinicId !== null) {
+              servicesMap[serviceId].prices[cr.clinicId] = parseFloat(s.price) || 0;
+            } else {
+              servicesMap[serviceId].prices['default'] = parseFloat(s.price) || 0;
+            }
+          });
         }
+      });
 
-        // Apply overrides and sort
-        var processedServices = services.map(function(s, idx) {
-          var serviceId = s.service_id || s.id;
-          var override = overrides[serviceId] || {};
-          return {
-            service: s,
-            override: override,
-            sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx,
-            isHidden: override.isHidden || false
-          };
-        });
+      var servicesList = Object.keys(servicesMap).map(function(id) {
+        return servicesMap[id];
+      });
 
-        // Sort by sortOrder
-        processedServices.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
-
-        // Filter out hidden services and render
-        var visibleServices = processedServices.filter(function(ps) { return !ps.isHidden; });
-
-        if (visibleServices.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет видимых услуг</td></tr>';
-          return;
-        }
-
-        tbody.innerHTML = visibleServices.map(function(ps) {
-          var s = ps.service;
-          var override = ps.override;
-
-          // Use alias if available, otherwise use original
-          var title = override.aliasName || s.title || '—';
-          var duration = override.aliasDuration || (s.duration ? s.duration + ' мин' : '—');
-
-          return '<tr><td>' + escapeHtml(s.code || '—') + '</td><td>' + escapeHtml(title) + '</td><td>' + duration + '</td><td>' + (s.price ? Number(s.price).toLocaleString('ru-RU') + ' ₽' : '—') + '</td></tr>';
-        }).join('');
-      } else {
+      if (servicesList.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
+        return;
       }
+
+      // Apply overrides and sort
+      var processedServices = servicesList.map(function(item, idx) {
+        var serviceId = item.service.service_id || item.service.id;
+        var override = overrides[serviceId] || {};
+        return {
+          service: item.service,
+          prices: item.prices,
+          override: override,
+          sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx,
+          isHidden: override.isHidden || false
+        };
+      });
+
+      // Sort by sortOrder
+      processedServices.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
+
+      // Filter out hidden services and render
+      var visibleServices = processedServices.filter(function(ps) { return !ps.isHidden; });
+
+      if (visibleServices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет видимых услуг</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = visibleServices.map(function(ps) {
+        var s = ps.service;
+        var override = ps.override;
+        var prices = ps.prices;
+
+        // Use alias if available, otherwise use original
+        var title = override.aliasName || s.title || '—';
+        var duration = override.aliasDuration || (s.duration ? s.duration + ' мин' : '—');
+
+        // Формируем строку с ценами по клиникам
+        var priceStr = '—';
+        var priceKeys = Object.keys(prices);
+        if (priceKeys.length > 0) {
+          if (priceKeys.length === 1 && priceKeys[0] === 'default') {
+            // Одна цена без привязки к клинике
+            priceStr = prices['default'] ? Number(prices['default']).toLocaleString('ru-RU') + ' ₽' : '—';
+          } else if (clinicIds.length === 1) {
+            // Одна клиника - показываем цену без названия клиники
+            var singlePrice = prices[clinicIds[0]];
+            priceStr = singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
+          } else {
+            // Несколько клиник - показываем все цены с названиями
+            var pricesParts = [];
+            clinicIds.forEach(function(cid) {
+              if (prices[cid] !== undefined && prices[cid] > 0) {
+                var shortName = CLINIC_SHORT_NAMES[cid] || cid;
+                pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+              }
+            });
+            priceStr = pricesParts.length > 0 ? pricesParts.join(', ') : '—';
+          }
+        }
+
+        return '<tr><td>' + escapeHtml(s.code || '—') + '</td><td>' + escapeHtml(title) + '</td><td>' + duration + '</td><td>' + priceStr + '</td></tr>';
+      }).join('');
     }).catch(function(e) {
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет данных об услугах</td></tr>';
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // FAVORITES (избранные услуги на вкладке info)
+  // ═══════════════════════════════════════════════════════════════
+
+  function loadFavorites(cardId, misUserId) {
+    var container = document.getElementById('favorites-' + cardId);
+    if (!container) return;
+
+    var card = cards.find(function(c) { return c.id === cardId; });
+    var overrides = (card && card.metadata && card.metadata.serviceOverrides) || {};
+
+    // Получаем избранные услуги с сохранёнными данными
+    var favorites = [];
+    Object.keys(overrides).forEach(function(id) {
+      var ov = overrides[id];
+      if (ov.isFavorite && ov.title) {
+        favorites.push({
+          id: id,
+          title: ov.aliasName || ov.title,
+          code: ov.code || '',
+          duration: ov.aliasDuration || (ov.duration ? ov.duration + ' мин' : '—'),
+          prices: ov.prices || {},
+          sortOrder: ov.sortOrder !== undefined ? ov.sortOrder : 999
+        });
+      }
+    });
+
+    if (favorites.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    // Сортируем по sortOrder
+    favorites.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
+
+    // Получаем клиники для форматирования цен
+    var cardClinics = (card && card.metadata && card.metadata.clinics) || [];
+    var clinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
+
+    renderFavorites(container, favorites, clinicIds);
+  }
+
+  function renderFavorites(container, favorites, clinicIds) {
+    if (favorites.length === 0) {
+      container.innerHTML = '';
+      return;
+    }
+
+    var html = '<div class="dc-services-container" style="margin-bottom: 12px;">' +
+      '<table class="dc-services-table"><thead><tr><th>Артикул</th><th>Услуга</th><th>Длит.</th><th>Цена</th></tr></thead><tbody>';
+
+    favorites.forEach(function(fav) {
+      var prices = fav.prices || {};
+
+      // Формируем цену
+      var priceStr = '—';
+      var priceKeys = Object.keys(prices);
+      if (priceKeys.length > 0) {
+        if (priceKeys.length === 1 && priceKeys[0] === 'default') {
+          priceStr = prices['default'] ? Number(prices['default']).toLocaleString('ru-RU') + ' ₽' : '—';
+        } else if (clinicIds.length === 1) {
+          var singlePrice = prices[clinicIds[0]];
+          priceStr = singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
+        } else {
+          var pricesParts = [];
+          clinicIds.forEach(function(cid) {
+            if (prices[cid] !== undefined && prices[cid] > 0) {
+              var shortName = CLINIC_SHORT_NAMES[cid] || cid;
+              pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+            }
+          });
+          priceStr = pricesParts.length > 0 ? pricesParts.join(', ') : '—';
+        }
+      }
+
+      html += '<tr><td>' + escapeHtml(fav.code || '—') + '</td><td>' + escapeHtml(fav.title) + '</td><td>' + fav.duration + '</td><td>' + priceStr + '</td></tr>';
+    });
+
+    html += '</tbody></table></div>';
+    container.innerHTML = html;
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -2113,7 +2308,8 @@ window.dcApp = (function() {
     document.getElementById('modal-services-empty').style.display = 'none';
     document.getElementById('modal-services-list').style.display = 'none';
 
-    // Load service overrides from card metadata
+    // Load service overrides from card metadata and get ALL clinic_ids
+    modalClinicIds = [];
     if (cardId) {
       var card = cards.find(function(c) { return c.id === cardId; });
       if (card && card.metadata && card.metadata.serviceOverrides) {
@@ -2121,6 +2317,9 @@ window.dcApp = (function() {
       } else {
         serviceOverrides = {};
       }
+      // Получаем ВСЕ clinic_id для фильтрации цен по клиникам
+      var cardClinics = (card && card.metadata && card.metadata.clinics) || [];
+      modalClinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
     }
 
     fetchAPI(API_BASE + '/mis/doctor-info', {
@@ -2128,43 +2327,122 @@ window.dcApp = (function() {
       body: JSON.stringify({ userId: misUserId })
     }).then(function(data) {
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
-        return fetchAPI(API_BASE + '/mis/services', {
-          method: 'POST',
-          body: JSON.stringify({ service_ids: data.data.services })
+        var serviceIds = data.data.services;
+
+        // Если нет клиник - делаем один запрос без clinic_id
+        if (modalClinicIds.length === 0) {
+          return fetchAPI(API_BASE + '/mis/services', {
+            method: 'POST',
+            body: JSON.stringify({ service_ids: serviceIds })
+          }).then(function(servData) {
+            return { clinicResults: [{ clinicId: null, data: servData }] };
+          });
+        }
+
+        // Делаем параллельные запросы для КАЖДОЙ клиники
+        var promises = modalClinicIds.map(function(clinicId) {
+          return fetchAPI(API_BASE + '/mis/services', {
+            method: 'POST',
+            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId })
+          }).then(function(servData) {
+            return { clinicId: clinicId, data: servData };
+          });
+        });
+
+        return Promise.all(promises).then(function(results) {
+          return { clinicResults: results };
         });
       }
       throw new Error('Нет услуг');
-    }).then(function(servData) {
-      if (servData.error === 0 && servData.data) {
-        var services = Array.isArray(servData.data) ? servData.data : [servData.data];
-        modalServices = services.map(function(s, idx) {
-          var serviceId = s.service_id || s.id;
-          var override = serviceOverrides[serviceId] || {};
-          return {
-            id: serviceId,
-            code: s.code || s.sub_code || '',
-            title: s.title || '',
-            duration: s.duration || '',
-            price: parseFloat(s.price) || 0,
-            aliasName: override.aliasName || '',
-            aliasDuration: override.aliasDuration || '',
-            isHidden: override.isHidden || false,
-            sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx
-          };
-        });
+    }).then(function(result) {
+      var clinicResults = result.clinicResults;
 
-        // Sort by sortOrder
-        modalServices.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
+      // Собираем услуги со всеми ценами по клиникам
+      var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
 
-        renderModalServices();
-      } else {
+      clinicResults.forEach(function(cr) {
+        if (cr.data && cr.data.error === 0 && cr.data.data) {
+          var services = Array.isArray(cr.data.data) ? cr.data.data : [cr.data.data];
+          services.forEach(function(s) {
+            var serviceId = s.service_id || s.id;
+            if (!servicesMap[serviceId]) {
+              servicesMap[serviceId] = {
+                service: s,
+                prices: {}
+              };
+            }
+            // Сохраняем цену для этой клиники
+            if (cr.clinicId !== null) {
+              servicesMap[serviceId].prices[cr.clinicId] = parseFloat(s.price) || 0;
+            } else {
+              servicesMap[serviceId].prices['default'] = parseFloat(s.price) || 0;
+            }
+          });
+        }
+      });
+
+      var servicesList = Object.keys(servicesMap).map(function(id) {
+        return servicesMap[id];
+      });
+
+      if (servicesList.length === 0) {
         throw new Error('Не удалось загрузить услуги');
       }
+
+      modalServices = servicesList.map(function(item, idx) {
+        var serviceId = item.service.service_id || item.service.id;
+        var override = serviceOverrides[serviceId] || {};
+        return {
+          id: serviceId,
+          code: item.service.code || item.service.sub_code || '',
+          title: item.service.title || '',
+          duration: item.service.duration || '',
+          prices: item.prices,  // Теперь хранит цены по клиникам
+          aliasName: override.aliasName || '',
+          aliasDuration: override.aliasDuration || '',
+          isHidden: override.isHidden || false,
+          isFavorite: override.isFavorite || false,
+          sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx
+        };
+      });
+
+      // Sort by sortOrder
+      modalServices.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
+
+      renderModalServices();
     }).catch(function(e) {
       console.error('Load modal services error:', e);
       document.getElementById('modal-services-loading').style.display = 'none';
       document.getElementById('modal-services-empty').style.display = 'block';
     });
+  }
+
+  // Форматирование цен с указанием клиник
+  function formatServicePrices(prices) {
+    if (!prices) return '—';
+    var priceKeys = Object.keys(prices);
+    if (priceKeys.length === 0) return '—';
+
+    // Если одна цена без привязки к клинике
+    if (priceKeys.length === 1 && priceKeys[0] === 'default') {
+      return prices['default'] ? Number(prices['default']).toLocaleString('ru-RU') + ' ₽' : '—';
+    }
+
+    // Если одна клиника - показываем цену без названия
+    if (modalClinicIds.length === 1) {
+      var singlePrice = prices[modalClinicIds[0]];
+      return singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
+    }
+
+    // Несколько клиник - показываем все цены с названиями
+    var pricesParts = [];
+    modalClinicIds.forEach(function(cid) {
+      if (prices[cid] !== undefined && prices[cid] > 0) {
+        var shortName = CLINIC_SHORT_NAMES[cid] || cid;
+        pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+      }
+    });
+    return pricesParts.length > 0 ? pricesParts.join(', ') : '—';
   }
 
   function renderModalServices() {
@@ -2216,10 +2494,16 @@ window.dcApp = (function() {
             '</div>' +
           '</div>' +
           '<div class="dc-service-meta">' +
-            'Цена: <strong>' + service.price.toFixed(2) + ' ₽</strong>' +
+            'Цена: <strong>' + formatServicePrices(service.prices) + '</strong>' +
           '</div>' +
         '</div>' +
         '<div class="dc-service-actions">' +
+          '<button type="button" class="dc-service-btn dc-service-btn-favorite' + (service.isFavorite ? ' active' : '') + '" ' +
+            'onclick="dcApp.toggleServiceFavorite(' + index + ')" title="' + (service.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное') + '">' +
+            '<svg viewBox="0 0 24 24" fill="' + (service.isFavorite ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2">' +
+              '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' +
+            '</svg>' +
+          '</button>' +
           '<button type="button" class="dc-service-btn dc-service-btn-visibility' + (service.isHidden ? ' hidden' : '') + '" ' +
             'onclick="dcApp.toggleServiceVisibility(' + index + ')" title="' + (service.isHidden ? 'Показать услугу' : 'Скрыть услугу') + '">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
@@ -2274,6 +2558,13 @@ window.dcApp = (function() {
     if (!modalServices[index]) return;
 
     modalServices[index].isHidden = !modalServices[index].isHidden;
+    renderModalServices();
+  }
+
+  function toggleServiceFavorite(index) {
+    if (!modalServices[index]) return;
+
+    modalServices[index].isFavorite = !modalServices[index].isFavorite;
     renderModalServices();
   }
 
@@ -2351,13 +2642,22 @@ window.dcApp = (function() {
       // Services tab was opened, save the overrides
       var preparedOverrides = {};
       modalServices.forEach(function(service) {
-        if (service.aliasName || service.aliasDuration || service.isHidden || service.sortOrder !== modalServices.indexOf(service)) {
-          preparedOverrides[service.id] = {
+        if (service.aliasName || service.aliasDuration || service.isHidden || service.isFavorite || service.sortOrder !== modalServices.indexOf(service)) {
+          var override = {
             aliasName: service.aliasName || '',
             aliasDuration: service.aliasDuration || '',
             isHidden: service.isHidden || false,
+            isFavorite: service.isFavorite || false,
             sortOrder: service.sortOrder
           };
+          // Для избранных услуг сохраняем полные данные для мгновенного отображения
+          if (service.isFavorite) {
+            override.title = service.title || '';
+            override.code = service.code || '';
+            override.duration = service.duration || '';
+            override.prices = service.prices || {};
+          }
+          preparedOverrides[service.id] = override;
         }
       });
       metadata.serviceOverrides = preparedOverrides;
@@ -2445,7 +2745,8 @@ window.dcApp = (function() {
     backToCalendar: backToCalendar,
     switchModalTab: switchModalTab,
     updateServiceAlias: updateServiceAlias,
-    toggleServiceVisibility: toggleServiceVisibility
+    toggleServiceVisibility: toggleServiceVisibility,
+    toggleServiceFavorite: toggleServiceFavorite
   };
 })();
 </script>
