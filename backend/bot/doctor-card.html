@@ -207,7 +207,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-services-edit-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .dc-services-edit-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-.dc-service-item { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 40px 12px 12px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 10px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.dc-service-item { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 50px 12px 12px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 10px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .dc-service-item:hover { background: #f8fafc; border-color: var(--dc-primary); box-shadow: 0 2px 6px rgba(37,99,235,0.1); transform: translateY(-1px); }
 .dc-service-item.dragging { opacity: 0.4; transform: rotate(2deg); }
 .dc-service-item.drag-over { border-color: var(--dc-primary); background: #dbeafe; border-style: dashed; }
@@ -1841,8 +1841,10 @@ window.dcApp = (function() {
       method: 'POST',
       body: JSON.stringify({ userId: misUserId })
     }).then(function(data) {
+      console.log('🔍 doctor-info response for misUserId:', misUserId, 'data:', data);
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
         var serviceIds = data.data.services;
+        console.log('🔍 Found service IDs:', serviceIds);
 
         // Если нет клиник - делаем один запрос без clinic_id
         if (clinicIds.length === 0) {
@@ -1875,9 +1877,13 @@ window.dcApp = (function() {
       // Собираем услуги со всеми ценами по клиникам
       var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
 
+      console.log('🔍 clinicResults:', clinicResults);
+
       clinicResults.forEach(function(cr) {
+        console.log('🔍 Processing clinic result:', cr);
         if (cr.data && cr.data.error === 0 && cr.data.data) {
           var services = Array.isArray(cr.data.data) ? cr.data.data : [cr.data.data];
+          console.log('🔍 Services for clinic', cr.clinicId, ':', services);
           services.forEach(function(s) {
             var serviceId = s.service_id || s.id;
             if (!servicesMap[serviceId]) {
@@ -1900,7 +1906,10 @@ window.dcApp = (function() {
         return servicesMap[id];
       });
 
+      console.log('🔍 servicesMap keys:', Object.keys(servicesMap), 'servicesList length:', servicesList.length);
+
       if (servicesList.length === 0) {
+        console.warn('⚠️ No services found in servicesMap for misUserId:', misUserId);
         tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Услуги не найдены</td></tr>';
         return;
       }
@@ -1965,6 +1974,7 @@ window.dcApp = (function() {
         return '<tr><td>' + escapeHtml(s.code || '—') + '</td><td>' + escapeHtml(title) + '</td><td>' + duration + '</td><td>' + priceStr + '</td></tr>';
       }).join('');
     }).catch(function(e) {
+      console.error('❌ Error loading services for misUserId:', misUserId, 'error:', e);
       tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#999">Нет данных об услугах</td></tr>';
     });
   }
@@ -2326,8 +2336,10 @@ window.dcApp = (function() {
       method: 'POST',
       body: JSON.stringify({ userId: misUserId })
     }).then(function(data) {
+      console.log('🔍 doctor-info response for misUserId:', misUserId, 'data:', data);
       if (data.success && data.data && data.data.services && data.data.services.length > 0) {
         var serviceIds = data.data.services;
+        console.log('🔍 Found service IDs:', serviceIds);
 
         // Если нет клиник - делаем один запрос без clinic_id
         if (modalClinicIds.length === 0) {
@@ -2360,9 +2372,13 @@ window.dcApp = (function() {
       // Собираем услуги со всеми ценами по клиникам
       var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
 
+      console.log('🔍 clinicResults:', clinicResults);
+
       clinicResults.forEach(function(cr) {
+        console.log('🔍 Processing clinic result:', cr);
         if (cr.data && cr.data.error === 0 && cr.data.data) {
           var services = Array.isArray(cr.data.data) ? cr.data.data : [cr.data.data];
+          console.log('🔍 Services for clinic', cr.clinicId, ':', services);
           services.forEach(function(s) {
             var serviceId = s.service_id || s.id;
             if (!servicesMap[serviceId]) {

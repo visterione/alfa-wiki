@@ -44,7 +44,8 @@ router.post('/doctor-info', authenticate, async (req, res) => {
     const data = await misRequest('getUsers', {
       user_id: userId,
       role: 'doctor',
-      with_services: 1
+      with_services: 1,
+      show_all: true
     });
 
     const errorCode = Number(data?.error);
