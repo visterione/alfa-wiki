@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
-const { send2FADisabledNotification } = require('../services/emailService');
+const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
 
 const router = express.Router();
@@ -176,6 +176,17 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       // Не блокируем создание пользователя из-за ошибки отправки сообщения
     }
 
+    // Отправляем email с учетными данными
+    if (email) {
+      try {
+        await sendCredentials(email, username, password, displayName || username, false);
+        console.log(`✅ Credentials email sent to user ${username}`);
+      } catch (emailError) {
+        console.error('Failed to send credentials email:', emailError);
+        // Не блокируем создание пользователя из-за ошибки отправки email
+      }
+    }
+
     res.status(201).json(created);
   } catch (error) {
     console.error('Create user error:', error);
@@ -265,11 +276,27 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       }
     }
 
+    // Сохраняем пароль для отправки email (до хеширования)
+    const plainPassword = password;
+
     if (password) {
       updateData.password = await bcrypt.hash(password, 12);
     }
 
     await user.update(updateData);
+
+    // Отправляем email с новым паролем, если пароль был изменен и есть email
+    if (plainPassword && (email || user.email)) {
+      const userEmail = email || user.email;
+      const userName = displayName || user.displayName || user.username;
+      try {
+        await sendCredentials(userEmail, user.username, plainPassword, userName, true);
+        console.log(`✅ Password change email sent to user ${user.username}`);
+      } catch (emailError) {
+        console.error('Failed to send password change email:', emailError);
+        // Не блокируем обновление пользователя из-за ошибки отправки email
+      }
+    }
 
     // Обновляем множественные роли
     if (roleIds !== undefined && Array.isArray(roleIds)) {

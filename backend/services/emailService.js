@@ -218,8 +218,139 @@ const send2FADisabledNotification = async (email, username) => {
   }
 };
 
+/**
+ * Отправляет учетные данные пользователю (логин и пароль)
+ */
+const sendCredentials = async (email, username, password, displayName, isPasswordChange = false) => {
+  const transporter = createTransporter();
+
+  const subject = isPasswordChange
+    ? 'Пароль изменен - Alfa Wiki'
+    : 'Добро пожаловать в Alfa Wiki';
+
+  const greetingText = isPasswordChange
+    ? 'Ваш пароль был изменен администратором.'
+    : 'Для вас создана учетная запись в системе Alfa Wiki.';
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+    to: email,
+    subject: subject,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f7; }
+          .container { max-width: 600px; margin: 40px auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+          .header { background: linear-gradient(135deg, #007AFF 0%, #5856D6 100%); padding: 40px 30px; text-align: center; }
+          .header h1 { margin: 0; color: white; font-size: 28px; font-weight: 700; }
+          .content { padding: 40px 30px; }
+          .credentials-box { background: #f5f5f7; border-radius: 12px; padding: 24px; margin: 24px 0; }
+          .credential-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e5e5e7; }
+          .credential-row:last-child { border-bottom: none; }
+          .credential-label { font-size: 13px; color: #86868B; font-weight: 500; }
+          .credential-value { font-size: 16px; color: #1D1D1F; font-weight: 600; font-family: monospace; }
+          .info { color: #86868B; font-size: 14px; line-height: 1.6; margin-top: 20px; }
+          .footer { background: #f5f5f7; padding: 20px 30px; text-align: center; color: #86868B; font-size: 12px; }
+          .warning { background: #FFF4E5; border-left: 4px solid #FF9500; padding: 16px; border-radius: 8px; margin-top: 20px; }
+          .warning p { margin: 0; color: #1D1D1F; font-size: 14px; }
+          .button { display: inline-block; padding: 12px 24px; background: #007AFF; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🔐 Alfa Wiki</h1>
+          </div>
+          <div class="content">
+            <h2 style="color: #1D1D1F; margin-top: 0;">${isPasswordChange ? 'Пароль изменен' : 'Добро пожаловать!'}</h2>
+            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
+              Здравствуйте, <strong>${displayName || username}</strong>!
+            </p>
+            <p style="color: #86868B; font-size: 15px; line-height: 1.6;">
+              ${greetingText}
+            </p>
+
+            <div class="credentials-box">
+              <div class="credential-row">
+                <span class="credential-label">Логин:</span>
+                <span class="credential-value">${username}</span>
+              </div>
+              <div class="credential-row">
+                <span class="credential-label">Пароль:</span>
+                <span class="credential-value">${password}</span>
+              </div>
+            </div>
+
+            <div class="warning">
+              <p><strong>⚠️ Важно:</strong> Сохраните эти данные в надежном месте. Рекомендуем изменить пароль после первого входа в систему.</p>
+            </div>
+
+            <p class="info">
+              Используйте эти учетные данные для входа в систему Alfa Wiki.
+            </p>
+          </div>
+          <div class="footer">
+            <p>Это автоматическое письмо. Пожалуйста, не отвечайте на него.</p>
+            <p>© ${new Date().getFullYear()} Alfa Wiki. Все права защищены.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `
+      Alfa Wiki - ${subject}
+
+      Здравствуйте, ${displayName || username}!
+
+      ${greetingText}
+
+      Ваши учетные данные для входа:
+
+      Логин: ${username}
+      Пароль: ${password}
+
+      ⚠️ ВАЖНО: Сохраните эти данные в надежном месте. Рекомендуем изменить пароль после первого входа в систему.
+
+      Используйте эти учетные данные для входа в систему Alfa Wiki.
+
+      ---
+      Это автоматическое письмо. Пожалуйста, не отвечайте на него.
+      © ${new Date().getFullYear()} Alfa Wiki
+    `
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+
+    // Если используем консольный транспорт - выводим информацию
+    if (!process.env.SMTP_HOST) {
+      console.log('📧 [CREDENTIALS EMAIL]');
+      console.log('To:', email);
+      console.log('Username:', username);
+      console.log('Password:', password);
+      console.log('Type:', isPasswordChange ? 'Password Change' : 'New User');
+      console.log('---');
+    } else {
+      console.log('✅ Credentials email sent successfully to:', email);
+      console.log('Message ID:', info.messageId);
+    }
+
+    return {
+      success: true,
+      messageId: info.messageId
+    };
+  } catch (error) {
+    console.error('❌ Credentials email sending error:', error);
+    throw error;
+  }
+};
+
 module.exports = {
   generateCode,
   send2FACode,
-  send2FADisabledNotification
+  send2FADisabledNotification,
+  sendCredentials
 };

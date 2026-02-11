@@ -95,6 +95,8 @@ export default function AdminUsers() {
   const [medCenterList, setMedCenterList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState('');
+  const [filterMedCenter, setFilterMedCenter] = useState('');
   const [modal, setModal] = useState({ open: false, user: null });
   const [form, setForm] = useState({
     username: '',
@@ -419,10 +421,26 @@ export default function AdminUsers() {
     } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
   };
 
-  const filtered = userList.filter(u => 
-    u.username.toLowerCase().includes(search.toLowerCase()) ||
-    u.displayName?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = userList.filter(u => {
+    // Фильтрация по поиску
+    const matchesSearch = u.username.toLowerCase().includes(search.toLowerCase()) ||
+      u.displayName?.toLowerCase().includes(search.toLowerCase());
+
+    // Фильтрация по роли (сравниваем UUID-строки напрямую)
+    let matchesRole = true;
+    if (filterRole) {
+      matchesRole = (u.roles && u.roles.length > 0 && u.roles.some(r => r.id === filterRole)) ||
+                    (u.role && u.role.id === filterRole);
+    }
+
+    // Фильтрация по медцентру (тоже UUID)
+    let matchesMedCenter = true;
+    if (filterMedCenter) {
+      matchesMedCenter = u.medCenters && u.medCenters.length > 0 && u.medCenters.some(mc => mc.id === filterMedCenter);
+    }
+
+    return matchesSearch && matchesRole && matchesMedCenter;
+  });
 
   return (
     <div className="admin-page users-page">
@@ -438,6 +456,46 @@ export default function AdminUsers() {
           <Search size={18} />
           <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+
+        <select
+          className="filter-select"
+          value={filterRole}
+          onChange={e => setFilterRole(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
+            fontSize: '14px',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="">Все роли</option>
+          {roleList.map(role => (
+            <option key={role.id} value={role.id}>{role.name}</option>
+          ))}
+        </select>
+
+        <select
+          className="filter-select"
+          value={filterMedCenter}
+          onChange={e => setFilterMedCenter(e.target.value)}
+          style={{
+            padding: '10px 14px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
+            background: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
+            fontSize: '14px',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="">Все медцентры</option>
+          {medCenterList.map(mc => (
+            <option key={mc.id} value={mc.id}>{mc.name}</option>
+          ))}
+        </select>
       </div>
 
       <div className="card">
@@ -465,7 +523,7 @@ export default function AdminUsers() {
                         {getAvatarUrl(user) ? (
                           <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
                         ) : (
-                          user.username[0].toUpperCase()
+                          <User size={20} strokeWidth={2} />
                         )}
                       </div>
                       <div>
@@ -650,10 +708,43 @@ export default function AdminUsers() {
                     <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Пароль (оставьте пустым)</label>
-                    <input className="input" type="password" value={form.password} onChange={e => setForm({...form, password: e.target.value})} />
+                    <label className="form-label">Новый пароль</label>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input
+                        className="input"
+                        type="text"
+                        value={form.password}
+                        onChange={e => setForm({...form, password: e.target.value})}
+                        placeholder="Оставьте пустым, чтобы не менять"
+                        style={{
+                          flex: 1,
+                          fontFamily: form.password ? 'monospace' : 'inherit',
+                          fontSize: form.password ? 14 : 'inherit'
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={copyPassword}
+                        title="Скопировать пароль"
+                        disabled={!form.password}
+                      >
+                        <Copy size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={regeneratePassword}
+                        title="Сгенерировать новый пароль"
+                      >
+                        <RefreshCw size={16} />
+                      </button>
+                    </div>
+                    <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
+                      {form.password ? '⚠️ Скопируйте пароль - он больше не будет показан' : 'Генерируйте новый пароль при необходимости'}
+                    </small>
                   </div>
-                  
+
                   <div className="form-group">
                     <label className="form-label">Email {form.twoFactorEnabled && <span style={{color: 'var(--error)'}}>*</span>}</label>
                     <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
