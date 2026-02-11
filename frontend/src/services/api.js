@@ -81,6 +81,7 @@ export const pages = {
   delete: (id) => api.delete(`/pages/${id}`),
   toggleFavorite: (id) => api.post(`/pages/${id}/favorite`),
   getHistory: (id) => api.get(`/pages/${id}/history`),
+  exportHistoryPdf: (id) => api.get(`/pages/${id}/history/pdf`),
   importXlsx: (id, formData) =>
     api.post(`/pages/${id}/import-xlsx`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }

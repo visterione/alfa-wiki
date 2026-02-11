@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, User, FileText, Eye, EyeOff } from 'lucide-react';
-import { pages } from '../services/api';
+import { X, Clock, User, FileText, Eye, EyeOff, Download } from 'lucide-react';
+import { pages, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './PageHistoryModal.css';
 
 export default function PageHistoryModal({ pageId, onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   useEffect(() => {
     loadHistory();
@@ -21,6 +22,47 @@ export default function PageHistoryModal({ pageId, onClose }) {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getAvatarUrl = (user) => {
+    if (!user?.avatar) return null;
+    if (user.avatar.startsWith('http://localhost')) {
+      const path = user.avatar.replace(/^http:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
+    if (user.avatar.startsWith('http')) return user.avatar;
+    return `${BASE_URL}/${user.avatar}`;
+  };
+
+  const handleImageError = (e) => {
+    // Скрываем битое изображение и показываем иконку
+    e.target.style.display = 'none';
+    if (e.target.nextSibling) {
+      e.target.nextSibling.style.display = 'flex';
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      const response = await pages.exportHistoryPdf(pageId);
+
+      // Создаем ссылку для скачивания
+      const url = `${BASE_URL}/${response.data.filePath}`;
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = response.data.filename || 'page-history.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success('PDF отчет успешно создан');
+    } catch (error) {
+      toast.error('Не удалось создать PDF отчет');
+      console.error(error);
+    } finally {
+      setExportingPdf(false);
     }
   };
 
@@ -110,8 +152,18 @@ export default function PageHistoryModal({ pageId, onClose }) {
                   <div className="history-content">
                     <div className="history-header">
                       <div className="history-user">
-                        {entry.user?.avatar ? (
-                          <img src={entry.user.avatar} alt="" className="history-avatar" />
+                        {getAvatarUrl(entry.user) ? (
+                          <>
+                            <img
+                              src={getAvatarUrl(entry.user)}
+                              alt=""
+                              className="history-avatar"
+                              onError={handleImageError}
+                            />
+                            <div className="history-avatar-placeholder" style={{ display: 'none' }}>
+                              <User size={16} />
+                            </div>
+                          </>
                         ) : (
                           <div className="history-avatar-placeholder">
                             <User size={16} />
@@ -140,6 +192,14 @@ export default function PageHistoryModal({ pageId, onClose }) {
         </div>
 
         <div className="page-history-modal-footer">
+          <button
+            className="btn btn-primary"
+            onClick={handleExportPdf}
+            disabled={exportingPdf || loading || history.length === 0}
+          >
+            <Download size={16} />
+            {exportingPdf ? 'Формирование PDF...' : 'Экспорт в PDF'}
+          </button>
           <button className="btn btn-secondary" onClick={onClose}>
             Закрыть
           </button>

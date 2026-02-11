@@ -250,11 +250,51 @@
 
 .page-history-modal-footer {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
   padding: 16px 24px;
   border-top: 1px solid #e5e7eb;
   background: #f9fafb;
   flex-shrink: 0;
+}
+
+.page-history-modal-footer .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.page-history-modal-footer .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.page-history-modal-footer .btn-primary {
+  background: #3b82f6;
+  color: white;
+}
+
+.page-history-modal-footer .btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.page-history-modal-footer .btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.page-history-modal-footer .btn-secondary:hover {
+  background: #f9fafb;
+  border-color: #9ca3af;
 }
 
 /* Responsive */

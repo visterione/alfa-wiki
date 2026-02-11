@@ -8,6 +8,7 @@ const XLSX = require('xlsx-js-style');
 const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { convertXlsxToUniver, convertUniverToXlsx } = require('../utils/xlsxConverter');
+const { generatePageHistoryPdf } = require('../services/pdfService');
 
 const router = express.Router();
 
@@ -386,6 +387,50 @@ router.get('/:id/history', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get page history error:', error);
     res.status(500).json({ error: 'Failed to fetch page history' });
+  }
+});
+
+// Export page history as PDF
+router.get('/:id/history/pdf', authenticate, async (req, res) => {
+  try {
+    const page = await Page.findByPk(req.params.id);
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    // Проверяем права доступа к странице
+    if (!req.user.isAdmin && !page.isPublished) {
+      const canView = page.createdBy === req.user.id || req.user.permissions?.pages?.write;
+      if (!canView) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    const history = await PageHistory.findAll({
+      where: { pageId: req.params.id },
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'displayName', 'username', 'avatar']
+        }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Генерируем PDF
+    const filePath = await generatePageHistoryPdf(page, history);
+    const filename = `История изменений - ${page.title}.pdf`;
+
+    res.json({
+      success: true,
+      filePath,
+      filename
+    });
+
+  } catch (error) {
+    console.error('Export page history PDF error:', error);
+    res.status(500).json({ error: 'Failed to export page history as PDF' });
   }
 });
 
