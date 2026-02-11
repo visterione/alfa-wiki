@@ -40,6 +40,21 @@ const PRIORITY_CONFIG = {
   urgent: { label: 'Срочно', color: '#ffebee', textColor: '#c62828' }
 };
 
+// UUID generation with fallback for non-secure contexts (HTTP)
+const generateUUID = () => {
+  // Use native crypto.randomUUID if available (HTTPS or localhost)
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+
+  // Fallback for HTTP (non-secure context)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
 // Utility functions for subtasks handling
 const getSubtasksProgress = (subtasks) => {
   if (!subtasks || subtasks.length === 0) {
@@ -250,7 +265,7 @@ function Kanban() {
   const addSubtask = () => {
     if (subtaskInput.trim()) {
       const newSubtask = {
-        id: crypto.randomUUID(),
+        id: generateUUID(),
         text: subtaskInput.trim(),
         completed: false
       };
