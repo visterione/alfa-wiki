@@ -22,6 +22,7 @@ import Courses from './pages/Courses';
 import CourseView from './pages/CourseView';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseEditor from './pages/admin/AdminCourseEditor';
+import AdminJournal from './pages/admin/AdminJournal';
 import Calendar from './pages/Calendar';
 import Kanban from './pages/Kanban';
 import KanbanArchive from './pages/KanbanArchive';
@@ -138,6 +139,11 @@ function AppRoutes() {
         } />
         <Route path="admin/courses/:id/edit" element={
           <ProtectedRoute requireAdminAccess="courses"><AdminCourseEditor /></ProtectedRoute>
+        } />
+
+        {/* АДМИНКА ЖУРНАЛ СТРАНИЦ */}
+        <Route path="admin/journal" element={
+          <ProtectedRoute requireAdminAccess="journal"><AdminJournal /></ProtectedRoute>
         } />
       </Route>
 

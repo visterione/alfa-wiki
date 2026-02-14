@@ -55,7 +55,8 @@ const User = sequelize.define('User', {
       backup: false,     // Резервные копии
       settings: false,   // Настройки
       courses: false,    // Курсы
-      kanban: false      // Канбан-доска
+      kanban: false,     // Канбан-доска
+      journal: false     // Журнал страниц
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },

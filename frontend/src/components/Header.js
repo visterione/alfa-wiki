@@ -378,6 +378,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     Курсы
                   </Link>
                 )}
+                {(isAdmin || user?.adminAccess?.journal) && (
+                  <Link to="/admin/journal" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <FileText size={16} />
+                    Журнал страниц
+                  </Link>
+                )}
 
                 <div className="header-dropdown-divider" />
                 <button className="header-dropdown-item" onClick={handleLogout}>

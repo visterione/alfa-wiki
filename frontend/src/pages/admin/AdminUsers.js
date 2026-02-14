@@ -118,7 +118,8 @@ export default function AdminUsers() {
       backup: false,
       settings: false,
       courses: false,
-      kanban: false
+      kanban: false,
+      journal: false
     }
   });
 
@@ -271,7 +272,9 @@ export default function AdminUsers() {
           media: false,
           backup: false,
           settings: false,
-          courses: false
+          courses: false,
+          kanban: false,
+          journal: false
         }
       });
     } else {
@@ -777,102 +780,124 @@ export default function AdminUsers() {
                 optionDescription="displayName"
               />
 
-              <div className="form-group">
-                <label className="checkbox-item">
-                  <input type="checkbox" checked={form.isAdmin} onChange={e => setForm({...form, isAdmin: e.target.checked})} />
-                  Администратор
-                </label>
-              </div>
+              {/* Доступ к админ-разделам */}
+              <div className="form-group" style={{
+                background: 'var(--bg-secondary)',
+                padding: 16,
+                borderRadius: 'var(--radius-md)',
+                marginTop: 16,
+                gridColumn: 'span 2'
+              }}>
+                <div style={{ fontWeight: 500, marginBottom: 16, color: 'var(--text-primary)' }}>
+                  Доступ к админ-разделам
+                </div>
 
-              {/* Гранулярный доступ к админ-разделам */}
-              {!form.isAdmin && (
-                <div className="form-group" style={{
-                  background: 'var(--bg-secondary)',
-                  padding: 16,
-                  borderRadius: 'var(--radius-md)',
-                  marginTop: 16
-                }}>
-                  <div style={{ fontWeight: 500, marginBottom: 16, color: 'var(--text-primary)' }}>
-                    Доступ к админ-разделам
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 8px' }}>
+                <label className="checkbox-item" style={{ marginBottom: 16, fontWeight: 500 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.isAdmin}
+                    onChange={e => setForm({...form, isAdmin: e.target.checked})}
+                  />
+                  Администратор (полный доступ ко всем разделам)
+                </label>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px 8px' }}>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.pages}
+                        checked={form.isAdmin || form.adminAccess.pages}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, pages: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Страницы
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.sidebar}
+                        checked={form.isAdmin || form.adminAccess.sidebar}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, sidebar: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Меню навигации
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.users}
+                        checked={form.isAdmin || form.adminAccess.users}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, users: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Пользователи
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.roles}
+                        checked={form.isAdmin || form.adminAccess.roles}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, roles: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Роли и права
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.media}
+                        checked={form.isAdmin || form.adminAccess.media}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, media: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Медиафайлы
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.backup}
+                        checked={form.isAdmin || form.adminAccess.backup}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, backup: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Резервные копии
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.settings}
+                        checked={form.isAdmin || form.adminAccess.settings}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, settings: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Настройки
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.courses}
+                        checked={form.isAdmin || form.adminAccess.courses}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, courses: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Курсы
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.adminAccess.kanban}
+                        checked={form.isAdmin || form.adminAccess.kanban}
                         onChange={e => setForm({...form, adminAccess: {...form.adminAccess, kanban: e.target.checked}})}
+                        disabled={form.isAdmin}
                       />
                       Канбан-доска
                     </label>
                     <label className="checkbox-item">
                       <input
                         type="checkbox"
-                        checked={form.canEditDoctorCards}
+                        checked={form.isAdmin || form.adminAccess.journal}
+                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, journal: e.target.checked}})}
+                        disabled={form.isAdmin}
+                      />
+                      Журнал страниц
+                    </label>
+                    <label className="checkbox-item">
+                      <input
+                        type="checkbox"
+                        checked={form.isAdmin || form.canEditDoctorCards}
                         onChange={e => setForm({...form, canEditDoctorCards: e.target.checked})}
+                        disabled={form.isAdmin}
                       />
                       Карточки врачей
                     </label>
@@ -880,20 +905,36 @@ export default function AdminUsers() {
                   <p style={{
                     fontSize: 13,
                     color: 'var(--text-secondary)',
-                    margin: '8px 0 0 0',
+                    margin: '12px 0 0 0',
                     lineHeight: 1.5
                   }}>
                     Выберите к каким админ-разделам будет доступ у пользователя.
-                    Полные администраторы имеют доступ ко всем разделам.
+                    При включении "Администратор" предоставляется полный доступ ко всем разделам.
                   </p>
                 </div>
-              )}
 
-              <div className="form-group">
-                <label className="checkbox-item">
-                  <input type="checkbox" checked={form.isActive} onChange={e => setForm({...form, isActive: e.target.checked})} />
-                  Активен
+              {/* Активен */}
+              <div className="form-group" style={{
+                background: 'var(--bg-secondary)',
+                padding: 16,
+                borderRadius: 'var(--radius-md)'
+              }}>
+                <label className="checkbox-item" style={{ marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={e => setForm({...form, isActive: e.target.checked})}
+                  />
+                  <span style={{ fontWeight: 500 }}>Активен</span>
                 </label>
+                <p style={{
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                  margin: 0,
+                  lineHeight: 1.5
+                }}>
+                  Неактивные пользователи не могут войти в систему. Используйте для временной блокировки доступа.
+                </p>
               </div>
               
               {/* 2FA Toggle */}

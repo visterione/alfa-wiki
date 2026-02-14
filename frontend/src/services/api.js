@@ -90,6 +90,11 @@ export const pages = {
     api.get(`/pages/${id}/export-xlsx`, { responseType: 'blob' })
 };
 
+// Journal
+export const journal = {
+  list: (params) => api.get('/journal', { params })
+};
+
 // Folders
 export const folders = {
   browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),

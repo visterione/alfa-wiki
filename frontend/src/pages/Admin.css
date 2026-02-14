@@ -51,10 +51,19 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-.admin-table { width: 100%; border-collapse: collapse; }
-.admin-table th, .admin-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid var(--border-light); }
-.admin-table th { font-weight: 500; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; background: var(--bg-secondary); }
-.admin-table tr:hover td { background: var(--bg-secondary); }
+/* Контейнер таблицы с белым фоном */
+.admin-table-container {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.admin-table { width: 100%; border-collapse: collapse; background: #ffffff; }
+.admin-table th, .admin-table td { padding: 14px 20px; text-align: left; border-bottom: 1px solid var(--border-light); background: #ffffff; }
+.admin-table th { font-weight: 500; color: var(--text-secondary); font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; background: #f9fafb; }
+.admin-table tr:hover td { background: #f9fafb; }
 .admin-table tr:last-child td { border-bottom: none; }
 
 /* Оптимизация колонок для таблицы пользователей */
@@ -1403,4 +1412,172 @@
 .radio-item svg {
   color: currentColor;
   transition: color var(--transition-fast);
+}
+
+/* === ЖУРНАЛ СТРАНИЦ === */
+
+/* Панель фильтров */
+.admin-filters-panel {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.admin-filters-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+/* Группа полей формы */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 180px;
+}
+
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Поля ввода в админке */
+.form-control {
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--text-primary);
+  outline: none;
+  transition: all 0.2s;
+}
+
+.form-control:focus {
+  border-color: #007AFF;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+/* Кнопка сброса фильтров */
+.filter-reset-btn {
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  margin-top: 29px; /* Выравнивание с полями формы (высота label + gap) */
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Бейдж типа страницы */
+.page-type-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* Ссылка на страницу */
+.page-title-link {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--transition-fast);
+}
+
+.page-title-link:hover {
+  text-decoration: underline;
+  color: var(--primary-dark);
+}
+
+/* Путь к папке */
+.folder-path {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Ячейка с датой */
+.date-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Бейдж статуса */
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-badge.published {
+  background-color: #d1fae5;
+  color: #065f46;
+}
+
+.status-badge.draft {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+/* Пагинация */
+.admin-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 16px;
+}
+
+.admin-pagination-info {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+.admin-pagination-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.pagination-page {
+  font-size: 14px;
+  color: #6b7280;
+  min-width: 120px;
+  text-align: center;
+}
+
+/* Пустое состояние */
+.admin-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #6b7280;
+}
+
+.admin-empty-state svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
 }
