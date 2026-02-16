@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Бонусы за направления</title>
+<!-- SheetJS для разбора Excel -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<!-- ExcelJS для экспорта с форматированием -->
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<style>
+:root {
+  --rb-primary: #2563eb;
+  --rb-primary-hover: #1d4ed8;
+  --rb-bg: #f8fafc;
+  --rb-card-bg: #ffffff;
+  --rb-border: #e2e8f0;
+  --rb-border-dark: #94a3b8;
+  --rb-text: #1e293b;
+  --rb-text-secondary: #64748b;
+  --rb-danger: #dc2626;
+  --rb-success: #16a34a;
+  --rb-warning: #d97706;
+  --rb-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  --rb-shadow-lg: 0 4px 12px rgba(0,0,0,0.15);
+  --rb-radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--rb-bg); color: var(--rb-text); }
+
+#rb-app { max-width: 1400px; margin: 0 auto; padding: 20px; }
+
+/* Header */
+.rb-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.rb-header h1 { font-size: 22px; font-weight: 700; flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px; }
+.rb-header h1 svg { width: 24px; height: 24px; color: var(--rb-primary); }
+
+/* Layout: two panels */
+.rb-layout { display: grid; grid-template-columns: 380px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .rb-layout { grid-template-columns: 1fr; } }
+
+/* Left panel - doctors list */
+.rb-panel { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-panel-header { padding: 14px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rb-panel-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rb-panel-title svg { width: 16px; height: 16px; color: var(--rb-primary); }
+
+/* Filters */
+.rb-filters { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); display: flex; flex-direction: column; gap: 8px; }
+.rb-search-input { width: 100%; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
+.rb-search-input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-select { width: 100%; padding: 7px 10px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; background: white; outline: none; }
+.rb-select:focus { border-color: var(--rb-primary); }
+
+/* Doctors list */
+.rb-doctors-list { max-height: calc(100vh - 280px); overflow-y: auto; }
+.rb-doctor-item { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 10px; }
+.rb-doctor-item:hover { background: #f0f7ff; }
+.rb-doctor-item.active { background: #dbeafe; border-left: 3px solid var(--rb-primary); }
+.rb-doctor-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #dbeafe, #bfdbfe); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--rb-primary); flex-shrink: 0; }
+.rb-doctor-info { flex: 1; min-width: 0; }
+.rb-doctor-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-doctor-specialty { font-size: 11px; color: var(--rb-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-doctor-badges { display: flex; gap: 4px; flex-wrap: wrap; }
+.rb-clinic-badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 600; color: white; }
+.rb-bonus-count { font-size: 11px; color: var(--rb-success); font-weight: 600; margin-left: auto; flex-shrink: 0; }
+
+/* Right panel - doctor detail */
+.rb-detail-panel { display: flex; flex-direction: column; gap: 16px; }
+.rb-placeholder { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); padding: 60px 20px; text-align: center; color: var(--rb-text-secondary); }
+.rb-placeholder svg { width: 56px; height: 56px; margin-bottom: 12px; opacity: 0.3; }
+.rb-placeholder p { font-size: 14px; }
+
+/* Doctor card header */
+.rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-doctor-card-header { padding: 16px 20px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; gap: 14px; }
+.rb-doctor-card-avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--rb-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0; }
+.rb-doctor-card-info h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
+.rb-doctor-card-info p { font-size: 13px; color: var(--rb-text-secondary); }
+.rb-doctor-card-actions { margin-left: auto; display: flex; gap: 8px; }
+
+/* Buttons */
+.rb-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border: none; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+.rb-btn svg { width: 15px; height: 15px; }
+.rb-btn-primary { background: var(--rb-primary); color: white; }
+.rb-btn-primary:hover { background: var(--rb-primary-hover); }
+.rb-btn-secondary { background: white; color: var(--rb-text); border: 1px solid var(--rb-border-dark); }
+.rb-btn-secondary:hover { background: #f8fafc; }
+.rb-btn-success { background: var(--rb-success); color: white; }
+.rb-btn-success:hover { background: #15803d; }
+.rb-btn-danger { background: var(--rb-danger); color: white; }
+.rb-btn-danger:hover { background: #b91c1c; }
+.rb-btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* Add service section */
+.rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+.rb-add-service-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rb-add-service-header h3 svg { width: 16px; height: 16px; color: var(--rb-primary); }
+.rb-add-service-body { padding: 16px; }
+/* Tabs inside add-service */
+.rb-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rb-border); margin: -16px -16px 16px -16px; }
+.rb-tab-btn { flex: 1; padding: 10px 12px; font-size: 13px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; }
+.rb-tab-btn.active { color: var(--rb-primary); border-bottom-color: var(--rb-primary); background: #f0f7ff; }
+.rb-tab-btn:hover:not(.active) { background: #f8fafc; color: var(--rb-text); }
+.rb-tab-pane { display: none; }
+.rb-tab-pane.active { display: block; }
+/* Category tab */
+.rb-cat-select { width: 100%; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; margin-bottom: 10px; }
+.rb-cat-select:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-cat-services-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--rb-border); border-radius: 8px; margin-bottom: 12px; display: none; }
+.rb-cat-service-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--rb-border); display: flex; justify-content: space-between; align-items: center; transition: background 0.1s; }
+.rb-cat-service-item:last-child { border-bottom: none; }
+.rb-cat-service-item:hover { background: #f0f7ff; }
+.rb-cat-service-item.selected { background: #dbeafe; }
+.rb-search-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.rb-search-row input { flex: 1; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
+.rb-search-row input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+/* Service search results */
+.rb-search-results { max-height: 200px; overflow-y: auto; border: 1px solid var(--rb-border); border-radius: 8px; margin-bottom: 12px; display: none; }
+.rb-search-result-item { padding: 10px 12px; cursor: pointer; border-bottom: 1px solid var(--rb-border); transition: background 0.1s; display: flex; justify-content: space-between; align-items: center; }
+.rb-search-result-item:last-child { border-bottom: none; }
+.rb-search-result-item:hover { background: #f0f7ff; }
+.rb-result-name { font-size: 13px; font-weight: 500; }
+.rb-result-code { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-result-price { font-size: 12px; color: var(--rb-success); font-weight: 600; flex-shrink: 0; margin-left: 8px; }
+
+/* Selected service form */
+.rb-selected-service { background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px; margin-bottom: 12px; display: none; }
+.rb-selected-service-name { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.rb-selected-service-code { font-size: 11px; color: var(--rb-text-secondary); margin-bottom: 10px; }
+.rb-bonus-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rb-bonus-field { display: flex; flex-direction: column; gap: 4px; }
+.rb-bonus-field label { font-size: 12px; font-weight: 500; color: var(--rb-text-secondary); }
+.rb-bonus-field input { padding: 7px 10px; border: 1px solid var(--rb-border-dark); border-radius: 7px; font-size: 13px; outline: none; }
+.rb-bonus-field input:focus { border-color: var(--rb-primary); }
+.rb-form-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* Bonuses table */
+.rb-bonuses-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-bonuses-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; }
+.rb-bonuses-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rb-bonuses-header h3 svg { width: 16px; height: 16px; color: var(--rb-success); }
+.rb-bonuses-table-wrap { overflow-x: auto; }
+.rb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rb-table th { background: #f8fafc; padding: 10px 14px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--rb-border); white-space: nowrap; }
+.rb-table td { padding: 10px 14px; border-bottom: 1px solid var(--rb-border); vertical-align: middle; }
+.rb-table tr:last-child td { border-bottom: none; }
+.rb-table tr:hover td { background: #f8fafc; }
+.rb-service-code-cell { font-family: monospace; font-size: 12px; color: var(--rb-text-secondary); }
+.rb-bonus-value { font-weight: 600; }
+.rb-bonus-percent { color: var(--rb-warning); }
+.rb-bonus-rub { color: var(--rb-success); }
+.rb-empty-row td { text-align: center; color: var(--rb-text-secondary); padding: 24px; }
+
+/* Loading */
+.rb-loading { text-align: center; padding: 20px; color: var(--rb-text-secondary); font-size: 13px; }
+.rb-spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--rb-border); border-top-color: var(--rb-primary); border-radius: 50%; animation: rb-spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+
+/* Modal */
+.rb-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.rb-modal { background: white; border-radius: 12px; width: 100%; max-width: 700px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--rb-shadow-lg); }
+.rb-modal-header { padding: 16px 20px; border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; justify-content: space-between; }
+.rb-modal-header h3 { font-size: 16px; font-weight: 600; }
+.rb-modal-close { width: 28px; height: 28px; border: none; background: none; cursor: pointer; font-size: 20px; color: var(--rb-text-secondary); display: flex; align-items: center; justify-content: center; border-radius: 6px; }
+.rb-modal-close:hover { background: #f1f5f9; }
+.rb-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.rb-modal-footer { padding: 14px 20px; border-top: 1px solid var(--rb-border); display: flex; gap: 8px; justify-content: flex-end; }
+
+/* File upload */
+.rb-file-zone { border: 2px dashed var(--rb-border-dark); border-radius: 10px; padding: 32px 20px; text-align: center; cursor: pointer; transition: all 0.2s; }
+.rb-file-zone:hover, .rb-file-zone.drag-over { border-color: var(--rb-primary); background: #f0f7ff; }
+.rb-file-zone svg { width: 40px; height: 40px; color: var(--rb-text-secondary); margin-bottom: 10px; opacity: 0.5; }
+.rb-file-zone p { font-size: 14px; color: var(--rb-text-secondary); }
+.rb-file-zone span { font-size: 12px; color: var(--rb-text-secondary); }
+.rb-file-selected { display: flex; align-items: center; gap: 10px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 14px; margin-top: 12px; }
+.rb-file-selected svg { color: var(--rb-success); width: 20px; height: 20px; flex-shrink: 0; }
+.rb-file-selected-name { font-size: 13px; font-weight: 500; }
+
+/* Report */
+.rb-report { margin-top: 16px; }
+.rb-report-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--rb-border); }
+.rb-report-patient { margin-bottom: 20px; }
+.rb-report-patient-name { font-size: 14px; font-weight: 600; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid var(--rb-primary); }
+.rb-report-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
+.rb-report-table th { background: #f1f5f9; padding: 7px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--rb-border); }
+.rb-report-table td { padding: 7px 10px; border-bottom: 1px solid var(--rb-border); }
+.rb-report-table tr:last-child td { border-bottom: none; }
+.rb-report-total { text-align: right; font-size: 13px; font-weight: 700; padding: 6px 4px; color: var(--rb-danger); }
+.rb-report-grand-total { padding: 12px 16px; background: #fef3c7; border-radius: 8px; font-size: 14px; font-weight: 700; text-align: right; color: var(--rb-warning); margin-top: 12px; }
+
+/* Alert */
+.rb-alert { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+.rb-alert-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+.rb-alert-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+.rb-alert-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+
+/* Toast */
+.rb-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; z-index: 9999; box-shadow: var(--rb-shadow-lg); animation: rb-slide-in 0.3s ease; }
+.rb-toast.success { background: #166534; color: white; }
+.rb-toast.error { background: #991b1b; color: white; }
+@keyframes rb-slide-in { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Services table (inline editing) */
+.rb-svc-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-svc-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.rb-svc-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rb-svc-header h3 svg { width: 16px; height: 16px; color: var(--rb-primary); }
+.rb-svc-filter { padding: 10px 16px; border-bottom: 1px solid var(--rb-border); }
+.rb-svc-filter input { width: 100%; padding: 7px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
+.rb-svc-filter input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-svc-table-wrap { max-height: 420px; overflow-y: auto; }
+.rb-svc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rb-svc-table th { background: #f8fafc; padding: 9px 12px; text-align: left; font-weight: 600; border-bottom: 2px solid var(--rb-border); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+.rb-svc-table td { padding: 6px 12px; border-bottom: 1px solid var(--rb-border); vertical-align: middle; }
+.rb-svc-table tr:last-child td { border-bottom: none; }
+.rb-svc-table tr.has-bonus td { background: #f0fdf4; }
+.rb-svc-table tr.has-bonus:hover td { background: #dcfce7; }
+.rb-svc-table tr:not(.has-bonus):hover td { background: #f8fafc; }
+.rb-svc-input { width: 90px; padding: 5px 8px; border: 1px solid var(--rb-border-dark); border-radius: 6px; font-size: 12px; outline: none; text-align: right; }
+.rb-svc-input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+.rb-svc-input.has-value { border-color: var(--rb-success); background: #f0fdf4; }
+.rb-svc-footer { padding: 12px 16px; border-top: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; }
+.rb-svc-footer span { font-size: 12px; color: var(--rb-text-secondary); }
+
+/* Bulk modal */
+.rb-bulk-modal { max-width: 920px; }
+.rb-bulk-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 420px; }
+.rb-bulk-left { border-right: 1px solid var(--rb-border); display: flex; flex-direction: column; }
+.rb-bulk-right { display: flex; flex-direction: column; padding: 16px; gap: 12px; }
+.rb-bulk-filters { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); display: flex; flex-direction: column; gap: 6px; background: #f8fafc; }
+.rb-bulk-toolbar { padding: 8px 16px; border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; justify-content: space-between; }
+.rb-bulk-toolbar span { font-size: 12px; color: var(--rb-text-secondary); }
+.rb-bulk-doctor-list { flex: 1; overflow-y: auto; max-height: 320px; }
+.rb-bulk-doctor-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; font-size: 13px; }
+.rb-bulk-doctor-item:hover { background: #f0f7ff; }
+.rb-bulk-doctor-item input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; accent-color: var(--rb-primary); }
+.rb-bulk-doctor-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-bulk-doctor-spec { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-bulk-progress { background: #f1f5f9; border-radius: 8px; padding: 12px 14px; font-size: 13px; }
+.rb-bulk-progress-bar-wrap { background: #e2e8f0; border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
+.rb-bulk-progress-bar { height: 6px; background: var(--rb-primary); border-radius: 4px; transition: width 0.3s; }
+@media (max-width: 700px) { .rb-bulk-layout { grid-template-columns: 1fr; } .rb-bulk-left { border-right: none; border-bottom: 1px solid var(--rb-border); } }
+</style>
+</head>
+<body>
+<div id="rb-app">
+  <div class="rb-header">
+    <h1>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      Бонусы за направления
+    </h1>
+    <button class="rb-btn rb-btn-primary" onclick="rbOpenBulkModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Сводный отчёт
+    </button>
+  </div>
+
+  <div class="rb-layout">
+    <!-- LEFT: Doctors list -->
+    <div class="rb-panel">
+      <div class="rb-panel-header">
+        <div class="rb-panel-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Врачи-направители
+        </div>
+        <div id="rb-doctors-count" style="font-size:12px;color:var(--rb-text-secondary)"></div>
+      </div>
+      <div class="rb-filters">
+        <input id="rb-search" class="rb-search-input" placeholder="Поиск по ФИО...">
+        <select id="rb-filter-clinic" class="rb-select">
+          <option value="">Все медцентры</option>
+        </select>
+        <select id="rb-filter-profession" class="rb-select">
+          <option value="">Все специальности</option>
+        </select>
+      </div>
+      <div class="rb-doctors-list" id="rb-doctors-list">
+        <div class="rb-loading"><span class="rb-spinner"></span>Загрузка врачей...</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Detail -->
+    <div class="rb-detail-panel" id="rb-detail-panel">
+      <div class="rb-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7z"/></svg>
+        <p>Выберите врача из списка слева</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Report modal -->
+<div id="rb-report-modal" class="rb-modal-overlay" style="display:none">
+  <div class="rb-modal">
+    <div class="rb-modal-header">
+      <h3 id="rb-report-modal-title">Создать отчёт</h3>
+      <button class="rb-modal-close" onclick="rbCloseReportModal()">×</button>
+    </div>
+    <div class="rb-modal-body" id="rb-report-modal-body">
+      <div class="rb-alert rb-alert-info">
+        Загрузите Excel-файл с данными о направлениях. Поддерживаемые колонки:<br>
+        <strong>Клиника счета, ФИО исполнителя, ФИО рекомендателя, Код услуги, Наименование услуги, Итоговая стоимость, ФИО пациента, Номер визита</strong>
+      </div>
+      <div class="rb-file-zone" id="rb-file-zone" onclick="document.getElementById('rb-excel-input').click()" ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbDrop(event)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <p>Нажмите или перетащите Excel-файл сюда</p>
+        <span>.xlsx, .xls</span>
+      </div>
+      <input type="file" id="rb-excel-input" accept=".xlsx,.xls" style="display:none" onchange="rbHandleFile(this.files[0])">
+      <div id="rb-file-info" style="display:none" class="rb-file-selected">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+        <span class="rb-file-selected-name" id="rb-file-name"></span>
+      </div>
+      <div id="rb-report-content"></div>
+    </div>
+    <div class="rb-modal-footer">
+      <button class="rb-btn rb-btn-secondary" onclick="rbCloseReportModal()">Закрыть</button>
+      <button class="rb-btn rb-btn-primary" id="rb-export-btn" style="display:none" onclick="rbExportReport()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Скачать отчёт (Excel)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk report modal -->
+<div id="rb-bulk-modal" class="rb-modal-overlay" style="display:none">
+  <div class="rb-modal rb-bulk-modal">
+    <div class="rb-modal-header">
+      <h3>Сводный отчёт по нескольким врачам</h3>
+      <button class="rb-modal-close" onclick="rbCloseBulkModal()">×</button>
+    </div>
+    <div class="rb-modal-body" style="padding:0;overflow:hidden">
+      <div class="rb-bulk-layout">
+        <!-- LEFT: doctor selection -->
+        <div class="rb-bulk-left">
+          <div class="rb-bulk-filters">
+            <input id="rb-bulk-search" class="rb-search-input" placeholder="Поиск по ФИО..." oninput="rbBulkApplyFilters()">
+            <select id="rb-bulk-clinic" class="rb-select" onchange="rbBulkApplyFilters()">
+              <option value="">Все медцентры</option>
+            </select>
+            <select id="rb-bulk-prof" class="rb-select" onchange="rbBulkApplyFilters()">
+              <option value="">Все специальности</option>
+            </select>
+          </div>
+          <div class="rb-bulk-toolbar">
+            <span id="rb-bulk-count">0 выбрано</span>
+            <div style="display:flex;gap:6px">
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbBulkSelectAll()">Все</button>
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbBulkDeselectAll()">Сбросить</button>
+            </div>
+          </div>
+          <div class="rb-bulk-doctor-list" id="rb-bulk-doctor-list"></div>
+        </div>
+        <!-- RIGHT: file + generate -->
+        <div class="rb-bulk-right">
+          <div class="rb-alert rb-alert-info" style="margin-bottom:0">
+            Загрузите Excel-файл с направлениями. ФИО рекомендателя в файле может быть в сокращённом виде (<strong>Фамилия И. О.</strong>) — система сопоставит по фамилии и инициалам.
+          </div>
+          <div class="rb-file-zone" id="rb-bulk-file-zone" onclick="document.getElementById('rb-bulk-excel-input').click()" ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop(event)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <p>Нажмите или перетащите Excel-файл сюда</p>
+            <span>.xlsx, .xls</span>
+          </div>
+          <input type="file" id="rb-bulk-excel-input" accept=".xlsx,.xls" style="display:none" onchange="rbBulkHandleFile(this.files[0])">
+          <div id="rb-bulk-file-info" style="display:none" class="rb-file-selected">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            <span class="rb-file-selected-name" id="rb-bulk-file-name"></span>
+          </div>
+          <div id="rb-bulk-progress-wrap" style="display:none" class="rb-bulk-progress">
+            <span id="rb-bulk-progress-text">Обработка...</span>
+            <div class="rb-bulk-progress-bar-wrap">
+              <div class="rb-bulk-progress-bar" id="rb-bulk-progress-bar" style="width:0%"></div>
+            </div>
+          </div>
+          <div id="rb-bulk-result"></div>
+        </div>
+      </div>
+    </div>
+    <div class="rb-modal-footer">
+      <button class="rb-btn rb-btn-secondary" onclick="rbCloseBulkModal()">Закрыть</button>
+      <button class="rb-btn rb-btn-primary" id="rb-bulk-generate-btn" onclick="rbBulkGenerate()" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Сформировать отчёт
+      </button>
+      <button class="rb-btn rb-btn-success" id="rb-bulk-export-btn" style="display:none" onclick="rbBulkExport()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Скачать Excel
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+const RB = {
+  token: null,
+  apiBase: '',
+  doctors: [],
+  filteredDoctors: [],
+  selectedDoctor: null,
+  bonuses: [],
+  clinics: [],
+  bonusCounts: {}, // misUserId -> count
+  selectedService: null,
+  reportData: null,
+};
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+async function rbInit() {
+  RB.token = localStorage.getItem('token') || sessionStorage.getItem('token') || window.__AUTH_TOKEN__;
+  // Backend всегда на порту 9001
+  RB.apiBase = window.location.protocol + '//' + window.location.hostname + ':9001';
+
+  await rbLoadClinics();
+  await rbLoadDoctors();
+}
+
+// ═══════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════
+async function rbApi(path, options = {}) {
+  const res = await fetch(RB.apiBase + path, {
+    ...options,
+    headers: { 'Authorization': `Bearer ${RB.token}`, 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  return res.json();
+}
+
+async function rbPost(path, body) {
+  return rbApi(path, { method: 'POST', body: JSON.stringify(body) });
+}
+
+// ═══════════════════════════════════════
+// CLINICS
+// ═══════════════════════════════════════
+async function rbLoadClinics() {
+  // Используем статический список с теми же ID что и в данных врача из МИС
+  try {
+    const data = await rbApi('/api/mis/clinics');
+    if (data?.success && Array.isArray(data.data)) {
+      RB.clinics = data.data;
+    } else {
+      throw new Error('fallback');
+    }
+  } catch {
+    // ID берём из doctor-card.html — реальные ID МИС
+    RB.clinics = [
+      { id: 2, name: 'Альфа', color: '#FF80AB' },
+      { id: 3, name: 'Кидс', color: '#FFA726' },
+      { id: 1, name: 'Проф', color: '#7E57C2' },
+      { id: 6, name: 'Линия', color: '#C5E1A5' },
+      { id: 4, name: '3К', color: '#BA68C8' },
+      { id: 7, name: 'Смайл', color: '#555555' },
+    ];
+  }
+
+  const sel = document.getElementById('rb-filter-clinic');
+  RB.clinics.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+}
+
+// Нормализует clinic из МИС в id (может быть объект {id,name} или просто число)
+function rbClinicId(c) {
+  return String(typeof c === 'object' ? c.id : c);
+}
+
+// Нормализует profession из МИС (может быть объект {title} или строка)
+function rbProfessionTitle(p) {
+  return typeof p === 'object' ? (p.title || '') : String(p || '');
+}
+
+function rbGetClinicColor(clinicId) {
+  const c = RB.clinics.find(x => String(x.id) === String(clinicId) || x.name === clinicId);
+  return c?.color || '#94a3b8';
+}
+
+function rbGetClinicName(clinicId) {
+  const c = RB.clinics.find(x => String(x.id) === String(clinicId) || x.name === clinicId);
+  return c?.name || clinicId;
+}
+
+// ═══════════════════════════════════════
+// DOCTORS
+// ═══════════════════════════════════════
+async function rbLoadDoctors() {
+  document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading"><span class="rb-spinner"></span>Загрузка врачей...</div>';
+  try {
+    const data = await rbPost('/api/mis/doctors', { show_all: true });
+
+    if (data?.error !== 0 || !Array.isArray(data?.data)) {
+      document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading">Не удалось загрузить врачей</div>';
+      return;
+    }
+
+    // Логируем структуру первого врача для отладки фильтров
+    if (data.data.length > 0) {
+      const sample = data.data[0];
+      console.log('🔍 Структура врача из МИС (первый):', {
+        id: sample.id,
+        name: sample.name,
+        clinics: sample.clinics,
+        clinic: sample.clinic,
+        clinic_id: sample.clinic_id,
+        clinic_ids: sample.clinic_ids,
+        professions: sample.professions,
+        profession: sample.profession,
+        profession_titles: sample.profession_titles,
+      });
+    }
+
+    RB.doctors = data.data.map(d => {
+      // Нормализуем профессии: может быть массив объектов, массив строк или строка через запятую
+      let professions = [];
+      if (Array.isArray(d.professions) && d.professions.length > 0) {
+        professions = d.professions;
+      } else if (d.profession_titles) {
+        professions = String(d.profession_titles).split(',').map(s => s.trim()).filter(Boolean);
+      } else if (d.profession) {
+        professions = [d.profession];
+      }
+
+      // Нормализуем клиники: могут быть объекты {id,name}, числа, строки, или в поле clinic_ids
+      let rawClinics = d.clinics || d.clinic || d.clinic_ids || [];
+      if (!Array.isArray(rawClinics)) {
+        // Может быть строка "2,3" или одно число
+        rawClinics = String(rawClinics).split(',').map(x => x.trim()).filter(Boolean);
+      }
+
+      return {
+        id: String(d.id),
+        name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
+        professions,
+        clinics: rawClinics.map(rbClinicId),
+      };
+    });
+
+    // Популяем фильтр направлений
+    const profSet = new Set();
+    RB.doctors.forEach(d => d.professions.forEach(p => {
+      const t = rbProfessionTitle(p);
+      if (t) profSet.add(t);
+    }));
+    const profSel = document.getElementById('rb-filter-profession');
+    [...profSet].sort().forEach(title => {
+      const opt = document.createElement('option');
+      opt.value = title;
+      opt.textContent = title;
+      profSel.appendChild(opt);
+    });
+
+    // Загружаем количество бонусов (batch-запрос нет, но можно загрузить при клике)
+    rbApplyFilters();
+  } catch (err) {
+    document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading">Ошибка загрузки</div>';
+    console.error(err);
+  }
+}
+
+function rbApplyFilters() {
+  const search = document.getElementById('rb-search').value.toLowerCase();
+  const clinicId = document.getElementById('rb-filter-clinic').value;
+  const profession = document.getElementById('rb-filter-profession').value;
+
+  RB.filteredDoctors = RB.doctors.filter(d => {
+    if (search && !d.name.toLowerCase().includes(search)) return false;
+    if (clinicId && !d.clinics.includes(String(clinicId))) return false;
+    if (profession && !d.professions.some(p => rbProfessionTitle(p) === profession)) return false;
+    return true;
+  });
+
+  document.getElementById('rb-doctors-count').textContent = `${RB.filteredDoctors.length} из ${RB.doctors.length}`;
+  rbRenderDoctorsList();
+}
+
+function rbGetInitials(name) {
+  return name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+}
+
+function rbRenderDoctorsList() {
+  const list = document.getElementById('rb-doctors-list');
+  if (!RB.filteredDoctors.length) {
+    list.innerHTML = '<div class="rb-loading">Нет врачей по фильтру</div>';
+    return;
+  }
+
+  list.innerHTML = RB.filteredDoctors.map(d => {
+    const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ') || '';
+    const clinicBadges = d.clinics.slice(0, 4).map(cId =>
+      `<span class="rb-clinic-badge" style="background:${rbGetClinicColor(cId)}">${rbGetClinicName(cId)}</span>`
+    ).join('');
+    const count = RB.bonusCounts[d.id];
+    const countHtml = count ? `<span class="rb-bonus-count">${count} бонусов</span>` : '';
+    const active = RB.selectedDoctor?.id === d.id ? ' active' : '';
+
+    return `<div class="rb-doctor-item${active}" onclick="rbSelectDoctor('${d.id}')">
+      <div class="rb-doctor-avatar">${rbGetInitials(d.name)}</div>
+      <div class="rb-doctor-info">
+        <div class="rb-doctor-name">${d.name}</div>
+        <div class="rb-doctor-specialty">${specialty}</div>
+        <div class="rb-doctor-badges">${clinicBadges}</div>
+      </div>
+      ${countHtml}
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════
+// SELECT DOCTOR
+// ═══════════════════════════════════════
+async function rbSelectDoctor(misUserId) {
+  RB.selectedDoctor = RB.doctors.find(d => d.id === misUserId);
+  if (!RB.selectedDoctor) return;
+
+  // Update list highlight
+  document.querySelectorAll('.rb-doctor-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget?.classList.add('active');
+
+  rbRenderDoctorDetail();
+  await rbLoadBonuses();
+}
+
+function rbRenderDoctorDetail() {
+  const d = RB.selectedDoctor;
+  const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+  const clinicBadges = d.clinics.map(cId =>
+    `<span class="rb-clinic-badge" style="background:${rbGetClinicColor(cId)};margin-right:4px">${rbGetClinicName(cId)}</span>`
+  ).join('');
+
+  document.getElementById('rb-detail-panel').innerHTML = `
+    <div class="rb-doctor-card">
+      <div class="rb-doctor-card-header">
+        <div class="rb-doctor-card-avatar">${rbGetInitials(d.name)}</div>
+        <div class="rb-doctor-card-info">
+          <h2>${d.name}</h2>
+          ${specialty ? `<p>${rbEsc(specialty)}</p>` : ''}
+          <div style="margin-top:6px">${clinicBadges}</div>
+        </div>
+        <div class="rb-doctor-card-actions">
+          <button class="rb-btn rb-btn-success" onclick="rbOpenReportModal()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Создать отчёт
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="rb-add-service-section" id="rb-add-service-section">
+      <div class="rb-add-service-header">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          Добавить услугу с бонусом
+        </h3>
+      </div>
+      <div class="rb-add-service-body">
+        <div class="rb-tabs">
+          <button class="rb-tab-btn active" id="rb-tab-search-btn" onclick="rbSwitchAddTab('search')">🔍 Поиск</button>
+          <button class="rb-tab-btn" id="rb-tab-cat-btn" onclick="rbSwitchAddTab('category')">📂 По категории</button>
+        </div>
+
+        <!-- Поиск -->
+        <div class="rb-tab-pane active" id="rb-tab-search">
+          <div class="rb-search-row">
+            <input id="rb-service-search" placeholder="Введите название или код услуги..." oninput="rbSearchServiceDebounced()" onkeydown="if(event.key==='Escape')rbClearServiceSearch()">
+            <button class="rb-btn rb-btn-secondary" onclick="rbClearServiceSearch()">Очистить</button>
+          </div>
+          <div class="rb-search-results" id="rb-service-results"></div>
+        </div>
+
+        <!-- По категории -->
+        <div class="rb-tab-pane" id="rb-tab-category">
+          <select class="rb-cat-select" id="rb-cat-select" onchange="rbOnCategorySelected()">
+            <option value="">Выберите категорию...</option>
+          </select>
+          <div class="rb-cat-services-list" id="rb-cat-services-list"></div>
+        </div>
+
+        <!-- Форма бонуса (общая) -->
+        <div class="rb-selected-service" id="rb-selected-service">
+          <div class="rb-selected-service-name" id="rb-sel-name"></div>
+          <div class="rb-selected-service-code" id="rb-sel-code"></div>
+          <div class="rb-bonus-inputs">
+            <div class="rb-bonus-field">
+              <label>Бонус, % (от стоимости)</label>
+              <input type="number" id="rb-bonus-percent" placeholder="Например: 10" min="0" max="100" step="0.01" oninput="if(this.value)document.getElementById('rb-bonus-rub').value=''">
+            </div>
+            <div class="rb-bonus-field">
+              <label>Бонус, руб (фиксированно)</label>
+              <input type="number" id="rb-bonus-rub" placeholder="Например: 150" min="0" step="0.01" oninput="if(this.value)document.getElementById('rb-bonus-percent').value=''">
+            </div>
+          </div>
+          <div class="rb-form-actions">
+            <button class="rb-btn rb-btn-primary" onclick="rbSaveBonus()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              Сохранить
+            </button>
+            <button class="rb-btn rb-btn-secondary" onclick="rbClearServiceSearch()">Отмена</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rb-bonuses-section">
+      <div class="rb-bonuses-header">
+        <h3>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Список услуг с бонусами
+        </h3>
+        <span id="rb-bonuses-count" style="font-size:12px;color:var(--rb-text-secondary)"></span>
+      </div>
+      <div class="rb-bonuses-table-wrap">
+        <table class="rb-table">
+          <thead>
+            <tr>
+              <th>Код услуги</th>
+              <th>Название услуги</th>
+              <th>Бонус, %</th>
+              <th>Бонус, руб</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rb-bonuses-tbody">
+            <tr class="rb-empty-row"><td colspan="5"><span class="rb-spinner"></span> Загрузка...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  let searchTimer;
+  window.rbSearchServiceDebounced = () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(rbSearchService, 400);
+  };
+}
+
+// ═══════════════════════════════════════
+// BONUSES CRUD
+// ═══════════════════════════════════════
+async function rbLoadBonuses() {
+  try {
+    const data = await rbApi(`/api/referral-bonuses?misUserId=${RB.selectedDoctor.id}`);
+    RB.bonuses = Array.isArray(data) ? data : [];
+    RB.bonusCounts[RB.selectedDoctor.id] = RB.bonuses.length;
+    rbRenderBonusesTable();
+    rbRenderDoctorsList();
+  } catch (err) {
+    console.error('Load bonuses error:', err);
+    RB.bonuses = [];
+    rbRenderBonusesTable();
+  }
+}
+
+function rbRenderBonusesTable() {
+  const tbody = document.getElementById('rb-bonuses-tbody');
+  if (!tbody) return;
+
+  document.getElementById('rb-bonuses-count').textContent = RB.bonuses.length ? `${RB.bonuses.length} услуг` : '';
+
+  if (!RB.bonuses.length) {
+    tbody.innerHTML = '<tr class="rb-empty-row"><td colspan="5">Нет услуг. Добавьте услуги выше.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = RB.bonuses.map(b => {
+    const bonusVal = b.bonusPercent != null
+      ? `<span class="rb-bonus-value rb-bonus-percent">${parseFloat(b.bonusPercent)}%</span>`
+      : '—';
+    const bonusRub = b.bonusRub != null
+      ? `<span class="rb-bonus-value rb-bonus-rub">${parseFloat(b.bonusRub).toFixed(2)} ₽</span>`
+      : '—';
+    return `<tr>
+      <td class="rb-service-code-cell">${rbEsc(b.serviceCode)}</td>
+      <td>${rbEsc(b.serviceName)}</td>
+      <td>${bonusVal}</td>
+      <td>${bonusRub}</td>
+      <td>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbEditBonus('${b.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
+        <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteBonus('${b.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function rbSaveBonus() {
+  const svc = RB.selectedService;
+  if (!svc) { rbToast('Выберите услугу', 'error'); return; }
+
+  const pct = document.getElementById('rb-bonus-percent').value;
+  const rub = document.getElementById('rb-bonus-rub').value;
+  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+
+  try {
+    await rbPost('/api/referral-bonuses', {
+      misUserId: RB.selectedDoctor.id,
+      doctorName: RB.selectedDoctor.name,
+      serviceCode: svc.code || String(svc.service_id || ''),
+      serviceName: svc.title,
+      bonusPercent: pct ? parseFloat(pct) : null,
+      bonusRub: rub ? parseFloat(rub) : null,
+    });
+    rbToast('Бонус сохранён', 'success');
+    rbClearServiceSearch();
+    await rbLoadBonuses();
+  } catch (err) {
+    rbToast('Ошибка сохранения', 'error');
+    console.error(err);
+  }
+}
+
+async function rbDeleteBonus(id) {
+  if (!confirm('Удалить эту запись?')) return;
+  try {
+    const res = await fetch(RB.apiBase + `/api/referral-bonuses/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${RB.token}` }
+    });
+    if (!res.ok) throw new Error();
+    rbToast('Удалено', 'success');
+    await rbLoadBonuses();
+  } catch {
+    rbToast('Ошибка удаления', 'error');
+  }
+}
+
+function rbEditBonus(id) {
+  const b = RB.bonuses.find(x => x.id === id);
+  if (!b) return;
+  RB.selectedService = { code: b.serviceCode, title: b.serviceName };
+  document.getElementById('rb-sel-name').textContent = b.serviceName;
+  document.getElementById('rb-sel-code').textContent = `Код: ${b.serviceCode}`;
+  document.getElementById('rb-bonus-percent').value = b.bonusPercent != null ? b.bonusPercent : '';
+  document.getElementById('rb-bonus-rub').value = b.bonusRub != null ? b.bonusRub : '';
+  document.getElementById('rb-selected-service').style.display = 'block';
+  document.getElementById('rb-service-search').value = b.serviceName;
+  document.getElementById('rb-service-results').style.display = 'none';
+}
+
+// ═══════════════════════════════════════
+// SERVICE SEARCH
+// ═══════════════════════════════════════
+async function rbSearchService() {
+  const term = document.getElementById('rb-service-search').value.trim();
+  if (term.length < 2) {
+    document.getElementById('rb-service-results').style.display = 'none';
+    return;
+  }
+
+  const resultsEl = document.getElementById('rb-service-results');
+  resultsEl.style.display = 'block';
+  resultsEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Поиск...</div>';
+
+  try {
+    const data = await rbPost('/api/mis/search-mis', { term });
+    if (!data.success || !data.data.length) {
+      resultsEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)">Ничего не найдено</div>';
+      return;
+    }
+    resultsEl.innerHTML = data.data.map(s =>
+      `<div class="rb-search-result-item" onclick='rbSelectService(${JSON.stringify(s)})'>
+        <div>
+          <div class="rb-result-name">${rbEsc(s.title)}</div>
+          <div class="rb-result-code">Код: ${rbEsc(s.code || s.service_id || '')}</div>
+        </div>
+        <div class="rb-result-price">${s.price ? s.price.toFixed(2) + ' ₽' : ''}</div>
+      </div>`
+    ).join('');
+  } catch {
+    resultsEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-danger)">Ошибка поиска</div>';
+  }
+}
+
+function rbSelectService(s) {
+  RB.selectedService = s;
+  document.getElementById('rb-service-search').value = s.title;
+  document.getElementById('rb-service-results').style.display = 'none';
+  document.getElementById('rb-sel-name').textContent = s.title;
+  document.getElementById('rb-sel-code').textContent = `Код: ${s.code || s.service_id || ''}  ${s.price ? '• ' + s.price.toFixed(2) + ' ₽' : ''}`;
+  document.getElementById('rb-selected-service').style.display = 'block';
+  document.getElementById('rb-bonus-percent').value = '';
+  document.getElementById('rb-bonus-rub').value = '';
+
+  const existingBonus = RB.bonuses.find(b => b.serviceCode === (s.code || String(s.service_id)));
+  if (existingBonus) {
+    document.getElementById('rb-bonus-percent').value = existingBonus.bonusPercent != null ? existingBonus.bonusPercent : '';
+    document.getElementById('rb-bonus-rub').value = existingBonus.bonusRub != null ? existingBonus.bonusRub : '';
+  }
+}
+
+function rbClearServiceSearch() {
+  RB.selectedService = null;
+  const inp = document.getElementById('rb-service-search');
+  if (inp) inp.value = '';
+  const res = document.getElementById('rb-service-results');
+  if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+  const sel = document.getElementById('rb-selected-service');
+  if (sel) sel.style.display = 'none';
+  // Also deselect in category list
+  document.querySelectorAll('.rb-cat-service-item.selected').forEach(el => el.classList.remove('selected'));
+}
+
+// ═══════════════════════════════════════
+// CATEGORY-BASED SERVICE LOADING
+// ═══════════════════════════════════════
+function rbSwitchAddTab(tab) {
+  document.getElementById('rb-tab-search-btn').classList.toggle('active', tab === 'search');
+  document.getElementById('rb-tab-cat-btn').classList.toggle('active', tab === 'category');
+  document.getElementById('rb-tab-search').classList.toggle('active', tab === 'search');
+  document.getElementById('rb-tab-category').classList.toggle('active', tab === 'category');
+  rbClearServiceSearch();
+  if (tab === 'category') {
+    const sel = document.getElementById('rb-cat-select');
+    if (sel && sel.options.length <= 1) rbLoadCategories();
+  }
+}
+
+async function rbLoadCategories() {
+  const sel = document.getElementById('rb-cat-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Загрузка категорий...</option>';
+  try {
+    const data = await rbPost('/api/mis/get-service-categories', {});
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      sel.innerHTML = '<option value="">Категории не найдены</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Выберите категорию...</option>';
+    function addCats(cats, level) {
+      cats.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat.id;
+        const indent = '\u3000'.repeat(level);
+        opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
+        opt.setAttribute('data-level', level);
+        opt.setAttribute('data-name', cat.title);
+        sel.appendChild(opt);
+        if (cat.children && cat.children.length) addCats(cat.children, level + 1);
+      });
+    }
+    addCats(data.data, 0);
+  } catch (e) {
+    sel.innerHTML = '<option value="">Ошибка загрузки</option>';
+    rbToast('Ошибка загрузки категорий: ' + e.message, 'error');
+  }
+}
+
+// Хранилище услуг текущей категории (индекс вместо JSON в onclick)
+let _rbCatServices = [];
+
+async function rbOnCategorySelected() {
+  const sel = document.getElementById('rb-cat-select');
+  const listEl = document.getElementById('rb-cat-services-list');
+  rbClearServiceSearch();
+  _rbCatServices = [];
+  if (!sel.value) {
+    listEl.style.display = 'none';
+    listEl.innerHTML = '';
+    return;
+  }
+  listEl.style.display = 'block';
+  listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Загрузка услуг...</div>';
+  try {
+    const data = await rbPost('/api/mis/get-services', { category_id: sel.value, show_children: true });
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)">Услуги не найдены</div>';
+      return;
+    }
+    _rbCatServices = data.data;
+    listEl.innerHTML = _rbCatServices.map((s, i) => {
+      const code = s.code || s.service_id || '';
+      const price = s.price ? parseFloat(s.price).toFixed(2) + ' ₽' : '';
+      return `<div class="rb-cat-service-item" onclick="rbSelectCatService(${i}, this)">
+        <div>
+          <div class="rb-result-name">${rbEsc(s.title)}</div>
+          <div class="rb-result-code">Код: ${rbEsc(String(code))}</div>
+        </div>
+        <div class="rb-result-price">${price}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-danger)">Ошибка загрузки услуг</div>';
+    console.error('rbOnCategorySelected:', e);
+  }
+}
+
+function rbSelectCatService(idx, el) {
+  const s = _rbCatServices[idx];
+  if (!s) return;
+  document.querySelectorAll('.rb-cat-service-item.selected').forEach(x => x.classList.remove('selected'));
+  el.classList.add('selected');
+  rbSelectService(s);
+}
+
+// ═══════════════════════════════════════
+// REPORT MODAL
+// ═══════════════════════════════════════
+function rbOpenReportModal() {
+  document.getElementById('rb-report-modal-title').textContent = `Отчёт по направителю: ${RB.selectedDoctor.name}`;
+  document.getElementById('rb-report-content').innerHTML = '';
+  document.getElementById('rb-file-info').style.display = 'none';
+  document.getElementById('rb-export-btn').style.display = 'none';
+  document.getElementById('rb-excel-input').value = '';
+  RB.reportData = null;
+  document.getElementById('rb-report-modal').style.display = 'flex';
+}
+
+function rbCloseReportModal() {
+  document.getElementById('rb-report-modal').style.display = 'none';
+}
+
+function rbDragOver(e) {
+  e.preventDefault();
+  document.getElementById('rb-file-zone').classList.add('drag-over');
+}
+function rbDragLeave(e) {
+  document.getElementById('rb-file-zone').classList.remove('drag-over');
+}
+function rbDrop(e) {
+  e.preventDefault();
+  document.getElementById('rb-file-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) rbHandleFile(file);
+}
+
+function rbHandleFile(file) {
+  if (!file) return;
+  document.getElementById('rb-file-name').textContent = file.name;
+  document.getElementById('rb-file-info').style.display = 'flex';
+  rbParseExcel(file);
+}
+
+function rbParseExcel(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!rows.length) {
+        document.getElementById('rb-report-content').innerHTML = '<div class="rb-alert rb-alert-error">Файл пустой или не содержит данных</div>';
+        return;
+      }
+
+      rbBuildReport(rows);
+    } catch (err) {
+      document.getElementById('rb-report-content').innerHTML = `<div class="rb-alert rb-alert-error">Ошибка разбора файла: ${err.message}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Нормализуем строку для сравнения ФИО
+function rbNormalizeName(s) {
+  return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function rbBuildReport(rows) {
+  const doctorName = RB.selectedDoctor.name;
+  const doctorNameNorm = rbNormalizeName(doctorName);
+
+  // Фильтруем строки по ФИО рекомендателя
+  // Колонки могут быть как с кириллицей, так и транслитом — ищем по подстроке ключей
+  const colMap = {};
+  if (rows.length > 0) {
+    const keys = Object.keys(rows[0]);
+    keys.forEach(k => {
+      const kl = k.toLowerCase();
+      if (kl.includes('рекомендател') || kl.includes('направител')) colMap.referrer = k;
+      else if (kl.includes('исполнител')) colMap.executor = k;
+      else if (kl.includes('код') && kl.includes('услуг')) colMap.code = k;
+      else if (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим'))) colMap.name = k;
+      else if (kl.includes('итогов') || kl.includes('стоим')) colMap.cost = k;
+      else if (kl.includes('пациент') || kl.includes('фио') && !colMap.patient) colMap.patient = k;
+      else if (kl.includes('визит') || kl.includes('номер')) colMap.visit = k;
+      else if (kl.includes('клиник')) colMap.clinic = k;
+    });
+
+    // Если не нашли по ключевым словам — попробуем по позиции
+    if (!colMap.referrer) {
+      // Попробуем найти колонку, которая содержит имя врача
+      const doctorNameParts = doctorNameNorm.split(' ');
+      keys.forEach(k => {
+        const vals = rows.slice(0, 5).map(r => rbNormalizeName(r[k]));
+        if (vals.some(v => doctorNameParts[0] && v.includes(doctorNameParts[0]))) {
+          if (!colMap.referrer) colMap.referrer = k;
+        }
+      });
+    }
+  }
+
+  // Если колонок нет — показываем предупреждение с доступными колонками
+  if (!colMap.referrer) {
+    const keys = rows.length ? Object.keys(rows[0]) : [];
+    document.getElementById('rb-report-content').innerHTML = `
+      <div class="rb-alert rb-alert-warning">
+        Не удалось автоматически определить колонку "ФИО рекомендателя".<br>
+        Доступные колонки: <strong>${keys.join(', ')}</strong><br>
+        Убедитесь, что файл содержит колонку с именем, содержащим "рекомендател" или "направител".
+      </div>`;
+    return;
+  }
+
+  // Фильтруем строки по текущему врачу
+  const filtered = rows.filter(r => {
+    const refNorm = rbNormalizeName(r[colMap.referrer]);
+    // Проверяем совпадение по фамилии (первое слово)
+    const lastName = doctorNameNorm.split(' ')[0];
+    return lastName && refNorm.includes(lastName);
+  });
+
+  if (!filtered.length) {
+    document.getElementById('rb-report-content').innerHTML = `
+      <div class="rb-alert rb-alert-warning">
+        В файле не найдено направлений для врача <strong>${doctorName}</strong>.<br>
+        Проверьте колонку "${colMap.referrer}" — в ней должно быть ФИО рекомендателя.
+      </div>`;
+    return;
+  }
+
+  // Группируем по исполнителю (ФИО пациента — нет, исполнитель это получатель направления)
+  const byExecutor = {};
+  filtered.forEach(r => {
+    const exec = String(r[colMap.executor] || 'Неизвестный исполнитель').trim();
+    if (!byExecutor[exec]) byExecutor[exec] = [];
+    byExecutor[exec].push(r);
+  });
+
+  // Для каждого исполнителя группируем по услуге
+  const reportSections = [];
+  let grandTotal = 0;
+
+  Object.entries(byExecutor).sort(([a], [b]) => a.localeCompare(b)).forEach(([executor, execRows]) => {
+    const byService = {};
+    execRows.forEach(r => {
+      const code = String(r[colMap.code] || '').trim();
+      const name = String(r[colMap.name] || '').trim();
+      const key = code || name;
+      if (!byService[key]) byService[key] = { code, name, cost: 0, count: 0, rows: [] };
+      const cost = parseFloat(String(r[colMap.cost] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      byService[key].cost += cost;
+      byService[key].count++;
+      byService[key].rows.push(r);
+    });
+
+    const services = Object.values(byService).map(s => {
+      // Ищем бонус по коду услуги
+      const bonus = RB.bonuses.find(b =>
+        b.serviceCode && s.code &&
+        rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code)
+      );
+      let bonusAmount = 0;
+      let bonusLabel = '—';
+      if (bonus) {
+        if (bonus.bonusPercent != null) {
+          bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100;
+          bonusLabel = `${parseFloat(bonus.bonusPercent)}%`;
+        } else if (bonus.bonusRub != null) {
+          bonusAmount = parseFloat(bonus.bonusRub) * s.count;
+          bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`;
+        }
+      }
+      grandTotal += bonusAmount;
+      return { ...s, bonus, bonusAmount, bonusLabel };
+    });
+
+    reportSections.push({ executor, services });
+  });
+
+  // Сохраняем для экспорта
+  RB.reportData = { doctor: doctorName, sections: reportSections, grandTotal };
+
+  // Рендерим
+  let html = `<div class="rb-report">
+    <div class="rb-report-title">Отчёт по направителю: ${rbEsc(doctorName)}</div>`;
+
+  reportSections.forEach(({ executor, services }) => {
+    const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
+    html += `<div class="rb-report-patient">
+      <div class="rb-report-patient-name">${rbEsc(executor)}</div>
+      <table class="rb-report-table">
+        <thead><tr>
+          <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+        </tr></thead>
+        <tbody>
+          ${services.map(s => `<tr>
+            <td style="font-family:monospace;font-size:11px">${rbEsc(s.code || '—')}</td>
+            <td>${rbEsc(s.name || '—')}</td>
+            <td>${s.cost.toFixed(2)} ₽</td>
+            <td>${s.count}</td>
+            <td>${s.bonusLabel}</td>
+            <td style="font-weight:600;color:${s.bonusAmount > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)'}">
+              ${s.bonusAmount > 0 ? '-' + s.bonusAmount.toFixed(2) + ' ₽' : '—'}
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="rb-report-total">Итого по исполнителю: ${execTotal > 0 ? '-' + execTotal.toFixed(2) + ' ₽' : '0 ₽'}</div>
+    </div>`;
+  });
+
+  html += `</div>`;
+
+  document.getElementById('rb-report-content').innerHTML = html;
+  document.getElementById('rb-export-btn').style.display = 'flex';
+}
+
+// ═══════════════════════════════════════
+// EXPORT REPORT TO EXCEL (ExcelJS)
+// ═══════════════════════════════════════
+async function rbExportReport() {
+  if (!RB.reportData) return;
+  const { doctor, sections } = RB.reportData;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'alfa-wiki';
+  const ws = wb.addWorksheet('Отчёт');
+
+  // Стили
+  const fontTitle  = { name: 'Calibri', size: 14, bold: true };
+  const fontBold   = { name: 'Calibri', size: 11, bold: true };
+  const fontNormal = { name: 'Calibri', size: 11 };
+  const fillHeader = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
+  const borderThin = { style: 'thin', color: { argb: 'FFAAAAAA' } };
+  const allBorders = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
+
+  // Ширины колонок — минимальные, autoWidth расширит по содержимому
+  ws.columns = [
+    { key: 'A', width: 8 },
+    { key: 'B', width: 8 },
+    { key: 'C', width: 8 },
+    { key: 'D', width: 5 },
+    { key: 'E', width: 8 },
+    { key: 'F', width: 8 },
+  ];
+
+  // Хелпер: добавить строку и вернуть объект Row
+  const addRow = (values) => ws.addRow(values);
+
+  // Хелпер: применить границы к строке (только указанные колонки)
+  const applyBorders = (row, numCols) => {
+    for (let c = 1; c <= numCols; c++) {
+      row.getCell(c).border = allBorders;
+    }
+  };
+
+  // Хелпер: авто-расширить колонку по длине текста
+  const autoWidth = (row, numCols) => {
+    for (let c = 1; c <= numCols; c++) {
+      const cell = row.getCell(c);
+      const len = String(cell.value == null ? '' : cell.value).length;
+      const col = ws.getColumn(c);
+      if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
+    }
+  };
+
+  // ── Заголовок отчёта ──
+  const titleRow = addRow([`Отчёт по направителю: ${doctor}`]);
+  titleRow.getCell(1).font = fontTitle;
+  ws.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
+  autoWidth(titleRow, 1);
+  addRow([]); // пустая строка
+
+  sections.forEach(({ executor, services }) => {
+    // ── ФИО исполнителя ──
+    const execRow = addRow([executor]);
+    execRow.getCell(1).font = fontBold;
+    ws.mergeCells(`A${execRow.number}:F${execRow.number}`);
+    autoWidth(execRow, 1);
+
+    // ── Заголовок таблицы ──
+    const hRow = addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
+    hRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      if (colNum <= 6) {
+        cell.font = fontBold;
+        cell.fill = fillHeader;
+        cell.border = allBorders;
+        cell.alignment = { horizontal: 'center', wrapText: false };
+      }
+    });
+    autoWidth(hRow, 6);
+
+    // ── Строки услуг ──
+    services.forEach(s => {
+      const dRow = addRow([
+        s.code || '—',
+        s.name || '—',
+        parseFloat(s.cost.toFixed(2)),
+        s.count,
+        s.bonusLabel,
+        s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0,
+      ]);
+      dRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        if (colNum <= 6) {
+          cell.font = fontNormal;
+          cell.border = allBorders;
+        }
+      });
+      // Числовой формат для стоимостей
+      dRow.getCell(3).numFmt = '#,##0.00';
+      dRow.getCell(6).numFmt = '#,##0.00';
+      autoWidth(dRow, 6);
+    });
+
+    // ── Итого по исполнителю ──
+    const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+    const totRow = addRow(['', '', '', '', 'Итого:', parseFloat(execTotal.toFixed(2))]);
+    totRow.getCell(5).font = fontBold;
+    totRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+    totRow.getCell(6).numFmt = '#,##0.00';
+    applyBorders(totRow, 6);
+
+    addRow([]); // пустая строка между секциями
+  });
+
+  // ── Скачиваем файл ──
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
+  a.href = url;
+  a.download = `Бонусы_${doctor.split(' ')[0]}_${date}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════
+function rbEsc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function rbToast(msg, type = 'success') {
+  const el = document.createElement('div');
+  el.className = `rb-toast ${type}`;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3000);
+}
+
+// ═══════════════════════════════════════
+// EVENT LISTENERS
+// ═══════════════════════════════════════
+document.getElementById('rb-search').addEventListener('input', rbApplyFilters);
+document.getElementById('rb-filter-clinic').addEventListener('change', rbApplyFilters);
+document.getElementById('rb-filter-profession').addEventListener('change', rbApplyFilters);
+
+// Close modal on overlay click
+document.getElementById('rb-report-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('rb-report-modal')) rbCloseReportModal();
+});
+document.getElementById('rb-bulk-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('rb-bulk-modal')) rbCloseBulkModal();
+});
+
+// Close search results on outside click
+document.addEventListener('click', (e) => {
+  const res = document.getElementById('rb-service-results');
+  const inp = document.getElementById('rb-service-search');
+  if (res && inp && !res.contains(e.target) && e.target !== inp) {
+    res.style.display = 'none';
+  }
+});
+
+
+// ═══════════════════════════════════════
+// BULK REPORT
+// ═══════════════════════════════════════
+const BULK = {
+  selectedIds: new Set(),
+  filteredDoctors: [],
+  excelRows: null,
+  colMap: null,
+  reportData: null, // [{ doctor, sections, grandTotal }]
+};
+
+// --- Name matching ---
+function rbParseFullName(fullName) {
+  // "Надирашвили Манана Автандиловна" → { last, fi, mi }
+  const parts = String(fullName || '').trim().split(/\s+/);
+  return {
+    last: (parts[0] || '').toLowerCase(),
+    fi:   (parts[1] || '')[0]?.toLowerCase() || '',
+    mi:   (parts[2] || '')[0]?.toLowerCase() || '',
+  };
+}
+
+function rbParseAbbrevName(abbrev) {
+  // "Надирашвили М. А." / "Надирашвили М.А." / "Надирашвили М А" → { last, fi, mi }
+  const s = String(abbrev || '').replace(/\./g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  const parts = s.split(' ').filter(Boolean);
+  return {
+    last: parts[0] || '',
+    fi:   parts[1]?.[0] || '',
+    mi:   parts[2]?.[0] || '',
+  };
+}
+
+function rbNamesMatch(fullName, excelName) {
+  const full  = rbParseFullName(fullName);
+  const abbr  = rbParseAbbrevName(excelName);
+  if (!full.last || !abbr.last) return false;
+  if (full.last !== abbr.last) return false;
+  // Инициалы: если оба присутствуют — должны совпасть
+  if (full.fi && abbr.fi && full.fi !== abbr.fi) return false;
+  if (full.mi && abbr.mi && full.mi !== abbr.mi) return false;
+  return true;
+}
+
+// --- Modal open/close ---
+function rbOpenBulkModal() {
+  // Наполняем фильтры клиник и специальностей
+  const clinicSel = document.getElementById('rb-bulk-clinic');
+  if (clinicSel.options.length === 1) {
+    RB.clinics.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.name;
+      clinicSel.appendChild(opt);
+    });
+  }
+  const profSel = document.getElementById('rb-bulk-prof');
+  if (profSel.options.length === 1) {
+    const profSet = new Set();
+    RB.doctors.forEach(d => d.professions.forEach(p => {
+      const t = rbProfessionTitle(p);
+      if (t) profSet.add(t);
+    }));
+    [...profSet].sort().forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = t;
+      profSel.appendChild(opt);
+    });
+  }
+
+  BULK.selectedIds.clear();
+  BULK.excelRows = null;
+  BULK.colMap = null;
+  BULK.reportData = null;
+  document.getElementById('rb-bulk-file-info').style.display = 'none';
+  document.getElementById('rb-bulk-excel-input').value = '';
+  document.getElementById('rb-bulk-result').innerHTML = '';
+  document.getElementById('rb-bulk-export-btn').style.display = 'none';
+  document.getElementById('rb-bulk-generate-btn').disabled = true;
+  document.getElementById('rb-bulk-progress-wrap').style.display = 'none';
+  document.getElementById('rb-bulk-search').value = '';
+  document.getElementById('rb-bulk-clinic').value = '';
+  document.getElementById('rb-bulk-prof').value = '';
+  rbBulkApplyFilters();
+  document.getElementById('rb-bulk-modal').style.display = 'flex';
+}
+
+function rbCloseBulkModal() {
+  document.getElementById('rb-bulk-modal').style.display = 'none';
+}
+
+// --- Filters & list ---
+function rbBulkApplyFilters() {
+  const search   = document.getElementById('rb-bulk-search').value.toLowerCase();
+  const clinicId = document.getElementById('rb-bulk-clinic').value;
+  const prof     = document.getElementById('rb-bulk-prof').value;
+
+  BULK.filteredDoctors = RB.doctors.filter(d => {
+    if (search && !d.name.toLowerCase().includes(search)) return false;
+    if (clinicId && !d.clinics.includes(String(clinicId))) return false;
+    if (prof && !d.professions.some(p => rbProfessionTitle(p) === prof)) return false;
+    return true;
+  });
+  rbBulkRenderList();
+}
+
+function rbBulkRenderList() {
+  const list = document.getElementById('rb-bulk-doctor-list');
+  if (!BULK.filteredDoctors.length) {
+    list.innerHTML = '<div class="rb-loading" style="padding:20px">Нет врачей</div>';
+    rbBulkUpdateCount();
+    return;
+  }
+  list.innerHTML = BULK.filteredDoctors.map(d => {
+    const spec = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+    const checked = BULK.selectedIds.has(d.id) ? 'checked' : '';
+    return `<label class="rb-bulk-doctor-item">
+      <input type="checkbox" ${checked} onchange="rbBulkToggle('${d.id}',this.checked)">
+      <div>
+        <div class="rb-bulk-doctor-name">${rbEsc(d.name)}</div>
+        ${spec ? `<div class="rb-bulk-doctor-spec">${rbEsc(spec)}</div>` : ''}
+      </div>
+    </label>`;
+  }).join('');
+  rbBulkUpdateCount();
+}
+
+function rbBulkToggle(id, checked) {
+  checked ? BULK.selectedIds.add(id) : BULK.selectedIds.delete(id);
+  rbBulkUpdateCount();
+}
+
+function rbBulkSelectAll() {
+  BULK.filteredDoctors.forEach(d => BULK.selectedIds.add(d.id));
+  rbBulkRenderList();
+}
+
+function rbBulkDeselectAll() {
+  BULK.filteredDoctors.forEach(d => BULK.selectedIds.delete(d.id));
+  rbBulkRenderList();
+}
+
+function rbBulkUpdateCount() {
+  document.getElementById('rb-bulk-count').textContent = `${BULK.selectedIds.size} выбрано`;
+  rbBulkCheckReady();
+}
+
+function rbBulkCheckReady() {
+  const ready = BULK.selectedIds.size > 0 && BULK.excelRows !== null;
+  document.getElementById('rb-bulk-generate-btn').disabled = !ready;
+}
+
+// --- File handling ---
+function rbBulkDrop(e) {
+  e.preventDefault();
+  document.getElementById('rb-bulk-file-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) rbBulkHandleFile(file);
+}
+
+function rbBulkHandleFile(file) {
+  if (!file) return;
+  document.getElementById('rb-bulk-file-name').textContent = file.name;
+  document.getElementById('rb-bulk-file-info').style.display = 'flex';
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+      if (!rows.length) { rbToast('Файл пустой', 'error'); return; }
+
+      // Определяем колонки
+      const colMap = {};
+      Object.keys(rows[0]).forEach(k => {
+        const kl = k.toLowerCase();
+        if (kl.includes('рекомендател') || kl.includes('направител')) colMap.referrer = k;
+        else if (kl.includes('исполнител')) colMap.executor = k;
+        else if (kl.includes('код') && kl.includes('услуг')) colMap.code = k;
+        else if (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим'))) colMap.name = k;
+        else if (kl.includes('итогов') || kl.includes('стоим')) colMap.cost = k;
+        else if (kl.includes('клиник')) colMap.clinic = k;
+      });
+
+      if (!colMap.referrer) {
+        rbToast('Не найдена колонка ФИО рекомендателя', 'error');
+        return;
+      }
+
+      BULK.excelRows = rows;
+      BULK.colMap = colMap;
+      rbToast(`Загружено ${rows.length} строк`, 'success');
+      rbBulkCheckReady();
+    } catch (err) {
+      rbToast('Ошибка чтения файла: ' + err.message, 'error');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// --- Generate ---
+async function rbBulkGenerate() {
+  if (!BULK.excelRows || !BULK.selectedIds.size) return;
+
+  const selectedDoctors = RB.doctors.filter(d => BULK.selectedIds.has(d.id));
+  const total = selectedDoctors.length;
+
+  document.getElementById('rb-bulk-generate-btn').disabled = true;
+  document.getElementById('rb-bulk-export-btn').style.display = 'none';
+  document.getElementById('rb-bulk-result').innerHTML = '';
+  document.getElementById('rb-bulk-progress-wrap').style.display = 'block';
+  const progressBar  = document.getElementById('rb-bulk-progress-bar');
+  const progressText = document.getElementById('rb-bulk-progress-text');
+
+  const allResults = [];  // [{ doctor, sections, grandTotal }]
+
+  for (let i = 0; i < selectedDoctors.length; i++) {
+    const d = selectedDoctors[i];
+    progressText.textContent = `Загружаю бонусы: ${d.name} (${i + 1} из ${total})`;
+    progressBar.style.width = `${Math.round((i / total) * 60)}%`;
+
+    let bonuses = [];
+    try {
+      const data = await rbApi(`/api/referral-bonuses?misUserId=${d.id}`);
+      bonuses = Array.isArray(data) ? data : [];
+    } catch { /* без бонусов — пропускаем */ }
+
+    // Фильтруем строки Excel по этому врачу
+    const filtered = BULK.excelRows.filter(r => {
+      const refName = String(r[BULK.colMap.referrer] || '');
+      return rbNamesMatch(d.name, refName);
+    });
+
+    if (!filtered.length) continue; // врач не встречается в файле
+
+    const result = rbBuildDoctorReport(d.name, filtered, bonuses, BULK.colMap);
+    if (result) allResults.push(result);
+  }
+
+  progressBar.style.width = '100%';
+  progressText.textContent = `Готово: найдено ${allResults.length} из ${total} врачей`;
+
+  BULK.reportData = allResults;
+
+  if (!allResults.length) {
+    document.getElementById('rb-bulk-result').innerHTML =
+      '<div class="rb-alert rb-alert-warning" style="margin-top:12px">Ни один из выбранных врачей не найден в файле. Проверьте правильность ФИО в файле.</div>';
+  } else {
+    const grandTotal = allResults.reduce((s, r) => s + r.grandTotal, 0);
+    document.getElementById('rb-bulk-result').innerHTML = `
+      <div class="rb-alert rb-alert-info" style="margin-top:12px">
+        Найдено врачей: <strong>${allResults.length}</strong><br>
+        Общая сумма бонусов: <strong>${grandTotal.toFixed(2)} ₽</strong>
+      </div>`;
+    document.getElementById('rb-bulk-export-btn').style.display = 'flex';
+  }
+
+  document.getElementById('rb-bulk-generate-btn').disabled = false;
+}
+
+// Общая функция построения отчёта для одного врача по строкам + бонусам
+function rbBuildDoctorReport(doctorName, filtered, bonuses, colMap) {
+  const byExecutor = {};
+  filtered.forEach(r => {
+    const exec = String(r[colMap.executor] || 'Неизвестный исполнитель').trim();
+    if (!byExecutor[exec]) byExecutor[exec] = [];
+    byExecutor[exec].push(r);
+  });
+
+  const sections = [];
+  let grandTotal = 0;
+
+  Object.entries(byExecutor).sort(([a], [b]) => a.localeCompare(b)).forEach(([executor, execRows]) => {
+    const byService = {};
+    execRows.forEach(r => {
+      const code = String(r[colMap.code] || '').trim();
+      const name = String(r[colMap.name] || '').trim();
+      const key  = code || name;
+      if (!byService[key]) byService[key] = { code, name, cost: 0, count: 0 };
+      const cost = parseFloat(String(r[colMap.cost] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      byService[key].cost += cost;
+      byService[key].count++;
+    });
+
+    const services = Object.values(byService).map(s => {
+      const bonus = bonuses.find(b => b.serviceCode && s.code &&
+        rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code));
+      let bonusAmount = 0, bonusLabel = '—';
+      if (bonus) {
+        if (bonus.bonusPercent != null) {
+          bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100;
+          bonusLabel  = `${parseFloat(bonus.bonusPercent)}%`;
+        } else if (bonus.bonusRub != null) {
+          bonusAmount = parseFloat(bonus.bonusRub) * s.count;
+          bonusLabel  = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`;
+        }
+      }
+      grandTotal += bonusAmount;
+      return { ...s, bonus, bonusAmount, bonusLabel };
+    });
+
+    sections.push({ executor, services });
+  });
+
+  return sections.length ? { doctor: doctorName, sections, grandTotal } : null;
+}
+
+// --- Bulk Excel export ---
+async function rbBulkExport() {
+  if (!BULK.reportData?.length) return;
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'alfa-wiki';
+
+  // Один лист — все врачи секциями
+  const ws = wb.addWorksheet('Сводный отчёт');
+
+  const fontTitle  = { name: 'Calibri', size: 13, bold: true };
+  const fontBold   = { name: 'Calibri', size: 11, bold: true };
+  const fontNormal = { name: 'Calibri', size: 11 };
+  const fillDoctor = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } }; // голубой для врача
+  const fillHeader = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
+  const borderThin = { style: 'thin', color: { argb: 'FFAAAAAA' } };
+  const allBorders = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
+  const COLS = 6;
+
+  ws.columns = Array.from({ length: COLS }, () => ({ width: 8 }));
+
+  const autoWidth = (row, n) => {
+    for (let c = 1; c <= n; c++) {
+      const v = row.getCell(c).value;
+      const len = String(v == null ? '' : v).length;
+      const col = ws.getColumn(c);
+      if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
+    }
+  };
+
+  let grandTotal = 0;
+
+  for (const { doctor, sections } of BULK.reportData) {
+    // ── Заголовок врача-направителя ──
+    const doctorRow = ws.addRow([`Направитель: ${doctor}`]);
+    doctorRow.getCell(1).font = fontTitle;
+    doctorRow.getCell(1).fill = fillDoctor;
+    for (let c = 1; c <= COLS; c++) {
+      doctorRow.getCell(c).fill = fillDoctor;
+      doctorRow.getCell(c).border = allBorders;
+    }
+    ws.mergeCells(`A${doctorRow.number}:F${doctorRow.number}`);
+    autoWidth(doctorRow, 1);
+
+    for (const { executor, services } of sections) {
+      // ФИО исполнителя
+      const execRow = ws.addRow([`  ${executor}`]);
+      execRow.getCell(1).font = fontBold;
+      ws.mergeCells(`A${execRow.number}:F${execRow.number}`);
+      autoWidth(execRow, 1);
+
+      // Заголовок таблицы
+      const hRow = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
+      hRow.eachCell({ includeEmpty: true }, (cell, c) => {
+        if (c <= COLS) {
+          cell.font = fontBold;
+          cell.fill = fillHeader;
+          cell.border = allBorders;
+          cell.alignment = { horizontal: 'center' };
+        }
+      });
+      autoWidth(hRow, COLS);
+
+      for (const s of services) {
+        const dRow = ws.addRow([
+          s.code || '—', s.name || '—',
+          parseFloat(s.cost.toFixed(2)), s.count,
+          s.bonusLabel,
+          s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0,
+        ]);
+        dRow.eachCell({ includeEmpty: true }, (cell, c) => {
+          if (c <= COLS) { cell.font = fontNormal; cell.border = allBorders; }
+        });
+        dRow.getCell(3).numFmt = '#,##0.00';
+        dRow.getCell(6).numFmt = '#,##0.00';
+        autoWidth(dRow, COLS);
+      }
+
+      const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+      const totRow = ws.addRow(['', '', '', '', 'Итого:', execTotal > 0 ? -parseFloat(execTotal.toFixed(2)) : 0]);
+      totRow.getCell(5).font = fontBold;
+      totRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+      totRow.getCell(6).numFmt = '#,##0.00';
+      for (let c = 1; c <= COLS; c++) totRow.getCell(c).border = allBorders;
+    }
+
+    ws.addRow([]); // разрыв между врачами
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const date = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
+  a.href = url;
+  a.download = `Сводный_отчёт_${date}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════
+// BOOTSTRAP
+// ═══════════════════════════════════════
+// Expose functions needed by inline onclick handlers
+window.rbSelectDoctor = rbSelectDoctor;
+window.rbOpenReportModal = rbOpenReportModal;
+window.rbCloseReportModal = rbCloseReportModal;
+window.rbHandleFile = rbHandleFile;
+window.rbDragOver = rbDragOver;
+window.rbDragLeave = rbDragLeave;
+window.rbDrop = rbDrop;
+window.rbExportReport = rbExportReport;
+window.rbSaveBonus = rbSaveBonus;
+window.rbDeleteBonus = rbDeleteBonus;
+window.rbEditBonus = rbEditBonus;
+window.rbClearServiceSearch = rbClearServiceSearch;
+window.rbSelectService = rbSelectService;
+window.rbSwitchAddTab = rbSwitchAddTab;
+window.rbOnCategorySelected = rbOnCategorySelected;
+window.rbSelectCatService = rbSelectCatService;
+window.rbOpenBulkModal = rbOpenBulkModal;
+window.rbCloseBulkModal = rbCloseBulkModal;
+window.rbBulkApplyFilters = rbBulkApplyFilters;
+window.rbBulkToggle = rbBulkToggle;
+window.rbBulkSelectAll = rbBulkSelectAll;
+window.rbBulkDeselectAll = rbBulkDeselectAll;
+window.rbBulkHandleFile = rbBulkHandleFile;
+window.rbBulkDrop = rbBulkDrop;
+window.rbBulkGenerate = rbBulkGenerate;
+window.rbBulkExport = rbBulkExport;
+rbInit().catch(console.error);
+})();
+</script>
+</body>
+</html>

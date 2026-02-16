@@ -3,7 +3,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile
+  Edit2, Trash2, Smile, Mail
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -16,6 +16,7 @@ import ChatNotification from '../components/ChatNotification';
 import MessageReactions from '../components/chat/MessageReactions';
 import ReactionMenu from '../components/chat/ReactionMenu';
 import ReactionDetailsModal from '../components/chat/ReactionDetailsModal';
+import EmailComposeModal from '../components/EmailComposeModal';
 import './Dashboard.css';
 
 export default function Dashboard() {
@@ -34,6 +35,7 @@ export default function Dashboard() {
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [showEmailCompose, setShowEmailCompose] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
@@ -830,6 +832,7 @@ export default function Dashboard() {
           <div className="chat-sidebar-header">
             <h2><MessageCircle size={20} /> Сообщения</h2>
             <div className="chat-sidebar-actions">
+              <button className="btn-icon-chat" onClick={() => setShowEmailCompose(true)} title="Email-рассылка"><Mail size={20} /></button>
               <button className="btn-icon-chat" onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); }} title="Создать группу"><Users size={20} /></button>
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
@@ -1252,6 +1255,11 @@ export default function Dashboard() {
           reactions={reactionDetailsModal.reactions}
           onClose={() => setReactionDetailsModal(null)}
         />
+      )}
+
+      {/* Email Compose Modal */}
+      {showEmailCompose && (
+        <EmailComposeModal onClose={() => setShowEmailCompose(false)} />
       )}
 
       {/* Chat Notifications - Show only for non-active chats */}

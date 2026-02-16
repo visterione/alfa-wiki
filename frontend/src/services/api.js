@@ -484,4 +484,31 @@ export const reviews = {
   suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } })
 };
 
+// === EMAIL API ===
+export const email = {
+  // === TEMPLATES ===
+  getTemplates: () => api.get('/email/templates'),
+  createTemplate: (data) => api.post('/email/templates', data),
+  updateTemplate: (id, data) => api.put(`/email/templates/${id}`, data),
+  deleteTemplate: (id) => api.delete(`/email/templates/${id}`),
+
+  // === SENDING ===
+  send: (data) => api.post('/email/send', data),
+
+  // === HISTORY ===
+  getHistory: (params) => api.get('/email/history', { params }),
+  getHistoryDetail: (id) => api.get(`/email/history/${id}`),
+
+  // === RECIPIENTS ===
+  getUsers: () => api.get('/email/recipients/users'),
+  getUsersByRole: (roleId) => api.get(`/email/recipients/by-role/${roleId}`),
+
+  // === FAVORITES ===
+  getFavoriteRecipients: () => api.get('/email/favorites/recipients'),
+  addFavoriteRecipient: (data) => api.post('/email/favorites/recipients', data),
+  removeFavoriteRecipient: (id) => api.delete(`/email/favorites/recipients/${id}`),
+  getFavoriteTemplates: () => api.get('/email/favorites/templates'),
+  toggleFavoriteTemplate: (templateId) => api.post(`/email/favorites/templates/${templateId}`)
+};
+
 export default api;

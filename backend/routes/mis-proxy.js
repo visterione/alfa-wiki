@@ -208,6 +208,24 @@ router.post('/services', authenticate, async (req, res) => {
   }
 });
 
+// Получить все услуги (без фильтра по категории или врачу)
+// Используется для глобального списка при назначении бонусов
+router.post('/all-services', authenticate, async (req, res) => {
+  try {
+    const { clinic_id } = req.body;
+    console.log('📋 Запрос всех услуг МИС', clinic_id ? `clinic_id=${clinic_id}` : '');
+
+    const params = { show_all: 1, limit: 5000 };
+    if (clinic_id) params.clinic_id = clinic_id;
+
+    const data = await misRequest('getServices', params);
+    res.json(data);
+  } catch (err) {
+    console.error('❌ Ошибка /mis/all-services:', err.message);
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе всех услуг' } });
+  }
+});
+
 // Получить список клиник
 router.post('/get-clinics', authenticate, async (req, res) => {
   try {
@@ -359,15 +377,16 @@ router.post('/search-mis', authenticate, async (req, res) => {
 // ═══════════════════════════════════════════════════════════════
 
 router.get('/clinics', authenticate, (req, res) => {
+  // ID соответствуют реальным clinic_id из МИС (как в doctor-card.html)
   res.json({
     success: true,
     data: [
-      { id: 1, name: 'Альфа', code: 'А', color: '#FF80AB' },
-      { id: 2, name: 'Кидс', code: 'К', color: '#FFA726' },
-      { id: 3, name: 'Проф', code: 'П', color: '#7E57C2' },
-      { id: 4, name: 'Линия', code: 'Л', color: '#C5E1A5' },
-      { id: 5, name: '3К', code: '3К', color: '#BA68C8' },
-      { id: 6, name: 'Смайл', code: 'С', color: '#555555' }
+      { id: 2, name: 'Альфа', code: 'А', color: '#FF80AB' },
+      { id: 3, name: 'Кидс', code: 'К', color: '#FFA726' },
+      { id: 1, name: 'Проф', code: 'П', color: '#7E57C2' },
+      { id: 6, name: 'Линия', code: 'Л', color: '#C5E1A5' },
+      { id: 4, name: '3К', code: '3К', color: '#BA68C8' },
+      { id: 7, name: 'Смайл', code: 'С', color: '#555555' }
     ]
   });
 });

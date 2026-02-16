@@ -38,6 +38,8 @@ const calendarRoutes = require('./routes/calendar');
 const kanbanRoutes = require('./routes/kanban');
 const priceComparisonsRoutes = require('./routes/price-comparisons');
 const reviewsRoutes = require('./routes/reviews');
+const emailRoutes = require('./routes/email');
+const referralBonusesRoutes = require('./routes/referral-bonuses');
 
 const app = express();
 const server = http.createServer(app);
@@ -154,6 +156,8 @@ app.use('/api/calendar', calendarRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/price-comparisons', priceComparisonsRoutes);
 app.use('/api/reviews', reviewsRoutes);
+app.use('/api/email', emailRoutes);
+app.use('/api/referral-bonuses', referralBonusesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

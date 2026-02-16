@@ -993,6 +993,171 @@ const CourseMedCenter = sequelize.define('CourseMedCenter', {
   ]
 });
 
+// === REFERRAL BONUS MODEL ===
+const ReferralBonus = sequelize.define('ReferralBonus', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'ID врача-направителя в МИС'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'ФИО врача-направителя'
+  },
+  serviceCode: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    comment: 'Код услуги из МИС'
+  },
+  serviceName: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Название услуги'
+  },
+  bonusPercent: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Размер бонуса в процентах (если указан процент)'
+  },
+  bonusRub: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Размер бонуса в рублях (если фиксированная сумма)'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя, создавшего запись'
+  }
+}, {
+  tableName: 'referral_bonuses',
+  timestamps: true,
+  indexes: [
+    { fields: ['misUserId'] },
+    { fields: ['serviceCode'] },
+    { unique: true, fields: ['misUserId', 'serviceCode'] }
+  ]
+});
+
+// === EMAIL TEMPLATE MODEL ===
+// === EMAIL FAVORITE RECIPIENTS MODEL ===
+const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  email: { type: DataTypes.STRING(255), allowNull: false },
+  displayName: { type: DataTypes.STRING(200) }
+}, {
+  tableName: 'email_favorite_recipients',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['userId', 'email'] },
+    { fields: ['userId'] }
+  ]
+});
+
+// === EMAIL FAVORITE TEMPLATES MODEL ===
+const EmailFavoriteTemplate = sequelize.define('EmailFavoriteTemplate', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  templateId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'email_favorite_templates',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['userId', 'templateId'] },
+    { fields: ['userId'] }
+  ]
+});
+
+const EmailTemplate = sequelize.define('EmailTemplate', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: {
+    type: DataTypes.STRING(200),
+    allowNull: false,
+    comment: 'Название шаблона письма'
+  },
+  subject: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Тема письма'
+  },
+  htmlContent: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    comment: 'HTML содержимое письма'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя-создателя шаблона'
+  },
+  isPublic: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    comment: 'Публичный шаблон (доступен всем) или личный'
+  }
+}, {
+  tableName: 'email_templates',
+  timestamps: true,
+  indexes: [
+    { fields: ['createdBy'] },
+    { fields: ['isPublic'] }
+  ]
+});
+
+// === EMAIL LOG MODEL ===
+const EmailLog = sequelize.define('EmailLog', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  subject: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Тема письма'
+  },
+  htmlContent: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    comment: 'HTML содержимое письма'
+  },
+  recipients: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    comment: 'Массив получателей: [{email, userId, displayName}]'
+  },
+  attachments: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Массив вложений: [{name, path, size, mimeType}]'
+  },
+  sentBy: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID пользователя, отправившего рассылку'
+  },
+  sentAt: {
+    type: DataTypes.DATE,
+    defaultValue: DataTypes.NOW,
+    comment: 'Время отправки'
+  },
+  status: {
+    type: DataTypes.STRING(50),
+    defaultValue: 'sent',
+    comment: 'Статус отправки: sent (успешно), failed (ошибка), partial (частично)'
+  },
+  errorDetails: {
+    type: DataTypes.TEXT,
+    comment: 'JSON с деталями ошибок отправки'
+  }
+}, {
+  tableName: 'email_logs',
+  timestamps: true,
+  indexes: [
+    { fields: ['sentBy'] },
+    { fields: ['sentAt'] },
+    { fields: ['status'] }
+  ]
+});
+
 // ═══════════════════════════════════════════════════════════════
 // RELATIONSHIPS
 // ═══════════════════════════════════════════════════════════════
@@ -1589,6 +1754,24 @@ PriceComparison.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 PriceComparison.hasMany(PriceComparisonItem, { foreignKey: 'comparisonId', as: 'items', onDelete: 'CASCADE' });
 PriceComparisonItem.belongsTo(PriceComparison, { foreignKey: 'comparisonId', as: 'comparison' });
 
+// EmailTemplate relationships
+EmailTemplate.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
+User.hasMany(EmailTemplate, { foreignKey: 'createdBy', as: 'emailTemplates' });
+
+// EmailLog relationships
+EmailLog.belongsTo(User, { foreignKey: 'sentBy', as: 'sender' });
+User.hasMany(EmailLog, { foreignKey: 'sentBy', as: 'sentEmails' });
+
+// EmailFavoriteRecipient relationships
+EmailFavoriteRecipient.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(EmailFavoriteRecipient, { foreignKey: 'userId', as: 'favoriteRecipients' });
+
+// EmailFavoriteTemplate relationships
+EmailFavoriteTemplate.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+EmailFavoriteTemplate.belongsTo(EmailTemplate, { foreignKey: 'templateId', as: 'template' });
+User.hasMany(EmailFavoriteTemplate, { foreignKey: 'userId', as: 'favoriteTemplates' });
+EmailTemplate.hasMany(EmailFavoriteTemplate, { foreignKey: 'templateId', as: 'favorites' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -1636,5 +1819,12 @@ module.exports = {
   ReviewBoardPermission,
   ReviewBoardRole,
   Review,
-  ReviewHistory
+  ReviewHistory,
+  // Email module
+  EmailTemplate,
+  EmailLog,
+  EmailFavoriteRecipient,
+  EmailFavoriteTemplate,
+  // Referral bonuses module
+  ReferralBonus
 };

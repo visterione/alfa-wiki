@@ -348,9 +348,174 @@ const sendCredentials = async (email, username, password, displayName, isPasswor
   }
 };
 
+/**
+ * Встраивает изображения из HTML как inline attachments (CID)
+ * @param {string} htmlContent - HTML содержимое с изображениями
+ * @returns {{html: string, images: Array<{cid: string, filePath: string, fullPath: string}>}}
+ */
+const embedImagesInline = (htmlContent) => {
+  const path = require('path');
+  const crypto = require('crypto');
+  const imageMap = new Map(); // Map<originalSrc, {cid, filePath, fullPath}>
+  let processedHtml = htmlContent;
+
+  // Regex для поиска всех img src (поддерживает и одинарные и двойные кавычки)
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  const matches = htmlContent.matchAll(imgRegex);
+
+  for (const match of matches) {
+    const srcUrl = match[1];
+
+    // Проверяем, это ли наш upload (абсолютный или относительный путь)
+    let filePath = null;
+
+    // Паттерн 1: http://192.168.22.39:9001/uploads/2026-02/file.png
+    // Паттерн 2: http://localhost:9001/uploads/2026-02/file.png
+    // Паттерн 3: /uploads/2026-02/file.png
+    if (srcUrl.includes('/uploads/')) {
+      const uploadMatch = srcUrl.match(/\/uploads\/(.+)$/);
+      if (uploadMatch) {
+        filePath = uploadMatch[1]; // "2026-02/file.png"
+      }
+    }
+
+    if (filePath && !imageMap.has(srcUrl)) {
+      // Генерируем уникальный CID на основе пути к файлу
+      const fileName = path.basename(filePath);
+      const fileNameWithoutExt = path.parse(fileName).name;
+      const ext = path.extname(fileName);
+      const cid = `${fileNameWithoutExt}-${crypto.createHash('md5').update(filePath).digest('hex').substring(0, 8)}${ext}`;
+
+      const fullPath = path.join(__dirname, '../uploads', filePath);
+
+      imageMap.set(srcUrl, {
+        cid: cid,
+        filePath: filePath,
+        fullPath: fullPath
+      });
+
+      console.log(`📎 Embedding image: ${filePath} as cid:${cid}`);
+    }
+  }
+
+  // Заменяем все src на cid:
+  for (const [originalSrc, imageData] of imageMap) {
+    // Экранируем специальные символы в URL для regex
+    const escapedSrc = originalSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    processedHtml = processedHtml.replace(
+      new RegExp(`(src=["'])${escapedSrc}(["'])`, 'g'),
+      `$1cid:${imageData.cid}$2`
+    );
+  }
+
+  return {
+    html: processedHtml,
+    images: Array.from(imageMap.values())
+  };
+};
+
+/**
+ * Отправляет массовую рассылку email
+ * @param {Object} params
+ * @param {string} params.subject - Тема письма
+ * @param {string} params.htmlContent - HTML содержимое
+ * @param {Array<{email, displayName}>} params.recipients - Массив получателей
+ * @param {Array<{name, path, mimeType}>} params.attachments - Вложения (опционально)
+ * @param {string} params.senderInfo - Имя отправителя для автоподписи
+ * @returns {Promise<{success: boolean, sent: number, failed: number, errors: Array}>}
+ */
+const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [], senderInfo }) => {
+  const path = require('path');
+  const fs = require('fs');
+  const transporter = createTransporter();
+  const results = { success: true, sent: 0, failed: 0, errors: [] };
+
+  // Добавляем скрытую подпись отправителя в конец письма
+  const senderSignature = senderInfo
+    ? `<div style="margin-top:20px;padding-top:8px;border-top:1px solid #e5e5e7;font-family:sans-serif;font-size:10px;color:#bbb;">Отправлено пользователем: ${senderInfo}</div>`
+    : '';
+  const contentWithSignature = htmlContent + senderSignature;
+
+  // Встраиваем изображения из HTML как inline attachments
+  const { html: processedHtml, images } = embedImagesInline(contentWithSignature);
+
+  console.log(`📧 Preparing email with ${images.length} embedded images and ${attachments.length} attachments`);
+
+  for (const recipient of recipients) {
+    // Пропускаем получателей без email
+    if (!recipient.email) {
+      results.failed++;
+      results.errors.push({
+        email: recipient.displayName || 'Unknown',
+        error: 'Email не указан'
+      });
+      continue;
+    }
+
+    try {
+      // Собираем все вложения
+      const emailAttachments = [];
+
+      // Обычные вложения (файлы, PDF и т.д.)
+      for (const att of attachments) {
+        const fullPath = att.path.startsWith('uploads/')
+          ? path.join(__dirname, '..', att.path)
+          : path.join(__dirname, '../uploads', att.path);
+
+        emailAttachments.push({
+          filename: att.name,
+          path: fullPath
+        });
+      }
+
+      // Inline изображения (встроенные в HTML)
+      for (const img of images) {
+        // Проверяем существование файла перед отправкой
+        if (fs.existsSync(img.fullPath)) {
+          emailAttachments.push({
+            filename: path.basename(img.filePath),
+            path: img.fullPath,
+            cid: img.cid // Content-ID для ссылки из HTML
+          });
+        } else {
+          console.warn(`⚠️  Image not found: ${img.fullPath}`);
+        }
+      }
+
+      const mailOptions = {
+        from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+        to: recipient.email,
+        subject: subject,
+        html: processedHtml,
+        attachments: emailAttachments
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      results.sent++;
+
+      if (!process.env.SMTP_HOST) {
+        console.log(`📧 [BROADCAST EMAIL] To: ${recipient.email}, Subject: ${subject}`);
+      }
+    } catch (error) {
+      console.error(`❌ Failed to send to ${recipient.email}:`, error.message);
+      results.failed++;
+      results.errors.push({ email: recipient.email, error: error.message });
+    }
+  }
+
+  if (results.failed > 0) {
+    results.success = false;
+  }
+
+  console.log(`✅ Email broadcast complete: ${results.sent} sent, ${results.failed} failed`);
+
+  return results;
+};
+
 module.exports = {
   generateCode,
   send2FACode,
   send2FADisabledNotification,
-  sendCredentials
+  sendCredentials,
+  sendBulkEmail
 };
