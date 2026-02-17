@@ -189,6 +189,10 @@ const EmailComposeModal = ({ onClose }) => {
   };
 
   const handleSearchKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setShowRecipientPicker(false);
+      return;
+    }
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
       const val = userSearchQuery.trim().replace(/,$/, '');
@@ -470,6 +474,14 @@ const EmailComposeModal = ({ onClose }) => {
                       onKeyDown={handleSearchKeyDown}
                       autoFocus
                     />
+                    <button
+                      className="btn-icon-sm"
+                      style={{ marginTop: '6px', marginLeft: 'auto', display: 'flex' }}
+                      onClick={() => setShowRecipientPicker(false)}
+                      title="Закрыть"
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
 
                   {/* Role Filters */}
