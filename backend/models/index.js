@@ -1040,6 +1040,65 @@ const ReferralBonus = sequelize.define('ReferralBonus', {
   ]
 });
 
+// === REFERRAL REPORT MODEL (archive of generated reports) ===
+const ReferralReport = sequelize.define('ReferralReport', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  reportType: {
+    type: DataTypes.ENUM('single', 'bulk'),
+    allowNull: false,
+    defaultValue: 'single',
+    comment: 'single = один врач, bulk = сводный по нескольким'
+  },
+  title: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Заголовок отчёта (напр. "Иванов И.И. — Янв-Мар 2026")'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    allowNull: true,
+    comment: 'ФИО врача (только для single)'
+  },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: true,
+    comment: 'ID врача в МИС (только для single)'
+  },
+  dateFrom: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Начало периода'
+  },
+  dateTo: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+    comment: 'Конец периода'
+  },
+  totalAmount: {
+    type: DataTypes.DECIMAL(12, 2),
+    allowNull: true,
+    comment: 'Итоговая сумма бонусов'
+  },
+  reportData: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    comment: 'Данные отчёта в формате JSON'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: true
+  }
+}, {
+  tableName: 'referral_reports',
+  timestamps: true,
+  indexes: [
+    { fields: ['reportType'] },
+    { fields: ['misUserId'] },
+    { fields: ['dateFrom', 'dateTo'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === EMAIL TEMPLATE MODEL ===
 // === EMAIL FAVORITE RECIPIENTS MODEL ===
 const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
@@ -1826,5 +1885,6 @@ module.exports = {
   EmailFavoriteRecipient,
   EmailFavoriteTemplate,
   // Referral bonuses module
-  ReferralBonus
+  ReferralBonus,
+  ReferralReport
 };

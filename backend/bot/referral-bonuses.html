@@ -91,6 +91,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-btn-danger { background: var(--rb-danger); color: white; }
 .rb-btn-danger:hover { background: #b91c1c; }
 .rb-btn-sm { padding: 5px 10px; font-size: 12px; }
+.rb-btn-xs { padding: 3px 6px; font-size: 11px; }
+.rb-btn-xs svg { width: 12px; height: 12px; }
+.rb-btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+/* Archive pagination */
+.rb-archive-search { padding: 10px 16px; border-bottom: 1px solid var(--rb-border); }
+.rb-archive-search input { width: 100%; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
+.rb-archive-search input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-archive-pagination { padding: 10px 16px; border-top: 1px solid var(--rb-border); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #f8fafc; }
 
 /* Add service section */
 .rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
@@ -225,6 +234,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-svc-footer { padding: 12px 16px; border-top: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; }
 .rb-svc-footer span { font-size: 12px; color: var(--rb-text-secondary); }
 
+/* Date range */
+.rb-date-range { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+.rb-date-field { display: flex; flex-direction: column; gap: 4px; }
+.rb-date-field label { font-size: 12px; font-weight: 500; color: var(--rb-text-secondary); }
+.rb-date-field input[type=date] { padding: 7px 10px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
+.rb-date-field input[type=date]:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+
+/* Archive modal */
+.rb-archive-modal { max-width: 860px; }
+.rb-archive-list { padding: 0; }
+.rb-archive-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--rb-border); transition: background 0.1s; }
+.rb-archive-item:last-child { border-bottom: none; }
+.rb-archive-item:hover { background: #f8fafc; }
+.rb-archive-item-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.rb-archive-item-icon.single { background: #dbeafe; color: var(--rb-primary); }
+.rb-archive-item-icon.bulk { background: #dcfce7; color: var(--rb-success); }
+.rb-archive-item-info { flex: 1; min-width: 0; }
+.rb-archive-item-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-archive-item-meta { font-size: 11px; color: var(--rb-text-secondary); margin-top: 2px; }
+.rb-archive-item-amount { font-size: 13px; font-weight: 600; color: var(--rb-danger); white-space: nowrap; margin-right: 8px; }
+.rb-archive-empty { padding: 40px; text-align: center; color: var(--rb-text-secondary); font-size: 14px; }
+
 /* Bulk modal */
 .rb-bulk-modal { max-width: 920px; }
 .rb-bulk-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: 420px; }
@@ -252,6 +283,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
       Бонусы за направления
     </h1>
+    <button class="rb-btn rb-btn-secondary" onclick="rbOpenArchiveModal()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+      Архив отчётов
+    </button>
     <button class="rb-btn rb-btn-primary" onclick="rbOpenBulkModal()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       Сводный отчёт
@@ -301,8 +336,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
     <div class="rb-modal-body" id="rb-report-modal-body">
       <div class="rb-alert rb-alert-info">
-        Загрузите Excel-файл с данными о направлениях. Поддерживаемые колонки:<br>
-        <strong>Клиника счета, ФИО исполнителя, ФИО рекомендателя, Код услуги, Наименование услуги, Итоговая стоимость, ФИО пациента, Номер визита</strong>
+        Загрузите Excel-файл с данными о направлениях. Первый столбец должен содержать дату оплаты.
+        Поддерживаемые колонки: <strong>Дата оплаты счёта, ФИО исполнителя, ФИО рекомендателя, Код услуги, Наименование услуги, Итоговая стоимость</strong>
+      </div>
+      <div class="rb-date-range">
+        <div class="rb-date-field">
+          <label>Период с</label>
+          <input type="date" id="rb-date-from">
+        </div>
+        <div class="rb-date-field">
+          <label>Период по</label>
+          <input type="date" id="rb-date-to">
+        </div>
       </div>
       <div class="rb-file-zone" id="rb-file-zone" onclick="document.getElementById('rb-excel-input').click()" ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbDrop(event)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -318,9 +363,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </div>
     <div class="rb-modal-footer">
       <button class="rb-btn rb-btn-secondary" onclick="rbCloseReportModal()">Закрыть</button>
+      <button class="rb-btn rb-btn-success" id="rb-save-report-btn" style="display:none" onclick="rbSaveReportToArchive()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        В архив
+      </button>
       <button class="rb-btn rb-btn-primary" id="rb-export-btn" style="display:none" onclick="rbExportReport()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Скачать отчёт (Excel)
+        Скачать Excel
       </button>
     </div>
   </div>
@@ -358,7 +407,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <!-- RIGHT: file + generate -->
         <div class="rb-bulk-right">
           <div class="rb-alert rb-alert-info" style="margin-bottom:0">
-            Загрузите Excel-файл с направлениями. ФИО рекомендателя в файле может быть в сокращённом виде (<strong>Фамилия И. О.</strong>) — система сопоставит по фамилии и инициалам.
+            Загрузите Excel-файл. ФИО рекомендателя может быть в сокращённом виде (<strong>Фамилия И. О.</strong>).
+          </div>
+          <div class="rb-date-range">
+            <div class="rb-date-field">
+              <label>Период с</label>
+              <input type="date" id="rb-bulk-date-from">
+            </div>
+            <div class="rb-date-field">
+              <label>Период по</label>
+              <input type="date" id="rb-bulk-date-to">
+            </div>
           </div>
           <div class="rb-file-zone" id="rb-bulk-file-zone" onclick="document.getElementById('rb-bulk-excel-input').click()" ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop(event)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -386,10 +445,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         Сформировать отчёт
       </button>
+      <button class="rb-btn rb-btn-secondary" id="rb-bulk-save-btn" style="display:none" onclick="rbBulkSaveToArchive()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        В архив
+      </button>
       <button class="rb-btn rb-btn-success" id="rb-bulk-export-btn" style="display:none" onclick="rbBulkExport()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Скачать Excel
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive modal -->
+<div id="rb-archive-modal" class="rb-modal-overlay" style="display:none">
+  <div class="rb-modal rb-archive-modal">
+    <div class="rb-modal-header">
+      <h3>Архив отчётов</h3>
+      <button class="rb-modal-close" onclick="rbCloseArchiveModal()">×</button>
+    </div>
+    <div class="rb-modal-body" style="padding:0;overflow-y:auto;display:flex;flex-direction:column">
+      <div class="rb-archive-search">
+        <input id="rb-archive-search" placeholder="Поиск по названию или врачу..." oninput="rbArchiveFilter()">
+      </div>
+      <div id="rb-archive-list" class="rb-archive-list" style="flex:1"></div>
+      <div id="rb-archive-pagination" class="rb-archive-pagination" style="display:none"></div>
+    </div>
+    <div class="rb-modal-footer">
+      <button class="rb-btn rb-btn-secondary" onclick="rbCloseArchiveModal()">Закрыть</button>
     </div>
   </div>
 </div>
@@ -788,12 +871,12 @@ function rbRenderBonusesTable() {
       <td>${rbEsc(b.serviceName)}</td>
       <td>${bonusVal}</td>
       <td>${bonusRub}</td>
-      <td>
-        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbEditBonus('${b.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      <td style="white-space:nowrap">
+        <button class="rb-btn rb-btn-secondary rb-btn-xs" onclick="rbEditBonus('${b.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
-        <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteBonus('${b.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        <button class="rb-btn rb-btn-danger rb-btn-xs" onclick="rbDeleteBonus('${b.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
         </button>
       </td>
     </tr>`;
@@ -1017,7 +1100,10 @@ function rbOpenReportModal() {
   document.getElementById('rb-report-content').innerHTML = '';
   document.getElementById('rb-file-info').style.display = 'none';
   document.getElementById('rb-export-btn').style.display = 'none';
+  document.getElementById('rb-save-report-btn').style.display = 'none';
   document.getElementById('rb-excel-input').value = '';
+  document.getElementById('rb-date-from').value = '';
+  document.getElementById('rb-date-to').value = '';
   RB.reportData = null;
   document.getElementById('rb-report-modal').style.display = 'flex';
 }
@@ -1073,30 +1159,50 @@ function rbNormalizeName(s) {
   return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Парсит дату из строк вида "13.02.2026", "2026-02-13", "13/02/2026"
+function rbParseDate(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  // DD.MM.YYYY или DD/MM/YYYY
+  const m1 = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})$/);
+  if (m1) return new Date(parseInt(m1[3]), parseInt(m1[2]) - 1, parseInt(m1[1]));
+  // YYYY-MM-DD
+  const m2 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m2) return new Date(parseInt(m2[1]), parseInt(m2[2]) - 1, parseInt(m2[3]));
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 function rbBuildReport(rows) {
   const doctorName = RB.selectedDoctor.name;
   const doctorNameNorm = rbNormalizeName(doctorName);
 
-  // Фильтруем строки по ФИО рекомендателя
-  // Колонки могут быть как с кириллицей, так и транслитом — ищем по подстроке ключей
+  // Читаем период
+  const dateFromVal = document.getElementById('rb-date-from').value;
+  const dateToVal   = document.getElementById('rb-date-to').value;
+  const dateFrom = dateFromVal ? new Date(dateFromVal) : null;
+  const dateTo   = dateToVal   ? new Date(dateToVal + 'T23:59:59') : null;
+
+  // Определяем колонки
   const colMap = {};
   if (rows.length > 0) {
     const keys = Object.keys(rows[0]);
     keys.forEach(k => {
       const kl = k.toLowerCase();
+      if (kl.includes('дата') || kl.includes('date')) colMap.date = colMap.date || k;
       if (kl.includes('рекомендател') || kl.includes('направител')) colMap.referrer = k;
       else if (kl.includes('исполнител')) colMap.executor = k;
       else if (kl.includes('код') && kl.includes('услуг')) colMap.code = k;
       else if (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим'))) colMap.name = k;
       else if (kl.includes('итогов') || kl.includes('стоим')) colMap.cost = k;
       else if (kl.includes('пациент') || kl.includes('фио') && !colMap.patient) colMap.patient = k;
-      else if (kl.includes('визит') || kl.includes('номер')) colMap.visit = k;
       else if (kl.includes('клиник')) colMap.clinic = k;
     });
+    // Первая колонка обычно дата, если не нашли по имени
+    if (!colMap.date) colMap.date = keys[0];
 
-    // Если не нашли по ключевым словам — попробуем по позиции
+    // Если не нашли referrer по ключевым словам — попробуем по содержимому
     if (!colMap.referrer) {
-      // Попробуем найти колонку, которая содержит имя врача
       const doctorNameParts = doctorNameNorm.split(' ');
       keys.forEach(k => {
         const vals = rows.slice(0, 5).map(r => rbNormalizeName(r[k]));
@@ -1107,7 +1213,7 @@ function rbBuildReport(rows) {
     }
   }
 
-  // Если колонок нет — показываем предупреждение с доступными колонками
+  // Если нет колонки направителя
   if (!colMap.referrer) {
     const keys = rows.length ? Object.keys(rows[0]) : [];
     document.getElementById('rb-report-content').innerHTML = `
@@ -1119,18 +1225,31 @@ function rbBuildReport(rows) {
     return;
   }
 
-  // Фильтруем строки по текущему врачу
+  // Фильтруем строки по текущему врачу и периоду
+  const lastName = doctorNameNorm.split(' ')[0];
   const filtered = rows.filter(r => {
+    // Фильтр по врачу
     const refNorm = rbNormalizeName(r[colMap.referrer]);
-    // Проверяем совпадение по фамилии (первое слово)
-    const lastName = doctorNameNorm.split(' ')[0];
-    return lastName && refNorm.includes(lastName);
+    if (!lastName || !refNorm.includes(lastName)) return false;
+    // Фильтр по дате
+    if (dateFrom || dateTo) {
+      const rowDate = rbParseDate(r[colMap.date]);
+      if (rowDate) {
+        if (dateFrom && rowDate < dateFrom) return false;
+        if (dateTo   && rowDate > dateTo)   return false;
+      }
+    }
+    return true;
   });
+
+  const periodLabel = (dateFrom || dateTo)
+    ? `${dateFromVal ? new Date(dateFromVal).toLocaleDateString('ru-RU') : '…'} — ${dateToVal ? new Date(dateToVal).toLocaleDateString('ru-RU') : '…'}`
+    : '';
 
   if (!filtered.length) {
     document.getElementById('rb-report-content').innerHTML = `
       <div class="rb-alert rb-alert-warning">
-        В файле не найдено направлений для врача <strong>${doctorName}</strong>.<br>
+        В файле не найдено направлений для врача <strong>${doctorName}</strong>${periodLabel ? ` за период ${periodLabel}` : ''}.<br>
         Проверьте колонку "${colMap.referrer}" — в ней должно быть ФИО рекомендателя.
       </div>`;
     return;
@@ -1185,8 +1304,16 @@ function rbBuildReport(rows) {
     reportSections.push({ executor, services });
   });
 
-  // Сохраняем для экспорта
-  RB.reportData = { doctor: doctorName, sections: reportSections, grandTotal };
+  // Сохраняем для экспорта и архива
+  RB.reportData = {
+    doctor: doctorName,
+    misUserId: RB.selectedDoctor.id,
+    sections: reportSections,
+    grandTotal,
+    dateFrom: dateFromVal,
+    dateTo: dateToVal,
+    periodLabel
+  };
 
   // Рендерим
   let html = `<div class="rb-report">
@@ -1221,6 +1348,7 @@ function rbBuildReport(rows) {
 
   document.getElementById('rb-report-content').innerHTML = html;
   document.getElementById('rb-export-btn').style.display = 'flex';
+  document.getElementById('rb-save-report-btn').style.display = 'flex';
 }
 
 // ═══════════════════════════════════════
@@ -1372,6 +1500,9 @@ document.getElementById('rb-report-modal').addEventListener('click', (e) => {
 document.getElementById('rb-bulk-modal').addEventListener('click', (e) => {
   if (e.target === document.getElementById('rb-bulk-modal')) rbCloseBulkModal();
 });
+document.getElementById('rb-archive-modal').addEventListener('click', (e) => {
+  if (e.target === document.getElementById('rb-archive-modal')) rbCloseArchiveModal();
+});
 
 // Close search results on outside click
 document.addEventListener('click', (e) => {
@@ -1458,15 +1589,21 @@ function rbOpenBulkModal() {
   BULK.excelRows = null;
   BULK.colMap = null;
   BULK.reportData = null;
+  BULK.dateFrom = '';
+  BULK.dateTo = '';
+  BULK.periodLabel = '';
   document.getElementById('rb-bulk-file-info').style.display = 'none';
   document.getElementById('rb-bulk-excel-input').value = '';
   document.getElementById('rb-bulk-result').innerHTML = '';
   document.getElementById('rb-bulk-export-btn').style.display = 'none';
+  document.getElementById('rb-bulk-save-btn').style.display = 'none';
   document.getElementById('rb-bulk-generate-btn').disabled = true;
   document.getElementById('rb-bulk-progress-wrap').style.display = 'none';
   document.getElementById('rb-bulk-search').value = '';
   document.getElementById('rb-bulk-clinic').value = '';
   document.getElementById('rb-bulk-prof').value = '';
+  document.getElementById('rb-bulk-date-from').value = '';
+  document.getElementById('rb-bulk-date-to').value = '';
   rbBulkApplyFilters();
   document.getElementById('rb-bulk-modal').style.display = 'flex';
 }
@@ -1558,8 +1695,10 @@ function rbBulkHandleFile(file) {
 
       // Определяем колонки
       const colMap = {};
-      Object.keys(rows[0]).forEach(k => {
+      const allKeys = Object.keys(rows[0]);
+      allKeys.forEach(k => {
         const kl = k.toLowerCase();
+        if (kl.includes('дата') || kl.includes('date')) colMap.date = colMap.date || k;
         if (kl.includes('рекомендател') || kl.includes('направител')) colMap.referrer = k;
         else if (kl.includes('исполнител')) colMap.executor = k;
         else if (kl.includes('код') && kl.includes('услуг')) colMap.code = k;
@@ -1567,6 +1706,7 @@ function rbBulkHandleFile(file) {
         else if (kl.includes('итогов') || kl.includes('стоим')) colMap.cost = k;
         else if (kl.includes('клиник')) colMap.clinic = k;
       });
+      if (!colMap.date) colMap.date = allKeys[0]; // первая колонка = дата
 
       if (!colMap.referrer) {
         rbToast('Не найдена колонка ФИО рекомендателя', 'error');
@@ -1588,17 +1728,27 @@ function rbBulkHandleFile(file) {
 async function rbBulkGenerate() {
   if (!BULK.excelRows || !BULK.selectedIds.size) return;
 
+  // Читаем период из полей
+  const bulkDateFromVal = document.getElementById('rb-bulk-date-from').value;
+  const bulkDateToVal   = document.getElementById('rb-bulk-date-to').value;
+  const bulkDateFrom = bulkDateFromVal ? new Date(bulkDateFromVal) : null;
+  const bulkDateTo   = bulkDateToVal   ? new Date(bulkDateToVal + 'T23:59:59') : null;
+  const bulkPeriodLabel = (bulkDateFrom || bulkDateTo)
+    ? `${bulkDateFromVal ? new Date(bulkDateFromVal).toLocaleDateString('ru-RU') : '…'} — ${bulkDateToVal ? new Date(bulkDateToVal).toLocaleDateString('ru-RU') : '…'}`
+    : '';
+
   const selectedDoctors = RB.doctors.filter(d => BULK.selectedIds.has(d.id));
   const total = selectedDoctors.length;
 
   document.getElementById('rb-bulk-generate-btn').disabled = true;
   document.getElementById('rb-bulk-export-btn').style.display = 'none';
+  document.getElementById('rb-bulk-save-btn').style.display = 'none';
   document.getElementById('rb-bulk-result').innerHTML = '';
   document.getElementById('rb-bulk-progress-wrap').style.display = 'block';
   const progressBar  = document.getElementById('rb-bulk-progress-bar');
   const progressText = document.getElementById('rb-bulk-progress-text');
 
-  const allResults = [];  // [{ doctor, sections, grandTotal }]
+  const allResults = [];
 
   for (let i = 0; i < selectedDoctors.length; i++) {
     const d = selectedDoctors[i];
@@ -1609,15 +1759,23 @@ async function rbBulkGenerate() {
     try {
       const data = await rbApi(`/api/referral-bonuses?misUserId=${d.id}`);
       bonuses = Array.isArray(data) ? data : [];
-    } catch { /* без бонусов — пропускаем */ }
+    } catch { /* без бонусов */ }
 
-    // Фильтруем строки Excel по этому врачу
+    // Фильтруем строки Excel по врачу и периоду
     const filtered = BULK.excelRows.filter(r => {
       const refName = String(r[BULK.colMap.referrer] || '');
-      return rbNamesMatch(d.name, refName);
+      if (!rbNamesMatch(d.name, refName)) return false;
+      if (bulkDateFrom || bulkDateTo) {
+        const rowDate = rbParseDate(r[BULK.colMap.date]);
+        if (rowDate) {
+          if (bulkDateFrom && rowDate < bulkDateFrom) return false;
+          if (bulkDateTo   && rowDate > bulkDateTo)   return false;
+        }
+      }
+      return true;
     });
 
-    if (!filtered.length) continue; // врач не встречается в файле
+    if (!filtered.length) continue;
 
     const result = rbBuildDoctorReport(d.name, filtered, bonuses, BULK.colMap);
     if (result) allResults.push(result);
@@ -1627,18 +1785,22 @@ async function rbBulkGenerate() {
   progressText.textContent = `Готово: найдено ${allResults.length} из ${total} врачей`;
 
   BULK.reportData = allResults;
+  BULK.dateFrom = bulkDateFromVal;
+  BULK.dateTo   = bulkDateToVal;
+  BULK.periodLabel = bulkPeriodLabel;
 
   if (!allResults.length) {
     document.getElementById('rb-bulk-result').innerHTML =
-      '<div class="rb-alert rb-alert-warning" style="margin-top:12px">Ни один из выбранных врачей не найден в файле. Проверьте правильность ФИО в файле.</div>';
+      '<div class="rb-alert rb-alert-warning" style="margin-top:12px">Ни один из выбранных врачей не найден в файле. Проверьте ФИО или даты.</div>';
   } else {
     const grandTotal = allResults.reduce((s, r) => s + r.grandTotal, 0);
     document.getElementById('rb-bulk-result').innerHTML = `
       <div class="rb-alert rb-alert-info" style="margin-top:12px">
-        Найдено врачей: <strong>${allResults.length}</strong><br>
+        Найдено врачей: <strong>${allResults.length}</strong>${bulkPeriodLabel ? `<br>Период: <strong>${bulkPeriodLabel}</strong>` : ''}<br>
         Общая сумма бонусов: <strong>${grandTotal.toFixed(2)} ₽</strong>
       </div>`;
     document.getElementById('rb-bulk-export-btn').style.display = 'flex';
+    document.getElementById('rb-bulk-save-btn').style.display = 'flex';
   }
 
   document.getElementById('rb-bulk-generate-btn').disabled = false;
@@ -1792,6 +1954,191 @@ async function rbBulkExport() {
 }
 
 // ═══════════════════════════════════════
+// ARCHIVE
+// ═══════════════════════════════════════
+async function rbOpenArchiveModal() {
+  document.getElementById('rb-archive-modal').style.display = 'flex';
+  await rbLoadArchive();
+}
+
+function rbCloseArchiveModal() {
+  document.getElementById('rb-archive-modal').style.display = 'none';
+}
+
+const ARCHIVE = { all: [], filtered: [], page: 0, perPage: 20 };
+
+async function rbLoadArchive() {
+  const listEl = document.getElementById('rb-archive-list');
+  const searchEl = document.getElementById('rb-archive-search');
+  listEl.innerHTML = '<div class="rb-archive-empty"><span class="rb-spinner"></span> Загрузка...</div>';
+  document.getElementById('rb-archive-pagination').style.display = 'none';
+  if (searchEl) searchEl.value = '';
+  ARCHIVE.page = 0;
+  try {
+    const data = await rbApi('/api/referral-reports?limit=2000');
+    ARCHIVE.all = data.reports || [];
+    rbArchiveFilter();
+  } catch (e) {
+    listEl.innerHTML = `<div class="rb-archive-empty">Ошибка загрузки архива</div>`;
+    console.error('rbLoadArchive:', e);
+  }
+}
+
+function rbArchiveFilter() {
+  const term = (document.getElementById('rb-archive-search')?.value || '').toLowerCase().trim();
+  ARCHIVE.filtered = term
+    ? ARCHIVE.all.filter(r =>
+        (r.title || '').toLowerCase().includes(term) ||
+        (r.doctorName || '').toLowerCase().includes(term))
+    : ARCHIVE.all;
+  ARCHIVE.page = 0;
+  rbArchiveRender();
+}
+
+function rbArchivePage(p) {
+  const totalPages = Math.ceil(ARCHIVE.filtered.length / ARCHIVE.perPage);
+  if (p < 0 || p >= totalPages) return;
+  ARCHIVE.page = p;
+  rbArchiveRender();
+}
+
+function rbArchiveRender() {
+  const listEl = document.getElementById('rb-archive-list');
+  const paginEl = document.getElementById('rb-archive-pagination');
+  const { filtered, page, perPage } = ARCHIVE;
+  const total = filtered.length;
+
+  if (!total) {
+    listEl.innerHTML = ARCHIVE.all.length
+      ? '<div class="rb-archive-empty">Ничего не найдено</div>'
+      : '<div class="rb-archive-empty">Архив пуст</div>';
+    paginEl.style.display = 'none';
+    return;
+  }
+
+  const totalPages = Math.ceil(total / perPage);
+  const start = page * perPage;
+  const items = filtered.slice(start, start + perPage);
+
+  listEl.innerHTML = items.map(r => {
+    const isBulk = r.reportType === 'bulk';
+    const dateStr = new Date(r.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const amount = r.totalAmount != null ? `-${parseFloat(r.totalAmount).toFixed(2)} ₽` : '';
+    const period = (r.dateFrom || r.dateTo)
+      ? `${r.dateFrom ? new Date(r.dateFrom).toLocaleDateString('ru-RU') : '…'} — ${r.dateTo ? new Date(r.dateTo).toLocaleDateString('ru-RU') : '…'}`
+      : '';
+    return `<div class="rb-archive-item">
+      <div class="rb-archive-item-icon ${r.reportType}">
+        ${isBulk
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'}
+      </div>
+      <div class="rb-archive-item-info">
+        <div class="rb-archive-item-title">${rbEsc(r.title)}</div>
+        <div class="rb-archive-item-meta">${dateStr}${period ? ' · ' + period : ''} · ${isBulk ? 'Сводный' : 'По врачу'}</div>
+      </div>
+      ${amount ? `<div class="rb-archive-item-amount">${rbEsc(amount)}</div>` : ''}
+      <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbDownloadArchiveReport('${r.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Excel
+      </button>
+      <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteArchiveReport('${r.id}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+      </button>
+    </div>`;
+  }).join('');
+
+  // Пагинация
+  if (totalPages <= 1) {
+    paginEl.style.display = 'flex';
+    paginEl.innerHTML = `<span style="font-size:12px;color:var(--rb-text-secondary)">Всего: ${total}</span>`;
+  } else {
+    paginEl.style.display = 'flex';
+    paginEl.innerHTML = `
+      <span style="font-size:12px;color:var(--rb-text-secondary)">${start + 1}–${Math.min(start + perPage, total)} из ${total}</span>
+      <div style="display:flex;gap:4px;align-items:center">
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbArchivePage(${page - 1})" ${page === 0 ? 'disabled' : ''}>‹ Назад</button>
+        <span style="font-size:12px;color:var(--rb-text-secondary);padding:0 6px">стр. ${page + 1} / ${totalPages}</span>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbArchivePage(${page + 1})" ${page >= totalPages - 1 ? 'disabled' : ''}>Вперёд ›</button>
+      </div>`;
+  }
+}
+
+async function rbSaveReportToArchive() {
+  if (!RB.reportData) return;
+  const { doctor, misUserId, sections, grandTotal, dateFrom, dateTo, periodLabel } = RB.reportData;
+  const title = `${doctor}${periodLabel ? ' — ' + periodLabel : ''}`;
+  try {
+    await rbPost('/api/referral-reports', {
+      reportType: 'single',
+      title,
+      doctorName: doctor,
+      misUserId: misUserId || null,
+      dateFrom: dateFrom || null,
+      dateTo: dateTo || null,
+      totalAmount: grandTotal,
+      reportData: { doctor, sections, grandTotal, dateFrom, dateTo, periodLabel }
+    });
+    rbToast('Отчёт сохранён в архив', 'success');
+  } catch (e) {
+    rbToast('Ошибка сохранения в архив', 'error');
+  }
+}
+
+async function rbBulkSaveToArchive() {
+  if (!BULK.reportData?.length) return;
+  const grandTotal = BULK.reportData.reduce((s, r) => s + r.grandTotal, 0);
+  const doctorNames = BULK.reportData.map(r => r.doctor.split(' ')[0]).join(', ');
+  const title = `Сводный (${BULK.reportData.length} врачей)${BULK.periodLabel ? ' — ' + BULK.periodLabel : ''}`;
+  try {
+    await rbPost('/api/referral-reports', {
+      reportType: 'bulk',
+      title,
+      doctorName: null,
+      misUserId: null,
+      dateFrom: BULK.dateFrom || null,
+      dateTo: BULK.dateTo || null,
+      totalAmount: grandTotal,
+      reportData: { reports: BULK.reportData, periodLabel: BULK.periodLabel }
+    });
+    rbToast('Сводный отчёт сохранён в архив', 'success');
+  } catch (e) {
+    rbToast('Ошибка сохранения в архив', 'error');
+  }
+}
+
+async function rbDownloadArchiveReport(id) {
+  try {
+    const r = await rbApi(`/api/referral-reports/${id}`);
+    if (r.reportType === 'single') {
+      // Восстанавливаем RB.reportData и экспортируем
+      RB.reportData = r.reportData;
+      await rbExportReport();
+    } else {
+      BULK.reportData = r.reportData.reports;
+      await rbBulkExport();
+    }
+  } catch (e) {
+    rbToast('Ошибка загрузки отчёта', 'error');
+  }
+}
+
+async function rbDeleteArchiveReport(id) {
+  if (!confirm('Удалить отчёт из архива?')) return;
+  try {
+    const res = await fetch(RB.apiBase + `/api/referral-reports/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${RB.token}` }
+    });
+    if (!res.ok) throw new Error();
+    rbToast('Отчёт удалён', 'success');
+    await rbLoadArchive();
+  } catch {
+    rbToast('Ошибка удаления', 'error');
+  }
+}
+
+// ═══════════════════════════════════════
 // BOOTSTRAP
 // ═══════════════════════════════════════
 // Expose functions needed by inline onclick handlers
@@ -1821,6 +2168,14 @@ window.rbBulkHandleFile = rbBulkHandleFile;
 window.rbBulkDrop = rbBulkDrop;
 window.rbBulkGenerate = rbBulkGenerate;
 window.rbBulkExport = rbBulkExport;
+window.rbBulkSaveToArchive = rbBulkSaveToArchive;
+window.rbOpenArchiveModal = rbOpenArchiveModal;
+window.rbCloseArchiveModal = rbCloseArchiveModal;
+window.rbArchiveFilter = rbArchiveFilter;
+window.rbArchivePage = rbArchivePage;
+window.rbSaveReportToArchive = rbSaveReportToArchive;
+window.rbDownloadArchiveReport = rbDownloadArchiveReport;
+window.rbDeleteArchiveReport = rbDeleteArchiveReport;
 rbInit().catch(console.error);
 })();
 </script>
