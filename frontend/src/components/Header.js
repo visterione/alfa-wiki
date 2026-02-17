@@ -43,8 +43,8 @@ const getResultIcon = (type) => {
 
 // Функция для рендеринга иконки/эмодзи в результатах поиска
 const renderSearchIcon = (iconValue, type, size = 16) => {
-  // Если есть эмодзи (1-4 символа Unicode)
-  if (iconValue && iconValue.length <= 4) {
+  // Если есть эмодзи (содержит не-ASCII символы — настоящий эмодзи/Unicode)
+  if (iconValue && /[^\x00-\x7F]/.test(iconValue)) {
     return <span className="search-result-emoji" style={{ fontSize: `${size + 2}px` }}>{iconValue}</span>;
   }
 

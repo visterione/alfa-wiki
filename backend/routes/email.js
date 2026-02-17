@@ -4,8 +4,11 @@ const { EmailTemplate, EmailLog, EmailFavoriteRecipient, EmailFavoriteTemplate, 
 const { authenticate } = require('../middleware/auth');
 const { sendBulkEmail } = require('../services/emailService');
 const { Op } = require('sequelize');
+const multer = require('multer');
+const XLSX = require('xlsx-js-style');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // === EMAIL TEMPLATES ===
 
@@ -344,6 +347,45 @@ router.post('/favorites/templates/:templateId', authenticate, async (req, res) =
   } catch (error) {
     console.error('❌ Error toggling favorite template:', error);
     res.status(500).json({ error: 'Ошибка обновления избранного шаблона' });
+  }
+});
+
+// === EXCEL IMPORT ===
+
+// POST /api/email/recipients/parse-excel - Извлечь email-адреса из Excel-файла
+router.post('/recipients/parse-excel', authenticate, upload.single('file'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Файл не передан' });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const found = new Set();
+
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      for (const cellKey of Object.keys(sheet)) {
+        if (cellKey.startsWith('!')) continue; // служебные поля
+        const cell = sheet[cellKey];
+        if (!cell || cell.v == null) continue;
+        // Берём строковое значение ячейки и разбиваем по разделителям
+        const raw = String(cell.v);
+        const parts = raw.split(/[\s,;]+/);
+        for (const part of parts) {
+          const trimmed = part.trim().toLowerCase();
+          if (emailRegex.test(trimmed)) {
+            found.add(trimmed);
+          }
+        }
+      }
+    }
+
+    const emails = Array.from(found);
+    res.json({ emails, count: emails.length });
+  } catch (error) {
+    console.error('❌ Error parsing Excel:', error);
+    res.status(500).json({ error: 'Ошибка разбора файла' });
   }
 });
 

@@ -317,7 +317,7 @@ export default function AdminPages() {
               <div
                 key={page.id}
                 className="explorer-item explorer-page"
-                onDoubleClick={() => navigate(canEdit ? `/page/${page.slug}/edit` : `/page/${page.slug}`)}
+                onDoubleClick={() => navigate(`/page/${page.slug}`)}
                 title={iconInfo.title}
               >
                 <div className={`explorer-item-icon ${iconInfo.className}`}>

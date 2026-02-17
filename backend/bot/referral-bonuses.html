@@ -57,7 +57,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-doctor-item { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 10px; }
 .rb-doctor-item:hover { background: #f0f7ff; }
 .rb-doctor-item.active { background: #dbeafe; border-left: 3px solid var(--rb-primary); }
-.rb-doctor-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #dbeafe, #bfdbfe); display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: var(--rb-primary); flex-shrink: 0; }
+.rb-doctor-avatar { width: 36px; height: 36px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: #6b7280; flex-shrink: 0; }
+.rb-doctor-avatar svg { width: 18px; height: 18px; }
 .rb-doctor-info { flex: 1; min-width: 0; }
 .rb-doctor-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rb-doctor-specialty { font-size: 11px; color: var(--rb-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -74,7 +75,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Doctor card header */
 .rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
 .rb-doctor-card-header { padding: 16px 20px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; gap: 14px; }
-.rb-doctor-card-avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--rb-primary); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: white; flex-shrink: 0; }
+.rb-doctor-card-avatar { width: 52px; height: 52px; border-radius: 50%; background: #f3f4f6; display: flex; align-items: center; justify-content: center; color: #6b7280; flex-shrink: 0; }
+.rb-doctor-card-avatar svg { width: 26px; height: 26px; }
 .rb-doctor-card-info h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
 .rb-doctor-card-info p { font-size: 13px; color: var(--rb-text-secondary); }
 .rb-doctor-card-actions { margin-left: auto; display: flex; gap: 8px; }
@@ -102,21 +104,34 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-archive-pagination { padding: 10px 16px; border-top: 1px solid var(--rb-border); display: flex; align-items: center; justify-content: space-between; gap: 8px; background: #f8fafc; }
 
 /* Add service section */
-.rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
-.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+.rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); }
+.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; border-radius: var(--rb-radius) var(--rb-radius) 0 0; }
 .rb-add-service-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .rb-add-service-header h3 svg { width: 16px; height: 16px; color: var(--rb-primary); }
 .rb-add-service-body { padding: 16px; }
 /* Tabs inside add-service */
 .rb-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rb-border); margin: -16px -16px 16px -16px; }
-.rb-tab-btn { flex: 1; padding: 10px 12px; font-size: 13px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; }
+.rb-tab-btn { flex: 1; padding: 10px 12px; font-size: 13px; font-weight: 500; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.rb-tab-btn svg { width: 14px; height: 14px; }
 .rb-tab-btn.active { color: var(--rb-primary); border-bottom-color: var(--rb-primary); background: #f0f7ff; }
 .rb-tab-btn:hover:not(.active) { background: #f8fafc; color: var(--rb-text); }
 .rb-tab-pane { display: none; }
 .rb-tab-pane.active { display: block; }
-/* Category tab */
-.rb-cat-select { width: 100%; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; margin-bottom: 10px; }
-.rb-cat-select:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+/* Category tab – custom dropdown */
+.rb-cat-dropdown { position: relative; margin-bottom: 10px; }
+.rb-cat-dropdown-btn { width: 100%; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; background: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; text-align: left; color: var(--rb-text-secondary); transition: border-color 0.15s, box-shadow 0.15s; }
+.rb-cat-dropdown-btn.has-value { color: var(--rb-text); }
+.rb-cat-dropdown-btn svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--rb-text-secondary); transition: transform 0.15s; }
+.rb-cat-dropdown.open .rb-cat-dropdown-btn { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-cat-dropdown.open .rb-cat-dropdown-btn svg { transform: rotate(180deg); }
+.rb-cat-dropdown-list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 280px; overflow-y: auto; border: 1px solid var(--rb-border-dark); border-radius: 8px; background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,0.12); z-index: 200; display: none; }
+.rb-cat-dropdown.open .rb-cat-dropdown-list { display: block; }
+.rb-cat-dropdown-item { padding: 8px 12px; cursor: pointer; font-size: 13px; transition: background 0.1s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-cat-dropdown-item:hover { background: #f0f7ff; }
+.rb-cat-dropdown-item.selected { background: #dbeafe; }
+.rb-cat-dropdown-item[data-level="0"] { font-weight: 600; color: #1e3a8a; }
+.rb-cat-dropdown-item[data-level="1"] { padding-left: 24px; color: var(--rb-text); }
+.rb-cat-dropdown-item[data-level="2"] { padding-left: 36px; color: var(--rb-text-secondary); }
 .rb-cat-services-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--rb-border); border-radius: 8px; margin-bottom: 12px; display: none; }
 .rb-cat-service-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--rb-border); display: flex; justify-content: space-between; align-items: center; transition: background 0.1s; }
 .rb-cat-service-item:last-child { border-bottom: none; }
@@ -691,7 +706,7 @@ function rbRenderDoctorsList() {
     const active = RB.selectedDoctor?.id === d.id ? ' active' : '';
 
     return `<div class="rb-doctor-item${active}" onclick="rbSelectDoctor('${d.id}')">
-      <div class="rb-doctor-avatar">${rbGetInitials(d.name)}</div>
+      <div class="rb-doctor-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
       <div class="rb-doctor-info">
         <div class="rb-doctor-name">${d.name}</div>
         <div class="rb-doctor-specialty">${specialty}</div>
@@ -727,7 +742,7 @@ function rbRenderDoctorDetail() {
   document.getElementById('rb-detail-panel').innerHTML = `
     <div class="rb-doctor-card">
       <div class="rb-doctor-card-header">
-        <div class="rb-doctor-card-avatar">${rbGetInitials(d.name)}</div>
+        <div class="rb-doctor-card-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
         <div class="rb-doctor-card-info">
           <h2>${d.name}</h2>
           ${specialty ? `<p>${rbEsc(specialty)}</p>` : ''}
@@ -751,8 +766,8 @@ function rbRenderDoctorDetail() {
       </div>
       <div class="rb-add-service-body">
         <div class="rb-tabs">
-          <button class="rb-tab-btn active" id="rb-tab-search-btn" onclick="rbSwitchAddTab('search')">🔍 Поиск</button>
-          <button class="rb-tab-btn" id="rb-tab-cat-btn" onclick="rbSwitchAddTab('category')">📂 По категории</button>
+          <button class="rb-tab-btn active" id="rb-tab-search-btn" onclick="rbSwitchAddTab('search')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Поиск</button>
+          <button class="rb-tab-btn" id="rb-tab-cat-btn" onclick="rbSwitchAddTab('category')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> По категории</button>
         </div>
 
         <!-- Поиск -->
@@ -766,9 +781,13 @@ function rbRenderDoctorDetail() {
 
         <!-- По категории -->
         <div class="rb-tab-pane" id="rb-tab-category">
-          <select class="rb-cat-select" id="rb-cat-select" onchange="rbOnCategorySelected()">
-            <option value="">Выберите категорию...</option>
-          </select>
+          <div class="rb-cat-dropdown" id="rb-cat-dropdown">
+            <button class="rb-cat-dropdown-btn" id="rb-cat-dropdown-btn" type="button" onclick="rbToggleCatDropdown(event)">
+              <span id="rb-cat-dropdown-label">Выберите категорию...</span>
+              <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+            </button>
+            <div class="rb-cat-dropdown-list" id="rb-cat-dropdown-list"></div>
+          </div>
           <div class="rb-cat-services-list" id="rb-cat-services-list"></div>
         </div>
 
@@ -1010,50 +1029,75 @@ function rbSwitchAddTab(tab) {
   document.getElementById('rb-tab-category').classList.toggle('active', tab === 'category');
   rbClearServiceSearch();
   if (tab === 'category') {
-    const sel = document.getElementById('rb-cat-select');
-    if (sel && sel.options.length <= 1) rbLoadCategories();
+    const list = document.getElementById('rb-cat-dropdown-list');
+    if (list && list.children.length === 0) rbLoadCategories();
   }
 }
 
 async function rbLoadCategories() {
-  const sel = document.getElementById('rb-cat-select');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">Загрузка категорий...</option>';
+  const list = document.getElementById('rb-cat-dropdown-list');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Загрузка...</div>';
   try {
     const data = await rbPost('/api/mis/get-service-categories', {});
     if (data.error !== 0 || !data.data || !data.data.length) {
-      sel.innerHTML = '<option value="">Категории не найдены</option>';
+      list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Категории не найдены</div>';
       return;
     }
-    sel.innerHTML = '<option value="">Выберите категорию...</option>';
+    list.innerHTML = '';
     function addCats(cats, level) {
       cats.forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat.id;
-        const indent = '\u3000'.repeat(level);
-        opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
-        opt.setAttribute('data-level', level);
-        opt.setAttribute('data-name', cat.title);
-        sel.appendChild(opt);
+        const item = document.createElement('div');
+        item.className = 'rb-cat-dropdown-item';
+        item.setAttribute('data-value', cat.id);
+        item.setAttribute('data-level', level);
+        item.setAttribute('data-name', cat.title);
+        item.textContent = cat.title + ' (' + (cat.services_count || 0) + ')';
+        item.onclick = function(e) { e.stopPropagation(); rbSelectCatItem(cat.id, cat.title); };
+        list.appendChild(item);
         if (cat.children && cat.children.length) addCats(cat.children, level + 1);
       });
     }
     addCats(data.data, 0);
   } catch (e) {
-    sel.innerHTML = '<option value="">Ошибка загрузки</option>';
+    list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Ошибка загрузки</div>';
     rbToast('Ошибка загрузки категорий: ' + e.message, 'error');
   }
+}
+
+function rbToggleCatDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('rb-cat-dropdown');
+  const isOpen = dd.classList.contains('open');
+  dd.classList.toggle('open', !isOpen);
+  if (!isOpen) {
+    const list = document.getElementById('rb-cat-dropdown-list');
+    if (list && list.children.length === 0) rbLoadCategories();
+  }
+}
+
+function rbSelectCatItem(value, label) {
+  const dd = document.getElementById('rb-cat-dropdown');
+  const labelEl = document.getElementById('rb-cat-dropdown-label');
+  const btn = document.getElementById('rb-cat-dropdown-btn');
+  dd.querySelectorAll('.rb-cat-dropdown-item').forEach(el => {
+    el.classList.toggle('selected', el.getAttribute('data-value') === String(value));
+  });
+  labelEl.textContent = label;
+  btn.classList.toggle('has-value', !!value);
+  dd.setAttribute('data-selected', value);
+  dd.classList.remove('open');
+  rbOnCategorySelected(value);
 }
 
 // Хранилище услуг текущей категории (индекс вместо JSON в onclick)
 let _rbCatServices = [];
 
-async function rbOnCategorySelected() {
-  const sel = document.getElementById('rb-cat-select');
+async function rbOnCategorySelected(categoryId) {
   const listEl = document.getElementById('rb-cat-services-list');
   rbClearServiceSearch();
   _rbCatServices = [];
-  if (!sel.value) {
+  if (!categoryId) {
     listEl.style.display = 'none';
     listEl.innerHTML = '';
     return;
@@ -1061,7 +1105,7 @@ async function rbOnCategorySelected() {
   listEl.style.display = 'block';
   listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Загрузка услуг...</div>';
   try {
-    const data = await rbPost('/api/mis/get-services', { category_id: sel.value, show_children: true });
+    const data = await rbPost('/api/mis/get-services', { category_id: categoryId, show_children: true });
     if (data.error !== 0 || !data.data || !data.data.length) {
       listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)">Услуги не найдены</div>';
       return;
@@ -1511,6 +1555,9 @@ document.addEventListener('click', (e) => {
   if (res && inp && !res.contains(e.target) && e.target !== inp) {
     res.style.display = 'none';
   }
+  // Close category dropdown on outside click
+  const dd = document.getElementById('rb-cat-dropdown');
+  if (dd && !dd.contains(e.target)) dd.classList.remove('open');
 });
 
 
@@ -2156,6 +2203,8 @@ window.rbEditBonus = rbEditBonus;
 window.rbClearServiceSearch = rbClearServiceSearch;
 window.rbSelectService = rbSelectService;
 window.rbSwitchAddTab = rbSwitchAddTab;
+window.rbToggleCatDropdown = rbToggleCatDropdown;
+window.rbSelectCatItem = rbSelectCatItem;
 window.rbOnCategorySelected = rbOnCategorySelected;
 window.rbSelectCatService = rbSelectCatService;
 window.rbOpenBulkModal = rbOpenBulkModal;

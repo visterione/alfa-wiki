@@ -502,6 +502,11 @@ export const email = {
   // === RECIPIENTS ===
   getUsers: () => api.get('/email/recipients/users'),
   getUsersByRole: (roleId) => api.get(`/email/recipients/by-role/${roleId}`),
+  parseExcel: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/email/recipients/parse-excel', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
 
   // === FAVORITES ===
   getFavoriteRecipients: () => api.get('/email/favorites/recipients'),

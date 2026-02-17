@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star } from 'lucide-react';
+import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Editor from './Editor';
 import { email, roles as rolesApi, media } from '../services/api';
@@ -31,7 +31,9 @@ const EmailComposeModal = ({ onClose }) => {
 
 
   const fileInputRef = useRef(null);
+  const excelInputRef = useRef(null);
   const recipientPickerRef = useRef(null);
+  const [importingExcel, setImportingExcel] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -286,6 +288,38 @@ const EmailComposeModal = ({ onClose }) => {
     }
   };
 
+  // Excel import
+  const handleExcelImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!excelInputRef.current) return;
+    excelInputRef.current.value = '';
+    if (!file) return;
+
+    setImportingExcel(true);
+    try {
+      const { data } = await email.parseExcel(file);
+      if (!data.emails || data.emails.length === 0) {
+        toast.error('Email-адреса в файле не найдены');
+        return;
+      }
+
+      let added = 0;
+      data.emails.forEach(emailAddr => {
+        if (!recipients.find(r => r.email === emailAddr)) {
+          setRecipients(prev => [...prev, { email: emailAddr, displayName: emailAddr, userId: null }]);
+          added++;
+        }
+      });
+
+      toast.success(`Добавлено ${added} из ${data.count} адресов из файла`);
+    } catch (error) {
+      console.error('Error importing Excel:', error);
+      toast.error('Ошибка разбора файла');
+    } finally {
+      setImportingExcel(false);
+    }
+  };
+
   // File attachments
   const handleFileSelect = async (e) => {
     const files = Array.from(e.target.files);
@@ -473,6 +507,22 @@ const EmailComposeModal = ({ onClose }) => {
                       onChange={handleSearchChange}
                       onKeyDown={handleSearchKeyDown}
                       autoFocus
+                    />
+                    <button
+                      className="btn-icon-sm"
+                      style={{ marginTop: '6px', flexShrink: 0 }}
+                      onClick={() => excelInputRef.current?.click()}
+                      disabled={importingExcel}
+                      title="Импорт из Excel"
+                    >
+                      {importingExcel ? '...' : <Table2 size={15} />}
+                    </button>
+                    <input
+                      ref={excelInputRef}
+                      type="file"
+                      hidden
+                      accept=".xlsx,.xls,.csv"
+                      onChange={handleExcelImport}
                     />
                     <button
                       className="btn-icon-sm"

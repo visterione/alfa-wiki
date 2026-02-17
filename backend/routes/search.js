@@ -25,6 +25,21 @@ const cleanExcerpt = (text) => {
   return text.replace(/\s+/g, ' ').trim();
 };
 
+// Функция для удаления HTML-тегов и декодирования HTML-сущностей
+const stripHtml = (text) => {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]+>/g, ' ')        // убираем теги
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 // Функция для форматирования результатов из SearchIndex
 const formatIndexedResult = async (item, searchTerm) => {
   let excerpt = '';
@@ -128,9 +143,10 @@ const formatIndexedResult = async (item, searchTerm) => {
           const contentParts = item.content.split(' | ');
 
           for (const part of contentParts) {
-            if (part.toLowerCase().includes(searchLower) &&
-                !part.toLowerCase().includes(item.title?.toLowerCase() || '')) {
-              matchedService = part.substring(0, 80);
+            const cleanPart = stripHtml(part);
+            if (cleanPart.toLowerCase().includes(searchLower) &&
+                !cleanPart.toLowerCase().includes(item.title?.toLowerCase() || '')) {
+              matchedService = cleanPart.substring(0, 80);
               break;
             }
           }
@@ -265,7 +281,10 @@ router.get('/', authenticate, async (req, res) => {
             { title: { [Op.iLike]: `%${searchTerm}%` } },
             { searchContent: { [Op.iLike]: `%${searchTerm}%` } },
             { description: { [Op.iLike]: `%${searchTerm}%` } },
-            { keywords: { [Op.overlap]: [searchTerm] } }
+            sequelize.where(
+              sequelize.fn('array_to_string', sequelize.col('keywords'), ' '),
+              { [Op.iLike]: `%${searchTerm}%` }
+            )
           ]
         },
         attributes: ['id', 'title', 'slug', 'description', 'keywords', 'searchContent', 'icon', 'allowedRoles', 'contentType'],
@@ -329,7 +348,10 @@ router.get('/', authenticate, async (req, res) => {
         [Op.or]: [
           { title: { [Op.iLike]: `%${searchTerm}%` } },
           { content: { [Op.iLike]: `%${searchTerm}%` } },
-          { keywords: { [Op.overlap]: [searchTerm] } }
+          sequelize.where(
+            sequelize.fn('array_to_string', sequelize.col('SearchIndex.keywords'), ' '),
+            { [Op.iLike]: `%${searchTerm}%` }
+          )
         ]
       };
 
@@ -374,14 +396,26 @@ router.get('/', authenticate, async (req, res) => {
 
     // Sort by relevance
     results.sort((a, b) => {
-      // Приоритет 1: Специализированные сущности (НЕ страницы) показываем выше
+      // Приоритет 0: Точное совпадение по ключевым словам (синонимы)
+      const aKeywordExact = (a.keywords || []).some(k => k.toLowerCase() === searchTerm);
+      const bKeywordExact = (b.keywords || []).some(k => k.toLowerCase() === searchTerm);
+      if (aKeywordExact && !bKeywordExact) return -1;
+      if (!aKeywordExact && bKeywordExact) return 1;
+
+      // Приоритет 1: Нечёткое совпадение по ключевым словам (keyword содержит searchTerm)
+      const aKeywordFuzzy = !aKeywordExact && (a.keywords || []).some(k => k.toLowerCase().includes(searchTerm));
+      const bKeywordFuzzy = !bKeywordExact && (b.keywords || []).some(k => k.toLowerCase().includes(searchTerm));
+      if (aKeywordFuzzy && !bKeywordFuzzy) return -1;
+      if (!aKeywordFuzzy && bKeywordFuzzy) return 1;
+
+      // Приоритет 2: Специализированные сущности (НЕ страницы) показываем выше
       const aIsSpecialized = a.type !== 'page';
       const bIsSpecialized = b.type !== 'page';
 
       if (aIsSpecialized && !bIsSpecialized) return -1;
       if (!aIsSpecialized && bIsSpecialized) return 1;
 
-      // Приоритет 2: Совпадение в заголовке
+      // Приоритет 3: Совпадение в заголовке
       const aTitle = a.title?.toLowerCase() || '';
       const bTitle = b.title?.toLowerCase() || '';
       const aTitleMatch = aTitle.includes(searchTerm);
@@ -390,7 +424,7 @@ router.get('/', authenticate, async (req, res) => {
       if (aTitleMatch && !bTitleMatch) return -1;
       if (!aTitleMatch && bTitleMatch) return 1;
 
-      // Приоритет 3: Начинается ли заголовок с поискового запроса
+      // Приоритет 4: Начинается ли заголовок с поискового запроса
       if (aTitleMatch && bTitleMatch) {
         const aStartsWith = aTitle.startsWith(searchTerm);
         const bStartsWith = bTitle.startsWith(searchTerm);
@@ -433,6 +467,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
       SELECT
         id, title, slug, description, keywords, "searchContent", icon, "allowedRoles", "contentType",
         CASE
+          WHEN EXISTS (SELECT 1 FROM unnest(keywords) k WHERE k ILIKE :likePattern) THEN 6
           WHEN title ILIKE :exactStart THEN 5
           WHEN title ILIKE :likePattern THEN 4
           WHEN description ILIKE :likePattern THEN 3
@@ -446,6 +481,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
           title ILIKE :likePattern
           OR description ILIKE :likePattern
           OR "searchContent" ILIKE :likePattern
+          OR EXISTS (SELECT 1 FROM unnest(keywords) k WHERE k ILIKE :likePattern)
         )
       ORDER BY rank DESC, title ASC
       LIMIT :limit
@@ -453,6 +489,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
       replacements: {
         likePattern,
         exactStart: `${searchQuery}%`,
+        searchQuery: searchQuery,
         limit: parseInt(limit)
       },
       type: sequelize.QueryTypes.SELECT
@@ -463,10 +500,11 @@ router.get('/fulltext', authenticate, async (req, res) => {
       SELECT
         "entityType", "entityId", title, content, keywords, url, metadata,
         CASE
-          WHEN title ILIKE :exactStart THEN 4
-          WHEN title ILIKE :likePattern THEN 3
-          WHEN content ILIKE :likePattern THEN 2
-          ELSE 1
+          WHEN EXISTS (SELECT 1 FROM unnest(keywords) k WHERE k ILIKE :likePattern) THEN 6
+          WHEN title ILIKE :exactStart THEN 5
+          WHEN title ILIKE :likePattern THEN 4
+          WHEN content ILIKE :likePattern THEN 3
+          ELSE 2
         END as priority
       FROM search_index
       WHERE
@@ -474,6 +512,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
         AND (
           title ILIKE :likePattern
           OR content ILIKE :likePattern
+          OR EXISTS (SELECT 1 FROM unnest(keywords) k WHERE k ILIKE :likePattern)
         )
       ORDER BY priority DESC
       LIMIT :limit
@@ -481,6 +520,7 @@ router.get('/fulltext', authenticate, async (req, res) => {
       replacements: {
         likePattern,
         exactStart: `${searchQuery}%`,
+        searchQuery: searchQuery,
         limit: parseInt(limit)
       },
       type: sequelize.QueryTypes.SELECT
@@ -558,28 +598,33 @@ router.get('/fulltext', authenticate, async (req, res) => {
         // Для админов - показываем все элементы
       }
 
-      results.push(await formatIndexedResult(item, searchTermLower));
+      const formatted = await formatIndexedResult(item, searchTermLower);
+      formatted.rank = item.priority || 0;
+      results.push(formatted);
     }
 
     // Sort by relevance
     results.sort((a, b) => {
-      // Приоритет 1: Специализированные сущности (НЕ страницы) показываем выше
+      // Приоритет 0: Точное совпадение по ключевым словам (синонимы)
+      const aKeywordExact = (a.keywords || []).some(k => k.toLowerCase() === searchTermLower);
+      const bKeywordExact = (b.keywords || []).some(k => k.toLowerCase() === searchTermLower);
+      if (aKeywordExact && !bKeywordExact) return -1;
+      if (!aKeywordExact && bKeywordExact) return 1;
+
+      // Приоритет 1: Нечёткое совпадение по ключевым словам (keyword содержит searchTerm)
+      const aKeywordFuzzy = !aKeywordExact && (a.keywords || []).some(k => k.toLowerCase().includes(searchTermLower));
+      const bKeywordFuzzy = !bKeywordExact && (b.keywords || []).some(k => k.toLowerCase().includes(searchTermLower));
+      if (aKeywordFuzzy && !bKeywordFuzzy) return -1;
+      if (!aKeywordFuzzy && bKeywordFuzzy) return 1;
+
+      // Приоритет 2: Специализированные сущности (НЕ страницы) показываем выше
       const aIsSpecialized = a.type !== 'page';
       const bIsSpecialized = b.type !== 'page';
 
       if (aIsSpecialized && !bIsSpecialized) return -1;
       if (!aIsSpecialized && bIsSpecialized) return 1;
 
-      // Приоритет 2: Совпадение в заголовке
-      const aTitle = a.title?.toLowerCase() || '';
-      const bTitle = b.title?.toLowerCase() || '';
-      const aTitleMatch = aTitle.includes(searchTermLower);
-      const bTitleMatch = bTitle.includes(searchTermLower);
-
-      if (aTitleMatch && !bTitleMatch) return -1;
-      if (!aTitleMatch && bTitleMatch) return 1;
-
-      // Приоритет 3: Rank (для страниц)
+      // Приоритет 3: Rank (для страниц и индексированных сущностей)
       return (b.rank || 0) - (a.rank || 0);
     });
 
