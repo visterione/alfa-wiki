@@ -1,36 +1,33 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  FolderPlus, FilePlus, Folder, FolderOpen, FileText,
+  Plus, Folder, FileText,
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
-  ArrowLeft, Check, X, AlertCircle,
-  FileSpreadsheet, FileCode, Table
+  ArrowLeft, Check, LayoutGrid, List, Search, X,
+  ChevronDown, ArrowUp, ArrowDown,
+  FileCode, Table, FolderPlus
 } from 'lucide-react';
 
-// Функция для получения иконки и класса в зависимости от типа контента
 const getPageIconInfo = (contentType) => {
   switch (contentType) {
     case 'spreadsheet':
-      return {
-        Icon: Table,
-        className: 'explorer-icon-spreadsheet',
-        title: 'Таблица'
-      };
+      return { Icon: Table,    className: 'explorer-icon-spreadsheet', title: 'Таблица' };
     case 'html':
-      return {
-        Icon: FileCode,
-        className: 'explorer-icon-html',
-        title: 'HTML-страница'
-      };
+      return { Icon: FileCode, className: 'explorer-icon-html',        title: 'HTML-страница' };
     case 'wysiwyg':
     default:
-      return {
-        Icon: FileText,
-        className: 'explorer-icon-wysiwyg',
-        title: 'Страница'
-      };
+      return { Icon: FileText, className: 'explorer-icon-wysiwyg',     title: 'Документ' };
   }
 };
+
+// Элементы единого дропдауна «Создать»
+const CREATE_ITEMS = [
+  { kind: 'folder',      Icon: FolderPlus, label: 'Папка',        iconColor: '#f59e0b' },
+  { kind: 'wysiwyg',     Icon: FileText,   label: 'Документ',     iconColor: 'var(--primary, #2563eb)' },
+  { kind: 'spreadsheet', Icon: Table,      label: 'Таблица',      iconColor: '#22c55e' },
+  { kind: 'html',        Icon: FileCode,   label: 'HTML-страница', iconColor: '#f97316' },
+];
+
 import { folders, pages, roles } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -44,44 +41,73 @@ export default function AdminPages() {
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
-  const [openMenuId, setOpenMenuId] = useState(null); // Для отслеживания открытого меню
+  const [openMenuId, setOpenMenuId] = useState(null);
   const [allRoles, setAllRoles] = useState([]);
+  const [viewMode, setViewMode] = useState(() => localStorage.getItem('alfa-wiki-explorer-view') || 'grid');
+
+  // Единый дропдаун «Создать»
+  const [showCreateDropdown, setShowCreateDropdown] = useState(false);
+  const createDropdownRef = useRef(null);
+
+  // Поиск
+  const [folderSearch, setFolderSearch] = useState('');
+
+  // Сортировка (список)
+  const [sortConfig, setSortConfig] = useState({ key: 'name', dir: 'asc' });
+
+  // Выделение
+  const [selectedId, setSelectedId] = useState(null);
+
+  // Drag & drop
+  const [draggedItem, setDraggedItem] = useState(null); // { id, type: 'folder'|'page' }
+  const [dragOverId, setDragOverId] = useState(null);   // id строки при наведении (для ребилда порядка)
+  const [dragOverFolderId, setDragOverFolderId] = useState(null); // папка-цель (move into)
+  const [dragOverBack, setDragOverBack] = useState(false); // наведение на кнопку «Назад»
 
   // Modals
   const [folderModal, setFolderModal] = useState({ open: false, folder: null });
-  const [pageModal, setPageModal] = useState({ open: false, page: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, type: null, item: null });
 
-  // Forms
+  // Form
   const [folderForm, setFolderForm] = useState({ title: '', icon: 'folder', description: '', allowedRoles: [] });
-  const [pageForm, setPageForm] = useState({ title: '', icon: 'file-text' });
 
-  // Проверка прав: галочка "Страницы" в настройках пользователя ИЛИ права на запись
-  const canEdit = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'write');
+  const canEdit   = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'write');
   const canDelete = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'delete');
 
   useEffect(() => {
     loadRoles();
     loadContent();
+    setFolderSearch('');
+    setSelectedId(null);
   }, [currentFolderId]);
+
+  // Закрытие дропдауна «Создать» при клике вне
+  useEffect(() => {
+    if (!showCreateDropdown) return;
+    const handler = (e) => {
+      if (createDropdownRef.current && !createDropdownRef.current.contains(e.target)) {
+        setShowCreateDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showCreateDropdown]);
+
+  // Закрытие контекстного меню
+  useEffect(() => {
+    const handler = () => setOpenMenuId(null);
+    if (openMenuId) {
+      document.addEventListener('click', handler);
+      return () => document.removeEventListener('click', handler);
+    }
+  }, [openMenuId]);
 
   const loadRoles = async () => {
     try {
       const { data } = await roles.list();
       setAllRoles(data);
-    } catch (error) {
-      console.error('Error loading roles:', error);
-    }
+    } catch (e) { console.error(e); }
   };
-
-  // Закрытие меню при клике вне его
-  useEffect(() => {
-    const handleClickOutside = () => setOpenMenuId(null);
-    if (openMenuId) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
-    }
-  }, [openMenuId]);
 
   const loadContent = async () => {
     setLoading(true);
@@ -92,16 +118,12 @@ export default function AdminPages() {
       setBreadcrumbs(data.breadcrumbs || []);
     } catch (error) {
       toast.error('Ошибка загрузки');
-      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Navigation
-  const navigateToFolder = (folderId) => {
-    setCurrentFolderId(folderId);
-  };
+  const navigateToFolder = (folderId) => setCurrentFolderId(folderId);
 
   const navigateUp = () => {
     if (breadcrumbs.length > 0) {
@@ -110,31 +132,19 @@ export default function AdminPages() {
     }
   };
 
-  // Modals
-  const openFolderModal = (folder = null) => {
-    if (!canEdit) {
-      toast.error('У вас нет прав на создание/редактирование папок');
-      return;
+  // Обработчик выбора пункта из «Создать»
+  const handleCreateItem = (kind) => {
+    setShowCreateDropdown(false);
+    if (kind === 'folder') {
+      setFolderForm({ title: '', icon: 'folder', description: '', allowedRoles: [] });
+      setFolderModal({ open: true, folder: null });
+    } else {
+      navigate(`/page/new/edit?type=${kind}&folderId=${currentFolderId || ''}`);
     }
-    setFolderForm(folder || { title: '', icon: 'folder', description: '', allowedRoles: [] });
-    setFolderModal({ open: true, folder });
   };
 
-  const openPageModal = (page = null) => {
-    if (!canEdit) {
-      toast.error('У вас нет прав на создание/редактирование страниц');
-      return;
-    }
-    setPageForm(page || { title: '', icon: 'file-text' });
-    setPageModal({ open: true, page });
-  };
-
-  // Save handlers
   const handleSaveFolder = async () => {
-    if (!folderForm.title.trim()) {
-      toast.error('Введите название папки');
-      return;
-    }
+    if (!folderForm.title.trim()) { toast.error('Введите название папки'); return; }
     try {
       if (folderModal.folder) {
         await folders.update(folderModal.folder.id, folderForm);
@@ -150,155 +160,423 @@ export default function AdminPages() {
     }
   };
 
-  const handleSavePage = async () => {
-    if (!pageForm.title.trim()) {
-      toast.error('Введите название страницы');
-      return;
-    }
-    try {
-      if (pageModal.page) {
-        await pages.update(pageModal.page.id, pageForm);
-        toast.success('Страница обновлена');
-        setPageModal({ open: false, page: null });
-        loadContent();
-      } else {
-        const { data } = await pages.create({ 
-          ...pageForm, 
-          folderId: currentFolderId,
-          contentType: 'wysiwyg',
-          content: ''
-        });
-        toast.success('Страница создана');
-        setPageModal({ open: false, page: null });
-        // Открываем редактор для новой страницы
-        navigate(`/page/${data.slug}/edit`);
-      }
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Ошибка сохранения');
-    }
-  };
-
-  // Delete
   const openDeleteModal = (type, item) => {
-    if (!canDelete) {
-      toast.error('У вас нет прав на удаление');
-      return;
-    }
+    if (!canDelete) { toast.error('У вас нет прав на удаление'); return; }
     setDeleteModal({ open: true, type, item });
   };
 
   const confirmDelete = async () => {
     const { type, item } = deleteModal;
     try {
-      if (type === 'folder') {
-        await folders.delete(item.id);
-        toast.success('Папка удалена');
-      } else {
-        await pages.delete(item.id);
-        toast.success('Страница удалена');
-      }
+      if (type === 'folder') { await folders.delete(item.id); toast.success('Папка удалена'); }
+      else                   { await pages.delete(item.id);   toast.success('Страница удалена'); }
       setDeleteModal({ open: false, type: null, item: null });
       loadContent();
-    } catch (error) {
-      toast.error('Ошибка удаления');
-    }
+    } catch { toast.error('Ошибка удаления'); }
   };
 
-  // Меню действий
   const toggleMenu = (itemId, e) => {
     e.stopPropagation();
     setOpenMenuId(openMenuId === itemId ? null : itemId);
   };
 
-  // Check nesting level
   const canCreateSubfolder = breadcrumbs.length < 2;
+
+  const toggleViewMode = (mode) => {
+    setViewMode(mode);
+    localStorage.setItem('alfa-wiki-explorer-view', mode);
+  };
+
+  // Сортировка
+  const handleSort = (key) => {
+    setSortConfig(prev =>
+      prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+    );
+  };
+
+  const SortIcon = ({ colKey }) => {
+    if (sortConfig.key !== colKey) return null;
+    return sortConfig.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />;
+  };
+
+  const filterAndSort = (list, isFolder) => {
+    const term = folderSearch.trim().toLowerCase();
+    let filtered = term ? list.filter(item => item.title.toLowerCase().includes(term)) : list;
+    if (viewMode === 'list') {
+      filtered = [...filtered].sort((a, b) => {
+        let aVal, bVal;
+        switch (sortConfig.key) {
+          case 'type':
+            aVal = isFolder ? 'папка' : getPageIconInfo(a.contentType).title.toLowerCase();
+            bVal = isFolder ? 'папка' : getPageIconInfo(b.contentType).title.toLowerCase();
+            break;
+          case 'status':
+            aVal = isFolder ? 0 : (a.isPublished ? 1 : 0);
+            bVal = isFolder ? 0 : (b.isPublished ? 1 : 0);
+            break;
+          default:
+            aVal = (a.title || '').toLowerCase();
+            bVal = (b.title || '').toLowerCase();
+        }
+        if (aVal < bVal) return sortConfig.dir === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return filtered;
+  };
+
+  const displayedFolders = filterAndSort(folderList, true);
+  const displayedPages   = filterAndSort(pageList, false);
+  const totalDisplayed   = displayedFolders.length + displayedPages.length;
+
+  // ── Drag & Drop ──────────────────────────────────────────
+  const handleDragStart = (e, type, id) => {
+    setDraggedItem({ type, id });
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `${type}:${id}`);
+  };
+
+  const handleDragOver = (e, targetId, isFolder) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (isFolder) {
+      setDragOverFolderId(targetId);
+      setDragOverId(null);
+    } else {
+      setDragOverId(targetId);
+      setDragOverFolderId(null);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedItem(null);
+    setDragOverId(null);
+    setDragOverFolderId(null);
+    setDragOverBack(false);
+  };
+
+  // Сбросить в родительскую папку (кнопка «Назад»)
+  const handleDropOnBack = async (e) => {
+    e.preventDefault();
+    if (!draggedItem) { handleDragEnd(); return; }
+    const parentFolderId = breadcrumbs.length > 1 ? breadcrumbs[breadcrumbs.length - 2].id : null;
+    try {
+      await folders.move([{ id: draggedItem.id, type: draggedItem.type, targetFolderId: parentFolderId }]);
+      toast.success('Перемещено');
+      loadContent();
+    } catch { toast.error('Ошибка перемещения'); }
+    handleDragEnd();
+  };
+
+  const handleDrop = async (e, targetId, targetType) => {
+    e.preventDefault();
+    if (!draggedItem || draggedItem.id === targetId) { handleDragEnd(); return; }
+
+    // Переместить в папку
+    if (targetType === 'folder') {
+      try {
+        await folders.move([{ id: draggedItem.id, type: draggedItem.type, targetFolderId: targetId }]);
+        toast.success('Перемещено');
+        loadContent();
+      } catch { toast.error('Ошибка перемещения'); }
+      handleDragEnd();
+      return;
+    }
+
+    // Изменить порядок внутри одного типа
+    if (draggedItem.type === targetType) {
+      const isFolderType = targetType === 'folder';
+      const list = isFolderType ? [...displayedFolders] : [...displayedPages];
+      const fromIdx = list.findIndex(i => i.id === draggedItem.id);
+      const toIdx   = list.findIndex(i => i.id === targetId);
+      if (fromIdx === -1 || toIdx === -1) { handleDragEnd(); return; }
+      const [moved] = list.splice(fromIdx, 1);
+      list.splice(toIdx, 0, moved);
+      const items = list.map((item, idx) => ({ id: item.id, sortOrder: idx + 1 }));
+      try {
+        await folders.reorder(isFolderType ? { folders: items } : { pages: items });
+        loadContent();
+      } catch { toast.error('Ошибка сортировки'); }
+    }
+
+    handleDragEnd();
+  };
+
+  // ─────────────────────────────────────────────────────────
+
 
   return (
     <div className="admin-page">
       <div className="admin-header">
         <h1>Проводник страниц</h1>
-        {canEdit && (
-          <div className="admin-header-actions">
-            {canCreateSubfolder && (
-              <button className="btn btn-secondary" onClick={() => openFolderModal()}>
-                <FolderPlus size={18} /> Папка
-              </button>
-            )}
-            <button className="btn btn-primary" onClick={() => openPageModal()}>
-              <FilePlus size={18} /> Страница
+        <div className="admin-header-actions">
+          <div className="explorer-view-toggle">
+            <button
+              className={`btn-icon ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => toggleViewMode('grid')}
+              title="Галерея"
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button
+              className={`btn-icon ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => toggleViewMode('list')}
+              title="Список"
+            >
+              <List size={18} />
             </button>
           </div>
-        )}
+
+          {canEdit && (
+            <div className="explorer-page-create" ref={createDropdownRef}>
+              <button
+                className="btn btn-primary"
+                onClick={(e) => { e.stopPropagation(); setShowCreateDropdown(v => !v); }}
+              >
+                <Plus size={16} />
+                Создать
+                <ChevronDown size={13} style={{ marginLeft: 2, opacity: 0.8 }} />
+              </button>
+              {showCreateDropdown && (
+                <div className="explorer-type-dropdown">
+                  {CREATE_ITEMS.map(({ kind, Icon, label, iconColor }) => {
+                    if (kind === 'folder' && !canCreateSubfolder) return null;
+                    return (
+                      <button
+                        key={kind}
+                        className="explorer-type-option"
+                        onClick={() => handleCreateItem(kind)}
+                      >
+                        <Icon size={18} style={{ color: iconColor, flexShrink: 0 }} />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Breadcrumbs */}
-      <div className="explorer-breadcrumbs">
-        <button 
-          className={`breadcrumb-item ${!currentFolderId ? 'active' : ''}`}
-          onClick={() => navigateToFolder(null)}
-        >
-          <Home size={16} />
-          <span>Корень</span>
-        </button>
-        {breadcrumbs.map((crumb, idx) => (
-          <React.Fragment key={crumb.id}>
-            <ChevronRight size={16} className="breadcrumb-separator" />
-            <button 
-              className={`breadcrumb-item ${idx === breadcrumbs.length - 1 ? 'active' : ''}`}
-              onClick={() => navigateToFolder(crumb.id)}
-            >
-              <Folder size={16} />
-              <span>{crumb.title}</span>
+      {/* Breadcrumbs + поиск в одной строке */}
+      <div className="explorer-breadcrumbs-row">
+        <div className="explorer-breadcrumbs">
+          <button
+            className={`breadcrumb-item ${!currentFolderId ? 'active' : ''}`}
+            onClick={() => navigateToFolder(null)}
+          >
+            <Home size={16} />
+            <span>Корень</span>
+          </button>
+          {breadcrumbs.map((crumb, idx) => (
+            <React.Fragment key={crumb.id}>
+              <ChevronRight size={16} className="breadcrumb-separator" />
+              <button
+                className={`breadcrumb-item ${idx === breadcrumbs.length - 1 ? 'active' : ''}`}
+                onClick={() => navigateToFolder(crumb.id)}
+              >
+                <Folder size={16} />
+                <span>{crumb.title}</span>
+              </button>
+            </React.Fragment>
+          ))}
+        </div>
+
+        <div className="explorer-search-wrap">
+          <Search size={13} className="explorer-search-icon" />
+          <input
+            className="explorer-search-input"
+            placeholder="Поиск..."
+            value={folderSearch}
+            onChange={e => { setFolderSearch(e.target.value); setSelectedId(null); }}
+          />
+          {folderSearch && (
+            <button className="explorer-search-clear" onClick={() => { setFolderSearch(''); setSelectedId(null); }}>
+              <X size={13} />
             </button>
-          </React.Fragment>
-        ))}
+          )}
+          {folderSearch && totalDisplayed > 0 && (
+            <span className="explorer-search-count">{totalDisplayed}</span>
+          )}
+        </div>
       </div>
 
       {/* Content */}
       <div className="card">
         {loading ? (
           <div className="admin-loading"><div className="loading-spinner" /></div>
-        ) : (
-          <div className="explorer-grid">
-            {/* Back button if not in root */}
+        ) : viewMode === 'list' ? (
+          /* ── LIST VIEW ── */
+          <div className="explorer-list">
+            <div className="explorer-list-header">
+              <span className="explorer-list-icon-col" />
+              <button className={`explorer-list-col-btn ${sortConfig.key === 'name' ? 'active' : ''}`} onClick={() => handleSort('name')}>
+                Название <SortIcon colKey="name" />
+              </button>
+              <button className={`explorer-list-col-btn explorer-list-type-col ${sortConfig.key === 'type' ? 'active' : ''}`} onClick={() => handleSort('type')}>
+                Тип <SortIcon colKey="type" />
+              </button>
+              <button className={`explorer-list-col-btn explorer-list-status-col ${sortConfig.key === 'status' ? 'active' : ''}`} onClick={() => handleSort('status')}>
+                Статус <SortIcon colKey="status" />
+              </button>
+              <span className="explorer-list-actions-col" />
+            </div>
+
             {currentFolderId && (
-              <div className="explorer-item explorer-back" onClick={navigateUp}>
-                <div className="explorer-item-icon">
-                  <ArrowLeft size={48} />
+              <div
+                className={`explorer-list-item explorer-list-back${dragOverBack ? ' drag-over-target' : ''}`}
+                onClick={navigateUp}
+                onDragOver={draggedItem ? (e) => { e.preventDefault(); setDragOverBack(true); } : undefined}
+                onDragLeave={() => setDragOverBack(false)}
+                onDrop={draggedItem ? handleDropOnBack : undefined}
+              >
+                <ArrowLeft size={16} className="explorer-list-icon" />
+                <span className="explorer-list-name">Назад</span>
+              </div>
+            )}
+
+            {displayedFolders.map(folder => (
+              <div
+                key={folder.id}
+                draggable={canEdit}
+                className={[
+                  'explorer-list-item explorer-list-folder',
+                  selectedId === `folder-${folder.id}` ? 'selected' : '',
+                  dragOverFolderId === folder.id ? 'drag-over-target' : '',
+                  draggedItem?.id === folder.id ? 'dragging' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => setSelectedId(`folder-${folder.id}`)}
+                onDoubleClick={() => navigateToFolder(folder.id)}
+                onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
+                onDragOver={(e) => handleDragOver(e, folder.id, true)}
+                onDragLeave={() => setDragOverFolderId(null)}
+                onDrop={(e) => handleDrop(e, folder.id, 'folder')}
+                onDragEnd={handleDragEnd}
+              >
+                <Folder size={16} className="explorer-list-icon folder" />
+                <span className="explorer-list-name">{folder.title}</span>
+                <span className="explorer-list-type">Папка</span>
+                <span className="explorer-list-status-placeholder" />
+                <div className="explorer-list-actions">
+                  {canEdit && (
+                    <button title="Редактировать" onClick={(e) => { e.stopPropagation(); setFolderForm(folder); setFolderModal({ open: true, folder }); }}>
+                      <Edit size={14} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('folder', folder); }}>
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
+              </div>
+            ))}
+
+            {displayedPages.map(page => {
+              const iconInfo = getPageIconInfo(page.contentType);
+              const IconComponent = iconInfo.Icon;
+              return (
+                <div
+                  key={page.id}
+                  draggable={canEdit}
+                  className={[
+                    'explorer-list-item explorer-list-page',
+                    selectedId === `page-${page.id}` ? 'selected' : '',
+                    dragOverId === page.id ? 'drag-over-row' : '',
+                    draggedItem?.id === page.id ? 'dragging' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => setSelectedId(`page-${page.id}`)}
+                  onDoubleClick={() => navigate(`/page/${page.slug}`)}
+                  onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
+                  onDragOver={(e) => handleDragOver(e, page.id, false)}
+                  onDragLeave={() => setDragOverId(null)}
+                  onDrop={(e) => handleDrop(e, page.id, 'page')}
+                  onDragEnd={handleDragEnd}
+                >
+                  <IconComponent size={16} className={`explorer-list-icon ${iconInfo.className}`} />
+                  <span className="explorer-list-name">{page.title}</span>
+                  <span className="explorer-list-type">{iconInfo.title}</span>
+                  <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
+                    {page.isPublished ? 'Опубликовано' : 'Черновик'}
+                  </span>
+                  <div className="explorer-list-actions">
+                    <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                      <Eye size={14} />
+                    </button>
+                    {canEdit && (
+                      <button title="Редактировать" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}/edit`); }}>
+                        <Edit size={14} />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('page', page); }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {totalDisplayed === 0 && (
+              <div className="empty-state">
+                <Folder size={48} />
+                <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
+                {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ── GRID VIEW ── */
+          <div className="explorer-grid">
+            {currentFolderId && (
+              <div
+                className={`explorer-item explorer-back${dragOverBack ? ' drag-over-target' : ''}`}
+                onClick={navigateUp}
+                onDragOver={draggedItem ? (e) => { e.preventDefault(); setDragOverBack(true); } : undefined}
+                onDragLeave={() => setDragOverBack(false)}
+                onDrop={draggedItem ? handleDropOnBack : undefined}
+              >
+                <div className="explorer-item-icon"><ArrowLeft size={48} /></div>
                 <div className="explorer-item-name">Назад</div>
               </div>
             )}
 
-            {/* Folders */}
-            {folderList.map(folder => (
-              <div 
-                key={folder.id} 
-                className="explorer-item explorer-folder"
+            {displayedFolders.map(folder => (
+              <div
+                key={folder.id}
+                draggable={canEdit}
+                className={[
+                  'explorer-item explorer-folder',
+                  selectedId === `folder-${folder.id}` ? 'selected' : '',
+                  dragOverFolderId === folder.id ? 'drag-over-target' : '',
+                  draggedItem?.id === folder.id ? 'dragging' : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => setSelectedId(`folder-${folder.id}`)}
                 onDoubleClick={() => navigateToFolder(folder.id)}
+                onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
+                onDragOver={(e) => handleDragOver(e, folder.id, true)}
+                onDragLeave={() => setDragOverFolderId(null)}
+                onDrop={(e) => handleDrop(e, folder.id, 'folder')}
+                onDragEnd={handleDragEnd}
               >
-                <div className="explorer-item-icon">
-                  <Folder size={48} />
-                </div>
+                <div className="explorer-item-icon"><Folder size={48} /></div>
                 <div className="explorer-item-name">{folder.title}</div>
                 {canEdit && (
                   <div className="explorer-item-actions">
-                    <button 
-                      className="actions-menu-btn"
-                      onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}
-                    >
+                    <button className="actions-menu-btn" onClick={(e) => toggleMenu(`folder-${folder.id}`, e)}>
                       <MoreVertical size={18} />
                     </button>
                     {openMenuId === `folder-${folder.id}` && (
                       <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => { openFolderModal(folder); setOpenMenuId(null); }}>
-                          <Edit size={16} />
-                          Редактировать
+                        <button onClick={() => { setFolderForm(folder); setFolderModal({ open: true, folder }); setOpenMenuId(null); }}>
+                          <Edit size={16} /> Редактировать
                         </button>
                         {canDelete && (
                           <button onClick={() => { openDeleteModal('folder', folder); setOpenMenuId(null); }} className="danger">
-                            <Trash2 size={16} />
-                            Удалить
+                            <Trash2 size={16} /> Удалить
                           </button>
                         )}
                       </div>
@@ -308,69 +586,65 @@ export default function AdminPages() {
               </div>
             ))}
 
-            {/* Pages */}
-            {pageList.map(page => {
+            {displayedPages.map(page => {
               const iconInfo = getPageIconInfo(page.contentType);
               const IconComponent = iconInfo.Icon;
-
               return (
-              <div
-                key={page.id}
-                className="explorer-item explorer-page"
-                onDoubleClick={() => navigate(`/page/${page.slug}`)}
-                title={iconInfo.title}
-              >
-                <div className={`explorer-item-icon ${iconInfo.className}`}>
-                  <IconComponent size={48} />
-                </div>
-                <div className="explorer-item-name">{page.title}</div>
-                <div className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
-                  {page.isPublished ? 'Опубликовано' : 'Черновик'}
-                </div>
-                <div className="explorer-item-actions">
-                  <button 
-                    className="actions-menu-btn"
-                    onClick={(e) => toggleMenu(`page-${page.id}`, e)}
-                  >
-                    <MoreVertical size={18} />
-                  </button>
-                  {openMenuId === `page-${page.id}` && (
-                    <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
-                        <Eye size={16} />
-                        Просмотр
-                      </button>
-                      {canEdit && (
-                        <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
-                          <Edit size={16} />
-                          Редактировать
+                <div
+                  key={page.id}
+                  draggable={canEdit}
+                  className={[
+                    'explorer-item explorer-page',
+                    selectedId === `page-${page.id}` ? 'selected' : '',
+                    draggedItem?.id === page.id ? 'dragging' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => setSelectedId(`page-${page.id}`)}
+                  onDoubleClick={() => navigate(`/page/${page.slug}`)}
+                  onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
+                  onDragOver={(e) => handleDragOver(e, page.id, false)}
+                  onDragLeave={() => setDragOverId(null)}
+                  onDrop={(e) => handleDrop(e, page.id, 'page')}
+                  onDragEnd={handleDragEnd}
+                  title={iconInfo.title}
+                >
+                  <div className={`explorer-item-icon ${iconInfo.className}`}>
+                    <IconComponent size={48} />
+                  </div>
+                  <div className="explorer-item-name">{page.title}</div>
+                  <div className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
+                    {page.isPublished ? 'Опубликовано' : 'Черновик'}
+                  </div>
+                  <div className="explorer-item-actions">
+                    <button className="actions-menu-btn" onClick={(e) => toggleMenu(`page-${page.id}`, e)}>
+                      <MoreVertical size={18} />
+                    </button>
+                    {openMenuId === `page-${page.id}` && (
+                      <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
+                        <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                          <Eye size={16} /> Просмотр
                         </button>
-                      )}
-                      {canDelete && (
-                        <button onClick={() => { openDeleteModal('page', page); setOpenMenuId(null); }} className="danger">
-                          <Trash2 size={16} />
-                          Удалить
-                        </button>
-                      )}
-                    </div>
-                  )}
+                        {canEdit && (
+                          <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
+                            <Edit size={16} /> Редактировать
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button onClick={() => { openDeleteModal('page', page); setOpenMenuId(null); }} className="danger">
+                            <Trash2 size={16} /> Удалить
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
               );
             })}
 
-            {/* Empty state */}
-            {folderList.length === 0 && pageList.length === 0 && !currentFolderId && (
+            {totalDisplayed === 0 && (
               <div className="empty-state">
                 <Folder size={48} />
-                <p>Папки и страницы отсутствуют</p>
-                {canEdit && <p>Создайте первую папку или страницу</p>}
-              </div>
-            )}
-            {folderList.length === 0 && pageList.length === 0 && currentFolderId && (
-              <div className="empty-state">
-                <Folder size={48} />
-                <p>Папка пуста</p>
+                <p>{folderSearch ? 'Ничего не найдено' : currentFolderId ? 'Папка пуста' : 'Папки и страницы отсутствуют'}</p>
+                {!folderSearch && !currentFolderId && canEdit && <p>Нажмите «Создать», чтобы начать</p>}
               </div>
             )}
           </div>
@@ -408,24 +682,13 @@ export default function AdminPages() {
               <div className="form-group">
                 <label className="form-label">Доступ по ролям</label>
                 <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>
-                  Если не выбрано ни одной роли, папка будет доступна всем пользователям. Администраторы видят все папки независимо от настроек.
+                  Если не выбрано ни одной роли, папка будет доступна всем. Администраторы видят всё.
                 </div>
                 <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem' }}>
                   {allRoles.map(role => {
                     const isChecked = folderForm.allowedRoles?.includes(role.id) || false;
-
                     return (
-                      <label
-                        key={role.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                          padding: '0.25rem 0',
-                          cursor: 'pointer',
-                          margin: 0
-                        }}
-                      >
+                      <label key={role.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', margin: 0 }}>
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -449,40 +712,7 @@ export default function AdminPages() {
                 Отмена
               </button>
               <button className="btn btn-primary" onClick={handleSaveFolder}>
-                <Check size={18} />
-                Сохранить
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Page Modal */}
-      {pageModal.open && (
-        <div className="modal-overlay" onClick={() => setPageModal({ open: false, page: null })}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>{pageModal.page ? 'Редактировать страницу' : 'Новая страница'}</h3>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label className="form-label">Название</label>
-                <input
-                  className="input"
-                  value={pageForm.title}
-                  onChange={e => setPageForm({ ...pageForm, title: e.target.value })}
-                  placeholder="Введите название страницы"
-                  autoFocus
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setPageModal({ open: false, page: null })}>
-                Отмена
-              </button>
-              <button className="btn btn-primary" onClick={handleSavePage}>
-                <Check size={18} />
-                {pageModal.page ? 'Сохранить' : 'Создать'}
+                <Check size={18} /> Сохранить
               </button>
             </div>
           </div>
@@ -493,12 +723,10 @@ export default function AdminPages() {
       {deleteModal.open && (
         <div className="modal-overlay" onClick={() => setDeleteModal({ open: false, type: null, item: null })}>
           <div className="modal modal-sm" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Подтверждение удаления</h3>
-            </div>
+            <div className="modal-header"><h3>Подтверждение удаления</h3></div>
             <div className="modal-body">
               <p>
-                Вы уверены, что хотите удалить {deleteModal.type === 'folder' ? 'папку' : 'страницу'} 
+                Вы уверены, что хотите удалить {deleteModal.type === 'folder' ? 'папку' : 'страницу'}
                 <strong> "{deleteModal.item?.title}"</strong>?
               </p>
               {deleteModal.type === 'folder' && (
@@ -510,8 +738,7 @@ export default function AdminPages() {
                 Отмена
               </button>
               <button className="btn btn-error" onClick={confirmDelete}>
-                <Trash2 size={18} />
-                Удалить
+                <Trash2 size={18} /> Удалить
               </button>
             </div>
           </div>

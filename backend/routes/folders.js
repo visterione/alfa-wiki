@@ -74,7 +74,16 @@ router.get('/browse', authenticate, async (req, res) => {
       }
     }
 
-    res.json({ folders, pages, breadcrumbs });
+    // Добавляем счётчики вложенных элементов к каждой папке
+    const foldersWithCounts = await Promise.all(folders.map(async (folder) => {
+      const [childCount, pageCount] = await Promise.all([
+        Folder.count({ where: { parentId: folder.id } }),
+        Page.count({ where: { folderId: folder.id } }),
+      ]);
+      return { ...folder.toJSON(), childCount, pageCount };
+    }));
+
+    res.json({ folders: foldersWithCounts, pages, breadcrumbs });
   } catch (error) {
     console.error('Browse folders error:', error);
     res.status(500).json({ error: 'Failed to browse folders' });

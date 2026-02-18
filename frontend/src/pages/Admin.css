@@ -752,6 +752,388 @@
   font-size: 14px;
 }
 
+/* View toggle */
+.explorer-view-toggle {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.explorer-view-toggle .btn-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+}
+
+.explorer-view-toggle .btn-icon.active {
+  background: var(--bg-primary);
+  color: var(--primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+/* List view */
+.explorer-list {
+  padding: 8px 0;
+}
+
+.explorer-list-item {
+  display: grid;
+  grid-template-columns: 16px 1fr 110px 90px 96px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 9px 16px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.explorer-list-item:last-child {
+  border-bottom: none;
+}
+
+.explorer-list-item:hover {
+  background: var(--bg-secondary);
+}
+
+.explorer-list-back {
+  color: var(--text-secondary);
+}
+
+.explorer-list-icon {
+  color: var(--text-tertiary);
+}
+
+.explorer-list-icon.folder {
+  color: var(--warning);
+}
+
+.explorer-list-icon.explorer-icon-wysiwyg {
+  color: var(--primary);
+}
+
+.explorer-list-icon.explorer-icon-spreadsheet {
+  color: #22c55e;
+}
+
+.explorer-list-icon.explorer-icon-html {
+  color: #f97316;
+}
+
+.explorer-list-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.explorer-list-type {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.explorer-list-status-placeholder {
+  /* reserved column — empty */
+}
+
+/* Статус-бейдж в строке списка */
+.explorer-list-item .explorer-item-status {
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.explorer-list-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.explorer-list-item:hover .explorer-list-actions {
+  opacity: 1;
+}
+
+.explorer-list-actions button {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.explorer-list-actions button:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.explorer-list-actions button.danger:hover {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--error);
+  border-color: var(--error);
+}
+
+/* Page type selector (create modal) */
+.page-type-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.page-type-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 16px 10px;
+  background: var(--bg-secondary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.page-type-card:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.page-type-card.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(var(--primary-rgb, 0, 122, 255), 0.15);
+}
+
+.page-type-card span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.page-type-card.active span {
+  color: var(--primary);
+}
+
+.page-type-card small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+
+/* Dropdown создания страницы */
+.explorer-page-create {
+  position: relative;
+}
+
+.explorer-type-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+  z-index: 200;
+  overflow: hidden;
+  animation: dropdown-appear 0.12s ease;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+}
+
+@keyframes dropdown-appear {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.explorer-type-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+  color: var(--text-primary);
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+}
+
+.explorer-type-option:last-child {
+  border-bottom: none;
+}
+
+.explorer-type-option:hover {
+  background: var(--bg-secondary);
+}
+
+.explorer-type-option svg {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.explorer-type-option div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.explorer-type-option span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.explorer-type-option small {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Toolbar (поиск) */
+.explorer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 4px;
+}
+
+.explorer-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  max-width: 320px;
+}
+
+.explorer-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+.explorer-search-input {
+  width: 100%;
+  padding: 7px 32px 7px 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.explorer-search-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.explorer-search-clear {
+  position: absolute;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  border-radius: 4px;
+  padding: 0;
+}
+
+.explorer-search-clear:hover {
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+}
+
+.explorer-search-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Список: заголовок столбцов */
+.explorer-list-header {
+  display: grid;
+  grid-template-columns: 16px 1fr 110px 90px 96px;
+  column-gap: 10px;
+  align-items: center;
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 2px solid var(--border);
+}
+
+.explorer-list-icon-col {
+  /* placeholder — column width set by grid */
+}
+
+.explorer-list-col-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: inherit;
+  transition: color var(--transition-fast);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.explorer-list-col-btn:hover,
+.explorer-list-col-btn.active {
+  color: var(--primary);
+}
+
+.explorer-list-type-col,
+.explorer-list-status-col {
+  /* column widths set by grid — no flex overrides needed */
+}
+
+.explorer-list-actions-col {
+  /* column width set by grid — no flex override needed */
+}
+
+/* Выделение элементов (single click) */
+.explorer-item.selected {
+  background: var(--primary-light) !important;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.explorer-list-item.selected {
+  background: var(--primary-light) !important;
+}
+
 /* Modal sizes */
 .modal.modal-sm {
   width: 400px;
@@ -1580,4 +1962,98 @@
 .admin-empty-state svg {
   margin-bottom: 16px;
   opacity: 0.5;
+}
+
+/* ============================================================
+   Explorer: breadcrumbs row (breadcrumbs + search on same line)
+   ============================================================ */
+.explorer-breadcrumbs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.explorer-breadcrumbs-row .explorer-breadcrumbs {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.explorer-breadcrumbs-row .explorer-search-wrap {
+  flex: 0 0 auto;
+}
+
+/* ============================================================
+   Explorer: type divider in create dropdown
+   ============================================================ */
+.explorer-type-divider {
+  height: 1px;
+  background: var(--border, #e5e7eb);
+  margin: 4px 8px;
+}
+
+/* ============================================================
+   Explorer: drag & drop states
+   ============================================================ */
+
+/* Item being dragged — fade it out */
+.explorer-item.dragging,
+.explorer-list-item.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+/* Folder that can receive a drop — blue highlight */
+.explorer-item.drag-over-target {
+  outline: 2px solid var(--primary, #2563eb);
+  outline-offset: -2px;
+  background: var(--primary-light, #eff6ff) !important;
+}
+
+.explorer-list-item.drag-over-target {
+  background: var(--primary-light, #eff6ff) !important;
+  border-left: 3px solid var(--primary, #2563eb);
+}
+
+/* Row that acts as a reorder target */
+.explorer-list-item.drag-over-row {
+  border-top: 2px solid var(--primary, #2563eb);
+}
+
+/* ============================================================
+   Explorer: folder item count badge (grid mode)
+   ============================================================ */
+.explorer-folder-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: var(--primary, #2563eb);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 8px;
+  pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ============================================================
+   Explorer: folder item count inline (list mode)
+   ============================================================ */
+.explorer-folder-count {
+  display: inline-block;
+  margin-left: 6px;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 8px;
+  line-height: 1.4;
+  vertical-align: middle;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
 }

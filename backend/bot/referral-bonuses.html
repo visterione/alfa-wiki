@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Бонусы за направления</title>
 <!-- SheetJS для разбора Excel -->
-<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- ExcelJS для экспорта с форматированием -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
@@ -137,6 +137,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-cat-service-item:last-child { border-bottom: none; }
 .rb-cat-service-item:hover { background: #f0f7ff; }
 .rb-cat-service-item.selected { background: #dbeafe; }
+.rb-cat-bulk-bonus { display: none; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.rb-cat-bulk-bonus-header { font-size: 12px; font-weight: 600; color: #92400e; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.rb-cat-bulk-bonus-count { background: #fde68a; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 700; color: #78350f; margin-left: 2px; }
 .rb-search-row { display: flex; gap: 8px; margin-bottom: 12px; }
 .rb-search-row input { flex: 1; padding: 8px 12px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; }
 .rb-search-row input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
@@ -185,7 +188,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* Modal */
 .rb-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px; }
-.rb-modal { background: white; border-radius: 12px; width: 100%; max-width: 700px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--rb-shadow-lg); }
+.rb-modal { background: white; border-radius: 12px; width: 100%; max-width: 770px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: var(--rb-shadow-lg); }
 .rb-modal-header { padding: 16px 20px; border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; justify-content: space-between; }
 .rb-modal-header h3 { font-size: 16px; font-weight: 600; }
 .rb-modal-close { width: 28px; height: 28px; border: none; background: none; cursor: pointer; font-size: 20px; color: var(--rb-text-secondary); display: flex; align-items: center; justify-content: center; border-radius: 6px; }
@@ -205,9 +208,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 
 /* Report */
 .rb-report { margin-top: 16px; }
-.rb-report-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid var(--rb-border); }
-.rb-report-patient { margin-bottom: 20px; }
-.rb-report-patient-name { font-size: 14px; font-weight: 600; padding: 8px 12px; background: #f8fafc; border-radius: 6px; margin-bottom: 8px; border-left: 3px solid var(--rb-primary); }
+.rb-report-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 2px solid var(--rb-border); gap: 10px; }
+.rb-report-title { font-size: 15px; font-weight: 700; }
+.rb-report-patient { margin-bottom: 6px; }
+.rb-report-patient-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid var(--rb-border); border-left: 3px solid var(--rb-primary); border-radius: 6px; cursor: pointer; user-select: none; transition: background 0.1s; }
+.rb-report-patient-header:hover { background: #f0f7ff; }
+.rb-report-toggle-icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--rb-text-secondary); transition: transform 0.2s; }
+.rb-report-patient.expanded .rb-report-toggle-icon { transform: rotate(90deg); }
+.rb-report-patient-title { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-report-patient-summary { font-size: 12px; color: var(--rb-text-secondary); white-space: nowrap; flex-shrink: 0; }
+.rb-report-patient-summary.has-bonus { color: var(--rb-danger); font-weight: 600; }
+.rb-report-patient-body { display: none; padding-top: 6px; }
+.rb-report-patient.expanded .rb-report-patient-body { display: block; }
+.rb-report-doctor-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; background: #DBEAFE; border-radius: 6px; margin: 14px 0 4px; font-size: 14px; font-weight: 700; color: #1e40af; }
+.rb-report-doctor-total { font-size: 13px; color: var(--rb-danger); white-space: nowrap; }
 .rb-report-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 8px; }
 .rb-report-table th { background: #f1f5f9; padding: 7px 10px; text-align: left; font-weight: 600; border-bottom: 1px solid var(--rb-border); }
 .rb-report-table td { padding: 7px 10px; border-bottom: 1px solid var(--rb-border); }
@@ -397,7 +411,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
       <h3>Сводный отчёт по нескольким врачам</h3>
       <button class="rb-modal-close" onclick="rbCloseBulkModal()">×</button>
     </div>
-    <div class="rb-modal-body" style="padding:0;overflow:hidden">
+    <div class="rb-modal-body" style="padding:0;overflow-y:auto">
       <div class="rb-bulk-layout">
         <!-- LEFT: doctor selection -->
         <div class="rb-bulk-left">
@@ -453,6 +467,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           <div id="rb-bulk-result"></div>
         </div>
       </div>
+      <div id="rb-bulk-preview" style="display:none;padding:16px;border-top:1px solid var(--rb-border)"></div>
     </div>
     <div class="rb-modal-footer">
       <button class="rb-btn rb-btn-secondary" onclick="rbCloseBulkModal()">Закрыть</button>
@@ -789,6 +804,29 @@ function rbRenderDoctorDetail() {
             <div class="rb-cat-dropdown-list" id="rb-cat-dropdown-list"></div>
           </div>
           <div class="rb-cat-services-list" id="rb-cat-services-list"></div>
+          <div class="rb-cat-bulk-bonus" id="rb-cat-bulk-bonus">
+            <div class="rb-cat-bulk-bonus-header">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Назначить бонус всем услугам категории
+              <span class="rb-cat-bulk-bonus-count" id="rb-cat-bulk-count"></span>
+            </div>
+            <div class="rb-bonus-inputs">
+              <div class="rb-bonus-field">
+                <label>Бонус, % (от стоимости)</label>
+                <input type="number" id="rb-cat-bulk-percent" placeholder="Например: 10" min="0" max="100" step="0.01" oninput="if(this.value)document.getElementById('rb-cat-bulk-rub').value=''">
+              </div>
+              <div class="rb-bonus-field">
+                <label>Бонус, руб (фиксированно)</label>
+                <input type="number" id="rb-cat-bulk-rub" placeholder="Например: 150" min="0" step="0.01" oninput="if(this.value)document.getElementById('rb-cat-bulk-percent').value=''">
+              </div>
+            </div>
+            <div class="rb-form-actions" style="margin-top:10px">
+              <button class="rb-btn rb-btn-primary" onclick="rbApplyCategoryBonus()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Применить ко всем
+              </button>
+            </div>
+          </div>
         </div>
 
         <!-- Форма бонуса (общая) -->
@@ -1095,15 +1133,18 @@ let _rbCatServices = [];
 
 async function rbOnCategorySelected(categoryId) {
   const listEl = document.getElementById('rb-cat-services-list');
+  const bulkEl = document.getElementById('rb-cat-bulk-bonus');
   rbClearServiceSearch();
   _rbCatServices = [];
   if (!categoryId) {
     listEl.style.display = 'none';
     listEl.innerHTML = '';
+    if (bulkEl) bulkEl.style.display = 'none';
     return;
   }
   listEl.style.display = 'block';
   listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Загрузка услуг...</div>';
+  if (bulkEl) bulkEl.style.display = 'none';
   try {
     const data = await rbPost('/api/mis/get-services', { category_id: categoryId, show_children: true });
     if (data.error !== 0 || !data.data || !data.data.length) {
@@ -1122,6 +1163,13 @@ async function rbOnCategorySelected(categoryId) {
         <div class="rb-result-price">${price}</div>
       </div>`;
     }).join('');
+    if (bulkEl) {
+      const countEl = document.getElementById('rb-cat-bulk-count');
+      if (countEl) countEl.textContent = _rbCatServices.length;
+      document.getElementById('rb-cat-bulk-percent').value = '';
+      document.getElementById('rb-cat-bulk-rub').value = '';
+      bulkEl.style.display = 'block';
+    }
   } catch (e) {
     listEl.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--rb-danger)">Ошибка загрузки услуг</div>';
     console.error('rbOnCategorySelected:', e);
@@ -1134,6 +1182,41 @@ function rbSelectCatService(idx, el) {
   document.querySelectorAll('.rb-cat-service-item.selected').forEach(x => x.classList.remove('selected'));
   el.classList.add('selected');
   rbSelectService(s);
+}
+
+async function rbApplyCategoryBonus() {
+  if (!_rbCatServices.length) { rbToast('Нет услуг в категории', 'error'); return; }
+  const pct = document.getElementById('rb-cat-bulk-percent').value;
+  const rub = document.getElementById('rb-cat-bulk-rub').value;
+  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+
+  const btn = document.querySelector('#rb-cat-bulk-bonus .rb-btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
+
+  try {
+    const services = _rbCatServices.map(s => ({
+      serviceCode: s.code || String(s.service_id || ''),
+      serviceName: s.title,
+      bonusPercent: pct ? parseFloat(pct) : null,
+      bonusRub: rub ? parseFloat(rub) : null,
+    }));
+    const result = await rbPost('/api/referral-bonuses/bulk', {
+      misUserId: RB.selectedDoctor.id,
+      doctorName: RB.selectedDoctor.name,
+      services,
+    });
+    rbToast(`Бонус применён к ${result.upserted} услуг${result.upserted === 1 ? 'е' : result.upserted < 5 ? 'ам' : 'ам'}`, 'success');
+    document.getElementById('rb-cat-bulk-percent').value = '';
+    document.getElementById('rb-cat-bulk-rub').value = '';
+    await rbLoadBonuses();
+  } catch (err) {
+    rbToast('Ошибка: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Применить ко всем';
+    }
+  }
 }
 
 // ═══════════════════════════════════════
@@ -1360,33 +1443,51 @@ function rbBuildReport(rows) {
   };
 
   // Рендерим
+  const grandTotalAll = reportSections.reduce((sum, { services }) =>
+    sum + services.reduce((s, x) => s + x.bonusAmount, 0), 0);
+
   let html = `<div class="rb-report">
-    <div class="rb-report-title">Отчёт по направителю: ${rbEsc(doctorName)}</div>`;
+    <div class="rb-report-header-row">
+      <div class="rb-report-title">Отчёт по направителю: ${rbEsc(doctorName)}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.add('expanded'))">Развернуть все</button>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.remove('expanded'))">Свернуть все</button>
+      </div>
+    </div>`;
 
   reportSections.forEach(({ executor, services }) => {
     const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
+    const svcWord = services.length === 1 ? 'услуга' : services.length < 5 ? 'услуги' : 'услуг';
+    const summaryText = `${services.length} ${svcWord}${execTotal > 0 ? ' | −' + execTotal.toFixed(2) + ' ₽' : ''}`;
     html += `<div class="rb-report-patient">
-      <div class="rb-report-patient-name">${rbEsc(executor)}</div>
-      <table class="rb-report-table">
-        <thead><tr>
-          <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
-        </tr></thead>
-        <tbody>
-          ${services.map(s => `<tr>
-            <td style="font-family:monospace;font-size:11px">${rbEsc(s.code || '—')}</td>
-            <td>${rbEsc(s.name || '—')}</td>
-            <td>${s.cost.toFixed(2)} ₽</td>
-            <td>${s.count}</td>
-            <td>${s.bonusLabel}</td>
-            <td style="font-weight:600;color:${s.bonusAmount > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)'}">
-              ${s.bonusAmount > 0 ? '-' + s.bonusAmount.toFixed(2) + ' ₽' : '—'}
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="rb-report-total">Итого по исполнителю: ${execTotal > 0 ? '-' + execTotal.toFixed(2) + ' ₽' : '0 ₽'}</div>
+      <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
+        <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        <span class="rb-report-patient-title">${rbEsc(executor)}</span>
+        <span class="rb-report-patient-summary${execTotal > 0 ? ' has-bonus' : ''}">${summaryText}</span>
+      </div>
+      <div class="rb-report-patient-body">
+        <table class="rb-report-table">
+          <thead><tr>
+            <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+          </tr></thead>
+          <tbody>
+            ${services.map(s => `<tr>
+              <td style="font-family:monospace;font-size:11px">${rbEsc(s.code || '—')}</td>
+              <td>${rbEsc(s.name || '—')}</td>
+              <td>${s.cost.toFixed(2)} ₽</td>
+              <td>${s.count}</td>
+              <td>${s.bonusLabel}</td>
+              <td style="font-weight:600;color:${s.bonusAmount > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)'}">
+                ${s.bonusAmount > 0 ? '−' + s.bonusAmount.toFixed(2) + ' ₽' : '—'}
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div class="rb-report-total">Итого по исполнителю: ${execTotal > 0 ? '−' + execTotal.toFixed(2) + ' ₽' : '0 ₽'}</div>
+      </div>
     </div>`;
   });
+
 
   html += `</div>`;
 
@@ -1423,6 +1524,7 @@ async function rbExportReport() {
     { key: 'E', width: 8 },
     { key: 'F', width: 8 },
   ];
+  ws.properties.outlineLevelRow = 1;
 
   // Хелпер: добавить строку и вернуть объект Row
   const addRow = (values) => ws.addRow(values);
@@ -1452,11 +1554,15 @@ async function rbExportReport() {
   addRow([]); // пустая строка
 
   sections.forEach(({ executor, services }) => {
-    // ── ФИО исполнителя ──
-    const execRow = addRow([executor]);
+    // ── ФИО исполнителя + итого в той же строке ──
+    const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+    const execRow = addRow([executor, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
     execRow.getCell(1).font = fontBold;
-    ws.mergeCells(`A${execRow.number}:F${execRow.number}`);
-    autoWidth(execRow, 1);
+    execRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+    execRow.getCell(6).numFmt = '#,##0.00';
+    execRow.getCell(6).border = allBorders;
+    ws.mergeCells(`A${execRow.number}:E${execRow.number}`);
+    autoWidth(execRow, 6);
 
     // ── Заголовок таблицы ──
     const hRow = addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
@@ -1469,6 +1575,7 @@ async function rbExportReport() {
       }
     });
     autoWidth(hRow, 6);
+    hRow.outlineLevel = 1;
 
     // ── Строки услуг ──
     services.forEach(s => {
@@ -1490,15 +1597,8 @@ async function rbExportReport() {
       dRow.getCell(3).numFmt = '#,##0.00';
       dRow.getCell(6).numFmt = '#,##0.00';
       autoWidth(dRow, 6);
+      dRow.outlineLevel = 1;
     });
-
-    // ── Итого по исполнителю ──
-    const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
-    const totRow = addRow(['', '', '', '', 'Итого:', parseFloat(execTotal.toFixed(2))]);
-    totRow.getCell(5).font = fontBold;
-    totRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
-    totRow.getCell(6).numFmt = '#,##0.00';
-    applyBorders(totRow, 6);
 
     addRow([]); // пустая строка между секциями
   });
@@ -1642,6 +1742,9 @@ function rbOpenBulkModal() {
   document.getElementById('rb-bulk-file-info').style.display = 'none';
   document.getElementById('rb-bulk-excel-input').value = '';
   document.getElementById('rb-bulk-result').innerHTML = '';
+  const previewEl = document.getElementById('rb-bulk-preview');
+  previewEl.style.display = 'none';
+  previewEl.innerHTML = '';
   document.getElementById('rb-bulk-export-btn').style.display = 'none';
   document.getElementById('rb-bulk-save-btn').style.display = 'none';
   document.getElementById('rb-bulk-generate-btn').disabled = true;
@@ -1848,6 +1951,7 @@ async function rbBulkGenerate() {
       </div>`;
     document.getElementById('rb-bulk-export-btn').style.display = 'flex';
     document.getElementById('rb-bulk-save-btn').style.display = 'flex';
+    rbRenderBulkPreview();
   }
 
   document.getElementById('rb-bulk-generate-btn').disabled = false;
@@ -1900,6 +2004,67 @@ function rbBuildDoctorReport(doctorName, filtered, bonuses, colMap) {
   return sections.length ? { doctor: doctorName, sections, grandTotal } : null;
 }
 
+// --- Bulk preview ---
+function rbRenderBulkPreview() {
+  const previewEl = document.getElementById('rb-bulk-preview');
+  if (!BULK.reportData?.length) { previewEl.style.display = 'none'; return; }
+
+  const total = BULK.reportData.length;
+  const doctWord = total === 1 ? 'врач' : total < 5 ? 'врача' : 'врачей';
+  let html = `<div class="rb-report">
+    <div class="rb-report-header-row">
+      <div class="rb-report-title">Предпросмотр: ${total} ${doctWord}</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-report-patient').forEach(el=>el.classList.add('expanded'))">Развернуть все</button>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-report-patient').forEach(el=>el.classList.remove('expanded'))">Свернуть все</button>
+      </div>
+    </div>`;
+
+  BULK.reportData.forEach(({ doctor, sections, grandTotal }) => {
+    html += `<div class="rb-report-doctor-header">
+      <span>${rbEsc(doctor)}</span>
+      <span class="rb-report-doctor-total">${grandTotal > 0 ? '−' + grandTotal.toFixed(2) + ' ₽' : '0 ₽'}</span>
+    </div>`;
+
+    sections.forEach(({ executor, services }) => {
+      const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
+      const svcWord = services.length === 1 ? 'услуга' : services.length < 5 ? 'услуги' : 'услуг';
+      const summaryText = `${services.length} ${svcWord}${execTotal > 0 ? ' | −' + execTotal.toFixed(2) + ' ₽' : ''}`;
+      html += `<div class="rb-report-patient">
+        <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
+          <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          <span class="rb-report-patient-title">${rbEsc(executor)}</span>
+          <span class="rb-report-patient-summary${execTotal > 0 ? ' has-bonus' : ''}">${summaryText}</span>
+        </div>
+        <div class="rb-report-patient-body">
+          <table class="rb-report-table">
+            <thead><tr>
+              <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+            </tr></thead>
+            <tbody>
+              ${services.map(s => `<tr>
+                <td style="font-family:monospace;font-size:11px">${rbEsc(s.code || '—')}</td>
+                <td>${rbEsc(s.name || '—')}</td>
+                <td>${s.cost.toFixed(2)} ₽</td>
+                <td>${s.count}</td>
+                <td>${s.bonusLabel}</td>
+                <td style="font-weight:600;color:${s.bonusAmount > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)'}">
+                  ${s.bonusAmount > 0 ? '−' + s.bonusAmount.toFixed(2) + ' ₽' : '—'}
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="rb-report-total">Итого по исполнителю: ${execTotal > 0 ? '−' + execTotal.toFixed(2) + ' ₽' : '0 ₽'}</div>
+        </div>
+      </div>`;
+    });
+  });
+
+  html += `</div>`;
+  previewEl.innerHTML = html;
+  previewEl.style.display = 'block';
+}
+
 // --- Bulk Excel export ---
 async function rbBulkExport() {
   if (!BULK.reportData?.length) return;
@@ -1920,6 +2085,7 @@ async function rbBulkExport() {
   const COLS = 6;
 
   ws.columns = Array.from({ length: COLS }, () => ({ width: 8 }));
+  ws.properties.outlineLevelRow = 1;
 
   const autoWidth = (row, n) => {
     for (let c = 1; c <= n; c++) {
@@ -1945,11 +2111,15 @@ async function rbBulkExport() {
     autoWidth(doctorRow, 1);
 
     for (const { executor, services } of sections) {
-      // ФИО исполнителя
-      const execRow = ws.addRow([`  ${executor}`]);
+      // ФИО исполнителя + итого в той же строке
+      const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+      const execRow = ws.addRow([`  ${executor}`, '', '', '', '', execTotal > 0 ? -parseFloat(execTotal.toFixed(2)) : 0]);
       execRow.getCell(1).font = fontBold;
-      ws.mergeCells(`A${execRow.number}:F${execRow.number}`);
-      autoWidth(execRow, 1);
+      execRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+      execRow.getCell(6).numFmt = '#,##0.00';
+      execRow.getCell(6).border = allBorders;
+      ws.mergeCells(`A${execRow.number}:E${execRow.number}`);
+      autoWidth(execRow, 6);
 
       // Заголовок таблицы
       const hRow = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
@@ -1962,6 +2132,7 @@ async function rbBulkExport() {
         }
       });
       autoWidth(hRow, COLS);
+      hRow.outlineLevel = 1;
 
       for (const s of services) {
         const dRow = ws.addRow([
@@ -1976,14 +2147,9 @@ async function rbBulkExport() {
         dRow.getCell(3).numFmt = '#,##0.00';
         dRow.getCell(6).numFmt = '#,##0.00';
         autoWidth(dRow, COLS);
+        dRow.outlineLevel = 1;
       }
 
-      const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
-      const totRow = ws.addRow(['', '', '', '', 'Итого:', execTotal > 0 ? -parseFloat(execTotal.toFixed(2)) : 0]);
-      totRow.getCell(5).font = fontBold;
-      totRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
-      totRow.getCell(6).numFmt = '#,##0.00';
-      for (let c = 1; c <= COLS; c++) totRow.getCell(c).border = allBorders;
     }
 
     ws.addRow([]); // разрыв между врачами
@@ -2207,6 +2373,7 @@ window.rbToggleCatDropdown = rbToggleCatDropdown;
 window.rbSelectCatItem = rbSelectCatItem;
 window.rbOnCategorySelected = rbOnCategorySelected;
 window.rbSelectCatService = rbSelectCatService;
+window.rbApplyCategoryBonus = rbApplyCategoryBonus;
 window.rbOpenBulkModal = rbOpenBulkModal;
 window.rbCloseBulkModal = rbCloseBulkModal;
 window.rbBulkApplyFilters = rbBulkApplyFilters;

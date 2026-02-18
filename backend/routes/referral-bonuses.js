@@ -74,22 +74,30 @@ router.post('/bulk', authenticate, async (req, res) => {
       await ReferralBonus.destroy({ where: { misUserId, serviceCode: toDeleteCodes } });
     }
 
-    for (const s of toUpsert) {
-      await ReferralBonus.upsert({
+    if (toUpsert.length) {
+      const records = toUpsert.map(s => ({
         misUserId,
         doctorName: doctorName || '',
-        serviceCode: s.serviceCode,
-        serviceName: s.serviceName,
+        serviceCode: String(s.serviceCode || '').slice(0, 100),
+        serviceName: String(s.serviceName || '').slice(0, 500),
         bonusPercent: s.bonusPercent != null ? parseFloat(s.bonusPercent) : null,
         bonusRub:     s.bonusRub     != null ? parseFloat(s.bonusRub)     : null,
         createdBy: req.user.id
-      }, { conflictFields: ['misUserId', 'serviceCode'] });
+      }));
+
+      const BATCH_SIZE = 500;
+      for (let i = 0; i < records.length; i += BATCH_SIZE) {
+        await ReferralBonus.bulkCreate(records.slice(i, i + BATCH_SIZE), {
+          updateOnDuplicate: ['doctorName', 'serviceName', 'bonusPercent', 'bonusRub', 'createdBy', 'updatedAt'],
+          conflictAttributes: ['misUserId', 'serviceCode']
+        });
+      }
     }
 
     res.json({ upserted: toUpsert.length, deleted: toDeleteCodes.length });
   } catch (err) {
     console.error('Bulk save referral bonuses error:', err);
-    res.status(500).json({ error: 'Ошибка массового сохранения' });
+    res.status(500).json({ error: 'Ошибка массового сохранения: ' + err.message });
   }
 });
 

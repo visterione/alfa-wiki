@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock, Grid } from 'lucide-react';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
@@ -13,7 +13,10 @@ import './PageEditor.css';
 export default function PageEditor() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isNew = !slug || slug === 'new';
+  const typeFromUrl = searchParams.get('type') || 'wysiwyg';
+  const folderIdFromUrl = searchParams.get('folderId') || null;
 
   const spreadsheetRef = useRef(null);
 
@@ -28,13 +31,14 @@ export default function PageEditor() {
     slug: '',
     icon: '',
     content: '',
-    contentType: 'wysiwyg',
+    contentType: typeFromUrl,
     description: '',
     keywords: '',
     isPublished: false,
     allowedRoles: [],
     customCss: '',
-    customJs: ''
+    customJs: '',
+    folderId: folderIdFromUrl || undefined,
   });
 
   useEffect(() => {
@@ -119,7 +123,10 @@ export default function PageEditor() {
       };
 
       if (isNew) {
-        const { data } = await pages.create(payload);
+        const { data } = await pages.create({
+          ...payload,
+          folderId: folderIdFromUrl || undefined,
+        });
         toast.success('Страница создана');
         navigate(`/page/${data.slug}`);
       } else {
@@ -212,32 +219,40 @@ export default function PageEditor() {
               />
             </div>
 
-            <div className="editor-type-tabs">
-              <button
-                type="button"
-                className={`editor-type-tab ${form.contentType === 'wysiwyg' ? 'active' : ''}`}
-                onClick={() => setForm({ ...form, contentType: 'wysiwyg' })}
-              >
-                <FileText size={16} />
-                Визуальный редактор
-              </button>
-              <button
-                type="button"
-                className={`editor-type-tab ${form.contentType === 'html' ? 'active' : ''}`}
-                onClick={() => setForm({ ...form, contentType: 'html' })}
-              >
-                <Code size={16} />
-                HTML / CSS / JS
-              </button>
-              <button
-                type="button"
-                className={`editor-type-tab ${form.contentType === 'spreadsheet' ? 'active' : ''}`}
-                onClick={() => setForm({ ...form, contentType: 'spreadsheet' })}
-              >
-                <Grid size={16} />
-                Таблица (Excel)
-              </button>
-            </div>
+            {isNew ? (
+              <div className="editor-type-tabs">
+                <button
+                  type="button"
+                  className={`editor-type-tab ${form.contentType === 'wysiwyg' ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, contentType: 'wysiwyg' })}
+                >
+                  <FileText size={16} />
+                  Визуальный редактор
+                </button>
+                <button
+                  type="button"
+                  className={`editor-type-tab ${form.contentType === 'html' ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, contentType: 'html' })}
+                >
+                  <Code size={16} />
+                  HTML / CSS / JS
+                </button>
+                <button
+                  type="button"
+                  className={`editor-type-tab ${form.contentType === 'spreadsheet' ? 'active' : ''}`}
+                  onClick={() => setForm({ ...form, contentType: 'spreadsheet' })}
+                >
+                  <Grid size={16} />
+                  Таблица (Excel)
+                </button>
+              </div>
+            ) : (
+              <div className="editor-type-badge">
+                {form.contentType === 'spreadsheet' && <><Grid size={14} /> Таблица</>}
+                {form.contentType === 'html' && <><Code size={14} /> HTML-страница</>}
+                {form.contentType === 'wysiwyg' && <><FileText size={14} /> Документ</>}
+              </div>
+            )}
 
             {form.contentType === 'wysiwyg' ? (
               <Editor
