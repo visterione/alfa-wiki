@@ -397,9 +397,6 @@ export default function AdminPages() {
               <X size={13} />
             </button>
           )}
-          {folderSearch && totalDisplayed > 0 && (
-            <span className="explorer-search-count">{totalDisplayed}</span>
-          )}
         </div>
       </div>
 

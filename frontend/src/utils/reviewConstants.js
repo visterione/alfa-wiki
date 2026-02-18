@@ -4,11 +4,11 @@
 
 // Статусы отзывов (колонки Kanban)
 export const REVIEW_STATUSES = [
-  { id: 'new', label: 'Новый отзыв', color: '#6366f1' },
-  { id: 'in_progress', label: 'В работе', color: '#f59e0b' },
-  { id: 'request_info', label: 'Запрос сведений', color: '#ec4899' },
-  { id: 'verification_done', label: 'Проверка завершена', color: '#14b8a6' },
-  { id: 'final', label: 'Решение принято', color: '#10b981' }
+  { id: 'new', label: 'Новый отзыв', color: '#ef4444' },
+  { id: 'in_progress', label: 'В работе', color: '#f97316' },
+  { id: 'request_info', label: 'Запрос сведений', color: '#22c55e' },
+  { id: 'verification_done', label: 'Проверка завершена', color: '#3b82f6' },
+  { id: 'final', label: 'Решение принято', color: '#a855f7' }
 ];
 
 // Категории решений

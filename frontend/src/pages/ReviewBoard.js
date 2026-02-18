@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   Plus, Settings, ArrowLeft, Star, Calendar, User, Paperclip,
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
-  Clock, ChevronDown, Check, Users as UsersIcon
+  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send
 } from 'lucide-react';
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -69,6 +69,8 @@ const ReviewBoard = () => {
   // Comment form
   const [commentText, setCommentText] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [commentAttachments, setCommentAttachments] = useState([]);
+  const [uploadingCommentFile, setUploadingCommentFile] = useState(false);
 
   // Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -287,23 +289,92 @@ const ReviewBoard = () => {
 
   // Add comment
   const handleAddComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() && commentAttachments.length === 0) return;
 
     try {
       setSubmittingComment(true);
-      await reviews.addComment(selectedReview.id, { comment: commentText });
+      await reviews.addComment(selectedReview.id, {
+        comment: commentText,
+        attachments: commentAttachments
+      });
 
-      // Reload review details
       const response = await reviews.getReview(selectedReview.id);
       setSelectedReview(response.data);
 
       setCommentText('');
+      setCommentAttachments([]);
       toast.success('Комментарий добавлен');
     } catch (err) {
       console.error('Error adding comment:', err);
       toast.error('Ошибка при добавлении комментария');
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  const handleCommentFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingCommentFile(true);
+      const response = await reviews.uploadFile(file);
+      setCommentAttachments(prev => [...prev, response.data]);
+      toast.success('Файл прикреплён');
+    } catch (err) {
+      console.error('Error uploading file:', err);
+      toast.error('Ошибка при загрузке файла');
+    } finally {
+      setUploadingCommentFile(false);
+      e.target.value = '';
+    }
+  };
+
+  // Copy review text to clipboard
+  const copyReviewText = () => {
+    if (!selectedReview) return;
+
+    const date = new Date(selectedReview.reviewDate).toLocaleDateString('ru-RU');
+    const lines = [
+      `${selectedReview.patientName} | ${date} | ${selectedReview.rating}/5 ${getRatingStars(selectedReview.rating)}`,
+      '',
+      selectedReview.reviewText,
+      '',
+    ];
+    if (selectedReview.doctorName) {
+      lines.push(`Лечащий врач: ${selectedReview.doctorName}`);
+    }
+    lines.push(`${selectedReview.platform?.name || ''} | ${board?.name || ''}`);
+
+    const text = lines.join('\n');
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => toast.success('Текст отзыва скопирован'))
+        .catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
+  const fallbackCopy = (text) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      if (document.execCommand('copy')) {
+        toast.success('Текст отзыва скопирован');
+      } else {
+        toast.error('Не удалось скопировать');
+      }
+    } catch (err) {
+      toast.error('Копирование не поддерживается');
+    } finally {
+      document.body.removeChild(textArea);
     }
   };
 
@@ -555,18 +626,19 @@ const ReviewBoard = () => {
                             onClick={() => openDetailsModal(review)}
                           >
                             <div className="card-header">
-                              <span className="patient-name">{review.patientName}</span>
-                              <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
-                                {getRatingStars(review.rating)}
-                              </span>
-                            </div>
-
-                            <div className="card-meta">
-                              <span className="platform">{review.platform?.name}</span>
-                              <span className="date">
-                                <Calendar size={12} />
-                                {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
-                              </span>
+                              <div className="card-header-top">
+                                <span className="patient-name">{review.patientName}</span>
+                                <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
+                                  {getRatingStars(review.rating)}
+                                </span>
+                              </div>
+                              <div className="card-meta">
+                                <span className="platform">{review.platform?.name}</span>
+                                <span className="date">
+                                  <Calendar size={12} />
+                                  {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
+                                </span>
+                              </div>
                             </div>
 
                             {review.doctorName && (
@@ -793,17 +865,10 @@ const ReviewBoard = () => {
             <div className="modal-header">
               <h2>Детали отзыва</h2>
               <div className="header-actions">
-                {access.canWrite && selectedReview.status !== 'final' && (
-                  <>
-                    <button className="btn-edit" onClick={() => { setShowDetailsModal(false); openCreateModal(selectedReview); }}>
-                      Редактировать
-                    </button>
-                    {selectedReview.status === 'verification_done' && (
-                      <button className="btn-finalize" onClick={() => { setShowDetailsModal(false); openFinalizeModal(selectedReview); }}>
-                        Финализировать
-                      </button>
-                    )}
-                  </>
+                {access.canWrite && selectedReview.status === 'verification_done' && (
+                  <button className="btn-finalize" onClick={() => { setShowDetailsModal(false); openFinalizeModal(selectedReview); }}>
+                    Финализировать
+                  </button>
                 )}
                 <button className="btn-close" onClick={() => setShowDetailsModal(false)}>
                   <X size={20} />
@@ -813,40 +878,33 @@ const ReviewBoard = () => {
 
             <div className="details-content">
               <div className="details-main">
-                <div className="detail-row">
-                  <span className="label">Пациент:</span>
-                  <span className="value">{selectedReview.patientName}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="label">Дата:</span>
-                  <span className="value">{new Date(selectedReview.reviewDate).toLocaleDateString('ru-RU')}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="label">Площадка:</span>
-                  <span className="value">{selectedReview.platform?.name}</span>
-                </div>
-                <div className="detail-row">
-                  <span className="label">Оценка:</span>
-                  <span className={`value rating ${selectedReview.rating <= 3 ? 'negative' : 'positive'}`}>
-                    {selectedReview.rating}/5 {getRatingStars(selectedReview.rating)}
-                  </span>
-                </div>
-                {selectedReview.doctorName && (
-                  <div className="detail-row">
-                    <span className="label">Врач:</span>
-                    <span className="value">{selectedReview.doctorName}</span>
+                <div className="review-message">
+                  <div className="review-message-avatar">
+                    {selectedReview.patientName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
                   </div>
-                )}
-                <div className="detail-row">
-                  <span className="label">Статус:</span>
-                  <span className="value status" style={{ color: getStatusColor(selectedReview.status) }}>
-                    {getStatusLabel(selectedReview.status)}
-                  </span>
-                </div>
-
-                <div className="detail-section">
-                  <h4>Текст отзыва</h4>
-                  <p>{selectedReview.reviewText}</p>
+                  <div className="review-message-content">
+                    <div className="review-message-header">
+                      <span className="patient-name">{selectedReview.patientName}</span>
+                      <span className="date">{new Date(selectedReview.reviewDate).toLocaleDateString('ru-RU')}</span>
+                      <span className={`rating ${selectedReview.rating <= 3 ? 'negative' : 'positive'}`}>
+                        {selectedReview.rating}/5 {getRatingStars(selectedReview.rating)}
+                      </span>
+                    </div>
+                    <div className="review-bubble">
+                      {selectedReview.reviewText}
+                    </div>
+                    <div className="review-message-footer">
+                      <div className="footer-info">
+                        {selectedReview.doctorName && (
+                          <span className="doctor-line">Лечащий врач: {selectedReview.doctorName}</span>
+                        )}
+                        <span className="source-line">{selectedReview.platform?.name} | {board?.name}</span>
+                      </div>
+                      <button className="btn-copy-inline" onClick={copyReviewText} title="Копировать текст отзыва">
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {selectedReview.additionalInfo && (
@@ -905,50 +963,145 @@ const ReviewBoard = () => {
               <div className="details-history">
                 <h4>История</h4>
                 <div className="history-timeline">
-                  {selectedReview.history && selectedReview.history.map(entry => (
-                    <div key={entry.id} className="history-entry">
-                      <div className="entry-header">
-                        <span className="entry-action">{HISTORY_ACTION_LABELS[entry.action] || entry.action}</span>
-                        <span className="entry-date">
-                          {new Date(entry.createdAt).toLocaleString('ru-RU')}
-                        </span>
-                      </div>
-                      <div className="entry-user">
-                        {entry.user?.displayName || entry.user?.username}
-                      </div>
-                      {entry.oldValue && entry.newValue && (
-                        <div className="entry-change">
-                          {entry.oldValue} → {entry.newValue}
+                  {selectedReview.history && [...selectedReview.history]
+                    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+                    .map(entry => {
+                      const isComment = entry.action === 'comment';
+                      const date = new Date(entry.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                      const userName = entry.user?.displayName || entry.user?.username;
+                      const colorByLabel = (label) => REVIEW_STATUSES.find(s => s.label === label)?.color || '#6b7280';
+
+                      if (isComment) {
+                        const avatarUrl = getAvatarUrl(entry.user?.avatar);
+                        const initials = userName ? userName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?';
+                        return (
+                          <div key={entry.id} className="history-comment">
+                            <div className="comment-avatar">
+                              {avatarUrl
+                                ? <img src={avatarUrl} alt="" />
+                                : <div className="comment-avatar-placeholder">{initials}</div>
+                              }
+                            </div>
+                            <div className="comment-body">
+                              <div className="history-comment-header">
+                                <span className="comment-user">{userName}</span>
+                                <span className="comment-date">{date}</span>
+                              </div>
+                              {entry.comment && <div className="comment-bubble">{entry.comment}</div>}
+                              {entry.attachments && entry.attachments.length > 0 && (
+                                <div className="comment-attachments-list">
+                                  {entry.attachments.map((file, idx) => (
+                                    <a
+                                      key={idx}
+                                      href={`${BASE_URL}/${file.path}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="comment-attachment-link"
+                                    >
+                                      <Paperclip size={12} />
+                                      <span>{file.filename}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      let systemContent;
+                      switch (entry.action) {
+                        case 'created':
+                          systemContent = <>Отзыв создан — {userName} | {date}</>;
+                          break;
+                        case 'status_change':
+                          systemContent = (
+                            <>
+                              Статус изменён:{' '}
+                              <span style={{ color: colorByLabel(entry.oldValue), fontWeight: 500 }}>{entry.oldValue}</span>
+                              {' → '}
+                              <span style={{ color: colorByLabel(entry.newValue), fontWeight: 600 }}>{entry.newValue}</span>
+                              {' | '}{userName} | {date}
+                            </>
+                          );
+                          break;
+                        case 'assignment':
+                          systemContent = <>Назначены: <strong>{entry.newValue}</strong> | {userName} | {date}</>;
+                          break;
+                        case 'file_upload':
+                          systemContent = <>{userName} загрузил файл | {date}</>;
+                          break;
+                        case 'finalized':
+                          systemContent = <>Отзыв финализирован: <strong>{entry.newValue}</strong> | {userName} | {date}</>;
+                          break;
+                        default:
+                          systemContent = <>{HISTORY_ACTION_LABELS[entry.action] || entry.action} | {userName} | {date}</>;
+                      }
+
+                      return (
+                        <div key={entry.id} className="history-system">
+                          <span className="system-text">{systemContent}</span>
                         </div>
-                      )}
-                      {entry.comment && (
-                        <div className="entry-comment">{entry.comment}</div>
-                      )}
-                    </div>
-                  ))}
+                      );
+                    })}
                 </div>
 
                 {/* Add comment */}
                 {access.canWrite && selectedReview.status !== 'final' && (
                   <div className="add-comment">
-                    <textarea
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Добавить комментарий..."
-                      rows={2}
-                    />
-                    <button
-                      onClick={handleAddComment}
-                      disabled={!commentText.trim() || submittingComment}
-                    >
-                      {submittingComment ? 'Отправка...' : 'Добавить'}
-                    </button>
+                    {commentAttachments.length > 0 && (
+                      <div className="comment-attachments-preview">
+                        {commentAttachments.map(file => (
+                          <div key={file.id} className="comment-attachment-chip">
+                            <Paperclip size={12} />
+                            <span>{file.filename}</span>
+                            <button type="button" onClick={() => setCommentAttachments(prev => prev.filter(f => f.id !== file.id))}>
+                              <X size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="add-comment-row">
+                      <input
+                        type="file"
+                        id="comment-file-input"
+                        onChange={handleCommentFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <label htmlFor="comment-file-input" className="btn-attach" title="Прикрепить файл">
+                        <Paperclip size={16} />
+                      </label>
+                      <textarea
+                        value={commentText}
+                        onChange={(e) => {
+                          setCommentText(e.target.value);
+                          e.target.style.height = 'auto';
+                          e.target.style.height = e.target.scrollHeight + 'px';
+                        }}
+                        placeholder="Добавить комментарий..."
+                        rows={1}
+                      />
+                      <button
+                        onClick={handleAddComment}
+                        disabled={(!commentText.trim() && commentAttachments.length === 0) || submittingComment || uploadingCommentFile}
+                        title="Отправить"
+                      >
+                        <Send size={16} />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
             <div className="modal-footer">
+              {access.canWrite && selectedReview.status !== 'final' && (
+                <button className="btn-edit" onClick={() => { setShowDetailsModal(false); openCreateModal(selectedReview); }}>
+                  <Pencil size={16} />
+                  Редактировать отзыв
+                </button>
+              )}
               {access.canWrite && selectedReview.status === 'final' && (
                 <button className="btn-archive" onClick={() => { handleArchive(selectedReview.id); setShowDetailsModal(false); }}>
                   <Archive size={16} />
