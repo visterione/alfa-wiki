@@ -1270,21 +1270,14 @@ router.post('/', authenticate, async (req, res) => {
       const recipientIds = await getNotificationRecipients(board, 'newReview');
 
       if (recipientIds.length > 0) {
-        const ratingStars = '★'.repeat(rating) + '☆'.repeat(5 - rating);
-        const messageText = `📝 Новый отзыв на доске "${board.name}"\n\n` +
-          `Пациент: ${patientName}\n` +
-          `Оценка: ${ratingStars} (${rating}/5)\n` +
-          `Площадка: ${platform.name}\n` +
-          `${doctorName ? `Врач: ${doctorName}\n` : ''}` +
-          `\n${reviewText.substring(0, 200)}${reviewText.length > 200 ? '...' : ''}`;
-
         for (const userId of recipientIds) {
           if (userId !== req.user.id) {
-            await notificationService.sendMessageToUser(userId, messageText, {
-              type: 'review_created',
-              reviewId: review.id,
-              boardId: board.id
-            });
+            await notificationService.sendReviewCreatedNotification(
+              userId,
+              result,
+              board,
+              req.user
+            );
           }
         }
       }
@@ -1476,22 +1469,28 @@ router.post('/:id/move', authenticate, async (req, res) => {
       // Отправляем уведомления
       try {
         const notificationService = require('../services/notificationService');
-        const recipientIds = await getNotificationRecipients(review.board, 'statusChange');
 
-        if (recipientIds.length > 0) {
-          const messageText = `🔄 Изменен статус отзыва\n\n` +
-            `Пациент: ${review.patientName}\n` +
-            `${oldStatusLabel} → ${newStatusLabel}\n` +
-            `Изменил: ${req.user.displayName || req.user.username}`;
+        // Получаем получателей из настроек доски
+        const boardRecipientIds = await getNotificationRecipients(review.board, 'statusChange');
 
-          for (const userId of recipientIds) {
+        // Добавляем назначенных ответственных (assignees) к списку получателей
+        const assigneeIds = review.assigneeIds || [];
+        const allRecipientIds = new Set([...boardRecipientIds, ...assigneeIds]);
+
+        if (allRecipientIds.size > 0) {
+          for (const userId of allRecipientIds) {
             if (userId !== req.user.id) {
-              await notificationService.sendMessageToUser(userId, messageText, {
-                type: 'review_status_changed',
-                reviewId: review.id,
-                oldStatus,
-                newStatus: status
-              });
+              // Проверяем, является ли пользователь ответственным за отзыв
+              const isAssignee = assigneeIds.includes(userId);
+
+              await notificationService.sendReviewStatusChangedNotification(
+                userId,
+                review,
+                oldStatusLabel,
+                newStatusLabel,
+                req.user,
+                isAssignee
+              );
             }
           }
         }
@@ -1545,19 +1544,15 @@ router.post('/:id/assign', authenticate, async (req, res) => {
     if (assigneeIds.length > 0) {
       try {
         const notificationService = require('../services/notificationService');
-        const messageText = `👤 Вам назначен отзыв для обработки\n\n` +
-          `Пациент: ${review.patientName}\n` +
-          `Доска: ${review.board.name}\n` +
-          `Назначил: ${req.user.displayName || req.user.username}\n\n` +
-          `Пожалуйста, соберите необходимые сведения.`;
 
         for (const userId of assigneeIds) {
           if (userId !== req.user.id) {
-            await notificationService.sendMessageToUser(userId, messageText, {
-              type: 'review_assigned',
-              reviewId: review.id,
-              boardId: review.boardId
-            });
+            await notificationService.sendReviewAssignedNotification(
+              userId,
+              review,
+              review.board,
+              req.user
+            );
           }
         }
       } catch (notifError) {
@@ -1614,6 +1609,31 @@ router.post('/:id/comment', authenticate, async (req, res) => {
       await review.update({
         attachments: [...currentAttachments, ...attachments]
       });
+    }
+
+    // Отправляем уведомления о новом комментарии
+    if (comment) {
+      try {
+        const notificationService = require('../services/notificationService');
+
+        // Отправляем уведомления ответственным за отзыв
+        const assigneeIds = review.assigneeIds || [];
+        const hasAttachments = attachments && attachments.length > 0;
+
+        for (const userId of assigneeIds) {
+          if (userId !== req.user.id) {
+            await notificationService.sendReviewCommentNotification(
+              userId,
+              review,
+              comment,
+              req.user,
+              hasAttachments
+            );
+          }
+        }
+      } catch (notifError) {
+        console.error('Error sending comment notifications:', notifError);
+      }
     }
 
     const result = await ReviewHistory.findByPk(historyEntry.id, {
@@ -1700,6 +1720,33 @@ router.post('/:id/finalize', authenticate, async (req, res) => {
       newValue: categoryLabel,
       comment: decisionDescription
     });
+
+    // Отправляем уведомления о финализации
+    try {
+      const notificationService = require('../services/notificationService');
+
+      // Получаем получателей из настроек доски
+      const boardRecipientIds = await getNotificationRecipients(review.board, 'statusChange');
+
+      // Добавляем ответственных
+      const assigneeIds = review.assigneeIds || [];
+      const allRecipientIds = new Set([...boardRecipientIds, ...assigneeIds]);
+
+      if (allRecipientIds.size > 0) {
+        for (const userId of allRecipientIds) {
+          if (userId !== req.user.id) {
+            await notificationService.sendReviewFinalizedNotification(
+              userId,
+              review,
+              categoryLabel,
+              req.user
+            );
+          }
+        }
+      }
+    } catch (notifError) {
+      console.error('Error sending finalization notifications:', notifError);
+    }
 
     const result = await Review.findByPk(review.id, {
       include: [

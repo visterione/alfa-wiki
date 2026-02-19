@@ -11,6 +11,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   REVIEW_STATUSES,
   DECISION_CATEGORIES,
+  REVIEW_ROLES,
   getStatusLabel,
   getStatusColor,
   getRatingStars,
@@ -134,7 +135,12 @@ const ReviewBoard = () => {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   };
 
-  // Drag and drop handler
+
+  // Drag and drop handlers
+  const handleDragStart = () => {
+    // Можно добавить логику при начале перетаскивания
+  };
+
   const handleDragEnd = async (result) => {
     if (!result.destination || !access.canWrite) return;
 
@@ -159,18 +165,8 @@ const ReviewBoard = () => {
 
     try {
       await reviews.moveReview(reviewId, newStatus, newSortOrder);
-
-      // If moving to request_info, show assignment modal
-      if (newStatus === 'request_info') {
-        const review = reviewsList.find(r => r.id === reviewId);
-        if (review) {
-          setSelectedReview(review);
-          setSelectedAssignees(review.assigneeIds || []);
-          setShowAssignModal(true);
-        }
-      }
-
       toast.success('Отзыв перемещён');
+      loadData();
     } catch (err) {
       console.error('Error moving review:', err);
       toast.error('Ошибка при перемещении');
@@ -594,7 +590,7 @@ const ReviewBoard = () => {
       )}
 
       {/* Kanban Board */}
-      <DragDropContext onDragEnd={handleDragEnd}>
+      <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="review-board-columns">
           {REVIEW_STATUSES.map(column => (
             <div key={column.id} className="review-column">
@@ -603,7 +599,7 @@ const ReviewBoard = () => {
                 <span className="column-count">{getReviewsByColumn(column.id).length}</span>
               </div>
 
-              <Droppable droppableId={column.id} isDropDisabled={!access.canWrite}>
+              <Droppable droppableId={column.id} isDropDisabled={!access.canWrite || column.id === 'final'}>
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}

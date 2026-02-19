@@ -1,7 +1,10 @@
 const { Chat, ChatMember, Message, User } = require('../models');
 
-// ID Ассистента (специальный бот для уведомлений)
+// ID Ассистента (специальный бот для общих уведомлений)
 const ASSISTANT_ID = '00000000-0000-0000-0000-000000000001';
+
+// ID Бота для работы с негативом (Reviews)
+const REVIEWS_BOT_ID = '00000000-0000-0000-0000-000000000002';
 
 let io = null;
 
@@ -14,27 +17,32 @@ function init(socketIO) {
 }
 
 /**
- * Создание или получение чата с Ассистентом для пользователя
+ * Создание или получение чата с ботом для пользователя
+ * @param {string} userId - ID пользователя
+ * @param {string} botId - ID бота (ASSISTANT_ID или REVIEWS_BOT_ID)
+ * @param {string} botUsername - username бота
+ * @param {string} botDisplayName - отображаемое имя бота
+ * @param {string} botAvatar - путь к аватарке бота (опционально)
  */
-async function getOrCreateAssistantChat(userId) {
+async function getOrCreateBotChat(userId, botId, botUsername, botDisplayName, botAvatar = null) {
   try {
-    // Проверяем, существует ли пользователь-ассистент
-    let assistant = await User.findByPk(ASSISTANT_ID);
+    // Проверяем, существует ли пользователь-бот
+    let bot = await User.findByPk(botId);
 
-    if (!assistant) {
-      // Создаем пользователя-ассистента, если его нет
-      assistant = await User.create({
-        id: ASSISTANT_ID,
-        username: 'assistant',
-        displayName: 'Ассистент',
+    if (!bot) {
+      // Создаем пользователя-бота, если его нет
+      bot = await User.create({
+        id: botId,
+        username: botUsername,
+        displayName: botDisplayName,
         password: Math.random().toString(36), // Случайный пароль (не используется)
         isBot: true,
-        avatar: null
+        avatar: botAvatar
       });
-      console.log('✅ Created Assistant user');
+      console.log(`✅ Created ${botDisplayName} bot user`);
     }
 
-    // Ищем существующий приватный чат между пользователем и ассистентом
+    // Ищем существующий приватный чат между пользователем и ботом
     const existingMembership = await ChatMember.findOne({
       where: { userId },
       include: [{
@@ -44,7 +52,7 @@ async function getOrCreateAssistantChat(userId) {
         include: [{
           model: ChatMember,
           as: 'members',
-          where: { userId: ASSISTANT_ID }
+          where: { userId: botId }
         }]
       }]
     });
@@ -57,33 +65,52 @@ async function getOrCreateAssistantChat(userId) {
     const chat = await Chat.create({
       type: 'private',
       name: null,
-      createdBy: ASSISTANT_ID
+      createdBy: botId
     });
 
     // Добавляем обоих участников
     await ChatMember.bulkCreate([
       { chatId: chat.id, userId: userId },
-      { chatId: chat.id, userId: ASSISTANT_ID }
+      { chatId: chat.id, userId: botId }
     ]);
 
-    console.log(`✅ Created assistant chat for user ${userId}`);
+    console.log(`✅ Created ${botDisplayName} chat for user ${userId}`);
     return chat;
   } catch (error) {
-    console.error('Error in getOrCreateAssistantChat:', error);
+    console.error(`Error in getOrCreateBotChat (${botDisplayName}):`, error);
     throw error;
   }
 }
 
 /**
- * Отправка сообщения в чат с Ассистентом
+ * Создание или получение чата с Ассистентом для пользователя
  */
-async function sendMessageToUser(userId, messageText, metadata = {}) {
+async function getOrCreateAssistantChat(userId) {
+  return getOrCreateBotChat(userId, ASSISTANT_ID, 'assistant', 'Ассистент', null);
+}
+
+/**
+ * Создание или получение чата с ботом "Работа с негативом" для пользователя
+ */
+async function getOrCreateReviewsChat(userId) {
+  return getOrCreateBotChat(userId, REVIEWS_BOT_ID, 'reviews_bot', 'Работа с негативом', '/uploads/bot-avatars/reviews-bot.svg');
+}
+
+/**
+ * Отправка сообщения пользователю от бота
+ * @param {string} userId - ID получателя
+ * @param {string} messageText - Текст сообщения
+ * @param {object} metadata - Метаданные сообщения
+ * @param {string} botId - ID бота-отправителя
+ * @param {function} getChatFunction - Функция для получения чата с ботом
+ */
+async function sendMessageFromBot(userId, messageText, metadata = {}, botId, getChatFunction) {
   try {
-    const chat = await getOrCreateAssistantChat(userId);
+    const chat = await getChatFunction(userId);
 
     const message = await Message.create({
       chatId: chat.id,
-      senderId: ASSISTANT_ID,
+      senderId: botId,
       content: messageText,
       type: 'text'
     });
@@ -101,8 +128,8 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
         include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot'] }]
       });
 
-      // Получаем информацию о чате для уведомления
-      const assistant = await User.findByPk(ASSISTANT_ID, {
+      // Получаем информацию о боте для уведомления
+      const bot = await User.findByPk(botId, {
         attributes: ['id', 'username', 'displayName', 'avatar', 'isBot']
       });
 
@@ -112,8 +139,8 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
         chat: {
           id: chat.id,
           type: 'private',
-          displayName: assistant.displayName || assistant.username,
-          avatar: assistant.avatar,
+          displayName: bot.displayName || bot.username,
+          avatar: bot.avatar,
           isAssistantChat: true
         }
       });
@@ -121,9 +148,23 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
 
     return message;
   } catch (error) {
-    console.error('Error sending message to user:', error);
+    console.error('Error sending message from bot:', error);
     throw error;
   }
+}
+
+/**
+ * Отправка сообщения в чат с Ассистентом
+ */
+async function sendMessageToUser(userId, messageText, metadata = {}) {
+  return sendMessageFromBot(userId, messageText, metadata, ASSISTANT_ID, getOrCreateAssistantChat);
+}
+
+/**
+ * Отправка сообщения в чат с ботом "Работа с негативом"
+ */
+async function sendReviewsBotMessage(userId, messageText, metadata = {}) {
+  return sendMessageFromBot(userId, messageText, metadata, REVIEWS_BOT_ID, getOrCreateReviewsChat);
 }
 
 /**
@@ -199,14 +240,122 @@ async function sendWelcomeMessage(userId) {
   return sendMessageToUser(userId, messageText, metadata);
 }
 
+/**
+ * Отправка уведомления о создании нового отзыва
+ */
+async function sendReviewCreatedNotification(userId, review, board, creator) {
+  const messageText = `📝 Новый отзыв создан\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `Доска: ${board.name}\n` +
+    `Оценка: ${'⭐'.repeat(review.rating)}\n` +
+    `Создал: ${creator.displayName || creator.username}`;
+
+  const metadata = {
+    type: 'review_created',
+    reviewId: review.id,
+    boardId: board.id
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления о смене статуса отзыва
+ */
+async function sendReviewStatusChangedNotification(userId, review, oldStatusLabel, newStatusLabel, changer, isAssignee = false) {
+  const prefix = isAssignee ? '👤 Ваша задача изменила статус' : '🔄 Изменен статус отзыва';
+
+  const messageText = `${prefix}\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `${oldStatusLabel} → ${newStatusLabel}\n` +
+    `Изменил: ${changer.displayName || changer.username}`;
+
+  const metadata = {
+    type: 'review_status_changed',
+    reviewId: review.id,
+    oldStatus: review.status,
+    newStatus: newStatusLabel,
+    isAssignee: isAssignee
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления о назначении ответственного за отзыв
+ */
+async function sendReviewAssignedNotification(userId, review, board, assigner) {
+  const messageText = `👤 Вам назначен отзыв для обработки\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `Доска: ${board.name}\n` +
+    `Статус: ${review.status}\n` +
+    `Назначил: ${assigner.displayName || assigner.username}\n\n` +
+    `Пожалуйста, соберите необходимые сведения.`;
+
+  const metadata = {
+    type: 'review_assigned',
+    reviewId: review.id,
+    boardId: board.id
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления о новом комментарии к отзыву
+ */
+async function sendReviewCommentNotification(userId, review, comment, commenter, hasAttachments = false) {
+  const attachmentText = hasAttachments ? '\n📎 С вложениями' : '';
+
+  const messageText = `💬 Новый комментарий к отзыву\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `От: ${commenter.displayName || commenter.username}\n` +
+    `Комментарий: ${comment.substring(0, 200)}${comment.length > 200 ? '...' : ''}${attachmentText}`;
+
+  const metadata = {
+    type: 'review_comment',
+    reviewId: review.id,
+    hasAttachments: hasAttachments
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления о финализации отзыва
+ */
+async function sendReviewFinalizedNotification(userId, review, decisionCategory, finalizer) {
+  const messageText = `✅ Отзыв финализирован\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `Решение: ${decisionCategory}\n` +
+    `Финализировал: ${finalizer.displayName || finalizer.username}`;
+
+  const metadata = {
+    type: 'review_finalized',
+    reviewId: review.id,
+    decisionCategory: decisionCategory
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
 module.exports = {
   ASSISTANT_ID,
+  REVIEWS_BOT_ID,
   init,
   getOrCreateAssistantChat,
+  getOrCreateReviewsChat,
   sendMessageToUser,
+  sendReviewsBotMessage,
   sendCalendarReminder,
   sendAccreditationReminder,
   sendVehicleInsuranceReminder,
   sendVehicleTOReminder,
-  sendWelcomeMessage
+  sendWelcomeMessage,
+  // Review notifications
+  sendReviewCreatedNotification,
+  sendReviewStatusChangedNotification,
+  sendReviewAssignedNotification,
+  sendReviewCommentNotification,
+  sendReviewFinalizedNotification
 };
