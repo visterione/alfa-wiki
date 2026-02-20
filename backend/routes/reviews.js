@@ -977,9 +977,9 @@ router.get('/stats', authenticate, async (req, res) => {
       }
     });
 
-    // По статусам
+    // По статусам (с учётом диапазона дат, включая архивные)
     const statusCounts = await Review.findAll({
-      where: { boardId: parsedBoardId, archived: false },
+      where: whereBase,
       attributes: [
         'status',
         [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']

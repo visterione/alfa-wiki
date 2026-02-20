@@ -3,8 +3,25 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { Service, SearchIndex } = require('../models');
+const { Service, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 const router = express.Router();
 
@@ -278,6 +295,13 @@ router.post('/',
       // Индексация для поиска
       await indexService(service);
 
+      await recordHistory(
+        pageSlug,
+        req.user.id,
+        `Добавлена услуга: ${serviceName} (${medCenter})`,
+        [{ field: 'service', label: 'Добавлена услуга', to: `${serviceName} (${medCenter})` }]
+      );
+
       res.status(201).json(service);
     } catch (error) {
       console.error('Error creating service:', error);
@@ -320,6 +344,18 @@ router.put('/:id',
         return res.status(404).json({ error: 'Услуга не найдена' });
       }
 
+      // Сохраняем старые значения для истории
+      const oldValues = {
+        medCenter: service.medCenter,
+        serviceCode: service.serviceCode,
+        serviceName: service.serviceName,
+        price: service.price,
+        preparationLink: service.preparationLink,
+        comment: service.comment,
+        misServiceId: service.misServiceId,
+      };
+      const effectivePageSlug = pageSlug || service.pageSlug;
+
       await service.update({
         pageSlug,
         medCenter,
@@ -333,6 +369,30 @@ router.put('/:id',
 
       // Обновляем индекс
       await indexService(service);
+
+      // История изменений
+      const detailedChanges = [];
+      const fieldDefs = [
+        { key: 'medCenter', label: 'Медцентр' },
+        { key: 'serviceCode', label: 'Код услуги' },
+        { key: 'serviceName', label: 'Название' },
+        { key: 'price', label: 'Цена' },
+        { key: 'preparationLink', label: 'Подготовка' },
+        { key: 'comment', label: 'Комментарий' },
+        { key: 'misServiceId', label: 'ID в МИС' },
+      ];
+      const updates = { medCenter, serviceCode, serviceName, price, preparationLink, comment, misServiceId };
+      for (const { key, label } of fieldDefs) {
+        if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
+          detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+        }
+      }
+      if (detailedChanges.length > 0) {
+        const summary = detailedChanges
+          .map(c => `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`)
+          .join('; ');
+        await recordHistory(effectivePageSlug, req.user.id, summary, detailedChanges);
+      }
 
       res.json(service);
     } catch (error) {
@@ -352,6 +412,8 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Услуга не найдена' });
     }
 
+    const { serviceName, medCenter, pageSlug: svcPageSlug } = service;
+
     // Удаляем из индекса
     await SearchIndex.destroy({
       where: {
@@ -361,6 +423,13 @@ router.delete('/:id', authenticate, async (req, res) => {
     });
 
     await service.destroy();
+
+    await recordHistory(
+      svcPageSlug,
+      req.user.id,
+      `Удалена услуга: ${serviceName} (${medCenter})`,
+      [{ field: 'service', label: 'Удалена услуга', from: `${serviceName} (${medCenter})` }]
+    );
 
     res.json({ message: 'Услуга удалена' });
   } catch (error) {

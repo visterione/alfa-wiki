@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
-const { Vehicle, VehicleFile, SearchIndex } = require('../models');
+const { Vehicle, VehicleFile, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -58,6 +58,23 @@ const upload = multer({
 // ═══════════════════════════════════════════════════════════════
 const VEHICLES_PAGE_SLUG = 'vehicles'; // <-- ЗАМЕНИ НА СВОЙ SLUG
 // ═══════════════════════════════════════════════════════════════
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // === HELPER: Индексация ТС для поиска ===
 const indexVehicle = async (vehicle) => {
@@ -243,6 +260,13 @@ router.post('/', authenticate, [
 
     await indexVehicle(vehicle);
 
+    await recordHistory(
+      VEHICLES_PAGE_SLUG,
+      req.user.id,
+      `Добавлено ТС: ${carBrand} ${licensePlate}`,
+      [{ field: 'vehicle', label: 'Добавлено ТС', to: `${carBrand} ${licensePlate}` }]
+    );
+
     res.status(201).json(vehicle);
   } catch (error) {
     console.error('Create vehicle error:', error);
@@ -273,11 +297,24 @@ router.put('/:id', authenticate, [
     }
 
     const { organization, carBrand, licensePlate, carYear, mileage, nextTO, insuranceDate, condition, comment } = req.body;
-    
+
+    // Сохраняем старые значения для истории
+    const oldValues = {
+      organization: vehicle.organization,
+      carBrand: vehicle.carBrand,
+      licensePlate: vehicle.licensePlate,
+      carYear: vehicle.carYear,
+      mileage: vehicle.mileage,
+      nextTO: vehicle.nextTO,
+      insuranceDate: vehicle.insuranceDate,
+      condition: vehicle.condition,
+      comment: vehicle.comment,
+    };
+
     // При обновлении пробега или nextTO сбрасываем флаг напоминания о ТО
-    const shouldResetTOReminder = (mileage !== undefined && mileage !== vehicle.mileage) || 
+    const shouldResetTOReminder = (mileage !== undefined && mileage !== vehicle.mileage) ||
                                    (nextTO !== undefined && nextTO !== vehicle.nextTO);
-    
+
     await vehicle.update({
       ...(organization && { organization }),
       ...(carBrand && { carBrand }),
@@ -292,6 +329,32 @@ router.put('/:id', authenticate, [
     });
 
     await indexVehicle(vehicle);
+
+    // История изменений
+    const detailedChanges = [];
+    const fieldDefs = [
+      { key: 'organization', label: 'Организация' },
+      { key: 'carBrand', label: 'Марка/модель' },
+      { key: 'licensePlate', label: 'Гос. номер' },
+      { key: 'carYear', label: 'Год выпуска' },
+      { key: 'mileage', label: 'Пробег' },
+      { key: 'nextTO', label: 'Следующее ТО' },
+      { key: 'insuranceDate', label: 'Дата страховки' },
+      { key: 'condition', label: 'Состояние' },
+      { key: 'comment', label: 'Комментарий' },
+    ];
+    const updates = { organization, carBrand, licensePlate, carYear, mileage, nextTO, insuranceDate, condition, comment };
+    for (const { key, label } of fieldDefs) {
+      if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
+        detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+      }
+    }
+    if (detailedChanges.length > 0) {
+      const summary = detailedChanges
+        .map(c => `${c.label}: «${c.from.slice(0, 40)}» → «${c.to.slice(0, 40)}»`)
+        .join('; ');
+      await recordHistory(VEHICLES_PAGE_SLUG, req.user.id, summary, detailedChanges);
+    }
 
     res.json(vehicle);
   } catch (error) {
@@ -312,6 +375,15 @@ router.patch('/:id/archive', authenticate, async (req, res) => {
     const isArchived = req.body.isArchived !== undefined ? req.body.isArchived : !vehicle.isArchived;
     await vehicle.update({ isArchived });
 
+    await recordHistory(
+      VEHICLES_PAGE_SLUG,
+      req.user.id,
+      isArchived
+        ? `ТС перемещено в архив: ${vehicle.carBrand} ${vehicle.licensePlate}`
+        : `ТС восстановлено из архива: ${vehicle.carBrand} ${vehicle.licensePlate}`,
+      [{ field: 'isArchived', label: 'Статус', from: isArchived ? 'Активное' : 'Архив', to: isArchived ? 'Архив' : 'Активное' }]
+    );
+
     res.json(vehicle);
   } catch (error) {
     console.error('Archive vehicle error:', error);
@@ -328,6 +400,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     }
 
     const vehId = vehicle.id;
+    const { carBrand, licensePlate } = vehicle;
 
     // Удаляем все связанные файлы
     const files = await VehicleFile.findAll({ where: { vehicleId: vehId } });
@@ -343,6 +416,13 @@ router.delete('/:id', authenticate, async (req, res) => {
     await vehicle.destroy();
 
     await removeFromIndex(vehId);
+
+    await recordHistory(
+      VEHICLES_PAGE_SLUG,
+      req.user.id,
+      `Удалено ТС: ${carBrand} ${licensePlate}`,
+      [{ field: 'vehicle', label: 'Удалено ТС', from: `${carBrand} ${licensePlate}` }]
+    );
 
     res.json({ message: 'Vehicle deleted' });
   } catch (error) {

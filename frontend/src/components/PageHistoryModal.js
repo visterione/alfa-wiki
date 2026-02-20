@@ -4,10 +4,14 @@ import { pages, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './PageHistoryModal.css';
 
+const extractText = (html) =>
+  (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
 export default function PageHistoryModal({ pageId, onClose }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [expandedEntry, setExpandedEntry] = useState(null);
 
   useEffect(() => {
     loadHistory();
@@ -177,8 +181,82 @@ export default function PageHistoryModal({ pageId, onClose }) {
                         {getActionLabel(entry.action)}
                       </span>
                     </div>
-                    {entry.changesSummary && (
+                    {entry.changesSummary && !entry.metadata?.changes?.length && (
                       <div className="history-summary">{entry.changesSummary}</div>
+                    )}
+                    {entry.metadata?.changes?.length > 0 && (
+                      <div className="history-changes-list">
+                        {entry.metadata.changes.map((c, i) => (
+                          <div key={i} className="history-change-item">
+                            {/* Скалярные поля: было → стало */}
+                            {c.from !== undefined && c.to !== undefined && (
+                              <div className="hc-field-change">
+                                <span className="hc-label">{c.label}:</span>
+                                <span className="hc-old">«{String(c.from).slice(0, 80)}»</span>
+                                <span className="hc-arrow">→</span>
+                                <span className="hc-new">«{String(c.to).slice(0, 80)}»</span>
+                              </div>
+                            )}
+                            {/* Создание объекта (только to) */}
+                            {c.from === undefined && c.to !== undefined && c.field !== 'content' && (
+                              <div className="hc-field-change">
+                                <span className="hc-label">{c.label}:</span>
+                                <span className="hc-new">«{String(c.to).slice(0, 80)}»</span>
+                              </div>
+                            )}
+                            {/* Удаление объекта (только from) */}
+                            {c.to === undefined && c.from !== undefined && c.field !== 'content' && (
+                              <div className="hc-field-change">
+                                <span className="hc-label">{c.label}:</span>
+                                <span className="hc-old">«{String(c.from).slice(0, 80)}»</span>
+                              </div>
+                            )}
+                            {/* Просто метка (папка, css, js) */}
+                            {c.from === undefined && c.to === undefined && c.field !== 'content' && (
+                              <div className="hc-label-only">{c.label}</div>
+                            )}
+                            {/* Diff содержимого (html/wysiwyg) */}
+                            {c.field === 'content' && (c.addedLines || c.removedLines) && (
+                              <div className="hc-content-diff">
+                                <span className="hc-label">Содержимое:</span>
+                                <div className="hc-diff-block">
+                                  {c.removedLines?.map((line, j) => (
+                                    <div key={`r${j}`} className="hc-diff-line hc-diff-removed">
+                                      <span className="hc-diff-sign">−</span>{line}
+                                    </div>
+                                  ))}
+                                  {c.addedLines?.map((line, j) => (
+                                    <div key={`a${j}`} className="hc-diff-line hc-diff-added">
+                                      <span className="hc-diff-sign">+</span>{line}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Diff таблицы (spreadsheet) */}
+                            {c.field === 'content' && c.changedCells && (
+                              <div className="hc-content-diff">
+                                <span className="hc-label">Таблица:</span>
+                                <div className="hc-diff-block">
+                                  {c.changedCells.map((cell, j) => (
+                                    <div key={j} className="hc-diff-line hc-diff-cell">
+                                      <span className="hc-diff-cell-name">{cell.cell}</span>
+                                      {cell.from !== '' && <span className="hc-diff-removed-inline">«{String(cell.from).slice(0, 60)}»</span>}
+                                      <span className="hc-arrow">→</span>
+                                      {cell.to !== '' && <span className="hc-diff-added-inline">«{String(cell.to).slice(0, 60)}»</span>}
+                                      {cell.to === '' && <span className="hc-diff-removed-inline">удалено</span>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {/* Содержимое обновлено (только форматирование) */}
+                            {c.field === 'content' && !c.addedLines && !c.removedLines && !c.changedCells && (
+                              <div className="hc-label-only">{c.label}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     )}
                     <div className="history-date">
                       <Clock size={14} />

@@ -63,6 +63,7 @@ const ReviewBoard = () => {
   const [filters, setFilters] = useState({
     platform: null,
     rating: null,
+    assignee: null,
     doctor: ''
   });
   const [showFilters, setShowFilters] = useState(false);
@@ -78,6 +79,9 @@ const ReviewBoard = () => {
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [selectedAssignees, setSelectedAssignees] = useState([]);
 
+  // Board members (users with any board role) — для секций Kanban
+  const [boardMembers, setBoardMembers] = useState([]);
+
   // Doctor autocomplete
   const [doctorSuggestions, setDoctorSuggestions] = useState([]);
   const [showDoctorSuggestions, setShowDoctorSuggestions] = useState(false);
@@ -86,17 +90,29 @@ const ReviewBoard = () => {
     try {
       setLoading(true);
 
-      const [boardRes, reviewsRes, platformsRes, usersRes] = await Promise.all([
+      const [boardRes, reviewsRes, platformsRes, usersRes, rolesRes] = await Promise.all([
         reviews.getBoard(boardId),
         reviews.getReviews(boardId),
         reviews.getPlatforms(),
-        users.listBasic()
+        users.listBasic(),
+        reviews.getBoardRoles(boardId)
       ]);
 
       setBoard(boardRes.data);
       setReviewsList(reviewsRes.data);
       setPlatforms(platformsRes.data);
       setUsersList(usersRes.data);
+
+      // Собираем уникальных участников доски из бизнес-ролей
+      const memberMap = {};
+      Object.values(rolesRes.data).forEach(roleGroup => {
+        roleGroup.users?.forEach(entry => {
+          if (entry.user && !memberMap[entry.user.id]) {
+            memberMap[entry.user.id] = entry.user;
+          }
+        });
+      });
+      setBoardMembers(Object.values(memberMap));
 
       const userRole = boardRes.data.userRole;
       setAccess({
@@ -122,25 +138,37 @@ const ReviewBoard = () => {
     loadData();
   }, [loadData]);
 
-  // Get reviews by status column
-  const getReviewsByColumn = (columnId) => {
-    return reviewsList
-      .filter(r => r.status === columnId)
-      .filter(r => {
-        if (filters.platform && r.platformId !== filters.platform) return false;
-        if (filters.rating && r.rating !== parseInt(filters.rating)) return false;
-        if (filters.doctor && !r.doctorName?.toLowerCase().includes(filters.doctor.toLowerCase())) return false;
-        return true;
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+  // Определяет первичного ответственного из числа участников доски
+  const getPrimaryAssigneeId = (review) => {
+    if (!review.assigneeIds || review.assigneeIds.length === 0) return null;
+    const memberIds = boardMembers.map(m => m.id);
+    return review.assigneeIds.find(id => memberIds.includes(id)) ?? null;
   };
+
+  // Фильтры по активным полям
+  const applyFilters = (list) =>
+    list.filter(r => {
+      if (filters.platform && r.platformId !== filters.platform) return false;
+      if (filters.rating === 'positive' && r.rating < 4) return false;
+      if (filters.rating === 'negative' && r.rating >= 4) return false;
+      if (filters.assignee && !r.assigneeIds?.includes(filters.assignee)) return false;
+      if (filters.doctor && !r.doctorName?.toLowerCase().includes(filters.doctor.toLowerCase())) return false;
+      return true;
+    });
+
+  // Все карточки колонки (для счётчика в хедере)
+  const getReviewsByColumn = (columnId) =>
+    applyFilters(reviewsList.filter(r => r.status === columnId))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Карточки конкретной секции (assigneeId — ID участника или null = без назначения)
+  const getReviewsBySection = (columnId, assigneeId) =>
+    applyFilters(reviewsList.filter(r => r.status === columnId))
+      .filter(r => getPrimaryAssigneeId(r) === assigneeId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
 
 
   // Drag and drop handlers
-  const handleDragStart = () => {
-    // Можно добавить логику при начале перетаскивания
-  };
-
   const handleDragEnd = async (result) => {
     if (!result.destination || !access.canWrite) return;
 
@@ -150,22 +178,49 @@ const ReviewBoard = () => {
       return;
     }
 
-    const reviewId = draggableId;
-    const newStatus = destination.droppableId;
+    // droppableId имеет вид "status" или "status__userId" / "status__none" (секции)
+    const [newStatus, sectionAssigneeId] = destination.droppableId.split('__');
+    const [, sourceSectionId] = source.droppableId.split('__');
     const newSortOrder = destination.index;
 
-    // Optimistic update
-    setReviewsList(prevReviews => {
-      return prevReviews.map(review =>
-        review.id === reviewId
+    // Проверка: только позитивные отзывы (рейтинг >= 4) можно тащить в final
+    if (newStatus === 'final') {
+      const review = reviewsList.find(r => r.id === draggableId);
+      if (review && review.rating < 4) {
+        toast.error('В финальный этап можно перемещать только позитивные отзывы (★★★★+)');
+        return;
+      }
+    }
+
+    // Кому назначить:
+    // - person-секция → назначаем если секция изменилась (другой человек или другая колонка)
+    // - none-секция из person-секции → снимаем назначение
+    let assigneeId = null;
+
+    if (sectionAssigneeId && sectionAssigneeId !== 'none') {
+      if (sourceSectionId !== sectionAssigneeId) assigneeId = sectionAssigneeId;
+    }
+
+    // Оптимистичное обновление
+    setReviewsList(prevReviews =>
+      prevReviews.map(review =>
+        review.id === draggableId
           ? { ...review, status: newStatus, sortOrder: newSortOrder }
           : review
-      );
-    });
+      )
+    );
 
     try {
-      await reviews.moveReview(reviewId, newStatus, newSortOrder);
-      toast.success('Отзыв перемещён');
+      await reviews.moveReview(draggableId, newStatus, newSortOrder);
+
+      if (assigneeId) {
+        await reviews.assignReview(draggableId, [assigneeId]);
+        toast.success('Отзыв перемещён и назначен');
+      } else if (newStatus === 'final') {
+        toast.success('Отзыв перемещён в финальный этап');
+      } else {
+        toast.success('Отзыв перемещён');
+      }
       loadData();
     } catch (err) {
       console.error('Error moving review:', err);
@@ -477,10 +532,10 @@ const ReviewBoard = () => {
   };
 
   const clearFilters = () => {
-    setFilters({ platform: null, rating: null, doctor: '' });
+    setFilters({ platform: null, rating: null, assignee: null, doctor: '' });
   };
 
-  const hasActiveFilters = filters.platform || filters.rating || filters.doctor;
+  const hasActiveFilters = filters.platform || filters.rating || filters.assignee || filters.doctor;
 
   if (loading) {
     return (
@@ -561,17 +616,30 @@ const ReviewBoard = () => {
             </select>
           </div>
           <div className="filter-group">
-            <label>Оценка</label>
+            <label>Тональность</label>
             <select
               value={filters.rating || ''}
               onChange={(e) => setFilters(prev => ({ ...prev, rating: e.target.value || null }))}
             >
               <option value="">Все</option>
-              {[5, 4, 3, 2, 1].map(r => (
-                <option key={r} value={r}>{r} {getRatingStars(r)}</option>
-              ))}
+              <option value="positive">Положительные</option>
+              <option value="negative">Отрицательные</option>
             </select>
           </div>
+          {boardMembers.length > 0 && (
+            <div className="filter-group">
+              <label>Исполнитель</label>
+              <select
+                value={filters.assignee || ''}
+                onChange={(e) => setFilters(prev => ({ ...prev, assignee: e.target.value || null }))}
+              >
+                <option value="">Все</option>
+                {boardMembers.map(m => (
+                  <option key={m.id} value={m.id}>{m.displayName || m.username}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="filter-group">
             <label>Врач</label>
             <input
@@ -590,23 +658,29 @@ const ReviewBoard = () => {
       )}
 
       {/* Kanban Board */}
-      <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <DragDropContext onDragEnd={handleDragEnd}>
         <div className="review-board-columns">
-          {REVIEW_STATUSES.map(column => (
-            <div key={column.id} className="review-column">
-              <div className="column-header" style={{ borderTopColor: column.color }}>
-                <h3>{column.label}</h3>
-                <span className="column-count">{getReviewsByColumn(column.id).length}</span>
-              </div>
+          {REVIEW_STATUSES.map(column => {
+            // Секции только для промежуточных колонок (не new, не final)
+            const useSections = boardMembers.length > 0 && column.id !== 'final' && column.id !== 'new';
 
-              <Droppable droppableId={column.id} isDropDisabled={!access.canWrite || column.id === 'final'}>
+            // final принимает только позитивные отзывы — разрешаем дроп,
+            // но блокируем негативные в handleDragEnd
+            const isDropDisabled = !access.canWrite;
+
+            // Одна секция для рендера карточек (используется в обоих режимах)
+            const renderCards = (cardList, droppableId) => (
+              <Droppable
+                droppableId={droppableId}
+                isDropDisabled={isDropDisabled}
+              >
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
                     {...provided.droppableProps}
-                    className={`column-content ${snapshot.isDraggingOver ? 'dragging-over' : ''}`}
+                    className={`section-cards ${snapshot.isDraggingOver ? 'dragging-over' : ''}`}
                   >
-                    {getReviewsByColumn(column.id).map((review, index) => (
+                    {cardList.map((review, index) => (
                       <Draggable
                         key={review.id}
                         draggableId={review.id}
@@ -649,7 +723,7 @@ const ReviewBoard = () => {
                             <div className="card-footer">
                               {review.assignees && review.assignees.length > 0 && (
                                 <div className="card-assignees">
-                                  {review.assignees.slice(0, 3).map((assignee, idx) => (
+                                  {review.assignees.slice(0, 3).map((assignee) => (
                                     <div
                                       key={assignee.id}
                                       className="assignee-avatar"
@@ -667,14 +741,12 @@ const ReviewBoard = () => {
                                   )}
                                 </div>
                               )}
-
                               {review.attachments && review.attachments.length > 0 && (
                                 <div className="card-attachments">
                                   <Paperclip size={12} />
                                   {review.attachments.length}
                                 </div>
                               )}
-
                               {review.reportPdfPath && (
                                 <button
                                   className="btn-pdf"
@@ -693,8 +765,55 @@ const ReviewBoard = () => {
                   </div>
                 )}
               </Droppable>
-            </div>
-          ))}
+            );
+
+            return (
+              <div key={column.id} className="review-column">
+                <div className="column-header" style={{ borderTopColor: column.color }}>
+                  <h3>{column.label}</h3>
+                  <div className="column-header-right">
+                    {column.id === 'final' && (
+                      <span className="column-positive-hint" title="Только позитивные отзывы">★★★★+</span>
+                    )}
+                    <span className="column-count">{getReviewsByColumn(column.id).length}</span>
+                  </div>
+                </div>
+
+                {useSections ? (
+                  /* Режим секций: каждая секция — отдельный Droppable */
+                  <div className="column-sections">
+                    {/* Секции участников доски */}
+                    {boardMembers.map(member => (
+                      <div key={member.id} className="person-section">
+                        <div className="person-section-header">
+                          <div className="person-section-avatar">
+                            {getAvatarUrl(member.avatar) ? (
+                              <img src={getAvatarUrl(member.avatar)} alt="" />
+                            ) : (
+                              <span>{(member.displayName || member.username).substring(0, 2).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <span className="person-section-name">{member.displayName || member.username}</span>
+                          <span className="person-section-count">
+                            {getReviewsBySection(column.id, member.id).length}
+                          </span>
+                        </div>
+                        {renderCards(
+                          getReviewsBySection(column.id, member.id),
+                          `${column.id}__${member.id}`
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  /* Обычный режим: один Droppable на колонку */
+                  <div className="column-content-wrap">
+                    {renderCards(getReviewsByColumn(column.id), column.id)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </DragDropContext>
 

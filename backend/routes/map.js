@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { MapMarker, User, SearchIndex } = require('../models');
+const { MapMarker, User, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,6 +12,23 @@ const router = express.Router();
 // НАСТРОЙКА: slug страницы карты для поиска
 // ═══════════════════════════════════════════════════════════════
 const MAP_PAGE_SLUG = 'map';
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // === Multer для загрузки медиа ===
 const uploadDir = path.join(__dirname, '../uploads/map');
@@ -223,6 +240,13 @@ router.post('/markers', authenticate, requirePermission('pages', 'write'), [
       include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }]
     });
 
+    await recordHistory(
+      MAP_PAGE_SLUG,
+      req.user.id,
+      `Добавлена метка: ${title}`,
+      [{ field: 'marker', label: 'Добавлена метка', to: title }]
+    );
+
     res.status(201).json(created);
   } catch (error) {
     console.error('Create marker error:', error);
@@ -239,6 +263,15 @@ router.put('/markers/:id', authenticate, requirePermission('pages', 'write'), as
     }
 
     const { lat, lng, title, description, color, media, category } = req.body;
+
+    // Сохраняем старые значения для истории
+    const oldValues = {
+      title: marker.title,
+      description: marker.description,
+      category: marker.category,
+      lat: marker.lat,
+      lng: marker.lng,
+    };
 
     // Валидация цвета
     let colorValue = marker.color;
@@ -266,6 +299,31 @@ router.put('/markers/:id', authenticate, requirePermission('pages', 'write'), as
       include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }]
     });
 
+    // История изменений
+    const detailedChanges = [];
+    const fieldDefs = [
+      { key: 'title', label: 'Название' },
+      { key: 'description', label: 'Описание' },
+      { key: 'category', label: 'Категория' },
+    ];
+    const updates = { title, description, category };
+    for (const { key, label } of fieldDefs) {
+      if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
+        detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+      }
+    }
+    if ((lat !== undefined || lng !== undefined) && (lat !== oldValues.lat || lng !== oldValues.lng)) {
+      detailedChanges.push({ field: 'coords', label: 'Координаты',
+        from: `${oldValues.lat}, ${oldValues.lng}`,
+        to: `${lat ?? oldValues.lat}, ${lng ?? oldValues.lng}` });
+    }
+    if (detailedChanges.length > 0) {
+      const summary = detailedChanges
+        .map(c => `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`)
+        .join('; ');
+      await recordHistory(MAP_PAGE_SLUG, req.user.id, summary, detailedChanges);
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Update marker error:', error);
@@ -281,6 +339,8 @@ router.delete('/markers/:id', authenticate, requirePermission('pages', 'delete')
       return res.status(404).json({ error: 'Marker not found' });
     }
 
+    const { title: markerTitle } = marker;
+
     // Удаляем медиа-файлы
     if (marker.media && marker.media.length > 0) {
       for (const mediaPath of marker.media) {
@@ -295,6 +355,13 @@ router.delete('/markers/:id', authenticate, requirePermission('pages', 'delete')
     await removeFromIndex(marker.id);
 
     await marker.destroy();
+
+    await recordHistory(
+      MAP_PAGE_SLUG,
+      req.user.id,
+      `Удалена метка: ${markerTitle}`,
+      [{ field: 'marker', label: 'Удалена метка', from: markerTitle }]
+    );
 
     res.json({ deleted: true, marker });
   } catch (error) {

@@ -1,9 +1,28 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { ReferralBonus } = require('../models');
+const { ReferralBonus, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+const REFERRAL_BONUSES_PAGE_SLUG = 'refferal-bonuses';
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // Получить все бонусы для врача
 router.get('/', authenticate, async (req, res) => {
@@ -47,6 +66,16 @@ router.post('/', authenticate, async (req, res) => {
       conflictFields: ['misUserId', 'serviceCode'],
       returning: true
     });
+
+    await recordHistory(
+      REFERRAL_BONUSES_PAGE_SLUG,
+      req.user.id,
+      created
+        ? `Добавлен бонус: ${doctorName || misUserId} — ${serviceName}`
+        : `Обновлён бонус: ${doctorName || misUserId} — ${serviceName}`,
+      [{ field: 'bonus', label: created ? 'Добавлен бонус' : 'Обновлён бонус',
+        to: `${serviceName} (${bonusPercent != null ? bonusPercent + '%' : bonusRub + ' руб.'})` }]
+    );
 
     res.status(created ? 201 : 200).json(bonus);
   } catch (err) {
@@ -94,6 +123,16 @@ router.post('/bulk', authenticate, async (req, res) => {
       }
     }
 
+    const parts = [];
+    if (toUpsert.length > 0) parts.push(`сохранено: ${toUpsert.length}`);
+    if (toDeleteCodes.length > 0) parts.push(`удалено: ${toDeleteCodes.length}`);
+    await recordHistory(
+      REFERRAL_BONUSES_PAGE_SLUG,
+      req.user.id,
+      `Бонусы врача ${doctorName || misUserId}: ${parts.join(', ')}`,
+      [{ field: 'bonusBulk', label: 'Массовое обновление бонусов', to: `${doctorName || misUserId}` }]
+    );
+
     res.json({ upserted: toUpsert.length, deleted: toDeleteCodes.length });
   } catch (err) {
     console.error('Bulk save referral bonuses error:', err);
@@ -108,7 +147,16 @@ router.delete('/:id', authenticate, async (req, res) => {
     if (!bonus) {
       return res.status(404).json({ error: 'Запись не найдена' });
     }
+    const { doctorName, misUserId, serviceName } = bonus;
     await bonus.destroy();
+
+    await recordHistory(
+      REFERRAL_BONUSES_PAGE_SLUG,
+      req.user.id,
+      `Удалён бонус: ${doctorName || misUserId} — ${serviceName}`,
+      [{ field: 'bonus', label: 'Удалён бонус', from: serviceName }]
+    );
+
     res.json({ message: 'Удалено' });
   } catch (err) {
     console.error('Delete referral bonus error:', err);

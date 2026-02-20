@@ -5,7 +5,7 @@ import {
   TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { reviews } from '../services/api';
-import { REVIEW_STATUSES, getStatusById } from '../utils/reviewConstants';
+import { REVIEW_STATUSES, DECISION_CATEGORIES } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewStatistics.css';
 
@@ -369,49 +369,38 @@ const ReviewStatistics = () => {
             <CheckCircle size={18} />
             Принятые решения
           </h3>
-          <div className="decisions-chart">
-            <div className="decision-item positive">
-              <div className="decision-icon">✓</div>
-              <div className="decision-info">
-                <span className="decision-label">Положительные</span>
-                <span className="decision-value">{stats?.decisions?.positive || 0}</span>
+          {(() => {
+            const totalDecisions = DECISION_CATEGORIES.reduce(
+              (sum, cat) => sum + (stats?.decisions?.[cat.id] || 0), 0
+            );
+            return totalDecisions === 0 ? (
+              <div className="no-data">
+                Нет финализированных отзывов за период
               </div>
-              <div
-                className="decision-bar"
-                style={{
-                  width: `${stats?.finalized ? ((stats.decisions?.positive || 0) / stats.finalized) * 100 : 0}%`
-                }}
-              />
-            </div>
-
-            <div className="decision-item neutral">
-              <div className="decision-icon">○</div>
-              <div className="decision-info">
-                <span className="decision-label">Нейтральные</span>
-                <span className="decision-value">{stats?.decisions?.neutral || 0}</span>
+            ) : (
+              <div className="chart-container">
+                {DECISION_CATEGORIES.map(cat => {
+                  const count = stats?.decisions?.[cat.id] || 0;
+                  const pct = totalDecisions > 0 ? Math.round((count / totalDecisions) * 100) : 0;
+                  return (
+                    <div key={cat.id} className="bar-row">
+                      <div className="bar-label">{cat.label}</div>
+                      <div className="bar-wrapper">
+                        <div
+                          className="bar"
+                          style={{ width: `${pct}%`, background: '#3b82f6' }}
+                        />
+                      </div>
+                      <div className="bar-value">{count}</div>
+                    </div>
+                  );
+                })}
+                <div className="decisions-total">
+                  Итого: {totalDecisions} из {stats?.finalized || 0} финализированных
+                </div>
               </div>
-              <div
-                className="decision-bar"
-                style={{
-                  width: `${stats?.finalized ? ((stats.decisions?.neutral || 0) / stats.finalized) * 100 : 0}%`
-                }}
-              />
-            </div>
-
-            <div className="decision-item negative">
-              <div className="decision-icon">✗</div>
-              <div className="decision-info">
-                <span className="decision-label">Отрицательные</span>
-                <span className="decision-value">{stats?.decisions?.negative || 0}</span>
-              </div>
-              <div
-                className="decision-bar"
-                style={{
-                  width: `${stats?.finalized ? ((stats.decisions?.negative || 0) / stats.finalized) * 100 : 0}%`
-                }}
-              />
-            </div>
-          </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -615,12 +604,6 @@ const ReviewStatistics = () => {
                   <th className="sortable" onClick={() => handleDoctorSort('avgRating')}>
                     Средняя оценка <SortIcon field="avgRating" />
                   </th>
-                  <th className="sortable" onClick={() => handleDoctorSort('positive')}>
-                    Положительных <SortIcon field="positive" />
-                  </th>
-                  <th className="sortable" onClick={() => handleDoctorSort('negative')}>
-                    Отрицательных <SortIcon field="negative" />
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -635,8 +618,6 @@ const ReviewStatistics = () => {
                         {doc.avgRating?.toFixed(1) || '—'}
                       </span>
                     </td>
-                    <td className="positive-count">{doc.positive || 0}</td>
-                    <td className="negative-count">{doc.negative || 0}</td>
                   </tr>
                 ))}
               </tbody>

@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
-const { Accreditation, AccreditationFile, SearchIndex } = require('../models');
+const { Accreditation, AccreditationFile, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -15,6 +15,23 @@ const router = express.Router();
 // ═══════════════════════════════════════════════════════════════
 const ACCREDITATIONS_PAGE_SLUG = 'accreditations'; // <-- ЗАМЕНИ НА СВОЙ SLUG
 // ═══════════════════════════════════════════════════════════════
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // === MULTER CONFIGURATION ===
 const storage = multer.diskStorage({
@@ -236,6 +253,13 @@ router.post('/', authenticate, [
     // Индексируем для поиска
     await indexAccreditation(accreditation);
 
+    await recordHistory(
+      ACCREDITATIONS_PAGE_SLUG,
+      req.user.id,
+      `Добавлена аккредитация: ${fullName} — ${specialty}`,
+      [{ field: 'accreditation', label: 'Добавлена аккредитация', to: `${fullName} — ${specialty}` }]
+    );
+
     res.status(201).json(accreditation);
   } catch (error) {
     console.error('Create accreditation error:', error);
@@ -262,7 +286,16 @@ router.put('/:id', authenticate, [
     }
 
     const { medCenter, fullName, specialty, expirationDate, comment } = req.body;
-    
+
+    // Сохраняем старые значения для истории
+    const oldValues = {
+      medCenter: accreditation.medCenter,
+      fullName: accreditation.fullName,
+      specialty: accreditation.specialty,
+      expirationDate: accreditation.expirationDate,
+      comment: accreditation.comment,
+    };
+
     await accreditation.update({
       ...(medCenter && { medCenter }),
       ...(fullName && { fullName }),
@@ -273,6 +306,28 @@ router.put('/:id', authenticate, [
 
     // Обновляем индекс
     await indexAccreditation(accreditation);
+
+    // История изменений
+    const detailedChanges = [];
+    const fieldDefs = [
+      { key: 'medCenter', label: 'Медцентр' },
+      { key: 'fullName', label: 'ФИО' },
+      { key: 'specialty', label: 'Специальность' },
+      { key: 'expirationDate', label: 'Дата окончания' },
+      { key: 'comment', label: 'Комментарий' },
+    ];
+    const updates = { medCenter, fullName, specialty, expirationDate, comment };
+    for (const { key, label } of fieldDefs) {
+      if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
+        detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+      }
+    }
+    if (detailedChanges.length > 0) {
+      const summary = detailedChanges
+        .map(c => `${c.label}: «${c.from.slice(0, 40)}» → «${c.to.slice(0, 40)}»`)
+        .join('; ');
+      await recordHistory(ACCREDITATIONS_PAGE_SLUG, req.user.id, summary, detailedChanges);
+    }
 
     res.json(accreditation);
   } catch (error) {
@@ -293,6 +348,15 @@ router.patch('/:id/archive', authenticate, async (req, res) => {
     const isArchived = req.body.isArchived !== undefined ? req.body.isArchived : !accreditation.isArchived;
     await accreditation.update({ isArchived });
 
+    await recordHistory(
+      ACCREDITATIONS_PAGE_SLUG,
+      req.user.id,
+      isArchived
+        ? `Аккредитация перемещена в архив: ${accreditation.fullName}`
+        : `Аккредитация восстановлена из архива: ${accreditation.fullName}`,
+      [{ field: 'isArchived', label: 'Статус', from: isArchived ? 'Активная' : 'Архив', to: isArchived ? 'Архив' : 'Активная' }]
+    );
+
     res.json(accreditation);
   } catch (error) {
     console.error('Archive accreditation error:', error);
@@ -309,6 +373,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     }
 
     const accId = accreditation.id;
+    const { fullName, specialty } = accreditation;
 
     // Удаляем все связанные файлы
     const files = await AccreditationFile.findAll({ where: { accreditationId: accId } });
@@ -325,6 +390,13 @@ router.delete('/:id', authenticate, async (req, res) => {
 
     // Удаляем из индекса
     await removeFromIndex(accId);
+
+    await recordHistory(
+      ACCREDITATIONS_PAGE_SLUG,
+      req.user.id,
+      `Удалена аккредитация: ${fullName} — ${specialty}`,
+      [{ field: 'accreditation', label: 'Удалена аккредитация', from: `${fullName} — ${specialty}` }]
+    );
 
     res.json({ message: 'Accreditation deleted' });
   } catch (error) {

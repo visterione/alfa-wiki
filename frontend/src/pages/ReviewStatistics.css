@@ -21,6 +21,7 @@
   border: none;
   border-radius: 8px;
   color: white;
+  font-family: inherit;
   cursor: pointer;
 }
 
@@ -48,6 +49,7 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--text-secondary);
+  font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
   flex-shrink: 0;
@@ -90,7 +92,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.625rem 1rem;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   transition: all 0.2s;
@@ -98,7 +100,6 @@
 
 .date-range:hover {
   border-color: #3b82f6;
-  background: var(--bg-primary);
 }
 
 .date-range svg {
@@ -130,25 +131,26 @@
 
 .quick-periods button {
   padding: 0.625rem 1rem;
-  background: var(--bg-secondary);
+  background: var(--bg-primary);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  font-family: inherit;
+  color: var(--text-primary);
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .quick-periods button:hover {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%);
-  color: #3b82f6;
+  background: #3b82f6;
   border-color: #3b82f6;
-  transform: translateY(-1px);
+  color: white;
 }
 
 .quick-periods button:active {
-  transform: translateY(0);
+  background: #2563eb;
+  border-color: #2563eb;
 }
 
 .stats-period-info {
@@ -315,6 +317,15 @@
   padding: 2rem;
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+.decisions-total {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  text-align: right;
 }
 
 /* Ratings Chart */

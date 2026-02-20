@@ -1,3 +1,4 @@
+const { diffLines } = require('diff');
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const sanitizeHtml = require('sanitize-html');
@@ -55,6 +56,75 @@ function extractTextContent(html) {
   return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Извлекает структурированный текст из HTML, сохраняя строки через \n
+function extractStructuredText(html) {
+  if (!html) return '';
+  // Удаляем script/style блоки, чтобы JS/CSS и UI-шаблоны не попадали в diff
+  const cleaned = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+  const withBreaks = cleaned.replace(/<\/(div|p|li|h[1-6]|tr|td|th|section|article|header|footer|br)[^>]*>/gi, '\n');
+  return sanitizeHtml(withBreaks, { allowedTags: [], allowedAttributes: {} })
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
+
+// Вычисляет diff содержимого: возвращает добавленные и удалённые строки
+function computeContentDiff(oldHtml, newHtml, contentType) {
+  if (contentType === 'spreadsheet') {
+    return computeSpreadsheetDiff(oldHtml, newHtml);
+  }
+  const oldText = extractStructuredText(oldHtml || '');
+  const newText = extractStructuredText(newHtml || '');
+  if (oldText === newText) return null;
+
+  const chunks = diffLines(oldText, newText);
+  const addedLines = [];
+  const removedLines = [];
+  for (const chunk of chunks) {
+    const lines = chunk.value.split('\n').map(l => l.trim()).filter(Boolean);
+    if (chunk.added)   addedLines.push(...lines);
+    if (chunk.removed) removedLines.push(...lines);
+  }
+  return {
+    field: 'content',
+    label: 'Содержимое',
+    addedLines:   addedLines.slice(0, 15),
+    removedLines: removedLines.slice(0, 15),
+    delta: newText.length - oldText.length,
+  };
+}
+
+function computeSpreadsheetDiff(oldJson, newJson) {
+  try {
+    const oldData = JSON.parse(oldJson || '{}');
+    const newData = JSON.parse(newJson || '{}');
+    const changed = [];
+    for (const sheetId of Object.keys(newData.sheets || {})) {
+      const oldCells = ((oldData.sheets || {})[sheetId] || {}).cellData || {};
+      const newCells = newData.sheets[sheetId].cellData || {};
+      for (const r of Object.keys(newCells))
+        for (const c of Object.keys(newCells[r])) {
+          const nv = newCells[r][c].v, ov = ((oldCells[r] || {})[c] || {}).v;
+          if (nv !== ov) changed.push({ cell: `${String.fromCharCode(65 + parseInt(c))}${+r + 1}`, from: ov ?? '', to: nv ?? '' });
+        }
+      for (const r of Object.keys(oldCells))
+        for (const c of Object.keys(oldCells[r])) {
+          if (!((newCells[r] || {})[c])) {
+            const ov = oldCells[r][c].v;
+            changed.push({ cell: `${String.fromCharCode(65 + parseInt(c))}${+r + 1}`, from: ov ?? '', to: '' });
+          }
+        }
+    }
+    return {
+      field: 'content',
+      label: 'Таблица',
+      changedCells: changed.slice(0, 20),
+    };
+  } catch { return null; }
 }
 
 function generateSlug(title) {
@@ -292,24 +362,19 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       updateData.searchContent = searchContent;
     }
 
-    // Определяем изменения для истории
-    const changedFields = [];
-    let historyAction = 'updated';
-
-    if (title && title !== page.title) changedFields.push('заголовок');
-    if (content !== undefined) changedFields.push('содержимое');
-    if (slug && slug !== page.slug) changedFields.push('slug');
-    if (description !== undefined && description !== page.description) changedFields.push('описание');
-    if (icon !== undefined && icon !== page.icon) changedFields.push('иконка');
-    if (customCss !== undefined) changedFields.push('CSS');
-    if (customJs !== undefined) changedFields.push('JavaScript');
-    if (folderId !== undefined && folderId !== page.folderId) changedFields.push('папка');
-
-    // Отдельно отслеживаем изменение статуса публикации
-    if (isPublished !== undefined && isPublished !== page.isPublished) {
-      historyAction = isPublished ? 'published' : 'unpublished';
-      changedFields.push('статус публикации');
-    }
+    // Сохраняем старые значения ДО обновления
+    const oldValues = {
+      title: page.title,
+      content: page.content,
+      slug: page.slug,
+      description: page.description,
+      icon: page.icon,
+      folderId: page.folderId,
+      contentType: page.contentType,
+      customCss: page.customCss,
+      customJs: page.customJs,
+      isPublished: page.isPublished,
+    };
 
     await page.update(updateData);
 
@@ -322,11 +387,71 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       url: `/page/${page.slug}`
     });
 
+    // Определяем детальные изменения для истории
+    const detailedChanges = [];
+    let historyAction = 'updated';
+
+    if (title && title !== oldValues.title)
+      detailedChanges.push({ field: 'title', label: 'Заголовок', from: oldValues.title, to: title });
+
+    if (slug && slug !== oldValues.slug)
+      detailedChanges.push({ field: 'slug', label: 'Адрес (slug)', from: oldValues.slug, to: slug });
+
+    if (description !== undefined && description !== oldValues.description)
+      detailedChanges.push({ field: 'description', label: 'Описание',
+        from: oldValues.description || '', to: description || '' });
+
+    if (icon !== undefined && icon !== oldValues.icon)
+      detailedChanges.push({ field: 'icon', label: 'Иконка', from: oldValues.icon, to: icon });
+
+    if (folderId !== undefined && folderId !== oldValues.folderId)
+      detailedChanges.push({ field: 'folder', label: 'Папка' });
+
+    if (customCss !== undefined && customCss !== oldValues.customCss)
+      detailedChanges.push({ field: 'customCss', label: 'CSS-стили изменены' });
+
+    if (customJs !== undefined && customJs !== oldValues.customJs)
+      detailedChanges.push({ field: 'customJs', label: 'JavaScript изменён' });
+
+    if (content !== undefined) {
+      const effectiveType = contentType || oldValues.contentType;
+      const contentDiff = computeContentDiff(oldValues.content, updateData.content, effectiveType);
+      if (contentDiff) {
+        // Для spreadsheet нет смысла показывать diff если ничего не изменилось
+        if (contentDiff.changedCells?.length > 0 || contentDiff.addedLines?.length > 0 || contentDiff.removedLines?.length > 0) {
+          detailedChanges.push(contentDiff);
+        } else if (updateData.content !== oldValues.content) {
+          detailedChanges.push({ field: 'content', label: 'Содержимое обновлено (форматирование)' });
+        }
+      } else if (updateData.content !== oldValues.content) {
+        detailedChanges.push({ field: 'content', label: 'Содержимое обновлено (форматирование)' });
+      }
+    }
+
+    if (isPublished !== undefined && isPublished !== oldValues.isPublished) {
+      historyAction = isPublished ? 'published' : 'unpublished';
+    }
+
     // Записываем в историю только если были изменения
-    if (changedFields.length > 0) {
-      const changesSummary = historyAction === 'updated'
-        ? `Изменено: ${changedFields.join(', ')}`
-        : isPublished ? 'Страница опубликована' : 'Публикация отменена';
+    if (detailedChanges.length > 0 || historyAction !== 'updated') {
+      const summaryParts = detailedChanges.map(c => {
+        if (c.field === 'content') {
+          if (c.changedCells) return `Таблица: изменено ${c.changedCells.length} яч.`;
+          const added = c.addedLines?.length || 0;
+          const removed = c.removedLines?.length || 0;
+          if (added && removed) return `Содержимое: +${added} стр., −${removed} стр.`;
+          if (added)   return `Содержимое: добавлено ${added} стр.`;
+          if (removed) return `Содержимое: удалено ${removed} стр.`;
+          return 'Содержимое обновлено';
+        }
+        if (c.from !== undefined && c.to !== undefined && String(c.from) !== String(c.to))
+          return `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`;
+        return c.label;
+      });
+
+      const changesSummary = historyAction === 'published'   ? 'Страница опубликована'
+        : historyAction === 'unpublished' ? 'Публикация отменена'
+        : summaryParts.join('; ');
 
       await PageHistory.create({
         pageId: page.id,
@@ -334,8 +459,8 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
         action: historyAction,
         changesSummary,
         metadata: {
-          changedFields,
-          isPublished: page.isPublished
+          changes: detailedChanges,
+          previousContent: oldValues.content
         }
       });
     }

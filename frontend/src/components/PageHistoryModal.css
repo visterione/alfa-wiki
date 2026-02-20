@@ -240,6 +240,122 @@
   line-height: 1.5;
 }
 
+.history-changes-list {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.history-change-item {
+  font-size: 13px;
+}
+
+/* Скалярное поле: «было» → «стало» */
+.hc-field-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.hc-label {
+  font-weight: 600;
+  color: #374151;
+  flex-shrink: 0;
+}
+
+.hc-old {
+  color: #dc2626;
+  text-decoration: line-through;
+  opacity: 0.9;
+}
+
+.hc-new {
+  color: #16a34a;
+  font-weight: 500;
+}
+
+.hc-arrow {
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* Просто метка без значений */
+.hc-label-only {
+  font-size: 12px;
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Блок diff содержимого */
+.hc-content-diff {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hc-diff-block {
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.hc-diff-line {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 10px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.hc-diff-removed {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.hc-diff-added {
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.hc-diff-cell {
+  background: #f8fafc;
+  color: #374151;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.hc-diff-sign {
+  font-weight: 700;
+  flex-shrink: 0;
+  opacity: 0.7;
+  width: 12px;
+}
+
+.hc-diff-cell-name {
+  font-weight: 600;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.hc-diff-removed-inline {
+  color: #dc2626;
+  text-decoration: line-through;
+  opacity: 0.9;
+}
+
+.hc-diff-added-inline {
+  color: #16a34a;
+  font-weight: 500;
+}
+
 .history-date {
   display: flex;
   align-items: center;

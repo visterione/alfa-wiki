@@ -1822,13 +1822,22 @@
   min-width: 180px;
 }
 
-.form-label {
+.form-label,
+.form-group .form-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
+  margin-bottom: 0;
+}
+
+.form-label svg,
+.form-group .form-label svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  margin-right: 8px;
 }
 
 /* Поля ввода в админке */

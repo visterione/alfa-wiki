@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { DoctorCard, SearchIndex, User } = require('../models');
+const { DoctorCard, SearchIndex, User, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,6 +12,23 @@ const router = express.Router();
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
 const MIS_TIMEOUT = 15000;
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // Middleware для проверки прав на редактирование карточек врачей
 const canEditDoctorCards = async (req, res, next) => {
@@ -341,6 +358,13 @@ router.post('/', authenticate, canEditDoctorCards, [
     // Индексируем с подгрузкой услуг
     await indexDoctorCard(card, true);
 
+    await recordHistory(
+      pageSlug,
+      req.user.id,
+      `Добавлена карточка врача: ${card.fullName}`,
+      [{ field: 'doctorCard', label: 'Добавлена карточка', to: card.fullName }]
+    );
+
     res.status(201).json(card);
   } catch (error) {
     console.error('Create doctor card error:', error);
@@ -356,13 +380,25 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
       return res.status(404).json({ error: 'Doctor card not found' });
     }
 
-    const { 
-      fullName, specialty, experience, profileUrl, photo, 
+    const {
+      fullName, specialty, experience, profileUrl, photo,
       description, phones, sortOrder, metadata,
       misUserId, professions, professionTitles, clinics, ageRange,
       internalNumber, mobileNumber, notes,
       tags
     } = req.body;
+
+    // Сохраняем старые значения для истории
+    const oldValues = {
+      fullName: card.fullName,
+      specialty: card.specialty,
+      experience: card.experience,
+      description: card.description,
+      profileUrl: card.profileUrl,
+      photo: card.photo,
+      phones: JSON.stringify(card.phones || []),
+    };
+    const oldMeta = card.metadata || {};
 
     const updateData = {};
     if (fullName) updateData.fullName = fullName;
@@ -374,9 +410,8 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
     if (notes !== undefined) updateData.description = notes;
     if (phones !== undefined) updateData.phones = phones;
     if (sortOrder !== undefined) updateData.sortOrder = sortOrder;
-    
+
     // Обновляем metadata
-    const oldMeta = card.metadata || {};
     const newMetadata = { ...oldMeta };
     if (misUserId !== undefined) newMetadata.misUserId = misUserId;
     if (professions !== undefined) newMetadata.professions = professions;
@@ -398,10 +433,48 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
     updateData.metadata = newMetadata;
 
     await card.update(updateData);
-    
+
     // Переиндексируем (обновляем услуги если изменился misUserId)
     const shouldFetchServices = misUserId !== undefined && misUserId !== oldMeta.misUserId;
     await indexDoctorCard(card, shouldFetchServices);
+
+    // История изменений
+    const detailedChanges = [];
+    const scalarFields = [
+      { key: 'fullName', label: 'ФИО' },
+      { key: 'specialty', label: 'Специальность' },
+      { key: 'experience', label: 'Опыт' },
+      { key: 'description', label: 'Описание' },
+      { key: 'profileUrl', label: 'Ссылка на профиль' },
+    ];
+    for (const { key, label } of scalarFields) {
+      if (key in updateData && String(updateData[key] ?? '') !== String(oldValues[key] ?? '')) {
+        detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updateData[key] ?? '') });
+      }
+    }
+    if ('photo' in updateData && updateData.photo !== oldValues.photo) {
+      detailedChanges.push({ field: 'photo', label: 'Фото' });
+    }
+    if ('phones' in updateData && JSON.stringify(updateData.phones) !== oldValues.phones) {
+      detailedChanges.push({ field: 'phones', label: 'Телефоны' });
+    }
+    if (misUserId !== undefined && String(misUserId ?? '') !== String(oldMeta.misUserId ?? '')) {
+      detailedChanges.push({ field: 'misUserId', label: 'ID в МИС', from: String(oldMeta.misUserId ?? ''), to: String(misUserId ?? '') });
+    }
+    if (tags !== undefined && JSON.stringify(tags) !== JSON.stringify(oldMeta.tags)) {
+      detailedChanges.push({ field: 'tags', label: 'Теги' });
+    }
+    if (clinics !== undefined && JSON.stringify(clinics) !== JSON.stringify(oldMeta.clinics)) {
+      detailedChanges.push({ field: 'clinics', label: 'Клиники' });
+    }
+    if (detailedChanges.length > 0) {
+      const summary = detailedChanges
+        .map(c => c.from !== undefined && c.to !== undefined
+          ? `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`
+          : c.label)
+        .join('; ');
+      await recordHistory(card.pageSlug, req.user.id, summary, detailedChanges);
+    }
 
     res.json(card);
   } catch (error) {
@@ -442,9 +515,17 @@ router.delete('/:id', authenticate, canEditDoctorCards, async (req, res) => {
       return res.status(404).json({ error: 'Doctor card not found' });
     }
 
+    const { pageSlug, fullName } = card;
     const cardId = card.id;
     await card.destroy();
     await removeFromIndex(cardId);
+
+    await recordHistory(
+      pageSlug,
+      req.user.id,
+      `Удалена карточка врача: ${fullName}`,
+      [{ field: 'doctorCard', label: 'Удалена карточка', from: fullName }]
+    );
 
     res.json({ message: 'Doctor card deleted' });
   } catch (error) {

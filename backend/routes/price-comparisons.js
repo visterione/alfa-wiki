@@ -1,10 +1,29 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
-const { PriceComparison, PriceComparisonItem } = require('../models');
+const { PriceComparison, PriceComparisonItem, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+const PRICE_COMPARE_PAGE_SLUG = 'price-compare';
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // GET /api/price-comparisons - Получить все сравнения пользователя
@@ -89,6 +108,13 @@ router.post('/',
         createdBy: req.user.id
       });
 
+      await recordHistory(
+        PRICE_COMPARE_PAGE_SLUG,
+        req.user.id,
+        `Создано сравнение цен: ${name}`,
+        [{ field: 'comparison', label: 'Создано сравнение', to: name }]
+      );
+
       res.status(201).json(comparison);
     } catch (error) {
       console.error('Error creating price comparison:', error);
@@ -133,12 +159,24 @@ router.put('/:id',
         return res.status(404).json({ error: 'Сравнение не найдено' });
       }
 
+      const oldName = comparison.name;
       await comparison.update({
         name,
         description,
         ownMedCenters,
         competitors
       });
+
+      const changes = [];
+      if (name !== oldName) {
+        changes.push({ field: 'name', label: 'Название', from: oldName, to: name });
+      }
+      await recordHistory(
+        PRICE_COMPARE_PAGE_SLUG,
+        req.user.id,
+        changes.length > 0 ? `Сравнение цен «${name}»: ${changes.map(c => `${c.label}: «${c.from}» → «${c.to}»`).join('; ')}` : `Обновлено сравнение цен: ${name}`,
+        changes
+      );
 
       res.json(comparison);
     } catch (error) {
@@ -166,7 +204,15 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Сравнение не найдено' });
     }
 
+    const { name: compName } = comparison;
     await comparison.destroy();
+
+    await recordHistory(
+      PRICE_COMPARE_PAGE_SLUG,
+      req.user.id,
+      `Удалено сравнение цен: ${compName}`,
+      [{ field: 'comparison', label: 'Удалено сравнение', from: compName }]
+    );
 
     res.json({ message: 'Сравнение удалено' });
   } catch (error) {

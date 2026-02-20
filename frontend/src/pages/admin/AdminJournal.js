@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, FileText, Table as TableIcon, FileCode, Calendar, User, Folder, Search } from 'lucide-react';
+import { Download, X, FileText, Table as TableIcon, FileCode, Calendar, User, Folder, Search, History } from 'lucide-react';
 import { journal, pages, users, folders } from '../../services/api';
 import toast from 'react-hot-toast';
+import PageHistoryModal from '../../components/PageHistoryModal';
 import '../Admin.css';
 
 export default function AdminJournal() {
@@ -24,6 +25,9 @@ export default function AdminJournal() {
   // Данные для фильтров
   const [userList, setUserList] = useState([]);
   const [folderList, setFolderList] = useState([]);
+
+  // Просмотр истории
+  const [historyPage, setHistoryPage] = useState(null); // { id, title }
 
   // Пагинация
   const [currentPage, setCurrentPage] = useState(1);
@@ -135,7 +139,7 @@ export default function AdminJournal() {
     switch (contentType) {
       case 'spreadsheet': return 'Таблица';
       case 'html': return 'HTML';
-      case 'wysiwyg': return 'WYSIWYG';
+      case 'wysiwyg': return 'Документ';
       default: return contentType;
     }
   };
@@ -188,7 +192,7 @@ export default function AdminJournal() {
               onChange={(e) => handleFilterChange('contentType', e.target.value)}
             >
               <option value="">Все типы</option>
-              <option value="wysiwyg">WYSIWYG</option>
+              <option value="wysiwyg">Документ</option>
               <option value="html">HTML</option>
               <option value="spreadsheet">Таблица</option>
             </select>
@@ -355,6 +359,13 @@ export default function AdminJournal() {
                     <td>
                       <button
                         className="btn btn-icon"
+                        onClick={() => setHistoryPage({ id: page.id, title: page.title })}
+                        title="Просмотреть историю изменений"
+                      >
+                        <History size={16} />
+                      </button>
+                      <button
+                        className="btn btn-icon"
                         onClick={() => handleDownloadPdf(page.id, page.title)}
                         title="Скачать PDF отчет"
                       >
@@ -396,6 +407,12 @@ export default function AdminJournal() {
           </>
         )}
       </div>
+      {historyPage && (
+        <PageHistoryModal
+          pageId={historyPage.id}
+          onClose={() => setHistoryPage(null)}
+        />
+      )}
     </div>
   );
 }

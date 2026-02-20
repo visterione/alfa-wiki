@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { Analysis, SearchIndex } = require('../models');
+const { Analysis, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -13,6 +13,23 @@ const router = express.Router();
 // ═══════════════════════════════════════════════════════════════
 const ANALYSES_PAGE_SLUG = 'analyses'; // <-- ЗАМЕНИ НА СВОЙ SLUG
 // ═══════════════════════════════════════════════════════════════
+
+// === HELPER: Запись в историю страницы ===
+async function recordHistory(pageSlug, userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    if (!page) return;
+    await PageHistory.create({
+      pageId: page.id,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes }
+    });
+  } catch (err) {
+    console.error('History record error:', err.message);
+  }
+}
 
 // MIS API конфигурация
 const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
@@ -263,6 +280,13 @@ router.post('/',
       // Индексация для поиска
       await indexAnalysis(analysis);
 
+      await recordHistory(
+        ANALYSES_PAGE_SLUG,
+        req.user.id,
+        `Добавлен анализ: ${serviceName} (${lab})`,
+        [{ field: 'analysis', label: 'Добавлен анализ', to: `${serviceName} (${lab})` }]
+      );
+
       res.status(201).json(analysis);
     } catch (error) {
       console.error('Error creating analysis:', error);
@@ -304,6 +328,18 @@ router.put('/:id',
         return res.status(404).json({ error: 'Анализ не найден' });
       }
 
+      // Сохраняем старые значения для истории
+      const oldValues = {
+        lab: analysis.lab,
+        serviceCode: analysis.serviceCode,
+        serviceName: analysis.serviceName,
+        price: analysis.price,
+        isStopped: analysis.isStopped,
+        preparationLink: analysis.preparationLink,
+        comment: analysis.comment,
+        misServiceId: analysis.misServiceId,
+      };
+
       await analysis.update({
         lab,
         serviceCode,
@@ -317,6 +353,35 @@ router.put('/:id',
 
       // Обновляем индекс
       await indexAnalysis(analysis);
+
+      // История изменений
+      const detailedChanges = [];
+      const fieldDefs = [
+        { key: 'lab', label: 'Лаборатория' },
+        { key: 'serviceCode', label: 'Код услуги' },
+        { key: 'serviceName', label: 'Название' },
+        { key: 'price', label: 'Цена' },
+        { key: 'preparationLink', label: 'Подготовка' },
+        { key: 'comment', label: 'Комментарий' },
+        { key: 'misServiceId', label: 'ID в МИС' },
+      ];
+      const updates = { lab, serviceCode, serviceName, price, preparationLink, comment, misServiceId };
+      for (const { key, label } of fieldDefs) {
+        if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
+          detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+        }
+      }
+      if (isStopped !== undefined && isStopped !== oldValues.isStopped) {
+        detailedChanges.push({ field: 'isStopped', label: 'Статус',
+          from: oldValues.isStopped ? 'Остановлен' : 'Активен',
+          to: isStopped ? 'Остановлен' : 'Активен' });
+      }
+      if (detailedChanges.length > 0) {
+        const summary = detailedChanges
+          .map(c => `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`)
+          .join('; ');
+        await recordHistory(ANALYSES_PAGE_SLUG, req.user.id, summary, detailedChanges);
+      }
 
       res.json(analysis);
     } catch (error) {
@@ -336,8 +401,20 @@ router.patch('/:id/toggle-stop', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Анализ не найден' });
     }
 
-    await analysis.update({ isStopped: !analysis.isStopped });
+    const newStopped = !analysis.isStopped;
+    await analysis.update({ isStopped: newStopped });
     await indexAnalysis(analysis);
+
+    await recordHistory(
+      ANALYSES_PAGE_SLUG,
+      req.user.id,
+      newStopped
+        ? `Анализ остановлен: ${analysis.serviceName}`
+        : `Анализ возобновлён: ${analysis.serviceName}`,
+      [{ field: 'isStopped', label: 'Статус',
+        from: newStopped ? 'Активен' : 'Остановлен',
+        to: newStopped ? 'Остановлен' : 'Активен' }]
+    );
 
     res.json(analysis);
   } catch (error) {
@@ -356,6 +433,8 @@ router.delete('/:id', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Анализ не найден' });
     }
 
+    const { serviceName, lab } = analysis;
+
     // Удаляем из индекса
     await SearchIndex.destroy({
       where: {
@@ -365,6 +444,13 @@ router.delete('/:id', authenticate, async (req, res) => {
     });
 
     await analysis.destroy();
+
+    await recordHistory(
+      ANALYSES_PAGE_SLUG,
+      req.user.id,
+      `Удалён анализ: ${serviceName} (${lab})`,
+      [{ field: 'analysis', label: 'Удалён анализ', from: `${serviceName} (${lab})` }]
+    );
 
     res.json({ message: 'Анализ удален' });
   } catch (error) {
