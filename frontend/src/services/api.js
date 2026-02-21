@@ -92,7 +92,9 @@ export const pages = {
 
 // Journal
 export const journal = {
-  list: (params) => api.get('/journal', { params })
+  list: (params) => api.get('/journal', { params }),
+  activities: (params) => api.get('/journal/activities', { params }),
+  activityModules: () => api.get('/journal/activity-modules')
 };
 
 // Folders

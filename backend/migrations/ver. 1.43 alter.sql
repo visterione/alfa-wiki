@@ -1,0 +1,1 @@
+ALTER TABLE page_history ALTER COLUMN "pageId" DROP NOT NULL

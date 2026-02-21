@@ -12,6 +12,78 @@ export default function PageHistoryModal({ pageId, onClose }) {
   const [loading, setLoading] = useState(true);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [expandedEntry, setExpandedEntry] = useState(null);
+  const [expandedDiffs, setExpandedDiffs] = useState({});
+
+  // Пословный diff через LCS: возвращает токены {v, t} (t: -1=удалено, 0=без изм., 1=добавлено).
+  // Токены — слова и пробельные группы (/\S+|\s+/). До 600 токенов с каждой стороны.
+  const getDiffTokens = (oldText, newText) => {
+    const tok = s => (s.match(/\S+|\s+/g) || []);
+    const A = tok(oldText), B = tok(newText);
+    if (A.length > 600 || B.length > 600) return null;
+    const m = A.length, n = B.length;
+    const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = A[i-1] === B[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+    const result = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && A[i-1] === B[j-1]) { result.unshift({ v: A[i-1], t: 0 }); i--; j--; }
+      else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { result.unshift({ v: B[j-1], t: 1 }); j--; }
+      else { result.unshift({ v: A[i-1], t: -1 }); i--; }
+    }
+    return result;
+  };
+
+  // Рендер diff-блока: кнопка свернуть/развернуть + построчный diff с подсветкой
+  const renderDiffBlock = (c, entryId, idx) => {
+    const key = `${entryId}-${idx}`;
+    const isOpen = !!expandedDiffs[key];
+    const rCount = c.removedLines?.length || 0;
+    const aCount = c.addedLines?.length || 0;
+    const inlineTokens = (rCount === 1 && aCount === 1)
+      ? getDiffTokens(c.removedLines[0], c.addedLines[0])
+      : null;
+    return (
+      <div className="hc-content-diff">
+        <button
+          className="hc-diff-toggle-btn"
+          onClick={() => setExpandedDiffs(prev => ({ ...prev, [key]: !prev[key] }))}
+        >
+          <span className="hc-label">{c.label}</span>
+          <span className="hc-diff-stats">
+            {rCount > 0 && <span className="hc-diff-stat-removed">−{rCount}</span>}
+            {aCount > 0 && <span className="hc-diff-stat-added">+{aCount}</span>}
+            <span className="hc-diff-chevron">{isOpen ? '▲' : '▼'}</span>
+          </span>
+        </button>
+        {isOpen && (
+          <div className="hc-diff-block">
+            {c.removedLines?.map((line, j) => (
+              <div key={`r${j}`} className="hc-diff-line hc-diff-removed">
+                <span className="hc-diff-sign">−</span>
+                {inlineTokens
+                  ? <span>{inlineTokens.filter(t => t.t !== 1).map((tok, k) =>
+                      tok.t === 0 ? <span key={k}>{tok.v}</span> : <mark key={k} className="hc-mark-removed">{tok.v}</mark>
+                    )}</span>
+                  : line}
+              </div>
+            ))}
+            {c.addedLines?.map((line, j) => (
+              <div key={`a${j}`} className="hc-diff-line hc-diff-added">
+                <span className="hc-diff-sign">+</span>
+                {inlineTokens
+                  ? <span>{inlineTokens.filter(t => t.t !== -1).map((tok, k) =>
+                      tok.t === 0 ? <span key={k}>{tok.v}</span> : <mark key={k} className="hc-mark-added">{tok.v}</mark>
+                    )}</span>
+                  : line}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   useEffect(() => {
     loadHistory();
@@ -197,8 +269,15 @@ export default function PageHistoryModal({ pageId, onClose }) {
                                 <span className="hc-new">«{String(c.to).slice(0, 80)}»</span>
                               </div>
                             )}
+                            {/* Контекст (например, название услуги) */}
+                            {c.field === 'serviceContext' && c.to !== undefined && (
+                              <div className="hc-field-change hc-context">
+                                <span className="hc-label">{c.label}:</span>
+                                <span className="hc-context-value">«{String(c.to).slice(0, 100)}»</span>
+                              </div>
+                            )}
                             {/* Создание объекта (только to) */}
-                            {c.from === undefined && c.to !== undefined && c.field !== 'content' && (
+                            {c.from === undefined && c.to !== undefined && c.field !== 'content' && c.field !== 'serviceContext' && (
                               <div className="hc-field-change">
                                 <span className="hc-label">{c.label}:</span>
                                 <span className="hc-new">«{String(c.to).slice(0, 80)}»</span>
@@ -212,27 +291,11 @@ export default function PageHistoryModal({ pageId, onClose }) {
                               </div>
                             )}
                             {/* Просто метка (папка, css, js) */}
-                            {c.from === undefined && c.to === undefined && c.field !== 'content' && (
+                            {c.from === undefined && c.to === undefined && c.field !== 'content' && !c.addedLines && !c.removedLines && (
                               <div className="hc-label-only">{c.label}</div>
                             )}
-                            {/* Diff содержимого (html/wysiwyg) */}
-                            {c.field === 'content' && (c.addedLines || c.removedLines) && (
-                              <div className="hc-content-diff">
-                                <span className="hc-label">Содержимое:</span>
-                                <div className="hc-diff-block">
-                                  {c.removedLines?.map((line, j) => (
-                                    <div key={`r${j}`} className="hc-diff-line hc-diff-removed">
-                                      <span className="hc-diff-sign">−</span>{line}
-                                    </div>
-                                  ))}
-                                  {c.addedLines?.map((line, j) => (
-                                    <div key={`a${j}`} className="hc-diff-line hc-diff-added">
-                                      <span className="hc-diff-sign">+</span>{line}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                            {/* Diff строк — для содержимого страницы и описания врача */}
+                            {(c.addedLines || c.removedLines) && renderDiffBlock(c, entry.id, i)}
                             {/* Diff таблицы (spreadsheet) */}
                             {c.field === 'content' && c.changedCells && (
                               <div className="hc-content-diff">

@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
+const { diffLines } = require('diff');
 const axios = require('axios');
 const qs = require('qs');
 const { DoctorCard, SearchIndex, User, Page, PageHistory } = require('../models');
@@ -17,17 +18,43 @@ const MIS_TIMEOUT = 15000;
 async function recordHistory(pageSlug, userId, summary, changes = []) {
   try {
     const page = await Page.findOne({ where: { slug: pageSlug } });
-    if (!page) return;
     await PageHistory.create({
-      pageId: page.id,
+      pageId: page ? page.id : null,
       userId,
       action: 'updated',
       changesSummary: summary,
-      metadata: { changes }
+      metadata: { changes, pageSlug }
     });
   } catch (err) {
     console.error('History record error:', err.message);
   }
+}
+
+// === HELPER: Извлечь текст из HTML для сравнения в истории (+ декодируем сущности) ===
+function stripHtml(html) {
+  if (!html) return '';
+  return (html + '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// === HELPER: Канонически сравнить два массива (без учёта порядка; null/undefined = []) ===
+function arraysEqual(a, b) {
+  const na = (a == null) ? [] : a;
+  const nb = (b == null) ? [] : b;
+  if (!Array.isArray(na) && !Array.isArray(nb)) return JSON.stringify(na) === JSON.stringify(nb);
+  if (!Array.isArray(na) || !Array.isArray(nb)) return false;
+  if (na.length !== nb.length) return false;
+  const sa = [...na].map(x => JSON.stringify(x)).sort();
+  const sb = [...nb].map(x => JSON.stringify(x)).sort();
+  return sa.join('|') === sb.join('|');
 }
 
 // Middleware для проверки прав на редактирование карточек врачей
@@ -440,16 +467,32 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
 
     // История изменений
     const detailedChanges = [];
+    // Простые текстовые поля
     const scalarFields = [
       { key: 'fullName', label: 'ФИО' },
       { key: 'specialty', label: 'Специальность' },
       { key: 'experience', label: 'Опыт' },
-      { key: 'description', label: 'Описание' },
       { key: 'profileUrl', label: 'Ссылка на профиль' },
     ];
     for (const { key, label } of scalarFields) {
       if (key in updateData && String(updateData[key] ?? '') !== String(oldValues[key] ?? '')) {
         detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updateData[key] ?? '') });
+      }
+    }
+    // Описание — хранится как HTML, показываем построчный diff
+    if ('description' in updateData) {
+      const oldDesc = stripHtml(oldValues.description);
+      const newDesc = stripHtml(updateData.description);
+      if (oldDesc !== newDesc) {
+        const chunks = diffLines(oldDesc, newDesc);
+        const addedLines = [], removedLines = [];
+        for (const chunk of chunks) {
+          const lines = chunk.value.split('\n').map(l => l.trim()).filter(Boolean);
+          if (chunk.added)   addedLines.push(...lines);
+          if (chunk.removed) removedLines.push(...lines);
+        }
+        detailedChanges.push({ field: 'description', label: 'Описание',
+          addedLines: addedLines.slice(0, 10), removedLines: removedLines.slice(0, 10) });
       }
     }
     if ('photo' in updateData && updateData.photo !== oldValues.photo) {
@@ -461,19 +504,39 @@ router.put('/:id', authenticate, canEditDoctorCards, async (req, res) => {
     if (misUserId !== undefined && String(misUserId ?? '') !== String(oldMeta.misUserId ?? '')) {
       detailedChanges.push({ field: 'misUserId', label: 'ID в МИС', from: String(oldMeta.misUserId ?? ''), to: String(misUserId ?? '') });
     }
-    if (tags !== undefined && JSON.stringify(tags) !== JSON.stringify(oldMeta.tags)) {
+    if (tags !== undefined && !arraysEqual(tags, oldMeta.tags)) {
       detailedChanges.push({ field: 'tags', label: 'Теги' });
     }
-    if (clinics !== undefined && JSON.stringify(clinics) !== JSON.stringify(oldMeta.clinics)) {
-      detailedChanges.push({ field: 'clinics', label: 'Клиники' });
+    if (clinics !== undefined && !arraysEqual(clinics, oldMeta.clinics)) {
+      const getName = (c) => (typeof c === 'string' ? c : (c?.name || c?.title || c?.clinicName || ''));
+      const oldNames = (oldMeta.clinics || []).map(getName).filter(Boolean);
+      const newNames = (clinics || []).map(getName).filter(Boolean);
+      const added   = newNames.filter(n => !oldNames.includes(n));
+      const removed = oldNames.filter(n => !newNames.includes(n));
+      if (added.length)   detailedChanges.push({ field: 'clinics', label: 'Клиники добавлены', to: added.join(', ') });
+      if (removed.length) detailedChanges.push({ field: 'clinics', label: 'Клиники удалены', from: removed.join(', ') });
+      if (!added.length && !removed.length) detailedChanges.push({ field: 'clinics', label: 'Клиники изменены' });
     }
     if (detailedChanges.length > 0) {
       const summary = detailedChanges
-        .map(c => c.from !== undefined && c.to !== undefined
-          ? `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`
-          : c.label)
+        .map(c => {
+          if (c.field === 'description') {
+            // Показываем первую изменённую строку как краткий контекст
+            const snip = (c.removedLines?.[0] || c.addedLines?.[0] || '').slice(0, 60);
+            return snip ? `Описание: «${snip}»` : 'Описание';
+          }
+          if (c.from !== undefined && c.to !== undefined)
+            return `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`;
+          if (c.to !== undefined) return `${c.label}: «${String(c.to).slice(0, 50)}»`;
+          if (c.from !== undefined) return `${c.label}: «${String(c.from).slice(0, 50)}»`;
+          return c.label;
+        })
         .join('; ');
-      await recordHistory(card.pageSlug, req.user.id, summary, detailedChanges);
+      const contextChanges = [
+        { field: 'serviceContext', label: 'Врач', to: oldValues.fullName || card.fullName },
+        ...detailedChanges
+      ];
+      await recordHistory(card.pageSlug, req.user.id, summary, contextChanges);
     }
 
     res.json(card);

@@ -150,7 +150,7 @@ const Page = sequelize.define('Page', {
 // === PAGE HISTORY MODEL ===
 const PageHistory = sequelize.define('PageHistory', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  pageId: { type: DataTypes.UUID, allowNull: false },
+  pageId: { type: DataTypes.UUID, allowNull: true },
   userId: { type: DataTypes.UUID, allowNull: false },
   action: {
     type: DataTypes.ENUM('created', 'updated', 'published', 'unpublished'),

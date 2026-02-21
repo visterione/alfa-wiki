@@ -266,6 +266,19 @@
   flex-shrink: 0;
 }
 
+.hc-context {
+  background: #f3f4f6;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.hc-context-value {
+  color: #374151;
+  font-weight: 500;
+}
+
 .hc-old {
   color: #dc2626;
   text-decoration: line-through;
@@ -294,6 +307,49 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* Кнопка свернуть/развернуть diff */
+.hc-diff-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+}
+
+.hc-diff-toggle-btn:hover .hc-label {
+  text-decoration: underline;
+}
+
+.hc-diff-stats {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.hc-diff-stat-removed { color: #dc2626; font-size: 12px; }
+.hc-diff-stat-added   { color: #16a34a; font-size: 12px; }
+.hc-diff-chevron      { color: #9ca3af; font-size: 10px; }
+
+/* Подсветка конкретного места различия внутри строки */
+.hc-mark-removed {
+  background: rgba(220, 38, 38, 0.22);
+  font-weight: 700;
+  padding: 0 2px;
+  border-radius: 2px;
+  text-decoration: line-through;
+}
+
+.hc-mark-added {
+  background: rgba(22, 163, 74, 0.22);
+  font-weight: 700;
+  padding: 0 2px;
+  border-radius: 2px;
 }
 
 .hc-diff-block {

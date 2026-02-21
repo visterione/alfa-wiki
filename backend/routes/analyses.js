@@ -18,13 +18,12 @@ const ANALYSES_PAGE_SLUG = 'analyses'; // <-- ЗАМЕНИ НА СВОЙ SLUG
 async function recordHistory(pageSlug, userId, summary, changes = []) {
   try {
     const page = await Page.findOne({ where: { slug: pageSlug } });
-    if (!page) return;
     await PageHistory.create({
-      pageId: page.id,
+      pageId: page ? page.id : null,
       userId,
       action: 'updated',
       changesSummary: summary,
-      metadata: { changes }
+      metadata: { changes, pageSlug }
     });
   } catch (err) {
     console.error('History record error:', err.message);
@@ -356,19 +355,26 @@ router.put('/:id',
 
       // История изменений
       const detailedChanges = [];
+      // numeric:true — сравниваем как float (DB возвращает DECIMAL как "220.00", запрос шлёт 220)
       const fieldDefs = [
         { key: 'lab', label: 'Лаборатория' },
         { key: 'serviceCode', label: 'Код услуги' },
         { key: 'serviceName', label: 'Название' },
-        { key: 'price', label: 'Цена' },
+        { key: 'price', label: 'Цена', numeric: true },
         { key: 'preparationLink', label: 'Подготовка' },
         { key: 'comment', label: 'Комментарий' },
         { key: 'misServiceId', label: 'ID в МИС' },
       ];
+      // Нормализация строковых значений: null/undefined/0 → "" (избегаем ложных срабатываний)
+      const normalizeStr = (v) => (v === null || v === undefined || v === 0) ? '' : String(v).trim();
       const updates = { lab, serviceCode, serviceName, price, preparationLink, comment, misServiceId };
-      for (const { key, label } of fieldDefs) {
-        if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
-          detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+      for (const { key, label, numeric } of fieldDefs) {
+        if (updates[key] !== undefined) {
+          const oldNorm = numeric ? parseFloat(oldValues[key]) : normalizeStr(oldValues[key]);
+          const newNorm = numeric ? parseFloat(updates[key]) : normalizeStr(updates[key]);
+          if (oldNorm !== newNorm) {
+            detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
+          }
         }
       }
       if (isStopped !== undefined && isStopped !== oldValues.isStopped) {
@@ -377,10 +383,16 @@ router.put('/:id',
           to: isStopped ? 'Остановлен' : 'Активен' });
       }
       if (detailedChanges.length > 0) {
-        const summary = detailedChanges
+        const changesText = detailedChanges
           .map(c => `${c.label}: «${String(c.from).slice(0, 40)}» → «${String(c.to).slice(0, 40)}»`)
           .join('; ');
-        await recordHistory(ANALYSES_PAGE_SLUG, req.user.id, summary, detailedChanges);
+        // Добавляем контекст (название услуги) как первый элемент
+        const contextChanges = [
+          { field: 'serviceContext', label: 'Услуга', to: `${analysis.serviceName} (${analysis.lab})` },
+          ...detailedChanges
+        ];
+        await recordHistory(ANALYSES_PAGE_SLUG, req.user.id,
+          `${analysis.serviceName}: ${changesText}`, contextChanges);
       }
 
       res.json(analysis);

@@ -12,13 +12,12 @@ const PRICE_COMPARE_PAGE_SLUG = 'price-compare';
 async function recordHistory(pageSlug, userId, summary, changes = []) {
   try {
     const page = await Page.findOne({ where: { slug: pageSlug } });
-    if (!page) return;
     await PageHistory.create({
-      pageId: page.id,
+      pageId: page ? page.id : null,
       userId,
       action: 'updated',
       changesSummary: summary,
-      metadata: { changes }
+      metadata: { changes, pageSlug }
     });
   } catch (err) {
     console.error('History record error:', err.message);
@@ -272,6 +271,14 @@ router.post('/:id/items',
         sortOrder: maxSortOrder + 1
       });
 
+      await recordHistory(
+        PRICE_COMPARE_PAGE_SLUG,
+        req.user.id,
+        `Добавлена услуга «${serviceName}» в «${comparison.name}»`,
+        [{ field: 'serviceContext', label: 'Сравнение', to: comparison.name },
+         { field: 'service', label: 'Добавлена услуга', to: serviceName }]
+      );
+
       res.status(201).json(item);
     } catch (error) {
       console.error('Error adding item to comparison:', error);
@@ -359,6 +366,28 @@ router.put('/:id/items/:itemId',
       // Перезагружаем item из БД чтобы убедиться что priceHistory сохранен
       await item.reload();
 
+      // Записываем изменения цен в историю
+      const priceChanges = [];
+      Object.keys(newPrices).forEach(colName => {
+        const oldP = oldPrices[colName];
+        const newP = newPrices[colName];
+        if (oldP !== newP && newP !== null && newP !== undefined && newP !== '') {
+          priceChanges.push({ field: 'price', label: colName,
+            from: oldP != null ? String(oldP) : '', to: String(newP) });
+        }
+      });
+
+      if (priceChanges.length > 0) {
+        await recordHistory(
+          PRICE_COMPARE_PAGE_SLUG,
+          req.user.id,
+          `Обновлены цены «${item.serviceName}» в «${comparison.name}»`,
+          [{ field: 'serviceContext', label: 'Сравнение', to: comparison.name },
+           { field: 'serviceContext', label: 'Услуга', to: item.serviceName },
+           ...priceChanges]
+        );
+      }
+
       res.json(item);
     } catch (error) {
       console.error('Error updating comparison item:', error);
@@ -397,7 +426,16 @@ router.delete('/:id/items/:itemId', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Услуга не найдена' });
     }
 
+    const deletedServiceName = item.serviceName;
     await item.destroy();
+
+    await recordHistory(
+      PRICE_COMPARE_PAGE_SLUG,
+      req.user.id,
+      `Удалена услуга «${deletedServiceName}» из «${comparison.name}»`,
+      [{ field: 'serviceContext', label: 'Сравнение', to: comparison.name },
+       { field: 'service', label: 'Удалена услуга', from: deletedServiceName }]
+    );
 
     res.json({ message: 'Услуга удалена' });
   } catch (error) {

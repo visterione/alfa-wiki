@@ -17,13 +17,12 @@ const MAP_PAGE_SLUG = 'map';
 async function recordHistory(pageSlug, userId, summary, changes = []) {
   try {
     const page = await Page.findOne({ where: { slug: pageSlug } });
-    if (!page) return;
     await PageHistory.create({
-      pageId: page.id,
+      pageId: page ? page.id : null,
       userId,
       action: 'updated',
       changesSummary: summary,
-      metadata: { changes }
+      metadata: { changes, pageSlug }
     });
   } catch (err) {
     console.error('History record error:', err.message);
