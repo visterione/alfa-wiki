@@ -1876,6 +1876,7 @@ window.dcApp = (function() {
 
       // Собираем услуги со всеми ценами по клиникам
       var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
+      var servicesOrder = []; // порядок вставки (Object.keys сортирует числовые ключи по возрастанию, теряя порядок МИС)
 
       console.log('🔍 clinicResults:', clinicResults);
 
@@ -1891,6 +1892,7 @@ window.dcApp = (function() {
                 service: s,
                 prices: {}
               };
+              servicesOrder.push(String(serviceId));
             }
             // Сохраняем цену для этой клиники
             if (cr.clinicId !== null) {
@@ -1902,7 +1904,7 @@ window.dcApp = (function() {
         }
       });
 
-      var servicesList = Object.keys(servicesMap).map(function(id) {
+      var servicesList = servicesOrder.map(function(id) {
         return servicesMap[id];
       });
 
@@ -1922,7 +1924,7 @@ window.dcApp = (function() {
           service: item.service,
           prices: item.prices,
           override: override,
-          sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx,
+          sortOrder: override.sortOrder !== undefined ? override.sortOrder : (10000 + idx),
           isHidden: override.isHidden || false
         };
       });
@@ -2371,6 +2373,7 @@ window.dcApp = (function() {
 
       // Собираем услуги со всеми ценами по клиникам
       var servicesMap = {}; // serviceId -> { service, prices: { clinicId: price } }
+      var servicesOrder = []; // порядок вставки (Object.keys сортирует числовые ключи по возрастанию, теряя порядок МИС)
 
       console.log('🔍 clinicResults:', clinicResults);
 
@@ -2386,6 +2389,7 @@ window.dcApp = (function() {
                 service: s,
                 prices: {}
               };
+              servicesOrder.push(String(serviceId));
             }
             // Сохраняем цену для этой клиники
             if (cr.clinicId !== null) {
@@ -2397,7 +2401,7 @@ window.dcApp = (function() {
         }
       });
 
-      var servicesList = Object.keys(servicesMap).map(function(id) {
+      var servicesList = servicesOrder.map(function(id) {
         return servicesMap[id];
       });
 
@@ -2418,7 +2422,7 @@ window.dcApp = (function() {
           aliasDuration: override.aliasDuration || '',
           isHidden: override.isHidden || false,
           isFavorite: override.isFavorite || false,
-          sortOrder: override.sortOrder !== undefined ? override.sortOrder : idx
+          sortOrder: override.sortOrder !== undefined ? override.sortOrder : (10000 + idx)
         };
       });
 
@@ -2657,24 +2661,22 @@ window.dcApp = (function() {
     if (modalServices.length > 0) {
       // Services tab was opened, save the overrides
       var preparedOverrides = {};
-      modalServices.forEach(function(service) {
-        if (service.aliasName || service.aliasDuration || service.isHidden || service.isFavorite || service.sortOrder !== modalServices.indexOf(service)) {
-          var override = {
-            aliasName: service.aliasName || '',
-            aliasDuration: service.aliasDuration || '',
-            isHidden: service.isHidden || false,
-            isFavorite: service.isFavorite || false,
-            sortOrder: service.sortOrder
-          };
-          // Для избранных услуг сохраняем полные данные для мгновенного отображения
-          if (service.isFavorite) {
-            override.title = service.title || '';
-            override.code = service.code || '';
-            override.duration = service.duration || '';
-            override.prices = service.prices || {};
-          }
-          preparedOverrides[service.id] = override;
+      modalServices.forEach(function(service, idx) {
+        var override = {
+          aliasName: service.aliasName || '',
+          aliasDuration: service.aliasDuration || '',
+          isHidden: service.isHidden || false,
+          isFavorite: service.isFavorite || false,
+          sortOrder: idx
+        };
+        // Для избранных услуг сохраняем полные данные для мгновенного отображения
+        if (service.isFavorite) {
+          override.title = service.title || '';
+          override.code = service.code || '';
+          override.duration = service.duration || '';
+          override.prices = service.prices || {};
         }
+        preparedOverrides[service.id] = override;
       });
       metadata.serviceOverrides = preparedOverrides;
     } else if (id) {

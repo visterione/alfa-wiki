@@ -216,6 +216,9 @@ async function startServer() {
     // Initialize analyses price update cron job
     require('./cron/analysesCron');
 
+    // Initialize services price update cron job
+    require('./cron/servicesCron');
+
     // Initialize notification service with Socket.IO
     notificationService.init(io);
 
