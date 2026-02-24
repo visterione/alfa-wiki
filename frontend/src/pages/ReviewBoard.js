@@ -576,6 +576,10 @@ const ReviewBoard = () => {
 
   const getAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
+    if (avatarPath.startsWith('http://localhost') || avatarPath.startsWith('https://localhost')) {
+      const path = avatarPath.replace(/^https?:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
     if (avatarPath.startsWith('http')) return avatarPath;
     return `${BASE_URL}/${avatarPath}`;
   };
@@ -820,7 +824,7 @@ const ReviewBoard = () => {
                             {getAvatarUrl(member.avatar) ? (
                               <img src={getAvatarUrl(member.avatar)} alt="" />
                             ) : (
-                              <span>{(member.displayName || member.username).substring(0, 2).toUpperCase()}</span>
+                              <User size={13} />
                             )}
                           </div>
                           <span className="person-section-name">{member.displayName || member.username}</span>
@@ -1106,7 +1110,7 @@ const ReviewBoard = () => {
                               <img src={getAvatarUrl(a.avatar)} alt="" />
                             ) : (
                               <div className="avatar-placeholder">
-                                {(a.displayName || a.username).substring(0, 2).toUpperCase()}
+                                <User size={14} />
                               </div>
                             )}
                             <span>{a.displayName || a.username}</span>
@@ -1134,13 +1138,12 @@ const ReviewBoard = () => {
 
                       if (isComment) {
                         const avatarUrl = getAvatarUrl(entry.user?.avatar);
-                        const initials = userName ? userName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase() : '?';
                         return (
                           <div key={entry.id} className="history-comment">
                             <div className="comment-avatar">
                               {avatarUrl
                                 ? <img src={avatarUrl} alt="" />
-                                : <div className="comment-avatar-placeholder">{initials}</div>
+                                : <div className="comment-avatar-placeholder"><User size={16} /></div>
                               }
                             </div>
                             <div className="comment-body">
@@ -1371,7 +1374,7 @@ const ReviewBoard = () => {
                           <img src={getAvatarUrl(u.avatar)} alt="" />
                         ) : (
                           <div className="avatar-placeholder">
-                            {(u.displayName || u.username).substring(0, 2).toUpperCase()}
+                            <User size={14} />
                           </div>
                         )}
                         <span>{u.displayName || u.username}</span>

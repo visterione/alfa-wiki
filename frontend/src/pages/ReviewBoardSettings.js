@@ -329,6 +329,10 @@ const ReviewBoardSettings = () => {
 
   const getAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
+    if (avatarPath.startsWith('http://localhost') || avatarPath.startsWith('https://localhost')) {
+      const path = avatarPath.replace(/^https?:\/\/localhost:\d+\//, '');
+      return `${BASE_URL}/${path}`;
+    }
     if (avatarPath.startsWith('http')) return avatarPath;
     return `${BASE_URL}/${avatarPath}`;
   };
