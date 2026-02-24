@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
+const { Op, Sequelize } = require('sequelize');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
@@ -9,11 +10,21 @@ const notificationService = require('../services/notificationService');
 const router = express.Router();
 
 // Get basic list of users (for assignee selection, etc.) - available to all authenticated users
+// Optional query param: ?access=reviews — returns only users with adminAccess.reviews=true (or isAdmin)
 router.get('/list', authenticate, async (req, res) => {
   try {
+    const where = { isActive: true };
+
+    if (req.query.access === 'reviews') {
+      where[Op.or] = [
+        { isAdmin: true },
+        Sequelize.literal(`"adminAccess"->>'reviews' = 'true'`)
+      ];
+    }
+
     const users = await User.findAll({
       attributes: ['id', 'username', 'displayName', 'avatar'],
-      where: { isActive: true },
+      where,
       order: [['displayName', 'ASC']]
     });
     res.json(users);

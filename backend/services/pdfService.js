@@ -226,6 +226,167 @@ async function generateReviewPdf(review, board, history) {
   });
 }
 
+// ─── Diff-утилиты для PDF ────────────────────────────────────────────────────
+
+// Пословный diff через LCS: возвращает токены {v, t}  (t: -1=удалено, 0=без изм., 1=добавлено)
+function getDiffTokens(oldText, newText) {
+  const tok = s => (s.match(/\S+|\s+/g) || []);
+  const A = tok(oldText), B = tok(newText);
+  if (A.length > 400 || B.length > 400) return null;
+  const m = A.length, n = B.length;
+  const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = A[i-1] === B[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+  const result = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && A[i-1] === B[j-1]) { result.unshift({ v: A[i-1], t: 0 }); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { result.unshift({ v: B[j-1], t: 1 }); j--; }
+    else { result.unshift({ v: A[i-1], t: -1 }); i--; }
+  }
+  return result;
+}
+
+// Рендер строки с пословной подсветкой (filtered tokens, continued-mode)
+function renderInlineDiffLine(doc, tokens, excludeType, signChar, signColor, x, width) {
+  const toks = tokens.filter(t => t.t !== excludeType);
+  if (!toks.length) return;
+  doc.fontSize(8).font('DejaVu').fillColor(signColor)
+    .text(signChar + ' ', x, doc.y, { continued: true, width });
+  toks.forEach((tok, idx) => {
+    const isLast = idx === toks.length - 1;
+    if (tok.t !== 0) {
+      doc.font('DejaVu-Bold').fillColor(excludeType === 1 ? '#dc2626' : '#16a34a')
+        .text(tok.v, { continued: !isLast });
+    } else {
+      doc.font('DejaVu').fillColor('#374151').text(tok.v, { continued: !isLast });
+    }
+  });
+  doc.font('DejaVu').fillColor('#000000');
+}
+
+// Рендер массива changes из entry.metadata.changes в PDFDocument
+function renderChangesInPdf(doc, changes, leftMargin) {
+  leftMargin = leftMargin || 65;
+  const pageW = 545;
+  const contentW = pageW - leftMargin;
+
+  for (const c of changes) {
+    if (doc.y > 700) doc.addPage();
+
+    // Контекст (serviceContext)
+    if (c.field === 'serviceContext' && c.to !== undefined) {
+      doc.fontSize(8).font('DejaVu').fillColor('#6b7280')
+        .text(c.label + ': ' + String(c.to).slice(0, 100), leftMargin, doc.y, { width: contentW });
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Построчный diff
+    if (c.addedLines || c.removedLines) {
+      const rCount = c.removedLines ? c.removedLines.length : 0;
+      const aCount = c.addedLines ? c.addedLines.length : 0;
+      const statStr = [rCount > 0 ? '-' + rCount : '', aCount > 0 ? '+' + aCount : ''].filter(Boolean).join(' ');
+      doc.fontSize(8).font('DejaVu-Bold').fillColor('#374151')
+        .text(c.label + (statStr ? ': ' + statStr : ''), leftMargin, doc.y, { width: contentW });
+
+      const inlineTokens = (rCount === 1 && aCount === 1)
+        ? getDiffTokens(c.removedLines[0], c.addedLines[0]) : null;
+
+      if (inlineTokens) {
+        if (doc.y > 700) doc.addPage();
+        renderInlineDiffLine(doc, inlineTokens, 1, '−', '#dc2626', leftMargin + 8, contentW - 8);
+        if (doc.y > 700) doc.addPage();
+        renderInlineDiffLine(doc, inlineTokens, -1, '+', '#16a34a', leftMargin + 8, contentW - 8);
+      } else {
+        if (c.removedLines) {
+          for (const line of c.removedLines) {
+            if (doc.y > 700) doc.addPage();
+            doc.fontSize(8).font('DejaVu').fillColor('#dc2626')
+              .text('− ' + String(line).slice(0, 250), leftMargin + 8, doc.y, { width: contentW - 8 });
+          }
+        }
+        if (c.addedLines) {
+          for (const line of c.addedLines) {
+            if (doc.y > 700) doc.addPage();
+            doc.fontSize(8).font('DejaVu').fillColor('#16a34a')
+              .text('+ ' + String(line).slice(0, 250), leftMargin + 8, doc.y, { width: contentW - 8 });
+          }
+        }
+      }
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Ячейки таблицы (spreadsheet)
+    if (c.changedCells && c.changedCells.length > 0) {
+      doc.fontSize(8).font('DejaVu-Bold').fillColor('#374151')
+        .text((c.label || 'Таблица') + ':', leftMargin, doc.y, { width: contentW });
+      for (const cell of c.changedCells) {
+        if (doc.y > 700) doc.addPage();
+        doc.font('DejaVu-Bold').fillColor('#374151')
+          .text(cell.cell + ': ', leftMargin + 8, doc.y, { continued: true, width: contentW - 8 });
+        if (cell.from !== '') {
+          doc.font('DejaVu').fillColor('#dc2626')
+            .text('\u00ab' + String(cell.from).slice(0, 40) + '\u00bb ', { continued: true });
+          doc.fillColor('#9ca3af').text('\u2192 ', { continued: true });
+        }
+        if (cell.to !== '') {
+          doc.font('DejaVu').fillColor('#16a34a')
+            .text('\u00ab' + String(cell.to).slice(0, 40) + '\u00bb', { continued: false });
+        } else {
+          doc.fillColor('#dc2626').text('\u0443\u0434\u0430\u043b\u0435\u043d\u043e', { continued: false });
+        }
+      }
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Скалярное поле: было → стало
+    if (c.from !== undefined && c.to !== undefined) {
+      doc.fontSize(8).font('DejaVu-Bold').fillColor('#374151')
+        .text(c.label + ': ', leftMargin, doc.y, { continued: true, width: contentW });
+      doc.font('DejaVu').fillColor('#dc2626')
+        .text('\u00ab' + String(c.from).slice(0, 60) + '\u00bb ', { continued: true });
+      doc.fillColor('#9ca3af').text('\u2192 ', { continued: true });
+      doc.fillColor('#16a34a')
+        .text('\u00ab' + String(c.to).slice(0, 60) + '\u00bb', { continued: false });
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Только to (добавлено)
+    if (c.from === undefined && c.to !== undefined && c.field !== 'content') {
+      doc.fontSize(8).font('DejaVu-Bold').fillColor('#374151')
+        .text(c.label + ': ', leftMargin, doc.y, { continued: true, width: contentW });
+      doc.font('DejaVu').fillColor('#16a34a')
+        .text('\u00ab' + String(c.to).slice(0, 60) + '\u00bb', { continued: false });
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Только from (удалено)
+    if (c.to === undefined && c.from !== undefined && c.field !== 'content') {
+      doc.fontSize(8).font('DejaVu-Bold').fillColor('#374151')
+        .text(c.label + ': ', leftMargin, doc.y, { continued: true, width: contentW });
+      doc.font('DejaVu').fillColor('#dc2626')
+        .text('\u00ab' + String(c.from).slice(0, 60) + '\u00bb', { continued: false });
+      doc.fillColor('#000000');
+      continue;
+    }
+
+    // Просто метка
+    if (c.label) {
+      doc.fontSize(8).font('DejaVu').fillColor('#6b7280')
+        .text(c.label, leftMargin, doc.y, { width: contentW });
+      doc.fillColor('#000000');
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Генерация PDF отчета по истории изменений страницы
  */
@@ -330,8 +491,10 @@ async function generatePageHistoryPdf(page, history) {
           doc.font('DejaVu').text(`   ${userName}`, { indent: 15 });
           doc.font('DejaVu-Bold').text(`   ${actionLabel}`, { indent: 15 });
 
-          // Описание изменений (если есть)
-          if (entry.changesSummary) {
+          // Детальные изменения (если есть структурированный diff)
+          if (entry.metadata && entry.metadata.changes && entry.metadata.changes.length > 0) {
+            renderChangesInPdf(doc, entry.metadata.changes, 65);
+          } else if (entry.changesSummary) {
             doc.fillColor('#374151').font('DejaVu').text(`   ${entry.changesSummary}`, {
               indent: 15,
               width: 480

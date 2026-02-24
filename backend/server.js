@@ -225,6 +225,12 @@ async function startServer() {
     // Initialize accreditations/vehicles reminders cron job (sends to chat)
     require('./cron/accreditationsVehiclesCron');
 
+    // Initialize review sync cron job (twice a day: 08:00 and 20:00 MSK)
+    require('./cron/reviewSyncCron');
+
+    // Initialize review auto-archive cron job (daily at 04:00 MSK)
+    require('./cron/reviewArchiveCron');
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`✅ Socket.IO initialized`);

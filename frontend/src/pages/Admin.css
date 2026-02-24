@@ -166,6 +166,80 @@
 .checkbox-item { display: flex; align-items: center; gap: 14px; font-size: 14px; cursor: pointer; }
 .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); margin-right: 8px; }
 
+/* Admin toggle switch */
+.admin-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  user-select: none;
+  padding: 3px 0;
+}
+
+.admin-toggle-track {
+  width: 36px;
+  height: 20px;
+  background: #aeaeb2 !important; /* явный серый, не зависящий от CSS переменных */
+  border-radius: 10px;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s;
+  display: inline-block; /* не span-block, чтобы не схлопнуться */
+}
+
+.admin-toggle-track.on {
+  background: #3b82f6 !important;
+}
+
+.admin-toggle-track.forced {
+  background: #3b82f6 !important;
+  opacity: 0.55;
+}
+
+.admin-toggle-track::after {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff !important;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.admin-toggle-track.on::after,
+.admin-toggle-track.forced::after {
+  transform: translateX(16px);
+}
+
+.admin-toggle-label {
+  font-size: 14px;
+  color: var(--text-primary);
+  padding-left: 6px;
+}
+
+/* Главный тумблер "Администратор" — чуть крупнее */
+.admin-toggle-item.admin-main .admin-toggle-track {
+  width: 42px;
+  height: 24px;
+  border-radius: 12px;
+}
+
+.admin-toggle-item.admin-main .admin-toggle-track::after {
+  width: 20px;
+  height: 20px;
+}
+
+.admin-toggle-item.admin-main .admin-toggle-track.on::after {
+  transform: translateX(18px);
+}
+
+.admin-toggle-item.admin-main .admin-toggle-label {
+  font-weight: 500;
+}
+
 /* Admin Dashboard Grid */
 .admin-dashboard-grid {
   display: grid;

@@ -55,7 +55,7 @@ export const auth = {
 // Users
 export const users = {
   list: (params) => api.get('/users', { params }), // Admin only - full user list with all details
-  listBasic: () => api.get('/users/list'), // All authenticated users - basic list for assignee selection
+  listBasic: (params) => api.get('/users/list', { params }), // All authenticated users - basic list for assignee selection
   get: (id) => api.get(`/users/${id}`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
@@ -94,7 +94,8 @@ export const pages = {
 export const journal = {
   list: (params) => api.get('/journal', { params }),
   activities: (params) => api.get('/journal/activities', { params }),
-  activityModules: () => api.get('/journal/activity-modules')
+  activityModules: () => api.get('/journal/activity-modules'),
+  pageAuthors: () => api.get('/journal/page-authors')
 };
 
 // Folders
@@ -483,7 +484,16 @@ export const reviews = {
   deleteFile: (fileId, reviewId) => api.delete(`/reviews/files/${fileId}?reviewId=${reviewId}`),
 
   // === DOCTORS AUTOCOMPLETE ===
-  suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } })
+  suggestDoctors: (query) => api.get('/reviews/doctors/suggest', { params: { q: query } }),
+
+  // === SYNC ===
+  getSyncProviders: () => api.get('/reviews/sync/providers'),
+  getSyncConfigs: (boardId) => api.get(`/reviews/sync/configs/${boardId}`),
+  saveSyncConfig: (boardId, provider, data) => api.put(`/reviews/sync/configs/${boardId}/${provider}`, data),
+  testSyncConnection: (boardId, provider, credentials) =>
+    api.post(`/reviews/sync/test/${boardId}/${provider}`, { credentials }),
+  runSync: (boardId) => api.post(`/reviews/sync/run/${boardId}`),
+  runSyncProvider: (boardId, provider) => api.post(`/reviews/sync/run/${boardId}/${provider}`)
 };
 
 // === EMAIL API ===

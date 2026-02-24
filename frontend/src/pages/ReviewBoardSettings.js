@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Save, Users, Bell, UserPlus, X, Search, Trash2, ChevronDown
+  ArrowLeft, Save, Users, UserPlus, X, Search, Trash2,
+  RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff, Play, User, Bell, ChevronDown
 } from 'lucide-react';
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { REVIEW_ROLES, ACCESS_ROLE_LABELS, ACCESS_ROLE_COLORS } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewBoardSettings.css';
 
@@ -32,19 +32,23 @@ const ReviewBoardSettings = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedRole, setSelectedRole] = useState('editor');
 
-  // Board roles
-  const [boardRoles, setBoardRoles] = useState({});
-  const [showAddRole, setShowAddRole] = useState(false);
-  const [roleToAdd, setRoleToAdd] = useState('');
-  const [userForRole, setUserForRole] = useState(null);
-  const [roleSearchQuery, setRoleSearchQuery] = useState('');
-
-  // Notification settings
+  // Notification settings (per-user)
   const [notificationSettings, setNotificationSettings] = useState({
-    newReview: { roles: [], users: [] },
+    newPositiveReview: { roles: [], users: [] },
+    newNegativeReview: { roles: [], users: [] },
     statusChange: { roles: [], users: [] },
-    assignment: { roles: [], users: [] }
+    workComplete: { roles: [], users: [] },
+    archiveReview: { roles: [], users: [] }
   });
+  const [openNotifFor, setOpenNotifFor] = useState(null);
+
+  // Sync state
+  const [syncConfigs, setSyncConfigs] = useState([]);
+  const [syncEdits, setSyncEdits] = useState({});       // { provider: { credentials, isEnabled } }
+  const [syncVisible, setSyncVisible] = useState({});   // { provider: { fieldKey: bool } }
+  const [syncTesting, setSyncTesting] = useState({});   // { provider: bool }
+  const [syncRunning, setSyncRunning] = useState(false);
+  const [syncFilials, setSyncFilials] = useState(null); // список филиалов после тестирования
 
   // Active tab
   const [activeTab, setActiveTab] = useState('general');
@@ -56,12 +60,12 @@ const ReviewBoardSettings = () => {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [boardRes, permissionsRes, rolesRes, settingsRes, usersRes] = await Promise.all([
+      const [boardRes, permissionsRes, usersRes, syncRes, settingsRes] = await Promise.all([
         reviews.getBoard(boardId),
         reviews.getBoardPermissions(boardId),
-        reviews.getBoardRoles(boardId),
-        reviews.getBoardSettings(boardId),
-        users.listBasic()
+        users.listBasic({ access: 'reviews' }),
+        reviews.getSyncConfigs(boardId).catch(() => ({ data: [] })),
+        reviews.getBoardSettings(boardId).catch(() => ({ data: {} }))
       ]);
 
       const boardData = boardRes.data;
@@ -69,13 +73,16 @@ const ReviewBoardSettings = () => {
       setBoardName(boardData.name);
       setBoardDescription(boardData.description || '');
       setPermissions(permissionsRes.data);
-      setBoardRoles(rolesRes.data);
-      setNotificationSettings(settingsRes.data.notificationSettings || {
-        newReview: { roles: [], users: [] },
-        statusChange: { roles: [], users: [] },
-        assignment: { roles: [], users: [] }
-      });
       setUsersList(usersRes.data);
+      setSyncConfigs(syncRes.data || []);
+      const ns = settingsRes.data?.notificationSettings;
+      if (ns) setNotificationSettings({
+        newPositiveReview: ns.newPositiveReview || { roles: [], users: [] },
+        newNegativeReview: ns.newNegativeReview || { roles: [], users: [] },
+        statusChange: ns.statusChange || { roles: [], users: [] },
+        workComplete: ns.workComplete || { roles: [], users: [] },
+        archiveReview: ns.archiveReview || { roles: [], users: [] }
+      });
 
       if (boardData.userRole !== 'owner' && !user.isAdmin) {
         toast.error('Только владелец может редактировать настройки');
@@ -87,6 +94,17 @@ const ReviewBoardSettings = () => {
       navigate('/reviews');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!window.confirm(`Удалить доску "${board.name}" и все её отзывы? Это действие необратимо.`)) return;
+    try {
+      await reviews.deleteBoard(boardId);
+      toast.success('Доска удалена');
+      navigate('/reviews');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Ошибка при удалении доски');
     }
   };
 
@@ -160,67 +178,24 @@ const ReviewBoardSettings = () => {
     }
   };
 
-  // Board roles management
-  const handleAddBoardRole = async () => {
-    if (!roleToAdd || !userForRole) {
-      toast.error('Выберите роль и пользователя');
-      return;
-    }
+  const NOTIF_EVENTS = [
+    { key: 'newPositiveReview', label: 'Новый положительный отзыв' },
+    { key: 'newNegativeReview', label: 'Новый отрицательный отзыв' },
+    { key: 'statusChange', label: 'Изменение статуса' },
+    { key: 'workComplete', label: 'Завершение работы' },
+    { key: 'archiveReview', label: 'Архив' }
+  ];
 
-    try {
-      const response = await reviews.addBoardRole(boardId, {
-        roleName: roleToAdd,
-        userId: userForRole
-      });
+  const getNotifCount = (uid) =>
+    NOTIF_EVENTS.filter(e => notificationSettings[e.key]?.users?.includes(uid)).length;
 
-      // Update local state
-      setBoardRoles(prev => ({
-        ...prev,
-        [roleToAdd]: {
-          ...prev[roleToAdd],
-          users: [...(prev[roleToAdd]?.users || []), { id: response.data.id, user: response.data.user }]
-        }
-      }));
-
-      setShowAddRole(false);
-      setRoleToAdd('');
-      setUserForRole(null);
-      setRoleSearchQuery('');
-      toast.success('Роль назначена');
-    } catch (err) {
-      console.error('Error adding role:', err);
-      toast.error(err.response?.data?.error || 'Ошибка при назначении роли');
-    }
-  };
-
-  const handleRemoveBoardRole = async (roleName, roleId) => {
-    try {
-      await reviews.deleteBoardRole(boardId, roleId);
-      setBoardRoles(prev => ({
-        ...prev,
-        [roleName]: {
-          ...prev[roleName],
-          users: prev[roleName].users.filter(u => u.id !== roleId)
-        }
-      }));
-      toast.success('Роль удалена');
-    } catch (err) {
-      console.error('Error removing role:', err);
-      toast.error('Ошибка при удалении роли');
-    }
-  };
-
-  // Notification settings
-  const toggleNotificationRole = (event, roleName) => {
+  const toggleNotificationUser = (event, userId) => {
     setNotificationSettings(prev => {
-      const eventSettings = prev[event] || { roles: [], users: [] };
-      const roles = eventSettings.roles.includes(roleName)
-        ? eventSettings.roles.filter(r => r !== roleName)
-        : [...eventSettings.roles, roleName];
-      return {
-        ...prev,
-        [event]: { ...eventSettings, roles }
-      };
+      const ev = prev[event] || { roles: [], users: [] };
+      const us = ev.users?.includes(userId)
+        ? ev.users.filter(u => u !== userId)
+        : [...(ev.users || []), userId];
+      return { ...prev, [event]: { ...ev, users: us } };
     });
   };
 
@@ -230,12 +205,127 @@ const ReviewBoardSettings = () => {
       await reviews.updateBoardSettings(boardId, { notificationSettings });
       toast.success('Настройки уведомлений сохранены');
     } catch (err) {
-      console.error('Error saving notifications:', err);
       toast.error('Ошибка при сохранении');
     } finally {
       setSaving(false);
     }
   };
+
+  // ── Sync handlers ─────────────────────────────────────────────────────────
+
+  const getSyncEdit = (provider) => syncEdits[provider] || {};
+
+  const setSyncField = (provider, field, value) => {
+    setSyncEdits(prev => ({
+      ...prev,
+      [provider]: { ...prev[provider], [field]: value }
+    }));
+  };
+
+  const setSyncCredField = (provider, key, value) => {
+    setSyncEdits(prev => ({
+      ...prev,
+      [provider]: {
+        ...prev[provider],
+        credentials: { ...(prev[provider]?.credentials || {}), [key]: value }
+      }
+    }));
+  };
+
+  const toggleFieldVisibility = (provider, fieldKey) => {
+    setSyncVisible(prev => ({
+      ...prev,
+      [provider]: { ...(prev[provider] || {}), [fieldKey]: !(prev[provider]?.[fieldKey]) }
+    }));
+  };
+
+  const getSyncCredentials = (config) => {
+    const edited = syncEdits[config.provider]?.credentials;
+    if (edited) {
+      // Мержим: берём то что пользователь не менял из конфига, изменённое — из edits
+      const merged = { ...config.credentials };
+      Object.entries(edited).forEach(([k, v]) => { if (v !== undefined) merged[k] = v; });
+      return merged;
+    }
+    return config.credentials;
+  };
+
+  const handleSaveSyncConfig = async (config) => {
+    try {
+      const edit = getSyncEdit(config.provider);
+      const credentials = getSyncCredentials(config);
+      const isEnabled = edit.isEnabled !== undefined ? edit.isEnabled : config.isEnabled;
+
+      await reviews.saveSyncConfig(boardId, config.provider, { isEnabled, credentials });
+
+      // Обновляем локальный стейт
+      setSyncConfigs(prev => prev.map(c =>
+        c.provider === config.provider ? { ...c, isEnabled, credentials: { ...c.credentials, ...credentials } } : c
+      ));
+      setSyncEdits(prev => { const next = { ...prev }; delete next[config.provider]; return next; });
+      toast.success(`Настройки ${config.label} сохранены`);
+    } catch (err) {
+      toast.error('Ошибка при сохранении');
+    }
+  };
+
+  const handleTestSync = async (config) => {
+    setSyncTesting(prev => ({ ...prev, [config.provider]: true }));
+    setSyncFilials(null);
+    try {
+      const credentials = getSyncCredentials(config);
+      const res = await reviews.testSyncConnection(boardId, config.provider, credentials);
+      if (res.data.success) {
+        toast.success(`${config.label}: ${res.data.message}`);
+        if (res.data.filials?.length) setSyncFilials(res.data.filials);
+      } else {
+        toast.error(`${config.label}: ${res.data.message}`);
+      }
+    } catch (err) {
+      toast.error('Ошибка проверки подключения');
+    } finally {
+      setSyncTesting(prev => ({ ...prev, [config.provider]: false }));
+    }
+  };
+
+  const handleRunSyncProvider = async (config) => {
+    setSyncRunning(true);
+    try {
+      await reviews.runSyncProvider(boardId, config.provider);
+      toast.success(`Синхронизация ${config.label} запущена — результат появится через несколько секунд`);
+      // Обновим статус через 5 сек
+      setTimeout(async () => {
+        try {
+          const res = await reviews.getSyncConfigs(boardId);
+          setSyncConfigs(res.data || []);
+        } catch (_) {}
+        setSyncRunning(false);
+      }, 5000);
+    } catch (err) {
+      toast.error('Ошибка запуска синхронизации');
+      setSyncRunning(false);
+    }
+  };
+
+  const handleRunAllSync = async () => {
+    setSyncRunning(true);
+    try {
+      await reviews.runSync(boardId);
+      toast.success('Синхронизация всех площадок запущена');
+      setTimeout(async () => {
+        try {
+          const res = await reviews.getSyncConfigs(boardId);
+          setSyncConfigs(res.data || []);
+        } catch (_) {}
+        setSyncRunning(false);
+      }, 8000);
+    } catch (err) {
+      toast.error('Ошибка запуска синхронизации');
+      setSyncRunning(false);
+    }
+  };
+
+  // ── End sync handlers ──────────────────────────────────────────────────────
 
   const getAvatarUrl = (avatarPath) => {
     if (!avatarPath) return null;
@@ -290,17 +380,11 @@ const ReviewBoardSettings = () => {
           Доступ
         </button>
         <button
-          className={`tab ${activeTab === 'roles' ? 'active' : ''}`}
-          onClick={() => setActiveTab('roles')}
+          className={`tab ${activeTab === 'sync' ? 'active' : ''}`}
+          onClick={() => setActiveTab('sync')}
         >
-          Роли
-        </button>
-        <button
-          className={`tab ${activeTab === 'notifications' ? 'active' : ''}`}
-          onClick={() => setActiveTab('notifications')}
-        >
-          <Bell size={16} />
-          Уведомления
+          <RefreshCw size={16} />
+          Синхронизация
         </button>
       </div>
 
@@ -338,6 +422,19 @@ const ReviewBoardSettings = () => {
               <Save size={16} />
               {saving ? 'Сохранение...' : 'Сохранить'}
             </button>
+
+            <div className="danger-zone">
+              <div className="danger-action">
+                <div className="danger-action-info">
+                  <strong>Удалить доску</strong>
+                  <p>Безвозвратно удалит доску и все её отзывы</p>
+                </div>
+                <button className="btn-delete-board" onClick={handleDeleteBoard}>
+                  <Trash2 size={16} />
+                  Удалить доску
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -352,52 +449,103 @@ const ReviewBoardSettings = () => {
               </button>
             </div>
 
+            {/* Overlay to close notification dropdown on outside click */}
+            {openNotifFor && (
+              <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setOpenNotifFor(null)} />
+            )}
+
             <div className="permissions-list">
               {/* Owner */}
-              <div className="permission-item owner">
-                <div className="user-info">
+              <div className="permission-item">
+                <div className="perm-user-info">
                   {getAvatarUrl(board?.owner?.avatar) ? (
-                    <img src={getAvatarUrl(board?.owner?.avatar)} alt="" />
+                    <img src={getAvatarUrl(board?.owner?.avatar)} alt="" className="perm-avatar-img" />
                   ) : (
-                    <div className="avatar-placeholder">
-                      {(board?.owner?.displayName || board?.owner?.username || '').substring(0, 2).toUpperCase()}
-                    </div>
+                    <div className="perm-avatar"><User size={18} /></div>
                   )}
-                  <div className="user-details">
+                  <div className="perm-user-details">
                     <span className="name">{board?.owner?.displayName || board?.owner?.username}</span>
                     <span className="email">{board?.owner?.email}</span>
                   </div>
                 </div>
-                <div className="role-badge owner">Владелец</div>
+                <div className="perm-actions-group">
+                  {/* Notification dropdown */}
+                  <div className="notif-dropdown-wrap" onMouseDown={e => e.stopPropagation()}>
+                    <button
+                      className={`notif-btn${getNotifCount(board?.ownerId) > 0 ? ' active' : ''}`}
+                      onClick={() => setOpenNotifFor(p => p === board?.ownerId ? null : board?.ownerId)}
+                    >
+                      <Bell size={12} />
+                      {getNotifCount(board?.ownerId) > 0 && <span>{getNotifCount(board?.ownerId)}</span>}
+                      <ChevronDown size={10} />
+                    </button>
+                    {openNotifFor === board?.ownerId && (
+                      <div className="notif-panel">
+                        {NOTIF_EVENTS.map(({ key, label }) => {
+                          const checked = notificationSettings[key]?.users?.includes(board?.ownerId) || false;
+                          return (
+                            <label key={key} className="notif-option">
+                              <span>{label}</span>
+                              <span className={`notif-toggle${checked ? ' on' : ''}`} />
+                              <input type="checkbox" checked={checked} onChange={() => toggleNotificationUser(key, board?.ownerId)} />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="role-badge owner">Владелец</div>
+                </div>
               </div>
 
               {/* Other users */}
               {permissions.filter(p => p.role !== 'owner').map(perm => (
                 <div key={perm.id} className="permission-item">
-                  <div className="user-info">
+                  <div className="perm-user-info">
                     {getAvatarUrl(perm.user?.avatar) ? (
-                      <img src={getAvatarUrl(perm.user?.avatar)} alt="" />
+                      <img src={getAvatarUrl(perm.user?.avatar)} alt="" className="perm-avatar-img" />
                     ) : (
-                      <div className="avatar-placeholder">
-                        {(perm.user?.displayName || perm.user?.username || '').substring(0, 2).toUpperCase()}
-                      </div>
+                      <div className="perm-avatar"><User size={18} /></div>
                     )}
-                    <div className="user-details">
+                    <div className="perm-user-details">
                       <span className="name">{perm.user?.displayName || perm.user?.username}</span>
                     </div>
                   </div>
-                  <div className="permission-actions">
+                  <div className="perm-actions-group">
+                    {/* Notification dropdown */}
+                    <div className="notif-dropdown-wrap" onMouseDown={e => e.stopPropagation()}>
+                      <button
+                        className={`notif-btn${getNotifCount(perm.userId) > 0 ? ' active' : ''}`}
+                        onClick={() => setOpenNotifFor(p => p === perm.userId ? null : perm.userId)}
+                      >
+                        <Bell size={12} />
+                        {getNotifCount(perm.userId) > 0 && <span>{getNotifCount(perm.userId)}</span>}
+                        <ChevronDown size={10} />
+                      </button>
+                      {openNotifFor === perm.userId && (
+                        <div className="notif-panel">
+                          {NOTIF_EVENTS.map(({ key, label }) => {
+                            const checked = notificationSettings[key]?.users?.includes(perm.userId) || false;
+                            return (
+                              <label key={key} className="notif-option">
+                                <span>{label}</span>
+                                <span className={`notif-toggle${checked ? ' on' : ''}`} />
+                                <input type="checkbox" checked={checked} onChange={() => toggleNotificationUser(key, perm.userId)} />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <select
+                      className="perm-role-select"
                       value={perm.role}
                       onChange={(e) => handleChangePermissionRole(perm.id, e.target.value)}
                     >
                       <option value="editor">Редактор</option>
                       <option value="viewer">Наблюдатель</option>
                     </select>
-                    <button
-                      className="btn-remove"
-                      onClick={() => handleRemovePermission(perm.id)}
-                    >
+                    <button className="perm-remove-btn" onClick={() => handleRemovePermission(perm.id)}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -409,6 +557,13 @@ const ReviewBoardSettings = () => {
                   <p>Нет добавленных пользователей</p>
                 </div>
               )}
+            </div>
+
+            <div className="perm-notifications-footer">
+              <button className="btn-save" onClick={handleSaveNotifications} disabled={saving}>
+                <Save size={14} />
+                {saving ? 'Сохранение...' : 'Сохранить'}
+              </button>
             </div>
 
             {/* Add user modal */}
@@ -486,199 +641,165 @@ const ReviewBoardSettings = () => {
           </div>
         )}
 
-        {/* Roles Tab */}
-        {activeTab === 'roles' && (
-          <div className="settings-section">
-            <div className="section-header">
-              <h2>Бизнес-роли</h2>
-              <button className="btn-add" onClick={() => setShowAddRole(true)}>
-                <UserPlus size={16} />
-                Назначить
-              </button>
+        {/* Sync Tab */}
+        {activeTab === 'sync' && (() => {
+          const config = syncConfigs[0];
+          if (!config) return (
+            <div className="settings-section">
+              <h2>Синхронизация отзывов</h2>
+              <p className="section-description">Загрузка...</p>
             </div>
+          );
 
-            <p className="section-description">
-              Бизнес-роли определяют, кто получает уведомления и участвует в обработке отзывов.
-            </p>
+          const edit = getSyncEdit(config.provider);
+          const isEnabled = edit.isEnabled !== undefined ? edit.isEnabled : config.isEnabled;
+          const hasEdits = Object.keys(edit).length > 0;
 
-            <div className="roles-list">
-              {REVIEW_ROLES.map(role => (
-                <div key={role.id} className="role-section">
-                  <div className="role-header">
-                    <div className="role-info">
-                      <h4>{role.label}</h4>
-                      <span className="role-description">{role.description}</span>
-                    </div>
+          return (
+            <div className="settings-section">
+              <div className="section-header">
+                <h2>Синхронизация отзывов</h2>
+                {isEnabled && config.isConfigured && (
+                  <button
+                    className="btn-add"
+                    onClick={() => handleRunSyncProvider(config)}
+                    disabled={syncRunning}
+                  >
+                    <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
+                    {syncRunning ? 'Синхронизация...' : 'Синхронизировать'}
+                  </button>
+                )}
+              </div>
+
+              <div className="sync-config-card enabled-always">
+                {/* Заголовок */}
+                <div className="sync-card-header">
+                  <div className="sync-platform-info">
+                    <span className="sync-platform-name">{config.label}</span>
                   </div>
-                  <div className="role-users">
-                    {boardRoles[role.id]?.users?.length > 0 ? (
-                      boardRoles[role.id].users.map(assignment => (
-                        <div key={assignment.id} className="role-user">
-                          {getAvatarUrl(assignment.user?.avatar) ? (
-                            <img src={getAvatarUrl(assignment.user?.avatar)} alt="" />
-                          ) : (
-                            <div className="avatar-placeholder">
-                              {(assignment.user?.displayName || assignment.user?.username || '').substring(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          <span>{assignment.user?.displayName || assignment.user?.username}</span>
-                          <button
-                            className="btn-remove-role"
-                            onClick={() => handleRemoveBoardRole(role.id, assignment.id)}
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="no-users">Не назначено</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add role modal */}
-            {showAddRole && (
-              <div className="modal-overlay" onClick={() => setShowAddRole(false)}>
-                <div className="modal-content small" onClick={e => e.stopPropagation()}>
-                  <div className="modal-header">
-                    <h3>Назначить роль</h3>
-                    <button className="btn-close" onClick={() => setShowAddRole(false)}>
-                      <X size={20} />
-                    </button>
-                  </div>
-
-                  <div className="modal-body">
-                    <div className="form-group">
-                      <label>Роль</label>
-                      <select
-                        value={roleToAdd}
-                        onChange={(e) => setRoleToAdd(e.target.value)}
-                      >
-                        <option value="">Выберите роль</option>
-                        {REVIEW_ROLES.map(r => (
-                          <option key={r.id} value={r.id}>{r.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label>Пользователь</label>
-                      <div className="search-box">
-                        <Search size={16} />
-                        <input
-                          type="text"
-                          placeholder="Поиск пользователя..."
-                          value={roleSearchQuery}
-                          onChange={(e) => {
-                            setRoleSearchQuery(e.target.value);
-                            setUserForRole(null);
-                          }}
-                        />
+                  <div className="sync-card-controls">
+                    {/* Статус */}
+                    {config.lastSyncAt && (
+                      <div className={`sync-status-badge ${config.lastSyncStatus}`}>
+                        {config.lastSyncStatus === 'success' && (
+                          <><CheckCircle size={12} /> +{config.lastSyncCount} · {new Date(config.lastSyncAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</>
+                        )}
+                        {config.lastSyncStatus === 'error' && (
+                          <><AlertCircle size={12} /> Ошибка</>
+                        )}
+                        {config.lastSyncStatus === 'running' && (
+                          <><RefreshCw size={12} className="spinning" /> Выполняется...</>
+                        )}
                       </div>
+                    )}
+                    {/* Тоггл */}
+                    <label className="sync-toggle">
+                      <input
+                        type="checkbox"
+                        checked={isEnabled}
+                        onChange={e => setSyncField(config.provider, 'isEnabled', e.target.checked)}
+                      />
+                      <span className="sync-toggle-slider" />
+                    </label>
+                  </div>
+                </div>
 
-                      {roleSearchQuery && (
-                        <div className="users-dropdown">
-                          {usersList
-                            .filter(u => {
-                              const search = roleSearchQuery.toLowerCase();
-                              return (u.displayName || '').toLowerCase().includes(search) ||
-                                (u.username || '').toLowerCase().includes(search);
-                            })
-                            .slice(0, 5)
-                            .map(u => (
-                              <div
-                                key={u.id}
-                                className={`user-option ${userForRole === u.id ? 'selected' : ''}`}
-                                onClick={() => {
-                                  setUserForRole(u.id);
-                                  setRoleSearchQuery(u.displayName || u.username);
-                                }}
-                              >
-                                {u.displayName || u.username}
-                              </div>
-                            ))}
+                {/* Ошибка */}
+                {config.lastSyncStatus === 'error' && config.lastSyncError && (
+                  <div className="sync-error-text">{config.lastSyncError}</div>
+                )}
+
+                {/* Поля credentials */}
+                <div className="sync-credentials">
+                  {config.credentialsSchema.map(field => {
+                    const fromEdit = edit?.credentials?.[field.key];
+                    const currentVal = fromEdit !== undefined
+                      ? fromEdit
+                      : (config.credentials?.[field.key] || '');
+                    // Если пароль пришёл с сервера как "••••••••" и пользователь ещё не редактировал —
+                    // показываем поле пустым с placeholder, чтобы не сбивать с толку
+                    const isServerMasked = field.type === 'password' && currentVal === '••••••••' && fromEdit === undefined;
+                    const isVisible = syncVisible[config.provider]?.[field.key];
+                    const inputType = field.type === 'password'
+                      ? (isVisible ? 'text' : 'password')
+                      : 'text';
+
+                    return (
+                      <div key={field.key} className="form-group sync-field">
+                        <label>{field.label}</label>
+                        <div className="sync-input-wrap">
+                          <input
+                            type={inputType}
+                            value={isServerMasked ? '' : currentVal}
+                            placeholder={isServerMasked ? '(пароль сохранён)' : (field.placeholder || '')}
+                            onChange={e => setSyncCredField(config.provider, field.key, e.target.value)}
+                          />
+                          {field.type === 'password' && (
+                            <button
+                              type="button"
+                              className="btn-eye"
+                              onClick={() => toggleFieldVisibility(config.provider, field.key)}
+                            >
+                              {isVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })}
+                </div>
 
-                  <div className="modal-footer">
-                    <button className="btn-cancel" onClick={() => setShowAddRole(false)}>
-                      Отмена
-                    </button>
+                {/* Список филиалов (после тестирования) */}
+                {syncFilials && (
+                  <div className="sync-filials-list">
+                    <p className="sync-filials-title">Доступные филиалы в вашем аккаунте:</p>
+                    <table className="sync-filials-table">
+                      <thead>
+                        <tr><th>ID</th><th>Название</th><th>Площадки</th></tr>
+                      </thead>
+                      <tbody>
+                        {syncFilials.map(f => (
+                          <tr key={f.id}>
+                            <td>
+                              <code
+                                className="sync-filial-id"
+                                onClick={() => setSyncCredField(config.provider, 'filialId', f.id)}
+                                title="Нажмите, чтобы выбрать"
+                              >{f.id}</code>
+                            </td>
+                            <td>{f.name}</td>
+                            <td className="sync-filial-platforms">{(f.platforms || []).join(', ') || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p className="field-hint">Нажмите на ID, чтобы скопировать его в поле «ID филиала»</p>
+                  </div>
+                )}
+
+                {/* Кнопки */}
+                <div className="sync-card-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={() => handleTestSync(config)}
+                    disabled={syncTesting[config.provider]}
+                  >
+                    {syncTesting[config.provider] ? 'Проверяем...' : 'Проверить подключение'}
+                  </button>
+                  {hasEdits && (
                     <button
-                      className="btn-submit"
-                      onClick={handleAddBoardRole}
-                      disabled={!roleToAdd || !userForRole}
+                      className="btn-save"
+                      onClick={() => handleSaveSyncConfig(config)}
                     >
-                      Назначить
+                      <Save size={14} />
+                      Сохранить
                     </button>
-                  </div>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Notifications Tab */}
-        {activeTab === 'notifications' && (
-          <div className="settings-section">
-            <h2>Настройки уведомлений</h2>
-            <p className="section-description">
-              Выберите, какие роли получают уведомления о событиях.
-            </p>
-
-            <div className="notification-settings">
-              <div className="notification-group">
-                <h4>Новый отзыв создан</h4>
-                <div className="notification-roles">
-                  {REVIEW_ROLES.map(role => (
-                    <label key={role.id} className="role-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.newReview?.roles?.includes(role.id) || false}
-                        onChange={() => toggleNotificationRole('newReview', role.id)}
-                      />
-                      <span>{role.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="notification-group">
-                <h4>Изменение статуса</h4>
-                <div className="notification-roles">
-                  {REVIEW_ROLES.map(role => (
-                    <label key={role.id} className="role-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={notificationSettings.statusChange?.roles?.includes(role.id) || false}
-                        onChange={() => toggleNotificationRole('statusChange', role.id)}
-                      />
-                      <span>{role.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div className="notification-group">
-                <h4>Назначение ответственных</h4>
-                <p className="group-note">Назначенные пользователи всегда получают уведомления.</p>
               </div>
             </div>
-
-            <button
-              className="btn-save"
-              onClick={handleSaveNotifications}
-              disabled={saving}
-            >
-              <Save size={16} />
-              {saving ? 'Сохранение...' : 'Сохранить настройки'}
-            </button>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

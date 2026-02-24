@@ -1,3 +1,8 @@
+.reviews-boards-page button,
+.modal-overlay button {
+  font-family: inherit;
+}
+
 .reviews-boards-page {
   padding: 2rem;
   max-width: 1400px;
@@ -198,19 +203,16 @@
 }
 
 .review-board-card .board-card-footer {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
   margin-top: auto;
 }
 
-.review-board-card .board-stats {
+.review-board-card .board-actions {
   display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
 }
 
-.review-board-card .board-stats .stat {
+.review-board-card .board-actions .stat {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -218,24 +220,20 @@
   color: var(--text-secondary);
 }
 
-.review-board-card .board-stats .stat svg {
+.review-board-card .board-actions .stat svg {
   flex-shrink: 0;
 }
 
-.review-board-card .board-stats .stat.rating {
+.review-board-card .board-actions .stat.rating {
   color: #f59e0b;
 }
 
-.review-board-card .board-stats .stat.rating svg {
+.review-board-card .board-actions .stat.rating svg {
   fill: #f59e0b;
 }
 
-.review-board-card .board-stats .stat.owner {
-  color: #3b82f6;
-  font-weight: 500;
-}
-
-.review-board-card .board-actions {
+.review-board-card .board-actions .board-btns {
+  margin-left: auto;
   display: flex;
   gap: 0.5rem;
   align-items: center;

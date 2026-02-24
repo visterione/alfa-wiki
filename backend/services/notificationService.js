@@ -1,4 +1,7 @@
 const { Chat, ChatMember, Message, User } = require('../models');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
+const { getStatusById } = require('../config/reviewStatuses');
 
 // ID Ассистента (специальный бот для общих уведомлений)
 const ASSISTANT_ID = '00000000-0000-0000-0000-000000000001';
@@ -31,12 +34,16 @@ async function getOrCreateBotChat(userId, botId, botUsername, botDisplayName, bo
 
     if (!bot) {
       // Создаем пользователя-бота, если его нет
+      const randomPassword = uuidv4() + uuidv4();
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
       bot = await User.create({
         id: botId,
         username: botUsername,
         displayName: botDisplayName,
-        password: Math.random().toString(36), // Случайный пароль (не используется)
+        email: `${botUsername}@system.local`,
+        password: hashedPassword,
         isBot: true,
+        isActive: true,
         avatar: botAvatar
       });
       console.log(`✅ Created ${botDisplayName} bot user`);
@@ -120,6 +127,12 @@ async function sendMessageFromBot(userId, messageText, metadata = {}, botId, get
       lastMessage: messageText,
       lastMessageAt: message.createdAt
     });
+
+    // Восстанавливаем чат у получателя, если он его скрыл
+    await ChatMember.update(
+      { isHidden: false },
+      { where: { chatId: chat.id, userId, isHidden: true } }
+    );
 
     // Отправляем через Socket.IO, если доступно
     if (io) {
@@ -242,13 +255,16 @@ async function sendWelcomeMessage(userId) {
 
 /**
  * Отправка уведомления о создании нового отзыва
+ * @param {boolean} isNegative - true если отзыв негативный (оценка 1-3)
  */
-async function sendReviewCreatedNotification(userId, review, board, creator) {
-  const messageText = `📝 Новый отзыв создан\n\n` +
+async function sendReviewCreatedNotification(userId, review, board, creator, isNegative = false) {
+  const prefix = isNegative ? '📝 Новый отрицательный отзыв' : '📝 Новый положительный отзыв';
+  const messageText = `${prefix}\n\n` +
     `Пациент: ${review.patientName}\n` +
     `Доска: ${board.name}\n` +
     `Оценка: ${'⭐'.repeat(review.rating)}\n` +
-    `Создал: ${creator.displayName || creator.username}`;
+    `Создал: ${creator.displayName || creator.username}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;
 
   const metadata = {
     type: 'review_created',
@@ -268,7 +284,8 @@ async function sendReviewStatusChangedNotification(userId, review, oldStatusLabe
   const messageText = `${prefix}\n\n` +
     `Пациент: ${review.patientName}\n` +
     `${oldStatusLabel} → ${newStatusLabel}\n` +
-    `Изменил: ${changer.displayName || changer.username}`;
+    `Изменил: ${changer.displayName || changer.username}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
     type: 'review_status_changed',
@@ -285,12 +302,13 @@ async function sendReviewStatusChangedNotification(userId, review, oldStatusLabe
  * Отправка уведомления о назначении ответственного за отзыв
  */
 async function sendReviewAssignedNotification(userId, review, board, assigner) {
+  const statusLabel = getStatusById(review.status)?.label || review.status;
   const messageText = `👤 Вам назначен отзыв для обработки\n\n` +
     `Пациент: ${review.patientName}\n` +
     `Доска: ${board.name}\n` +
-    `Статус: ${review.status}\n` +
+    `Статус: ${statusLabel}\n` +
     `Назначил: ${assigner.displayName || assigner.username}\n\n` +
-    `Пожалуйста, соберите необходимые сведения.`;
+    `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;
 
   const metadata = {
     type: 'review_assigned',
@@ -310,12 +328,49 @@ async function sendReviewCommentNotification(userId, review, comment, commenter,
   const messageText = `💬 Новый комментарий к отзыву\n\n` +
     `Пациент: ${review.patientName}\n` +
     `От: ${commenter.displayName || commenter.username}\n` +
-    `Комментарий: ${comment.substring(0, 200)}${comment.length > 200 ? '...' : ''}${attachmentText}`;
+    `Комментарий: ${comment.substring(0, 200)}${comment.length > 200 ? '...' : ''}${attachmentText}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
     type: 'review_comment',
     reviewId: review.id,
     hasAttachments: hasAttachments
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления о завершении работы по отзыву (workComplete)
+ */
+async function sendReviewWorkCompleteNotification(userId, review, decisionCategory, finalizer) {
+  const messageText = `🏁 Работа по отзыву завершена\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `Решение: ${decisionCategory}\n` +
+    `Завершил: ${finalizer.displayName || finalizer.username}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
+
+  const metadata = {
+    type: 'review_work_complete',
+    reviewId: review.id,
+    decisionCategory: decisionCategory
+  };
+
+  return sendReviewsBotMessage(userId, messageText, metadata);
+}
+
+/**
+ * Отправка уведомления об архивации отзыва (archiveReview)
+ */
+async function sendReviewArchivedNotification(userId, review, archivedBy) {
+  const messageText = `📦 Отзыв перемещён в архив\n\n` +
+    `Пациент: ${review.patientName}\n` +
+    `Архивировал: ${archivedBy.displayName || archivedBy.username}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
+
+  const metadata = {
+    type: 'review_archived',
+    reviewId: review.id
   };
 
   return sendReviewsBotMessage(userId, messageText, metadata);
@@ -328,7 +383,8 @@ async function sendReviewFinalizedNotification(userId, review, decisionCategory,
   const messageText = `✅ Отзыв финализирован\n\n` +
     `Пациент: ${review.patientName}\n` +
     `Решение: ${decisionCategory}\n` +
-    `Финализировал: ${finalizer.displayName || finalizer.username}`;
+    `Финализировал: ${finalizer.displayName || finalizer.username}\n\n` +
+    `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
     type: 'review_finalized',
@@ -357,5 +413,7 @@ module.exports = {
   sendReviewStatusChangedNotification,
   sendReviewAssignedNotification,
   sendReviewCommentNotification,
-  sendReviewFinalizedNotification
+  sendReviewFinalizedNotification,
+  sendReviewWorkCompleteNotification,
+  sendReviewArchivedNotification
 };

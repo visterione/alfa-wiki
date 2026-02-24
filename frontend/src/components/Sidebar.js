@@ -25,6 +25,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
 } from 'lucide-react';
 import { sidebar as sidebarApi, chat, calendar } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import toast from 'react-hot-toast';
 
 // Маппинг иконок
 const iconMap = {
@@ -354,7 +355,9 @@ function SidebarCalendar() {
 function QuickAccessButtons({ onClose }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, isAdmin } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -436,11 +439,12 @@ function QuickAccessButtons({ onClose }) {
       </button>
 
       <button
-        className={`quick-access-btn reviews ${isOnReviews ? 'active' : ''}`}
-        onClick={() => handleClick('/reviews')}
-        title="Отзывы"
+        className={`quick-access-btn reviews ${isOnReviews ? 'active' : ''} ${!canAccessReviews ? 'locked' : ''}`}
+        onClick={() => canAccessReviews ? handleClick('/reviews') : toast.error('Нет доступа к разделу «Отзывы»')}
+        title={canAccessReviews ? 'Отзывы' : 'Отзывы (нет доступа)'}
       >
         <ThumbsUp size={20} />
+        {!canAccessReviews && <Lock size={10} className="quick-access-lock" />}
       </button>
     </div>
   );

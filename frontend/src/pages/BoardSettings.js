@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { kanban, users, BASE_URL } from '../services/api';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Trash2 } from 'lucide-react';
 import './BoardSettings.css';
 
 const BoardSettings = () => {
@@ -41,6 +41,16 @@ const BoardSettings = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!window.confirm(`Удалить доску "${board.name}" и все её задачи? Это действие необратимо.`)) return;
+    try {
+      await kanban.deleteBoard(boardId);
+      navigate('/kanban');
+    } catch (error) {
+      alert(error.response?.data?.message || 'Ошибка при удалении доски');
     }
   };
 
@@ -128,8 +138,7 @@ const BoardSettings = () => {
           <h2>Ошибка</h2>
           <p>{error}</p>
           <button className="btn-back" onClick={() => navigate('/kanban')}>
-            <ArrowLeft size={18} />
-            Вернуться к доскам
+            <ArrowLeft size={20} />
           </button>
         </div>
       </div>
@@ -142,8 +151,7 @@ const BoardSettings = () => {
         <div className="settings-error">
           <h2>Доска не найдена</h2>
           <button className="btn-back" onClick={() => navigate('/kanban')}>
-            <ArrowLeft size={18} />
-            Вернуться к доскам
+            <ArrowLeft size={20} />
           </button>
         </div>
       </div>
@@ -153,11 +161,15 @@ const BoardSettings = () => {
   return (
     <div className="board-settings-container">
       <div className="settings-header">
-        <button className="btn-back" onClick={() => navigate(`/kanban/board/${boardId}`)}>
-          <ArrowLeft size={18} />
-          Назад к доске
-        </button>
-        <h1>Настройки доски: {board.name}</h1>
+        <div className="header-left">
+          <button className="btn-back" onClick={() => navigate(`/kanban/board/${boardId}`)}>
+            <ArrowLeft size={20} />
+          </button>
+          <div>
+            <h1>Настройки доски</h1>
+            <p>{board.name}</p>
+          </div>
+        </div>
       </div>
 
       <div className="settings-content">
@@ -232,10 +244,7 @@ const BoardSettings = () => {
                     <User size={20} />
                   )}
                 </div>
-                <div className="user-info">
-                  <span className="user-name">{board.owner?.displayName}</span>
-                  <span className="user-email">{board.owner?.email}</span>
-                </div>
+                <span className="user-name">{board.owner?.displayName}</span>
               </div>
               <div className="permission-role owner-badge">Владелец</div>
             </div>
@@ -257,10 +266,7 @@ const BoardSettings = () => {
                       <User size={20} />
                     )}
                   </div>
-                  <div className="user-info">
-                    <span className="user-name">{perm.user.displayName}</span>
-                    <span className="user-email">{perm.user.email}</span>
-                  </div>
+                  <span className="user-name">{perm.user.displayName}</span>
                 </div>
                 <div className="permission-actions">
                   <select
@@ -274,13 +280,26 @@ const BoardSettings = () => {
                     className="btn-remove"
                     onClick={() => handleRemovePermission(perm.id)}
                   >
-                    Удалить
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
             ))}
           </div>
         </section>
+
+        <div className="danger-zone">
+          <div className="danger-action">
+            <div className="danger-action-info">
+              <strong>Удалить доску</strong>
+              <p>Безвозвратно удалит доску и все её задачи</p>
+            </div>
+            <button className="btn-delete-board" onClick={handleDeleteBoard}>
+              <Trash2 size={16} />
+              Удалить доску
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

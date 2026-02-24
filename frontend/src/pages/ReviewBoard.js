@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   Plus, Settings, ArrowLeft, Star, Calendar, User, Paperclip,
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
-  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send
+  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2
 } from 'lucide-react';
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -26,7 +26,8 @@ const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:9001';
 const ReviewBoard = () => {
   const { id: boardId } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, isAdmin } = useAuth();
 
   const [board, setBoard] = useState(null);
   const [reviewsList, setReviewsList] = useState([]);
@@ -90,12 +91,12 @@ const ReviewBoard = () => {
     try {
       setLoading(true);
 
-      const [boardRes, reviewsRes, platformsRes, usersRes, rolesRes] = await Promise.all([
+      const [boardRes, reviewsRes, platformsRes, usersRes, permsRes] = await Promise.all([
         reviews.getBoard(boardId),
         reviews.getReviews(boardId),
         reviews.getPlatforms(),
         users.listBasic(),
-        reviews.getBoardRoles(boardId)
+        reviews.getBoardPermissions(boardId)
       ]);
 
       setBoard(boardRes.data);
@@ -103,14 +104,15 @@ const ReviewBoard = () => {
       setPlatforms(platformsRes.data);
       setUsersList(usersRes.data);
 
-      // Собираем уникальных участников доски из бизнес-ролей
+      // Собираем участников доски из прав доступа: владелец + все редакторы
       const memberMap = {};
-      Object.values(rolesRes.data).forEach(roleGroup => {
-        roleGroup.users?.forEach(entry => {
-          if (entry.user && !memberMap[entry.user.id]) {
-            memberMap[entry.user.id] = entry.user;
-          }
-        });
+      if (boardRes.data.owner) {
+        memberMap[boardRes.data.owner.id] = boardRes.data.owner;
+      }
+      permsRes.data.forEach(perm => {
+        if (perm.user && (perm.role === 'editor' || perm.role === 'owner')) {
+          memberMap[perm.user.id] = perm.user;
+        }
       });
       setBoardMembers(Object.values(memberMap));
 
@@ -137,6 +139,33 @@ const ReviewBoard = () => {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Highlight review card from URL param ?review=:id (e.g. from bot notification link)
+  const [highlightedReviewId, setHighlightedReviewId] = useState(null);
+
+  useEffect(() => {
+    if (!board || reviewsList.length === 0) return;
+    const reviewId = searchParams.get('review');
+    if (!reviewId) return;
+    setSearchParams({}, { replace: true });
+
+    const exists = reviewsList.some(r => r.id === reviewId);
+    if (!exists) {
+      toast.error('Отзыв не найден на этой доске');
+      return;
+    }
+
+    setHighlightedReviewId(reviewId);
+
+    // Scroll to card after a short delay to let React render
+    setTimeout(() => {
+      const el = document.getElementById(`review-card-${reviewId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+
+    // Remove highlight after 3 seconds
+    setTimeout(() => setHighlightedReviewId(null), 3000);
+  }, [board, reviewsList]); // eslint-disable-line
 
   // Определяет первичного ответственного из числа участников доски
   const getPrimaryAssigneeId = (review) => {
@@ -196,9 +225,12 @@ const ReviewBoard = () => {
     // - person-секция → назначаем если секция изменилась (другой человек или другая колонка)
     // - none-секция из person-секции → снимаем назначение
     let assigneeId = null;
+    let clearAssignees = false;
 
     if (sectionAssigneeId && sectionAssigneeId !== 'none') {
       if (sourceSectionId !== sectionAssigneeId) assigneeId = sectionAssigneeId;
+    } else if (sectionAssigneeId === 'none' && sourceSectionId && sourceSectionId !== 'none') {
+      clearAssignees = true;
     }
 
     // Оптимистичное обновление
@@ -216,6 +248,9 @@ const ReviewBoard = () => {
       if (assigneeId) {
         await reviews.assignReview(draggableId, [assigneeId]);
         toast.success('Отзыв перемещён и назначен');
+      } else if (clearAssignees) {
+        await reviews.assignReview(draggableId, []);
+        toast.success('Отзыв перемещён, назначение снято');
       } else if (newStatus === 'final') {
         toast.success('Отзыв перемещён в финальный этап');
       } else {
@@ -451,6 +486,20 @@ const ReviewBoard = () => {
   };
 
   // Archive review
+  const handleDeleteReview = async (reviewId) => {
+    if (!window.confirm('Удалить отзыв? Это действие нельзя отменить.')) return;
+
+    try {
+      await reviews.deleteReview(reviewId);
+      setReviewsList(prev => prev.filter(r => r.id !== reviewId));
+      setShowDetailsModal(false);
+      toast.success('Отзыв удалён');
+    } catch (err) {
+      console.error('Error deleting review:', err);
+      toast.error('Ошибка при удалении');
+    }
+  };
+
   const handleArchive = async (reviewId) => {
     if (!window.confirm('Архивировать отзыв?')) return;
 
@@ -583,7 +632,7 @@ const ReviewBoard = () => {
             <BarChart2 size={18} />
             Статистика
           </button>
-          {board.userRole === 'owner' && (
+          {isAdmin && (
             <button
               className="btn-settings"
               onClick={() => navigate(`/reviews/board/${boardId}/settings`)}
@@ -692,7 +741,8 @@ const ReviewBoard = () => {
                             ref={provided.innerRef}
                             {...provided.draggableProps}
                             {...provided.dragHandleProps}
-                            className={`review-card ${snapshot.isDragging ? 'dragging' : ''} ${review.rating <= 3 ? 'negative' : 'positive'}`}
+                            id={`review-card-${review.id}`}
+                            className={`review-card ${snapshot.isDragging ? 'dragging' : ''} ${review.rating <= 3 ? 'negative' : 'positive'}${highlightedReviewId === review.id ? ' highlighted' : ''}`}
                             onClick={() => openDetailsModal(review)}
                           >
                             <div className="card-header">
@@ -721,26 +771,6 @@ const ReviewBoard = () => {
                             <p className="card-text">{review.reviewText}</p>
 
                             <div className="card-footer">
-                              {review.assignees && review.assignees.length > 0 && (
-                                <div className="card-assignees">
-                                  {review.assignees.slice(0, 3).map((assignee) => (
-                                    <div
-                                      key={assignee.id}
-                                      className="assignee-avatar"
-                                      title={assignee.displayName || assignee.username}
-                                    >
-                                      {getAvatarUrl(assignee.avatar) ? (
-                                        <img src={getAvatarUrl(assignee.avatar)} alt="" />
-                                      ) : (
-                                        <span>{(assignee.displayName || assignee.username).substring(0, 2).toUpperCase()}</span>
-                                      )}
-                                    </div>
-                                  ))}
-                                  {review.assignees.length > 3 && (
-                                    <div className="assignee-avatar more">+{review.assignees.length - 3}</div>
-                                  )}
-                                </div>
-                              )}
                               {review.attachments && review.attachments.length > 0 && (
                                 <div className="card-attachments">
                                   <Paperclip size={12} />
@@ -804,6 +834,22 @@ const ReviewBoard = () => {
                         )}
                       </div>
                     ))}
+                    {/* Секция без назначения — всегда видна чтобы можно было перетащить */}
+                    <div className="person-section unassigned-section">
+                      <div className="person-section-header">
+                        <div className="person-section-avatar unassigned-avatar">
+                          <UsersIcon size={14} />
+                        </div>
+                        <span className="person-section-name">Без назначения</span>
+                        <span className="person-section-count">
+                          {getReviewsBySection(column.id, null).length}
+                        </span>
+                      </div>
+                      {renderCards(
+                        getReviewsBySection(column.id, null),
+                        `${column.id}__none`
+                      )}
+                    </div>
                   </div>
                 ) : (
                   /* Обычный режим: один Droppable на колонку */
@@ -995,7 +1041,7 @@ const ReviewBoard = () => {
               <div className="details-main">
                 <div className="review-message">
                   <div className="review-message-avatar">
-                    {selectedReview.patientName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()}
+                    <User size={22} />
                   </div>
                   <div className="review-message-content">
                     <div className="review-message-header">
@@ -1229,6 +1275,12 @@ const ReviewBoard = () => {
                   Скачать PDF
                 </button>
               )}
+              {access.canWrite && (
+                <button className="btn-delete-review" onClick={() => handleDeleteReview(selectedReview.id)}>
+                  <Trash2 size={16} />
+                  Удалить
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1306,7 +1358,7 @@ const ReviewBoard = () => {
               </div>
 
               <div className="users-list">
-                {usersList
+                {boardMembers
                   .filter(u => {
                     const search = assigneeSearch.toLowerCase();
                     return (u.displayName || '').toLowerCase().includes(search) ||

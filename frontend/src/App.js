@@ -100,11 +100,21 @@ function AppRoutes() {
         <Route path="kanban/board/:id/archive" element={<KanbanArchive />} />
 
         {/* Reviews module */}
-        <Route path="reviews" element={<ReviewBoardsList />} />
-        <Route path="reviews/board/:id" element={<ReviewBoard />} />
-        <Route path="reviews/board/:id/settings" element={<ReviewBoardSettings />} />
-        <Route path="reviews/board/:id/stats" element={<ReviewStatistics />} />
-        <Route path="reviews/archive" element={<ReviewArchive />} />
+        <Route path="reviews" element={
+          <ProtectedRoute requireAdminAccess="reviews"><ReviewBoardsList /></ProtectedRoute>
+        } />
+        <Route path="reviews/board/:id" element={
+          <ProtectedRoute requireAdminAccess="reviews"><ReviewBoard /></ProtectedRoute>
+        } />
+        <Route path="reviews/board/:id/settings" element={
+          <ProtectedRoute requireAdminAccess="reviews"><ReviewBoardSettings /></ProtectedRoute>
+        } />
+        <Route path="reviews/board/:id/stats" element={
+          <ProtectedRoute requireAdminAccess="reviews"><ReviewStatistics /></ProtectedRoute>
+        } />
+        <Route path="reviews/archive" element={
+          <ProtectedRoute requireAdminAccess="reviews"><ReviewArchive /></ProtectedRoute>
+        } />
 
         {/* КУРСЫ - добавьте эти строки */}
         <Route path="courses" element={<Courses />} />

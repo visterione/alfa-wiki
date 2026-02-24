@@ -49,7 +49,7 @@
 }
 
 .archive-header h1 svg {
-  color: #a855f7;
+  color: #3b82f6;
 }
 
 .archive-header p {
@@ -128,16 +128,16 @@
 
 .btn-filter.active {
   background: var(--bg-tertiary);
-  border-color: #a855f7;
-  color: #a855f7;
+  border-color: #3b82f6;
+  color: #3b82f6;
 }
 
 .btn-filter.has-filters {
-  border-color: #a855f7;
+  border-color: #3b82f6;
 }
 
 .btn-filter .filter-count {
-  background: #a855f7;
+  background: #3b82f6;
   color: white;
   font-size: 0.625rem;
   width: 14px;
@@ -193,7 +193,7 @@
 .filter-group input:focus,
 .filter-group select:focus {
   outline: none;
-  border-color: #a855f7;
+  border-color: #3b82f6;
 }
 
 .btn-clear-filters {
@@ -312,7 +312,7 @@
 
 .board-name {
   font-weight: 500;
-  color: #a855f7;
+  color: #3b82f6;
 }
 
 .patient-cell {
@@ -386,8 +386,8 @@
 
 .row-actions .btn-icon:hover {
   background: var(--bg-tertiary);
-  color: #a855f7;
-  border-color: #a855f7;
+  color: #3b82f6;
+  border-color: #3b82f6;
 }
 
 /* Pagination */
@@ -413,8 +413,8 @@
 
 .archive-pagination button:hover:not(:disabled) {
   background: var(--bg-tertiary);
-  border-color: #a855f7;
-  color: #a855f7;
+  border-color: #3b82f6;
+  color: #3b82f6;
 }
 
 .archive-pagination button:disabled {
@@ -475,7 +475,7 @@
 }
 
 .modal-header h3 svg {
-  color: #a855f7;
+  color: #3b82f6;
 }
 
 .btn-close {
@@ -628,7 +628,7 @@
   top: 6px;
   width: 12px;
   height: 12px;
-  background: #a855f7;
+  background: #3b82f6;
   border: 2px solid var(--bg-primary);
   border-radius: 50%;
 }
@@ -703,7 +703,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
-  background: #a855f7;
+  background: #3b82f6;
   border: none;
   border-radius: 8px;
   color: white;
@@ -714,7 +714,7 @@
 }
 
 .btn-primary:hover {
-  background: #9333ea;
+  background: #2563eb;
 }
 
 /* Responsive */

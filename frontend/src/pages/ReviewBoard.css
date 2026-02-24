@@ -353,6 +353,19 @@
   border-style: solid;
 }
 
+/* Секция без назначения — чуть приглушённее */
+.unassigned-section {
+  opacity: 0.8;
+}
+
+.unassigned-section .person-section-header {
+  background: var(--bg-secondary);
+}
+
+.unassigned-avatar {
+  color: var(--text-secondary);
+}
+
 /* Review Card */
 .review-card {
   border: 1px solid transparent;
@@ -380,6 +393,18 @@
 .review-card.positive {
   background: #f0fdf4;
   border-color: #bbf7d0;
+}
+
+@keyframes review-highlight-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.6), 0 0 0 3px rgba(59, 130, 246, 0.35); }
+  50%  { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.15), 0 0 0 3px rgba(59, 130, 246, 0.35); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0), 0 0 0 3px rgba(59, 130, 246, 0.35); }
+}
+
+.review-card.highlighted {
+  outline: 2px solid #3b82f6;
+  outline-offset: 1px;
+  animation: review-highlight-pulse 1s ease-in-out infinite;
 }
 
 .review-card > .card-header {
@@ -470,40 +495,6 @@
   gap: 0.75rem;
 }
 
-.card-assignees {
-  display: flex;
-}
-
-.assignee-avatar {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid var(--bg-primary);
-  margin-left: -8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.625rem;
-  font-weight: 600;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.assignee-avatar:first-child {
-  margin-left: 0;
-}
-
-.assignee-avatar img {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.assignee-avatar.more {
-  background: #3b82f6;
-  color: white;
-}
 
 .card-attachments {
   display: flex;
@@ -978,14 +969,11 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1, #3b82f6);
-  color: white;
-  font-size: 0.8125rem;
-  font-weight: 700;
+  background: var(--bg-secondary, #f1f3f5);
+  color: var(--text-secondary, #9ca3af);
   display: flex;
   align-items: center;
   justify-content: center;
-  letter-spacing: 0.02em;
 }
 
 .review-message-content {
@@ -1432,6 +1420,26 @@
 }
 
 .btn-archive:hover {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.btn-delete-review {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.btn-delete-review:hover {
   background: #fef2f2;
   border-color: #fecaca;
   color: #dc2626;

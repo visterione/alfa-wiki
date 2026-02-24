@@ -56,7 +56,8 @@ const User = sequelize.define('User', {
       settings: false,   // Настройки
       courses: false,    // Курсы
       kanban: false,     // Канбан-доска
-      journal: false     // Журнал страниц
+      journal: false,    // Журнал страниц
+      reviews: false     // Отзывы
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -1709,10 +1710,33 @@ const Review = sequelize.define('Review', {
   reportPdfPath: {
     type: DataTypes.STRING(1000),
     comment: 'Путь к PDF отчету'
+  },
+  // Поля автоимпорта (ver. 1.44)
+  externalId: {
+    type: DataTypes.STRING(500),
+    comment: 'ID отзыва во внешней системе (GetLoyalty)'
+  },
+  externalUrl: {
+    type: DataTypes.TEXT,
+    comment: 'Ссылка на оригинал отзыва на площадке'
+  },
+  isAutoImported: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Импортирован автоматически'
+  },
+  syncedAt: {
+    type: DataTypes.DATE,
+    comment: 'Дата последней синхронизации этого отзыва'
+  },
+  importSource: {
+    type: DataTypes.STRING(50),
+    comment: 'Источник импорта: getloyalty'
   }
 }, {
   tableName: 'reviews',
   timestamps: true,
+  paranoid: true,  // Мягкое удаление: destroy() ставит deletedAt вместо физического удаления
   indexes: [
     { fields: ['boardId'] },
     { fields: ['status'] },
@@ -1722,7 +1746,9 @@ const Review = sequelize.define('Review', {
     { fields: ['reviewDate'] },
     { fields: ['archived'] },
     { fields: ['sortOrder'] },
-    { fields: ['createdBy'] }
+    { fields: ['createdBy'] },
+    { fields: ['externalId'] },
+    { fields: ['isAutoImported'] }
   ]
 });
 
@@ -1797,6 +1823,59 @@ Review.hasMany(ReviewHistory, { foreignKey: 'reviewId', as: 'history', onDelete:
 // ReviewHistory relationships
 ReviewHistory.belongsTo(Review, { foreignKey: 'reviewId', as: 'review' });
 ReviewHistory.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+// ReviewSyncConfig model - настройки синхронизации отзывов (одна запись = одна площадка на доску)
+const ReviewSyncConfig = sequelize.define('ReviewSyncConfig', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  boardId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID доски'
+  },
+  provider: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'Провайдер: google | yandex | prodoctorov | docdoc | napopravku | 2gis | doctu'
+  },
+  isEnabled: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Синхронизация включена'
+  },
+  credentials: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Credentials площадки (API-ключи, токены, ID объекта)'
+  },
+  lastSyncAt: {
+    type: DataTypes.DATE,
+    comment: 'Время последней синхронизации'
+  },
+  lastSyncStatus: {
+    type: DataTypes.STRING(20),
+    comment: 'Статус: success | error | running'
+  },
+  lastSyncError: {
+    type: DataTypes.TEXT,
+    comment: 'Текст ошибки последней синхронизации'
+  },
+  lastSyncCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+    comment: 'Кол-во импортированных отзывов при последней синхронизации'
+  }
+}, {
+  tableName: 'review_sync_configs',
+  timestamps: true,
+  indexes: [
+    { fields: ['boardId'] },
+    { fields: ['isEnabled'] },
+    { unique: true, fields: ['boardId', 'provider'] }
+  ]
+});
+
+ReviewSyncConfig.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
+ReviewBoard.hasMany(ReviewSyncConfig, { foreignKey: 'boardId', as: 'syncConfigs', onDelete: 'CASCADE' });
 
 // AccreditationFile relationships
 AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
@@ -1879,6 +1958,7 @@ module.exports = {
   ReviewBoardRole,
   Review,
   ReviewHistory,
+  ReviewSyncConfig,
   // Email module
   EmailTemplate,
   EmailLog,

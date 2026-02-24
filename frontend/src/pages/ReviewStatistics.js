@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, BarChart3, Calendar, Star, MessageSquare,
+  ArrowLeft, Calendar, Star, MessageSquare,
   TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
 import { reviews } from '../services/api';
 import { REVIEW_STATUSES, DECISION_CATEGORIES } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
@@ -17,24 +20,15 @@ const ReviewStatistics = () => {
   const [stats, setStats] = useState(null);
   const [platforms, setPlatforms] = useState([]);
   const [doctorSort, setDoctorSort] = useState({ field: 'avgRating', direction: 'desc' });
-  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, content: '', type: '' });
 
-  // Даты фильтра (по умолчанию текущая неделя ПН-ВС)
+  // Даты фильтра (по умолчанию текущий месяц)
   const [dateFrom, setDateFrom] = useState(() => {
     const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Adjust for Sunday (0) to be -6
-    const monday = new Date(today);
-    monday.setDate(today.getDate() + diffToMonday);
-    return monday.toISOString().split('T')[0];
+    return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
   });
   const [dateTo, setDateTo] = useState(() => {
     const today = new Date();
-    const dayOfWeek = today.getDay();
-    const diffToSunday = dayOfWeek === 0 ? 0 : 7 - dayOfWeek; // Days until Sunday
-    const sunday = new Date(today);
-    sunday.setDate(today.getDate() + diffToSunday);
-    return sunday.toISOString().split('T')[0];
+    return new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
   });
 
   useEffect(() => {
@@ -412,173 +406,74 @@ const ReviewStatistics = () => {
             Динамика {stats.dailyStats.period === 'day' ? 'по дням' : stats.dailyStats.period === 'week' ? 'по неделям' : 'по месяцам'}
           </h3>
           <div className="line-chart-container">
-            <div className="line-chart" style={{ position: 'relative' }}>
-              <svg viewBox="0 0 800 250" preserveAspectRatio="none" className="line-chart-svg">
-                {(() => {
-                  const data = stats.dailyStats.data;
-                  const maxPositive = Math.max(...data.map(d => d.positive), 1);
-                  const maxNegative = Math.max(...data.map(d => d.negative), 1);
-                  const maxValue = Math.max(maxPositive, maxNegative, 1);
+            {(() => {
+              const period = stats.dailyStats.period;
+              const dateFormat = period === 'month'
+                ? { month: 'short', year: 'numeric' }
+                : period === 'week'
+                ? { day: '2-digit', month: 'short' }
+                : { day: '2-digit', month: '2-digit' };
 
-                  const width = 800;
-                  const height = 200;
-                  const padding = 20;
-                  const chartWidth = width - padding * 2;
-                  const chartHeight = height - padding * 2;
+              const chartData = stats.dailyStats.data.map(d => ({
+                ...d,
+                label: new Date(d.date).toLocaleDateString('ru-RU', dateFormat)
+              }));
 
-                  const xStep = chartWidth / Math.max(data.length - 1, 1);
+              const CustomTooltip = ({ active, payload, label }) => {
+                if (!active || !payload?.length) return null;
+                return (
+                  <div className="recharts-custom-tooltip">
+                    <p className="tooltip-date">{label}</p>
+                    {payload.map((entry) => (
+                      <p key={entry.dataKey} style={{ color: entry.color }}>
+                        {entry.name}: <strong>{entry.value}</strong>
+                      </p>
+                    ))}
+                  </div>
+                );
+              };
 
-                  const positivePoints = data.map((d, i) => {
-                    const x = padding + i * xStep;
-                    const y = padding + chartHeight - (d.positive / maxValue) * chartHeight;
-                    return `${x},${y}`;
-                  }).join(' ');
-
-                  const negativePoints = data.map((d, i) => {
-                    const x = padding + i * xStep;
-                    const y = padding + chartHeight - (d.negative / maxValue) * chartHeight;
-                    return `${x},${y}`;
-                  }).join(' ');
-
-                  return (
-                    <>
-                      {/* Grid lines */}
-                      {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
-                        <line
-                          key={i}
-                          x1={padding}
-                          y1={padding + chartHeight * (1 - ratio)}
-                          x2={width - padding}
-                          y2={padding + chartHeight * (1 - ratio)}
-                          stroke="var(--border-color)"
-                          strokeWidth="1"
-                          opacity="0.3"
-                        />
-                      ))}
-
-                      {/* Positive line */}
-                      <polyline
-                        points={positivePoints}
-                        fill="none"
-                        stroke="#10b981"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-
-                      {/* Negative line */}
-                      <polyline
-                        points={negativePoints}
-                        fill="none"
-                        stroke="#ef4444"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-
-                      {/* Data points - Positive */}
-                      {data.map((d, i) => {
-                        const x = padding + i * xStep;
-                        const y = padding + chartHeight - (d.positive / maxValue) * chartHeight;
-                        return (
-                          <circle
-                            key={`pos-${i}`}
-                            cx={x}
-                            cy={y}
-                            r="5"
-                            fill="#10b981"
-                            style={{ cursor: 'pointer' }}
-                            onMouseEnter={(e) => {
-                              const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
-                              const dateStr = new Date(d.date).toLocaleDateString('ru-RU', {
-                                day: '2-digit',
-                                month: 'short',
-                                ...(stats.dailyStats.period === 'month' && { year: 'numeric' })
-                              });
-                              setTooltip({
-                                show: true,
-                                x: rect.left + (x / 800) * rect.width,
-                                y: rect.top + (y / 250) * rect.height - 10,
-                                content: `${dateStr}: ${d.positive}`,
-                                type: 'positive'
-                              });
-                            }}
-                            onMouseLeave={() => setTooltip({ show: false, x: 0, y: 0, content: '', type: '' })}
-                          />
-                        );
-                      })}
-
-                      {/* Data points - Negative */}
-                      {data.map((d, i) => {
-                        const x = padding + i * xStep;
-                        const y = padding + chartHeight - (d.negative / maxValue) * chartHeight;
-                        return (
-                          <circle
-                            key={`neg-${i}`}
-                            cx={x}
-                            cy={y}
-                            r="5"
-                            fill="#ef4444"
-                            style={{ cursor: 'pointer' }}
-                            onMouseEnter={(e) => {
-                              const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
-                              const dateStr = new Date(d.date).toLocaleDateString('ru-RU', {
-                                day: '2-digit',
-                                month: 'short',
-                                ...(stats.dailyStats.period === 'month' && { year: 'numeric' })
-                              });
-                              setTooltip({
-                                show: true,
-                                x: rect.left + (x / 800) * rect.width,
-                                y: rect.top + (y / 250) * rect.height - 10,
-                                content: `${dateStr}: ${d.negative}`,
-                                type: 'negative'
-                              });
-                            }}
-                            onMouseLeave={() => setTooltip({ show: false, x: 0, y: 0, content: '', type: '' })}
-                          />
-                        );
-                      })}
-                    </>
-                  );
-                })()}
-              </svg>
-
-              {/* Tooltip */}
-              {tooltip.show && (
-                <div
-                  className={`chart-tooltip ${tooltip.type}`}
-                  style={{
-                    position: 'fixed',
-                    left: `${tooltip.x}px`,
-                    top: `${tooltip.y}px`,
-                    transform: 'translate(-50%, -100%)',
-                    pointerEvents: 'none',
-                    zIndex: 1000
-                  }}
-                >
-                  {tooltip.content}
-                </div>
-              )}
-            </div>
-            <div className="line-chart-labels">
-              {stats.dailyStats.data.map((d, i) => {
-                if (i % Math.ceil(stats.dailyStats.data.length / 10) === 0 || i === stats.dailyStats.data.length - 1) {
-                  const dateFormat = stats.dailyStats.period === 'month'
-                    ? { month: 'short', year: 'numeric' }
-                    : stats.dailyStats.period === 'week'
-                    ? { day: '2-digit', month: 'short' }
-                    : { day: '2-digit', month: '2-digit' };
-
-                  return (
-                    <span key={i} className="date-label">
-                      {new Date(d.date).toLocaleDateString('ru-RU', dateFormat)}
-                    </span>
-                  );
-                }
-                return null;
-              })}
-            </div>
+              return (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.3)" />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 12, fill: '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={{ stroke: 'rgba(148,163,184,0.3)' }}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 12, fill: '#94a3b8' }}
+                      tickLine={false}
+                      axisLine={false}
+                      width={30}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="positive"
+                      name="Позитивные"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="negative"
+                      name="Негативные"
+                      stroke="#ef4444"
+                      strokeWidth={2.5}
+                      dot={{ r: 4, fill: '#ef4444', strokeWidth: 0 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              );
+            })()}
           </div>
         </div>
       )}

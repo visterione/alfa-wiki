@@ -11,8 +11,10 @@ const {
   ReviewBoardRole,
   ReviewPlatform,
   ReviewHistory,
+  ReviewSyncConfig,
   User
 } = require('../models');
+const reviewSyncService = require('../services/reviewSync');
 const { authenticate } = require('../middleware/auth');
 const { Op, Sequelize } = require('sequelize');
 const {
@@ -502,8 +504,9 @@ router.get('/boards/:id/permissions', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Доска не найдена' });
     }
 
-    if (board.ownerId !== req.user.id && !req.user.isAdmin) {
-      return res.status(403).json({ error: 'Только владелец может просматривать права доступа' });
+    const access = await checkReviewBoardAccess(board, req.user.id, 'viewer');
+    if (!access?.hasAccess && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Нет доступа к этой доске' });
     }
 
     const permissions = await ReviewBoardPermission.findAll({
@@ -1056,16 +1059,16 @@ router.get('/stats', authenticate, async (req, res) => {
     const daysDiff = Math.ceil((dateTo - dateFrom) / (1000 * 60 * 60 * 24));
     let groupByFormat, periodLabel;
 
-    if (daysDiff <= 14) {
-      // До 2 недель - по дням
+    if (daysDiff <= 31) {
+      // До 1 месяца - по дням
       groupByFormat = 'DATE';
       periodLabel = 'day';
-    } else if (daysDiff <= 60) {
-      // До 2 месяцев - по неделям
+    } else if (daysDiff <= 90) {
+      // До 3 месяцев - по неделям
       groupByFormat = 'WEEK';
       periodLabel = 'week';
     } else {
-      // Больше 2 месяцев - по месяцам
+      // Больше 3 месяцев - по месяцам
       groupByFormat = 'MONTH';
       periodLabel = 'month';
     }
@@ -1264,25 +1267,27 @@ router.post('/', authenticate, async (req, res) => {
       ]
     });
 
-    // Отправляем уведомления
+    // Отправляем уведомления о новом отзыве (раздельно для позитивных и негативных)
     try {
       const notificationService = require('../services/notificationService');
-      const recipientIds = await getNotificationRecipients(board, 'newReview');
+      const isNegative = result.rating <= 3;
+      const eventType = isNegative ? 'newNegativeReview' : 'newPositiveReview';
+      const recipientIds = await getNotificationRecipients(board, eventType);
+      console.log(`[ReviewNotif] ${eventType} recipients for board ${board.id}:`, recipientIds);
 
       if (recipientIds.length > 0) {
         for (const userId of recipientIds) {
           if (userId !== req.user.id) {
-            await notificationService.sendReviewCreatedNotification(
-              userId,
-              result,
-              board,
-              req.user
-            );
+            try {
+              await notificationService.sendReviewCreatedNotification(userId, result, board, req.user, isNegative);
+            } catch (e) {
+              console.error(`[ReviewNotif] ${eventType} failed for userId=${userId}:`, e.message, e.stack);
+            }
           }
         }
       }
     } catch (notifError) {
-      console.error('Error sending notifications:', notifError);
+      console.error('[ReviewNotif] newReview setup error:', notifError.message, notifError.stack);
     }
 
     res.status(201).json({ ...result.toJSON(), assignees: [] });
@@ -1470,32 +1475,27 @@ router.post('/:id/move', authenticate, async (req, res) => {
       try {
         const notificationService = require('../services/notificationService');
 
-        // Получаем получателей из настроек доски
         const boardRecipientIds = await getNotificationRecipients(review.board, 'statusChange');
-
-        // Добавляем назначенных ответственных (assignees) к списку получателей
         const assigneeIds = review.assigneeIds || [];
         const allRecipientIds = new Set([...boardRecipientIds, ...assigneeIds]);
+        console.log(`[ReviewNotif] statusChange recipients for review ${review.id}:`, [...allRecipientIds], '| assignees:', assigneeIds);
 
         if (allRecipientIds.size > 0) {
           for (const userId of allRecipientIds) {
             if (userId !== req.user.id) {
-              // Проверяем, является ли пользователь ответственным за отзыв
               const isAssignee = assigneeIds.includes(userId);
-
-              await notificationService.sendReviewStatusChangedNotification(
-                userId,
-                review,
-                oldStatusLabel,
-                newStatusLabel,
-                req.user,
-                isAssignee
-              );
+              try {
+                await notificationService.sendReviewStatusChangedNotification(
+                  userId, review, oldStatusLabel, newStatusLabel, req.user, isAssignee
+                );
+              } catch (e) {
+                console.error(`[ReviewNotif] statusChange failed for userId=${userId}:`, e.message, e.stack);
+              }
             }
           }
         }
       } catch (notifError) {
-        console.error('Error sending notifications:', notifError);
+        console.error('[ReviewNotif] statusChange setup error:', notifError.message, notifError.stack);
       }
     }
 
@@ -1545,18 +1545,18 @@ router.post('/:id/assign', authenticate, async (req, res) => {
       try {
         const notificationService = require('../services/notificationService');
 
+        console.log(`[ReviewNotif] assign: sending to assignees:`, assigneeIds);
         for (const userId of assigneeIds) {
           if (userId !== req.user.id) {
-            await notificationService.sendReviewAssignedNotification(
-              userId,
-              review,
-              review.board,
-              req.user
-            );
+            try {
+              await notificationService.sendReviewAssignedNotification(userId, review, review.board, req.user);
+            } catch (e) {
+              console.error(`[ReviewNotif] assign failed for userId=${userId}:`, e.message, e.stack);
+            }
           }
         }
       } catch (notifError) {
-        console.error('Error sending notifications:', notifError);
+        console.error('[ReviewNotif] assign setup error:', notifError.message, notifError.stack);
       }
     }
 
@@ -1725,23 +1725,26 @@ router.post('/:id/finalize', authenticate, async (req, res) => {
     try {
       const notificationService = require('../services/notificationService');
 
-      // Получаем получателей из настроек доски
+      // statusChange подписчики + ответственные → sendReviewFinalizedNotification
       const boardRecipientIds = await getNotificationRecipients(review.board, 'statusChange');
-
-      // Добавляем ответственных
       const assigneeIds = review.assigneeIds || [];
       const allRecipientIds = new Set([...boardRecipientIds, ...assigneeIds]);
 
-      if (allRecipientIds.size > 0) {
-        for (const userId of allRecipientIds) {
-          if (userId !== req.user.id) {
-            await notificationService.sendReviewFinalizedNotification(
-              userId,
-              review,
-              categoryLabel,
-              req.user
-            );
-          }
+      for (const userId of allRecipientIds) {
+        if (userId !== req.user.id) {
+          await notificationService.sendReviewFinalizedNotification(
+            userId, review, categoryLabel, req.user
+          );
+        }
+      }
+
+      // workComplete подписчики → sendReviewWorkCompleteNotification
+      const workCompleteIds = await getNotificationRecipients(review.board, 'workComplete');
+      for (const userId of workCompleteIds) {
+        if (userId !== req.user.id && !allRecipientIds.has(userId)) {
+          await notificationService.sendReviewWorkCompleteNotification(
+            userId, review, categoryLabel, req.user
+          );
         }
       }
     } catch (notifError) {
@@ -1828,6 +1831,19 @@ router.post('/:id/archive', authenticate, async (req, res) => {
       archived: true,
       archivedAt: new Date()
     });
+
+    // Уведомления об архивации
+    try {
+      const notificationService = require('../services/notificationService');
+      const archiveRecipientIds = await getNotificationRecipients(review.board, 'archiveReview');
+      for (const userId of archiveRecipientIds) {
+        if (userId !== req.user.id) {
+          await notificationService.sendReviewArchivedNotification(userId, review, req.user);
+        }
+      }
+    } catch (notifError) {
+      console.error('Error sending archive notifications:', notifError);
+    }
 
     res.json(review);
   } catch (error) {
@@ -1949,6 +1965,210 @@ router.delete('/files/:fileId', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error deleting file:', error);
     res.status(500).json({ error: 'Ошибка при удалении файла' });
+  }
+});
+
+// ============================================================================
+// SYNC CONFIGURATION
+// ============================================================================
+
+/**
+ * Проверка прав на управление доской (owner или admin)
+ */
+async function requireBoardOwner(req, res, boardId) {
+  const board = await ReviewBoard.findByPk(boardId);
+  if (!board) { res.status(404).json({ error: 'Доска не найдена' }); return null; }
+  if (board.ownerId !== req.user.id && !req.user.isAdmin) {
+    res.status(403).json({ error: 'Только владелец может управлять синхронизацией' }); return null;
+  }
+  return board;
+}
+
+// GET /api/reviews/sync/providers — список всех провайдеров с их схемой credentials
+router.get('/sync/providers', authenticate, (req, res) => {
+  const providers = reviewSyncService.PROVIDERS.map(p => ({
+    ...p,
+    credentialsSchema: reviewSyncService.getCredentialsSchema(p.key)
+  }));
+  res.json(providers);
+});
+
+// GET /api/reviews/sync/configs/:boardId — конфигурации синхронизации для доски
+router.get('/sync/configs/:boardId', authenticate, async (req, res) => {
+  try {
+    const { boardId } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    const configs = await ReviewSyncConfig.findAll({ where: { boardId } });
+
+    // Возвращаем конфиги для всех провайдеров (включая ненастроенные)
+    const result = reviewSyncService.PROVIDERS.map(provider => {
+      const config = configs.find(c => c.provider === provider.key);
+      const credentials = config ? { ...config.credentials } : {};
+
+      // Маскируем чувствительные поля (пароли/токены) — возвращаем только факт наличия
+      const schema = reviewSyncService.getCredentialsSchema(provider.key);
+      const maskedCredentials = {};
+      for (const field of schema) {
+        if (field.type === 'password' && credentials[field.key]) {
+          maskedCredentials[field.key] = '••••••••';
+        } else {
+          maskedCredentials[field.key] = credentials[field.key] || '';
+        }
+      }
+
+      return {
+        provider: provider.key,
+        label: provider.label,
+        icon: provider.icon,
+        hasOfficialApi: provider.hasOfficialApi,
+        credentialsSchema: schema,
+        isEnabled: config?.isEnabled || false,
+        credentials: maskedCredentials,
+        lastSyncAt: config?.lastSyncAt || null,
+        lastSyncStatus: config?.lastSyncStatus || null,
+        lastSyncError: config?.lastSyncError || null,
+        lastSyncCount: config?.lastSyncCount || 0,
+        isConfigured: !!config && Object.keys(config.credentials || {}).length > 0
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Error getting sync configs:', err);
+    res.status(500).json({ error: 'Ошибка при получении конфигураций синхронизации' });
+  }
+});
+
+// PUT /api/reviews/sync/configs/:boardId/:provider — сохранить конфигурацию
+router.put('/sync/configs/:boardId/:provider', authenticate, async (req, res) => {
+  try {
+    const { boardId, provider } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    const validProviders = reviewSyncService.PROVIDERS.map(p => p.key);
+    if (!validProviders.includes(provider)) {
+      return res.status(400).json({ error: 'Неизвестный провайдер' });
+    }
+
+    const { isEnabled, credentials } = req.body;
+
+    // Получаем существующую конфигурацию, чтобы не затирать токены, если пришли маски
+    const existing = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
+    const existingCreds = existing?.credentials || {};
+
+    // Мержим: если пришло '••••••••', сохраняем старое значение
+    const schema = reviewSyncService.getCredentialsSchema(provider);
+    const mergedCredentials = { ...existingCreds };
+    if (credentials) {
+      for (const field of schema) {
+        const val = credentials[field.key];
+        if (val !== undefined && val !== '••••••••') {
+          mergedCredentials[field.key] = val;
+        }
+      }
+    }
+
+    const [config, created] = await ReviewSyncConfig.findOrCreate({
+      where: { boardId, provider },
+      defaults: { boardId, provider, isEnabled: false, credentials: {} }
+    });
+
+    await config.update({
+      isEnabled: isEnabled !== undefined ? isEnabled : config.isEnabled,
+      credentials: mergedCredentials
+    });
+
+    res.json({
+      provider,
+      isEnabled: config.isEnabled,
+      lastSyncAt: config.lastSyncAt,
+      lastSyncStatus: config.lastSyncStatus,
+      message: created ? 'Конфигурация создана' : 'Конфигурация обновлена'
+    });
+  } catch (err) {
+    console.error('Error saving sync config:', err);
+    res.status(500).json({ error: 'Ошибка при сохранении конфигурации' });
+  }
+});
+
+// POST /api/reviews/sync/test/:boardId/:provider — проверить подключение
+router.post('/sync/test/:boardId/:provider', authenticate, async (req, res) => {
+  try {
+    const { boardId, provider } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    // Берём credentials из тела запроса или из БД
+    let credentials = req.body.credentials || {};
+
+    const existing = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
+    if (existing) {
+      // Мержим: маскированные значения берём из БД
+      const schema = reviewSyncService.getCredentialsSchema(provider);
+      const merged = { ...existing.credentials };
+      for (const field of schema) {
+        const val = credentials[field.key];
+        if (val && val !== '••••••••') merged[field.key] = val;
+      }
+      credentials = merged;
+    }
+
+    const result = await reviewSyncService.testConnection(provider, credentials);
+    res.json(result);
+  } catch (err) {
+    console.error('Error testing sync connection:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/reviews/sync/run/:boardId — запустить синхронизацию вручную
+router.post('/sync/run/:boardId', authenticate, async (req, res) => {
+  try {
+    const { boardId } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    // Запускаем асинхронно, сразу возвращаем 202
+    res.status(202).json({ message: 'Синхронизация запущена' });
+
+    try {
+      const results = await reviewSyncService.syncBoard(boardId);
+      console.log(`[ReviewSync] Ручной запуск для доски ${boardId}:`, results);
+    } catch (syncErr) {
+      console.error('[ReviewSync] Ошибка ручного запуска:', syncErr);
+    }
+  } catch (err) {
+    console.error('Error starting sync:', err);
+    res.status(500).json({ error: 'Ошибка при запуске синхронизации' });
+  }
+});
+
+// POST /api/reviews/sync/run/:boardId/:provider — запустить синхронизацию одной площадки
+router.post('/sync/run/:boardId/:provider', authenticate, async (req, res) => {
+  try {
+    const { boardId, provider } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    const config = await ReviewSyncConfig.findOne({ where: { boardId, provider } });
+    if (!config) return res.status(404).json({ error: 'Конфигурация не найдена' });
+    if (!config.isEnabled) return res.status(400).json({ error: 'Синхронизация отключена для этой площадки' });
+
+    res.status(202).json({ message: `Синхронизация ${provider} запущена` });
+
+    try {
+      await reviewSyncService.syncConfig(config);
+      const count = await ReviewSyncConfig.findByPk(config.id);
+      console.log(`[ReviewSync] Ручной запуск ${provider} для доски ${boardId}: импортировано ${count.lastSyncCount}`);
+    } catch (syncErr) {
+      console.error(`[ReviewSync] Ошибка ручного запуска ${provider}:`, syncErr);
+    }
+  } catch (err) {
+    console.error('Error starting sync for provider:', err);
+    res.status(500).json({ error: 'Ошибка при запуске синхронизации' });
   }
 });
 

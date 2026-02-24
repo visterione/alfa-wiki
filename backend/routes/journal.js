@@ -193,6 +193,26 @@ router.get('/activities', authenticate, requireAdminAccess('journal'), async (re
   }
 });
 
+// GET /api/journal/page-authors - получить список авторов, у которых есть страницы
+router.get('/page-authors', authenticate, requireAdminAccess('journal'), async (req, res) => {
+  try {
+    const { sequelize } = require('../models');
+    const { QueryTypes } = require('sequelize');
+
+    const authors = await sequelize.query(`
+      SELECT DISTINCT u.id, u."displayName", u.username
+      FROM users u
+      INNER JOIN pages p ON p."createdBy" = u.id
+      ORDER BY u."displayName" ASC
+    `, { type: QueryTypes.SELECT });
+
+    res.json(authors);
+  } catch (error) {
+    console.error('Get page authors error:', error);
+    res.status(500).json({ error: 'Failed to fetch page authors' });
+  }
+});
+
 // GET /api/journal/activity-modules - получить список уникальных модулей с активностью
 router.get('/activity-modules', authenticate, requireAdminAccess('journal'), async (req, res) => {
   try {

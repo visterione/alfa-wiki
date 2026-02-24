@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { kanban } from '../services/api';
-import { Plus, Settings, Trash2, Trello, FileText, User, ClipboardList } from 'lucide-react';
+import { Plus, Settings, FileText, User, ClipboardList } from 'lucide-react';
 import './BoardsList.css';
 
 const BoardsList = () => {
@@ -52,20 +52,6 @@ const BoardsList = () => {
       setError(error.response?.data?.message || 'Ошибка при создании доски');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleDeleteBoard = async (boardId, boardName) => {
-    if (!window.confirm(`Вы уверены, что хотите удалить доску "${boardName}"?\n\nВсе задачи будут удалены безвозвратно.`)) {
-      return;
-    }
-
-    try {
-      await kanban.deleteBoard(boardId);
-      setBoards(boards.filter(b => b.id !== boardId));
-    } catch (error) {
-      console.error('Error deleting board:', error);
-      alert(error.response?.data?.message || 'Ошибка при удалении доски');
     }
   };
 
@@ -150,22 +136,13 @@ const BoardsList = () => {
 
                 <div className="board-actions">
                   {board.userRole === 'owner' && (
-                    <>
-                      <button
-                        className="btn-icon"
-                        onClick={() => navigate(`/kanban/board/${board.id}/settings`)}
-                        title="Настройки доски"
-                      >
-                        <Settings size={18} />
-                      </button>
-                      <button
-                        className="btn-icon btn-danger"
-                        onClick={() => handleDeleteBoard(board.id, board.name)}
-                        title="Удалить доску"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </>
+                    <button
+                      className="btn-icon"
+                      onClick={() => navigate(`/kanban/board/${board.id}/settings`)}
+                      title="Настройки доски"
+                    >
+                      <Settings size={18} />
+                    </button>
                   )}
                   <button
                     className="btn-open"

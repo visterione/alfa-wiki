@@ -118,8 +118,8 @@ export default function AdminUsers() {
       backup: false,
       settings: false,
       courses: false,
-      kanban: false,
-      journal: false
+      journal: false,
+      reviews: false
     }
   });
 
@@ -273,8 +273,8 @@ export default function AdminUsers() {
           backup: false,
           settings: false,
           courses: false,
-          kanban: false,
-          journal: false
+          journal: false,
+          reviews: false
         }
       });
     } else {
@@ -299,7 +299,9 @@ export default function AdminUsers() {
           media: false,
           backup: false,
           settings: false,
-          courses: false
+          courses: false,
+          journal: false,
+          reviews: false
         }
       });
     }
@@ -792,116 +794,51 @@ export default function AdminUsers() {
                   Доступ к админ-разделам
                 </div>
 
-                <label className="checkbox-item" style={{ marginBottom: 16, fontWeight: 500 }}>
-                  <input
-                    type="checkbox"
+                <label className="admin-toggle-item admin-main" style={{ marginBottom: 16 }}>
+                  <span className={`admin-toggle-track${form.isAdmin ? ' on' : ''}`} />
+                  <input type="checkbox" style={{ display: 'none' }}
                     checked={form.isAdmin}
                     onChange={e => setForm({...form, isAdmin: e.target.checked})}
                   />
-                  Администратор (полный доступ ко всем разделам)
+                  <span className="admin-toggle-label">Администратор (полный доступ ко всем разделам)</span>
                 </label>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '12px 8px' }}>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.pages}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, pages: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Страницы
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.sidebar}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, sidebar: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Меню навигации
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.users}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, users: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Пользователи
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.roles}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, roles: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Роли и права
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.media}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, media: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Медиафайлы
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.backup}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, backup: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Резервные копии
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.settings}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, settings: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Настройки
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.courses}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, courses: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Курсы
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.kanban}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, kanban: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Канбан-доска
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.adminAccess.journal}
-                        onChange={e => setForm({...form, adminAccess: {...form.adminAccess, journal: e.target.checked}})}
-                        disabled={form.isAdmin}
-                      />
-                      Журнал страниц
-                    </label>
-                    <label className="checkbox-item">
-                      <input
-                        type="checkbox"
-                        checked={form.isAdmin || form.canEditDoctorCards}
-                        onChange={e => setForm({...form, canEditDoctorCards: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      Карточки врачей
-                    </label>
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 16px' }}>
+                  {[
+                    { key: 'pages', label: 'Страницы' },
+                    { key: 'sidebar', label: 'Меню навигации' },
+                    { key: 'users', label: 'Пользователи' },
+                    { key: 'roles', label: 'Роли и права' },
+                    { key: 'media', label: 'Медиафайлы' },
+                    { key: 'backup', label: 'Резервные копии' },
+                    { key: 'settings', label: 'Настройки' },
+                    { key: 'courses', label: 'Курсы' },
+                    { key: 'journal', label: 'Журнал страниц' },
+                    { key: 'reviews', label: 'Отзывы' },
+                  ].map(({ key, label }) => {
+                    const checked = form.isAdmin || (form.adminAccess[key] ?? false);
+                    return (
+                      <label key={key} className="admin-toggle-item">
+                        <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                        <input type="checkbox" style={{ display: 'none' }}
+                          checked={checked}
+                          onChange={e => !form.isAdmin && setForm({...form, adminAccess: {...form.adminAccess, [key]: e.target.checked}})}
+                          disabled={form.isAdmin}
+                        />
+                        <span className="admin-toggle-label">{label}</span>
+                      </label>
+                    );
+                  })}
+                  <label className="admin-toggle-item">
+                    <span className={`admin-toggle-track${(form.isAdmin || form.canEditDoctorCards) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                    <input type="checkbox" style={{ display: 'none' }}
+                      checked={form.isAdmin || form.canEditDoctorCards}
+                      onChange={e => !form.isAdmin && setForm({...form, canEditDoctorCards: e.target.checked})}
+                      disabled={form.isAdmin}
+                    />
+                    <span className="admin-toggle-label">Карточки врачей</span>
+                  </label>
+                </div>
                   <p style={{
                     fontSize: 13,
                     color: 'var(--text-secondary)',
@@ -919,13 +856,13 @@ export default function AdminUsers() {
                 padding: 16,
                 borderRadius: 'var(--radius-md)'
               }}>
-                <label className="checkbox-item" style={{ marginBottom: 8 }}>
-                  <input
-                    type="checkbox"
+                <label className="admin-toggle-item" style={{ marginBottom: 8 }}>
+                  <span className={`admin-toggle-track${form.isActive ? ' on' : ''}`} />
+                  <input type="checkbox" style={{ display: 'none' }}
                     checked={form.isActive}
                     onChange={e => setForm({...form, isActive: e.target.checked})}
                   />
-                  <span style={{ fontWeight: 500 }}>Активен</span>
+                  <span className="admin-toggle-label" style={{ fontWeight: 500 }}>Активен</span>
                 </label>
                 <p style={{
                   fontSize: 13,
@@ -936,39 +873,37 @@ export default function AdminUsers() {
                   Неактивные пользователи не могут войти в систему. Используйте для временной блокировки доступа.
                 </p>
               </div>
-              
+
               {/* 2FA Toggle */}
-              <div className="form-group" style={{ 
-                background: 'var(--bg-secondary)', 
-                padding: 16, 
+              <div className="form-group" style={{
+                background: 'var(--bg-secondary)',
+                padding: 16,
                 borderRadius: 'var(--radius-md)',
-                border: form.twoFactorEnabled ? '2px solid var(--primary)' : '2px solid transparent'
               }}>
-                <label className="checkbox-item" style={{ marginBottom: 8 }}>
-                  <input 
-                    type="checkbox" 
-                    checked={form.twoFactorEnabled} 
-                    onChange={e => setForm({...form, twoFactorEnabled: e.target.checked})} 
-                    disabled={!modal.user} // Для новых пользователей всегда включена
+                <label className="admin-toggle-item" style={{ marginBottom: 8 }}>
+                  <span className={`admin-toggle-track${form.twoFactorEnabled ? ' on' : ''}${!modal.user ? ' forced' : ''}`} />
+                  <input type="checkbox" style={{ display: 'none' }}
+                    checked={form.twoFactorEnabled}
+                    onChange={e => modal.user && setForm({...form, twoFactorEnabled: e.target.checked})}
+                    disabled={!modal.user}
                   />
-                  <Shield size={18} style={{ color: form.twoFactorEnabled ? 'var(--primary)' : 'var(--text-secondary)' }} />
-                  <span style={{ fontWeight: 500 }}>Двухфакторная аутентификация (2FA)</span>
+                  <span className="admin-toggle-label" style={{ fontWeight: 500 }}>Двухфакторная аутентификация (2FA)</span>
                   {!modal.user && (
-                    <span style={{ 
-                      marginLeft: 'auto', 
-                      fontSize: 12, 
+                    <span style={{
+                      marginLeft: 'auto',
+                      fontSize: 12,
                       color: 'var(--primary)',
-                      fontWeight: 600 
+                      fontWeight: 600
                     }}>
                       Включена по умолчанию
                     </span>
                   )}
                 </label>
-                <p style={{ 
-                  fontSize: 13, 
-                  color: 'var(--text-secondary)', 
-                  margin: '8px 0 0 32px', 
-                  lineHeight: 1.5 
+                <p style={{
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                  margin: '8px 0 0 0',
+                  lineHeight: 1.5
                 }}>
                   При входе пользователю будет отправлен код подтверждения на email.
                   Это повышает безопасность учётной записи.

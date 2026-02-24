@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, MessageSquare, Star, User, Settings, Trash2, X, Archive
+  Plus, MessageSquare, Star, Settings, X, Archive
 } from 'lucide-react';
 import { reviews } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -56,39 +56,6 @@ const ReviewBoardsList = () => {
       setError(err.response?.data?.error || 'Ошибка при создании доски');
     } finally {
       setCreating(false);
-    }
-  };
-
-  const handleDeleteBoard = async (boardId, boardName) => {
-    if (!window.confirm(`Удалить доску "${boardName}" и все её отзывы? Это действие необратимо.`)) {
-      return;
-    }
-
-    try {
-      await reviews.deleteBoard(boardId);
-      setBoards(boards.filter(b => b.id !== boardId));
-      toast.success('Доска удалена');
-    } catch (err) {
-      console.error('Error deleting board:', err);
-      toast.error(err.response?.data?.error || 'Ошибка при удалении доски');
-    }
-  };
-
-  const getRoleLabel = (role) => {
-    switch (role) {
-      case 'owner': return 'Владелец';
-      case 'editor': return 'Редактор';
-      case 'viewer': return 'Наблюдатель';
-      default: return role;
-    }
-  };
-
-  const getRoleColor = (role) => {
-    switch (role) {
-      case 'owner': return '#10b981';
-      case 'editor': return '#3b82f6';
-      case 'viewer': return '#94a3b8';
-      default: return '#6b7280';
     }
   };
 
@@ -153,12 +120,6 @@ const ReviewBoardsList = () => {
                 <h3 onClick={() => navigate(`/reviews/board/${board.id}`)}>
                   {board.name}
                 </h3>
-                <div
-                  className="board-role"
-                  style={{ background: getRoleColor(board.userRole) }}
-                >
-                  {getRoleLabel(board.userRole)}
-                </div>
               </div>
 
               {board.description && (
@@ -166,7 +127,7 @@ const ReviewBoardsList = () => {
               )}
 
               <div className="board-card-footer">
-                <div className="board-stats">
+                <div className="board-actions">
                   <span className="stat">
                     <MessageSquare size={16} />
                     {board.reviewCount || 0} отзывов
@@ -177,17 +138,8 @@ const ReviewBoardsList = () => {
                       {board.avgRating}
                     </span>
                   )}
-                  {board.owner && (
-                    <span className="stat owner">
-                      <User size={16} />
-                      {board.owner.displayName || board.owner.username}
-                    </span>
-                  )}
-                </div>
-
-                <div className="board-actions">
-                  {board.userRole === 'owner' && (
-                    <>
+                  <div className="board-btns">
+                    {board.userRole === 'owner' && (
                       <button
                         className="btn-icon"
                         onClick={() => navigate(`/reviews/board/${board.id}/settings`)}
@@ -195,21 +147,14 @@ const ReviewBoardsList = () => {
                       >
                         <Settings size={18} />
                       </button>
-                      <button
-                        className="btn-icon btn-danger"
-                        onClick={() => handleDeleteBoard(board.id, board.name)}
-                        title="Удалить"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </>
-                  )}
-                  <button
-                    className="btn-open"
-                    onClick={() => navigate(`/reviews/board/${board.id}`)}
-                  >
-                    Открыть
-                  </button>
+                    )}
+                    <button
+                      className="btn-open"
+                      onClick={() => navigate(`/reviews/board/${board.id}`)}
+                    >
+                      Открыть
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
@@ -22,6 +23,7 @@ import './Dashboard.css';
 export default function Dashboard() {
   const { user } = useAuth();
   const { socket, notifications, removeNotification } = useSocket();
+  const navigate = useNavigate();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
@@ -675,6 +677,41 @@ export default function Dashboard() {
     return format(date, 'd MMMM yyyy', { locale: ru });
   };
 
+  // Converts markdown [text](url) links and bare https:// URLs to <a> tags.
+  // Internal links (starting with /) are handled via data attribute for SPA navigation.
+  const linkifyContent = (text) => {
+    if (!text) return '';
+    const escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    // Markdown links: [text](url)
+    const withMarkdown = escaped.replace(
+      /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g,
+      (_, label, url) => {
+        const isInternal = url.startsWith('/');
+        return isInternal
+          ? `<a href="${url}" data-internal="1" class="chat-link">${label}</a>`
+          : `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${label}</a>`;
+      }
+    );
+    // Bare https:// URLs (not already inside an href)
+    const withBare = withMarkdown.replace(
+      /(?<!href=")(https?:\/\/[^\s<]+)/g,
+      (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${url}</a>`
+    );
+    // Preserve newlines as <br>
+    return withBare.replace(/\n/g, '<br>');
+  };
+
+  const handleMessageContentClick = (e) => {
+    const link = e.target.closest('a[data-internal]');
+    if (link) {
+      e.preventDefault();
+      navigate(link.getAttribute('href'));
+    }
+  };
+
   const shouldShowDateSeparator = (currentMsg, previousMsg) => {
     if (!previousMsg) return true;
     const currentDate = new Date(currentMsg.createdAt);
@@ -923,7 +960,13 @@ export default function Dashboard() {
                           <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
                             {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
                             {renderAttachments(msg.attachments, isOwn)}
-                            {hasText && <div className="message-content">{msg.content}</div>}
+                            {hasText && (
+                              <div
+                                className="message-content"
+                                onClick={handleMessageContentClick}
+                                dangerouslySetInnerHTML={{ __html: linkifyContent(msg.content) }}
+                              />
+                            )}
                             <div className="message-meta">
                               <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
                               {msg.isEdited && <span className="message-edited">изменено</span>}

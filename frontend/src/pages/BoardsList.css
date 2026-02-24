@@ -1,3 +1,8 @@
+.boards-list-container button,
+.modal-overlay button {
+  font-family: inherit;
+}
+
 .boards-list-container {
   padding: 2rem;
   max-width: 1400px;
