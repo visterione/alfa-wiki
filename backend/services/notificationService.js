@@ -100,7 +100,7 @@ async function getOrCreateAssistantChat(userId) {
  * Создание или получение чата с ботом "Работа с негативом" для пользователя
  */
 async function getOrCreateReviewsChat(userId) {
-  return getOrCreateBotChat(userId, REVIEWS_BOT_ID, 'reviews_bot', 'Работа с негативом', '/uploads/bot-avatars/reviews-bot.svg');
+  return getOrCreateBotChat(userId, REVIEWS_BOT_ID, 'reviews_bot', 'Работа с негативом', '/uploads/avatars/reviews-bot.jpg');
 }
 
 /**
