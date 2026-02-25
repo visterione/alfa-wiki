@@ -358,7 +358,6 @@ export default function AdminCourseEditor() {
       <div className="admin-header">
         <button className="btn-back" onClick={() => navigate('/admin/courses')}>
           <ArrowLeft size={20} />
-          К списку курсов
         </button>
         <div className="admin-header-actions">
           <button 

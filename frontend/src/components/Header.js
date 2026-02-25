@@ -76,6 +76,17 @@ const getTypeName = (type, displayType) => {
   }
 };
 
+function abbreviateName(name) {
+  if (!name) return name;
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  const [last, first, middle] = parts;
+  let result = last;
+  if (first) result += ' ' + first[0].toUpperCase() + '.';
+  if (middle) result += ' ' + middle[0].toUpperCase() + '.';
+  return result;
+}
+
 export default function Header({ sidebarOpen, onToggleSidebar }) {
   const { user, logout, isAdmin } = useAuth();
   const { theme } = useTheme();
@@ -307,7 +318,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <User size={18} />
                 </div>
               )}
-              <span className="header-username">{user.displayName || user.username}</span>
+              <span className="header-username">{abbreviateName(user.displayName) || user.username}</span>
               <ChevronDown size={16} className="header-chevron" />
             </button>
             

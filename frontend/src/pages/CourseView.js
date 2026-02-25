@@ -170,7 +170,6 @@ export default function CourseView() {
       <div className="course-view-header">
         <button className="btn-back" onClick={() => navigate('/courses')}>
           <ArrowLeft size={20} />
-          К списку курсов
         </button>
         <div className="course-view-info">
           <h1>{course.title}</h1>
