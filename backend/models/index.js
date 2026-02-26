@@ -1100,6 +1100,33 @@ const ReferralReport = sequelize.define('ReferralReport', {
   ]
 });
 
+// === EXECUTOR SETTINGS MODEL ===
+const ExecutorSettings = sequelize.define('ExecutorSettings', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    unique: true,
+    comment: 'ID врача-исполнителя в МИС'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
+  settings: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Настройки исполнителя: расходники, материалы, оплата, оклад, дополнительно'
+  },
+  updatedBy: {
+    type: DataTypes.UUID,
+    allowNull: true
+  }
+}, {
+  tableName: 'executor_settings',
+  timestamps: true
+});
+
 // === EMAIL TEMPLATE MODEL ===
 // === EMAIL FAVORITE RECIPIENTS MODEL ===
 const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
@@ -1966,5 +1993,7 @@ module.exports = {
   EmailFavoriteTemplate,
   // Referral bonuses module
   ReferralBonus,
-  ReferralReport
+  ReferralReport,
+  // Executor settings module
+  ExecutorSettings
 };

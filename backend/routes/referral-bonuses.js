@@ -41,6 +41,29 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Получить все бонусы по услуге (для всех врачей)
+router.get('/by-service', authenticate, async (req, res) => {
+  try {
+    const { serviceCode } = req.query;
+    if (!serviceCode) {
+      return res.status(400).json({ error: 'serviceCode обязателен' });
+    }
+    const bonuses = await ReferralBonus.findAll({
+      where: { serviceCode },
+      order: [['doctorName', 'ASC']]
+    });
+    // Возвращаем map: misUserId -> { id, bonusPercent, bonusRub }
+    const map = {};
+    bonuses.forEach(b => {
+      map[b.misUserId] = { id: b.id, bonusPercent: b.bonusPercent, bonusRub: b.bonusRub };
+    });
+    res.json(map);
+  } catch (err) {
+    console.error('Get bonuses by-service error:', err);
+    res.status(500).json({ error: 'Ошибка получения бонусов' });
+  }
+});
+
 // Сохранить/обновить бонус для услуги врача
 router.post('/', authenticate, async (req, res) => {
   try {

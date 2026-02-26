@@ -303,6 +303,88 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-bulk-progress-bar-wrap { background: #e2e8f0; border-radius: 4px; height: 6px; margin-top: 8px; overflow: hidden; }
 .rb-bulk-progress-bar { height: 6px; background: var(--rb-primary); border-radius: 4px; transition: width 0.3s; }
 @media (max-width: 700px) { .rb-bulk-layout { grid-template-columns: 1fr; } .rb-bulk-left { border-right: none; border-bottom: 1px solid var(--rb-border); } }
+
+/* Panel mode tabs */
+.rb-panel-mode-tabs { display: flex; width: 100%; }
+.rb-panel-tab { flex: 1; padding: 11px 10px; font-size: 13px; font-weight: 500; background: #f8fafc; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.rb-panel-tab svg { width: 14px; height: 14px; }
+.rb-panel-tab.active { color: var(--rb-primary); border-bottom-color: var(--rb-primary); background: #eff6ff; }
+.rb-panel-tab:hover:not(.active) { background: #f0f4f8; color: var(--rb-text); }
+.rb-panel-count-bar { padding: 5px 16px; font-size: 12px; color: var(--rb-text-secondary); border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+
+/* Executor detail sections */
+.rb-exec-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
+.rb-exec-section-header { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid var(--rb-border); }
+.rb-exec-section-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.rb-exec-section-title svg { width: 16px; height: 16px; color: var(--rb-primary); }
+.rb-exec-section-body { padding: 14px 16px; }
+.rb-exec-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.rb-exec-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #f8fafc; border: 1px solid var(--rb-border); border-radius: 8px; }
+.rb-exec-item-name { flex: 1; font-size: 13px; font-weight: 500; }
+.rb-exec-item-value { font-size: 13px; font-weight: 600; color: var(--rb-danger); white-space: nowrap; }
+.rb-exec-add-form { border: 1px dashed var(--rb-border-dark); border-radius: 8px; padding: 12px; background: #fafafa; display: none; margin-bottom: 8px; }
+.rb-exec-add-form.visible { display: block; }
+.rb-exec-add-row { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
+.rb-exec-add-field { display: flex; flex-direction: column; gap: 3px; }
+.rb-exec-add-field label { font-size: 11px; font-weight: 500; color: var(--rb-text-secondary); }
+.rb-exec-add-field input { padding: 7px 10px; border: 1px solid var(--rb-border-dark); border-radius: 7px; font-size: 13px; outline: none; min-width: 80px; }
+.rb-exec-add-field input:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.1); }
+.rb-exec-add-field.flex-grow input { min-width: 160px; }
+.rb-exec-type-toggle { display: flex; border: 1px solid var(--rb-border-dark); border-radius: 7px; overflow: hidden; }
+.rb-exec-type-btn { padding: 7px 11px; font-size: 12px; font-weight: 600; border: none; background: white; cursor: pointer; transition: all 0.15s; }
+.rb-exec-type-btn.active { background: var(--rb-primary); color: white; }
+.rb-exec-suggests { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.rb-exec-suggest { padding: 4px 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 20px; font-size: 12px; cursor: pointer; color: var(--rb-primary); transition: all 0.15s; }
+.rb-exec-suggest:hover { background: #dbeafe; }
+.rb-exec-empty { font-size: 13px; color: var(--rb-text-secondary); font-style: italic; padding: 4px 0; }
+.rb-exec-fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rb-exec-field { display: flex; flex-direction: column; gap: 4px; }
+.rb-exec-field label { font-size: 12px; font-weight: 500; color: var(--rb-text-secondary); }
+.rb-exec-field input, .rb-exec-field select { padding: 8px 10px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; outline: none; background: white; }
+.rb-exec-field input:focus, .rb-exec-field select:focus { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.rb-exec-save-row { margin-top: 12px; display: flex; gap: 8px; }
+
+/* Salary summary block in report */
+.rb-salary-block { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; margin-top: 14px; }
+.rb-salary-block-title { padding: 12px 16px; background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-bottom: 1px solid var(--rb-border); font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; color: #166534; }
+.rb-salary-block-title svg { width: 18px; height: 18px; flex-shrink: 0; }
+.rb-salary-row { display: flex; align-items: flex-start; padding: 9px 16px; border-bottom: 1px solid #f1f5f9; font-size: 13px; gap: 8px; }
+.rb-salary-row:last-child { border-bottom: none; }
+.rb-salary-row-icon { width: 22px; flex-shrink: 0; font-size: 15px; font-weight: 700; margin-top: 1px; }
+.rb-salary-row-body { flex: 1; min-width: 0; }
+.rb-salary-row-label { font-size: 13px; color: var(--rb-text-secondary); }
+.rb-salary-row-subitems { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.rb-salary-subitem { font-size: 11px; color: var(--rb-text-secondary); padding-left: 8px; }
+.rb-salary-row-value { font-size: 13px; font-weight: 700; white-space: nowrap; margin-left: auto; padding-left: 12px; }
+.rb-salary-row.plus .rb-salary-row-icon { color: var(--rb-success); }
+.rb-salary-row.plus .rb-salary-row-value { color: var(--rb-success); }
+.rb-salary-row.minus .rb-salary-row-icon { color: var(--rb-danger); }
+.rb-salary-row.minus .rb-salary-row-value { color: var(--rb-danger); }
+.rb-salary-row.base .rb-salary-row-icon { color: var(--rb-primary); }
+.rb-salary-row.base .rb-salary-row-value { color: var(--rb-primary); }
+.rb-salary-divider { height: 1px; background: var(--rb-border); margin: 0; }
+.rb-salary-total-row { display: flex; align-items: center; padding: 14px 16px; background: #f8fafc; border-top: 2px solid var(--rb-border); }
+.rb-salary-total-label { font-size: 14px; font-weight: 700; color: var(--rb-text); flex: 1; }
+.rb-salary-total-value { font-size: 18px; font-weight: 800; }
+.rb-salary-total-value.positive { color: var(--rb-success); }
+.rb-salary-total-value.negative { color: var(--rb-danger); }
+
+/* Service mode */
+.rb-svc-result-item { padding: 10px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: background 0.1s; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.rb-svc-result-item:hover { background: #f0f7ff; }
+.rb-svc-result-item.selected { background: #dbeafe; border-left: 3px solid var(--rb-primary); }
+.rb-svc-result-name { font-size: 13px; font-weight: 500; }
+.rb-svc-result-code { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-svc-result-price { font-size: 12px; color: var(--rb-success); font-weight: 600; flex-shrink: 0; }
+.rb-svc-doctor-row { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-bottom: 1px solid var(--rb-border); transition: background 0.1s; cursor: pointer; }
+.rb-svc-doctor-row:hover { background: #f8fafc; }
+.rb-svc-doctor-row.has-bonus { background: #f0fdf4; }
+.rb-svc-doctor-row.has-bonus:hover { background: #dcfce7; }
+.rb-svc-doctor-row input[type=checkbox] { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--rb-primary); cursor: pointer; }
+.rb-svc-doctor-info { flex: 1; min-width: 0; }
+.rb-svc-doctor-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rb-svc-doctor-spec { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-svc-doctor-bonus { font-size: 12px; font-weight: 600; color: var(--rb-success); white-space: nowrap; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -325,14 +407,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   <div class="rb-layout">
     <!-- LEFT: Doctors list -->
     <div class="rb-panel">
-      <div class="rb-panel-header">
-        <div class="rb-panel-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Врачи-направители
+      <div class="rb-panel-header" style="padding:0;border-bottom:none;flex-direction:column;align-items:stretch;gap:0">
+        <div class="rb-panel-mode-tabs">
+          <button class="rb-panel-tab active" id="rb-mode-referrer" onclick="rbSetPanelMode('referrer')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07C5.7 17.11 3.09 14.5 1.31 8.63A19.94 19.94 0 0 1 4.38 0C5.57-.18 6.73.55 7.5 1.72l1.2 2.4a2 2 0 0 1-.45 2.37L6 8.09c1.72 3.36 4.47 6.11 7.83 7.83l1.6-2.25a2 2 0 0 1 2.37-.45l2.4 1.2a2 2 0 0 1 1.72 1.5z"/></svg>
+            Направители
+          </button>
+          <button class="rb-panel-tab" id="rb-mode-executor" onclick="rbSetPanelMode('executor')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Исполнители
+          </button>
+          <button class="rb-panel-tab" id="rb-mode-service" onclick="rbSetPanelMode('service')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            По услуге
+          </button>
         </div>
-        <div id="rb-doctors-count" style="font-size:12px;color:var(--rb-text-secondary)"></div>
+        <div class="rb-panel-count-bar" id="rb-doctors-count"></div>
       </div>
-      <div class="rb-filters">
+      <!-- Doctor filters (referrer/executor modes) -->
+      <div class="rb-filters" id="rb-doctor-filters">
         <input id="rb-search" class="rb-search-input" placeholder="Поиск по ФИО...">
         <select id="rb-filter-clinic" class="rb-select">
           <option value="">Все медцентры</option>
@@ -340,6 +433,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
         <select id="rb-filter-profession" class="rb-select">
           <option value="">Все специальности</option>
         </select>
+      </div>
+      <!-- Service search panel (service mode) -->
+      <div id="rb-svc-mode-panel" style="display:none">
+        <div style="padding:12px 16px;border-bottom:1px solid var(--rb-border)">
+          <input id="rb-svc-mode-input" class="rb-search-input" placeholder="Введите название или код услуги..." oninput="rbSvcModeSearchDebounced()">
+        </div>
+        <div id="rb-svc-mode-results" style="max-height:calc(100vh - 220px);overflow-y:auto"></div>
       </div>
       <div class="rb-doctors-list" id="rb-doctors-list">
         <div class="rb-loading"><span class="rb-spinner"></span>Загрузка врачей...</div>
@@ -524,6 +624,8 @@ const RB = {
   bonusCounts: {}, // misUserId -> count
   selectedService: null,
   reportData: null,
+  panelMode: 'referrer', // 'referrer' | 'executor'
+  executorData: null,    // in-memory cache for selected executor's settings
 };
 
 // ═══════════════════════════════════════
@@ -743,8 +845,12 @@ async function rbSelectDoctor(misUserId) {
   document.querySelectorAll('.rb-doctor-item').forEach(el => el.classList.remove('active'));
   event.currentTarget?.classList.add('active');
 
-  rbRenderDoctorDetail();
-  await rbLoadBonuses();
+  if (RB.panelMode === 'executor') {
+    await rbRenderExecutorDetail();
+  } else {
+    rbRenderDoctorDetail();
+    await rbLoadBonuses();
+  }
 }
 
 function rbRenderDoctorDetail() {
@@ -1220,6 +1326,659 @@ async function rbApplyCategoryBonus() {
 }
 
 // ═══════════════════════════════════════
+// PANEL MODE SWITCH
+// ═══════════════════════════════════════
+function rbSetPanelMode(mode) {
+  RB.panelMode = mode;
+  document.getElementById('rb-mode-referrer').classList.toggle('active', mode === 'referrer');
+  document.getElementById('rb-mode-executor').classList.toggle('active', mode === 'executor');
+  document.getElementById('rb-mode-service').classList.toggle('active', mode === 'service');
+
+  // Show/hide left panel sections
+  const isService = mode === 'service';
+  document.getElementById('rb-doctor-filters').style.display = isService ? 'none' : '';
+  document.getElementById('rb-doctors-list').style.display   = isService ? 'none' : '';
+  document.getElementById('rb-svc-mode-panel').style.display = isService ? '' : 'none';
+  document.getElementById('rb-doctors-count').textContent    = isService ? '' : (document.getElementById('rb-doctors-count').textContent || '');
+
+  // Reset selection
+  RB.selectedDoctor = null;
+  document.querySelectorAll('.rb-doctor-item').forEach(el => el.classList.remove('active'));
+
+  if (isService) {
+    SVC.selectedService = null;
+    SVC.bonusesByDoctor = {};
+    document.getElementById('rb-svc-mode-input').value = '';
+    document.getElementById('rb-svc-mode-results').innerHTML = '';
+    document.getElementById('rb-detail-panel').innerHTML = `
+      <div class="rb-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <p>Найдите услугу в поиске слева</p>
+      </div>`;
+  } else {
+    const placeholder = mode === 'executor'
+      ? 'Выберите врача-исполнителя из списка слева'
+      : 'Выберите врача из списка слева';
+    document.getElementById('rb-detail-panel').innerHTML = `
+      <div class="rb-placeholder">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7z"/></svg>
+        <p>${placeholder}</p>
+      </div>`;
+  }
+}
+
+// ═══════════════════════════════════════
+// SERVICE MODE
+// ═══════════════════════════════════════
+const SVC = {
+  selectedService: null,
+  bonusesByDoctor: {}, // misUserId -> { id, bonusPercent, bonusRub }
+  selectedDoctorIds: new Set(),
+  filteredDoctors: [],
+};
+
+let _svcSearchTimer;
+function rbSvcModeSearchDebounced() {
+  clearTimeout(_svcSearchTimer);
+  _svcSearchTimer = setTimeout(rbSvcModeSearch, 350);
+}
+
+async function rbSvcModeSearch() {
+  const term = document.getElementById('rb-svc-mode-input').value.trim();
+  const resultsEl = document.getElementById('rb-svc-mode-results');
+  if (term.length < 2) {
+    resultsEl.innerHTML = '';
+    return;
+  }
+  resultsEl.innerHTML = '<div class="rb-loading" style="padding:14px"><span class="rb-spinner"></span>Поиск...</div>';
+  try {
+    const data = await rbPost('/api/mis/search-mis', { term });
+    if (!data.success || !data.data.length) {
+      resultsEl.innerHTML = '<div class="rb-loading" style="padding:14px">Ничего не найдено</div>';
+      return;
+    }
+    resultsEl.innerHTML = data.data.map((s, i) => `
+      <div class="rb-svc-result-item${SVC.selectedService?.code === (s.code || String(s.service_id)) ? ' selected' : ''}"
+           onclick='rbSvcModeSelectService(${JSON.stringify(s)})'>
+        <div>
+          <div class="rb-svc-result-name">${rbEsc(s.title)}</div>
+          <div class="rb-svc-result-code">Код: ${rbEsc(s.code || s.service_id || '')}</div>
+        </div>
+        ${s.price ? `<div class="rb-svc-result-price">${s.price.toFixed(2)} ₽</div>` : ''}
+      </div>`).join('');
+  } catch {
+    resultsEl.innerHTML = '<div class="rb-loading" style="padding:14px;color:var(--rb-danger)">Ошибка поиска</div>';
+  }
+}
+
+async function rbSvcModeSelectService(s) {
+  SVC.selectedService = { ...s, code: s.code || String(s.service_id || '') };
+  SVC.selectedDoctorIds.clear();
+
+  // Highlight in results
+  document.querySelectorAll('.rb-svc-result-item').forEach(el => el.classList.remove('selected'));
+  event.currentTarget?.classList.add('selected');
+
+  // Show loading in right panel
+  document.getElementById('rb-detail-panel').innerHTML =
+    '<div class="rb-placeholder"><p>Загрузка...</p></div>';
+
+  // Load existing bonuses for this service
+  try {
+    SVC.bonusesByDoctor = await rbApi(`/api/referral-bonuses/by-service?serviceCode=${encodeURIComponent(SVC.selectedService.code)}`);
+  } catch {
+    SVC.bonusesByDoctor = {};
+  }
+
+  SVC.filteredDoctors = [...RB.doctors];
+  rbSvcModeRender();
+}
+
+function rbSvcModeRender() {
+  const svc = SVC.selectedService;
+  if (!svc) return;
+
+  const priceHtml = svc.price ? `<span style="font-size:12px;color:var(--rb-success);font-weight:600">${parseFloat(svc.price).toFixed(2)} ₽</span>` : '';
+  const selectedCount = SVC.selectedDoctorIds.size;
+
+  const doctorsHtml = SVC.filteredDoctors.map(d => {
+    const existing = SVC.bonusesByDoctor[d.id];
+    const bonusLabel = existing
+      ? (existing.bonusPercent != null ? `${existing.bonusPercent}%` : `${parseFloat(existing.bonusRub).toFixed(2)} ₽`)
+      : '';
+    const checked = SVC.selectedDoctorIds.has(d.id) ? 'checked' : '';
+    const spec = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+    return `<label class="rb-svc-doctor-row${existing ? ' has-bonus' : ''}">
+      <input type="checkbox" ${checked} onchange="rbSvcToggleDoctor('${d.id}', this.checked)">
+      <div class="rb-svc-doctor-info">
+        <div class="rb-svc-doctor-name">${rbEsc(d.name)}</div>
+        ${spec ? `<div class="rb-svc-doctor-spec">${rbEsc(spec)}</div>` : ''}
+      </div>
+      ${bonusLabel ? `<div class="rb-svc-doctor-bonus">${rbEsc(bonusLabel)}</div>` : ''}
+    </label>`;
+  }).join('');
+
+  document.getElementById('rb-detail-panel').innerHTML = `
+    <div class="rb-doctor-card">
+      <div class="rb-doctor-card-header" style="flex-wrap:wrap;gap:10px">
+        <div style="flex:1;min-width:0">
+          <h2 style="font-size:15px">${rbEsc(svc.title)}</h2>
+          <p style="margin-top:4px">Код: <span style="font-family:monospace">${rbEsc(svc.code)}</span>${svc.price ? ' &nbsp;•&nbsp; ' + parseFloat(svc.price).toFixed(2) + ' ₽' : ''}</p>
+        </div>
+      </div>
+      <div style="padding:14px 16px;border-bottom:1px solid var(--rb-border);background:#fffbeb">
+        <div style="font-size:13px;font-weight:600;margin-bottom:10px">Назначить бонус выбранным врачам</div>
+        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+          <div class="rb-bonus-field">
+            <label>Бонус, %</label>
+            <input type="number" id="rb-svc-bonus-pct" placeholder="10" min="0" max="100" step="0.01"
+                   style="width:90px" oninput="if(this.value)document.getElementById('rb-svc-bonus-rub').value=''">
+          </div>
+          <div class="rb-bonus-field">
+            <label>Бонус, ₽</label>
+            <input type="number" id="rb-svc-bonus-rub" placeholder="150" min="0" step="0.01"
+                   style="width:90px" oninput="if(this.value)document.getElementById('rb-svc-bonus-pct').value=''">
+          </div>
+          <button class="rb-btn rb-btn-primary" id="rb-svc-save-btn" onclick="rbSvcModeSaveBulk()" ${selectedCount === 0 ? 'disabled' : ''}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            Назначить выбранным (<span id="rb-svc-sel-count">${selectedCount}</span>)
+          </button>
+          <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbSvcModeClearBulk()" title="Снять бонус у выбранных" ${selectedCount === 0 ? 'disabled' : ''} id="rb-svc-clear-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            Снять
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="rb-bonuses-section">
+      <div class="rb-bonuses-header" style="flex-wrap:wrap;gap:8px">
+        <h3 style="font-size:14px;font-weight:600;display:flex;align-items:center;gap:6px">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Врачи-направители
+        </h3>
+        <div style="display:flex;gap:6px;margin-left:auto">
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcSelectAll()">Все</button>
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcDeselectAll()">Сбросить</button>
+        </div>
+        <input class="rb-search-input" id="rb-svc-doctor-filter" placeholder="Фильтр по ФИО..."
+               style="width:100%;margin-top:4px" oninput="rbSvcFilterDoctors()">
+      </div>
+      <div id="rb-svc-doctor-list" style="max-height:calc(100vh - 420px);overflow-y:auto">
+        ${doctorsHtml || '<div class="rb-loading" style="padding:20px">Нет врачей</div>'}
+      </div>
+    </div>`;
+}
+
+function rbSvcToggleDoctor(id, checked) {
+  checked ? SVC.selectedDoctorIds.add(id) : SVC.selectedDoctorIds.delete(id);
+  const cnt = SVC.selectedDoctorIds.size;
+  const cntEl = document.getElementById('rb-svc-sel-count');
+  if (cntEl) cntEl.textContent = cnt;
+  const saveBtn = document.getElementById('rb-svc-save-btn');
+  const clearBtn = document.getElementById('rb-svc-clear-btn');
+  if (saveBtn) saveBtn.disabled = cnt === 0;
+  if (clearBtn) clearBtn.disabled = cnt === 0;
+}
+
+function rbSvcSelectAll() {
+  SVC.filteredDoctors.forEach(d => SVC.selectedDoctorIds.add(d.id));
+  rbSvcModeRender();
+}
+
+function rbSvcDeselectAll() {
+  SVC.selectedDoctorIds.clear();
+  rbSvcModeRender();
+}
+
+function rbSvcFilterDoctors() {
+  const term = document.getElementById('rb-svc-doctor-filter')?.value?.toLowerCase() || '';
+  SVC.filteredDoctors = term
+    ? RB.doctors.filter(d => d.name.toLowerCase().includes(term))
+    : [...RB.doctors];
+  const listEl = document.getElementById('rb-svc-doctor-list');
+  if (!listEl) return;
+  listEl.innerHTML = SVC.filteredDoctors.map(d => {
+    const existing = SVC.bonusesByDoctor[d.id];
+    const bonusLabel = existing
+      ? (existing.bonusPercent != null ? `${existing.bonusPercent}%` : `${parseFloat(existing.bonusRub).toFixed(2)} ₽`)
+      : '';
+    const checked = SVC.selectedDoctorIds.has(d.id) ? 'checked' : '';
+    const spec = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+    return `<label class="rb-svc-doctor-row${existing ? ' has-bonus' : ''}">
+      <input type="checkbox" ${checked} onchange="rbSvcToggleDoctor('${d.id}', this.checked)">
+      <div class="rb-svc-doctor-info">
+        <div class="rb-svc-doctor-name">${rbEsc(d.name)}</div>
+        ${spec ? `<div class="rb-svc-doctor-spec">${rbEsc(spec)}</div>` : ''}
+      </div>
+      ${bonusLabel ? `<div class="rb-svc-doctor-bonus">${rbEsc(bonusLabel)}</div>` : ''}
+    </label>`;
+  }).join('') || '<div class="rb-loading" style="padding:20px">Нет врачей</div>';
+}
+
+async function rbSvcModeSaveBulk() {
+  const svc = SVC.selectedService;
+  if (!svc || !SVC.selectedDoctorIds.size) return;
+  const pct = document.getElementById('rb-svc-bonus-pct').value;
+  const rub = document.getElementById('rb-svc-bonus-rub').value;
+  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+
+  const btn = document.getElementById('rb-svc-save-btn');
+  if (btn) btn.disabled = true;
+
+  const selectedDoctors = RB.doctors.filter(d => SVC.selectedDoctorIds.has(d.id));
+  let saved = 0;
+  try {
+    for (const d of selectedDoctors) {
+      await rbPost('/api/referral-bonuses', {
+        misUserId: d.id,
+        doctorName: d.name,
+        serviceCode: svc.code,
+        serviceName: svc.title,
+        bonusPercent: pct ? parseFloat(pct) : null,
+        bonusRub: rub ? parseFloat(rub) : null,
+      });
+      SVC.bonusesByDoctor[d.id] = {
+        bonusPercent: pct ? parseFloat(pct) : null,
+        bonusRub: rub ? parseFloat(rub) : null,
+      };
+      saved++;
+    }
+    rbToast(`Бонус назначен ${saved} врачам`, 'success');
+    SVC.selectedDoctorIds.clear();
+    rbSvcModeRender();
+  } catch (err) {
+    rbToast('Ошибка сохранения: ' + err.message, 'error');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function rbSvcModeClearBulk() {
+  const svc = SVC.selectedService;
+  if (!svc || !SVC.selectedDoctorIds.size) return;
+  if (!confirm(`Снять бонус по этой услуге у ${SVC.selectedDoctorIds.size} врачей?`)) return;
+
+  const btn = document.getElementById('rb-svc-clear-btn');
+  if (btn) btn.disabled = true;
+
+  let deleted = 0;
+  try {
+    for (const id of SVC.selectedDoctorIds) {
+      const existing = SVC.bonusesByDoctor[id];
+      if (existing?.id) {
+        await fetch(`${RB.apiBase}/api/referral-bonuses/${existing.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${RB.token}` }
+        });
+        delete SVC.bonusesByDoctor[id];
+        deleted++;
+      }
+    }
+    rbToast(`Бонус снят у ${deleted} врачей`, 'success');
+    SVC.selectedDoctorIds.clear();
+    rbSvcModeRender();
+  } catch (err) {
+    rbToast('Ошибка: ' + err.message, 'error');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ═══════════════════════════════════════
+// EXECUTOR DETAIL
+// ═══════════════════════════════════════
+const EXEC_DEDUCTION_SUGGESTS = ['Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
+const EXEC_MATERIAL_SUGGESTS  = ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'];
+const EXEC_EXTRA_SUGGESTS     = ['Консультация', 'Осмотр', 'Процедура', 'Анализ', 'Инъекция'];
+let _rbExecTypes = {}; // sectionId -> 'percent'|'rub'
+
+async function rbExecLoad(misUserId) {
+  try {
+    const resp = await fetch(`${RB.apiBase}/api/executor-settings?misUserId=${encodeURIComponent(misUserId)}`, {
+      headers: { Authorization: `Bearer ${RB.token}` }
+    });
+    if (!resp.ok) return rbExecDefault();
+    const data = await resp.json();
+    return data && Object.keys(data).length ? { ...rbExecDefault(), ...data } : rbExecDefault();
+  } catch { return rbExecDefault(); }
+}
+
+async function rbExecSave(misUserId, data) {
+  try {
+    await fetch(`${RB.apiBase}/api/executor-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RB.token}` },
+      body: JSON.stringify({ misUserId, doctorName: RB.selectedDoctor?.name || '', settings: data })
+    });
+  } catch (e) { console.error('rbExecSave error:', e); }
+}
+
+function rbExecDefault() {
+  return { deductions: [], materials: [], payment: { method: 'card', advance: 0, salary: 0 }, wage: { amount: 0, hours: 0 }, extras: [] };
+}
+
+async function rbRenderExecutorDetail() {
+  const d = RB.selectedDoctor;
+  document.getElementById('rb-detail-panel').innerHTML =
+    `<div class="rb-placeholder"><p>Загрузка...</p></div>`;
+  RB.executorData = await rbExecLoad(d.id);
+  const data = RB.executorData;
+  const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+  const clinicBadges = d.clinics.map(cId =>
+    `<span class="rb-clinic-badge" style="background:${rbGetClinicColor(cId)};margin-right:4px">${rbGetClinicName(cId)}</span>`
+  ).join('');
+  document.getElementById('rb-detail-panel').innerHTML = `
+    <div class="rb-doctor-card">
+      <div class="rb-doctor-card-header">
+        <div class="rb-doctor-card-avatar"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+        <div class="rb-doctor-card-info">
+          <h2>${rbEsc(d.name)}</h2>
+          ${specialty ? `<p>${rbEsc(specialty)}</p>` : ''}
+          <div style="margin-top:6px">${clinicBadges}</div>
+        </div>
+        <div class="rb-doctor-card-actions">
+          <span style="font-size:12px;color:var(--rb-primary);padding:4px 10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-weight:600">Исполнитель</span>
+        </div>
+      </div>
+    </div>
+    ${rbExecSectionDeductions(data)}
+    ${rbExecSectionMaterials(data)}
+    ${rbExecSectionPayment(data)}
+    ${rbExecSectionWage(data)}
+    ${rbExecSectionExtras(data)}
+  `;
+}
+
+// --- Shared helpers ---
+function rbExecItemsHtml(items, section) {
+  if (!items.length) return '<div class="rb-exec-empty">Нет записей</div>';
+  return `<div class="rb-exec-items">${items.map((item, i) => `
+    <div class="rb-exec-item">
+      <div class="rb-exec-item-name">${rbEsc(item.name)}</div>
+      <div class="rb-exec-item-value">${item.valueType === 'percent' ? item.value + '%' : parseFloat(item.value).toFixed(2) + ' ₽'}</div>
+      <button class="rb-btn rb-btn-danger rb-btn-xs" onclick="rbExecDeleteItem('${section}', ${i})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('')}</div>`;
+}
+
+function rbExecExtrasHtml(extras) {
+  if (!extras.length) return '<div class="rb-exec-empty">Нет записей</div>';
+  return `<div class="rb-exec-items">${extras.map((e, i) => `
+    <div class="rb-exec-item">
+      <div class="rb-exec-item-name">${rbEsc(e.name)}</div>
+      <div class="rb-exec-item-value" style="color:var(--rb-success)">${parseFloat(e.amount).toFixed(2)} ₽${e.hours ? ` × ${e.hours} ч` : ''}</div>
+      <button class="rb-btn rb-btn-danger rb-btn-xs" onclick="rbExecDeleteExtra(${i})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('')}</div>`;
+}
+
+function rbExecAddFormHtml(sectionId, suggests) {
+  const suggestsHtml = suggests.map(s =>
+    `<span class="rb-exec-suggest" onclick="document.getElementById('rb-exec-name-${sectionId}').value='${rbEsc(s)}'">${rbEsc(s)}</span>`
+  ).join('');
+  return `
+    <div class="rb-exec-add-form" id="rb-exec-form-${sectionId}">
+      <div class="rb-exec-suggests" style="margin-bottom:8px">${suggestsHtml}</div>
+      <div class="rb-exec-add-row">
+        <div class="rb-exec-add-field flex-grow">
+          <label>Название</label>
+          <input id="rb-exec-name-${sectionId}" type="text" placeholder="Введите название...">
+        </div>
+        <div class="rb-exec-add-field">
+          <label>Тип</label>
+          <div class="rb-exec-type-toggle">
+            <button class="rb-exec-type-btn active" id="rb-exec-type-pct-${sectionId}" onclick="rbExecToggleType('${sectionId}','percent')">%</button>
+            <button class="rb-exec-type-btn" id="rb-exec-type-rub-${sectionId}" onclick="rbExecToggleType('${sectionId}','rub')">₽</button>
+          </div>
+        </div>
+        <div class="rb-exec-add-field">
+          <label>Значение</label>
+          <input id="rb-exec-val-${sectionId}" type="number" placeholder="0" min="0" step="0.01" style="width:90px">
+        </div>
+        <div style="padding-bottom:1px">
+          <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbExecAddItem('${sectionId}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+            Добавить
+          </button>
+        </div>
+      </div>
+    </div>
+    <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbExecToggleForm('${sectionId}')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Добавить запись
+    </button>`;
+}
+
+// --- Section renderers ---
+function rbExecSectionDeductions(data) {
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        Расходники / Штрафы / Взыскания
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div id="rb-exec-list-deductions">${rbExecItemsHtml(data.deductions || [], 'deductions')}</div>
+      ${rbExecAddFormHtml('deductions', EXEC_DEDUCTION_SUGGESTS)}
+    </div>
+  </div>`;
+}
+
+function rbExecSectionMaterials(data) {
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/></svg>
+        Чистый расход на материалы
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div id="rb-exec-list-materials">${rbExecItemsHtml(data.materials || [], 'materials')}</div>
+      ${rbExecAddFormHtml('materials', EXEC_MATERIAL_SUGGESTS)}
+    </div>
+  </div>`;
+}
+
+function rbExecSectionPayment(data) {
+  const p = data.payment || { method: 'card', advance: 0, salary: 0 };
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Способ оплаты и заработная плата
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div class="rb-exec-fields-grid">
+        <div class="rb-exec-field" style="grid-column:1/-1">
+          <label>Способ оплаты</label>
+          <select id="rb-exec-payment-method">
+            <option value="card" ${p.method === 'card' ? 'selected' : ''}>Карта</option>
+            <option value="cash" ${p.method === 'cash' ? 'selected' : ''}>Наличные</option>
+          </select>
+        </div>
+        <div class="rb-exec-field">
+          <label>Аванс, ₽</label>
+          <input type="number" id="rb-exec-advance" value="${p.advance || 0}" min="0" step="0.01" placeholder="0">
+        </div>
+        <div class="rb-exec-field">
+          <label>Тело з/п, ₽</label>
+          <input type="number" id="rb-exec-salary" value="${p.salary || 0}" min="0" step="0.01" placeholder="0">
+        </div>
+      </div>
+      <div class="rb-exec-save-row">
+        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbExecSavePayment()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+          Сохранить
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function rbExecSectionWage(data) {
+  const w = data.wage || { amount: 0, hours: 0 };
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Оклад
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div class="rb-exec-fields-grid">
+        <div class="rb-exec-field">
+          <label>Сумма, ₽</label>
+          <input type="number" id="rb-exec-wage-amount" value="${w.amount || 0}" min="0" step="0.01" placeholder="0">
+        </div>
+        <div class="rb-exec-field">
+          <label>Часов</label>
+          <input type="number" id="rb-exec-wage-hours" value="${w.hours || 0}" min="0" step="0.5" placeholder="0">
+        </div>
+      </div>
+      <div class="rb-exec-save-row">
+        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbExecSaveWage()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
+          Сохранить
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function rbExecSectionExtras(data) {
+  const extras = data.extras || [];
+  const suggestsHtml = EXEC_EXTRA_SUGGESTS.map(s =>
+    `<span class="rb-exec-suggest" onclick="document.getElementById('rb-exec-extra-name').value='${rbEsc(s)}'">${rbEsc(s)}</span>`
+  ).join('');
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        Дополнительно
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div id="rb-exec-list-extras">${rbExecExtrasHtml(extras)}</div>
+      <div class="rb-exec-add-form" id="rb-exec-form-extras">
+        <div class="rb-exec-suggests" style="margin-bottom:8px">${suggestsHtml}</div>
+        <div class="rb-exec-add-row">
+          <div class="rb-exec-add-field flex-grow">
+            <label>Услуга / описание</label>
+            <input id="rb-exec-extra-name" type="text" placeholder="Введите название...">
+          </div>
+          <div class="rb-exec-add-field">
+            <label>Сумма, ₽</label>
+            <input id="rb-exec-extra-amount" type="number" placeholder="0" min="0" step="0.01" style="width:90px">
+          </div>
+          <div class="rb-exec-add-field">
+            <label>Часов</label>
+            <input id="rb-exec-extra-hours" type="number" placeholder="0" min="0" step="0.5" style="width:70px">
+          </div>
+          <div style="padding-bottom:1px">
+            <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbExecAddExtra()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+              Добавить
+            </button>
+          </div>
+        </div>
+      </div>
+      <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbExecToggleForm('extras')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Добавить запись
+      </button>
+    </div>
+  </div>`;
+}
+
+// --- Interaction handlers ---
+function rbExecToggleForm(sectionId) {
+  const form = document.getElementById(`rb-exec-form-${sectionId}`);
+  if (form) form.classList.toggle('visible');
+}
+
+function rbExecToggleType(sectionId, type) {
+  _rbExecTypes[sectionId] = type;
+  const pctBtn = document.getElementById(`rb-exec-type-pct-${sectionId}`);
+  const rubBtn = document.getElementById(`rb-exec-type-rub-${sectionId}`);
+  if (pctBtn) pctBtn.classList.toggle('active', type === 'percent');
+  if (rubBtn) rubBtn.classList.toggle('active', type === 'rub');
+}
+
+async function rbExecAddItem(section) {
+  const nameEl = document.getElementById(`rb-exec-name-${section}`);
+  const valEl  = document.getElementById(`rb-exec-val-${section}`);
+  const name   = nameEl?.value?.trim();
+  const value  = parseFloat(valEl?.value);
+  const valueType = _rbExecTypes[section] || 'percent';
+  if (!name) { rbToast('Укажите название', 'error'); return; }
+  if (isNaN(value) || value < 0) { rbToast('Укажите значение', 'error'); return; }
+  const data = RB.executorData;
+  data[section].push({ name, valueType, value });
+  await rbExecSave(RB.selectedDoctor.id, data);
+  if (nameEl) nameEl.value = '';
+  if (valEl) valEl.value = '';
+  const listEl = document.getElementById(`rb-exec-list-${section}`);
+  if (listEl) listEl.innerHTML = rbExecItemsHtml(data[section], section);
+  rbToast('Добавлено', 'success');
+}
+
+async function rbExecDeleteItem(section, idx) {
+  const data = RB.executorData;
+  data[section].splice(idx, 1);
+  await rbExecSave(RB.selectedDoctor.id, data);
+  const listEl = document.getElementById(`rb-exec-list-${section}`);
+  if (listEl) listEl.innerHTML = rbExecItemsHtml(data[section], section);
+}
+
+async function rbExecAddExtra() {
+  const name   = document.getElementById('rb-exec-extra-name')?.value?.trim();
+  const amount = parseFloat(document.getElementById('rb-exec-extra-amount')?.value);
+  const hours  = parseFloat(document.getElementById('rb-exec-extra-hours')?.value) || 0;
+  if (!name) { rbToast('Укажите название', 'error'); return; }
+  if (isNaN(amount) || amount < 0) { rbToast('Укажите сумму', 'error'); return; }
+  const data = RB.executorData;
+  data.extras.push({ name, amount, hours });
+  await rbExecSave(RB.selectedDoctor.id, data);
+  document.getElementById('rb-exec-extra-name').value = '';
+  document.getElementById('rb-exec-extra-amount').value = '';
+  document.getElementById('rb-exec-extra-hours').value = '';
+  const listEl = document.getElementById('rb-exec-list-extras');
+  if (listEl) listEl.innerHTML = rbExecExtrasHtml(data.extras);
+  rbToast('Добавлено', 'success');
+}
+
+async function rbExecDeleteExtra(idx) {
+  const data = RB.executorData;
+  data.extras.splice(idx, 1);
+  await rbExecSave(RB.selectedDoctor.id, data);
+  const listEl = document.getElementById('rb-exec-list-extras');
+  if (listEl) listEl.innerHTML = rbExecExtrasHtml(data.extras);
+}
+
+async function rbExecSavePayment() {
+  const data = RB.executorData;
+  data.payment = {
+    method:  document.getElementById('rb-exec-payment-method')?.value || 'card',
+    advance: parseFloat(document.getElementById('rb-exec-advance')?.value) || 0,
+    salary:  parseFloat(document.getElementById('rb-exec-salary')?.value) || 0,
+  };
+  await rbExecSave(RB.selectedDoctor.id, data);
+  rbToast('Сохранено', 'success');
+}
+
+async function rbExecSaveWage() {
+  const data = RB.executorData;
+  data.wage = {
+    amount: parseFloat(document.getElementById('rb-exec-wage-amount')?.value) || 0,
+    hours:  parseFloat(document.getElementById('rb-exec-wage-hours')?.value) || 0,
+  };
+  await rbExecSave(RB.selectedDoctor.id, data);
+  rbToast('Сохранено', 'success');
+}
+
+// ═══════════════════════════════════════
 // REPORT MODAL
 // ═══════════════════════════════════════
 function rbOpenReportModal() {
@@ -1273,7 +2032,9 @@ function rbParseExcel(file) {
         return;
       }
 
-      rbBuildReport(rows);
+      rbBuildReport(rows).catch(err => {
+        document.getElementById('rb-report-content').innerHTML = `<div class="rb-alert rb-alert-error">Ошибка построения отчёта: ${err.message}</div>`;
+      });
     } catch (err) {
       document.getElementById('rb-report-content').innerHTML = `<div class="rb-alert rb-alert-error">Ошибка разбора файла: ${err.message}</div>`;
     }
@@ -1300,9 +2061,11 @@ function rbParseDate(val) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function rbBuildReport(rows) {
+async function rbBuildReport(rows) {
   const doctorName = RB.selectedDoctor.name;
   const doctorNameNorm = rbNormalizeName(doctorName);
+  // Загружаем настройки исполнителя для этого врача (оклад, расходники, доп. выплаты)
+  const execSettings = await rbExecLoad(RB.selectedDoctor.id);
 
   // Читаем период
   const dateFromVal = document.getElementById('rb-date-from').value;
@@ -1431,6 +2194,82 @@ function rbBuildReport(rows) {
     reportSections.push({ executor, services });
   });
 
+  // ── Выплаты другим направителям (этот врач — исполнитель) ──
+  const executedRows = colMap.executor ? rows.filter(r => {
+    const execNorm = rbNormalizeName(r[colMap.executor]);
+    if (!lastName || !execNorm.includes(lastName)) return false;
+    const refNorm = rbNormalizeName(r[colMap.referrer] || '');
+    if (refNorm.includes(lastName)) return false; // исключаем самонаправление
+    if (dateFrom || dateTo) {
+      const rowDate = rbParseDate(r[colMap.date]);
+      if (rowDate) {
+        if (dateFrom && rowDate < dateFrom) return false;
+        if (dateTo   && rowDate > dateTo)   return false;
+      }
+    }
+    return true;
+  }) : [];
+
+  const execServiceCodes = colMap.code
+    ? [...new Set(executedRows.map(r => String(r[colMap.code] || '').trim()).filter(Boolean))]
+    : [];
+
+  const bonusesByServiceCode = {};
+  if (execServiceCodes.length) {
+    await Promise.all(execServiceCodes.map(async code => {
+      try {
+        const data = await rbApi(`/api/referral-bonuses/by-service?serviceCode=${encodeURIComponent(code)}`);
+        bonusesByServiceCode[code] = data;
+      } catch { bonusesByServiceCode[code] = {}; }
+    }));
+  }
+
+  const referralCostByDoctor = {};
+  executedRows.forEach(r => {
+    const refName = String(r[colMap.referrer] || '').trim();
+    if (!refName) return;
+    const code = colMap.code ? String(r[colMap.code] || '').trim() : '';
+    const cost = parseFloat(String(r[colMap.cost] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+    const bonusMap = bonusesByServiceCode[code] || {};
+    const refDoctor = RB.doctors.find(d => rbNamesMatch(d.name, refName));
+    if (!refDoctor) return;
+    const bonus = bonusMap[refDoctor.id];
+    if (!bonus) return;
+    let amount = 0;
+    if (bonus.bonusPercent != null) { amount = cost * parseFloat(bonus.bonusPercent) / 100; }
+    else if (bonus.bonusRub != null) { amount = parseFloat(bonus.bonusRub); }
+    if (amount <= 0) return;
+    referralCostByDoctor[refDoctor.name] = (referralCostByDoctor[refDoctor.name] || 0) + amount;
+  });
+
+  const referralCostItems = Object.entries(referralCostByDoctor)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, amount]) => ({ name, amount }));
+  const referralCostTotal = referralCostItems.reduce((s, x) => s + x.amount, 0);
+
+  // ── Расчёт зарплаты ──
+  function rbCalcItemRub(item, base) {
+    const v = parseFloat(item.value) || 0;
+    return item.valueType === 'percent' ? base * v / 100 : v;
+  }
+  function rbCalcExtraRub(extra) {
+    const amt = parseFloat(extra.amount) || 0;
+    const hrs = parseFloat(extra.hours) || 0;
+    return hrs > 0 ? amt * hrs : amt;
+  }
+  const wage = parseFloat(execSettings.wage?.amount) || 0;
+  const execDeductions = execSettings.deductions || [];
+  const execMaterials  = execSettings.materials  || [];
+  const execExtras     = execSettings.extras     || [];
+  const extrasTotal      = execExtras.reduce((s, e) => s + rbCalcExtraRub(e), 0);
+  const deductionsTotal  = execDeductions.reduce((s, d) => s + rbCalcItemRub(d, wage), 0);
+  const materialsTotal   = execMaterials.reduce((s, m) => s + rbCalcItemRub(m, wage), 0);
+  const finalSalary = wage + grandTotal + extrasTotal - deductionsTotal - materialsTotal - referralCostTotal;
+
+  const salary = { wage, referralBonuses: grandTotal, extrasTotal, deductionsTotal, materialsTotal,
+    referralCostTotal, referralCostItems, finalSalary,
+    deductions: execDeductions, materials: execMaterials, extras: execExtras };
+
   // Сохраняем для экспорта и архива
   RB.reportData = {
     doctor: doctorName,
@@ -1439,13 +2278,11 @@ function rbBuildReport(rows) {
     grandTotal,
     dateFrom: dateFromVal,
     dateTo: dateToVal,
-    periodLabel
+    periodLabel,
+    salary
   };
 
   // Рендерим
-  const grandTotalAll = reportSections.reduce((sum, { services }) =>
-    sum + services.reduce((s, x) => s + x.bonusAmount, 0), 0);
-
   let html = `<div class="rb-report">
     <div class="rb-report-header-row">
       <div class="rb-report-title">Отчёт по направителю: ${rbEsc(doctorName)}</div>
@@ -1489,11 +2326,122 @@ function rbBuildReport(rows) {
   });
 
 
+  // ── Блок расчёта зарплаты ──
+  html += rbRenderSalaryBlock(salary);
+
   html += `</div>`;
 
   document.getElementById('rb-report-content').innerHTML = html;
   document.getElementById('rb-export-btn').style.display = 'flex';
   document.getElementById('rb-save-report-btn').style.display = 'flex';
+}
+
+function rbRenderSalaryBlock(salary) {
+  const { wage, referralBonuses, extrasTotal, deductionsTotal, materialsTotal,
+    referralCostTotal, referralCostItems, finalSalary,
+    deductions, materials, extras } = salary;
+
+  function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
+  function itemLabel(item, base) {
+    const rub = parseFloat(item.value) || 0;
+    if (item.valueType === 'percent') {
+      return `${item.name} (${rub}% = ${fmtRub(base * rub / 100)})`;
+    }
+    return `${item.name} (${fmtRub(rub)})`;
+  }
+  function extraLabel(e) {
+    const hrs = parseFloat(e.hours) || 0;
+    return hrs > 0 ? `${e.name} (${fmtRub(e.amount)} × ${hrs} ч = ${fmtRub(parseFloat(e.amount) * hrs)})` : `${e.name} (${fmtRub(e.amount)})`;
+  }
+
+  const hasWage           = wage > 0;
+  const hasReferral       = referralBonuses > 0;
+  const hasExtras         = extrasTotal > 0;
+  const hasDeductions     = deductionsTotal > 0;
+  const hasMaterials      = materialsTotal > 0;
+  const hasReferralCost   = (referralCostTotal || 0) > 0;
+  const hasAny            = hasWage || hasReferral || hasExtras || hasDeductions || hasMaterials || hasReferralCost;
+
+  if (!hasAny) return '';
+
+  let html = `<div class="rb-salary-block">
+    <div class="rb-salary-block-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Расчёт зарплаты
+    </div>`;
+
+  if (hasWage) {
+    html += `<div class="rb-salary-row base">
+      <div class="rb-salary-row-icon">≡</div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label">Оклад</div></div>
+      <div class="rb-salary-row-value">${fmtRub(wage)}</div>
+    </div>`;
+  }
+
+  if (hasReferral) {
+    html += `<div class="rb-salary-row plus">
+      <div class="rb-salary-row-icon">+</div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label">Бонусы за направления</div></div>
+      <div class="rb-salary-row-value">+${fmtRub(referralBonuses)}</div>
+    </div>`;
+  }
+
+  if (hasExtras) {
+    const subItems = extras.map(e => `<div class="rb-salary-subitem">↳ ${rbEsc(extraLabel(e))}</div>`).join('');
+    html += `<div class="rb-salary-row plus">
+      <div class="rb-salary-row-icon">+</div>
+      <div class="rb-salary-row-body">
+        <div class="rb-salary-row-label">Дополнительно</div>
+        <div class="rb-salary-row-subitems">${subItems}</div>
+      </div>
+      <div class="rb-salary-row-value">+${fmtRub(extrasTotal)}</div>
+    </div>`;
+  }
+
+  if (hasDeductions) {
+    const subItems = deductions.map(d => `<div class="rb-salary-subitem">↳ ${rbEsc(itemLabel(d, wage))}</div>`).join('');
+    html += `<div class="rb-salary-row minus">
+      <div class="rb-salary-row-icon">−</div>
+      <div class="rb-salary-row-body">
+        <div class="rb-salary-row-label">Расходники / штрафы / взыскания</div>
+        <div class="rb-salary-row-subitems">${subItems}</div>
+      </div>
+      <div class="rb-salary-row-value">−${fmtRub(deductionsTotal)}</div>
+    </div>`;
+  }
+
+  if (hasMaterials) {
+    const subItems = materials.map(m => `<div class="rb-salary-subitem">↳ ${rbEsc(itemLabel(m, wage))}</div>`).join('');
+    html += `<div class="rb-salary-row minus">
+      <div class="rb-salary-row-icon">−</div>
+      <div class="rb-salary-row-body">
+        <div class="rb-salary-row-label">Материалы</div>
+        <div class="rb-salary-row-subitems">${subItems}</div>
+      </div>
+      <div class="rb-salary-row-value">−${fmtRub(materialsTotal)}</div>
+    </div>`;
+  }
+
+  if (hasReferralCost) {
+    const subItems = (referralCostItems || []).map(x => `<div class="rb-salary-subitem">↳ ${rbEsc(x.name)} (${fmtRub(x.amount)})</div>`).join('');
+    html += `<div class="rb-salary-row minus">
+      <div class="rb-salary-row-icon">−</div>
+      <div class="rb-salary-row-body">
+        <div class="rb-salary-row-label">Бонусы направителям (как исполнитель)</div>
+        <div class="rb-salary-row-subitems">${subItems}</div>
+      </div>
+      <div class="rb-salary-row-value">−${fmtRub(referralCostTotal)}</div>
+    </div>`;
+  }
+
+  const sign = finalSalary >= 0 ? '' : '−';
+  html += `<div class="rb-salary-total-row">
+    <div class="rb-salary-total-label">К выплате</div>
+    <div class="rb-salary-total-value ${finalSalary >= 0 ? 'positive' : 'negative'}">${sign}${fmtRub(Math.abs(finalSalary))}</div>
+  </div>`;
+
+  html += `</div>`;
+  return html;
 }
 
 // ═══════════════════════════════════════
@@ -1602,6 +2550,73 @@ async function rbExportReport() {
 
     addRow([]); // пустая строка между секциями
   });
+
+  // ── Раздел расчёта зарплаты ──
+  const sal = RB.reportData.salary;
+  if (sal && (sal.wage > 0 || sal.referralBonuses > 0 || sal.extrasTotal > 0 || sal.deductionsTotal > 0 || sal.materialsTotal > 0 || sal.referralCostTotal > 0)) {
+    addRow([]); // разрыв
+    const salTitleRow = addRow(['Расчёт зарплаты']);
+    salTitleRow.getCell(1).font = { ...fontBold, size: 13 };
+    salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+    ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
+
+    function addSalRow(label, value, sign) {
+      const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
+      const row = addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
+      row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(2).font = fontNormal;
+      row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(6).numFmt = '#,##0.00';
+      ws.mergeCells(`B${row.number}:E${row.number}`);
+      autoWidth(row, 6);
+      return row;
+    }
+    function addSalSubRow(label) {
+      const row = addRow(['', '  ↳ ' + label]);
+      row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
+      ws.mergeCells(`B${row.number}:F${row.number}`);
+      autoWidth(row, 2);
+    }
+    function itemLabelXls(item, base) {
+      const v = parseFloat(item.value) || 0;
+      return item.valueType === 'percent' ? `${item.name} (${v}% = ${(base * v / 100).toFixed(2)} ₽)` : `${item.name} (${v.toFixed(2)} ₽)`;
+    }
+    function extraLabelXls(e) {
+      const hrs = parseFloat(e.hours) || 0;
+      return hrs > 0 ? `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽ × ${hrs} ч = ${(parseFloat(e.amount) * hrs).toFixed(2)} ₽)` : `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽)`;
+    }
+
+    if (sal.wage > 0)           { addSalRow('Оклад', sal.wage, '≡'); }
+    if (sal.referralBonuses > 0){ addSalRow('Бонусы за направления', sal.referralBonuses, '+'); }
+    if (sal.extrasTotal > 0)    {
+      addSalRow('Дополнительно', sal.extrasTotal, '+');
+      (sal.extras || []).forEach(e => addSalSubRow(extraLabelXls(e)));
+    }
+    if (sal.deductionsTotal > 0){
+      addSalRow('Расходники / штрафы / взыскания', sal.deductionsTotal, '-');
+      (sal.deductions || []).forEach(d => addSalSubRow(itemLabelXls(d, sal.wage)));
+    }
+    if (sal.materialsTotal > 0) {
+      addSalRow('Материалы', sal.materialsTotal, '-');
+      (sal.materials || []).forEach(m => addSalSubRow(itemLabelXls(m, sal.wage)));
+    }
+    if (sal.referralCostTotal > 0) {
+      addSalRow('Бонусы направителям (как исполнитель)', sal.referralCostTotal, '-');
+      (sal.referralCostItems || []).forEach(x => addSalSubRow(`${x.name} (${x.amount.toFixed(2)} ₽)`));
+    }
+
+    addRow([]);
+    const totalRow = addRow(['=', 'К выплате', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
+    const totalColor = sal.finalSalary >= 0 ? 'FF166534' : 'FFCC0000';
+    totalRow.getCell(1).font = { ...fontBold, size: 13, color: { argb: totalColor } };
+    totalRow.getCell(2).font = { ...fontBold, size: 13, color: { argb: totalColor } };
+    totalRow.getCell(6).font = { ...fontBold, size: 13, color: { argb: totalColor } };
+    totalRow.getCell(6).numFmt = '#,##0.00';
+    totalRow.getCell(6).border = allBorders;
+    totalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: sal.finalSalary >= 0 ? 'FFD1FAE5' : 'FFFEE2E2' } };
+    ws.mergeCells(`B${totalRow.number}:E${totalRow.number}`);
+    autoWidth(totalRow, 6);
+  }
 
   // ── Скачиваем файл ──
   const buf = await wb.xlsx.writeBuffer();
@@ -2279,7 +3294,7 @@ function rbArchiveRender() {
 
 async function rbSaveReportToArchive() {
   if (!RB.reportData) return;
-  const { doctor, misUserId, sections, grandTotal, dateFrom, dateTo, periodLabel } = RB.reportData;
+  const { doctor, misUserId, sections, grandTotal, dateFrom, dateTo, periodLabel, salary } = RB.reportData;
   const title = `${doctor}${periodLabel ? ' — ' + periodLabel : ''}`;
   try {
     await rbPost('/api/referral-reports', {
@@ -2290,7 +3305,7 @@ async function rbSaveReportToArchive() {
       dateFrom: dateFrom || null,
       dateTo: dateTo || null,
       totalAmount: grandTotal,
-      reportData: { doctor, sections, grandTotal, dateFrom, dateTo, periodLabel }
+      reportData: { doctor, sections, grandTotal, dateFrom, dateTo, periodLabel, salary }
     });
     rbToast('Отчёт сохранён в архив', 'success');
   } catch (e) {
@@ -2356,6 +3371,23 @@ async function rbDeleteArchiveReport(id) {
 // ═══════════════════════════════════════
 // Expose functions needed by inline onclick handlers
 window.rbSelectDoctor = rbSelectDoctor;
+window.rbSetPanelMode = rbSetPanelMode;
+window.rbSvcModeSearchDebounced = rbSvcModeSearchDebounced;
+window.rbSvcModeSelectService = rbSvcModeSelectService;
+window.rbSvcToggleDoctor = rbSvcToggleDoctor;
+window.rbSvcSelectAll = rbSvcSelectAll;
+window.rbSvcDeselectAll = rbSvcDeselectAll;
+window.rbSvcFilterDoctors = rbSvcFilterDoctors;
+window.rbSvcModeSaveBulk = rbSvcModeSaveBulk;
+window.rbSvcModeClearBulk = rbSvcModeClearBulk;
+window.rbExecToggleForm = rbExecToggleForm;
+window.rbExecToggleType = rbExecToggleType;
+window.rbExecAddItem = rbExecAddItem;
+window.rbExecDeleteItem = rbExecDeleteItem;
+window.rbExecAddExtra = rbExecAddExtra;
+window.rbExecDeleteExtra = rbExecDeleteExtra;
+window.rbExecSavePayment = rbExecSavePayment;
+window.rbExecSaveWage = rbExecSaveWage;
 window.rbOpenReportModal = rbOpenReportModal;
 window.rbCloseReportModal = rbCloseReportModal;
 window.rbHandleFile = rbHandleFile;

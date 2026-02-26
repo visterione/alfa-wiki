@@ -41,6 +41,7 @@ const reviewsRoutes = require('./routes/reviews');
 const emailRoutes = require('./routes/email');
 const referralBonusesRoutes = require('./routes/referral-bonuses');
 const referralReportsRoutes = require('./routes/referral-reports');
+const executorSettingsRoutes = require('./routes/executor-settings');
 
 const app = express();
 const server = http.createServer(app);
@@ -160,6 +161,7 @@ app.use('/api/reviews', reviewsRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/referral-bonuses', referralBonusesRoutes);
 app.use('/api/referral-reports', referralReportsRoutes);
+app.use('/api/executor-settings', executorSettingsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

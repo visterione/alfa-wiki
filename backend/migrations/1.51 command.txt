@@ -1,0 +1,1 @@
+node backend/scripts/migrate-executor-settings.js

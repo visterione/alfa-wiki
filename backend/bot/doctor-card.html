@@ -185,13 +185,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-services-table td { padding: 8px 10px; border-bottom: 1px solid var(--dc-border); color: var(--dc-text-secondary); }
 .dc-services-table tr:hover td { background: #f8fafc; }
 
-/* Services management in modal */
-.dc-modal-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--dc-border); margin: -16px -20px 16px -20px; padding: 0 20px; }
-.dc-modal-tab { padding: 12px 16px; border: none; background: none; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--dc-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.2s; }
-.dc-modal-tab:hover { color: var(--dc-primary); }
-.dc-modal-tab.active { color: var(--dc-primary); border-bottom-color: var(--dc-primary); }
-.dc-modal-tab-content { display: none; }
-.dc-modal-tab-content.active { display: block; }
+/* Services management in modal (tab styles removed — now two-column layout) */
 
 .dc-services-header { margin-bottom: 16px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border-left: 3px solid var(--dc-primary); }
 .dc-services-header-title { font-size: 14px; font-weight: 600; color: var(--dc-text); margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
@@ -207,7 +201,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-services-edit-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 .dc-services-edit-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-.dc-service-item { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 50px 12px 12px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 10px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.dc-service-item { display: flex; align-items: flex-start; gap: 8px; padding: 10px; border: 2px solid var(--dc-border); border-radius: 10px; margin-bottom: 8px; background: white; cursor: move; transition: all 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .dc-service-item:hover { background: #f8fafc; border-color: var(--dc-primary); box-shadow: 0 2px 6px rgba(37,99,235,0.1); transform: translateY(-1px); }
 .dc-service-item.dragging { opacity: 0.4; transform: rotate(2deg); }
 .dc-service-item.drag-over { border-color: var(--dc-primary); background: #dbeafe; border-style: dashed; }
@@ -220,7 +214,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-drag-handle svg { width: 18px; height: 18px; }
 
 .dc-service-info { flex: 1; min-width: 0; }
-.dc-service-content { flex: 1; min-width: 0; }
+.dc-service-content { flex: 1; min-width: 0; cursor: default; }
 .dc-service-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .dc-service-code { display: inline-flex; align-items: center; padding: 2px 8px; background: #e0e7ff; color: #4338ca; border-radius: 4px; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; }
 .dc-service-original-title { font-size: 13px; color: var(--dc-text); font-weight: 500; }
@@ -230,7 +224,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-field-label { font-size: 10px; font-weight: 600; color: var(--dc-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; gap: 4px; }
 .dc-service-field-label svg { width: 12px; height: 12px; }
 .dc-service-name { font-size: 12px; color: var(--dc-text); font-weight: 500; margin-top: 2px; }
-.dc-service-name-input, .dc-service-duration-input { width: 100%; padding: 6px 10px; border: 1px solid var(--dc-border); border-radius: 6px; font-size: 12px; transition: all 0.2s; }
+.dc-service-name-input, .dc-service-duration-input { width: 100%; padding: 6px 10px; border: 1px solid var(--dc-border); border-radius: 6px; font-size: 12px; transition: all 0.2s; cursor: text; }
 .dc-service-name-input:focus, .dc-service-duration-input:focus { outline: none; border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
 .dc-service-name-input::placeholder, .dc-service-duration-input::placeholder { color: #94a3b8; font-size: 11px; font-style: italic; }
 
@@ -239,10 +233,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-service-price { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; background: #dcfce7; color: #16a34a; border-radius: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .dc-service-price svg { width: 14px; height: 14px; }
 
-.dc-service-actions { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; gap: 4px; }
-.dc-service-btn { padding: 8px; border: none; background: white; cursor: pointer; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; border: 1px solid var(--dc-border); }
+.dc-service-left-col { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; }
+.dc-service-actions { display: flex; flex-direction: column; gap: 4px; }
+.dc-service-btn { padding: 5px; border: none; background: white; cursor: pointer; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; border: 1px solid var(--dc-border); }
 .dc-service-btn:hover { transform: scale(1.1); }
-.dc-service-btn svg { width: 18px; height: 18px; }
+.dc-service-btn svg { width: 14px; height: 14px; }
+.dc-service-fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .dc-service-btn-visibility { color: var(--dc-primary); border-color: var(--dc-primary); background: #eff6ff; }
 .dc-service-btn-visibility:hover { background: #dbeafe; box-shadow: 0 2px 4px rgba(37,99,235,0.2); }
 .dc-service-btn-visibility.hidden { color: var(--dc-text-secondary); border-color: var(--dc-border); background: white; }
@@ -268,14 +264,26 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 /* Modal */
 .dc-modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; padding: 16px; opacity: 0; visibility: hidden; transition: all 0.3s; }
 .dc-modal.active { opacity: 1; visibility: visible; }
-.dc-modal-content { background: var(--dc-card-bg); border-radius: var(--dc-radius); width: 100%; max-width: 750px; max-height: calc(100vh - 20px); overflow: hidden; display: flex; flex-direction: column; transform: scale(0.9); transition: transform 0.3s; }
+.dc-modal-content { background: var(--dc-card-bg); border-radius: var(--dc-radius); width: 100%; max-width: 1500px; height: calc(100vh - 20px); max-height: calc(100vh - 20px); overflow: hidden; display: flex; flex-direction: column; transform: scale(0.9); transition: transform 0.3s; }
 .dc-modal.active .dc-modal-content { transform: scale(1); }
 .dc-modal-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--dc-border); flex-shrink: 0; }
 .dc-modal-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
 .dc-modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--dc-text-secondary); line-height: 1; }
-.dc-modal-body { padding: 16px 20px; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; }
+.dc-modal-body { padding: 0; overflow: hidden; flex: 1; min-height: 0; }
 .dc-modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--dc-border); background: var(--dc-bg); flex-shrink: 0; }
 #dc-form { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+
+/* Two-column modal layout */
+.dc-modal-two-col { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; height: 100%; overflow: hidden; }
+.dc-modal-two-col.single-col { grid-template-columns: 1fr; }
+.dc-modal-col-main { padding: 16px 20px; overflow-y: auto; border-right: 1px solid var(--dc-border); -webkit-overflow-scrolling: touch; min-height: 0; display: flex; flex-direction: column; }
+.dc-modal-col-main > .dc-form-group:last-child { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-bottom: 0; }
+.dc-modal-col-main > .dc-form-group:last-child label { flex-shrink: 0; }
+.dc-modal-col-services { padding: 12px 16px; overflow-y: auto; background: #f8fafc; min-width: 0; min-height: 0; -webkit-overflow-scrolling: touch; }
+.dc-modal-col-services-title { font-size: 13px; font-weight: 600; color: var(--dc-text); margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--dc-border); display: flex; align-items: center; gap: 8px; }
+.dc-modal-col-services-title svg { width: 15px; height: 15px; color: var(--dc-primary); }
+.dc-modal-two-col.single-col .dc-modal-col-services { display: none; }
+.dc-modal-col-services .dc-services-edit-container { max-height: none; overflow-y: visible; padding-right: 0; }
 
 .dc-form-group { margin-bottom: 12px; }
 .dc-form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--dc-text); margin-bottom: 4px; }
@@ -302,11 +310,22 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .dc-clinic-check input { display: none; }
 
 /* Quill editor styles */
-.dc-editor-container { border: 1px solid var(--dc-border); border-radius: 8px; overflow: hidden; max-height: 300px; display: flex; flex-direction: column; }
+.dc-editor-container { border: 1px solid var(--dc-border); border-radius: 8px; overflow: hidden; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .dc-editor-container .ql-toolbar { border: none; border-bottom: 1px solid var(--dc-border); background: var(--dc-bg); padding: 6px; flex-shrink: 0; }
 .dc-editor-container .ql-container { border: none; font-size: 13px; min-height: 120px; flex: 1; overflow-y: auto; }
 .dc-editor-container .ql-editor { min-height: 120px; padding: 8px 10px; }
 .dc-editor-container .ql-editor.ql-blank::before { font-style: normal; color: var(--dc-text-secondary); }
+
+/* Service info tooltip */
+.dc-service-info-icon { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #3b82f6; color: white; font-size: 10px; font-weight: 700; cursor: pointer; margin-left: 5px; flex-shrink: 0; position: relative; vertical-align: middle; line-height: 1; border: none; padding: 0; font-family: inherit; }
+#dc-global-tooltip { display: none; position: fixed; background: #1e293b; color: white; font-size: 11px; font-weight: 400; padding: 7px 10px; border-radius: 7px; white-space: pre-wrap; max-width: 400px; min-width: 140px; line-height: 1.5; z-index: 99999; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.3); text-align: left; }
+#dc-global-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #1e293b; }
+#dc-global-tooltip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: #1e293b; }
+.dc-service-name-cell { display: flex; align-items: center; gap: 4px; }
+
+.dc-service-info-input { width: 100%; padding: 6px 10px; border: 1px solid var(--dc-border); border-radius: 6px; font-size: 12px; transition: all 0.2s; font-family: inherit; resize: vertical; min-height: 56px; cursor: text; }
+.dc-service-info-input:focus { outline: none; border-color: var(--dc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+.dc-service-info-input::placeholder { color: #94a3b8; font-size: 11px; font-style: italic; }
 
 .dc-toast { position: fixed; bottom: 20px; right: 20px; padding: 12px 20px; background: #333; color: white; border-radius: 8px; opacity: 0; transform: translateY(20px); transition: all 0.3s; z-index: 10001; }
 .dc-toast.show { opacity: 1; transform: translateY(0); }
@@ -359,8 +378,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   .dc-modal-content { max-width: 100%; max-height: 90vh; border-radius: 16px 16px 0 0; }
   .dc-modal-header { padding: 12px 16px; }
   .dc-modal-header h3 { font-size: 15px; }
-  .dc-modal-body { padding: 12px 16px; }
   .dc-modal-footer { padding: 10px 16px; }
+  .dc-modal-two-col { grid-template-columns: 1fr !important; }
+  .dc-modal-col-services { display: none !important; }
+  .dc-modal-col-main { padding: 12px 16px; }
   
   .dc-form-row, .dc-form-row-3 { grid-template-columns: 1fr; }
   .dc-form-group { margin-bottom: 10px; }
@@ -435,107 +456,96 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
           <input type="hidden" id="edit-id">
           <input type="hidden" id="edit-mis-user-id">
 
-          <div class="dc-modal-tabs">
-            <button type="button" class="dc-modal-tab active" onclick="dcApp.switchModalTab('info')">Основное</button>
-            <button type="button" class="dc-modal-tab" onclick="dcApp.switchModalTab('services')" id="services-tab-btn" style="display:none;">Услуги</button>
-          </div>
+          <div class="dc-modal-two-col single-col" id="dc-modal-two-col">
 
-          <div class="dc-modal-tab-content active" data-modal-tab="info">
-          
-          <div class="dc-form-row">
-            <div class="dc-form-group">
-              <label>Поиск врача в МИС</label>
-              <div class="dc-search-wrapper">
-                <input type="text" id="mis-search" class="dc-input" placeholder="Поиск по ФИО..." oninput="dcApp.searchMIS(this.value)">
-                <div id="mis-search-results" class="dc-search-results"></div>
+            <!-- Левый столбец: основные поля -->
+            <div class="dc-modal-col-main">
+              <div class="dc-form-row">
+                <div class="dc-form-group">
+                  <label>Поиск врача в МИС</label>
+                  <div class="dc-search-wrapper">
+                    <input type="text" id="mis-search" class="dc-input" placeholder="Поиск по ФИО..." oninput="dcApp.searchMIS(this.value)">
+                    <div id="mis-search-results" class="dc-search-results"></div>
+                  </div>
+                </div>
+                <div class="dc-form-group">
+                  <label>ФИО *</label>
+                  <input type="text" id="edit-fullname" required class="dc-input">
+                </div>
+              </div>
+
+              <div class="dc-form-row-3">
+                <div class="dc-form-group">
+                  <label>Специальность</label>
+                  <input type="text" id="edit-specialty" class="dc-input">
+                </div>
+                <div class="dc-form-group">
+                  <label>Стаж</label>
+                  <input type="text" id="edit-experience" class="dc-input">
+                </div>
+                <div class="dc-form-group">
+                  <label>Возраст пац.</label>
+                  <input type="text" id="edit-age-range" class="dc-input" placeholder="0+">
+                </div>
+              </div>
+
+              <div class="dc-form-row-3">
+                <div class="dc-form-group">
+                  <label>Вн. номер</label>
+                  <input type="text" id="edit-internal" class="dc-input">
+                </div>
+                <div class="dc-form-group">
+                  <label>Мобильный</label>
+                  <input type="text" id="edit-mobile" class="dc-input" placeholder="+7(___) ___-__-__" oninput="dcApp.formatPhone(this)" maxlength="18">
+                </div>
+                <div class="dc-form-group">
+                  <label>Ссылка</label>
+                  <input type="text" id="edit-profile-url" class="dc-input" placeholder="https://...">
+                </div>
+              </div>
+
+              <div class="dc-form-row">
+                <div class="dc-form-group">
+                  <label>Хэштеги (через запятую)</label>
+                  <input type="text" id="edit-tags" class="dc-input" placeholder="на дому, УЗИ, КТ">
+                </div>
+                <div class="dc-form-group">
+                  <label>Клиники</label>
+                  <div id="clinics-checkboxes" class="dc-clinics-grid"></div>
+                </div>
+              </div>
+
+              <div class="dc-form-group">
+                <label>Заметки</label>
+                <div class="dc-editor-container">
+                  <div id="edit-notes-editor"></div>
+                </div>
               </div>
             </div>
-            <div class="dc-form-group">
-              <label>ФИО *</label>
-              <input type="text" id="edit-fullname" required class="dc-input">
-            </div>
-          </div>
-          
-          <div class="dc-form-row-3">
-            <div class="dc-form-group">
-              <label>Специальность</label>
-              <input type="text" id="edit-specialty" class="dc-input">
-            </div>
-            <div class="dc-form-group">
-              <label>Стаж</label>
-              <input type="text" id="edit-experience" class="dc-input">
-            </div>
-            <div class="dc-form-group">
-              <label>Возраст пац.</label>
-              <input type="text" id="edit-age-range" class="dc-input" placeholder="0+">
-            </div>
-          </div>
-          
-          <div class="dc-form-row-3">
-            <div class="dc-form-group">
-              <label>Вн. номер</label>
-              <input type="text" id="edit-internal" class="dc-input">
-            </div>
-            <div class="dc-form-group">
-              <label>Мобильный</label>
-              <input type="text" id="edit-mobile" class="dc-input" placeholder="+7(___) ___-__-__" oninput="dcApp.formatPhone(this)" maxlength="18">
-            </div>
-            <div class="dc-form-group">
-              <label>Ссылка</label>
-              <input type="text" id="edit-profile-url" class="dc-input" placeholder="https://...">
-            </div>
-          </div>
 
-          <div class="dc-form-row">
-            <div class="dc-form-group">
-              <label>Хэштеги (через запятую)</label>
-              <input type="text" id="edit-tags" class="dc-input" placeholder="на дому, УЗИ, КТ">
-            </div>
-            <div class="dc-form-group">
-              <label>Клиники</label>
-              <div id="clinics-checkboxes" class="dc-clinics-grid"></div>
-            </div>
-          </div>
-          
-          <div class="dc-form-group">
-            <label>Заметки</label>
-            <div class="dc-editor-container">
-              <div id="edit-notes-editor"></div>
-            </div>
-          </div>
-          </div>
-
-          <div class="dc-modal-tab-content" data-modal-tab="services">
-            <div class="dc-services-header" id="services-header" style="display:none;">
-              <div class="dc-services-header-title">
+            <!-- Правый столбец: услуги -->
+            <div class="dc-modal-col-services">
+              <div class="dc-modal-col-services-title">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
                   <path d="M9 12h6m-6 4h6"/>
                 </svg>
-                Управление услугами
+                Услуги врача
               </div>
-              <div class="dc-services-header-desc">
-                Перетаскивайте карточки для изменения порядка. Можно задать псевдонимы для названий и длительности, а также скрыть ненужные услуги.
-              </div>
-              <div class="dc-services-counter">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+
+
+<div class="dc-services-loading" id="modal-services-loading" style="display:none;">Загрузка услуг...</div>
+              <div class="dc-services-empty" id="modal-services-empty" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.3;">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
-                Услуг: <span class="dc-services-counter-value" id="services-counter">0</span>
+                <div>Услуги не найдены</div>
+                <div style="font-size:11px;margin-top:4px;">Убедитесь, что врач привязан к МИС</div>
               </div>
+              <div class="dc-services-edit-container" id="modal-services-list" style="display:none;"></div>
             </div>
 
-            <div class="dc-services-loading" id="modal-services-loading">Загрузка услуг...</div>
-            <div class="dc-services-empty" id="modal-services-empty" style="display:none;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.3;">
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-              </svg>
-              <div>Услуги не найдены</div>
-              <div style="font-size:11px;margin-top:4px;">Убедитесь, что врач привязан к МИС</div>
-            </div>
-            <div class="dc-services-edit-container" id="modal-services-list" style="display:none;"></div>
           </div>
-
         </div>
         
         <div class="dc-modal-footer">
@@ -550,6 +560,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   </div>
 
   <div id="dc-toast" class="dc-toast"></div>
+  <div id="dc-global-tooltip"></div>
 </div>
 
 <script>
@@ -1973,7 +1984,13 @@ window.dcApp = (function() {
           }
         }
 
-        return '<tr><td>' + escapeHtml(s.code || '—') + '</td><td>' + escapeHtml(title) + '</td><td>' + duration + '</td><td>' + priceStr + '</td></tr>';
+        var infoHtml = '';
+        if (override.aliasInfo) {
+          infoHtml = '<button class="dc-service-info-icon" tabindex="-1" data-tip="' + encodeURIComponent(override.aliasInfo) + '" onmouseenter="dcShowTooltip(this)" onmouseleave="dcHideTooltip()">?</button>';
+        }
+        return '<tr><td>' + escapeHtml(s.code || '—') + '</td>' +
+          '<td><span class="dc-service-name-cell">' + escapeHtml(title) + infoHtml + '</span></td>' +
+          '<td>' + duration + '</td><td>' + priceStr + '</td></tr>';
       }).join('');
     }).catch(function(e) {
       console.error('❌ Error loading services for misUserId:', misUserId, 'error:', e);
@@ -2003,6 +2020,7 @@ window.dcApp = (function() {
           code: ov.code || '',
           duration: ov.aliasDuration || (ov.duration ? ov.duration + ' мин' : '—'),
           prices: ov.prices || {},
+          info: ov.aliasInfo || '',
           sortOrder: ov.sortOrder !== undefined ? ov.sortOrder : 999
         });
       }
@@ -2056,7 +2074,13 @@ window.dcApp = (function() {
         }
       }
 
-      html += '<tr><td>' + escapeHtml(fav.code || '—') + '</td><td>' + escapeHtml(fav.title) + '</td><td>' + fav.duration + '</td><td>' + priceStr + '</td></tr>';
+      var favInfoHtml = '';
+      if (fav.info) {
+        favInfoHtml = '<button class="dc-service-info-icon" tabindex="-1" data-tip="' + encodeURIComponent(fav.info) + '" onmouseenter="dcShowTooltip(this)" onmouseleave="dcHideTooltip()">?</button>';
+      }
+      html += '<tr><td>' + escapeHtml(fav.code || '—') + '</td>' +
+        '<td><span class="dc-service-name-cell">' + escapeHtml(fav.title) + favInfoHtml + '</span></td>' +
+        '<td>' + fav.duration + '</td><td>' + priceStr + '</td></tr>';
     });
 
     html += '</tbody></table></div>';
@@ -2235,9 +2259,9 @@ window.dcApp = (function() {
     initEditor();
     setEditorContent('');
 
-    // Hide services tab for new cards
-    var servicesTab = document.getElementById('services-tab-btn');
-    if (servicesTab) servicesTab.style.display = 'none';
+    // Для новой карточки — только левый столбец (нет услуг без misUserId)
+    var twoCol = document.getElementById('dc-modal-two-col');
+    if (twoCol) twoCol.classList.add('single-col');
 
     document.getElementById('dc-modal').classList.add('active');
   }
@@ -2272,38 +2296,27 @@ window.dcApp = (function() {
     initEditor();
     setEditorContent(card.description || '');
 
-    // Show services tab for existing cards
-    var servicesTab = document.getElementById('services-tab-btn');
-    if (servicesTab) servicesTab.style.display = 'block';
+    // Показываем правый столбец и авто-загружаем услуги
+    var twoCol = document.getElementById('dc-modal-two-col');
+    if (twoCol) twoCol.classList.remove('single-col');
 
     document.getElementById('dc-modal').classList.add('active');
+
+    // Авто-загрузка услуг (если есть misUserId)
+    if (meta.misUserId) {
+      loadModalServices();
+    }
   }
 
   function closeModal() {
     document.getElementById('dc-modal').classList.remove('active');
     modalServices = [];
     serviceOverrides = {};
-    switchModalTab('info');
   }
 
   // ═══════════════════════════════════════════════════════════════
-  // MODAL TABS & SERVICES MANAGEMENT
+  // SERVICES MANAGEMENT
   // ═══════════════════════════════════════════════════════════════
-
-  function switchModalTab(tabName) {
-    document.querySelectorAll('.dc-modal-tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.dc-modal-tab-content').forEach(function(c) { c.classList.remove('active'); });
-
-    var tab = document.querySelector('.dc-modal-tab[onclick*="' + tabName + '"]');
-    var content = document.querySelector('.dc-modal-tab-content[data-modal-tab="' + tabName + '"]');
-
-    if (tab) tab.classList.add('active');
-    if (content) content.classList.add('active');
-
-    if (tabName === 'services') {
-      loadModalServices();
-    }
-  }
 
   function loadModalServices() {
     var misUserId = getValue('edit-mis-user-id');
@@ -2420,6 +2433,7 @@ window.dcApp = (function() {
           prices: item.prices,  // Теперь хранит цены по клиникам
           aliasName: override.aliasName || '',
           aliasDuration: override.aliasDuration || '',
+          aliasInfo: override.aliasInfo || '',
           isHidden: override.isHidden || false,
           isFavorite: override.isFavorite || false,
           sortOrder: override.sortOrder !== undefined ? override.sortOrder : (10000 + idx)
@@ -2470,17 +2484,34 @@ window.dcApp = (function() {
     if (!container || modalServices.length === 0) {
       document.getElementById('modal-services-loading').style.display = 'none';
       document.getElementById('modal-services-empty').style.display = 'block';
-      document.getElementById('services-header').style.display = 'none';
       return;
     }
 
     var html = modalServices.map(function(service, index) {
       var hiddenClass = service.isHidden ? ' hidden' : '';
       return '<div class="dc-service-item' + hiddenClass + '" draggable="true" data-index="' + index + '">' +
-        '<div class="dc-service-drag-handle" title="Перетащите для изменения порядка">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-            '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/>' +
-          '</svg>' +
+        '<div class="dc-service-left-col">' +
+          '<div class="dc-service-drag-handle" title="Перетащите для изменения порядка">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+              '<line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="16" x2="20" y2="16"/>' +
+            '</svg>' +
+          '</div>' +
+          '<div class="dc-service-actions">' +
+            '<button type="button" class="dc-service-btn dc-service-btn-favorite' + (service.isFavorite ? ' active' : '') + '" ' +
+              'onclick="dcApp.toggleServiceFavorite(' + index + ')" title="' + (service.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное') + '">' +
+              '<svg viewBox="0 0 24 24" fill="' + (service.isFavorite ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2">' +
+                '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' +
+              '</svg>' +
+            '</button>' +
+            '<button type="button" class="dc-service-btn dc-service-btn-visibility' + (service.isHidden ? ' hidden' : '') + '" ' +
+              'onclick="dcApp.toggleServiceVisibility(' + index + ')" title="' + (service.isHidden ? 'Показать услугу' : 'Скрыть услугу') + '">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
+                (service.isHidden ?
+                  '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>' :
+                  '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>') +
+              '</svg>' +
+            '</button>' +
+          '</div>' +
         '</div>' +
         '<div class="dc-service-content">' +
           '<div class="dc-service-header">' +
@@ -2488,50 +2519,26 @@ window.dcApp = (function() {
             '<div class="dc-service-original-title">' + escapeHtml(service.title) + '</div>' +
           '</div>' +
           '<div class="dc-service-fields">' +
-            '<div class="dc-service-field">' +
-              '<label class="dc-service-field-label">' +
-                '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">' +
-                  '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
-                  '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>' +
-                '</svg>' +
-                'Псевдоним названия' +
-              '</label>' +
-              '<input type="text" class="dc-service-name-input" placeholder="Оставьте пустым для оригинального названия" ' +
-                'value="' + escapeHtml(service.aliasName) + '" ' +
-                'oninput="dcApp.updateServiceAlias(' + index + ', \'name\', this.value)">' +
+            '<div class="dc-service-fields-row">' +
+              '<div class="dc-service-field">' +
+                '<label class="dc-service-field-label">Псевдоним</label>' +
+                '<input type="text" class="dc-service-name-input" placeholder="Оригинальное название" ' +
+                  'value="' + escapeHtml(service.aliasName) + '" ' +
+                  'oninput="dcApp.updateServiceAlias(' + index + ', \'name\', this.value)">' +
+              '</div>' +
+              '<div class="dc-service-field">' +
+                '<label class="dc-service-field-label">Длительность</label>' +
+                '<input type="text" class="dc-service-duration-input" placeholder="' + (service.duration ? service.duration + ' мин' : 'Не указана') + '" ' +
+                  'value="' + escapeHtml(service.aliasDuration) + '" ' +
+                  'oninput="dcApp.updateServiceAlias(' + index + ', \'duration\', this.value)">' +
+              '</div>' +
             '</div>' +
             '<div class="dc-service-field">' +
-              '<label class="dc-service-field-label">' +
-                '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">' +
-                  '<circle cx="12" cy="12" r="10"/>' +
-                  '<polyline points="12 6 12 12 16 14"/>' +
-                '</svg>' +
-                'Длительность' +
-              '</label>' +
-              '<input type="text" class="dc-service-duration-input" placeholder="' + (service.duration ? 'Сейчас: ' + service.duration : 'Не указана') + '" ' +
-                'value="' + escapeHtml(service.aliasDuration) + '" ' +
-                'oninput="dcApp.updateServiceAlias(' + index + ', \'duration\', this.value)">' +
+              '<label class="dc-service-field-label">Справка об услуге</label>' +
+              '<textarea class="dc-service-info-input" placeholder="Описание для пациентов: для кого, зачем, особенности..." ' +
+                'oninput="dcApp.updateServiceAlias(' + index + ', \'info\', this.value)">' + escapeHtml(service.aliasInfo) + '</textarea>' +
             '</div>' +
           '</div>' +
-          '<div class="dc-service-meta">' +
-            'Цена: <strong>' + formatServicePrices(service.prices) + '</strong>' +
-          '</div>' +
-        '</div>' +
-        '<div class="dc-service-actions">' +
-          '<button type="button" class="dc-service-btn dc-service-btn-favorite' + (service.isFavorite ? ' active' : '') + '" ' +
-            'onclick="dcApp.toggleServiceFavorite(' + index + ')" title="' + (service.isFavorite ? 'Убрать из избранного' : 'Добавить в избранное') + '">' +
-            '<svg viewBox="0 0 24 24" fill="' + (service.isFavorite ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2">' +
-              '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>' +
-            '</svg>' +
-          '</button>' +
-          '<button type="button" class="dc-service-btn dc-service-btn-visibility' + (service.isHidden ? ' hidden' : '') + '" ' +
-            'onclick="dcApp.toggleServiceVisibility(' + index + ')" title="' + (service.isHidden ? 'Показать услугу' : 'Скрыть услугу') + '">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' +
-              (service.isHidden ?
-                '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>' :
-                '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>') +
-            '</svg>' +
-          '</button>' +
         '</div>' +
       '</div>';
     }).join('');
@@ -2541,13 +2548,6 @@ window.dcApp = (function() {
     document.getElementById('modal-services-empty').style.display = 'none';
     container.style.display = 'block';
 
-    // Show header
-    document.getElementById('services-header').style.display = 'block';
-
-    // Update counter
-    var visibleCount = modalServices.filter(function(s) { return !s.isHidden; }).length;
-    document.getElementById('services-counter').textContent = visibleCount + ' из ' + modalServices.length;
-
     // Attach drag-n-drop event listeners
     container.querySelectorAll('.dc-service-item').forEach(function(item) {
       item.addEventListener('dragstart', handleDragStart);
@@ -2555,6 +2555,13 @@ window.dcApp = (function() {
       item.addEventListener('drop', handleDrop);
       item.addEventListener('dragend', handleDragEnd);
       item.addEventListener('dragleave', handleDragLeave);
+
+      // Fix: draggable="true" breaks cursor positioning in child inputs/textareas.
+      // Temporarily disable dragging while hovering over text fields.
+      item.querySelectorAll('input, textarea').forEach(function(field) {
+        field.addEventListener('mouseenter', function() { item.setAttribute('draggable', 'false'); });
+        field.addEventListener('mouseleave', function() { item.setAttribute('draggable', 'true'); });
+      });
     });
   }
 
@@ -2571,6 +2578,8 @@ window.dcApp = (function() {
       } else {
         modalServices[index].aliasDuration = value;
       }
+    } else if (field === 'info') {
+      modalServices[index].aliasInfo = value;
     }
   }
 
@@ -2665,6 +2674,7 @@ window.dcApp = (function() {
         var override = {
           aliasName: service.aliasName || '',
           aliasDuration: service.aliasDuration || '',
+          aliasInfo: service.aliasInfo || '',
           isHidden: service.isHidden || false,
           isFavorite: service.isFavorite || false,
           sortOrder: idx
@@ -2761,12 +2771,33 @@ window.dcApp = (function() {
     formatPhone: formatPhone,
     loadDaySchedule: loadDaySchedule,
     backToCalendar: backToCalendar,
-    switchModalTab: switchModalTab,
     updateServiceAlias: updateServiceAlias,
     toggleServiceVisibility: toggleServiceVisibility,
     toggleServiceFavorite: toggleServiceFavorite
   };
 })();
+
+window.dcShowTooltip = function(btn) {
+  var tooltip = document.getElementById('dc-global-tooltip');
+  if (!tooltip) return;
+  var text = decodeURIComponent(btn.getAttribute('data-tip') || '');
+  if (!text) return;
+  tooltip.textContent = text;
+  tooltip.classList.remove('below');
+  tooltip.style.display = 'block';
+  var rect = btn.getBoundingClientRect();
+  var tw = tooltip.offsetWidth;
+  var th = tooltip.offsetHeight;
+  var left = rect.left + rect.width / 2 - tw / 2;
+  var top = rect.top - th - 10;
+  if (top < 8) { top = rect.bottom + 10; tooltip.classList.add('below'); }
+  tooltip.style.left = Math.max(8, Math.min(left, window.innerWidth - tw - 8)) + 'px';
+  tooltip.style.top = top + 'px';
+};
+window.dcHideTooltip = function() {
+  var tooltip = document.getElementById('dc-global-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
+};
 </script>
 </body>
 </html>
