@@ -1128,6 +1128,54 @@ const ExecutorSettings = sequelize.define('ExecutorSettings', {
   timestamps: true
 });
 
+// === PERFORMED SERVICE BONUS MODEL ===
+// Бонусы за выполненные услуги (врач получает за свои собственные выполненные услуги)
+const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'ID врача-исполнителя в МИС'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'ФИО врача-исполнителя'
+  },
+  serviceCode: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    comment: 'Код услуги из МИС'
+  },
+  serviceName: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    comment: 'Название услуги'
+  },
+  bonusPercent: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Размер бонуса в процентах от стоимости услуги'
+  },
+  bonusRub: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Фиксированный бонус в рублях за выполнение услуги'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    comment: 'ID пользователя, создавшего запись'
+  }
+}, {
+  tableName: 'performed_service_bonuses',
+  timestamps: true,
+  indexes: [
+    { fields: ['misUserId'] },
+    { fields: ['serviceCode'] },
+    { unique: true, fields: ['misUserId', 'serviceCode'] }
+  ]
+});
+
 // === EMAIL TEMPLATE MODEL ===
 // === EMAIL FAVORITE RECIPIENTS MODEL ===
 const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
@@ -1996,5 +2044,7 @@ module.exports = {
   ReferralBonus,
   ReferralReport,
   // Executor settings module
-  ExecutorSettings
+  ExecutorSettings,
+  // Performed service bonuses module
+  PerformedServiceBonus
 };

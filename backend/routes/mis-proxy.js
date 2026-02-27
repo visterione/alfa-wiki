@@ -57,9 +57,6 @@ router.post('/doctor-info', authenticate, async (req, res) => {
 
     const doctor = doctorsArray[0];
     
-    // Логируем для отладки
-    console.log('📋 Услуги врача:', doctor.services?.length || 0, 'шт.');
-    
     res.json({
       success: true,
       data: {
