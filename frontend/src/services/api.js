@@ -226,7 +226,10 @@ export const chat = {
   // Message reactions
   addReaction: (chatId, messageId, emoji) => api.post(`/chat/${chatId}/messages/${messageId}/reactions`, { emoji }),
   removeReaction: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}/reactions`),
-  getReactionDetails: (chatId, messageId) => api.get(`/chat/${chatId}/messages/${messageId}/reactions`)
+  getReactionDetails: (chatId, messageId) => api.get(`/chat/${chatId}/messages/${messageId}/reactions`),
+
+  // Forward messages
+  forwardMessages: (targetChatId, messageIds) => api.post('/chat/forward', { targetChatId, messageIds })
 };
 
 // Accreditations

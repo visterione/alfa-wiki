@@ -20,7 +20,7 @@ const MessageReactions = ({ reactions, onReactionClick, onShowDetails }) => {
           title={hasReacted ? 'Убрать реакцию' : 'Добавить реакцию'}
         >
           <span className="emoji">{emoji}</span>
-          <span className="count">{count}</span>
+          {count > 1 && <span className="count">{count}</span>}
         </button>
       ))}
     </div>

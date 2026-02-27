@@ -548,6 +548,10 @@ router.put('/:chatId/messages/:messageId', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Cannot edit system messages' });
     }
 
+    if (message.forwardedFrom) {
+      return res.status(400).json({ error: 'Cannot edit forwarded messages' });
+    }
+
     await message.update({
       content: content.trim(),
       isEdited: true,
@@ -641,6 +645,126 @@ router.delete('/:chatId/messages/:messageId', authenticate, async (req, res) => 
   } catch (error) {
     console.error('Delete message error:', error);
     res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Forward messages to another chat
+router.post('/forward', authenticate, async (req, res) => {
+  try {
+    const { messageIds, targetChatId } = req.body;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds array is required' });
+    }
+    if (!targetChatId) {
+      return res.status(400).json({ error: 'targetChatId is required' });
+    }
+
+    // Check user is member of target chat
+    const targetMembership = await ChatMember.findOne({
+      where: { chatId: targetChatId, userId: req.user.id }
+    });
+    if (!targetMembership) {
+      return res.status(403).json({ error: 'Not a member of target chat' });
+    }
+
+    // Fetch original messages (preserve order)
+    const originalMessages = await Message.findAll({
+      where: { id: { [Op.in]: messageIds } },
+      include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName'] }],
+      order: [['createdAt', 'ASC']]
+    });
+
+    if (originalMessages.length === 0) {
+      return res.status(404).json({ error: 'Messages not found' });
+    }
+
+    const createdMessages = [];
+    for (const orig of originalMessages) {
+      if (orig.type === 'system') continue;
+
+      let msgType = 'text';
+      if (orig.attachments && orig.attachments.length > 0) {
+        msgType = orig.attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file';
+      }
+
+      const forwarded = await Message.create({
+        chatId: targetChatId,
+        senderId: req.user.id,
+        content: orig.content || '',
+        type: msgType,
+        attachments: orig.attachments || [],
+        forwardedFrom: {
+          senderId: orig.senderId,
+          senderName: orig.sender?.displayName || orig.sender?.username || 'Неизвестный',
+          originalChatId: orig.chatId
+        }
+      });
+      createdMessages.push(forwarded);
+    }
+
+    if (createdMessages.length === 0) {
+      return res.status(400).json({ error: 'No messages to forward' });
+    }
+
+    // Build last message preview
+    const lastOrig = originalMessages[originalMessages.length - 1];
+    let lastMessagePreview = `📨 Переслано: ${lastOrig.content || ''}`;
+    if (!lastOrig.content && lastOrig.attachments?.length > 0) {
+      const allImages = lastOrig.attachments.every(a => a.mimeType?.startsWith('image/'));
+      lastMessagePreview = allImages ? '📨 Переслано: 📷 Фото' : '📨 Переслано: 📎 Файл';
+    }
+
+    await Chat.update(
+      { lastMessage: lastMessagePreview, lastMessageAt: new Date() },
+      { where: { id: targetChatId } }
+    );
+
+    // Restore hidden chat for all members
+    await ChatMember.update(
+      { isHidden: false },
+      { where: { chatId: targetChatId, isHidden: true } }
+    );
+
+    // Notify target chat members via Socket.IO
+    const targetChat = await Chat.findByPk(targetChatId, {
+      include: [{
+        model: ChatMember,
+        as: 'members',
+        include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+      }]
+    });
+
+    const io = req.app.get('io');
+    if (io && targetChat) {
+      const lastCreated = createdMessages[createdMessages.length - 1];
+      const fullMsg = await Message.findByPk(lastCreated.id, {
+        include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] }]
+      });
+
+      targetChat.members.forEach(member => {
+        if (member.userId !== req.user.id) {
+          let chatDisplayName = targetChat.name;
+          let chatAvatar = targetChat.avatar;
+          if (targetChat.type === 'private') {
+            const senderMember = targetChat.members.find(m => m.userId === req.user.id);
+            if (senderMember?.user) {
+              chatDisplayName = senderMember.user.displayName || senderMember.user.username;
+              chatAvatar = senderMember.user.avatar;
+            }
+          }
+          io.to(`user:${member.userId}`).emit('new_message', {
+            message: fullMsg,
+            chat: { id: targetChat.id, type: targetChat.type, displayName: chatDisplayName, avatar: chatAvatar }
+          });
+        }
+      });
+    }
+
+    res.status(201).json({ forwarded: createdMessages.length });
+  } catch (error) {
+    console.error('Forward messages error:', error);
+    res.status(500).json({ error: 'Failed to forward messages' });
   }
 });
 

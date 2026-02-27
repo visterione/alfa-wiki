@@ -284,7 +284,8 @@ const Message = sequelize.define('Message', {
   type: { type: DataTypes.ENUM('text', 'image', 'file', 'system'), defaultValue: 'text' },
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
-  replyToId: { type: DataTypes.UUID }
+  replyToId: { type: DataTypes.UUID },
+  forwardedFrom: { type: DataTypes.JSONB, allowNull: true, defaultValue: null }
 }, { tableName: 'messages', timestamps: true });
 
 // === MESSAGE REACTION MODEL ===

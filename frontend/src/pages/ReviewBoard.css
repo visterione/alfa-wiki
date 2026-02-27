@@ -993,6 +993,12 @@
   font-size: 0.9375rem;
   font-weight: 600;
   color: var(--text-primary);
+  cursor: pointer;
+}
+
+.review-message-header .patient-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .review-message-header .date {
@@ -1019,6 +1025,13 @@
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.review-bubble:hover {
+  background: var(--bg-tertiary, var(--bg-secondary));
+  border-color: var(--accent-color, var(--border-color));
 }
 
 .review-message-footer {

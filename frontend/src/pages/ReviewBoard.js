@@ -442,7 +442,7 @@ const ReviewBoard = () => {
     }
   };
 
-  const fallbackCopy = (text) => {
+  const fallbackCopy = (text, successMsg = 'Текст отзыва скопирован') => {
     const textArea = document.createElement('textarea');
     textArea.value = text;
     textArea.style.position = 'fixed';
@@ -453,7 +453,7 @@ const ReviewBoard = () => {
     textArea.select();
     try {
       if (document.execCommand('copy')) {
-        toast.success('Текст отзыва скопирован');
+        toast.success(successMsg);
       } else {
         toast.error('Не удалось скопировать');
       }
@@ -461,6 +461,35 @@ const ReviewBoard = () => {
       toast.error('Копирование не поддерживается');
     } finally {
       document.body.removeChild(textArea);
+    }
+  };
+
+  const copyPatientName = () => {
+    if (!selectedReview) return;
+    const text = selectedReview.patientName;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => toast.success('Имя пациента скопировано'))
+        .catch(() => fallbackCopy(text, 'Имя пациента скопировано'));
+    } else {
+      fallbackCopy(text, 'Имя пациента скопировано');
+    }
+  };
+
+  const copyBubbleText = () => {
+    if (!selectedReview) return;
+    const lines = [selectedReview.reviewText];
+    if (selectedReview.doctorName) {
+      lines.push('');
+      lines.push(`Лечащий врач: ${selectedReview.doctorName}`);
+    }
+    const text = lines.join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => toast.success('Текст отзыва скопирован'))
+        .catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
     }
   };
 
@@ -1049,13 +1078,13 @@ const ReviewBoard = () => {
                   </div>
                   <div className="review-message-content">
                     <div className="review-message-header">
-                      <span className="patient-name">{selectedReview.patientName}</span>
+                      <span className="patient-name" onClick={copyPatientName} title="Копировать имя пациента">{selectedReview.patientName}</span>
                       <span className="date">{new Date(selectedReview.reviewDate).toLocaleDateString('ru-RU')}</span>
                       <span className={`rating ${selectedReview.rating <= 3 ? 'negative' : 'positive'}`}>
                         {selectedReview.rating}/5 {getRatingStars(selectedReview.rating)}
                       </span>
                     </div>
-                    <div className="review-bubble">
+                    <div className="review-bubble" onClick={copyBubbleText} title="Копировать текст отзыва">
                       {selectedReview.reviewText}
                     </div>
                     <div className="review-message-footer">

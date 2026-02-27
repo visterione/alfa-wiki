@@ -62,6 +62,10 @@ export default function Dashboard() {
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [reactionMenu, setReactionMenu] = useState(null);
   const [reactionDetailsModal, setReactionDetailsModal] = useState(null);
+  const [forwardMode, setForwardMode] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState([]);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardSearchQuery, setForwardSearchQuery] = useState('');
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -433,6 +437,41 @@ export default function Dashboard() {
   const cancelEdit = () => {
     setEditingMessage(null);
     setNewMessage('');
+  };
+
+  const startForwardMode = (msg) => {
+    setForwardMode(true);
+    setSelectedMessages([msg.id]);
+    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+  };
+
+  const cancelForwardMode = () => {
+    setForwardMode(false);
+    setSelectedMessages([]);
+  };
+
+  const toggleMessageSelection = (msgId) => {
+    if (!forwardMode) return;
+    setSelectedMessages(prev =>
+      prev.includes(msgId) ? prev.filter(id => id !== msgId) : [...prev, msgId]
+    );
+  };
+
+  const handleForwardSend = async (targetChatId) => {
+    if (selectedMessages.length === 0) return;
+    try {
+      await chat.forwardMessages(targetChatId, selectedMessages);
+      toast.success(`Переслано в чат`);
+      setShowForwardModal(false);
+      cancelForwardMode();
+      // If forwarding to active chat, reload messages
+      if (activeChat && targetChatId === activeChat.id) {
+        await loadMessages(activeChat.id, true);
+      }
+      await loadChats();
+    } catch (e) {
+      toast.error('Ошибка пересылки');
+    }
   };
 
   // Закрытие контекстного меню при клике вне
@@ -945,41 +984,46 @@ export default function Dashboard() {
                         <div className="message-system">{msg.content}</div>
                       ) : (
                         <div
-                          id={`message-${msg.id}`}
-                          className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
-                          onContextMenu={(e) => handleContextMenu(e, msg)}
+                          className={`message-row ${forwardMode ? 'forward-mode' : ''} ${selectedMessages.includes(msg.id) ? 'selected-for-forward' : ''}`}
+                          onClick={() => forwardMode && toggleMessageSelection(msg.id)}
                         >
-                          {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
-                          {isOwn && (
-                            <MessageReactions
-                              reactions={msg.reactions}
-                              onReactionClick={(emoji, hasReacted) => handleReactionClick(msg.id, emoji, hasReacted)}
-                              onShowDetails={() => handleShowReactionDetails(msg.id)}
-                            />
+                          {forwardMode && (
+                            <div className={`forward-radio ${selectedMessages.includes(msg.id) ? 'checked' : ''}`} />
                           )}
-                          <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
-                            {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
-                            {renderAttachments(msg.attachments, isOwn)}
-                            {hasText && (
-                              <div
-                                className="message-content"
-                                onClick={handleMessageContentClick}
-                                dangerouslySetInnerHTML={{ __html: linkifyContent(msg.content) }}
+                          <div
+                            id={`message-${msg.id}`}
+                            className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
+                            onContextMenu={(e) => !forwardMode && handleContextMenu(e, msg)}
+                          >
+                            {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
+                            <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
+                              {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
+                              {msg.forwardedFrom && (
+                                <div className="forwarded-from-banner">
+                                  <Send size={12} />
+                                  <span>Переслано от <strong>{msg.forwardedFrom.senderName}</strong></span>
+                                </div>
+                              )}
+                              {renderAttachments(msg.attachments, isOwn)}
+                              {hasText && (
+                                <div
+                                  className="message-content"
+                                  onClick={handleMessageContentClick}
+                                  dangerouslySetInnerHTML={{ __html: linkifyContent(msg.content) }}
+                                />
+                              )}
+                              <div className="message-meta">
+                                <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
+                                {msg.isEdited && <span className="message-edited">изменено</span>}
+                                {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
+                              </div>
+                              <MessageReactions
+                                reactions={msg.reactions}
+                                onReactionClick={(emoji, hasReacted) => handleReactionClick(msg.id, emoji, hasReacted)}
+                                onShowDetails={() => handleShowReactionDetails(msg.id)}
                               />
-                            )}
-                            <div className="message-meta">
-                              <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
-                              {msg.isEdited && <span className="message-edited">изменено</span>}
-                              {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
                             </div>
                           </div>
-                          {!isOwn && (
-                            <MessageReactions
-                              reactions={msg.reactions}
-                              onReactionClick={(emoji, hasReacted) => handleReactionClick(msg.id, emoji, hasReacted)}
-                              onShowDetails={() => handleShowReactionDetails(msg.id)}
-                            />
-                          )}
                         </div>
                       )}
                     </React.Fragment>
@@ -1005,6 +1049,24 @@ export default function Dashboard() {
                     <span>Редактирование сообщения</span>
                   </div>
                   <button onClick={cancelEdit}><X size={16} /></button>
+                </div>
+              )}
+              {forwardMode && (
+                <div className="forward-action-bar">
+                  <div className="forward-action-info">
+                    <Send size={16} />
+                    <span>Выбрано: <strong>{selectedMessages.length}</strong></span>
+                  </div>
+                  <div className="forward-action-buttons">
+                    <button className="btn btn-ghost" onClick={cancelForwardMode}>Отмена</button>
+                    <button
+                      className="btn btn-primary"
+                      disabled={selectedMessages.length === 0}
+                      onClick={() => { setForwardSearchQuery(''); setShowForwardModal(true); }}
+                    >
+                      Переслать <Send size={16} />
+                    </button>
+                  </div>
                 </div>
               )}
               <form className="chat-input" onSubmit={handleSendMessage}>
@@ -1106,14 +1168,22 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+          {/* Переслать */}
+          <div className="context-menu-divider" />
+          <button onClick={() => { startForwardMode(contextMenu.message); }}>
+            <Send size={16} />
+            Переслать
+          </button>
           {/* Опции редактирования/удаления (только для своих сообщений) */}
           {contextMenu.isOwnMessage && (
             <>
               <div className="context-menu-divider" />
-              <button onClick={() => { startEditMessage(contextMenu.message); }}>
-                <Edit2 size={16} />
-                Редактировать
-              </button>
+              {!contextMenu.message?.forwardedFrom && (
+                <button onClick={() => { startEditMessage(contextMenu.message); }}>
+                  <Edit2 size={16} />
+                  Редактировать
+                </button>
+              )}
               <button onClick={() => { handleDeleteMessage(contextMenu.messageId); setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false }); }} className="danger">
                 <Trash2 size={16} />
                 Удалить
@@ -1298,6 +1368,49 @@ export default function Dashboard() {
           reactions={reactionDetailsModal.reactions}
           onClose={() => setReactionDetailsModal(null)}
         />
+      )}
+
+      {/* Forward Modal */}
+      {showForwardModal && (
+        <div className="modal-overlay" onClick={() => setShowForwardModal(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Переслать в чат</h2>
+              <button className="modal-close" onClick={() => setShowForwardModal(false)}><X size={20} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="chat-search" style={{ marginBottom: '16px' }}>
+                <Search size={18} />
+                <input
+                  placeholder="Поиск чата..."
+                  value={forwardSearchQuery}
+                  onChange={e => setForwardSearchQuery(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="user-list">
+                {chats
+                  .filter(c => c.displayName?.toLowerCase().includes(forwardSearchQuery.toLowerCase()))
+                  .map(c => (
+                    <div key={c.id} className="user-item" onClick={() => handleForwardSend(c.id)}>
+                      <div className="user-item-avatar">
+                        {getChatAvatar(c)
+                          ? <img src={getAvatarUrl(getChatAvatar(c))} alt="" />
+                          : (c.type === 'group' ? <Users size={24} /> : <User size={24} />)}
+                      </div>
+                      <div className="user-item-info">
+                        <div className="user-item-name">{c.displayName}</div>
+                        <div className="user-item-username">{c.type === 'group' ? `${c.members?.length || 0} участников` : 'Личный чат'}</div>
+                      </div>
+                    </div>
+                  ))}
+                {chats.filter(c => c.displayName?.toLowerCase().includes(forwardSearchQuery.toLowerCase())).length === 0 && (
+                  <div className="text-muted text-center">Нет чатов</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Email Compose Modal */}
