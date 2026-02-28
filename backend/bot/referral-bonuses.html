@@ -2813,15 +2813,34 @@ async function rbBuildReport(rows) {
     return;
   }
 
-  // Группируем по клинике
-  const byClinic = {};
+  // Группируем по клинике — только клиники где врач является исполнителем.
+  // Строки-направления из «чужих» клиник добавляем в первую клинику-исполнителя,
+  // чтобы не создавать лишних листов/разделов.
+  const rawByClinic = {};
   allRelevant.forEach(r => {
     const clinicRaw = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
     const clinicId  = rbMatchClinicId(clinicRaw) || 'unknown';
     const clinicLabel = clinicRaw || 'Не указана';
-    if (!byClinic[clinicId]) byClinic[clinicId] = { id: clinicId, label: clinicLabel, rows: [] };
-    byClinic[clinicId].rows.push(r);
+    if (!rawByClinic[clinicId]) rawByClinic[clinicId] = { id: clinicId, label: clinicLabel, rows: [] };
+    rawByClinic[clinicId].rows.push(r);
   });
+  const byClinic = {};
+  const orphanReferrerRows = [];
+  Object.entries(rawByClinic).forEach(([clinicId, group]) => {
+    const hasExecRows = group.rows.some(r =>
+      colMap.executor && lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName)
+    );
+    if (hasExecRows) {
+      byClinic[clinicId] = group;
+    } else {
+      orphanReferrerRows.push(...group.rows);
+    }
+  });
+  if (!Object.keys(byClinic).length) {
+    Object.assign(byClinic, rawByClinic); // только направитель, нет исполнительских строк
+  } else if (orphanReferrerRows.length) {
+    byClinic[Object.keys(byClinic)[0]].rows.push(...orphanReferrerRows);
+  }
 
   // Вспомогательные функции расчётов
   function calcItemRub(item, base) {
@@ -3018,14 +3037,20 @@ async function rbBuildReport(rows) {
   };
 
   // ── Рендерим ──
+  const doctorHasMultipleClinics = clinicReports.length > 1;
   let html = `<div class="rb-report">`;
 
-  clinicReports.forEach(({ clinicLabel, referralSections, executorSections, salary, clinicId }) => {
+  // Если врач работает только в одной клинике — один лист, иначе — отдельный лист на каждую
+  clinicReports.forEach(({ clinicLabel, referralSections, executorSections, salary, clinicId }, idx) => {
     const cColor = rbGetClinicColor(clinicId);
-    html += `<div style="margin-bottom:28px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid ${cColor}">
-        <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cColor};flex-shrink:0"></span>
-        <div class="rb-report-title" style="flex:1">${rbEsc(clinicLabel)}</div>
+    const sheetNum = doctorHasMultipleClinics ? ` (лист ${idx + 1} из ${clinicReports.length})` : '';
+    html += `<div style="margin-bottom:${doctorHasMultipleClinics ? '40' : '20'}px;${doctorHasMultipleClinics && idx > 0 ? 'border-top:3px dashed var(--rb-border);padding-top:28px;' : ''}">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:12px 16px;background:${cColor}18;border:2px solid ${cColor};border-radius:8px;">
+        <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${cColor};flex-shrink:0"></span>
+        <div style="flex:1">
+          <div class="rb-report-title" style="color:${cColor}">${rbEsc(clinicLabel)}</div>
+          ${doctorHasMultipleClinics ? `<div style="font-size:11px;color:var(--rb-text-secondary);margin-top:2px">Расчетный лист${sheetNum}</div>` : ''}
+        </div>
         <div style="display:flex;gap:6px">
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="this.closest('div').parentElement.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.add('expanded'))">Развернуть</button>
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="this.closest('div').parentElement.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.remove('expanded'))">Свернуть</button>
@@ -3051,12 +3076,12 @@ async function rbBuildReport(rows) {
                 <td style="font-family:monospace;font-size:11px">${rbEsc(s.code||'—')}</td>
                 <td>${rbEsc(s.name||'—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
                 <td>${s.bonusLabel}</td>
-                <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-danger)':'var(--rb-text-secondary)'}">
+                <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-success)':'var(--rb-text-secondary)'}">
                   ${s.bonusAmount>0?'+'+s.bonusAmount.toFixed(2)+' ₽':'—'}
                 </td>
               </tr>`).join('')}
             </tbody></table>
-            <div class="rb-report-total">${execTotal > 0 ? 'Итого: +'+execTotal.toFixed(2)+' ₽' : '—'}</div>
+            <div class="rb-report-total" style="${execTotal > 0 ? 'color:var(--rb-success)' : ''}">${execTotal > 0 ? 'Итого: +'+execTotal.toFixed(2)+' ₽' : '—'}</div>
           </div>
         </div>`;
       });
@@ -3259,7 +3284,6 @@ async function rbExportReport() {
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'alfa-wiki';
-  const ws = wb.addWorksheet('Отчёт');
 
   const fontTitle  = { name: 'Calibri', size: 14, bold: true };
   const fontBold   = { name: 'Calibri', size: 11, bold: true };
@@ -3268,65 +3292,58 @@ async function rbExportReport() {
   const borderThin = { style: 'thin', color: { argb: 'FFAAAAAA' } };
   const allBorders = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
 
-  ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
-  ws.properties.outlineLevelRow = 1;
+  // ── Одиночный отчёт: каждая клиника — отдельный лист ──
+  for (const { clinicId, clinicLabel, referralSections, executorSections, salary } of clinicReports) {
+    const safeName = (clinicLabel || rbGetClinicName(clinicId) || 'Клиника').substring(0, 31);
+    const ws = wb.addWorksheet(safeName);
+    ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
+    ws.properties.outlineLevelRow = 1;
 
-  const addRow = (values) => ws.addRow(values);
-  const autoWidth = (row, numCols) => {
-    for (let c = 1; c <= numCols; c++) {
-      const len = String(row.getCell(c).value ?? '').length;
-      const col = ws.getColumn(c);
-      if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
-    }
-  };
+    const autoWidth = (row, numCols) => {
+      for (let c = 1; c <= numCols; c++) {
+        const len = String(row.getCell(c).value ?? '').length;
+        const col = ws.getColumn(c);
+        if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
+      }
+    };
+    const addSalRow = (label, value, sign) => {
+      const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
+      const row = ws.addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
+      row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(2).font = fontNormal;
+      row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(6).numFmt = '#,##0.00';
+      ws.mergeCells(`B${row.number}:E${row.number}`);
+      autoWidth(row, 6);
+      return row;
+    };
+    const addSalSubRow = (label) => {
+      const row = ws.addRow(['', '  ↳ ' + label]);
+      row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
+      ws.mergeCells(`B${row.number}:F${row.number}`);
+      autoWidth(row, 2);
+    };
+    const itemLabelXls = (item, base) => {
+      const v = parseFloat(item.value) || 0;
+      return item.valueType === 'percent' ? `${item.name} (${v}% = ${(base * v / 100).toFixed(2)} ₽)` : `${item.name} (${v.toFixed(2)} ₽)`;
+    };
+    const extraLabelXls = (e) => {
+      const hrs = parseFloat(e.hours) || 0;
+      return hrs > 0 ? `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽ × ${hrs} ч = ${(parseFloat(e.amount) * hrs).toFixed(2)} ₽)` : `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽)`;
+    };
 
-  // ── Заголовок отчёта ──
-  const titleRow = addRow([`Отчёт: ${doctor}`]);
-  titleRow.getCell(1).font = fontTitle;
-  ws.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
-  autoWidth(titleRow, 1);
-
-  function addSalRow(label, value, sign) {
-    const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
-    const row = addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
-    row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
-    row.getCell(2).font = fontNormal;
-    row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
-    row.getCell(6).numFmt = '#,##0.00';
-    ws.mergeCells(`B${row.number}:E${row.number}`);
-    autoWidth(row, 6);
-    return row;
-  }
-  function addSalSubRow(label) {
-    const row = addRow(['', '  ↳ ' + label]);
-    row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
-    ws.mergeCells(`B${row.number}:F${row.number}`);
-    autoWidth(row, 2);
-  }
-  function itemLabelXls(item, base) {
-    const v = parseFloat(item.value) || 0;
-    return item.valueType === 'percent' ? `${item.name} (${v}% = ${(base * v / 100).toFixed(2)} ₽)` : `${item.name} (${v.toFixed(2)} ₽)`;
-  }
-  function extraLabelXls(e) {
-    const hrs = parseFloat(e.hours) || 0;
-    return hrs > 0 ? `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽ × ${hrs} ч = ${(parseFloat(e.amount) * hrs).toFixed(2)} ₽)` : `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽)`;
-  }
-
-  for (const { clinicLabel, referralSections, executorSections, salary } of clinicReports) {
-    addRow([]);
-    // ── Заголовок клиники ──
-    const clinicRow = addRow([clinicLabel]);
-    clinicRow.getCell(1).font = { ...fontBold, size: 12 };
-    clinicRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
-    for (let c = 1; c <= 6; c++) clinicRow.getCell(c).border = allBorders;
-    ws.mergeCells(`A${clinicRow.number}:F${clinicRow.number}`);
-    autoWidth(clinicRow, 1);
+    // Заголовок: Врач — Клиника
+    const titleRow = ws.addRow([`${doctor} — ${safeName}`]);
+    titleRow.getCell(1).font = fontTitle;
+    ws.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
+    autoWidth(titleRow, 1);
+    ws.addRow([]);
 
     // ── Бонусы за направления ──
     if (referralSections?.length) {
       (referralSections || []).forEach(({ executor, services }) => {
         const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
-        const execRow = addRow([executor, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
+        const execRow = ws.addRow([executor, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
         execRow.getCell(1).font = fontBold;
         execRow.getCell(6).font = { ...fontBold, color: { argb: 'FF166534' } };
         execRow.getCell(6).numFmt = '#,##0.00';
@@ -3334,7 +3351,7 @@ async function rbExportReport() {
         ws.mergeCells(`A${execRow.number}:E${execRow.number}`);
         autoWidth(execRow, 6);
 
-        const hRow = addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
+        const hRow = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
         hRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
           if (colNum <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
         });
@@ -3342,21 +3359,21 @@ async function rbExportReport() {
         hRow.outlineLevel = 1;
 
         services.forEach(s => {
-          const dRow = addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0]);
+          const dRow = ws.addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0]);
           dRow.eachCell({ includeEmpty: true }, (cell, colNum) => { if (colNum <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
           dRow.getCell(3).numFmt = '#,##0.00';
           dRow.getCell(6).numFmt = '#,##0.00';
           autoWidth(dRow, 6);
           dRow.outlineLevel = 1;
         });
-        addRow([]);
+        ws.addRow([]);
       });
     }
 
     // ── Выплаты направителям (когда врач — исполнитель) ──
     if (executorSections?.length) {
       (executorSections || []).forEach(({ referrer, services, total }) => {
-        const refRow = addRow([`Направитель: ${referrer}`, '', '', '', '', total > 0 ? -parseFloat(total.toFixed(2)) : 0]);
+        const refRow = ws.addRow([`Направитель: ${referrer}`, '', '', '', '', total > 0 ? -parseFloat(total.toFixed(2)) : 0]);
         refRow.getCell(1).font = fontBold;
         refRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
         refRow.getCell(6).numFmt = '#,##0.00';
@@ -3364,19 +3381,20 @@ async function rbExportReport() {
         ws.mergeCells(`A${refRow.number}:E${refRow.number}`);
         autoWidth(refRow, 6);
         services.forEach(s => {
-          const dRow = addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0]);
+          const dRow = ws.addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0]);
           dRow.eachCell({ includeEmpty: true }, (cell, colNum) => { if (colNum <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
           dRow.getCell(3).numFmt = '#,##0.00'; dRow.getCell(6).numFmt = '#,##0.00';
           autoWidth(dRow, 6); dRow.outlineLevel = 1;
         });
-        addRow([]);
+        ws.addRow([]);
       });
     }
 
     // ── Расчёт зарплаты ──
     if (salary) {
       const sal = salary;
-      const salTitleRow = addRow(['Расчёт зарплаты']);
+      ws.addRow([]);
+      const salTitleRow = ws.addRow(['Расчёт зарплаты']);
       salTitleRow.getCell(1).font = { ...fontBold, size: 13 };
       salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
       ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
@@ -3401,8 +3419,8 @@ async function rbExportReport() {
         (sal.referralCostItems || []).forEach(x => addSalSubRow(`${x.name} (${x.amount.toFixed(2)} ₽)`));
       }
 
-      addRow([]);
-      const totalRow = addRow(['=', 'К выплате', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
+      ws.addRow([]);
+      const totalRow = ws.addRow(['=', 'К выплате', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
       const totalColor = (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000';
       totalRow.getCell(1).font = { ...fontBold, size: 13, color: { argb: totalColor } };
       totalRow.getCell(2).font = { ...fontBold, size: 13, color: { argb: totalColor } };
@@ -3999,18 +4017,44 @@ async function rbBulkGenerate() {
 
     if (!allRelevant.length) continue;
 
-    // Группируем по клинике
-    const byClinic = {};
+    // Группируем по клинике — только клиники где врач является исполнителем
+    const rawByClinic2 = {};
     allRelevant.forEach(r => {
       const clinicRaw = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
       const clinicId  = rbMatchClinicId(clinicRaw) || 'unknown';
       const clinicLabel = clinicRaw || 'Не указана';
-      if (!byClinic[clinicId]) byClinic[clinicId] = { id: clinicId, label: clinicLabel, rows: [] };
-      byClinic[clinicId].rows.push(r);
+      if (!rawByClinic2[clinicId]) rawByClinic2[clinicId] = { id: clinicId, label: clinicLabel, rows: [] };
+      rawByClinic2[clinicId].rows.push(r);
     });
+    const byClinic = {};
+    const orphanRows2 = [];
+    Object.entries(rawByClinic2).forEach(([clinicId, group]) => {
+      const hasExec = group.rows.some(r =>
+        colMap.executor && lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName)
+      );
+      if (hasExec) byClinic[clinicId] = group;
+      else orphanRows2.push(...group.rows);
+    });
+    if (!Object.keys(byClinic).length) Object.assign(byClinic, rawByClinic2);
+    else if (orphanRows2.length) byClinic[Object.keys(byClinic)[0]].rows.push(...orphanRows2);
 
     const clinicReports = [];
     let grandTotal = 0;
+
+    // Загружаем бонусы по коду услуги (для расчёта выплат направителям у исполнителя)
+    const _bulkSvcCodes = [...new Set(allRelevant
+      .filter(r => colMap.executor && rbNormalizeName(r[colMap.executor] || '').includes(lastName))
+      .map(r => colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '')
+      .filter(Boolean))];
+    const _bulkBonusesBySvc = {};
+    if (_bulkSvcCodes.length) {
+      await Promise.all(_bulkSvcCodes.map(async code => {
+        try {
+          const _bd = await rbApi(`/api/referral-bonuses/by-service?serviceCode=${encodeURIComponent(code)}`);
+          _bulkBonusesBySvc[code] = _bd;
+        } catch { _bulkBonusesBySvc[code] = {}; }
+      }));
+    }
 
     for (const [clinicId, clinicGroup] of Object.entries(byClinic)) {
       const clinicRows = clinicGroup.rows;
@@ -4087,6 +4131,35 @@ async function rbBulkGenerate() {
         return { ...s, bonusAmount, bonusLabel };
       }).filter(s => s.bonusAmount > 0 || s.code);
 
+      // Выплаты направителям (врач — исполнитель, платим другим врачам-рекомендателям)
+      const executorByReferrer = {};
+      executorRows.forEach(r => {
+        const refName = colMap.referrer ? String(r[colMap.referrer] || '').trim() : '';
+        if (!refName || (lastName && rbNormalizeName(refName).includes(lastName))) return; // исключаем себя
+        const code    = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+        const svcName = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+        const cost    = bulkParseCost(r);
+        const bonusMap = _bulkBonusesBySvc[code] || {};
+        const refDoctor = RB.doctors.find(doc => rbNamesMatch(doc.name, refName));
+        if (!refDoctor) return;
+        const bonus = bonusMap[refDoctor.id];
+        const key = code || svcName;
+        if (!executorByReferrer[refDoctor.name]) executorByReferrer[refDoctor.name] = {};
+        if (!executorByReferrer[refDoctor.name][key]) executorByReferrer[refDoctor.name][key] = { code, name: svcName, cost: 0, count: 0, bonusAmount: 0, bonusLabel: '—' };
+        const entry = executorByReferrer[refDoctor.name][key];
+        entry.cost += cost;
+        entry.count++;
+        if (bonus) {
+          if (bonus.bonusPercent != null) { entry.bonusAmount += cost * parseFloat(bonus.bonusPercent) / 100; entry.bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
+          else if (bonus.bonusRub != null) { entry.bonusAmount += parseFloat(bonus.bonusRub); entry.bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`; }
+        }
+      });
+      const executorSections = Object.entries(executorByReferrer)
+        .sort(([a],[b]) => a.localeCompare(b))
+        .map(([referrer, sm]) => ({ referrer, services: Object.values(sm), total: Object.values(sm).reduce((s,x) => s + x.bonusAmount, 0) }));
+      const bulkReferralCostItems = executorSections.map(s => ({ name: s.referrer, amount: s.total }));
+      const bulkReferralCostTotal = bulkReferralCostItems.reduce((s,x) => s + x.amount, 0);
+
       // Базовая оплата
       const performedServicesSum = executorRows.reduce((s, r) => s + bulkParseCost(r), 0);
       const pt = clinicSettings.payType || 'salary';
@@ -4112,7 +4185,7 @@ async function rbBulkGenerate() {
       const extrasTotal     = execExtras.reduce((s, e) => s + calcExtraRub(e), 0);
       const deductionsTotal = execDeductions.reduce((s, item) => s + calcItemRub(item, basePay), 0);
       const materialsTotal  = execMaterials.reduce((s, m) => s + calcItemRub(m, basePay), 0);
-      const finalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - deductionsTotal - materialsTotal;
+      const finalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - deductionsTotal - materialsTotal - bulkReferralCostTotal;
 
       grandTotal += referralBonusTotal;
 
@@ -4123,12 +4196,12 @@ async function rbBulkGenerate() {
         performedSections: includePerformedBonus ? performedSections : [],
         basePerformedSections: pt === 'percent' ? performedSections : [],
         extrasTotal, deductionsTotal, materialsTotal,
-        referralCostTotal: 0, referralCostItems: [],
+        referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems,
         finalSalary, advance: clinicSettings.advance || 0, paymentMethod: clinicSettings.paymentMethod,
         deductions: execDeductions, materials: execMaterials, extras: execExtras,
       };
 
-      clinicReports.push({ clinicId, clinicLabel, referralSections, salary, performedSections });
+      clinicReports.push({ clinicId, clinicLabel, referralSections, executorSections, salary, performedSections });
     }
 
     if (clinicReports.length) {
@@ -4184,10 +4257,14 @@ function rbRenderBulkPreview() {
       <span class="rb-report-doctor-total">${grandTotal > 0 ? '+' + grandTotal.toFixed(2) + ' ₽' : '0 ₽'}</span>
     </div>`;
 
-    clinicReports.forEach(({ clinicId, clinicLabel, referralSections, salary }) => {
+    const bulkHasMultiple = clinicReports.length > 1;
+    clinicReports.forEach(({ clinicId, clinicLabel, referralSections, executorSections, salary }, idx) => {
       const cColor = rbGetClinicColor(clinicId);
-      html += `<div style="margin-left:8px;margin-bottom:16px;border-left:3px solid ${cColor};padding-left:10px">
-        <div style="font-size:12px;font-weight:700;color:${cColor};margin-bottom:8px">${rbEsc(clinicLabel)}</div>`;
+      html += `<div style="margin-left:8px;margin-bottom:${bulkHasMultiple ? '20' : '12'}px;${bulkHasMultiple && idx > 0 ? 'border-top:2px dashed var(--rb-border);padding-top:14px;margin-top:14px;' : ''}">
+        <div style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:${cColor}15;border-left:3px solid ${cColor};border-radius:0 4px 4px 0;margin-bottom:10px">
+          <div style="font-size:12px;font-weight:700;color:${cColor};flex:1">${rbEsc(clinicLabel)}</div>
+          ${bulkHasMultiple ? `<div style="font-size:10px;color:var(--rb-text-secondary)">лист ${idx+1} из ${clinicReports.length}</div>` : ''}
+        </div>`;
 
       if (referralSections.length) {
         html += `<div style="font-size:11px;font-weight:600;color:var(--rb-text-secondary);margin-bottom:6px">Бонусы за направления</div>`;
@@ -4214,7 +4291,36 @@ function rbRenderBulkPreview() {
                   </td>
                 </tr>`).join('')}
               </tbody></table>
-              <div class="rb-report-total">${execTotal > 0 ? 'Итого: +' + execTotal.toFixed(2) + ' ₽' : '—'}</div>
+              <div class="rb-report-total" style="${execTotal > 0 ? 'color:var(--rb-success)' : ''}">${execTotal > 0 ? 'Итого: +' + execTotal.toFixed(2) + ' ₽' : '—'}</div>
+            </div>
+          </div>`;
+        });
+      }
+
+      if (executorSections?.length) {
+        html += `<div style="font-size:11px;font-weight:600;color:var(--rb-text-secondary);margin-top:10px;margin-bottom:6px">Выплаты направителям</div>`;
+        executorSections.forEach(({ referrer, services, total }) => {
+          const summaryText = `${services.length} усл.${total > 0 ? ' | −' + total.toFixed(2) + ' ₽' : ''}`;
+          html += `<div class="rb-report-patient">
+            <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
+              <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              <span class="rb-report-patient-title">${rbEsc(referrer)}</span>
+              <span class="rb-report-patient-summary${total > 0 ? ' has-bonus' : ''}">${summaryText}</span>
+            </div>
+            <div class="rb-report-patient-body">
+              <table class="rb-report-table"><thead><tr>
+                <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>К выплате</th>
+              </tr></thead><tbody>
+                ${services.map(s => `<tr>
+                  <td style="font-family:monospace;font-size:11px">${rbEsc(s.code||'—')}</td>
+                  <td>${rbEsc(s.name||'—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
+                  <td>${s.bonusLabel}</td>
+                  <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-danger)':'var(--rb-text-secondary)'}">
+                    ${s.bonusAmount>0?'−'+s.bonusAmount.toFixed(2)+' ₽':'—'}
+                  </td>
+                </tr>`).join('')}
+              </tbody></table>
+              <div class="rb-report-total">${total > 0 ? 'Итого: −' + total.toFixed(2) + ' ₽' : '—'}</div>
             </div>
           </div>`;
         });
@@ -4240,9 +4346,6 @@ async function rbBulkExport() {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'alfa-wiki';
 
-  // Один лист — все врачи секциями, внутри — клиники
-  const ws = wb.addWorksheet('Сводный отчёт');
-
   const fontTitle  = { name: 'Calibri', size: 13, bold: true };
   const fontBold   = { name: 'Calibri', size: 11, bold: true };
   const fontNormal = { name: 'Calibri', size: 11 };
@@ -4252,46 +4355,56 @@ async function rbBulkExport() {
   const allBorders = { top: borderThin, bottom: borderThin, left: borderThin, right: borderThin };
   const COLS = 6;
 
-  ws.columns = Array.from({ length: COLS }, () => ({ width: 8 }));
-  ws.properties.outlineLevelRow = 1;
-
-  const autoWidth = (row, n) => {
-    for (let c = 1; c <= n; c++) {
-      const v = row.getCell(c).value;
-      const len = String(v == null ? '' : v).length;
-      const col = ws.getColumn(c);
-      if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
-    }
-  };
-
-  function addSalRowXls(label, value, sign) {
-    const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
-    const row = ws.addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
-    row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
-    row.getCell(2).font = fontNormal;
-    row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
-    row.getCell(6).numFmt = '#,##0.00';
-    ws.mergeCells(`B${row.number}:E${row.number}`);
-    autoWidth(row, 6);
-    return row;
-  }
-  function addSalSubRowXls(label) {
-    const row = ws.addRow(['', '  ↳ ' + label]);
-    row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
-    ws.mergeCells(`B${row.number}:F${row.number}`);
-    autoWidth(row, 2);
-  }
-  function itemLabelXls(item, base) {
-    const v = parseFloat(item.value) || 0;
-    return item.valueType === 'percent' ? `${item.name} (${v}% = ${(base * v / 100).toFixed(2)} ₽)` : `${item.name} (${v.toFixed(2)} ₽)`;
-  }
-  function extraLabelXls(e) {
-    const hrs = parseFloat(e.hours) || 0;
-    return hrs > 0 ? `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽ × ${hrs} ч = ${(parseFloat(e.amount) * hrs).toFixed(2)} ₽)` : `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽)`;
-  }
-
+  // ── Сводный отчёт: каждый врач — отдельный лист ──
+  const usedSheetNames = {};
   for (const { doctor, clinicReports } of BULK.reportData) {
-    // ── Заголовок врача ──
+    // Уникальное имя листа (первое слово ФИО, макс 28 символов)
+    let sheetName = doctor.split(' ')[0].substring(0, 28);
+    if (usedSheetNames[sheetName]) {
+      usedSheetNames[sheetName]++;
+      sheetName = `${sheetName}_${usedSheetNames[sheetName]}`;
+    } else {
+      usedSheetNames[sheetName] = 1;
+    }
+    const ws = wb.addWorksheet(sheetName);
+    ws.columns = Array.from({ length: COLS }, () => ({ width: 8 }));
+    ws.properties.outlineLevelRow = 1;
+
+    const autoWidth = (row, n) => {
+      for (let c = 1; c <= n; c++) {
+        const v = row.getCell(c).value;
+        const len = String(v == null ? '' : v).length;
+        const col = ws.getColumn(c);
+        if (len + 2 > (col.width || 0)) col.width = Math.min(60, len + 2);
+      }
+    };
+    const addSalRowXls = (label, value, sign) => {
+      const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
+      const row = ws.addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
+      row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(2).font = fontNormal;
+      row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
+      row.getCell(6).numFmt = '#,##0.00';
+      ws.mergeCells(`B${row.number}:E${row.number}`);
+      autoWidth(row, 6);
+      return row;
+    };
+    const addSalSubRowXls = (label) => {
+      const row = ws.addRow(['', '  ↳ ' + label]);
+      row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
+      ws.mergeCells(`B${row.number}:F${row.number}`);
+      autoWidth(row, 2);
+    };
+    const itemLabelXls = (item, base) => {
+      const v = parseFloat(item.value) || 0;
+      return item.valueType === 'percent' ? `${item.name} (${v}% = ${(base * v / 100).toFixed(2)} ₽)` : `${item.name} (${v.toFixed(2)} ₽)`;
+    };
+    const extraLabelXls = (e) => {
+      const hrs = parseFloat(e.hours) || 0;
+      return hrs > 0 ? `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽ × ${hrs} ч = ${(parseFloat(e.amount) * hrs).toFixed(2)} ₽)` : `${e.name} (${parseFloat(e.amount).toFixed(2)} ₽)`;
+    };
+
+    // ── Заголовок врача вверху листа ──
     const doctorRow = ws.addRow([doctor]);
     doctorRow.getCell(1).font = fontTitle;
     for (let c = 1; c <= COLS; c++) {
@@ -4301,8 +4414,9 @@ async function rbBulkExport() {
     ws.mergeCells(`A${doctorRow.number}:F${doctorRow.number}`);
     autoWidth(doctorRow, 1);
 
-    for (const { clinicLabel, referralSections, salary } of clinicReports) {
+    for (const { clinicLabel, referralSections, executorSections, salary } of clinicReports) {
       // ── Подзаголовок клиники ──
+      ws.addRow([]);
       const clinicRow = ws.addRow([`  ${clinicLabel}`]);
       clinicRow.getCell(1).font = { ...fontBold, size: 12 };
       clinicRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
@@ -4311,7 +4425,7 @@ async function rbBulkExport() {
       autoWidth(clinicRow, 1);
 
       // ── Бонусы за направления ──
-      for (const { executor, services } of referralSections) {
+      for (const { executor, services } of (referralSections || [])) {
         const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
         const execRow = ws.addRow([`    ${executor}`, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
         execRow.getCell(1).font = fontBold;
@@ -4341,6 +4455,40 @@ async function rbBulkExport() {
           dRow.getCell(6).numFmt = '#,##0.00';
           autoWidth(dRow, COLS);
           dRow.outlineLevel = 1;
+        }
+      }
+
+      // ── Выплаты направителям ──
+      if (executorSections?.length) {
+        for (const { referrer, services, total } of executorSections) {
+          const refRow = ws.addRow([`    Направитель: ${referrer}`, '', '', '', '', total > 0 ? -parseFloat(total.toFixed(2)) : 0]);
+          refRow.getCell(1).font = fontBold;
+          refRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+          refRow.getCell(6).numFmt = '#,##0.00';
+          refRow.getCell(6).border = allBorders;
+          ws.mergeCells(`A${refRow.number}:E${refRow.number}`);
+          autoWidth(refRow, 6);
+          const hRow2 = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб']);
+          hRow2.eachCell({ includeEmpty: true }, (cell, c) => {
+            if (c <= COLS) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+          });
+          autoWidth(hRow2, COLS);
+          hRow2.outlineLevel = 1;
+          for (const s of services) {
+            const dRow = ws.addRow([
+              s.code || '—', s.name || '—',
+              parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel,
+              s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0,
+            ]);
+            dRow.eachCell({ includeEmpty: true }, (cell, c) => {
+              if (c <= COLS) { cell.font = fontNormal; cell.border = allBorders; }
+            });
+            dRow.getCell(3).numFmt = '#,##0.00';
+            dRow.getCell(6).numFmt = '#,##0.00';
+            autoWidth(dRow, COLS);
+            dRow.outlineLevel = 1;
+          }
+          ws.addRow([]);
         }
       }
 
@@ -4381,11 +4529,7 @@ async function rbBulkExport() {
         ws.mergeCells(`B${totalRow.number}:E${totalRow.number}`);
         autoWidth(totalRow, 6);
       }
-
-      ws.addRow([]);
     }
-
-    ws.addRow([]); // разрыв между врачами
   }
 
   const buf = await wb.xlsx.writeBuffer();
