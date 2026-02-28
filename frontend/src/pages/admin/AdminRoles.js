@@ -106,7 +106,7 @@ export default function AdminRoles() {
                   {role.permissions?.users?.write && <span className="badge badge-error">Управление</span>}
                 </div>
                 <div className="role-card-footer">
-                  <span><Users size={14} /> {role.users?.length || 0} пользователей</span>
+                  <span><Users size={14} /> {role.usersWithRole?.length || 0} пользователей</span>
                   <div className="action-btns">
                     <button className="btn btn-ghost btn-sm" onClick={() => openModal(role)}><Edit size={16} /></button>
                     {!role.isSystem && <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(role)}><Trash2 size={16} /></button>}

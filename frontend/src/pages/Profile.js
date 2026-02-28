@@ -164,7 +164,13 @@ export default function Profile() {
                 />
                 <div className="profile-avatar-info">
                   <div className="profile-username">@{user?.username}</div>
-                  <div className="profile-role">{user?.role?.name || (user?.isAdmin ? 'Администратор' : 'Пользователь')}</div>
+                  <div className="profile-role">
+                    {user?.isAdmin ? 'Администратор' : (
+                      user?.roles && user.roles.length > 0
+                        ? user.roles.map(r => r.name).join(', ')
+                        : user?.role?.name || 'Пользователь'
+                    )}
+                  </div>
                   <button 
                     className="btn btn-ghost btn-sm"
                     onClick={handleAvatarClick}

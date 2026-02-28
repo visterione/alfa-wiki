@@ -20,7 +20,8 @@ router.get('/', authenticate, async (req, res) => {
     const roles = await Role.findAll({
       include: [{
         model: User,
-        as: 'users',
+        as: 'usersWithRole',
+        through: { attributes: [] },
         attributes: ['id']
       }],
       order: [['name', 'ASC']]

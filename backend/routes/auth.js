@@ -311,7 +311,10 @@ setInterval(() => {
 router.get('/me', authenticate, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
     res.json(user);
