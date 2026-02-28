@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- ExcelJS для экспорта с форматированием -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
   --rb-primary: #2563eb;
@@ -26,7 +28,7 @@
   --rb-radius: 10px;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--rb-bg); color: var(--rb-text); }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; background: var(--rb-bg); color: var(--rb-text); font-size: 15px; }
 
 #rb-app { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
@@ -450,6 +452,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .rb-psvc-input.has-value { border-color: var(--rb-success); background: #f0fdf4; }
 .rb-psvc-footer { padding: 12px 16px; border-top: 1px solid var(--rb-border); background: #f8fafc; display: flex; align-items: center; justify-content: space-between; }
 .rb-psvc-footer span { font-size: 12px; color: var(--rb-text-secondary); }
+
+/* ═══ INLINE BONUS TOGGLE ═══ */
+.rb-inline-toggle-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.rb-inline-toggle-wrap .rb-exec-type-toggle { flex-shrink: 0; }
+.rb-inline-toggle-wrap input[type=number] { flex: 1; min-width: 0; }
 </style>
 </head>
 <body>
@@ -744,6 +751,62 @@ const RB = {
 };
 
 // ═══════════════════════════════════════
+// INLINE BONUS TOGGLE HELPERS
+// ═══════════════════════════════════════
+function rbInlineToggle(pctBtnId, rubBtnId, inputId, type) {
+  const isPct = type === 'pct';
+  document.getElementById(pctBtnId)?.classList.toggle('active', isPct);
+  document.getElementById(rubBtnId)?.classList.toggle('active', !isPct);
+  const inp = document.getElementById(inputId);
+  if (inp) {
+    inp.placeholder = isPct ? 'Например: 10' : 'Например: 150';
+    inp.max = isPct ? '100' : '';
+    inp.value = '';
+  }
+}
+
+function rbInlineGetBonus(pctBtnId, inputId) {
+  const isPct = document.getElementById(pctBtnId)?.classList.contains('active');
+  const raw = document.getElementById(inputId)?.value?.trim();
+  const val = raw !== '' && raw != null ? parseFloat(raw) : null;
+  return {
+    bonusPercent: isPct && val !== null ? val : null,
+    bonusRub:    !isPct && val !== null ? val : null,
+  };
+}
+
+function rbInlineSetBonus(pctBtnId, rubBtnId, inputId, bonusPercent, bonusRub) {
+  const inp = document.getElementById(inputId);
+  if (bonusPercent != null) {
+    document.getElementById(pctBtnId)?.classList.add('active');
+    document.getElementById(rubBtnId)?.classList.remove('active');
+    if (inp) { inp.placeholder = 'Например: 10'; inp.max = '100'; inp.value = bonusPercent; }
+  } else if (bonusRub != null) {
+    document.getElementById(pctBtnId)?.classList.remove('active');
+    document.getElementById(rubBtnId)?.classList.add('active');
+    if (inp) { inp.placeholder = 'Например: 150'; inp.max = ''; inp.value = bonusRub; }
+  } else {
+    document.getElementById(pctBtnId)?.classList.add('active');
+    document.getElementById(rubBtnId)?.classList.remove('active');
+    if (inp) { inp.placeholder = 'Например: 10'; inp.max = '100'; inp.value = ''; }
+  }
+}
+
+function rbPsvcToggleType(btn, type) {
+  const toggle = btn.closest('.rb-exec-type-toggle');
+  if (!toggle) return;
+  toggle.querySelectorAll('.rb-exec-type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const row = btn.closest('tr');
+  const inp = row?.querySelector('[data-field="val"]');
+  if (inp) {
+    inp.dataset.type = type;
+    inp.placeholder = type === 'pct' ? '%' : '₽';
+    inp.value = '';
+  }
+}
+
+// ═══════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════
 async function rbInit() {
@@ -1034,14 +1097,14 @@ function rbRenderDoctorDetail() {
               Назначить бонус всем услугам категории
               <span class="rb-cat-bulk-bonus-count" id="rb-cat-bulk-count"></span>
             </div>
-            <div class="rb-bonus-inputs">
-              <div class="rb-bonus-field">
-                <label>Бонус, % (от стоимости)</label>
-                <input type="number" id="rb-cat-bulk-percent" placeholder="Например: 10" min="0" max="100" step="0.01" oninput="if(this.value)document.getElementById('rb-cat-bulk-rub').value=''">
-              </div>
-              <div class="rb-bonus-field">
-                <label>Бонус, руб (фиксированно)</label>
-                <input type="number" id="rb-cat-bulk-rub" placeholder="Например: 150" min="0" step="0.01" oninput="if(this.value)document.getElementById('rb-cat-bulk-percent').value=''">
+            <div style="margin-bottom:10px">
+              <label style="font-size:12px;font-weight:500;color:var(--rb-text-secondary);display:block;margin-bottom:6px">Бонус для всех услуг</label>
+              <div class="rb-inline-toggle-wrap">
+                <div class="rb-exec-type-toggle">
+                  <button class="rb-exec-type-btn active" id="rb-cat-bulk-type-pct" onclick="rbInlineToggle('rb-cat-bulk-type-pct','rb-cat-bulk-type-rub','rb-cat-bulk-val','pct')">%</button>
+                  <button class="rb-exec-type-btn" id="rb-cat-bulk-type-rub" onclick="rbInlineToggle('rb-cat-bulk-type-pct','rb-cat-bulk-type-rub','rb-cat-bulk-val','rub')">₽</button>
+                </div>
+                <input type="number" id="rb-cat-bulk-val" placeholder="Например: 10" min="0" step="0.01">
               </div>
             </div>
             <div class="rb-form-actions" style="margin-top:10px">
@@ -1057,14 +1120,14 @@ function rbRenderDoctorDetail() {
         <div class="rb-selected-service" id="rb-selected-service">
           <div class="rb-selected-service-name" id="rb-sel-name"></div>
           <div class="rb-selected-service-code" id="rb-sel-code"></div>
-          <div class="rb-bonus-inputs">
-            <div class="rb-bonus-field">
-              <label>Бонус, % (от стоимости)</label>
-              <input type="number" id="rb-bonus-percent" placeholder="Например: 10" min="0" max="100" step="0.01" oninput="if(this.value)document.getElementById('rb-bonus-rub').value=''">
-            </div>
-            <div class="rb-bonus-field">
-              <label>Бонус, руб (фиксированно)</label>
-              <input type="number" id="rb-bonus-rub" placeholder="Например: 150" min="0" step="0.01" oninput="if(this.value)document.getElementById('rb-bonus-percent').value=''">
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:500;color:var(--rb-text-secondary);display:block;margin-bottom:6px">Бонус</label>
+            <div class="rb-inline-toggle-wrap">
+              <div class="rb-exec-type-toggle">
+                <button class="rb-exec-type-btn active" id="rb-bonus-type-pct" onclick="rbInlineToggle('rb-bonus-type-pct','rb-bonus-type-rub','rb-bonus-value','pct')">%</button>
+                <button class="rb-exec-type-btn" id="rb-bonus-type-rub" onclick="rbInlineToggle('rb-bonus-type-pct','rb-bonus-type-rub','rb-bonus-value','rub')">₽</button>
+              </div>
+              <input type="number" id="rb-bonus-value" placeholder="Например: 10" min="0" step="0.01">
             </div>
           </div>
           <div class="rb-form-actions">
@@ -1168,9 +1231,8 @@ async function rbSaveBonus() {
   const svc = RB.selectedService;
   if (!svc) { rbToast('Выберите услугу', 'error'); return; }
 
-  const pct = document.getElementById('rb-bonus-percent').value;
-  const rub = document.getElementById('rb-bonus-rub').value;
-  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+  const { bonusPercent, bonusRub } = rbInlineGetBonus('rb-bonus-type-pct', 'rb-bonus-value');
+  if (bonusPercent == null && bonusRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
 
   try {
     await rbPost('/api/referral-bonuses', {
@@ -1178,8 +1240,8 @@ async function rbSaveBonus() {
       doctorName: RB.selectedDoctor.name,
       serviceCode: svc.code || String(svc.service_id || ''),
       serviceName: svc.title,
-      bonusPercent: pct ? parseFloat(pct) : null,
-      bonusRub: rub ? parseFloat(rub) : null,
+      bonusPercent,
+      bonusRub,
     });
     rbToast('Бонус сохранён', 'success');
     rbClearServiceSearch();
@@ -1211,8 +1273,7 @@ function rbEditBonus(id) {
   RB.selectedService = { code: b.serviceCode, title: b.serviceName };
   document.getElementById('rb-sel-name').textContent = b.serviceName;
   document.getElementById('rb-sel-code').textContent = `Код: ${b.serviceCode}`;
-  document.getElementById('rb-bonus-percent').value = b.bonusPercent != null ? b.bonusPercent : '';
-  document.getElementById('rb-bonus-rub').value = b.bonusRub != null ? b.bonusRub : '';
+  rbInlineSetBonus('rb-bonus-type-pct', 'rb-bonus-type-rub', 'rb-bonus-value', b.bonusPercent, b.bonusRub);
   document.getElementById('rb-selected-service').style.display = 'block';
   document.getElementById('rb-service-search').value = b.serviceName;
   document.getElementById('rb-service-results').style.display = 'none';
@@ -1259,13 +1320,11 @@ function rbSelectService(s) {
   document.getElementById('rb-sel-name').textContent = s.title;
   document.getElementById('rb-sel-code').textContent = `Код: ${s.code || s.service_id || ''}  ${s.price ? '• ' + s.price.toFixed(2) + ' ₽' : ''}`;
   document.getElementById('rb-selected-service').style.display = 'block';
-  document.getElementById('rb-bonus-percent').value = '';
-  document.getElementById('rb-bonus-rub').value = '';
+  rbInlineSetBonus('rb-bonus-type-pct', 'rb-bonus-type-rub', 'rb-bonus-value', null, null);
 
   const existingBonus = RB.bonuses.find(b => b.serviceCode === (s.code || String(s.service_id)));
   if (existingBonus) {
-    document.getElementById('rb-bonus-percent').value = existingBonus.bonusPercent != null ? existingBonus.bonusPercent : '';
-    document.getElementById('rb-bonus-rub').value = existingBonus.bonusRub != null ? existingBonus.bonusRub : '';
+    rbInlineSetBonus('rb-bonus-type-pct', 'rb-bonus-type-rub', 'rb-bonus-value', existingBonus.bonusPercent, existingBonus.bonusRub);
   }
 }
 
@@ -1410,9 +1469,8 @@ function rbSelectCatService(idx, el) {
 
 async function rbApplyCategoryBonus() {
   if (!_rbCatServices.length) { rbToast('Нет услуг в категории', 'error'); return; }
-  const pct = document.getElementById('rb-cat-bulk-percent').value;
-  const rub = document.getElementById('rb-cat-bulk-rub').value;
-  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+  const { bonusPercent: catPct, bonusRub: catRub } = rbInlineGetBonus('rb-cat-bulk-type-pct', 'rb-cat-bulk-val');
+  if (catPct == null && catRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
 
   const btn = document.querySelector('#rb-cat-bulk-bonus .rb-btn-primary');
   if (btn) { btn.disabled = true; btn.textContent = 'Сохранение...'; }
@@ -1421,8 +1479,8 @@ async function rbApplyCategoryBonus() {
     const services = _rbCatServices.map(s => ({
       serviceCode: s.code || String(s.service_id || ''),
       serviceName: s.title,
-      bonusPercent: pct ? parseFloat(pct) : null,
-      bonusRub: rub ? parseFloat(rub) : null,
+      bonusPercent: catPct,
+      bonusRub: catRub,
     }));
     const result = await rbPost('/api/referral-bonuses/bulk', {
       misUserId: RB.selectedDoctor.id,
@@ -1430,8 +1488,8 @@ async function rbApplyCategoryBonus() {
       services,
     });
     rbToast(`Бонус применён к ${result.upserted} услуг${result.upserted === 1 ? 'е' : result.upserted < 5 ? 'ам' : 'ам'}`, 'success');
-    document.getElementById('rb-cat-bulk-percent').value = '';
-    document.getElementById('rb-cat-bulk-rub').value = '';
+    const catBulkInp = document.getElementById('rb-cat-bulk-val');
+    if (catBulkInp) catBulkInp.value = '';
     await rbLoadBonuses();
   } catch (err) {
     rbToast('Ошибка: ' + err.message, 'error');
@@ -1606,8 +1664,7 @@ async function rbRenderPerformedServicesDetail() {
           <tr style="background:#f8fafc;border-bottom:2px solid var(--rb-border)">
             <th style="padding:8px 10px;text-align:left;font-weight:600">Код</th>
             <th style="padding:8px 10px;text-align:left;font-weight:600">Услуга</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;width:90px">% бонуса</th>
-            <th style="padding:8px 10px;text-align:center;font-weight:600;width:100px">Сумма, ₽</th>
+            <th style="padding:8px 10px;text-align:center;font-weight:600;width:160px">Бонус</th>
           </tr>
         </thead>
         <tbody>`;
@@ -1619,23 +1676,26 @@ async function rbRenderPerformedServicesDetail() {
         const saved = RB.performedBonuses.find(b => b.serviceCode === code);
         const pct = saved && saved.bonusPercent != null ? saved.bonusPercent : '';
         const rub = saved && saved.bonusRub != null ? saved.bonusRub : '';
+        const hasPct = pct !== '';
+        const hasRub = rub !== '';
+        const initType = hasPct ? 'pct' : hasRub ? 'rub' : 'pct';
+        const initVal  = hasPct ? pct   : hasRub ? rub   : '';
         const rowBg = i % 2 === 0 ? '' : 'background:#f8fafc';
         html += `<tr style="${rowBg};border-bottom:1px solid var(--rb-border)">
           <td style="padding:6px 10px;font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(code)}</td>
           <td style="padding:6px 10px">${rbEsc(name)}<span style="color:var(--rb-text-secondary);font-size:11px">${price}</span></td>
-          <td style="padding:6px 10px;text-align:center">
-            <input type="number" min="0" max="100" step="0.1"
-              style="width:70px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:center;font-size:12px"
-              placeholder="%" value="${rbEsc(String(pct))}"
-              data-code="${rbEsc(code)}" data-field="pct"
-              oninput="rbPsvcOnInput(this)">
-          </td>
-          <td style="padding:6px 10px;text-align:center">
-            <input type="number" min="0" step="0.01"
-              style="width:80px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:center;font-size:12px"
-              placeholder="₽" value="${rbEsc(String(rub))}"
-              data-code="${rbEsc(code)}" data-field="rub"
-              oninput="rbPsvcOnInput(this)">
+          <td style="padding:6px 10px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <div class="rb-exec-type-toggle">
+                <button class="rb-exec-type-btn${initType === 'pct' ? ' active' : ''}" onclick="rbPsvcToggleType(this,'pct')">%</button>
+                <button class="rb-exec-type-btn${initType === 'rub' ? ' active' : ''}" onclick="rbPsvcToggleType(this,'rub')">₽</button>
+              </div>
+              <input type="number" min="0" step="0.01"
+                style="width:80px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px"
+                placeholder="${initType === 'pct' ? '%' : '₽'}" value="${rbEsc(String(initVal))}"
+                data-code="${rbEsc(code)}" data-field="val" data-type="${initType}"
+                oninput="rbPsvcOnInput(this)">
+            </div>
           </td>
         </tr>`;
       });
@@ -1655,9 +1715,9 @@ const PSVC_PENDING = {}; // serviceCode -> { pct, rub }
 
 function rbPsvcOnInput(input) {
   const code = input.dataset.code;
-  const field = input.dataset.field;
+  const type = input.dataset.type || 'pct';
   if (!PSVC_PENDING[code]) PSVC_PENDING[code] = { pct: null, rub: null };
-  PSVC_PENDING[code][field] = input.value.trim();
+  PSVC_PENDING[code][type] = input.value.trim();
 }
 
 async function rbPsvcSaveAll(misUserId) {
@@ -1668,17 +1728,20 @@ async function rbPsvcSaveAll(misUserId) {
   const rows = document.querySelectorAll('#rb-psvc-table tbody tr');
   const updates = [];
   rows.forEach(row => {
-    const pctInput = row.querySelector('[data-field="pct"]');
-    const rubInput = row.querySelector('[data-field="rub"]');
-    if (!pctInput) return;
-    const code = pctInput.dataset.code;
+    const valInput = row.querySelector('[data-field="val"]');
+    if (!valInput) return;
+    const code = valInput.dataset.code;
+    const type = valInput.dataset.type || 'pct';
     const svcName = row.cells[1] ? row.cells[1].textContent.trim() : code;
-    const pctVal = pctInput.value.trim();
-    const rubVal = rubInput ? rubInput.value.trim() : '';
-    const pct = pctVal !== '' ? parseFloat(pctVal) : null;
-    const rub = rubVal !== '' ? parseFloat(rubVal) : null;
-    if (pct !== null || rub !== null) {
-      updates.push({ serviceCode: code, serviceName: svcName, bonusPercent: pct, bonusRub: rub });
+    const valStr = valInput.value.trim();
+    const val = valStr !== '' ? parseFloat(valStr) : null;
+    if (val !== null) {
+      updates.push({
+        serviceCode: code,
+        serviceName: svcName,
+        bonusPercent: type === 'pct' ? val : null,
+        bonusRub:     type === 'rub' ? val : null,
+      });
     }
   });
 
@@ -1798,17 +1861,13 @@ function rbSvcModeRender() {
       </div>
       <div style="padding:14px 16px;border-bottom:1px solid var(--rb-border);background:#fffbeb">
         <div style="font-size:13px;font-weight:600;margin-bottom:10px">Назначить бонус выбранным врачам</div>
-        <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <div class="rb-bonus-field">
-            <label>Бонус, %</label>
-            <input type="number" id="rb-svc-bonus-pct" placeholder="10" min="0" max="100" step="0.01"
-                   style="width:90px" oninput="if(this.value)document.getElementById('rb-svc-bonus-rub').value=''">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <label style="font-size:12px;font-weight:500;color:var(--rb-text-secondary);white-space:nowrap">Бонус</label>
+          <div class="rb-exec-type-toggle">
+            <button class="rb-exec-type-btn active" id="rb-svc-bonus-type-pct" onclick="rbInlineToggle('rb-svc-bonus-type-pct','rb-svc-bonus-type-rub','rb-svc-bonus-val','pct')">%</button>
+            <button class="rb-exec-type-btn" id="rb-svc-bonus-type-rub" onclick="rbInlineToggle('rb-svc-bonus-type-pct','rb-svc-bonus-type-rub','rb-svc-bonus-val','rub')">₽</button>
           </div>
-          <div class="rb-bonus-field">
-            <label>Бонус, ₽</label>
-            <input type="number" id="rb-svc-bonus-rub" placeholder="150" min="0" step="0.01"
-                   style="width:90px" oninput="if(this.value)document.getElementById('rb-svc-bonus-pct').value=''">
-          </div>
+          <input type="number" id="rb-svc-bonus-val" placeholder="Например: 10" min="0" step="0.01" style="width:120px;padding:7px 10px;border:1px solid var(--rb-border-dark);border-radius:8px;font-size:13px;outline:none">
           <button class="rb-btn rb-btn-primary" id="rb-svc-save-btn" onclick="rbSvcModeSaveBulk()" ${selectedCount === 0 ? 'disabled' : ''}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
             Назначить выбранным (<span id="rb-svc-sel-count">${selectedCount}</span>)
@@ -1888,9 +1947,8 @@ function rbSvcFilterDoctors() {
 async function rbSvcModeSaveBulk() {
   const svc = SVC.selectedService;
   if (!svc || !SVC.selectedDoctorIds.size) return;
-  const pct = document.getElementById('rb-svc-bonus-pct').value;
-  const rub = document.getElementById('rb-svc-bonus-rub').value;
-  if (!pct && !rub) { rbToast('Укажите размер бонуса', 'error'); return; }
+  const { bonusPercent: svcPct, bonusRub: svcRub } = rbInlineGetBonus('rb-svc-bonus-type-pct', 'rb-svc-bonus-val');
+  if (svcPct == null && svcRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
 
   const btn = document.getElementById('rb-svc-save-btn');
   if (btn) btn.disabled = true;
@@ -1904,13 +1962,10 @@ async function rbSvcModeSaveBulk() {
         doctorName: d.name,
         serviceCode: svc.code,
         serviceName: svc.title,
-        bonusPercent: pct ? parseFloat(pct) : null,
-        bonusRub: rub ? parseFloat(rub) : null,
+        bonusPercent: svcPct,
+        bonusRub: svcRub,
       });
-      SVC.bonusesByDoctor[d.id] = {
-        bonusPercent: pct ? parseFloat(pct) : null,
-        bonusRub: rub ? parseFloat(rub) : null,
-      };
+      SVC.bonusesByDoctor[d.id] = { bonusPercent: svcPct, bonusRub: svcRub };
       saved++;
     }
     rbToast(`Бонус назначен ${saved} врачам`, 'success');
@@ -4034,6 +4089,8 @@ async function rbDeleteArchiveReport(id) {
 // BOOTSTRAP
 // ═══════════════════════════════════════
 // Expose functions needed by inline onclick handlers
+window.rbInlineToggle = rbInlineToggle;
+window.rbPsvcToggleType = rbPsvcToggleType;
 window.rbSelectDoctor = rbSelectDoctor;
 window.rbGoToStep = rbGoToStep;
 window.rbSetStep3Mode = rbSetStep3Mode;
