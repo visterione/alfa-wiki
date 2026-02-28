@@ -31,15 +31,24 @@ router.post('/', authenticate, async (req, res) => {
 
     // Bulk mode
     if (Array.isArray(items)) {
-      await PerformedServiceBonus.destroy({ where: { misUserId } });
-      const created = [];
+      // Дедупликация: оставляем последний элемент для каждого serviceCode
+      const seen = new Map();
       for (const item of items) {
         if (!item.serviceCode) continue;
+        seen.set(String(item.serviceCode).trim(), item);
+      }
+      const deduped = Array.from(seen.values());
+
+      await PerformedServiceBonus.destroy({ where: { misUserId } });
+      const created = [];
+      for (const item of deduped) {
+        const svcCode = String(item.serviceCode).trim().substring(0, 100);
+        const svcName = String(item.serviceName || item.serviceCode).trim().substring(0, 500);
         const [bonus] = await PerformedServiceBonus.upsert({
           misUserId,
-          doctorName: doctorName || '',
-          serviceCode: item.serviceCode,
-          serviceName: item.serviceName || item.serviceCode,
+          doctorName: (doctorName || '').substring(0, 255) || '—',
+          serviceCode: svcCode,
+          serviceName: svcName,
           bonusPercent: item.bonusPercent != null ? parseFloat(item.bonusPercent) : null,
           bonusRub: item.bonusRub != null ? parseFloat(item.bonusRub) : null,
           createdBy: req.user?.id || null,

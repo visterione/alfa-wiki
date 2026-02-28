@@ -1732,7 +1732,7 @@ async function rbRenderPerformedServicesDetail() {
               <input type="number" min="0" step="any"
                 style="width:80px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px"
                 placeholder="${initType === 'pct' ? '%' : '₽'}" value="${rbEsc(String(initVal))}"
-                data-code="${rbEsc(code)}" data-field="val" data-type="${initType}"
+                data-code="${rbEsc(code)}" data-name="${rbEsc(name)}" data-field="val" data-type="${initType}"
                 oninput="rbPsvcOnInput(this)">
             </div>
           </td>
@@ -1780,7 +1780,7 @@ async function rbPsvcSaveAll(misUserId) {
     if (!valInput) return;
     const code = valInput.dataset.code;
     const type = valInput.dataset.type || 'pct';
-    const svcName = row.cells[1] ? row.cells[1].textContent.trim() : code;
+    const svcName = valInput.dataset.name || code;
     const valStr = valInput.value.trim();
     const val = valStr !== '' ? parseFloat(valStr) : null;
     if (val !== null) {
@@ -1797,6 +1797,7 @@ async function rbPsvcSaveAll(misUserId) {
     // Delete all existing for this doctor, then re-create
     await rbPost('/api/performed-service-bonuses', {
       misUserId: d.id,
+      doctorName: d.name,
       items: updates,
     });
     rbToast(`Сохранено ${updates.length} бонусов`, 'success');
