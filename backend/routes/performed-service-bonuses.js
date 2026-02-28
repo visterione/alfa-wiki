@@ -31,6 +31,9 @@ router.post('/', authenticate, async (req, res) => {
 
     // Bulk mode
     if (Array.isArray(items)) {
+      // clinicId: '' = global (for all clinics), specific ID = clinic-specific bonus
+      const clinicId = req.body.clinicId != null ? String(req.body.clinicId).trim().substring(0, 50) : '';
+
       // Дедупликация: оставляем последний элемент для каждого serviceCode
       const seen = new Map();
       for (const item of items) {
@@ -39,20 +42,22 @@ router.post('/', authenticate, async (req, res) => {
       }
       const deduped = Array.from(seen.values());
 
-      await PerformedServiceBonus.destroy({ where: { misUserId } });
+      // Delete only records for this misUserId + clinicId combination
+      await PerformedServiceBonus.destroy({ where: { misUserId, clinicId } });
       const created = [];
       for (const item of deduped) {
         const svcCode = String(item.serviceCode).trim().substring(0, 100);
         const svcName = String(item.serviceName || item.serviceCode).trim().substring(0, 500);
         const [bonus] = await PerformedServiceBonus.upsert({
           misUserId,
+          clinicId,
           doctorName: (doctorName || '').substring(0, 255) || '—',
           serviceCode: svcCode,
           serviceName: svcName,
           bonusPercent: item.bonusPercent != null ? parseFloat(item.bonusPercent) : null,
           bonusRub: item.bonusRub != null ? parseFloat(item.bonusRub) : null,
           createdBy: req.user?.id || null,
-        }, { conflictFields: ['misUserId', 'serviceCode'] });
+        }, { conflictFields: ['misUserId', 'serviceCode', 'clinicId'] });
         created.push(bonus);
       }
       return res.json(created);
@@ -65,15 +70,17 @@ router.post('/', authenticate, async (req, res) => {
     if (bonusPercent == null && bonusRub == null) {
       return res.status(400).json({ error: 'Укажите bonusPercent или bonusRub' });
     }
+    const singleClinicId = req.body.clinicId != null ? String(req.body.clinicId).trim().substring(0, 50) : '';
     const [bonus] = await PerformedServiceBonus.upsert({
       misUserId,
+      clinicId: singleClinicId,
       doctorName: doctorName || '',
       serviceCode,
       serviceName,
       bonusPercent: bonusPercent != null ? parseFloat(bonusPercent) : null,
       bonusRub: bonusRub != null ? parseFloat(bonusRub) : null,
       createdBy: req.user?.id || null,
-    }, { conflictFields: ['misUserId', 'serviceCode'] });
+    }, { conflictFields: ['misUserId', 'serviceCode', 'clinicId'] });
     res.json(bonus);
   } catch (err) {
     console.error('Save performed bonus error:', err);

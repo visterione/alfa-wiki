@@ -1152,6 +1152,12 @@ const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
     allowNull: false,
     comment: 'Название услуги'
   },
+  clinicId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'ID клиники из МИС (пустая строка = общий бонус для всех клиник)'
+  },
   bonusPercent: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
@@ -1172,7 +1178,7 @@ const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
   indexes: [
     { fields: ['misUserId'] },
     { fields: ['serviceCode'] },
-    { unique: true, fields: ['misUserId', 'serviceCode'] }
+    { unique: true, fields: ['misUserId', 'serviceCode', 'clinicId'] }
   ]
 });
 
