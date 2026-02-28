@@ -89,65 +89,64 @@ const ImagePasteHandler = Extension.create({
             }
 
             // Проверяем HTML на наличие base64 изображений
-            const htmlItem = items.find(item => item.type === 'text/html');
-            if (htmlItem) {
-              // Предотвращаем стандартную вставку если есть HTML
-              event.preventDefault();
+            const hasHtmlItem = items.some(item => item.type === 'text/html');
+            if (hasHtmlItem) {
+              // Читаем HTML синхронно, чтобы проверить до блокировки вставки
+              const html = event.clipboardData.getData('text/html');
               console.log('HTML item found, checking for base64 images');
 
-              htmlItem.getAsString((html) => {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const base64Images = doc.querySelectorAll('img[src^="data:image"]');
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const base64Images = doc.querySelectorAll('img[src^="data:image"]');
 
-                if (base64Images.length > 0) {
-                  console.log(`Found ${base64Images.length} base64 images, uploading to server`);
+              if (base64Images.length === 0) {
+                // Нет base64 изображений — разрешаем TipTap обработать вставку стандартно
+                console.log('No base64 images, letting TipTap handle paste normally');
+                return false;
+              }
 
-                  // Обрабатываем каждое base64 изображение
-                  base64Images.forEach((img) => {
-                    const base64Data = img.src;
-                    console.log('Processing base64 image, length:', base64Data.length);
+              // Есть base64 изображения — блокируем стандартную вставку и загружаем их
+              event.preventDefault();
+              console.log(`Found ${base64Images.length} base64 images, uploading to server`);
 
-                    // Конвертируем base64 в Blob
-                    fetch(base64Data)
-                      .then(res => res.blob())
-                      .then(blob => {
-                        console.log('Blob created, size:', blob.size);
+              base64Images.forEach((img) => {
+                const base64Data = img.src;
+                console.log('Processing base64 image, length:', base64Data.length);
 
-                        if (blob.size > 10 * 1024 * 1024) {
-                          toast.error('Максимальный размер изображения 10MB');
-                          return;
-                        }
+                // Конвертируем base64 в Blob
+                fetch(base64Data)
+                  .then(res => res.blob())
+                  .then(blob => {
+                    console.log('Blob created, size:', blob.size);
 
-                        // Создаем File из Blob
-                        const file = new File([blob], 'pasted-image.png', { type: blob.type });
+                    if (blob.size > 10 * 1024 * 1024) {
+                      toast.error('Максимальный размер изображения 10MB');
+                      return;
+                    }
 
-                        // Загружаем на сервер
-                        toast.promise(
-                          media.upload(file).then(({ data }) => {
-                            const imageUrl = `${BASE_URL}/${data.path}`;
-                            console.log('Base64 image uploaded, URL:', imageUrl);
-                            const { schema, tr } = view.state;
-                            const node = schema.nodes.image.create({ src: imageUrl });
-                            const transaction = tr.replaceSelectionWith(node);
-                            view.dispatch(transaction);
-                          }),
-                          {
-                            loading: 'Загрузка изображения...',
-                            success: 'Изображение загружено',
-                            error: 'Ошибка загрузки изображения',
-                          }
-                        );
-                      })
-                      .catch(error => {
-                        console.error('Error processing base64 image:', error);
-                      });
+                    // Создаем File из Blob
+                    const file = new File([blob], 'pasted-image.png', { type: blob.type });
+
+                    // Загружаем на сервер
+                    toast.promise(
+                      media.upload(file).then(({ data }) => {
+                        const imageUrl = `${BASE_URL}/${data.path}`;
+                        console.log('Base64 image uploaded, URL:', imageUrl);
+                        const { schema, tr } = view.state;
+                        const node = schema.nodes.image.create({ src: imageUrl });
+                        const transaction = tr.replaceSelectionWith(node);
+                        view.dispatch(transaction);
+                      }),
+                      {
+                        loading: 'Загрузка изображения...',
+                        success: 'Изображение загружено',
+                        error: 'Ошибка загрузки изображения',
+                      }
+                    );
+                  })
+                  .catch(error => {
+                    console.error('Error processing base64 image:', error);
                   });
-                } else {
-                  // Нет base64 изображений, используем стандартную вставку HTML
-                  console.log('No base64 images, using default HTML paste');
-                  // Не делаем ничего - TipTap сам обработает
-                }
               });
 
               return true;

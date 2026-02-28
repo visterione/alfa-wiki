@@ -576,7 +576,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
           <!-- Doctor selector -->
           <div style="border-right:1px solid var(--rb-border);display:flex;flex-direction:column">
             <div style="padding:10px 14px;border-bottom:1px solid var(--rb-border);background:#f8fafc;display:flex;flex-direction:column;gap:6px">
-              <div style="font-size:12px;font-weight:600;color:var(--rb-text-secondary)">Выберите врача</div>
               <input id="rb-rpt-doctor-search" class="rb-search-input" placeholder="Поиск по ФИО..." oninput="rbRptFilterDoctors()" style="font-size:12px;padding:6px 10px">
               <select id="rb-rpt-clinic" class="rb-select" onchange="rbRptFilterDoctors()" style="font-size:12px;padding:5px 8px"><option value="">Все медцентры</option></select>
               <select id="rb-rpt-prof" class="rb-select" onchange="rbRptFilterDoctors()" style="font-size:12px;padding:5px 8px"><option value="">Все специальности</option></select>
@@ -585,7 +584,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
           </div>
           <!-- Settings + file zones -->
           <div style="padding:16px;display:flex;flex-direction:column;gap:12px">
-            <div id="rb-rpt-selected-info" style="font-size:13px;font-weight:600;color:var(--rb-primary);min-height:20px"></div>
             <div class="rb-date-range">
               <div class="rb-date-field"><label>Период с</label><input type="date" id="rb-rpt-date-from"></div>
               <div class="rb-date-field"><label>Период по</label><input type="date" id="rb-rpt-date-to"></div>
@@ -633,7 +631,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
             <div>
               <button class="rb-btn rb-btn-primary" id="rb-rpt-generate-btn" onclick="rbRptGenerate()" disabled>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Сформировать отчёт
+                Сформировать
               </button>
             </div>
           </div>
@@ -676,28 +674,48 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
               <div class="rb-date-field"><label>Период с</label><input type="date" id="rb-bulk-date-from"></div>
               <div class="rb-date-field"><label>Период по</label><input type="date" id="rb-bulk-date-to"></div>
             </div>
-            <div style="font-size:11px;font-weight:700;color:var(--rb-primary);margin-bottom:6px;text-transform:uppercase">📋 Файл: Бонусы за направления</div>
-            <div class="rb-file-zone" id="rb-bulk-file-zone" onclick="document.getElementById('rb-bulk-excel-input').click()"
-                 ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop(event)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <p>Нажмите или перетащите Excel-файл сюда</p><span>.xlsx, .xls</span>
+            <div class="rb-dual-file-zones">
+              <!-- File 1: Referral bonuses -->
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--rb-primary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">
+                  📋 Файл 1 — Бонусы за направления
+                </div>
+                <div class="rb-file-zone rb-file-zone-sm" id="rb-bulk-file-zone" onclick="document.getElementById('rb-bulk-excel-input').click()"
+                     ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop(event)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <p>Нажмите или перетащите</p>
+                  <span>.xlsx, .xls</span>
+                </div>
+                <input type="file" id="rb-bulk-excel-input" accept=".xlsx,.xls" style="display:none" onchange="rbBulkHandleFile(this.files[0])">
+                <div id="rb-bulk-file-info" style="display:none" class="rb-file-selected">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span id="rb-bulk-file-name" style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+                </div>
+              </div>
+              <!-- File 2: Performed services -->
+              <div>
+                <div style="font-size:11px;font-weight:700;color:var(--rb-success);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">
+                  🩺 Файл 2 — Выполненные услуги
+                </div>
+                <div class="rb-file-zone rb-file-zone-sm" id="rb-bulk-file-zone2" onclick="document.getElementById('rb-bulk-excel-input2').click()"
+                     ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop2(event)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <p>Нажмите или перетащите</p>
+                  <span>.xlsx, .xls</span>
+                </div>
+                <input type="file" id="rb-bulk-excel-input2" accept=".xlsx,.xls" style="display:none" onchange="rbBulkHandleFile2(this.files[0])">
+                <div id="rb-bulk-file-info2" style="display:none" class="rb-file-selected">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span id="rb-bulk-file-name2" style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+                  <button class="rb-btn rb-btn-danger rb-btn-xs" style="flex-shrink:0" onclick="rbBulkClearFile2()">×</button>
+                </div>
+              </div>
             </div>
-            <input type="file" id="rb-bulk-excel-input" accept=".xlsx,.xls" style="display:none" onchange="rbBulkHandleFile(this.files[0])">
-            <div id="rb-bulk-file-info" style="display:none" class="rb-file-selected">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="20 6 9 17 4 12"/></svg>
-              <span class="rb-file-selected-name" id="rb-bulk-file-name"></span>
-            </div>
-            <div style="font-size:11px;font-weight:700;color:var(--rb-success);margin-bottom:6px;margin-top:14px;text-transform:uppercase">🩺 Файл 2 — Выполненные услуги <span style="font-weight:400;text-transform:none;color:var(--rb-text-secondary)">(необязательно)</span></div>
-            <div class="rb-file-zone rb-file-zone-sm" id="rb-bulk-file-zone2" onclick="document.getElementById('rb-bulk-excel-input2').click()"
-                 ondragover="rbDragOver(event)" ondragleave="rbDragLeave(event)" ondrop="rbBulkDrop2(event)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              <p>Нажмите или перетащите Excel-файл сюда</p><span>.xlsx, .xls</span>
-            </div>
-            <input type="file" id="rb-bulk-excel-input2" accept=".xlsx,.xls" style="display:none" onchange="rbBulkHandleFile2(this.files[0])">
-            <div id="rb-bulk-file-info2" style="display:none" class="rb-file-selected">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polyline points="20 6 9 17 4 12"/></svg>
-              <span class="rb-file-selected-name" id="rb-bulk-file-name2"></span>
-              <button class="rb-btn rb-btn-danger rb-btn-xs" style="flex-shrink:0;margin-left:6px" onclick="rbBulkClearFile2()">×</button>
+            <div>
+              <button class="rb-btn rb-btn-primary" id="rb-bulk-generate-btn" onclick="rbBulkGenerate()" disabled>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Сформировать
+              </button>
             </div>
             <div id="rb-bulk-progress-wrap" style="display:none" class="rb-bulk-progress">
               <span id="rb-bulk-progress-text">Обработка...</span>
@@ -705,10 +723,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
             </div>
             <div id="rb-bulk-result"></div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-              <button class="rb-btn rb-btn-primary" id="rb-bulk-generate-btn" onclick="rbBulkGenerate()" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Сформировать
-              </button>
               <button class="rb-btn rb-btn-secondary" id="rb-bulk-save-btn" style="display:none" onclick="rbBulkSaveToArchive()">В архив</button>
               <button class="rb-btn rb-btn-success" id="rb-bulk-export-btn" style="display:none" onclick="rbBulkExport()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -3314,9 +3328,10 @@ function rbRptRenderDoctorList() {
       `<span class="rb-clinic-badge" style="background:${rbGetClinicColor(cId)}">${rbGetClinicName(cId)}</span>`
     ).join('');
     return `<div class="rb-rpt-doctor-item${isSel ? ' selected' : ''}" data-id="${rbEsc(d.id)}" onclick="rbRptSelectDoctor('${rbEsc(d.id)}')">
-      <div class="rb-rpt-doctor-item-name">${rbEsc(d.name)}</div>
-      ${spec ? `<div class="rb-rpt-doctor-item-spec">${rbEsc(spec)}</div>` : ''}
-      ${badges ? `<div class="rb-doctor-badges" style="margin-top:3px">${badges}</div>` : ''}
+      <div style="flex:1;min-width:0">
+        <div class="rb-rpt-doctor-item-name">${rbEsc(d.name)}</div>
+        ${(spec || badges) ? `<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:2px">${spec ? `<span class="rb-rpt-doctor-item-spec">${rbEsc(spec)}</span>` : ''}${badges}</div>` : ''}
+      </div>
     </div>`;
   }).join('');
 }
@@ -3425,7 +3440,7 @@ async function rbRptGenerate() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Сформировать отчёт`;
+      btn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Сформировать`;
     }
   }
 }
