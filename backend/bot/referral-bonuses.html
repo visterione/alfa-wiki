@@ -2142,7 +2142,9 @@ function rbExecClinicDefault() {
     executorPercent: 0,       // % от суммы выполненных услуг (payType='percent' или plusPercent)
     plusPercent: false,       // добавить % поверх оклада/почасового
     advance: 0,               // аванс
-    paymentMethod: 'card',    // 'card' | 'cash'
+    paymentMethod: 'card',    // 'card' | 'cash' — способ выплаты аванса
+    mainPayment: 0,           // основное тело зп (оклад - аванс, или кастом для %)
+    mainPaymentMethod: 'card',// 'card' | 'cash' — способ выплаты основной зп
     deductions: [],           // [{name, valueType:'percent'|'rub', value}]
     materials: [],            // [{name, valueType:'percent'|'rub', value}]
     extras: [],               // [{name, amount, hours}]
@@ -2288,6 +2290,7 @@ function rbExecRenderSections() {
       hourlyRate: globalData.hourlyRate, hoursWorked: globalData.hoursWorked,
       executorPercent: globalData.executorPercent, plusPercent: globalData.plusPercent,
       advance: globalData.advance, paymentMethod: globalData.paymentMethod,
+      mainPayment: globalData.mainPayment || 0, mainPaymentMethod: globalData.mainPaymentMethod || 'card',
     };
     RB.executorData.clinicSettings = cs;
   }
@@ -2407,6 +2410,10 @@ function rbExecSectionPaymentNew(data) {
   const isHourly  = pt === 'hourly';
   const isPercent = pt === 'percent';
   const hourlyTotal = isHourly ? (data.hourlyRate || 0) * (data.hoursWorked || 0) : 0;
+  const isAutoCalcMain = isSalary || isHourly;
+  const mainPaymentVal = isAutoCalcMain
+    ? Math.max(0, (isSalary ? (data.fixedSalary || 0) : hourlyTotal) - (data.advance || 0))
+    : (data.mainPayment || 0);
 
   return `<div class="rb-exec-section">
     <div class="rb-exec-section-header">
@@ -2426,7 +2433,7 @@ function rbExecSectionPaymentNew(data) {
       <div id="rb-exec-pay-salary-fields" style="${!isSalary ? 'display:none' : ''}">
         <div class="rb-exec-field">
           <label>Фиксированный оклад, ₽</label>
-          <input type="number" id="rb-exec-fixed-salary" value="${data.fixedSalary || 0}" min="0" step="any" placeholder="0" oninput="rbExecAutoSave()">
+          <input type="number" id="rb-exec-fixed-salary" value="${data.fixedSalary || 0}" min="0" step="any" placeholder="0" oninput="rbExecUpdateMainPayment();rbExecAutoSave()">
         </div>
       </div>
 
@@ -2458,7 +2465,7 @@ function rbExecSectionPaymentNew(data) {
 
       <div class="rb-exec-fields-grid" style="margin-top:12px">
         <div class="rb-exec-field">
-          <label>Способ выплаты</label>
+          <label>Способ выплаты аванса</label>
           <select id="rb-exec-payment-method" onchange="rbExecAutoSave()">
             <option value="card" ${(data.paymentMethod || data.method) === 'card' ? 'selected' : ''}>Карта</option>
             <option value="cash" ${(data.paymentMethod || data.method) === 'cash' ? 'selected' : ''}>Наличные</option>
@@ -2466,7 +2473,18 @@ function rbExecSectionPaymentNew(data) {
         </div>
         <div class="rb-exec-field">
           <label>Аванс, ₽</label>
-          <input type="number" id="rb-exec-advance" value="${data.advance || 0}" min="0" step="any" placeholder="0" oninput="rbExecAutoSave()">
+          <input type="number" id="rb-exec-advance" value="${data.advance || 0}" min="0" step="any" placeholder="0" oninput="rbExecUpdateMainPayment();rbExecAutoSave()">
+        </div>
+        <div class="rb-exec-field">
+          <label>Способ выплаты тела ЗП</label>
+          <select id="rb-exec-main-payment-method" onchange="rbExecAutoSave()">
+            <option value="card" ${(data.mainPaymentMethod || 'card') === 'card' ? 'selected' : ''}>Карта</option>
+            <option value="cash" ${(data.mainPaymentMethod || 'card') === 'cash' ? 'selected' : ''}>Наличные</option>
+          </select>
+        </div>
+        <div class="rb-exec-field">
+          <label>Тело ЗП, ₽</label>
+          <input type="number" id="rb-exec-main-payment" value="${mainPaymentVal.toFixed ? mainPaymentVal.toFixed(2) : mainPaymentVal}" min="0" step="any" placeholder="0" oninput="rbExecAutoSave()">
         </div>
       </div>
       <div class="rb-exec-save-row">
@@ -2624,7 +2642,28 @@ function rbExecUpdateHourlyPreview() {
   const hours = parseFloat(document.getElementById('rb-exec-hours-worked')?.value) || 0;
   const preview = document.getElementById('rb-exec-hourly-preview');
   if (preview) preview.textContent = `= ${(rate * hours).toFixed(2)} ₽`;
+  rbExecUpdateMainPayment();
   rbExecAutoSave();
+}
+
+function rbExecUpdateMainPayment() {
+  const cs = RB.executorData?.clinicSettings;
+  const clinicId = RB.executorActiveClinic;
+  if (!cs || !cs[clinicId]) return;
+  const pt = cs[clinicId].payType || 'salary';
+  const el = document.getElementById('rb-exec-main-payment');
+  if (!el) return;
+  if (pt === 'salary') {
+    const salary = parseFloat(document.getElementById('rb-exec-fixed-salary')?.value) || 0;
+    const advance = parseFloat(document.getElementById('rb-exec-advance')?.value) || 0;
+    el.value = Math.max(0, salary - advance).toFixed(2);
+  } else if (pt === 'hourly') {
+    const rate = parseFloat(document.getElementById('rb-exec-hourly-rate')?.value) || 0;
+    const hours = parseFloat(document.getElementById('rb-exec-hours-worked')?.value) || 0;
+    const advance = parseFloat(document.getElementById('rb-exec-advance')?.value) || 0;
+    el.value = Math.max(0, rate * hours - advance).toFixed(2);
+  }
+  // percent: user controls the field directly
 }
 
 // Автосохранение при изменении полей оплаты
@@ -2644,6 +2683,8 @@ async function rbExecSavePayment() {
 
   d.paymentMethod = document.getElementById('rb-exec-payment-method')?.value || 'card';
   d.advance = parseFloat(document.getElementById('rb-exec-advance')?.value) || 0;
+  d.mainPaymentMethod = document.getElementById('rb-exec-main-payment-method')?.value || 'card';
+  d.mainPayment = parseFloat(document.getElementById('rb-exec-main-payment')?.value) || 0;
 
   if (pt === 'salary') {
     d.fixedSalary = parseFloat(document.getElementById('rb-exec-fixed-salary')?.value) || 0;
@@ -3018,7 +3059,10 @@ async function rbBuildReport(rows) {
       basePerformedSections: pt === 'percent' ? performedSections : [],
       extrasTotal, deductionsTotal, materialsTotal,
       referralCostTotal, referralCostItems,
-      finalSalary, advance: clinicSettings.advance || 0, paymentMethod: clinicSettings.paymentMethod,
+      finalSalary, advance: clinicSettings.advance || 0,
+      paymentMethod: clinicSettings.paymentMethod,
+      mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
+      mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
       deductions: execDeductions, materials: execMaterials, extras: execExtras,
     };
 
@@ -3132,7 +3176,7 @@ function rbRenderSalaryBlock(salary) {
     basePerformedSections,
     extrasTotal, deductionsTotal, materialsTotal,
     referralCostTotal, referralCostItems, finalSalary,
-    advance, paymentMethod,
+    advance, mainPayment, paymentMethod, mainPaymentMethod,
     deductions, materials, extras } = salary;
 
   function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
@@ -3253,21 +3297,33 @@ function rbRenderSalaryBlock(salary) {
 
   const sign = (finalSalary || 0) >= 0 ? '' : '−';
   html += `<div class="rb-salary-total-row">
-    <div class="rb-salary-total-label">К выплате${paymentMethod ? ` (${paymentMethod === 'card' ? 'карта' : 'наличные'})` : ''}</div>
+    <div class="rb-salary-total-label">К выплате</div>
     <div class="rb-salary-total-value ${(finalSalary||0) >= 0 ? 'positive' : 'negative'}">${sign}${fmtRub(Math.abs(finalSalary||0))}</div>
   </div>`;
 
-  if ((advance || 0) > 0) {
-    html += `<div class="rb-salary-row" style="background:#f8fafc;border-top:1px dashed var(--rb-border)">
-      <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
-      <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">В т.ч. аванс</div></div>
-      <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(advance)}</div>
-    </div>
-    <div class="rb-salary-row" style="background:#f8fafc">
-      <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
-      <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">Остаток к доплате</div></div>
-      <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(Math.max(0, (finalSalary||0) - (advance||0)))}</div>
-    </div>`;
+  if ((mainPayment || 0) > 0 || (advance || 0) > 0) {
+    const fmtMethod = (m) => m === 'cash' ? 'наличные' : 'карта';
+    html += `<div style="border-top:1px dashed var(--rb-border)">`;
+    if ((mainPayment || 0) > 0) {
+      html += `<div class="rb-salary-row" style="background:#f8fafc">
+        <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
+        <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">Основная ЗП${mainPaymentMethod ? ` (${fmtMethod(mainPaymentMethod)})` : ''}</div></div>
+        <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(mainPayment)}</div>
+      </div>`;
+    }
+    if ((advance || 0) > 0) {
+      html += `<div class="rb-salary-row" style="background:#f8fafc">
+        <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
+        <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">Аванс${paymentMethod ? ` (${fmtMethod(paymentMethod)})` : ''}</div></div>
+        <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(advance)}</div>
+      </div>
+      <div class="rb-salary-row" style="background:#f8fafc">
+        <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
+        <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">Остаток к доплате</div></div>
+        <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(Math.max(0, (finalSalary||0) - (advance||0)))}</div>
+      </div>`;
+    }
+    html += `</div>`;
   }
 
   html += `</div>`;
@@ -4197,7 +4253,10 @@ async function rbBulkGenerate() {
         basePerformedSections: pt === 'percent' ? performedSections : [],
         extrasTotal, deductionsTotal, materialsTotal,
         referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems,
-        finalSalary, advance: clinicSettings.advance || 0, paymentMethod: clinicSettings.paymentMethod,
+        finalSalary, advance: clinicSettings.advance || 0,
+        paymentMethod: clinicSettings.paymentMethod,
+        mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
+        mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
         deductions: execDeductions, materials: execMaterials, extras: execExtras,
       };
 
@@ -4807,6 +4866,7 @@ window.rbSaveReportToArchive = rbSaveReportToArchive;
 window.rbDownloadArchiveReport = rbDownloadArchiveReport;
 window.rbDeleteArchiveReport = rbDeleteArchiveReport;
 // Step 1: auto-save helpers
+window.rbExecUpdateMainPayment = rbExecUpdateMainPayment;
 window.rbExecUpdateHourlyPreview = rbExecUpdateHourlyPreview;
 window.rbExecAutoSave = rbExecAutoSave;
 // Step 2: clinic tabs
