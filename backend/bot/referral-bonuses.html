@@ -1632,7 +1632,7 @@ async function rbRenderPerformedServicesDetail() {
       const misData = await rbPost('/api/mis/doctor-info', { userId: d.id });
       if (misData && misData.data && Array.isArray(misData.data.services) && misData.data.services.length > 0) {
         const serviceIds = misData.data.services;
-        const servData = await rbPost('/api/mis/services', { service_ids: serviceIds });
+        const servData = await rbPost('/api/mis/services', { service_ids: serviceIds, show_all: true });
         if (servData && servData.error === 0 && servData.data) {
           const raw = Array.isArray(servData.data) ? servData.data : [servData.data];
           services = raw.map(s => ({

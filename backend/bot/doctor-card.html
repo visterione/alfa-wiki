@@ -2012,15 +2012,23 @@ window.dcApp = (function() {
             var singlePrice = prices[clinicIds[0]];
             priceStr = singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
           } else {
-            // Несколько клиник - показываем все цены с названиями
-            var pricesParts = [];
+            // Несколько клиник - если цены совпадают, показываем одну
+            var validPrices = [];
             clinicIds.forEach(function(cid) {
               if (prices[cid] !== undefined && prices[cid] > 0) {
-                var shortName = CLINIC_SHORT_NAMES[cid] || cid;
-                pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+                validPrices.push({ cid: cid, price: prices[cid] });
               }
             });
-            priceStr = pricesParts.length > 0 ? pricesParts.join(', ') : '—';
+            if (validPrices.length > 0) {
+              var allSame = validPrices.every(function(p) { return p.price === validPrices[0].price; });
+              if (allSame) {
+                priceStr = Number(validPrices[0].price).toLocaleString('ru-RU') + ' ₽';
+              } else {
+                priceStr = validPrices.map(function(p) {
+                  return Number(p.price).toLocaleString('ru-RU') + ' (' + (CLINIC_SHORT_NAMES[p.cid] || p.cid) + ')';
+                }).join(', ');
+              }
+            }
           }
         }
 
@@ -2103,14 +2111,23 @@ window.dcApp = (function() {
           var singlePrice = prices[clinicIds[0]];
           priceStr = singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
         } else {
-          var pricesParts = [];
+          // Несколько клиник - если цены совпадают, показываем одну
+          var validPricesFav = [];
           clinicIds.forEach(function(cid) {
             if (prices[cid] !== undefined && prices[cid] > 0) {
-              var shortName = CLINIC_SHORT_NAMES[cid] || cid;
-              pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+              validPricesFav.push({ cid: cid, price: prices[cid] });
             }
           });
-          priceStr = pricesParts.length > 0 ? pricesParts.join(', ') : '—';
+          if (validPricesFav.length > 0) {
+            var allSameFav = validPricesFav.every(function(p) { return p.price === validPricesFav[0].price; });
+            if (allSameFav) {
+              priceStr = Number(validPricesFav[0].price).toLocaleString('ru-RU') + ' ₽';
+            } else {
+              priceStr = validPricesFav.map(function(p) {
+                return Number(p.price).toLocaleString('ru-RU') + ' (' + (CLINIC_SHORT_NAMES[p.cid] || p.cid) + ')';
+              }).join(', ');
+            }
+          }
         }
       }
 
@@ -2508,15 +2525,19 @@ window.dcApp = (function() {
       return singlePrice && singlePrice > 0 ? Number(singlePrice).toLocaleString('ru-RU') + ' ₽' : '—';
     }
 
-    // Несколько клиник - показываем все цены с названиями
-    var pricesParts = [];
+    // Несколько клиник - если цены совпадают, показываем одну
+    var validPricesModal = [];
     modalClinicIds.forEach(function(cid) {
       if (prices[cid] !== undefined && prices[cid] > 0) {
-        var shortName = CLINIC_SHORT_NAMES[cid] || cid;
-        pricesParts.push(Number(prices[cid]).toLocaleString('ru-RU') + ' (' + shortName + ')');
+        validPricesModal.push({ cid: cid, price: prices[cid] });
       }
     });
-    return pricesParts.length > 0 ? pricesParts.join(', ') : '—';
+    if (validPricesModal.length === 0) return '—';
+    var allSameModal = validPricesModal.every(function(p) { return p.price === validPricesModal[0].price; });
+    if (allSameModal) return Number(validPricesModal[0].price).toLocaleString('ru-RU') + ' ₽';
+    return validPricesModal.map(function(p) {
+      return Number(p.price).toLocaleString('ru-RU') + ' (' + (CLINIC_SHORT_NAMES[p.cid] || p.cid) + ')';
+    }).join(', ');
   }
 
   function renderModalServices() {

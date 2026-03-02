@@ -89,6 +89,33 @@ const upload = multer({
 // ============================================================================
 
 /**
+ * Проверяет, разрешён ли переход между статусами согласно workflow-сценарию доски.
+ * Возвращает null если сценарий не настроен (ограничений нет),
+ * true если переход явно разрешён, false если переход запрещён.
+ */
+function isTransitionAllowedByWorkflow(workflowConfig, fromStatus, toStatus, review) {
+  if (!workflowConfig) return null;
+  const scenarios = Array.isArray(workflowConfig.scenarios) ? workflowConfig.scenarios : [];
+  const allTriggers = [];
+  for (const scenario of scenarios) {
+    (scenario.nodes || []).filter(n => n.type === 'triggerStatusChange').forEach(n => allTriggers.push(n));
+  }
+  if (allTriggers.length === 0) return null;
+
+  const RATING_THRESHOLD = 4;
+  for (const trigger of allTriggers) {
+    const { fromStatus: tFrom = 'any', toStatus: tTo, reviewCondition = 'any' } = trigger.data || {};
+    if (!tTo) continue;
+    if (tTo !== toStatus) continue;
+    if (tFrom !== 'any' && tFrom !== fromStatus) continue;
+    if (reviewCondition === 'positive' && review.rating < RATING_THRESHOLD) continue;
+    if (reviewCondition === 'negative' && review.rating >= RATING_THRESHOLD) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
  * Проверка прав доступа к доске отзывов
  */
 async function checkReviewBoardAccess(board, userId, requiredRole = 'viewer') {
@@ -1474,6 +1501,19 @@ router.post('/:id/move', authenticate, async (req, res) => {
     }
 
     const oldStatus = review.status;
+
+    // Проверяем допустимость перехода по workflow-сценарию доски
+    if (oldStatus !== status) {
+      const workflowAllowed = isTransitionAllowedByWorkflow(review.board.workflowConfig, oldStatus, status, review);
+      if (workflowAllowed === false) {
+        const fromLabel = getStatusById(oldStatus)?.label || oldStatus;
+        const toLabel = validStatus.label;
+        return res.status(403).json({
+          error: `Переход «${fromLabel} → ${toLabel}» не предусмотрен сценарием доски`,
+          code: 'WORKFLOW_TRANSITION_FORBIDDEN'
+        });
+      }
+    }
 
     await review.update({
       status,

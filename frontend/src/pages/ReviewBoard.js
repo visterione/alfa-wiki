@@ -21,6 +21,35 @@ import {
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
 
+/**
+ * Проверяет, разрешён ли переход между статусами согласно workflow-сценарию.
+ * Возвращает:
+ *   null  — в сценарии нет ни одного triggerStatusChange нода → ограничений нет
+ *   true  — переход явно разрешён одним из нодов
+ *   false — нод(ы) есть, но ни один не допускает этот переход
+ */
+const isTransitionAllowedByWorkflow = (workflowConfig, fromStatus, toStatus, review) => {
+  if (!workflowConfig) return null;
+  const scenarios = Array.isArray(workflowConfig.scenarios) ? workflowConfig.scenarios : [];
+  const allTriggers = [];
+  for (const scenario of scenarios) {
+    (scenario.nodes || []).filter(n => n.type === 'triggerStatusChange').forEach(n => allTriggers.push(n));
+  }
+  if (allTriggers.length === 0) return null; // сценарий не настроен → не ограничиваем
+
+  const RATING_THRESHOLD = 4;
+  for (const trigger of allTriggers) {
+    const { fromStatus: tFrom = 'any', toStatus: tTo, reviewCondition = 'any' } = trigger.data || {};
+    if (!tTo) continue; // нод не настроен (пустой toStatus)
+    if (tTo !== toStatus) continue;
+    if (tFrom !== 'any' && tFrom !== fromStatus) continue;
+    if (reviewCondition === 'positive' && review.rating < RATING_THRESHOLD) continue;
+    if (reviewCondition === 'negative' && review.rating >= RATING_THRESHOLD) continue;
+    return true;
+  }
+  return false;
+};
+
 const ReviewBoard = () => {
   const { id: boardId } = useParams();
   const navigate = useNavigate();
@@ -263,6 +292,17 @@ const ReviewBoard = () => {
     if (newStatus === 'final' && review.rating < 4) {
       toast.error('В финальный этап можно перемещать только позитивные отзывы (★★★★+)');
       return;
+    }
+
+    // Проверяем допустимость перехода по workflow-сценарию
+    if (oldStatus !== newStatus) {
+      const workflowAllowed = isTransitionAllowedByWorkflow(board?.workflowConfig, oldStatus, newStatus, review);
+      if (workflowAllowed === false) {
+        const fromLabel = getStatusLabel(oldStatus);
+        const toLabel = getStatusLabel(newStatus);
+        toast.error(`Переход «${fromLabel} → ${toLabel}» не предусмотрен сценарием доски`);
+        return;
+      }
     }
 
     // Оцениваем кандидатов на назначение из workflow

@@ -177,7 +177,7 @@ router.post('/professions', authenticate, async (req, res) => {
 // Получить услуги по ID - с поддержкой clinic_id для корректных цен
 router.post('/services', authenticate, async (req, res) => {
   try {
-    const { service_ids, clinic_id } = req.body;
+    const { service_ids, clinic_id, show_all } = req.body;
 
     // Если нет service_ids - возвращаем пустой массив (НЕ все услуги!)
     if (!service_ids || !Array.isArray(service_ids) || service_ids.length === 0) {
@@ -185,7 +185,7 @@ router.post('/services', authenticate, async (req, res) => {
       return res.json({ error: 0, data: [] });
     }
 
-    console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', clinic_id ? 'clinic_id=' + clinic_id : '(без clinic_id)');
+    console.log('🏥 Запрос услуг:', service_ids.length, 'шт.', clinic_id ? 'clinic_id=' + clinic_id : '(без clinic_id)', show_all ? '(включая скрытые)' : '');
 
     const params = {
       service_id: service_ids.join(',')
@@ -194,6 +194,11 @@ router.post('/services', authenticate, async (req, res) => {
     // Передаём clinic_id для получения корректных цен по конкретной клинике
     if (clinic_id) {
       params.clinic_id = clinic_id;
+    }
+
+    // Передаём show_all для включения скрытых услуг
+    if (show_all) {
+      params.show_all = 1;
     }
 
     const data = await misRequest('getServices', params);
