@@ -12,7 +12,7 @@ import { chat, users as usersApi, media, BASE_URL } from '../services/api';
 import { format, isToday, isYesterday, isThisYear } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
-import EmojiPicker from 'emoji-picker-react';
+import EmojiPicker, { Categories } from 'emoji-picker-react';
 import ChatNotification from '../components/ChatNotification';
 import MessageReactions from '../components/chat/MessageReactions';
 import ReactionMenu from '../components/chat/ReactionMenu';
@@ -22,11 +22,13 @@ import './Dashboard.css';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { socket, notifications, removeNotification } = useSocket();
+  const { socket, notifications, removeNotification, userStatuses } = useSocket();
   const navigate = useNavigate();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
+  // Время последнего прочтения собеседника (для статуса сообщений)
+  const [otherLastReadAt, setOtherLastReadAt] = useState(null);
   const [newMessage, setNewMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -261,11 +263,35 @@ export default function Dashboard() {
 
     socket.on('message_reaction_updated', handleReactionUpdate);
 
+    const handleMessagesRead = (data) => {
+      if (data.chatId === activeChatRef.current?.id && data.readBy !== user?.id) {
+        setOtherLastReadAt(data.lastReadAt);
+      }
+    };
+    socket.on('messages_read', handleMessagesRead);
+
     return () => {
       socket.off('new_message', handleNewMessage);
       socket.off('message_reaction_updated', handleReactionUpdate);
+      socket.off('messages_read', handleMessagesRead);
     };
-  }, [socket, loadChats, loadMessages]);
+  }, [socket, loadChats, loadMessages, user?.id]);
+
+  // Обновляем otherLastReadAt при открытии/смене чата
+  useEffect(() => {
+    if (!activeChat || !user?.id) {
+      setOtherLastReadAt(null);
+      return;
+    }
+    // Берём из данных чата (уже есть otherMemberLastReadAt из бэкенда)
+    if (activeChat.otherMemberLastReadAt !== undefined) {
+      setOtherLastReadAt(activeChat.otherMemberLastReadAt);
+    } else {
+      // Fallback: ищем в members
+      const other = activeChat.members?.find(m => m.userId !== user.id);
+      setOtherLastReadAt(other?.lastReadAt || null);
+    }
+  }, [activeChat?.id, user?.id]);
 
   // Polling fallback (reduced frequency since we have Socket.IO)
   useEffect(() => {
@@ -770,6 +796,32 @@ export default function Dashboard() {
   const getChatAvatar = (c) => c ? (c.type === 'group' ? c.avatar : c.otherUser?.avatar) : null;
   const isGroupCreator = activeChat?.type === 'group' && activeChat.createdBy === user.id;
 
+  // Форматирование времени последнего визита
+  const formatLastSeen = (lastSeenStr) => {
+    if (!lastSeenStr) return 'был(а) давно';
+    const d = new Date(lastSeenStr);
+    const now = new Date();
+    const diffMs = now - d;
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'только что';
+    if (diffMin < 60) return `был(а) ${diffMin} мин назад`;
+    if (isToday(d)) return `был(а) сегодня в ${format(d, 'HH:mm')}`;
+    if (isYesterday(d)) return `был(а) вчера в ${format(d, 'HH:mm')}`;
+    return `был(а) ${format(d, 'd MMM в HH:mm', { locale: ru })}`;
+  };
+
+  // Статус сообщения для own-сообщений в приватных чатах
+  const getMsgStatus = (msg) => {
+    if (activeChat?.type !== 'private') return 'sent';
+    if (otherLastReadAt && new Date(msg.createdAt) <= new Date(otherLastReadAt)) return 'read';
+    const otherId = activeChat?.otherUser?.id;
+    const st = userStatuses[otherId];
+    const otherOnline = activeChat?.otherUser?.isOnline || st?.isOnline;
+    const lastSeenTs = st?.lastSeen || activeChat?.otherUser?.lastSeen;
+    if (otherOnline || (lastSeenTs && new Date(msg.createdAt) < new Date(lastSeenTs))) return 'delivered';
+    return 'sent';
+  };
+
   const openLightbox = (images, index) => { setLightboxImages(images); setLightboxIndex(index); setLightboxOpen(true); setLightboxZoom(1); };
   const closeLightbox = () => { setLightboxOpen(false); setLightboxZoom(1); };
   
@@ -927,7 +979,12 @@ export default function Dashboard() {
                   onClick={() => handleSelectChat(chatItem, searchTerm)}
                   onContextMenu={(e) => handleChatContextMenu(e, chatItem)}
                 >
-                  <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
+                  <div className="chat-item-avatar-wrap">
+                    <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
+                    {chatItem.type === 'private' && (chatItem.otherUser?.isOnline || userStatuses[chatItem.otherUser?.id]?.isOnline) && (
+                      <span className="chat-item-status-dot" />
+                    )}
+                  </div>
                   <div className="chat-item-content">
                     <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
                     <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
@@ -947,7 +1004,20 @@ export default function Dashboard() {
                 <div className="chat-main-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : (activeChat.type === 'group' ? <Users size={20} /> : <User size={20} />)}</div>
                 <div className="chat-main-info" style={{ cursor: activeChat.type === 'group' ? 'pointer' : 'default' }} onClick={() => activeChat.type === 'group' && setShowChatInfo(true)}>
                   <div className="chat-main-name">{activeChat.displayName}</div>
-                  <div className="chat-main-status">{activeChat.type === 'group' ? `${activeChat.members?.length || 0} участников` : ''}</div>
+                  <div className="chat-main-status">
+                    {activeChat.type === 'group'
+                      ? `${activeChat.members?.length || 0} участников`
+                      : (() => {
+                          const otherId = activeChat.otherUser?.id;
+                          const st = userStatuses[otherId];
+                          const isOnline = activeChat.otherUser?.isOnline || st?.isOnline;
+                          const lastSeen = st?.lastSeen || activeChat.otherUser?.lastSeen;
+                          return isOnline
+                            ? <><span className="online-dot" />В сети</>
+                            : <span className="last-seen-text">{formatLastSeen(lastSeen)}</span>;
+                        })()
+                    }
+                  </div>
                 </div>
                 {activeChat.type === 'group' && <button className="btn-icon-chat" onClick={() => setShowChatInfo(true)}><MoreVertical size={20} /></button>}
               </div>
@@ -1015,7 +1085,18 @@ export default function Dashboard() {
                               <div className="message-meta">
                                 <span className="message-time">{format(new Date(msg.createdAt), 'HH:mm')}</span>
                                 {msg.isEdited && <span className="message-edited">изменено</span>}
-                                {isOwn && <span className="message-status"><CheckCheck size={14} /></span>}
+                                {isOwn && (() => {
+                                  const st = getMsgStatus(msg);
+                                  const stClass = st === 'read' ? ' message-status--read' : st === 'delivered' ? ' message-status--delivered' : '';
+                                  return (
+                                    <span className={`message-status${stClass}`}>
+                                      {st === 'read'
+                                        ? <CheckCheck size={14} />
+                                        : <Check size={14} />
+                                      }
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <MessageReactions
                                 reactions={msg.reactions}
@@ -1098,12 +1179,23 @@ export default function Dashboard() {
               </form>
               {showEmojiPicker && (
                 <div className="emoji-picker-container" ref={emojiPickerRef}>
-                  <EmojiPicker 
+                  <EmojiPicker
                     onEmojiClick={handleEmojiClick}
                     width="100%"
                     height={350}
                     searchPlaceholder="Поиск эмодзи..."
                     previewConfig={{ showPreview: false }}
+                    categories={[
+                      { category: Categories.SUGGESTED,       name: 'Часто используемые' },
+                      { category: Categories.SMILEYS_PEOPLE,  name: 'Смайлики и люди' },
+                      { category: Categories.ANIMALS_NATURE,  name: 'Животные и природа' },
+                      { category: Categories.FOOD_DRINK,      name: 'Еда и напитки' },
+                      { category: Categories.TRAVEL_PLACES,   name: 'Путешествия и места' },
+                      { category: Categories.ACTIVITIES,      name: 'Активности' },
+                      { category: Categories.OBJECTS,         name: 'Объекты' },
+                      { category: Categories.SYMBOLS,         name: 'Символы' },
+                      { category: Categories.FLAGS,           name: 'Флаги' },
+                    ]}
                   />
                 </div>
               )}

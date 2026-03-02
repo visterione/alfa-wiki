@@ -7,7 +7,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
-const { sequelize } = require('./models');
+const { sequelize, User } = require('./models');
 const { initBot } = require('./bot/telegramBot');
 const { initDoctorReindexJob } = require('./jobs/doctorServicesReindex');
 const notificationService = require('./services/notificationService');
@@ -61,18 +61,44 @@ const io = new Server(server, {
 // Make io accessible to routes
 app.set('io', io);
 
+// Online users: userId → Set<socketId>
+const onlineUsers = new Map();
+app.set('onlineUsers', onlineUsers);
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
-
-  // Join user to their personal room
   socket.on('join', (userId) => {
     socket.join(`user:${userId}`);
-    console.log(`User ${userId} joined their room`);
+    socket.userId = userId;
+
+    if (!onlineUsers.has(userId)) {
+      onlineUsers.set(userId, new Set());
+    }
+    const wasOffline = onlineUsers.get(userId).size === 0;
+    onlineUsers.get(userId).add(socket.id);
+
+    if (wasOffline) {
+      // Broadcast to all connected clients that this user is now online
+      socket.broadcast.emit('user_status_changed', { userId, isOnline: true });
+    }
   });
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+  socket.on('disconnect', async () => {
+    const userId = socket.userId;
+    if (!userId) return;
+
+    const sockets = onlineUsers.get(userId);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        onlineUsers.delete(userId);
+        const lastSeen = new Date();
+        // Persist lastSeen to DB (fire-and-forget)
+        User.update({ lastSeen }, { where: { id: userId } }).catch(() => {});
+        // Notify all clients this user went offline
+        io.emit('user_status_changed', { userId, isOnline: false, lastSeen: lastSeen.toISOString() });
+      }
+    }
   });
 });
 

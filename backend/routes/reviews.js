@@ -807,6 +807,8 @@ router.get('/boards/:id/settings', authenticate, async (req, res) => {
 
     res.json({
       notificationSettings: board.notificationSettings,
+      workflowConfig: board.workflowConfig || { nodes: [], edges: [] },
+      columnNames: board.columnNames || {},
       availableRoles: REVIEW_ROLES
     });
   } catch (error) {
@@ -830,10 +832,18 @@ router.put('/boards/:id/settings', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Только владелец может изменять настройки' });
     }
 
-    const { notificationSettings } = req.body;
-    await board.update({ notificationSettings });
+    const { notificationSettings, workflowConfig, columnNames } = req.body;
+    const updateData = {};
+    if (notificationSettings !== undefined) updateData.notificationSettings = notificationSettings;
+    if (workflowConfig !== undefined) updateData.workflowConfig = workflowConfig;
+    if (columnNames !== undefined) updateData.columnNames = columnNames;
+    await board.update(updateData);
 
-    res.json({ notificationSettings: board.notificationSettings });
+    res.json({
+      notificationSettings: board.notificationSettings,
+      workflowConfig: board.workflowConfig,
+      columnNames: board.columnNames
+    });
   } catch (error) {
     console.error('Error updating settings:', error);
     res.status(500).json({ error: 'Ошибка при обновлении настроек' });
@@ -1290,6 +1300,15 @@ router.post('/', authenticate, async (req, res) => {
       console.error('[ReviewNotif] newReview setup error:', notifError.message, notifError.stack);
     }
 
+    // Выполняем workflow-сценарии для нового отзыва
+    try {
+      const workflowEngine = require('../services/workflowEngine');
+      const notificationService = require('../services/notificationService');
+      await workflowEngine.executeWorkflow(board, 'review_created', result, notificationService);
+    } catch (wfError) {
+      console.error('[WorkflowEngine] review_created hook error:', wfError.message);
+    }
+
     res.status(201).json({ ...result.toJSON(), assignees: [] });
   } catch (error) {
     console.error('Error creating review:', error);
@@ -1496,6 +1515,18 @@ router.post('/:id/move', authenticate, async (req, res) => {
         }
       } catch (notifError) {
         console.error('[ReviewNotif] statusChange setup error:', notifError.message, notifError.stack);
+      }
+
+      // Выполняем workflow-сценарии для смены статуса
+      try {
+        const workflowEngine = require('../services/workflowEngine');
+        const notificationService = require('../services/notificationService');
+        await workflowEngine.executeWorkflow(
+          review.board, 'status_changed', review, notificationService,
+          { oldStatus, newStatus: status }
+        );
+      } catch (wfError) {
+        console.error('[WorkflowEngine] status_changed hook error:', wfError.message);
       }
     }
 

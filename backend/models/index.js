@@ -41,6 +41,7 @@ const User = sequelize.define('User', {
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
   isAdmin: { type: DataTypes.BOOLEAN, defaultValue: false },
   lastLogin: { type: DataTypes.DATE },
+  lastSeen: { type: DataTypes.DATE, comment: 'Время последнего выхода из сети' },
   settings: { type: DataTypes.JSONB, defaultValue: {} },
 
   // Admin access control (granular permissions for admin sections)
@@ -1624,6 +1625,16 @@ const ReviewBoard = sequelize.define('ReviewBoard', {
       assignment: { roles: [], users: [] }
     },
     comment: 'Настройки уведомлений'
+  },
+  workflowConfig: {
+    type: DataTypes.JSONB,
+    defaultValue: { nodes: [], edges: [] },
+    comment: 'Сценарии автоматизации жизненного цикла отзывов (React Flow graph)'
+  },
+  columnNames: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Кастомные названия столбцов Kanban { statusId: label }'
   }
 }, {
   tableName: 'review_boards',

@@ -205,7 +205,7 @@ router.get('/', authenticate, async (req, res) => {
           {
             model: ChatMember,
             as: 'members',
-            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot'] }]
+            include: [{ model: User, as: 'user', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot', 'lastSeen'] }]
           },
           {
             model: Message,
@@ -261,9 +261,15 @@ router.get('/', authenticate, async (req, res) => {
         isAssistantChat // Флаг для закрепления вверху
       };
 
-      // Добавляем otherUser для приватных чатов
+      // Добавляем otherUser для приватных чатов (с онлайн-статусом)
       if (chat.type === 'private' && otherMembers.length > 0) {
-        result.otherUser = otherMembers[0].user;
+        const onlineUsersMap = req.app.get('onlineUsers') || new Map();
+        const otherUserId = otherMembers[0].userId;
+        result.otherUser = {
+          ...otherMembers[0].user.toJSON(),
+          isOnline: onlineUsersMap.has(otherUserId)
+        };
+        result.otherMemberLastReadAt = otherMembers[0].lastReadAt || null;
       }
 
       return result;
@@ -347,7 +353,7 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
         {
           model: MessageReaction,
           as: 'reactions',
-          include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username'] }]
+          include: [{ model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'avatar'] }]
         }
       ],
       order: [['createdAt', 'DESC']],
@@ -366,12 +372,16 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
             grouped[r.emoji] = {
               emoji: r.emoji,
               count: 0,
-              userIds: [],
+              users: [],
               hasReacted: false
             };
           }
           grouped[r.emoji].count++;
-          grouped[r.emoji].userIds.push(r.userId);
+          grouped[r.emoji].users.push({
+            id: r.user?.id || r.userId,
+            displayName: r.user?.displayName || r.user?.username,
+            avatar: r.user?.avatar || null
+          });
           if (r.userId === req.user.id) {
             grouped[r.emoji].hasReacted = true;
           }
@@ -781,7 +791,23 @@ router.post('/:chatId/read', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
-    await membership.update({ lastReadAt: new Date() });
+    const lastReadAt = new Date();
+    await membership.update({ lastReadAt });
+
+    // Notify message senders that their messages have been read
+    const io = req.app.get('io');
+    if (io) {
+      const otherMembers = await ChatMember.findAll({
+        where: { chatId, userId: { [Op.ne]: req.user.id } }
+      });
+      otherMembers.forEach(m => {
+        io.to(`user:${m.userId}`).emit('messages_read', {
+          chatId,
+          readBy: req.user.id,
+          lastReadAt: lastReadAt.toISOString()
+        });
+      });
+    }
 
     res.json({ message: 'Marked as read' });
   } catch (error) {

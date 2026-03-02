@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Save, Users, UserPlus, X, Search, Trash2,
-  RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff, Play, User, Bell, ChevronDown
+  RefreshCw, CheckCircle, AlertCircle, Eye, EyeOff, Play, User,
+  Columns, GitBranch
 } from 'lucide-react';
 import { reviews, users } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { REVIEW_STATUSES } from '../utils/reviewConstants';
+import ReviewWorkflowEditor from '../components/ReviewWorkflowEditor';
 import './ReviewBoardSettings.css';
 
 const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:9001';
@@ -32,16 +35,6 @@ const ReviewBoardSettings = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedRole, setSelectedRole] = useState('editor');
 
-  // Notification settings (per-user)
-  const [notificationSettings, setNotificationSettings] = useState({
-    newPositiveReview: { roles: [], users: [] },
-    newNegativeReview: { roles: [], users: [] },
-    statusChange: { roles: [], users: [] },
-    workComplete: { roles: [], users: [] },
-    archiveReview: { roles: [], users: [] }
-  });
-  const [openNotifFor, setOpenNotifFor] = useState(null);
-
   // Sync state
   const [syncConfigs, setSyncConfigs] = useState([]);
   const [syncEdits, setSyncEdits] = useState({});       // { provider: { credentials, isEnabled } }
@@ -52,6 +45,14 @@ const ReviewBoardSettings = () => {
 
   // Active tab
   const [activeTab, setActiveTab] = useState('general');
+
+  // Workflow config (visual node editor)
+  const [workflowConfig, setWorkflowConfig] = useState({ nodes: [], edges: [] });
+  const [workflowSaving, setWorkflowSaving] = useState(false);
+
+  // Custom column names
+  const [columnNames, setColumnNames] = useState({});
+  const [columnNamesSaving, setColumnNamesSaving] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -75,14 +76,11 @@ const ReviewBoardSettings = () => {
       setPermissions(permissionsRes.data);
       setUsersList(usersRes.data);
       setSyncConfigs(syncRes.data || []);
-      const ns = settingsRes.data?.notificationSettings;
-      if (ns) setNotificationSettings({
-        newPositiveReview: ns.newPositiveReview || { roles: [], users: [] },
-        newNegativeReview: ns.newNegativeReview || { roles: [], users: [] },
-        statusChange: ns.statusChange || { roles: [], users: [] },
-        workComplete: ns.workComplete || { roles: [], users: [] },
-        archiveReview: ns.archiveReview || { roles: [], users: [] }
-      });
+      const wf = settingsRes.data?.workflowConfig;
+      if (wf) setWorkflowConfig(wf);
+
+      const cn = settingsRes.data?.columnNames;
+      if (cn) setColumnNames(cn);
 
       if (boardData.userRole !== 'owner' && !user.isAdmin) {
         toast.error('Только владелец может редактировать настройки');
@@ -178,36 +176,30 @@ const ReviewBoardSettings = () => {
     }
   };
 
-  const NOTIF_EVENTS = [
-    { key: 'newPositiveReview', label: 'Новый положительный отзыв' },
-    { key: 'newNegativeReview', label: 'Новый отрицательный отзыв' },
-    { key: 'statusChange', label: 'Изменение статуса' },
-    { key: 'workComplete', label: 'Завершение работы' },
-    { key: 'archiveReview', label: 'Архив' }
-  ];
 
-  const getNotifCount = (uid) =>
-    NOTIF_EVENTS.filter(e => notificationSettings[e.key]?.users?.includes(uid)).length;
-
-  const toggleNotificationUser = (event, userId) => {
-    setNotificationSettings(prev => {
-      const ev = prev[event] || { roles: [], users: [] };
-      const us = ev.users?.includes(userId)
-        ? ev.users.filter(u => u !== userId)
-        : [...(ev.users || []), userId];
-      return { ...prev, [event]: { ...ev, users: us } };
-    });
+  const handleSaveWorkflow = async ({ scenarios }) => {
+    try {
+      setWorkflowSaving(true);
+      const config = { scenarios };
+      await reviews.updateBoardSettings(boardId, { workflowConfig: config });
+      setWorkflowConfig(config);
+      toast.success('Сценарий сохранён');
+    } catch (err) {
+      toast.error('Ошибка при сохранении сценария');
+    } finally {
+      setWorkflowSaving(false);
+    }
   };
 
-  const handleSaveNotifications = async () => {
+  const handleSaveColumnNames = async () => {
     try {
-      setSaving(true);
-      await reviews.updateBoardSettings(boardId, { notificationSettings });
-      toast.success('Настройки уведомлений сохранены');
+      setColumnNamesSaving(true);
+      await reviews.updateBoardSettings(boardId, { columnNames });
+      toast.success('Названия столбцов сохранены');
     } catch (err) {
       toast.error('Ошибка при сохранении');
     } finally {
-      setSaving(false);
+      setColumnNamesSaving(false);
     }
   };
 
@@ -390,6 +382,20 @@ const ReviewBoardSettings = () => {
           <RefreshCw size={16} />
           Синхронизация
         </button>
+        <button
+          className={`tab ${activeTab === 'columns' ? 'active' : ''}`}
+          onClick={() => setActiveTab('columns')}
+        >
+          <Columns size={16} />
+          Столбцы
+        </button>
+        <button
+          className={`tab ${activeTab === 'workflow' ? 'active' : ''}`}
+          onClick={() => setActiveTab('workflow')}
+        >
+          <GitBranch size={16} />
+          Сценарии
+        </button>
       </div>
 
       <div className="settings-content">
@@ -453,11 +459,6 @@ const ReviewBoardSettings = () => {
               </button>
             </div>
 
-            {/* Overlay to close notification dropdown on outside click */}
-            {openNotifFor && (
-              <div style={{ position: 'fixed', inset: 0, zIndex: 50 }} onClick={() => setOpenNotifFor(null)} />
-            )}
-
             <div className="permissions-list">
               {/* Owner */}
               <div className="permission-item">
@@ -473,31 +474,6 @@ const ReviewBoardSettings = () => {
                   </div>
                 </div>
                 <div className="perm-actions-group">
-                  {/* Notification dropdown */}
-                  <div className="notif-dropdown-wrap" onMouseDown={e => e.stopPropagation()}>
-                    <button
-                      className={`notif-btn${getNotifCount(board?.ownerId) > 0 ? ' active' : ''}`}
-                      onClick={() => setOpenNotifFor(p => p === board?.ownerId ? null : board?.ownerId)}
-                    >
-                      <Bell size={12} />
-                      {getNotifCount(board?.ownerId) > 0 && <span>{getNotifCount(board?.ownerId)}</span>}
-                      <ChevronDown size={10} />
-                    </button>
-                    {openNotifFor === board?.ownerId && (
-                      <div className="notif-panel">
-                        {NOTIF_EVENTS.map(({ key, label }) => {
-                          const checked = notificationSettings[key]?.users?.includes(board?.ownerId) || false;
-                          return (
-                            <label key={key} className="notif-option">
-                              <span>{label}</span>
-                              <span className={`notif-toggle${checked ? ' on' : ''}`} />
-                              <input type="checkbox" checked={checked} onChange={() => toggleNotificationUser(key, board?.ownerId)} />
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                   <div className="role-badge owner">Владелец</div>
                 </div>
               </div>
@@ -516,31 +492,6 @@ const ReviewBoardSettings = () => {
                     </div>
                   </div>
                   <div className="perm-actions-group">
-                    {/* Notification dropdown */}
-                    <div className="notif-dropdown-wrap" onMouseDown={e => e.stopPropagation()}>
-                      <button
-                        className={`notif-btn${getNotifCount(perm.userId) > 0 ? ' active' : ''}`}
-                        onClick={() => setOpenNotifFor(p => p === perm.userId ? null : perm.userId)}
-                      >
-                        <Bell size={12} />
-                        {getNotifCount(perm.userId) > 0 && <span>{getNotifCount(perm.userId)}</span>}
-                        <ChevronDown size={10} />
-                      </button>
-                      {openNotifFor === perm.userId && (
-                        <div className="notif-panel">
-                          {NOTIF_EVENTS.map(({ key, label }) => {
-                            const checked = notificationSettings[key]?.users?.includes(perm.userId) || false;
-                            return (
-                              <label key={key} className="notif-option">
-                                <span>{label}</span>
-                                <span className={`notif-toggle${checked ? ' on' : ''}`} />
-                                <input type="checkbox" checked={checked} onChange={() => toggleNotificationUser(key, perm.userId)} />
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
                     <select
                       className="perm-role-select"
                       value={perm.role}
@@ -563,12 +514,6 @@ const ReviewBoardSettings = () => {
               )}
             </div>
 
-            <div className="perm-notifications-footer">
-              <button className="btn-save" onClick={handleSaveNotifications} disabled={saving}>
-                <Save size={14} />
-                {saving ? 'Сохранение...' : 'Сохранить'}
-              </button>
-            </div>
 
             {/* Add user modal */}
             {showAddUser && (
@@ -804,6 +749,58 @@ const ReviewBoardSettings = () => {
             </div>
           );
         })()}
+
+        {/* Columns Tab */}
+        {activeTab === 'columns' && (
+          <div className="settings-section">
+            <h2>Названия столбцов Kanban</h2>
+            <p className="section-description">
+              Задайте кастомные названия для столбцов этой доски. Оставьте поле пустым, чтобы использовать название по умолчанию.
+            </p>
+            <div className="column-names-list">
+              {REVIEW_STATUSES.map(status => (
+                <div className="form-group column-name-row" key={status.id}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span
+                      className="column-name-dot"
+                      style={{ background: status.color }}
+                    />
+                    {status.label}
+                  </label>
+                  <input
+                    type="text"
+                    value={columnNames[status.id] || ''}
+                    onChange={e => setColumnNames(prev => ({ ...prev, [status.id]: e.target.value }))}
+                    placeholder={status.label}
+                    maxLength={60}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              className="btn-save"
+              onClick={handleSaveColumnNames}
+              disabled={columnNamesSaving}
+            >
+              <Save size={16} />
+              {columnNamesSaving ? 'Сохранение...' : 'Сохранить названия'}
+            </button>
+          </div>
+        )}
+
+        {/* Workflow Tab */}
+        {activeTab === 'workflow' && (
+          <div className="settings-section settings-section--workflow">
+            <h2>Сценарии автоматизации</h2>
+            <ReviewWorkflowEditor
+              key={workflowConfig ? JSON.stringify(workflowConfig.scenarios?.length ?? workflowConfig.nodes?.length) : 'empty'}
+              initialConfig={workflowConfig}
+              boardMembers={usersList}
+              onSave={handleSaveWorkflow}
+              saving={workflowSaving}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

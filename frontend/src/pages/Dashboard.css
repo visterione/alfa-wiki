@@ -147,6 +147,11 @@
   font-weight: 500;
 }
 
+.chat-item-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .chat-item-avatar {
   width: 48px;
   height: 48px;
@@ -156,7 +161,6 @@
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  flex-shrink: 0;
   overflow: hidden;
 }
 
@@ -169,6 +173,22 @@
 .chat-item.active .chat-item-avatar {
   background: var(--primary);
   color: white;
+}
+
+.chat-item-status-dot {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2.5px solid var(--bg-primary);
+  background: #22c55e;
+  pointer-events: none;
+}
+
+.chat-item.active .chat-item-status-dot {
+  border-color: var(--primary-light, #eff6ff);
 }
 
 .chat-item-content {
@@ -275,6 +295,23 @@
 .chat-main-status {
   font-size: 13px;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.online-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+}
+
+.chat-main-status:has(.online-dot) {
+  color: #22c55e;
+  font-weight: 500;
 }
 
 .mobile-only {
@@ -411,6 +448,16 @@
 .message-status {
   display: flex;
   align-items: center;
+  color: rgba(255, 255, 255, 0.45);
+  transition: color 0.2s;
+}
+
+.message-status--delivered {
+  color: #ffffff;
+}
+
+.message-status--read {
+  color: #ffffff;
 }
 
 .message-system {
@@ -678,6 +725,7 @@
   border: none;
   background: none;
   font-size: 15px;
+  font-family: inherit;
   outline: none;
   color: var(--text-primary);
 }
@@ -703,6 +751,12 @@
   border-radius: var(--radius-lg);
   overflow: hidden;
   animation: slideUp 0.2s ease;
+  font-family: 'Inter', sans-serif;
+}
+
+.emoji-picker-container aside,
+.emoji-picker-container aside *:not(.epr-emoji) {
+  font-family: 'Inter', sans-serif !important;
 }
 
 @keyframes slideUp {
@@ -1608,6 +1662,30 @@
   color: rgba(255, 255, 255, 0.85);
 }
 
+.reaction-badge__avatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  margin-left: 1px;
+}
+
+.reaction-badge__initials {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--border-color, #e2e8f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-secondary, #64748b);
+  flex-shrink: 0;
+  margin-left: 1px;
+}
+
 /* Модальное окно деталей реакций */
 .reaction-details-backdrop {
   position: fixed;
@@ -1721,6 +1799,20 @@
   border-radius: 50%;
   object-fit: cover;
   border: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.reaction-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #94a3b8;
 }
 
 .user-item span {

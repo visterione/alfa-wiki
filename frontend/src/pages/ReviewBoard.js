@@ -6,7 +6,7 @@ import {
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
   Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2
 } from 'lucide-react';
-import { reviews, users } from '../services/api';
+import { reviews, users, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   REVIEW_STATUSES,
@@ -20,8 +20,6 @@ import {
 } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
-
-const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:9001';
 
 const ReviewBoard = () => {
   const { id: boardId } = useParams();
@@ -82,6 +80,10 @@ const ReviewBoard = () => {
 
   // Board members (users with any board role) — для секций Kanban
   const [boardMembers, setBoardMembers] = useState([]);
+
+  // Assignee picker (при нескольких кандидатах из workflow)
+  const [pickerState, setPickerState] = useState(null);
+  // pickerState: { candidates: [{id,displayName,username,avatar}], draggableId, newStatus, newSortOrder }
 
   // Doctor autocomplete
   const [doctorSuggestions, setDoctorSuggestions] = useState([]);
@@ -197,65 +199,103 @@ const ReviewBoard = () => {
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
 
+  // Вычислить кандидатов на назначение из workflow-сценариев (frontend-оценка)
+  const evaluateWorkflowAssignees = useCallback((review, oldStatus, newStatus) => {
+    const config = board?.workflowConfig;
+    if (!config) return [];
+    const scenarios = Array.isArray(config.scenarios)
+      ? config.scenarios
+      : (config.nodes?.length ? [{ nodes: config.nodes, edges: config.edges || [] }] : []);
+
+    const ratingThreshold = 4;
+    const candidateIds = new Set();
+
+    for (const scenario of scenarios) {
+      const { nodes = [], edges = [] } = scenario;
+      const triggers = nodes.filter(n => n.type === 'triggerStatusChange');
+
+      for (const trigger of triggers) {
+        const { fromStatus = 'any', toStatus, reviewCondition = 'any' } = trigger.data || {};
+        if (toStatus && toStatus !== newStatus) continue;
+        if (fromStatus !== 'any' && fromStatus !== oldStatus) continue;
+        if (reviewCondition === 'positive' && review.rating < ratingThreshold) continue;
+        if (reviewCondition === 'negative' && review.rating >= ratingThreshold) continue;
+
+        // BFS по edges начиная с trigger
+        const visited = new Set();
+        const queue = [trigger.id];
+        while (queue.length > 0) {
+          const nodeId = queue.shift();
+          if (visited.has(nodeId)) continue;
+          visited.add(nodeId);
+          const node = nodes.find(n => n.id === nodeId);
+          if (!node) continue;
+          if (node.type === 'actionAssign') {
+            (node.data?.userIds || []).forEach(id => candidateIds.add(id));
+          }
+          edges.filter(e => e.source === nodeId).forEach(e => queue.push(e.target));
+        }
+      }
+    }
+
+    return Array.from(candidateIds)
+      .map(id => usersList.find(u => u.id === id) || boardMembers.find(u => u.id === id))
+      .filter(Boolean);
+  }, [board, usersList, boardMembers]);
+
   // Drag and drop handlers
   const handleDragEnd = async (result) => {
     if (!result.destination || !access.canWrite) return;
 
     const { draggableId, source, destination } = result;
 
-    if (source.droppableId === destination.droppableId && source.index === destination.index) {
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
+
+    // droppableId: "status" или "status__userId" / "status__none" — берём только статус
+    const newStatus = destination.droppableId.split('__')[0];
+    const oldStatus = source.droppableId.split('__')[0];
+    const newSortOrder = destination.index;
+
+    const review = reviewsList.find(r => r.id === draggableId);
+    if (!review) return;
+
+    // Только позитивные в final
+    if (newStatus === 'final' && review.rating < 4) {
+      toast.error('В финальный этап можно перемещать только позитивные отзывы (★★★★+)');
       return;
     }
 
-    // droppableId имеет вид "status" или "status__userId" / "status__none" (секции)
-    const [newStatus, sectionAssigneeId] = destination.droppableId.split('__');
-    const [, sourceSectionId] = source.droppableId.split('__');
-    const newSortOrder = destination.index;
+    // Оцениваем кандидатов на назначение из workflow
+    const candidates = evaluateWorkflowAssignees(review, oldStatus, newStatus);
 
-    // Проверка: только позитивные отзывы (рейтинг >= 4) можно тащить в final
-    if (newStatus === 'final') {
-      const review = reviewsList.find(r => r.id === draggableId);
-      if (review && review.rating < 4) {
-        toast.error('В финальный этап можно перемещать только позитивные отзывы (★★★★+)');
-        return;
-      }
+    if (candidates.length >= 1) {
+      // Показываем picker — 1 кандидат для подтверждения, 2+ для выбора
+      setPickerState({ candidates, draggableId, newStatus, newSortOrder, oldStatus });
+      return;
     }
 
-    // Кому назначить:
-    // - person-секция → назначаем если секция изменилась (другой человек или другая колонка)
-    // - none-секция из person-секции → снимаем назначение
-    let assigneeId = null;
-    let clearAssignees = false;
+    // Нет кандидатов — двигаем без назначения
+    await doMoveReview(draggableId, newStatus, newSortOrder);
+  };
 
-    if (sectionAssigneeId && sectionAssigneeId !== 'none') {
-      if (sourceSectionId !== sectionAssigneeId) assigneeId = sectionAssigneeId;
-    } else if (sectionAssigneeId === 'none' && sourceSectionId && sourceSectionId !== 'none') {
-      clearAssignees = true;
-    }
-
-    // Оптимистичное обновление
-    setReviewsList(prevReviews =>
-      prevReviews.map(review =>
-        review.id === draggableId
-          ? { ...review, status: newStatus, sortOrder: newSortOrder }
-          : review
-      )
+  const doMoveReview = async (draggableId, newStatus, newSortOrder, chosenAssigneeId = null) => {
+    // Оптимистичное обновление — обновляем статус и сразу assigneeIds если выбрали
+    setReviewsList(prev =>
+      prev.map(r => {
+        if (r.id !== draggableId) return r;
+        const update = { ...r, status: newStatus, sortOrder: newSortOrder };
+        if (chosenAssigneeId) {
+          update.assigneeIds = Array.from(new Set([...(r.assigneeIds || []), chosenAssigneeId]));
+        }
+        return update;
+      })
     );
-
     try {
       await reviews.moveReview(draggableId, newStatus, newSortOrder);
-
-      if (assigneeId) {
-        await reviews.assignReview(draggableId, [assigneeId]);
-        toast.success('Отзыв перемещён и назначен');
-      } else if (clearAssignees) {
-        await reviews.assignReview(draggableId, []);
-        toast.success('Отзыв перемещён, назначение снято');
-      } else if (newStatus === 'final') {
-        toast.success('Отзыв перемещён в финальный этап');
-      } else {
-        toast.success('Отзыв перемещён');
+      if (chosenAssigneeId) {
+        await reviews.assignReview(draggableId, [chosenAssigneeId]);
       }
+      toast.success('Отзыв перемещён');
       loadData();
     } catch (err) {
       console.error('Error moving review:', err);
@@ -610,7 +650,8 @@ const ReviewBoard = () => {
       return `${BASE_URL}/${path}`;
     }
     if (avatarPath.startsWith('http')) return avatarPath;
-    return `${BASE_URL}/${avatarPath}`;
+    const normalised = avatarPath.startsWith('/') ? avatarPath.slice(1) : avatarPath;
+    return `${BASE_URL}/${normalised}`;
   };
 
   const clearFilters = () => {
@@ -750,151 +791,190 @@ const ReviewBoard = () => {
             // но блокируем негативные в handleDragEnd
             const isDropDisabled = !access.canWrite;
 
-            // Одна секция для рендера карточек (используется в обоих режимах)
-            const renderCards = (cardList, droppableId) => (
-              <Droppable
-                droppableId={droppableId}
-                isDropDisabled={isDropDisabled}
+            // Все карточки колонки (для глобальной индексации при Draggable)
+            const allCards = getReviewsByColumn(column.id);
+
+            // Рендер одной карточки как Draggable
+            const renderCard = (review, index) => (
+              <Draggable
+                key={review.id}
+                draggableId={review.id}
+                index={index}
+                isDragDisabled={!access.canWrite || review.status === 'final' || (!isAdmin && !review.assigneeIds?.includes(user?.id))}
               >
                 {(provided, snapshot) => (
                   <div
                     ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className={`section-cards ${snapshot.isDraggingOver ? 'dragging-over' : ''}`}
+                    {...provided.draggableProps}
+                    {...provided.dragHandleProps}
+                    id={`review-card-${review.id}`}
+                    className={`review-card ${snapshot.isDragging ? 'dragging' : ''} ${review.rating <= 3 ? 'negative' : 'positive'}${highlightedReviewId === review.id ? ' highlighted' : ''}${(!isAdmin && !review.assigneeIds?.includes(user?.id)) ? ' drag-locked' : ''}`}
+                    onClick={() => openDetailsModal(review)}
                   >
-                    {cardList.map((review, index) => (
-                      <Draggable
-                        key={review.id}
-                        draggableId={review.id}
-                        index={index}
-                        isDragDisabled={!access.canWrite || review.status === 'final'}
-                      >
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            id={`review-card-${review.id}`}
-                            className={`review-card ${snapshot.isDragging ? 'dragging' : ''} ${review.rating <= 3 ? 'negative' : 'positive'}${highlightedReviewId === review.id ? ' highlighted' : ''}`}
-                            onClick={() => openDetailsModal(review)}
-                          >
-                            <div className="card-header">
-                              <div className="card-header-top">
-                                <span className="patient-name">{review.patientName}</span>
-                                <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
-                                  {getRatingStars(review.rating)}
-                                </span>
-                              </div>
-                              <div className="card-meta">
-                                <span className="platform">{review.platform?.name}</span>
-                                <span className="date">
-                                  <Calendar size={12} />
-                                  {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
-                                </span>
-                              </div>
-                            </div>
+                    <div className="card-header">
+                      <div className="card-header-top">
+                        <span className="patient-name">{review.patientName}</span>
+                        <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
+                          {getRatingStars(review.rating)}
+                        </span>
+                      </div>
+                      <div className="card-meta">
+                        <span className="platform">{review.platform?.name}</span>
+                        <span className="date">
+                          <Calendar size={12} />
+                          {new Date(review.reviewDate).toLocaleDateString('ru-RU')}
+                        </span>
+                      </div>
+                    </div>
 
-                            {review.doctorName && (
-                              <div className="card-doctor">
-                                <User size={12} />
-                                {review.doctorName}
-                              </div>
-                            )}
+                    {review.doctorName && (
+                      <div className="card-doctor">
+                        <User size={12} />
+                        {review.doctorName}
+                      </div>
+                    )}
 
-                            <p className="card-text">{review.reviewText}</p>
+                    <p className="card-text">{review.reviewText}</p>
 
-                            <div className="card-footer">
-                              {review.attachments && review.attachments.length > 0 && (
-                                <div className="card-attachments">
-                                  <Paperclip size={12} />
-                                  {review.attachments.length}
-                                </div>
-                              )}
-                              {review.reportPdfPath && (
-                                <button
-                                  className="btn-pdf"
-                                  onClick={(e) => { e.stopPropagation(); handleDownloadPdf(review); }}
-                                  title="Скачать PDF"
-                                >
-                                  <Download size={12} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
+                    <div className="card-footer">
+                      {review.attachments && review.attachments.length > 0 && (
+                        <div className="card-attachments">
+                          <Paperclip size={12} />
+                          {review.attachments.length}
+                        </div>
+                      )}
+                      {review.reportPdfPath && (
+                        <button
+                          className="btn-pdf"
+                          onClick={(e) => { e.stopPropagation(); handleDownloadPdf(review); }}
+                          title="Скачать PDF"
+                        >
+                          <Download size={12} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
-              </Droppable>
+              </Draggable>
             );
 
             return (
               <div key={column.id} className="review-column">
                 <div className="column-header" style={{ borderTopColor: column.color }}>
-                  <h3>{column.label}</h3>
+                  <h3>{board?.columnNames?.[column.id] || column.label}</h3>
                   <div className="column-header-right">
                     {column.id === 'final' && (
                       <span className="column-positive-hint" title="Только позитивные отзывы">★★★★+</span>
                     )}
-                    <span className="column-count">{getReviewsByColumn(column.id).length}</span>
+                    <span className="column-count">{allCards.length}</span>
                   </div>
                 </div>
 
-                {useSections ? (
-                  /* Режим секций: каждая секция — отдельный Droppable */
-                  <div className="column-sections">
-                    {/* Секции участников доски */}
-                    {boardMembers.map(member => (
-                      <div key={member.id} className="person-section">
-                        <div className="person-section-header">
-                          <div className="person-section-avatar">
-                            {getAvatarUrl(member.avatar) ? (
-                              <img src={getAvatarUrl(member.avatar)} alt="" />
-                            ) : (
-                              <User size={13} />
-                            )}
+                {/* Один Droppable на колонку — секции внутри только визуальные */}
+                <Droppable droppableId={column.id} isDropDisabled={isDropDisabled}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`column-content-wrap ${snapshot.isDraggingOver ? 'dragging-over' : ''}`}
+                    >
+                      {useSections ? (
+                        <div className="column-sections">
+                          {boardMembers.map(member => {
+                            const memberCards = getReviewsBySection(column.id, member.id);
+                            return (
+                              <div key={member.id} className="person-section">
+                                <div className="person-section-header">
+                                  <div className="person-section-avatar">
+                                    {getAvatarUrl(member.avatar) ? (
+                                      <img src={getAvatarUrl(member.avatar)} alt="" />
+                                    ) : (
+                                      <User size={13} />
+                                    )}
+                                  </div>
+                                  <span className="person-section-name">{member.displayName || member.username}</span>
+                                  <span className="person-section-count">{memberCards.length}</span>
+                                </div>
+                                <div className="section-cards">
+                                  {memberCards.map(review =>
+                                    renderCard(review, allCards.findIndex(c => c.id === review.id))
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div className="person-section unassigned-section">
+                            <div className="person-section-header">
+                              <div className="person-section-avatar unassigned-avatar">
+                                <UsersIcon size={14} />
+                              </div>
+                              <span className="person-section-name">Без назначения</span>
+                              <span className="person-section-count">
+                                {getReviewsBySection(column.id, null).length}
+                              </span>
+                            </div>
+                            <div className="section-cards">
+                              {getReviewsBySection(column.id, null).map(review =>
+                                renderCard(review, allCards.findIndex(c => c.id === review.id))
+                              )}
+                            </div>
                           </div>
-                          <span className="person-section-name">{member.displayName || member.username}</span>
-                          <span className="person-section-count">
-                            {getReviewsBySection(column.id, member.id).length}
-                          </span>
                         </div>
-                        {renderCards(
-                          getReviewsBySection(column.id, member.id),
-                          `${column.id}__${member.id}`
-                        )}
-                      </div>
-                    ))}
-                    {/* Секция без назначения — всегда видна чтобы можно было перетащить */}
-                    <div className="person-section unassigned-section">
-                      <div className="person-section-header">
-                        <div className="person-section-avatar unassigned-avatar">
-                          <UsersIcon size={14} />
-                        </div>
-                        <span className="person-section-name">Без назначения</span>
-                        <span className="person-section-count">
-                          {getReviewsBySection(column.id, null).length}
-                        </span>
-                      </div>
-                      {renderCards(
-                        getReviewsBySection(column.id, null),
-                        `${column.id}__none`
+                      ) : (
+                        allCards.map((review, index) => renderCard(review, index))
                       )}
+                      {provided.placeholder}
                     </div>
-                  </div>
-                ) : (
-                  /* Обычный режим: один Droppable на колонку */
-                  <div className="column-content-wrap">
-                    {renderCards(getReviewsByColumn(column.id), column.id)}
-                  </div>
-                )}
+                  )}
+                </Droppable>
               </div>
             );
           })}
         </div>
       </DragDropContext>
+
+      {/* Assignee Picker — диалог выбора при нескольких кандидатах из workflow */}
+      {pickerState && (
+        <div className="modal-overlay" onClick={() => setPickerState(null)}>
+          <div className="assignee-picker-modal" onClick={e => e.stopPropagation()}>
+            <div className="assignee-picker-modal__header">
+              <span className="assignee-picker-modal__title">Кому передать отзыв?</span>
+              <button className="assignee-picker-modal__close" onClick={() => setPickerState(null)}><X size={16} /></button>
+            </div>
+            <div className="assignee-picker-body">
+              <div className="assignee-picker-list">
+                {pickerState.candidates.map(candidate => (
+                  <button
+                    key={candidate.id}
+                    className="assignee-picker-item"
+                    onClick={() => {
+                      doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder, candidate.id);
+                      setPickerState(null);
+                    }}
+                  >
+                    <div className="assignee-picker-avatar">
+                      {getAvatarUrl(candidate.avatar)
+                        ? <img src={getAvatarUrl(candidate.avatar)} alt="" />
+                        : <User size={16} />
+                      }
+                    </div>
+                    <span>{candidate.displayName || candidate.username}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                className="assignee-picker-skip"
+                onClick={() => {
+                  doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder);
+                  setPickerState(null);
+                }}
+              >
+                Переместить без назначения
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Create/Edit Modal */}
       {showCreateModal && (

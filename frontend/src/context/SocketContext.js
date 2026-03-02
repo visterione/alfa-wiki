@@ -18,6 +18,8 @@ export function SocketProvider({ children }) {
   const socketRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+  // userId → { isOnline, lastSeen }
+  const [userStatuses, setUserStatuses] = useState({});
 
   // Title notification refs
   const originalTitleRef = useRef(document.title);
@@ -106,6 +108,13 @@ export function SocketProvider({ children }) {
       setIsConnected(false);
     });
 
+    socket.on('user_status_changed', (data) => {
+      setUserStatuses(prev => ({
+        ...prev,
+        [data.userId]: { isOnline: data.isOnline, lastSeen: data.lastSeen || null }
+      }));
+    });
+
     socket.on('new_message', (data) => {
       console.log('New message received:', data);
 
@@ -151,7 +160,8 @@ export function SocketProvider({ children }) {
     isConnected,
     notifications,
     removeNotification,
-    clearAllNotifications
+    clearAllNotifications,
+    userStatuses
   };
 
   return (
