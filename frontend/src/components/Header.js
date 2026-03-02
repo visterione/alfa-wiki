@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Image, Database, BookOpen, TestTube, Table2
+  Layout, Users, Lock, Database, BookOpen, TestTube, Table2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -363,12 +363,6 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <Link to="/admin/roles" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Lock size={16} />
                     Роли и права
-                  </Link>
-                )}
-                {(isAdmin || user?.adminAccess?.media) && (
-                  <Link to="/admin/media" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
-                    <Image size={16} />
-                    Медиафайлы
                   </Link>
                 )}
                 {(isAdmin || user?.adminAccess?.backup) && (

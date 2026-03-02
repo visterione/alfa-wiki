@@ -17,7 +17,6 @@ import AdminSidebar from './pages/admin/AdminSidebar';
 import AdminPages from './pages/admin/AdminPages';
 import AdminSettings from './pages/admin/AdminSettings';
 import AdminBackup from './pages/admin/AdminBackup';
-import AdminMedia from './pages/admin/AdminMedia';
 import Courses from './pages/Courses';
 import CourseView from './pages/CourseView';
 import AdminCourses from './pages/admin/AdminCourses';
@@ -132,9 +131,6 @@ function AppRoutes() {
         } />
         <Route path="explorer" element={
           <ProtectedRoute><AdminPages /></ProtectedRoute>
-        } />
-        <Route path="admin/media" element={
-          <ProtectedRoute requireAdminAccess="media"><AdminMedia /></ProtectedRoute>
         } />
         <Route path="admin/settings" element={
           <ProtectedRoute requireAdminAccess="settings"><AdminSettings /></ProtectedRoute>

@@ -6,7 +6,6 @@ import '../Admin.css';
 
 const defaultPerms = {
   pages: { read: true, write: false, delete: false, admin: false },
-  media: { read: true, upload: false, delete: false },
   users: { read: false, write: false, delete: false },
   settings: { read: false, write: false }
 };
@@ -139,12 +138,6 @@ export default function AdminRoles() {
                     <PermCheckbox cat="pages" perm="read" label="Просмотр" />
                     <PermCheckbox cat="pages" perm="write" label="Редактирование" />
                     <PermCheckbox cat="pages" perm="delete" label="Удаление" />
-                  </div>
-                  <div className="perm-section">
-                    <h4>Медиафайлы</h4>
-                    <PermCheckbox cat="media" perm="read" label="Просмотр" />
-                    <PermCheckbox cat="media" perm="upload" label="Загрузка" />
-                    <PermCheckbox cat="media" perm="delete" label="Удаление" />
                   </div>
                   <div className="perm-section">
                     <h4>Пользователи</h4>

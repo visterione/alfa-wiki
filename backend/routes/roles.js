@@ -65,7 +65,6 @@ router.post('/', authenticate, requireAdminAccess('roles'), [
 
     const defaultPermissions = {
       pages: { read: true, write: false, delete: false, admin: false },
-      media: { read: true, upload: false, delete: false },
       users: { read: false, write: false, delete: false },
       settings: { read: false, write: false }
     };
