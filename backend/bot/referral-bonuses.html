@@ -531,11 +531,12 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <div class="rb-wizard-step-label">Отчёт</div>
     </div>
-    <div style="margin-left:auto;flex-shrink:0">
-      <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbOpenArchiveModal()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
-        Архив
-      </button>
+    <div class="rb-wizard-connector"></div>
+    <div class="rb-wizard-step" id="rb-nav-step-archive" onclick="rbOpenArchiveModal()">
+      <div class="rb-wizard-step-circle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+      </div>
+      <div class="rb-wizard-step-label">Архив</div>
     </div>
   </div>
 
@@ -871,6 +872,10 @@ async function rbLoadClinics() {
     const data = await rbApi('/api/mis/clinics');
     if (data?.success && Array.isArray(data.data)) {
       RB.clinics = data.data;
+      // Добавляем клинику "Направители" если её нет в ответе API
+      if (!RB.clinics.find(c => String(c.id) === '8')) {
+        RB.clinics.push({ id: 8, name: 'Направители', color: '#0EA5E9' });
+      }
     } else {
       throw new Error('fallback');
     }
@@ -883,6 +888,7 @@ async function rbLoadClinics() {
       { id: 6, name: 'Линия', color: '#C5E1A5' },
       { id: 4, name: '3К', color: '#BA68C8' },
       { id: 7, name: 'Смайл', color: '#555555' },
+      { id: 8, name: 'Направители', color: '#0EA5E9' },
     ];
   }
 
@@ -921,7 +927,7 @@ function rbGetClinicName(clinicId) {
 async function rbLoadDoctors() {
   document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading"><span class="rb-spinner"></span>Загрузка врачей...</div>';
   try {
-    const data = await rbPost('/api/mis/doctors', { show_all: true });
+    const data = await rbPost('/api/mis/doctors', { show_all: true, roles: ['doctor', 'sender', 'assistant'] });
 
     if (data?.error !== 0 || !Array.isArray(data?.data)) {
       document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading">Не удалось загрузить врачей</div>';
@@ -2431,10 +2437,7 @@ function rbExecSectionPaymentNew(data) {
   const isHourly  = pt === 'hourly';
   const isPercent = pt === 'percent';
   const hourlyTotal = isHourly ? (data.hourlyRate || 0) * (data.hoursWorked || 0) : 0;
-  const isAutoCalcMain = isSalary || isHourly;
-  const mainPaymentVal = isAutoCalcMain
-    ? Math.max(0, (isSalary ? (data.fixedSalary || 0) : hourlyTotal) - (data.advance || 0))
-    : (data.mainPayment || 0);
+  const mainPaymentVal = data.mainPayment || 0;
 
   return `<div class="rb-exec-section">
     <div class="rb-exec-section-header">
@@ -2454,7 +2457,7 @@ function rbExecSectionPaymentNew(data) {
       <div id="rb-exec-pay-salary-fields" style="${!isSalary ? 'display:none' : ''}">
         <div class="rb-exec-field">
           <label>Фиксированный оклад, ₽</label>
-          <input type="number" id="rb-exec-fixed-salary" value="${data.fixedSalary || 0}" min="0" step="any" placeholder="0" oninput="rbExecUpdateMainPayment();rbExecAutoSave()">
+          <input type="number" id="rb-exec-fixed-salary" value="${data.fixedSalary || 0}" min="0" step="any" placeholder="0" oninput="rbExecAutoSave()">
         </div>
       </div>
 
@@ -2494,7 +2497,7 @@ function rbExecSectionPaymentNew(data) {
         </div>
         <div class="rb-exec-field">
           <label>Аванс, ₽</label>
-          <input type="number" id="rb-exec-advance" value="${data.advance || 0}" min="0" step="any" placeholder="0" oninput="rbExecUpdateMainPayment();rbExecAutoSave()">
+          <input type="number" id="rb-exec-advance" value="${data.advance || 0}" min="0" step="any" placeholder="0" oninput="rbExecAutoSave()">
         </div>
         <div class="rb-exec-field">
           <label>Способ выплаты тела ЗП</label>
@@ -2670,7 +2673,6 @@ function rbExecUpdateHourlyPreview() {
   const hours = parseFloat(document.getElementById('rb-exec-hours-worked')?.value) || 0;
   const preview = document.getElementById('rb-exec-hourly-preview');
   if (preview) preview.textContent = `= ${(rate * hours).toFixed(2)} ₽`;
-  rbExecUpdateMainPayment();
   rbExecAutoSave();
 }
 
@@ -2859,7 +2861,13 @@ async function rbBuildReport(rows) {
 
   // Вспомогательная: разбор стоимости
   function rbParseCost(r) {
-    const raw = r[colMap.totalCost] || r[colMap.servicePrice] || '0';
+    if (colMap.totalCost != null) {
+      const tv = r[colMap.totalCost];
+      // Пустая ячейка при скидке 100% должна давать 0, а не fallback на базовую цену
+      if (tv === '' || tv === null || tv === undefined) return 0;
+      return parseFloat(String(tv).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+    }
+    const raw = r[colMap.servicePrice] || '0';
     return parseFloat(String(raw).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
   }
 
@@ -3104,7 +3112,7 @@ async function rbBuildReport(rows) {
       referralCostTotal, referralCostItems, executorSections,
       finalSalary, advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
-      mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
+      mainPayment: clinicSettings.mainPayment || 0,
       mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
       deductions: execDeductions, materials: execMaterials, extras: execExtras,
     };
@@ -3220,7 +3228,7 @@ function rbRenderSalaryBlock(salary) {
             ${baseSections.map(s => `<tr>
               <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
               <td>${rbEsc(s.name||'—')}</td>
-              <td style="text-align:right">${s.cost ? (s.cost / (s.count || 1)).toFixed(2)+' ₽' : '—'}</td>
+              <td style="text-align:right">${s.cost ? s.cost.toFixed(2)+' ₽' : '—'}</td>
               <td style="text-align:center">${s.count||1}</td>
               <td>${s.bonusLabel||'—'}</td>
               <td style="font-weight:600;color:var(--rb-primary);text-align:right">+${fmtRub(s.bonusAmount)}</td>
@@ -3256,7 +3264,7 @@ function rbRenderSalaryBlock(salary) {
                 ${services.map(s => `<tr>
                   <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
                   <td>${rbEsc(s.name||'—')}</td>
-                  <td style="text-align:right">${s.cost ? (s.cost/(s.count||1)).toFixed(2)+' ₽' : '—'}</td>
+                  <td style="text-align:right">${s.cost ? s.cost.toFixed(2)+' ₽' : '—'}</td>
                   <td style="text-align:center">${s.count||1}</td>
                   <td>${s.bonusLabel||'—'}</td>
                   <td style="font-weight:600;color:var(--rb-success);text-align:right">+${fmtRub(s.bonusAmount)}</td>
@@ -3284,7 +3292,7 @@ function rbRenderSalaryBlock(salary) {
             ${perfSections.map(s => `<tr>
               <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
               <td>${rbEsc(s.name||'—')}</td>
-              <td style="text-align:right">${s.cost ? (s.cost / (s.count || 1)).toFixed(2)+' ₽' : '—'}</td>
+              <td style="text-align:right">${s.cost ? s.cost.toFixed(2)+' ₽' : '—'}</td>
               <td style="text-align:center">${s.count||1}</td>
               <td>${s.bonusLabel||'—'}</td>
               <td style="font-weight:600;color:var(--rb-success);text-align:right">+${fmtRub(s.bonusAmount)}</td>
@@ -3352,7 +3360,7 @@ function rbRenderSalaryBlock(salary) {
                 ${services.map(s => `<tr>
                   <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
                   <td>${rbEsc(s.name||'—')}</td>
-                  <td style="text-align:right">${s.cost ? (s.cost/(s.count||1)).toFixed(2)+' ₽' : '—'}</td>
+                  <td style="text-align:right">${s.cost ? s.cost.toFixed(2)+' ₽' : '—'}</td>
                   <td style="text-align:center">${s.count||1}</td>
                   <td>${s.bonusLabel||'—'}</td>
                   <td style="font-weight:600;color:var(--rb-danger);text-align:right">−${fmtRub(s.bonusAmount)}</td>
@@ -3512,7 +3520,7 @@ async function rbExportReport() {
         addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
         if ((sal.basePerformedSections || []).length) {
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-          (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', s.cost && s.count ? parseFloat((s.cost / s.count).toFixed(2)) : '', s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
+          (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
         }
       }
       if (sal.referralBonuses > 0) {
@@ -3521,14 +3529,14 @@ async function rbExportReport() {
           const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
           addSubHdr(executor, execTotal, 'FF166534', 1);
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 2);
-          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
         });
       }
       if (sal.performedBonusTotal > 0) {
         addSalRow('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
         if ((sal.performedSections || []).length) {
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-          (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
+          (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
         }
       }
       if (sal.extrasTotal > 0) {
@@ -3572,7 +3580,7 @@ async function rbExportReport() {
         (executorSections || []).forEach(({ referrer, services, total }) => {
           addSubHdr(referrer, total, 'FFCC0000', 1);
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
-          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
         });
       }
 
@@ -4127,7 +4135,13 @@ async function rbBulkGenerate() {
   }
 
   function bulkParseCost(r) {
-    const raw = r[colMap.totalCost] || r[colMap.servicePrice] || '0';
+    if (colMap.totalCost != null) {
+      const tv = r[colMap.totalCost];
+      // Пустая ячейка при скидке 100% должна давать 0, а не fallback на базовую цену
+      if (tv === '' || tv === null || tv === undefined) return 0;
+      return parseFloat(String(tv).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+    }
+    const raw = r[colMap.servicePrice] || '0';
     return parseFloat(String(raw).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
   }
 
@@ -4374,7 +4388,7 @@ async function rbBulkGenerate() {
         referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
         finalSalary, advance: clinicSettings.advance || 0,
         paymentMethod: clinicSettings.paymentMethod,
-        mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
+        mainPayment: clinicSettings.mainPayment || 0,
         mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
         deductions: execDeductions, materials: execMaterials, extras: execExtras,
       };
@@ -4587,7 +4601,7 @@ async function rbBulkExport() {
           addSalRowXls(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
           if ((sal.basePerformedSections || []).length) {
             addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-            (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', s.cost && s.count ? parseFloat((s.cost / s.count).toFixed(2)) : '', s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
+            (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
           }
         }
         if (sal.referralBonuses > 0) {
@@ -4596,14 +4610,14 @@ async function rbBulkExport() {
             const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
             addSubHdr(executor, execTotal, 'FF166534', 1);
             addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 2);
-            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
           });
         }
         if (sal.performedBonusTotal > 0) {
           addSalRowXls('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
           if ((sal.performedSections || []).length) {
             addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-            (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
+            (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
           }
         }
         if (sal.extrasTotal > 0) {
@@ -4647,7 +4661,7 @@ async function rbBulkExport() {
           (executorSections || []).forEach(({ referrer, services, total }) => {
             addSubHdr(referrer, total, 'FFCC0000', 1);
             addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
-            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
           });
         }
 

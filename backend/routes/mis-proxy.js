@@ -76,25 +76,45 @@ router.post('/doctor-info', authenticate, async (req, res) => {
   }
 });
 
-// Поиск/список врачей - ИСПРАВЛЕНО: добавлен with_services
+// Поиск/список врачей - поддержка нескольких ролей (doctor, sender, assistant)
 router.post('/doctors', authenticate, async (req, res) => {
   try {
-    const { clinic_id, profession_id, show_all } = req.body;
+    const { clinic_id, profession_id, show_all, roles } = req.body;
 
-    console.log('👨‍⚕️ Запрос списка врачей');
+    // По умолчанию только doctor; можно передать массив roles для расширения
+    const roleList = Array.isArray(roles) && roles.length > 0
+      ? roles
+      : ['doctor'];
 
-    const params = {
-      role: 'doctor',
-      with_services: 1,  // ВАЖНО для получения услуг
+    console.log('👨‍⚕️ Запрос списка врачей, роли:', roleList);
+
+    const baseParams = {
+      with_services: 1,
       show_all: show_all !== undefined ? show_all : true
     };
+    if (clinic_id) baseParams.clinic_id = clinic_id;
+    if (profession_id) baseParams.profession_id = profession_id;
 
-    if (clinic_id) params.clinic_id = clinic_id;
-    if (profession_id) params.profession_id = profession_id;
+    // Параллельные запросы для каждой роли
+    const results = await Promise.all(
+      roleList.map(role => misRequest('getUsers', { ...baseParams, role }))
+    );
 
-    const data = await misRequest('getUsers', params);
+    // Объединяем и дедублируем по id
+    const merged = [];
+    const seen = new Set();
+    for (const r of results) {
+      if (r?.error === 0 && Array.isArray(r?.data)) {
+        for (const user of r.data) {
+          if (!seen.has(user.id)) {
+            seen.add(user.id);
+            merged.push(user);
+          }
+        }
+      }
+    }
 
-    res.json(data);
+    res.json({ error: 0, data: merged });
   } catch (err) {
     console.error('❌ Ошибка /mis/doctors:', err.message);
     res.status(500).json({
@@ -280,7 +300,8 @@ router.post('/get-services', authenticate, async (req, res) => {
 
     const params = {
       category_id: category_id,
-      show_children: show_children !== undefined ? show_children : true
+      show_children: show_children !== undefined ? show_children : true,
+      show_all: 1
     };
 
     if (clinic_id) {
@@ -341,7 +362,8 @@ router.post('/search-mis', authenticate, async (req, res) => {
 
     const params = {
       term: term,
-      limit: 50
+      limit: 50,
+      show_all: 1
     };
 
     if (clinic_id) {
