@@ -357,6 +357,13 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display'
 .rb-salary-row-body { flex: 1; min-width: 0; }
 .rb-salary-row-label { font-size: 13px; color: var(--rb-text-secondary); }
 .rb-salary-row-subitems { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
+.rb-salary-row.expandable { cursor: pointer; user-select: none; }
+.rb-salary-row.expandable:hover { background: #f8fafc; }
+.rb-salary-row.expandable .rb-salary-row-label { display: flex; align-items: center; gap: 4px; }
+.rb-salary-row.expandable .rb-report-toggle-icon { width: 14px; height: 14px; flex-shrink: 0; transition: transform 0.2s; }
+.rb-salary-row.expandable.expanded .rb-report-toggle-icon { transform: rotate(90deg); }
+.rb-salary-row-detail { display: none; margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--rb-border); }
+.rb-salary-row.expandable.expanded .rb-salary-row-detail { display: block; }
 .rb-salary-subitem { font-size: 11px; color: var(--rb-text-secondary); padding-left: 8px; }
 .rb-salary-row-value { font-size: 13px; font-weight: 700; white-space: nowrap; margin-left: auto; padding-left: 12px; }
 .rb-salary-row.plus .rb-salary-row-icon { color: var(--rb-success); }
@@ -3086,6 +3093,7 @@ async function rbBuildReport(rows) {
     const salary = {
       basePay, basePayLabel, payType: pt,
       referralBonuses: referralBonusTotal,
+      referralSections,
       performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,
       performedSections: includePerformedBonus ? performedSections : [],
       basePerformedSections: pt === 'percent' ? performedSections : [],
@@ -3093,7 +3101,7 @@ async function rbBuildReport(rows) {
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
       performedServicesSum,
-      referralCostTotal, referralCostItems,
+      referralCostTotal, referralCostItems, executorSections,
       finalSalary, advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
@@ -3131,69 +3139,10 @@ async function rbBuildReport(rows) {
           ${doctorHasMultipleClinics ? `<div style="font-size:11px;color:var(--rb-text-secondary);margin-top:2px">Расчетный лист${sheetNum}</div>` : ''}
         </div>
         <div style="display:flex;gap:6px">
-          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="this.closest('div').parentElement.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.add('expanded'))">Развернуть</button>
-          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="this.closest('div').parentElement.querySelectorAll('.rb-report-patient').forEach(el=>el.classList.remove('expanded'))">Свернуть</button>
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="var p=this.closest('div').parentElement.parentElement;p.querySelectorAll('.rb-salary-row.expandable').forEach(el=>el.classList.add('expanded'));p.querySelectorAll('.rb-salary-subsection').forEach(el=>{el.style.display='';el.previousElementSibling&&el.previousElementSibling.classList.add('expanded')})">Развернуть</button>
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="var p=this.closest('div').parentElement.parentElement;p.querySelectorAll('.rb-salary-row.expandable').forEach(el=>el.classList.remove('expanded'));p.querySelectorAll('.rb-salary-subsection').forEach(el=>{el.style.display='none';el.previousElementSibling&&el.previousElementSibling.classList.remove('expanded')})">Свернуть</button>
         </div>
       </div>`;
-
-    if (referralSections.length) {
-      html += `<div style="font-size:13px;font-weight:600;color:var(--rb-text-secondary);margin-bottom:8px">Бонусы за направления</div>`;
-      referralSections.forEach(({ executor, services }) => {
-        const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
-        const summaryText = `${services.length} усл.${execTotal > 0 ? ' | +' + execTotal.toFixed(2) + ' ₽' : ''}`;
-        html += `<div class="rb-report-patient">
-          <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
-            <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            <span class="rb-report-patient-title">${rbEsc(executor)}</span>
-            <span class="rb-report-patient-summary${execTotal > 0 ? ' has-bonus-positive' : ''}">${summaryText}</span>
-          </div>
-          <div class="rb-report-patient-body">
-            <table class="rb-report-table"><thead><tr>
-              <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
-            </tr></thead><tbody>
-              ${services.map(s => `<tr>
-                <td style="font-family:monospace;font-size:11px">${rbEsc(s.code||'—')}</td>
-                <td>${rbEsc(s.name||'—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
-                <td>${s.bonusLabel}</td>
-                <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-success)':'var(--rb-text-secondary)'}">
-                  ${s.bonusAmount>0?'+'+s.bonusAmount.toFixed(2)+' ₽':'—'}
-                </td>
-              </tr>`).join('')}
-            </tbody></table>
-            <div class="rb-report-total" style="${execTotal > 0 ? 'color:var(--rb-success)' : ''}">${execTotal > 0 ? 'Итого: +'+execTotal.toFixed(2)+' ₽' : '—'}</div>
-          </div>
-        </div>`;
-      });
-    }
-
-    if (executorSections.length) {
-      html += `<div style="font-size:13px;font-weight:600;color:var(--rb-text-secondary);margin-top:14px;margin-bottom:8px">Выплаты направителям</div>`;
-      executorSections.forEach(({ referrer, services, total }) => {
-        const summaryText = `${services.length} усл.${total > 0 ? ' | −' + total.toFixed(2) + ' ₽' : ''}`;
-        html += `<div class="rb-report-patient rb-exec-patient">
-          <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
-            <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-            <span class="rb-report-patient-title">${rbEsc(referrer)}</span>
-            <span class="rb-report-patient-summary${total > 0 ? ' has-bonus' : ''}">${summaryText}</span>
-          </div>
-          <div class="rb-report-patient-body">
-            <table class="rb-report-table"><thead><tr>
-              <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>К выплате</th>
-            </tr></thead><tbody>
-              ${services.map(s => `<tr>
-                <td style="font-family:monospace;font-size:11px">${rbEsc(s.code||'—')}</td>
-                <td>${rbEsc(s.name||'—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
-                <td>${s.bonusLabel}</td>
-                <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-danger)':'var(--rb-text-secondary)'}">
-                  ${s.bonusAmount>0?'−'+s.bonusAmount.toFixed(2)+' ₽':'—'}
-                </td>
-              </tr>`).join('')}
-            </tbody></table>
-            <div class="rb-report-total">${total > 0 ? 'Итого: −'+total.toFixed(2)+' ₽' : '—'}</div>
-          </div>
-        </div>`;
-      });
-    }
 
     html += rbRenderSalaryBlock(salary);
     html += `</div>`;
@@ -3207,13 +3156,13 @@ async function rbBuildReport(rows) {
 
 function rbRenderSalaryBlock(salary) {
   const { basePay, basePayLabel, payType,
-    referralBonuses, performedBonusTotal, performedSections,
+    referralBonuses, referralSections = [], performedBonusTotal, performedSections,
     basePerformedSections,
     extrasTotal, deductionsTotal, materialsTotal,
     turnoverDeductionsTotal = 0, finalDeductionsTotal = 0,
     turnoverMaterialsTotal = 0, finalMaterialsTotal = 0,
     performedServicesSum = 0,
-    referralCostTotal, referralCostItems, finalSalary,
+    referralCostTotal, referralCostItems, executorSections = [], finalSalary,
     advance, mainPayment, paymentMethod, mainPaymentMethod,
     deductions, materials, extras } = salary;
 
@@ -3259,87 +3208,163 @@ function rbRenderSalaryBlock(salary) {
 
   if (hasWage) {
     const wageRowLabel = basePayLabel || 'Оклад';
-    const baseSubItems = (basePerformedSections || []).map(s =>
-      `<div class="rb-salary-subitem">↳ ${rbEsc(s.serviceName)} × ${s.count} — ${fmtRub(s.bonusAmount)}</div>`
-    ).join('');
-    html += `<div class="rb-salary-row base">
+    const baseSections = basePerformedSections || [];
+    html += `<div class="rb-salary-row base${baseSections.length ? ' expandable' : ''}"${baseSections.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">≡</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">${rbEsc(wageRowLabel)}</div>
-        ${baseSubItems ? `<div class="rb-salary-row-subitems">${baseSubItems}</div>` : ''}
+        <div class="rb-salary-row-label">${baseSections.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}${rbEsc(wageRowLabel)}</div>
+        ${baseSections.length ? `<div class="rb-salary-row-detail">
+          <table class="rb-report-table"><thead><tr>
+            <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+          </tr></thead><tbody>
+            ${baseSections.map(s => `<tr>
+              <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
+              <td>${rbEsc(s.name||'—')}</td>
+              <td style="text-align:right">${s.cost ? (s.cost / (s.count || 1)).toFixed(2)+' ₽' : '—'}</td>
+              <td style="text-align:center">${s.count||1}</td>
+              <td>${s.bonusLabel||'—'}</td>
+              <td style="font-weight:600;color:var(--rb-primary);text-align:right">+${fmtRub(s.bonusAmount)}</td>
+            </tr>`).join('')}
+          </tbody></table>
+        </div>` : ''}
       </div>
       <div class="rb-salary-row-value">${fmtRub(basePay)}</div>
     </div>`;
   }
 
   if (hasReferral) {
-    html += `<div class="rb-salary-row plus">
+    const refSections = referralSections || [];
+    const hasRefSubs = refSections.length > 0;
+    const refGId = 'rsg' + (Math.random()*1e8|0);
+    html += `<div class="rb-salary-row plus${hasRefSubs ? ' expandable' : ''}"${hasRefSubs ? ` onclick="var g=document.getElementById('${refGId}');var show=g.style.display==='none';g.style.display=show?'':'none';this.classList.toggle('expanded',show)"` : ''}>
       <div class="rb-salary-row-icon">+</div>
-      <div class="rb-salary-row-body"><div class="rb-salary-row-label">Бонусы за направления</div></div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label">${hasRefSubs ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Бонусы за направления</div></div>
       <div class="rb-salary-row-value">+${fmtRub(referralBonuses)}</div>
     </div>`;
+    if (hasRefSubs) {
+      html += `<div id="${refGId}" class="rb-salary-subsection" style="display:none">`;
+      refSections.forEach(({ executor, services }) => {
+        const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
+        html += `<div class="rb-salary-row plus expandable" style="padding-left:24px" onclick="this.classList.toggle('expanded')">
+          <div class="rb-salary-row-icon" style="font-size:11px">▸</div>
+          <div class="rb-salary-row-body">
+            <div class="rb-salary-row-label"><svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>${rbEsc(executor)}</div>
+            <div class="rb-salary-row-detail">
+              <table class="rb-report-table"><thead><tr>
+                <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+              </tr></thead><tbody>
+                ${services.map(s => `<tr>
+                  <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
+                  <td>${rbEsc(s.name||'—')}</td>
+                  <td style="text-align:right">${s.cost ? (s.cost/(s.count||1)).toFixed(2)+' ₽' : '—'}</td>
+                  <td style="text-align:center">${s.count||1}</td>
+                  <td>${s.bonusLabel||'—'}</td>
+                  <td style="font-weight:600;color:var(--rb-success);text-align:right">+${fmtRub(s.bonusAmount)}</td>
+                </tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
+          <div class="rb-salary-row-value" style="font-size:12px">+${fmtRub(execTotal)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
   }
 
   if (hasPerformed) {
-    const subItems = (performedSections || []).map(s =>
-      `<div class="rb-salary-subitem">↳ ${rbEsc(s.serviceName)} × ${s.count} — ${fmtRub(s.bonusAmount)}</div>`
-    ).join('');
-    html += `<div class="rb-salary-row plus">
+    const perfSections = performedSections || [];
+    html += `<div class="rb-salary-row plus${perfSections.length ? ' expandable' : ''}"${perfSections.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">+</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">Бонусы за выполненные услуги</div>
-        ${subItems ? `<div class="rb-salary-row-subitems">${subItems}</div>` : ''}
+        <div class="rb-salary-row-label">${perfSections.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Бонусы за выполненные услуги</div>
+        ${perfSections.length ? `<div class="rb-salary-row-detail">
+          <table class="rb-report-table"><thead><tr>
+            <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
+          </tr></thead><tbody>
+            ${perfSections.map(s => `<tr>
+              <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
+              <td>${rbEsc(s.name||'—')}</td>
+              <td style="text-align:right">${s.cost ? (s.cost / (s.count || 1)).toFixed(2)+' ₽' : '—'}</td>
+              <td style="text-align:center">${s.count||1}</td>
+              <td>${s.bonusLabel||'—'}</td>
+              <td style="font-weight:600;color:var(--rb-success);text-align:right">+${fmtRub(s.bonusAmount)}</td>
+            </tr>`).join('')}
+          </tbody></table>
+        </div>` : ''}
       </div>
       <div class="rb-salary-row-value">+${fmtRub(performedBonusTotal)}</div>
     </div>`;
   }
 
   if (hasExtras) {
-    const subItems = extras.map(e => `<div class="rb-salary-subitem">↳ ${rbEsc(extraLabel(e))}</div>`).join('');
-    html += `<div class="rb-salary-row plus">
+    html += `<div class="rb-salary-row plus${extras.length ? ' expandable' : ''}"${extras.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">+</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">Дополнительно</div>
-        <div class="rb-salary-row-subitems">${subItems}</div>
+        <div class="rb-salary-row-label">${extras.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Дополнительно</div>
+        ${extras.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Описание</th><th style="text-align:right">Сумма</th><th style="text-align:center">Часов</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${extras.map(e => { const _amt=parseFloat(e.amount)||0; const _hrs=parseFloat(e.hours)||0; const _tot=_hrs>0?_amt*_hrs:_amt; return `<tr><td>${rbEsc(e.name)}</td><td style="text-align:right">${_amt.toFixed(2)} ₽</td><td style="text-align:center">${_hrs>0?_hrs:'—'}</td><td style="font-weight:600;color:var(--rb-success);text-align:right">+${_tot.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="rb-salary-row-value">+${fmtRub(extrasTotal)}</div>
     </div>`;
   }
 
   if (hasDeductions) {
-    const subItems = deductions.map(d => `<div class="rb-salary-subitem">↳ ${rbEsc(itemLabel(d))}${itemTypeTag(d)}</div>`).join('');
-    html += `<div class="rb-salary-row minus">
+    html += `<div class="rb-salary-row minus${deductions.length ? ' expandable' : ''}"${deductions.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">−</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">Расходники / штрафы / взыскания</div>
-        <div class="rb-salary-row-subitems">${subItems}</div>
+        <div class="rb-salary-row-label">${deductions.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Расходники / штрафы / взыскания</div>
+        ${deductions.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${deductions.map(d => { const _v=parseFloat(d.value)||0; const _base=d.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=d.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(d.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${d.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${d.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="rb-salary-row-value">−${fmtRub(deductionsTotal)}</div>
     </div>`;
   }
 
   if (hasMaterials) {
-    const subItems = materials.map(m => `<div class="rb-salary-subitem">↳ ${rbEsc(itemLabel(m))}${itemTypeTag(m)}</div>`).join('');
-    html += `<div class="rb-salary-row minus">
+    html += `<div class="rb-salary-row minus${materials.length ? ' expandable' : ''}"${materials.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">−</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">Материалы</div>
-        <div class="rb-salary-row-subitems">${subItems}</div>
+        <div class="rb-salary-row-label">${materials.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Материалы</div>
+        ${materials.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${materials.map(m => { const _v=parseFloat(m.value)||0; const _base=m.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=m.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(m.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${m.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${m.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="rb-salary-row-value">−${fmtRub(materialsTotal)}</div>
     </div>`;
   }
 
   if (hasReferralCost) {
-    const subItems = (referralCostItems || []).map(x => `<div class="rb-salary-subitem">↳ ${rbEsc(x.name)} (${fmtRub(x.amount)})</div>`).join('');
-    html += `<div class="rb-salary-row minus">
+    const execSecs = executorSections || [];
+    const hasRCSubs = execSecs.length > 0;
+    const rcGId = 'rcg' + (Math.random()*1e8|0);
+    html += `<div class="rb-salary-row minus${hasRCSubs ? ' expandable' : ''}"${hasRCSubs ? ` onclick="var g=document.getElementById('${rcGId}');var show=g.style.display==='none';g.style.display=show?'':'none';this.classList.toggle('expanded',show)"` : ''}>
       <div class="rb-salary-row-icon">−</div>
-      <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">Бонусы направителям (как исполнитель)</div>
-        <div class="rb-salary-row-subitems">${subItems}</div>
-      </div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label">${hasRCSubs ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Бонусы направителям</div></div>
       <div class="rb-salary-row-value">−${fmtRub(referralCostTotal)}</div>
     </div>`;
+    if (hasRCSubs) {
+      html += `<div id="${rcGId}" class="rb-salary-subsection" style="display:none">`;
+      execSecs.forEach(({ referrer, services, total }) => {
+        html += `<div class="rb-salary-row minus expandable" style="padding-left:24px" onclick="this.classList.toggle('expanded')">
+          <div class="rb-salary-row-icon" style="font-size:11px">▸</div>
+          <div class="rb-salary-row-body">
+            <div class="rb-salary-row-label"><svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>${rbEsc(referrer)}</div>
+            <div class="rb-salary-row-detail">
+              <table class="rb-report-table"><thead><tr>
+                <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>К выплате</th>
+              </tr></thead><tbody>
+                ${services.map(s => `<tr>
+                  <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
+                  <td>${rbEsc(s.name||'—')}</td>
+                  <td style="text-align:right">${s.cost ? (s.cost/(s.count||1)).toFixed(2)+' ₽' : '—'}</td>
+                  <td style="text-align:center">${s.count||1}</td>
+                  <td>${s.bonusLabel||'—'}</td>
+                  <td style="font-weight:600;color:var(--rb-danger);text-align:right">−${fmtRub(s.bonusAmount)}</td>
+                </tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
+          <div class="rb-salary-row-value" style="font-size:12px">−${fmtRub(total)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
   }
 
   const sign = (finalSalary || 0) >= 0 ? '' : '−';
@@ -3400,7 +3425,7 @@ async function rbExportReport() {
     const safeName = (clinicLabel || rbGetClinicName(clinicId) || 'Клиника').substring(0, 31);
     const ws = wb.addWorksheet(safeName);
     ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
-    ws.properties.outlineLevelRow = 1;
+    ws.properties.outlineLevelRow = 2;
 
     const autoWidth = (row, numCols) => {
       for (let c = 1; c <= numCols; c++) {
@@ -3425,6 +3450,8 @@ async function rbExportReport() {
       row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
       ws.mergeCells(`B${row.number}:F${row.number}`);
       autoWidth(row, 2);
+      row.outlineLevel = 1;
+      row.hidden = true;
     };
     const itemLabelXls = (item, base) => {
       const v = parseFloat(item.value) || 0;
@@ -3442,57 +3469,6 @@ async function rbExportReport() {
     autoWidth(titleRow, 1);
     ws.addRow([]);
 
-    // ── Бонусы за направления ──
-    if (referralSections?.length) {
-      (referralSections || []).forEach(({ executor, services }) => {
-        const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
-        const execRow = ws.addRow([executor, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
-        execRow.getCell(1).font = fontBold;
-        execRow.getCell(6).font = { ...fontBold, color: { argb: 'FF166534' } };
-        execRow.getCell(6).numFmt = '#,##0.00';
-        execRow.getCell(6).border = allBorders;
-        ws.mergeCells(`A${execRow.number}:E${execRow.number}`);
-        autoWidth(execRow, 6);
-
-        const hRow = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
-        hRow.eachCell({ includeEmpty: true }, (cell, colNum) => {
-          if (colNum <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
-        });
-        autoWidth(hRow, 6);
-        hRow.outlineLevel = 1;
-
-        services.forEach(s => {
-          const dRow = ws.addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0]);
-          dRow.eachCell({ includeEmpty: true }, (cell, colNum) => { if (colNum <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
-          dRow.getCell(3).numFmt = '#,##0.00';
-          dRow.getCell(6).numFmt = '#,##0.00';
-          autoWidth(dRow, 6);
-          dRow.outlineLevel = 1;
-        });
-        ws.addRow([]);
-      });
-    }
-
-    // ── Выплаты направителям (когда врач — исполнитель) ──
-    if (executorSections?.length) {
-      (executorSections || []).forEach(({ referrer, services, total }) => {
-        const refRow = ws.addRow([`Направитель: ${referrer}`, '', '', '', '', total > 0 ? -parseFloat(total.toFixed(2)) : 0]);
-        refRow.getCell(1).font = fontBold;
-        refRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
-        refRow.getCell(6).numFmt = '#,##0.00';
-        refRow.getCell(6).border = allBorders;
-        ws.mergeCells(`A${refRow.number}:E${refRow.number}`);
-        autoWidth(refRow, 6);
-        services.forEach(s => {
-          const dRow = ws.addRow([s.code || '—', s.name || '—', parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0]);
-          dRow.eachCell({ includeEmpty: true }, (cell, colNum) => { if (colNum <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
-          dRow.getCell(3).numFmt = '#,##0.00'; dRow.getCell(6).numFmt = '#,##0.00';
-          autoWidth(dRow, 6); dRow.outlineLevel = 1;
-        });
-        ws.addRow([]);
-      });
-    }
-
     // ── Расчёт зарплаты ──
     if (salary) {
       const sal = salary;
@@ -3502,28 +3478,102 @@ async function rbExportReport() {
       salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
       ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
 
-      if (sal.basePay > 0 || sal.basePayLabel) addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
-      if (sal.referralBonuses > 0) addSalRow('Бонусы за направления', sal.referralBonuses, '+');
-      if (sal.performedBonusTotal > 0) addSalRow('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
+      const addTblHdr = (labels, lvl) => {
+        const row = ws.addRow(labels);
+        row.eachCell({ includeEmpty: true }, (cell, c) => {
+          if (c <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+        });
+        autoWidth(row, 6);
+        row.outlineLevel = lvl;
+        row.hidden = true;
+      };
+      const addTblRow = (vals, lvl) => {
+        const row = ws.addRow(vals);
+        row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
+        row.getCell(3).numFmt = '#,##0.00';
+        row.getCell(6).numFmt = '#,##0.00';
+        autoWidth(row, 6);
+        row.outlineLevel = lvl;
+        row.hidden = true;
+      };
+      const addSubHdr = (name, value, clr, lvl) => {
+        const row = ws.addRow(['', name, '', '', '', parseFloat((value || 0).toFixed(2))]);
+        row.getCell(2).font = { ...fontBold, color: { argb: clr } };
+        row.getCell(6).font = { ...fontBold, color: { argb: clr } };
+        row.getCell(6).numFmt = '#,##0.00';
+        row.getCell(6).border = allBorders;
+        ws.mergeCells(`B${row.number}:E${row.number}`);
+        autoWidth(row, 6);
+        row.outlineLevel = lvl;
+        row.hidden = true;
+      };
+
+      if (sal.basePay > 0 || sal.basePayLabel) {
+        addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
+        if ((sal.basePerformedSections || []).length) {
+          addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
+          (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', s.cost && s.count ? parseFloat((s.cost / s.count).toFixed(2)) : '', s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
+        }
+      }
+      if (sal.referralBonuses > 0) {
+        addSalRow('Бонусы за направления', sal.referralBonuses, '+');
+        (sal.referralSections || []).forEach(({ executor, services }) => {
+          const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+          addSubHdr(executor, execTotal, 'FF166534', 1);
+          addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 2);
+          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+        });
+      }
+      if (sal.performedBonusTotal > 0) {
+        addSalRow('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
+        if ((sal.performedSections || []).length) {
+          addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
+          (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
+        }
+      }
       if (sal.extrasTotal > 0) {
         addSalRow('Дополнительно', sal.extrasTotal, '+');
-        (sal.extras || []).forEach(e => addSalSubRow(extraLabelXls(e)));
+        if ((sal.extras || []).length) {
+          addTblHdr(['Наименование', '', '', 'Кол-во ч', 'Ставка, руб', 'Итого, руб'], 1);
+          (sal.extras || []).forEach(e => {
+            const hrs = parseFloat(e.hours) || 0;
+            addTblRow([e.name, '', '', hrs > 0 ? hrs : '', parseFloat(e.amount).toFixed(2), hrs > 0 ? parseFloat((parseFloat(e.amount) * hrs).toFixed(2)) : parseFloat(parseFloat(e.amount).toFixed(2))], 1);
+          });
+        }
       }
       if (sal.deductionsTotal > 0) {
         const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
         const xlsBase = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal;
         addSalRow('Расходники / штрафы / взыскания', sal.deductionsTotal, '-');
-        (sal.deductions || []).forEach(d => addSalSubRow(itemLabelXls(d, xlsBase(d))));
+        if ((sal.deductions || []).length) {
+          addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
+          (sal.deductions || []).forEach(d => {
+            const v = parseFloat(d.value) || 0;
+            const computed = d.valueType === 'percent' ? parseFloat((xlsBase(d) * v / 100).toFixed(2)) : v;
+            addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
+          });
+        }
       }
       if (sal.materialsTotal > 0) {
         const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
         const xlsBase2 = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal2;
         addSalRow('Материалы', sal.materialsTotal, '-');
-        (sal.materials || []).forEach(m => addSalSubRow(itemLabelXls(m, xlsBase2(m))));
+        if ((sal.materials || []).length) {
+          addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
+          (sal.materials || []).forEach(m => {
+            const v = parseFloat(m.value) || 0;
+            const computed = m.valueType === 'percent' ? parseFloat((xlsBase2(m) * v / 100).toFixed(2)) : v;
+            addTblRow([m.name, '', '', '', m.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
+          });
+        }
       }
       if (sal.referralCostTotal > 0) {
-        addSalRow('Бонусы направителям (как исполнитель)', sal.referralCostTotal, '-');
-        (sal.referralCostItems || []).forEach(x => addSalSubRow(`${x.name} (${x.amount.toFixed(2)} ₽)`));
+        addSalRow('Бонусы направителям', sal.referralCostTotal, '-');
+        (executorSections || []).forEach(({ referrer, services, total }) => {
+          addSubHdr(referrer, total, 'FFCC0000', 1);
+          addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
+          services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+        });
       }
 
       ws.addRow([]);
@@ -4313,6 +4363,7 @@ async function rbBulkGenerate() {
       const salary = {
         basePay, basePayLabel, payType: pt,
         referralBonuses: referralBonusTotal,
+        referralSections,
         performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,
         performedSections: includePerformedBonus ? performedSections : [],
         basePerformedSections: pt === 'percent' ? performedSections : [],
@@ -4320,7 +4371,7 @@ async function rbBulkGenerate() {
         turnoverDeductionsTotal, finalDeductionsTotal,
         turnoverMaterialsTotal, finalMaterialsTotal,
         performedServicesSum,
-        referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems,
+        referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
         finalSalary, advance: clinicSettings.advance || 0,
         paymentMethod: clinicSettings.paymentMethod,
         mainPayment: pt === 'percent' ? (clinicSettings.mainPayment || 0) : Math.max(0, basePay - (clinicSettings.advance || 0)),
@@ -4373,8 +4424,8 @@ function rbRenderBulkPreview() {
     <div class="rb-report-header-row">
       <div class="rb-report-title">Предпросмотр: ${total} ${doctWord}</div>
       <div style="display:flex;gap:6px;flex-shrink:0">
-        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-report-patient').forEach(el=>el.classList.add('expanded'))">Развернуть все</button>
-        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-report-patient').forEach(el=>el.classList.remove('expanded'))">Свернуть все</button>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-salary-row.expandable').forEach(el=>el.classList.add('expanded'));document.querySelectorAll('#rb-bulk-preview .rb-salary-subsection').forEach(el=>{el.style.display='';el.previousElementSibling&&el.previousElementSibling.classList.add('expanded')})">Развернуть все</button>
+        <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="document.querySelectorAll('#rb-bulk-preview .rb-salary-row.expandable').forEach(el=>el.classList.remove('expanded'));document.querySelectorAll('#rb-bulk-preview .rb-salary-subsection').forEach(el=>{el.style.display='none';el.previousElementSibling&&el.previousElementSibling.classList.remove('expanded')})">Свернуть все</button>
       </div>
     </div>`;
 
@@ -4392,66 +4443,6 @@ function rbRenderBulkPreview() {
           <div style="font-size:12px;font-weight:700;color:${cColor};flex:1">${rbEsc(clinicLabel)}</div>
           ${bulkHasMultiple ? `<div style="font-size:10px;color:var(--rb-text-secondary)">лист ${idx+1} из ${clinicReports.length}</div>` : ''}
         </div>`;
-
-      if (referralSections.length) {
-        html += `<div style="font-size:11px;font-weight:600;color:var(--rb-text-secondary);margin-bottom:6px">Бонусы за направления</div>`;
-        referralSections.forEach(({ executor, services }) => {
-          const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
-          const svcWord = services.length === 1 ? 'услуга' : services.length < 5 ? 'услуги' : 'услуг';
-          const summaryText = `${services.length} ${svcWord}${execTotal > 0 ? ' | +' + execTotal.toFixed(2) + ' ₽' : ''}`;
-          html += `<div class="rb-report-patient">
-            <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
-              <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              <span class="rb-report-patient-title">${rbEsc(executor)}</span>
-              <span class="rb-report-patient-summary${execTotal > 0 ? ' has-bonus-positive' : ''}">${summaryText}</span>
-            </div>
-            <div class="rb-report-patient-body">
-              <table class="rb-report-table"><thead><tr>
-                <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th>
-              </tr></thead><tbody>
-                ${services.map(s => `<tr>
-                  <td style="font-family:monospace;font-size:11px">${rbEsc(s.code || '—')}</td>
-                  <td>${rbEsc(s.name || '—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
-                  <td>${s.bonusLabel}</td>
-                  <td style="font-weight:600;color:${s.bonusAmount > 0 ? 'var(--rb-success,#16a34a)' : 'var(--rb-text-secondary)'}">
-                    ${s.bonusAmount > 0 ? '+' + s.bonusAmount.toFixed(2) + ' ₽' : '—'}
-                  </td>
-                </tr>`).join('')}
-              </tbody></table>
-              <div class="rb-report-total" style="${execTotal > 0 ? 'color:var(--rb-success)' : ''}">${execTotal > 0 ? 'Итого: +' + execTotal.toFixed(2) + ' ₽' : '—'}</div>
-            </div>
-          </div>`;
-        });
-      }
-
-      if (executorSections?.length) {
-        html += `<div style="font-size:11px;font-weight:600;color:var(--rb-text-secondary);margin-top:10px;margin-bottom:6px">Выплаты направителям</div>`;
-        executorSections.forEach(({ referrer, services, total }) => {
-          const summaryText = `${services.length} усл.${total > 0 ? ' | −' + total.toFixed(2) + ' ₽' : ''}`;
-          html += `<div class="rb-report-patient">
-            <div class="rb-report-patient-header" onclick="this.closest('.rb-report-patient').classList.toggle('expanded')">
-              <svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
-              <span class="rb-report-patient-title">${rbEsc(referrer)}</span>
-              <span class="rb-report-patient-summary${total > 0 ? ' has-bonus' : ''}">${summaryText}</span>
-            </div>
-            <div class="rb-report-patient-body">
-              <table class="rb-report-table"><thead><tr>
-                <th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>К выплате</th>
-              </tr></thead><tbody>
-                ${services.map(s => `<tr>
-                  <td style="font-family:monospace;font-size:11px">${rbEsc(s.code||'—')}</td>
-                  <td>${rbEsc(s.name||'—')}</td><td>${s.cost.toFixed(2)} ₽</td><td>${s.count}</td>
-                  <td>${s.bonusLabel}</td>
-                  <td style="font-weight:600;color:${s.bonusAmount>0?'var(--rb-danger)':'var(--rb-text-secondary)'}">
-                    ${s.bonusAmount>0?'−'+s.bonusAmount.toFixed(2)+' ₽':'—'}
-                  </td>
-                </tr>`).join('')}
-              </tbody></table>
-              <div class="rb-report-total">${total > 0 ? 'Итого: −' + total.toFixed(2) + ' ₽' : '—'}</div>
-            </div>
-          </div>`;
-        });
-      }
 
       if (salary) {
         html += rbRenderSalaryBlock(salary);
@@ -4495,7 +4486,7 @@ async function rbBulkExport() {
     }
     const ws = wb.addWorksheet(sheetName);
     ws.columns = Array.from({ length: COLS }, () => ({ width: 8 }));
-    ws.properties.outlineLevelRow = 1;
+    ws.properties.outlineLevelRow = 2;
 
     const autoWidth = (row, n) => {
       for (let c = 1; c <= n; c++) {
@@ -4521,6 +4512,8 @@ async function rbBulkExport() {
       row.getCell(2).font = { ...fontNormal, color: { argb: 'FF64748B' }, italic: true };
       ws.mergeCells(`B${row.number}:F${row.number}`);
       autoWidth(row, 2);
+      row.outlineLevel = 1;
+      row.hidden = true;
     };
     const itemLabelXls = (item, base) => {
       const v = parseFloat(item.value) || 0;
@@ -4551,74 +4544,6 @@ async function rbBulkExport() {
       ws.mergeCells(`A${clinicRow.number}:F${clinicRow.number}`);
       autoWidth(clinicRow, 1);
 
-      // ── Бонусы за направления ──
-      for (const { executor, services } of (referralSections || [])) {
-        const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
-        const execRow = ws.addRow([`    ${executor}`, '', '', '', '', execTotal > 0 ? parseFloat(execTotal.toFixed(2)) : 0]);
-        execRow.getCell(1).font = fontBold;
-        execRow.getCell(6).font = { ...fontBold, color: { argb: 'FF166534' } };
-        execRow.getCell(6).numFmt = '#,##0.00';
-        execRow.getCell(6).border = allBorders;
-        ws.mergeCells(`A${execRow.number}:E${execRow.number}`);
-        autoWidth(execRow, 6);
-
-        const hRow = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб']);
-        hRow.eachCell({ includeEmpty: true }, (cell, c) => {
-          if (c <= COLS) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
-        });
-        autoWidth(hRow, COLS);
-        hRow.outlineLevel = 1;
-
-        for (const s of services) {
-          const dRow = ws.addRow([
-            s.code || '—', s.name || '—',
-            parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel,
-            s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0,
-          ]);
-          dRow.eachCell({ includeEmpty: true }, (cell, c) => {
-            if (c <= COLS) { cell.font = fontNormal; cell.border = allBorders; }
-          });
-          dRow.getCell(3).numFmt = '#,##0.00';
-          dRow.getCell(6).numFmt = '#,##0.00';
-          autoWidth(dRow, COLS);
-          dRow.outlineLevel = 1;
-        }
-      }
-
-      // ── Выплаты направителям ──
-      if (executorSections?.length) {
-        for (const { referrer, services, total } of executorSections) {
-          const refRow = ws.addRow([`    Направитель: ${referrer}`, '', '', '', '', total > 0 ? -parseFloat(total.toFixed(2)) : 0]);
-          refRow.getCell(1).font = fontBold;
-          refRow.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
-          refRow.getCell(6).numFmt = '#,##0.00';
-          refRow.getCell(6).border = allBorders;
-          ws.mergeCells(`A${refRow.number}:E${refRow.number}`);
-          autoWidth(refRow, 6);
-          const hRow2 = ws.addRow(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб']);
-          hRow2.eachCell({ includeEmpty: true }, (cell, c) => {
-            if (c <= COLS) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
-          });
-          autoWidth(hRow2, COLS);
-          hRow2.outlineLevel = 1;
-          for (const s of services) {
-            const dRow = ws.addRow([
-              s.code || '—', s.name || '—',
-              parseFloat(s.cost.toFixed(2)), s.count, s.bonusLabel,
-              s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0,
-            ]);
-            dRow.eachCell({ includeEmpty: true }, (cell, c) => {
-              if (c <= COLS) { cell.font = fontNormal; cell.border = allBorders; }
-            });
-            dRow.getCell(3).numFmt = '#,##0.00';
-            dRow.getCell(6).numFmt = '#,##0.00';
-            autoWidth(dRow, COLS);
-            dRow.outlineLevel = 1;
-          }
-          ws.addRow([]);
-        }
-      }
-
       // ── Расчёт зарплаты ──
       if (salary) {
         const sal = salary;
@@ -4628,24 +4553,102 @@ async function rbBulkExport() {
         salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
         ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
 
-        if (sal.basePay > 0 || sal.basePayLabel) addSalRowXls(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
-        if (sal.referralBonuses > 0) addSalRowXls('Бонусы за направления', sal.referralBonuses, '+');
-        if (sal.performedBonusTotal > 0) addSalRowXls('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
+        const addTblHdr = (labels, lvl) => {
+          const row = ws.addRow(labels);
+          row.eachCell({ includeEmpty: true }, (cell, c) => {
+            if (c <= COLS) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+          });
+          autoWidth(row, COLS);
+          row.outlineLevel = lvl;
+          row.hidden = true;
+        };
+        const addTblRow = (vals, lvl) => {
+          const row = ws.addRow(vals);
+          row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= COLS) { cell.font = fontNormal; cell.border = allBorders; } });
+          row.getCell(3).numFmt = '#,##0.00';
+          row.getCell(6).numFmt = '#,##0.00';
+          autoWidth(row, COLS);
+          row.outlineLevel = lvl;
+          row.hidden = true;
+        };
+        const addSubHdr = (name, value, clr, lvl) => {
+          const row = ws.addRow(['', name, '', '', '', parseFloat((value || 0).toFixed(2))]);
+          row.getCell(2).font = { ...fontBold, color: { argb: clr } };
+          row.getCell(6).font = { ...fontBold, color: { argb: clr } };
+          row.getCell(6).numFmt = '#,##0.00';
+          row.getCell(6).border = allBorders;
+          ws.mergeCells(`B${row.number}:E${row.number}`);
+          autoWidth(row, COLS);
+          row.outlineLevel = lvl;
+          row.hidden = true;
+        };
+
+        if (sal.basePay > 0 || sal.basePayLabel) {
+          addSalRowXls(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
+          if ((sal.basePerformedSections || []).length) {
+            addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
+            (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', s.cost && s.count ? parseFloat((s.cost / s.count).toFixed(2)) : '', s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
+          }
+        }
+        if (sal.referralBonuses > 0) {
+          addSalRowXls('Бонусы за направления', sal.referralBonuses, '+');
+          (sal.referralSections || []).forEach(({ executor, services }) => {
+            const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
+            addSubHdr(executor, execTotal, 'FF166534', 1);
+            addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 2);
+            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+          });
+        }
+        if (sal.performedBonusTotal > 0) {
+          addSalRowXls('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
+          if ((sal.performedSections || []).length) {
+            addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
+            (sal.performedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 1));
+          }
+        }
         if (sal.extrasTotal > 0) {
           addSalRowXls('Дополнительно', sal.extrasTotal, '+');
-          (sal.extras || []).forEach(e => addSalSubRowXls(extraLabelXls(e)));
+          if ((sal.extras || []).length) {
+            addTblHdr(['Наименование', '', '', 'Кол-во ч', 'Ставка, руб', 'Итого, руб'], 1);
+            (sal.extras || []).forEach(e => {
+              const hrs = parseFloat(e.hours) || 0;
+              addTblRow([e.name, '', '', hrs > 0 ? hrs : '', parseFloat(e.amount).toFixed(2), hrs > 0 ? parseFloat((parseFloat(e.amount) * hrs).toFixed(2)) : parseFloat(parseFloat(e.amount).toFixed(2))], 1);
+            });
+          }
         }
         if (sal.deductionsTotal > 0) {
           const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
           const xlsBase = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal;
           addSalRowXls('Расходники / штрафы / взыскания', sal.deductionsTotal, '-');
-          (sal.deductions || []).forEach(d => addSalSubRowXls(itemLabelXls(d, xlsBase(d))));
+          if ((sal.deductions || []).length) {
+            addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
+            (sal.deductions || []).forEach(d => {
+              const v = parseFloat(d.value) || 0;
+              const computed = d.valueType === 'percent' ? parseFloat((xlsBase(d) * v / 100).toFixed(2)) : v;
+              addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
+            });
+          }
         }
         if (sal.materialsTotal > 0) {
           const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
           const xlsBase2 = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal2;
           addSalRowXls('Материалы', sal.materialsTotal, '-');
-          (sal.materials || []).forEach(m => addSalSubRowXls(itemLabelXls(m, xlsBase2(m))));
+          if ((sal.materials || []).length) {
+            addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
+            (sal.materials || []).forEach(m => {
+              const v = parseFloat(m.value) || 0;
+              const computed = m.valueType === 'percent' ? parseFloat((xlsBase2(m) * v / 100).toFixed(2)) : v;
+              addTblRow([m.name, '', '', '', m.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
+            });
+          }
+        }
+        if (sal.referralCostTotal > 0) {
+          addSalRowXls('Бонусы направителям', sal.referralCostTotal, '-');
+          (executorSections || []).forEach(({ referrer, services, total }) => {
+            addSubHdr(referrer, total, 'FFCC0000', 1);
+            addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
+            services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost / s.count).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+          });
         }
 
         ws.addRow([]);
@@ -4659,6 +4662,13 @@ async function rbBulkExport() {
         totalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (sal.finalSalary || 0) >= 0 ? 'FFD1FAE5' : 'FFFEE2E2' } };
         ws.mergeCells(`B${totalRow.number}:E${totalRow.number}`);
         autoWidth(totalRow, 6);
+        if ((sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0) {
+          if ((sal.advance || 0) > 0)
+            addSalRowXls(`Аванс (${sal.paymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.advance, '-');
+          if ((sal.mainPayment || 0) > 0)
+            addSalRowXls(`Тело з/п (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
+          addSalRowXls('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0), '=');
+        }
       }
     }
   }
