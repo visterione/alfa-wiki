@@ -1901,7 +1901,7 @@ window.dcApp = (function() {
         if (clinicIds.length === 0) {
           return fetchAPI(API_BASE + '/mis/services', {
             method: 'POST',
-            body: JSON.stringify({ service_ids: serviceIds })
+            body: JSON.stringify({ service_ids: serviceIds, show_all: true })
           }).then(function(servData) {
             return { clinicResults: [{ clinicId: null, data: servData }] };
           });
@@ -1911,7 +1911,7 @@ window.dcApp = (function() {
         var promises = clinicIds.map(function(clinicId) {
           return fetchAPI(API_BASE + '/mis/services', {
             method: 'POST',
-            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId })
+            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId, show_all: true })
           }).then(function(servData) {
             return { clinicId: clinicId, data: servData };
           });
@@ -2417,7 +2417,7 @@ window.dcApp = (function() {
         if (modalClinicIds.length === 0) {
           return fetchAPI(API_BASE + '/mis/services', {
             method: 'POST',
-            body: JSON.stringify({ service_ids: serviceIds })
+            body: JSON.stringify({ service_ids: serviceIds, show_all: true })
           }).then(function(servData) {
             return { clinicResults: [{ clinicId: null, data: servData }] };
           });
@@ -2427,7 +2427,7 @@ window.dcApp = (function() {
         var promises = modalClinicIds.map(function(clinicId) {
           return fetchAPI(API_BASE + '/mis/services', {
             method: 'POST',
-            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId })
+            body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId, show_all: true })
           }).then(function(servData) {
             return { clinicId: clinicId, data: servData };
           });

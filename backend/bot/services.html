@@ -172,7 +172,7 @@
 .srv-table td:nth-child(4) { width: 110px; } /* Стоимость */
 
 .srv-table th:nth-child(5),
-.srv-table td:nth-child(5) { width: 200px; } /* Комментарий */
+.srv-table td:nth-child(5) { width: 200px; max-width: 200px; } /* Комментарий */
 
 .srv-table th:nth-child(6),
 .srv-table td:nth-child(6) { width: 100px; } /* Действия */
@@ -220,12 +220,10 @@
 
 /* Комментарий в таблице */
 .srv-comment {
+  display: block;
   font-size: 13px;
   color: #6b7280;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 /* Действия */
