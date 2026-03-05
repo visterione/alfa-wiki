@@ -531,12 +531,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <div class="rb-wizard-step-label">Отчёт</div>
     </div>
-    <div class="rb-wizard-connector"></div>
-    <div class="rb-wizard-step" id="rb-nav-step-archive" onclick="rbOpenArchiveModal()">
-      <div class="rb-wizard-step-circle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
-      </div>
-      <div class="rb-wizard-step-label">Архив</div>
+    <div style="margin-left:auto;flex-shrink:0">
+      <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbOpenArchiveModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+        Архив
+      </button>
     </div>
   </div>
 
@@ -872,10 +871,6 @@ async function rbLoadClinics() {
     const data = await rbApi('/api/mis/clinics');
     if (data?.success && Array.isArray(data.data)) {
       RB.clinics = data.data;
-      // Добавляем клинику "Направители" если её нет в ответе API
-      if (!RB.clinics.find(c => String(c.id) === '8')) {
-        RB.clinics.push({ id: 8, name: 'Направители', color: '#0EA5E9' });
-      }
     } else {
       throw new Error('fallback');
     }
@@ -888,7 +883,6 @@ async function rbLoadClinics() {
       { id: 6, name: 'Линия', color: '#C5E1A5' },
       { id: 4, name: '3К', color: '#BA68C8' },
       { id: 7, name: 'Смайл', color: '#555555' },
-      { id: 8, name: 'Направители', color: '#0EA5E9' },
     ];
   }
 
@@ -927,7 +921,7 @@ function rbGetClinicName(clinicId) {
 async function rbLoadDoctors() {
   document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading"><span class="rb-spinner"></span>Загрузка врачей...</div>';
   try {
-    const data = await rbPost('/api/mis/doctors', { show_all: true, roles: ['doctor', 'sender', 'assistant'] });
+    const data = await rbPost('/api/mis/doctors', { show_all: true });
 
     if (data?.error !== 0 || !Array.isArray(data?.data)) {
       document.getElementById('rb-doctors-list').innerHTML = '<div class="rb-loading">Не удалось загрузить врачей</div>';
@@ -2375,8 +2369,8 @@ function rbExecAddFormHtml(sectionId, suggests) {
         <div class="rb-exec-add-field">
           <label>База</label>
           <div class="rb-exec-type-toggle">
-            <button class="rb-exec-type-btn active" id="rb-exec-dtype-final-${sectionId}" onclick="rbExecToggleDeductionType('${sectionId}','final')" title="Вычитается в конце из итоговой зарплаты (после всех бонусов). База для %: итоговая зарплата.">от з/п</button>
-            <button class="rb-exec-type-btn" id="rb-exec-dtype-turnover-${sectionId}" onclick="rbExecToggleDeductionType('${sectionId}','turnover')" title="Вычитается в самом начале от суммы оборота. Для оплаты-% — уменьшает базу расчёта бонуса. База для %: оборот выполненных услуг.">оборот</button>
+            <button class="rb-exec-type-btn active" id="rb-exec-dtype-final-${sectionId}" onclick="rbExecToggleDeductionType('${sectionId}','final')" title="Вычитается из итоговой зарплаты">от з/п</button>
+            <button class="rb-exec-type-btn" id="rb-exec-dtype-turnover-${sectionId}" onclick="rbExecToggleDeductionType('${sectionId}','turnover')" title="Вычитается от оборота выполненных услуг">оборот</button>
           </div>
         </div>
         <div class="rb-exec-add-field">
@@ -2873,8 +2867,10 @@ async function rbBuildReport(rows) {
 
   // Фильтруем строки где врач — рекомендатель ИЛИ исполнитель
   const allRelevant = rows.filter(r => {
-    const isRef  = colMap.referrer && rbNamesMatch(doctorName, r[colMap.referrer]);
-    const isExec = colMap.executor && rbNamesMatch(doctorName, r[colMap.executor]);
+    const refNorm  = colMap.referrer ? rbNormalizeName(r[colMap.referrer]) : '';
+    const execNorm = colMap.executor ? rbNormalizeName(r[colMap.executor]) : '';
+    const isRef  = lastName && refNorm.includes(lastName);
+    const isExec = lastName && execNorm.includes(lastName);
     if (!isRef && !isExec) return false;
     return rbRowInDateRange(r);
   });
@@ -2903,7 +2899,7 @@ async function rbBuildReport(rows) {
   const orphanReferrerRows = [];
   Object.entries(rawByClinic).forEach(([clinicId, group]) => {
     const hasExecRows = group.rows.some(r =>
-      colMap.executor && rbNamesMatch(doctorName, r[colMap.executor] || '')
+      colMap.executor && lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName)
     );
     if (hasExecRows) {
       byClinic[clinicId] = group;
@@ -2930,7 +2926,7 @@ async function rbBuildReport(rows) {
 
   // Загружаем бонусы по коду услуги (для расчёта выплат направителям)
   const allServiceCodes = [...new Set(allRelevant
-    .filter(r => colMap.executor && rbNamesMatch(doctorName, r[colMap.executor] || ''))
+    .filter(r => colMap.executor && rbNormalizeName(r[colMap.executor] || '').includes(lastName))
     .map(r => colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '')
     .filter(Boolean))];
   const bonusesByServiceCode = {};
@@ -2954,12 +2950,12 @@ async function rbBuildReport(rows) {
 
     // 1. Строки где этот врач — рекомендатель
     const referrerRows = colMap.referrer
-      ? clinicRows.filter(r => rbNamesMatch(doctorName, r[colMap.referrer] || ''))
+      ? clinicRows.filter(r => lastName && rbNormalizeName(r[colMap.referrer] || '').includes(lastName))
       : [];
 
     // 2. Строки где этот врач — исполнитель (для базовой оплаты и бонусов)
     const executorRows = colMap.executor
-      ? clinicRows.filter(r => rbNamesMatch(doctorName, r[colMap.executor] || ''))
+      ? clinicRows.filter(r => lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName))
       : [];
 
     // ── Бонусы за направления (врач — рекомендатель) ──
@@ -3000,7 +2996,7 @@ async function rbBuildReport(rows) {
     const executorByReferrer = {};
     executorRows.forEach(r => {
       const refName = colMap.referrer ? String(r[colMap.referrer] || '').trim() : '';
-      if (!refName || rbNamesMatch(doctorName, refName)) return; // исключаем себя
+      if (!refName || (lastName && rbNormalizeName(refName).includes(lastName))) return; // исключаем себя
       const code     = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
       const svcName  = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
       const cost     = rbParseCost(r);
@@ -3037,6 +3033,17 @@ async function rbBuildReport(rows) {
       perfByService[key].cost += rbParseCost(r);
       perfByService[key].count++;
     });
+    // Итого сумма выполненных услуг врачом (для % расчёта)
+    const performedServicesSum = executorRows.reduce((s, r) => s + rbParseCost(r), 0);
+    // Рублёвые удержания «от оборота» уменьшают базу ДО расчёта бонуса
+    const _rubOborotFixed =
+      (clinicSettings.deductions || []).filter(d => d.deductionType !== 'final' && d.valueType !== 'percent')
+        .reduce((s, d) => s + (parseFloat(d.value) || 0), 0) +
+      (clinicSettings.materials || []).filter(m => m.deductionType !== 'final' && m.valueType !== 'percent')
+        .reduce((s, m) => s + (parseFloat(m.value) || 0), 0);
+    const _bonusAdjFactor = (performedServicesSum > 0 && _rubOborotFixed > 0)
+      ? Math.max(0, (performedServicesSum - _rubOborotFixed) / performedServicesSum)
+      : 1;
     let performedBonusTotal = 0;
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
     const performedSections = Object.values(perfByService).map(s => {
@@ -3047,15 +3054,12 @@ async function rbBuildReport(rows) {
       );
       let bonusAmount = 0, bonusLabel = '—';
       if (bonus) {
-        if (bonus.bonusPercent != null) { bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
+        if (bonus.bonusPercent != null) { bonusAmount = s.cost * _bonusAdjFactor * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
         else if (bonus.bonusRub != null) { bonusAmount = parseFloat(bonus.bonusRub) * s.count; bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`; }
       }
       performedBonusTotal += bonusAmount;
       return { ...s, bonusAmount, bonusLabel };
     }).filter(s => s.bonusAmount > 0 || s.code);
-
-    // Итого сумма выполненных услуг врачом (для % расчёта)
-    const performedServicesSum = executorRows.reduce((s, r) => s + rbParseCost(r), 0);
 
     // ── Расчёт базовой оплаты ──
     const pt = clinicSettings.payType || 'salary';
@@ -3079,33 +3083,19 @@ async function rbBuildReport(rows) {
     const execMaterials  = clinicSettings.materials  || [];
     const execExtras     = clinicSettings.extras     || [];
     const extrasTotal     = execExtras.reduce((s, e) => s + calcExtraRub(e), 0);
-    // Two-phase deductions:
-    // 'turnover' (от оборота): для percent-типа поглощается в basePay (уменьшает базу бонуса),
-    //   для salary/hourly — прямой вычет из зарплаты.
-    // 'final' (от з/п): вычитается из итоговой зарплаты после всех бонусов.
+    // Two-phase deductions: 'turnover' uses performedServicesSum as base; 'final' uses pre-final salary
     // Legacy items (no deductionType set) default to 'turnover'
     const turnoverDeductions = execDeductions.filter(d => d.deductionType !== 'final');
     const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
     const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
     const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-    const turnoverDeductionsTotal = turnoverDeductions.reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
-    const turnoverMaterialsTotal  = turnoverMaterials.reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
-    // Effective turnover after removing "от оборота" items (used as bonus base for percent type)
-    const effectiveTurnover = Math.max(0, performedServicesSum - turnoverDeductionsTotal - turnoverMaterialsTotal);
-    // For percent type: "от оборота" reduces the bonus calculation base (absorbed into basePay).
-    // The doctor's % is applied to net revenue instead of gross.
-    if (pt === 'percent' && performedServicesSum > 0 && (turnoverDeductionsTotal > 0 || turnoverMaterialsTotal > 0)) {
-      basePay = performedBonusTotal * (effectiveTurnover / performedServicesSum);
-    }
-    const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal
-      - (pt !== 'percent' ? turnoverDeductionsTotal : 0)
-      - (pt !== 'percent' ? turnoverMaterialsTotal  : 0)
-      - referralCostTotal;
+    const turnoverDeductionsTotal = turnoverDeductions.filter(d => d.valueType === 'percent').reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
+    const turnoverMaterialsTotal  = turnoverMaterials.filter(m => m.valueType === 'percent').reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
+    const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - turnoverDeductionsTotal - turnoverMaterialsTotal - referralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
-    // For percent type: turnover items are absorbed into basePay, excluded from deductionsTotal display
-    const deductionsTotal = (pt !== 'percent' ? turnoverDeductionsTotal : 0) + finalDeductionsTotal;
-    const materialsTotal  = (pt !== 'percent' ? turnoverMaterialsTotal  : 0) + finalMaterialsTotal;
+    const deductionsTotal = turnoverDeductionsTotal + finalDeductionsTotal;
+    const materialsTotal  = turnoverMaterialsTotal  + finalMaterialsTotal;
     const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal;
 
     referralBonusTotal && (globalGrandTotal += referralBonusTotal);
@@ -3120,13 +3110,13 @@ async function rbBuildReport(rows) {
       extrasTotal, deductionsTotal, materialsTotal,
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
-      performedServicesSum, effectiveTurnover,
+      performedServicesSum,
       referralCostTotal, referralCostItems, executorSections,
       finalSalary, advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: clinicSettings.mainPayment || 0,
       mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
-      deductions: execDeductions, materials: execMaterials, extras: execExtras,
+      deductions: [...finalDeductions, ...turnoverDeductions.filter(d => d.valueType === 'percent')], materials: [...finalMaterials, ...turnoverMaterials.filter(m => m.valueType === 'percent')], extras: execExtras,
     };
 
     clinicReports.push({ clinicId, clinicLabel, referralSections, executorSections, salary, performedSections });
@@ -3181,21 +3171,15 @@ function rbRenderSalaryBlock(salary) {
     extrasTotal, deductionsTotal, materialsTotal,
     turnoverDeductionsTotal = 0, finalDeductionsTotal = 0,
     turnoverMaterialsTotal = 0, finalMaterialsTotal = 0,
-    performedServicesSum = 0, effectiveTurnover = 0,
+    performedServicesSum = 0,
     referralCostTotal, referralCostItems, executorSections = [], finalSalary,
     advance, mainPayment, paymentMethod, mainPaymentMethod,
     deductions, materials, extras } = salary;
 
   function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
-
-  // For percent type with "от оборота" items: they are absorbed into basePay (not separately subtracted)
-  const hasTurnoverAbsorbed = payType === 'percent' && (turnoverDeductionsTotal > 0 || turnoverMaterialsTotal > 0);
   // Pre-final salary = everything before 'final'-type deductions
   const _preFinalSalary = (basePay||0) + (referralBonuses||0) + (performedBonusTotal||0) + (extrasTotal||0)
-    - (!hasTurnoverAbsorbed ? (turnoverDeductionsTotal||0) : 0)
-    - (!hasTurnoverAbsorbed ? (turnoverMaterialsTotal||0) : 0)
-    - (referralCostTotal||0);
-
+    - (turnoverDeductionsTotal||0) - (turnoverMaterialsTotal||0) - (referralCostTotal||0);
   function itemLabel(item, _ignored) {
     const rub = parseFloat(item.value) || 0;
     const base = item.deductionType !== 'final' ? (performedServicesSum || 0) : _preFinalSalary;
@@ -3214,10 +3198,6 @@ function rbRenderSalaryBlock(salary) {
     return hrs > 0 ? `${e.name} (${fmtRub(e.amount)} × ${hrs} ч = ${fmtRub(parseFloat(e.amount) * hrs)})` : `${e.name} (${fmtRub(e.amount)})`;
   }
 
-  // For percent type with absorbed turnover: only "от з/п" items appear in regular deduction rows
-  const displayDeductions = hasTurnoverAbsorbed ? (deductions||[]).filter(d => d.deductionType === 'final') : (deductions||[]);
-  const displayMaterials  = hasTurnoverAbsorbed ? (materials||[]).filter(m => m.deductionType === 'final') : (materials||[]);
-
   const wage = basePay || 0; // для обратной совместимости с расчётами вычетов
   const hasWage           = (basePay || 0) > 0;
   const hasReferral       = (referralBonuses || 0) > 0;
@@ -3226,7 +3206,7 @@ function rbRenderSalaryBlock(salary) {
   const hasDeductions     = deductionsTotal > 0;
   const hasMaterials      = materialsTotal > 0;
   const hasReferralCost   = (referralCostTotal || 0) > 0;
-  const hasAny            = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasTurnoverAbsorbed;
+  const hasAny            = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost;
 
   if (!hasAny) return '';
 
@@ -3236,45 +3216,9 @@ function rbRenderSalaryBlock(salary) {
       Расчёт зарплаты
     </div>`;
 
-  // For percent type with "от оборота" absorbed: show effective turnover info block
-  if (hasTurnoverAbsorbed) {
-    const absorbedTotal = (turnoverDeductionsTotal||0) + (turnoverMaterialsTotal||0);
-    const absorbedItems = [
-      ...(deductions||[]).filter(d => d.deductionType !== 'final'),
-      ...(materials||[]).filter(m => m.deductionType !== 'final')
-    ];
-    html += `<div class="rb-salary-row minus expandable" onclick="this.classList.toggle('expanded')">
-      <div class="rb-salary-row-icon">%</div>
-      <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label"><svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>Расходы от оборота <span style="font-size:10px;background:#e0f2fe;color:#0369a1;padding:1px 6px;border-radius:3px;margin-left:4px;font-weight:600">уменьшает базу</span></div>
-        <div class="rb-salary-row-detail">
-          <div style="font-size:12px;color:var(--rb-text-secondary);margin-bottom:8px;">
-            Оборот: ${fmtRub(performedServicesSum)} − расходы: ${fmtRub(absorbedTotal)} = эфф. оборот: <strong>${fmtRub(effectiveTurnover)}</strong>
-          </div>
-          <table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:right">Значение</th><th style="text-align:right">Сумма</th></tr></thead><tbody>
-            ${absorbedItems.map(d => {
-              const v = parseFloat(d.value) || 0;
-              const rub = d.valueType === 'percent' ? performedServicesSum * v / 100 : v;
-              return `<tr><td>${rbEsc(d.name)}</td><td style="text-align:right">${d.valueType === 'percent' ? v+'%' : v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${rub.toFixed(2)} ₽</td></tr>`;
-            }).join('')}
-          </tbody></table>
-        </div>
-      </div>
-      <div class="rb-salary-row-value">−${fmtRub(absorbedTotal)}</div>
-    </div>`;
-  }
-
   if (hasWage) {
-    // For percent type with absorbed turnover: label shows effective turnover base
-    const wageRowLabel = hasTurnoverAbsorbed
-      ? `${basePayLabel || 'Оклад'} (база: эфф. оборот ${fmtRub(effectiveTurnover)})`
-      : (basePayLabel || 'Оклад');
-    // Scale per-service sections for display if turnover was absorbed
-    const sfDisp = hasTurnoverAbsorbed && performedServicesSum > 0 ? (effectiveTurnover / performedServicesSum) : 1;
-    const rawBaseSections = basePerformedSections || [];
-    const baseSections = hasTurnoverAbsorbed
-      ? rawBaseSections.map(s => ({ ...s, bonusAmount: s.bonusAmount * sfDisp }))
-      : rawBaseSections;
+    const wageRowLabel = basePayLabel || 'Оклад';
+    const baseSections = basePerformedSections || [];
     html += `<div class="rb-salary-row base${baseSections.length ? ' expandable' : ''}"${baseSections.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">≡</div>
       <div class="rb-salary-row-body">
@@ -3374,22 +3318,22 @@ function rbRenderSalaryBlock(salary) {
   }
 
   if (hasDeductions) {
-    html += `<div class="rb-salary-row minus${displayDeductions.length ? ' expandable' : ''}"${displayDeductions.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
+    html += `<div class="rb-salary-row minus${deductions.length ? ' expandable' : ''}"${deductions.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">−</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">${displayDeductions.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Расходники / штрафы / взыскания</div>
-        ${displayDeductions.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${displayDeductions.map(d => { const _v=parseFloat(d.value)||0; const _base=d.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=d.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(d.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${d.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${d.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+        <div class="rb-salary-row-label">${deductions.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Расходники / штрафы / взыскания</div>
+        ${deductions.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${deductions.map(d => { const _v=parseFloat(d.value)||0; const _base=d.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=d.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(d.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${d.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${d.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="rb-salary-row-value">−${fmtRub(deductionsTotal)}</div>
     </div>`;
   }
 
   if (hasMaterials) {
-    html += `<div class="rb-salary-row minus${displayMaterials.length ? ' expandable' : ''}"${displayMaterials.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
+    html += `<div class="rb-salary-row minus${materials.length ? ' expandable' : ''}"${materials.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">−</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">${displayMaterials.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Материалы</div>
-        ${displayMaterials.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${displayMaterials.map(m => { const _v=parseFloat(m.value)||0; const _base=m.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=m.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(m.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${m.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${m.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
+        <div class="rb-salary-row-label">${materials.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Материалы</div>
+        ${materials.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th style="text-align:center">База</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${materials.map(m => { const _v=parseFloat(m.value)||0; const _base=m.deductionType!=='final'?(performedServicesSum||0):_preFinalSalary; const _rub=m.valueType==='percent'?_base*_v/100:_v; return `<tr><td>${rbEsc(m.name)}</td><td style="text-align:center;font-size:11px;color:var(--rb-text-secondary)">${m.deductionType==='final'?'от з/п':'оборот'}</td><td style="text-align:right">${m.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;color:var(--rb-danger);text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table></div>` : ''}
       </div>
       <div class="rb-salary-row-value">−${fmtRub(materialsTotal)}</div>
     </div>`;
@@ -3574,37 +3518,11 @@ async function rbExportReport() {
         row.hidden = true;
       };
 
-      // Для percent-типа: "от оборота" расходы поглощены в basePay — показываем отдельной строкой
-      const xlsHasTurnoverAbsorbed = sal.payType === 'percent' && ((sal.turnoverDeductionsTotal||0) + (sal.turnoverMaterialsTotal||0)) > 0;
-      if (xlsHasTurnoverAbsorbed) {
-        const xlsAbsorbedItems = [
-          ...(sal.deductions||[]).filter(d => d.deductionType !== 'final'),
-          ...(sal.materials||[]).filter(m => m.deductionType !== 'final')
-        ];
-        const xlsAbsorbedTotal = (sal.turnoverDeductionsTotal||0) + (sal.turnoverMaterialsTotal||0);
-        addSalRow('Расходы от оборота (уменьшают базу бонуса)', xlsAbsorbedTotal, '-');
-        addTblHdr(['Наименование', '', '', '', 'Значение', 'Сумма, руб'], 1);
-        xlsAbsorbedItems.forEach(d => {
-          const v = parseFloat(d.value) || 0;
-          const rub = d.valueType === 'percent' ? parseFloat(((sal.performedServicesSum||0) * v / 100).toFixed(2)) : v;
-          addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, -rub], 1);
-        });
-        // Информационная строка об эффективном обороте
-        const infoRow = ws.addRow(['', `Оборот: ${(sal.performedServicesSum||0).toFixed(2)} ₽ − расходы: ${xlsAbsorbedTotal.toFixed(2)} ₽ = эфф. оборот: ${(sal.effectiveTurnover||0).toFixed(2)} ₽`, '', '', '', '']);
-        infoRow.getCell(2).font = { ...fontNormal, italic: true, color: { argb: 'FF64748B' } };
-        ws.mergeCells(`B${infoRow.number}:F${infoRow.number}`);
-        infoRow.outlineLevel = 1;
-        infoRow.hidden = true;
-      }
       if (sal.basePay > 0 || sal.basePayLabel) {
-        const xlsBaseLabel = xlsHasTurnoverAbsorbed
-          ? `${sal.basePayLabel || 'Оклад'} (база: эфф. оборот ${(sal.effectiveTurnover||0).toFixed(2)} ₽)`
-          : (sal.basePayLabel || 'Оклад');
-        addSalRow(xlsBaseLabel, sal.basePay, '≡');
+        addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
         if ((sal.basePerformedSections || []).length) {
-          const xlsSfDisp = xlsHasTurnoverAbsorbed && (sal.performedServicesSum||0) > 0 ? (sal.effectiveTurnover||0) / sal.performedServicesSum : 1;
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-          (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat(((s.bonusAmount || 0) * xlsSfDisp).toFixed(2))], 1));
+          (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
         }
       }
       if (sal.referralBonuses > 0) {
@@ -3634,14 +3552,12 @@ async function rbExportReport() {
         }
       }
       if (sal.deductionsTotal > 0) {
-        // For percent type: only show "от з/п" deductions (turnover ones are in absorbed block above)
-        const xlsDisplayDeds = xlsHasTurnoverAbsorbed ? (sal.deductions||[]).filter(d => d.deductionType === 'final') : (sal.deductions||[]);
-        const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(!xlsHasTurnoverAbsorbed?(sal.turnoverDeductionsTotal||0):0)-(!xlsHasTurnoverAbsorbed?(sal.turnoverMaterialsTotal||0):0)-(sal.referralCostTotal||0);
+        const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
         const xlsBase = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal;
         addSalRow('Расходники / штрафы / взыскания', sal.deductionsTotal, '-');
-        if (xlsDisplayDeds.length) {
+        if ((sal.deductions || []).length) {
           addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
-          xlsDisplayDeds.forEach(d => {
+          (sal.deductions || []).forEach(d => {
             const v = parseFloat(d.value) || 0;
             const computed = d.valueType === 'percent' ? parseFloat((xlsBase(d) * v / 100).toFixed(2)) : v;
             addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
@@ -3649,14 +3565,12 @@ async function rbExportReport() {
         }
       }
       if (sal.materialsTotal > 0) {
-        // For percent type: only show "от з/п" materials
-        const xlsDisplayMats = xlsHasTurnoverAbsorbed ? (sal.materials||[]).filter(m => m.deductionType === 'final') : (sal.materials||[]);
-        const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(!xlsHasTurnoverAbsorbed?(sal.turnoverDeductionsTotal||0):0)-(!xlsHasTurnoverAbsorbed?(sal.turnoverMaterialsTotal||0):0)-(sal.referralCostTotal||0);
+        const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
         const xlsBase2 = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal2;
         addSalRow('Материалы', sal.materialsTotal, '-');
-        if (xlsDisplayMats.length) {
+        if ((sal.materials || []).length) {
           addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
-          xlsDisplayMats.forEach(m => {
+          (sal.materials || []).forEach(m => {
             const v = parseFloat(m.value) || 0;
             const computed = m.valueType === 'percent' ? parseFloat((xlsBase2(m) * v / 100).toFixed(2)) : v;
             addTblRow([m.name, '', '', '', m.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
@@ -4270,9 +4184,10 @@ async function rbBulkGenerate() {
 
     // Фильтруем строки: врач — рекомендатель ИЛИ исполнитель
     const allRelevant = BULK.excelRows.filter(r => {
-      const isRef  = colMap.referrer && rbNamesMatch(d.name, r[colMap.referrer]);
-      const isExec = colMap.executor && rbNamesMatch(d.name, r[colMap.executor]);
-      if (!isRef && !isExec) return false;
+      const refNorm  = colMap.referrer ? rbNormalizeName(r[colMap.referrer]) : '';
+      const execNorm = colMap.executor ? rbNormalizeName(r[colMap.executor]) : '';
+      if (!lastName) return false;
+      if (!refNorm.includes(lastName) && !execNorm.includes(lastName)) return false;
       return bulkRowInDateRange(r);
     });
 
@@ -4291,7 +4206,7 @@ async function rbBulkGenerate() {
     const orphanRows2 = [];
     Object.entries(rawByClinic2).forEach(([clinicId, group]) => {
       const hasExec = group.rows.some(r =>
-        colMap.executor && rbNamesMatch(d.name, r[colMap.executor] || '')
+        colMap.executor && lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName)
       );
       if (hasExec) byClinic[clinicId] = group;
       else orphanRows2.push(...group.rows);
@@ -4304,7 +4219,7 @@ async function rbBulkGenerate() {
 
     // Загружаем бонусы по коду услуги (для расчёта выплат направителям у исполнителя)
     const _bulkSvcCodes = [...new Set(allRelevant
-      .filter(r => colMap.executor && rbNamesMatch(d.name, r[colMap.executor] || ''))
+      .filter(r => colMap.executor && rbNormalizeName(r[colMap.executor] || '').includes(lastName))
       .map(r => colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '')
       .filter(Boolean))];
     const _bulkBonusesBySvc = {};
@@ -4324,12 +4239,12 @@ async function rbBulkGenerate() {
 
       // Строки где врач — рекомендатель
       const referrerRows = colMap.referrer
-        ? clinicRows.filter(r => rbNamesMatch(d.name, r[colMap.referrer] || ''))
+        ? clinicRows.filter(r => lastName && rbNormalizeName(r[colMap.referrer] || '').includes(lastName))
         : [];
 
       // Строки где врач — исполнитель
       const executorRows = colMap.executor
-        ? clinicRows.filter(r => rbNamesMatch(d.name, r[colMap.executor] || ''))
+        ? clinicRows.filter(r => lastName && rbNormalizeName(r[colMap.executor] || '').includes(lastName))
         : [];
 
       // Бонусы за направления
@@ -4375,6 +4290,17 @@ async function rbBulkGenerate() {
         perfByService[key].cost += bulkParseCost(r);
         perfByService[key].count++;
       });
+      // Итого сумма выполненных услуг врачом (для % расчёта)
+      const performedServicesSum = executorRows.reduce((s, r) => s + bulkParseCost(r), 0);
+      // Рублёвые удержания «от оборота» уменьшают базу ДО расчёта бонуса
+      const _rubOborotFixed =
+        (clinicSettings.deductions || []).filter(d => d.deductionType !== 'final' && d.valueType !== 'percent')
+          .reduce((s, d) => s + (parseFloat(d.value) || 0), 0) +
+        (clinicSettings.materials || []).filter(m => m.deductionType !== 'final' && m.valueType !== 'percent')
+          .reduce((s, m) => s + (parseFloat(m.value) || 0), 0);
+      const _bonusAdjFactor = (performedServicesSum > 0 && _rubOborotFixed > 0)
+        ? Math.max(0, (performedServicesSum - _rubOborotFixed) / performedServicesSum)
+        : 1;
       let performedBonusTotal = 0;
       const _bulkPsvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
       const performedSections = Object.values(perfByService).map(s => {
@@ -4385,7 +4311,7 @@ async function rbBulkGenerate() {
         );
         let bonusAmount = 0, bonusLabel = '—';
         if (bonus) {
-          if (bonus.bonusPercent != null) { bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
+          if (bonus.bonusPercent != null) { bonusAmount = s.cost * _bonusAdjFactor * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
           else if (bonus.bonusRub != null) { bonusAmount = parseFloat(bonus.bonusRub) * s.count; bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`; }
         }
         performedBonusTotal += bonusAmount;
@@ -4396,7 +4322,7 @@ async function rbBulkGenerate() {
       const executorByReferrer = {};
       executorRows.forEach(r => {
         const refName = colMap.referrer ? String(r[colMap.referrer] || '').trim() : '';
-        if (!refName || rbNamesMatch(d.name, refName)) return; // исключаем себя
+        if (!refName || (lastName && rbNormalizeName(refName).includes(lastName))) return; // исключаем себя
         const code    = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
         const svcName = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
         const cost    = bulkParseCost(r);
@@ -4422,7 +4348,6 @@ async function rbBulkGenerate() {
       const bulkReferralCostTotal = bulkReferralCostItems.reduce((s,x) => s + x.amount, 0);
 
       // Базовая оплата
-      const performedServicesSum = executorRows.reduce((s, r) => s + bulkParseCost(r), 0);
       const pt = clinicSettings.payType || 'salary';
       let basePay = 0, basePayLabel = '';
       if (pt === 'salary') {
@@ -4444,32 +4369,19 @@ async function rbBulkGenerate() {
       const execMaterials  = clinicSettings.materials  || [];
       const execExtras     = clinicSettings.extras     || [];
       const extrasTotal     = execExtras.reduce((s, e) => s + calcExtraRub(e), 0);
-      // Two-phase deductions:
-      // 'turnover' (от оборота): для percent-типа поглощается в basePay (уменьшает базу бонуса),
-      //   для salary/hourly — прямой вычет из зарплаты.
-      // 'final' (от з/п): вычитается из итоговой зарплаты после всех бонусов.
+      // Two-phase deductions
       // Legacy items (no deductionType set) default to 'turnover'
       const turnoverDeductions = execDeductions.filter(d => d.deductionType !== 'final');
       const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
       const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
       const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-      const turnoverDeductionsTotal = turnoverDeductions.reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
-      const turnoverMaterialsTotal  = turnoverMaterials.reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
-      // Effective turnover after removing "от оборота" items (used as bonus base for percent type)
-      const effectiveTurnover = Math.max(0, performedServicesSum - turnoverDeductionsTotal - turnoverMaterialsTotal);
-      // For percent type: "от оборота" reduces the bonus calculation base (absorbed into basePay).
-      if (pt === 'percent' && performedServicesSum > 0 && (turnoverDeductionsTotal > 0 || turnoverMaterialsTotal > 0)) {
-        basePay = performedBonusTotal * (effectiveTurnover / performedServicesSum);
-      }
-      const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal
-        - (pt !== 'percent' ? turnoverDeductionsTotal : 0)
-        - (pt !== 'percent' ? turnoverMaterialsTotal  : 0)
-        - bulkReferralCostTotal;
+      const turnoverDeductionsTotal = turnoverDeductions.filter(d => d.valueType === 'percent').reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
+      const turnoverMaterialsTotal  = turnoverMaterials.filter(m => m.valueType === 'percent').reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
+      const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - turnoverDeductionsTotal - turnoverMaterialsTotal - bulkReferralCostTotal;
       const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
       const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
-      // For percent type: turnover items are absorbed into basePay, excluded from deductionsTotal display
-      const deductionsTotal = (pt !== 'percent' ? turnoverDeductionsTotal : 0) + finalDeductionsTotal;
-      const materialsTotal  = (pt !== 'percent' ? turnoverMaterialsTotal  : 0) + finalMaterialsTotal;
+      const deductionsTotal = turnoverDeductionsTotal + finalDeductionsTotal;
+      const materialsTotal  = turnoverMaterialsTotal  + finalMaterialsTotal;
       const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal;
 
       grandTotal += referralBonusTotal;
@@ -4484,13 +4396,13 @@ async function rbBulkGenerate() {
         extrasTotal, deductionsTotal, materialsTotal,
         turnoverDeductionsTotal, finalDeductionsTotal,
         turnoverMaterialsTotal, finalMaterialsTotal,
-        performedServicesSum, effectiveTurnover,
+        performedServicesSum,
         referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
         finalSalary, advance: clinicSettings.advance || 0,
         paymentMethod: clinicSettings.paymentMethod,
         mainPayment: clinicSettings.mainPayment || 0,
         mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
-        deductions: execDeductions, materials: execMaterials, extras: execExtras,
+        deductions: [...finalDeductions, ...turnoverDeductions.filter(d => d.valueType === 'percent')], materials: [...finalMaterials, ...turnoverMaterials.filter(m => m.valueType === 'percent')], extras: execExtras,
       };
 
       clinicReports.push({ clinicId, clinicLabel, referralSections, executorSections, salary, performedSections });
@@ -4697,36 +4609,11 @@ async function rbBulkExport() {
           row.hidden = true;
         };
 
-        // Для percent-типа: "от оборота" расходы поглощены в basePay — показываем отдельной строкой
-        const xlsHasTurnoverAbsorbed2 = sal.payType === 'percent' && ((sal.turnoverDeductionsTotal||0) + (sal.turnoverMaterialsTotal||0)) > 0;
-        if (xlsHasTurnoverAbsorbed2) {
-          const xlsAbsorbedItems2 = [
-            ...(sal.deductions||[]).filter(d => d.deductionType !== 'final'),
-            ...(sal.materials||[]).filter(m => m.deductionType !== 'final')
-          ];
-          const xlsAbsorbedTotal2 = (sal.turnoverDeductionsTotal||0) + (sal.turnoverMaterialsTotal||0);
-          addSalRowXls('Расходы от оборота (уменьшают базу бонуса)', xlsAbsorbedTotal2, '-');
-          addTblHdr(['Наименование', '', '', '', 'Значение', 'Сумма, руб'], 1);
-          xlsAbsorbedItems2.forEach(d => {
-            const v = parseFloat(d.value) || 0;
-            const rub = d.valueType === 'percent' ? parseFloat(((sal.performedServicesSum||0) * v / 100).toFixed(2)) : v;
-            addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, -rub], 1);
-          });
-          const infoRow2 = ws.addRow(['', `Оборот: ${(sal.performedServicesSum||0).toFixed(2)} ₽ − расходы: ${xlsAbsorbedTotal2.toFixed(2)} ₽ = эфф. оборот: ${(sal.effectiveTurnover||0).toFixed(2)} ₽`, '', '', '', '']);
-          infoRow2.getCell(2).font = { ...fontNormal, italic: true, color: { argb: 'FF64748B' } };
-          ws.mergeCells(`B${infoRow2.number}:F${infoRow2.number}`);
-          infoRow2.outlineLevel = 1;
-          infoRow2.hidden = true;
-        }
         if (sal.basePay > 0 || sal.basePayLabel) {
-          const xlsBaseLabel2 = xlsHasTurnoverAbsorbed2
-            ? `${sal.basePayLabel || 'Оклад'} (база: эфф. оборот ${(sal.effectiveTurnover||0).toFixed(2)} ₽)`
-            : (sal.basePayLabel || 'Оклад');
-          addSalRowXls(xlsBaseLabel2, sal.basePay, '≡');
+          addSalRowXls(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
           if ((sal.basePerformedSections || []).length) {
-            const xlsSfDisp2 = xlsHasTurnoverAbsorbed2 && (sal.performedServicesSum||0) > 0 ? (sal.effectiveTurnover||0) / sal.performedServicesSum : 1;
             addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-            (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat(((s.bonusAmount || 0) * xlsSfDisp2).toFixed(2))], 1));
+            (sal.basePerformedSections || []).forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1));
           }
         }
         if (sal.referralBonuses > 0) {
@@ -4756,14 +4643,12 @@ async function rbBulkExport() {
           }
         }
         if (sal.deductionsTotal > 0) {
-          // For percent type: only show "от з/п" deductions (turnover ones are in absorbed block above)
-          const xlsDisplayDeds2 = xlsHasTurnoverAbsorbed2 ? (sal.deductions||[]).filter(d => d.deductionType === 'final') : (sal.deductions||[]);
-          const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(!xlsHasTurnoverAbsorbed2?(sal.turnoverDeductionsTotal||0):0)-(!xlsHasTurnoverAbsorbed2?(sal.turnoverMaterialsTotal||0):0)-(sal.referralCostTotal||0);
+          const xlsPreFinal = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
           const xlsBase = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal;
           addSalRowXls('Расходники / штрафы / взыскания', sal.deductionsTotal, '-');
-          if (xlsDisplayDeds2.length) {
+          if ((sal.deductions || []).length) {
             addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
-            xlsDisplayDeds2.forEach(d => {
+            (sal.deductions || []).forEach(d => {
               const v = parseFloat(d.value) || 0;
               const computed = d.valueType === 'percent' ? parseFloat((xlsBase(d) * v / 100).toFixed(2)) : v;
               addTblRow([d.name, '', '', '', d.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
@@ -4771,14 +4656,12 @@ async function rbBulkExport() {
           }
         }
         if (sal.materialsTotal > 0) {
-          // For percent type: only show "от з/п" materials
-          const xlsDisplayMats2 = xlsHasTurnoverAbsorbed2 ? (sal.materials||[]).filter(m => m.deductionType === 'final') : (sal.materials||[]);
-          const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(!xlsHasTurnoverAbsorbed2?(sal.turnoverDeductionsTotal||0):0)-(!xlsHasTurnoverAbsorbed2?(sal.turnoverMaterialsTotal||0):0)-(sal.referralCostTotal||0);
+          const xlsPreFinal2 = (sal.basePay||0)+(sal.referralBonuses||0)+(sal.performedBonusTotal||0)+(sal.extrasTotal||0)-(sal.turnoverDeductionsTotal||0)-(sal.turnoverMaterialsTotal||0)-(sal.referralCostTotal||0);
           const xlsBase2 = (item) => item.deductionType !== 'final' ? (sal.performedServicesSum||0) : xlsPreFinal2;
           addSalRowXls('Материалы', sal.materialsTotal, '-');
-          if (xlsDisplayMats2.length) {
+          if ((sal.materials || []).length) {
             addTblHdr(['Наименование', '', '', '', 'Значение', 'Итого, руб'], 1);
-            xlsDisplayMats2.forEach(m => {
+            (sal.materials || []).forEach(m => {
               const v = parseFloat(m.value) || 0;
               const computed = m.valueType === 'percent' ? parseFloat((xlsBase2(m) * v / 100).toFixed(2)) : v;
               addTblRow([m.name, '', '', '', m.valueType === 'percent' ? `${v}%` : `${v.toFixed(2)} ₽`, computed], 1);
@@ -5080,10 +4963,7 @@ window.rbBulkToggle = rbBulkToggle;
 window.rbBulkSelectAll = rbBulkSelectAll;
 window.rbBulkDeselectAll = rbBulkDeselectAll;
 window.rbBulkHandleFile = rbBulkHandleFile;
-window.rbBulkClearFile = rbBulkClearFile;
 window.rbBulkDrop = rbBulkDrop;
-window.rbDragOver = rbDragOver;
-window.rbDragLeave = rbDragLeave;
 window.rbBulkGenerate = rbBulkGenerate;
 window.rbBulkExport = rbBulkExport;
 window.rbBulkSaveToArchive = rbBulkSaveToArchive;
