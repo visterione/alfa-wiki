@@ -3092,8 +3092,9 @@ async function rbBuildReport(rows) {
     const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
     const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
     const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-    const turnoverDeductionsTotal = 0; // уже учтено в _bonusAdjFactor
-    const turnoverMaterialsTotal  = 0; // уже учтено в _bonusAdjFactor
+    // Оборотные удержания учтены в _bonusAdjFactor — в расчёт з/п не включаем
+    const turnoverDeductionsTotal = 0;
+    const turnoverMaterialsTotal  = 0;
     const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - referralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
@@ -4381,8 +4382,9 @@ async function rbBulkGenerate() {
       const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
       const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
       const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-      const turnoverDeductionsTotal = 0; // уже учтено в _bonusAdjFactor
-      const turnoverMaterialsTotal  = 0; // уже учтено в _bonusAdjFactor
+      // Оборотные удержания учтены в _bonusAdjFactor — в расчёт з/п не включаем
+      const turnoverDeductionsTotal = 0;
+      const turnoverMaterialsTotal  = 0;
       const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - bulkReferralCostTotal;
       const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
       const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
