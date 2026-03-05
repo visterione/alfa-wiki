@@ -3035,14 +3035,17 @@ async function rbBuildReport(rows) {
     });
     // Итого сумма выполненных услуг врачом (для % расчёта)
     const performedServicesSum = executorRows.reduce((s, r) => s + rbParseCost(r), 0);
-    // Рублёвые удержания «от оборота» уменьшают базу ДО расчёта бонуса
+    // Все удержания «от оборота» уменьшают базу ДО расчёта бонуса
+    const _pctOborotFactor = [...(clinicSettings.deductions || []), ...(clinicSettings.materials || [])]
+      .filter(d => d.deductionType !== 'final' && d.valueType === 'percent')
+      .reduce((f, d) => f * (1 - (parseFloat(d.value) || 0) / 100), 1);
     const _rubOborotFixed =
       (clinicSettings.deductions || []).filter(d => d.deductionType !== 'final' && d.valueType !== 'percent')
         .reduce((s, d) => s + (parseFloat(d.value) || 0), 0) +
       (clinicSettings.materials || []).filter(m => m.deductionType !== 'final' && m.valueType !== 'percent')
         .reduce((s, m) => s + (parseFloat(m.value) || 0), 0);
-    const _bonusAdjFactor = (performedServicesSum > 0 && _rubOborotFixed > 0)
-      ? Math.max(0, (performedServicesSum - _rubOborotFixed) / performedServicesSum)
+    const _bonusAdjFactor = performedServicesSum > 0
+      ? Math.max(0, performedServicesSum * _pctOborotFactor - _rubOborotFixed) / performedServicesSum
       : 1;
     let performedBonusTotal = 0;
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
@@ -3089,9 +3092,9 @@ async function rbBuildReport(rows) {
     const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
     const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
     const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-    const turnoverDeductionsTotal = turnoverDeductions.filter(d => d.valueType === 'percent').reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
-    const turnoverMaterialsTotal  = turnoverMaterials.filter(m => m.valueType === 'percent').reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
-    const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - turnoverDeductionsTotal - turnoverMaterialsTotal - referralCostTotal;
+    const turnoverDeductionsTotal = 0; // уже учтено в _bonusAdjFactor
+    const turnoverMaterialsTotal  = 0; // уже учтено в _bonusAdjFactor
+    const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - referralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const deductionsTotal = turnoverDeductionsTotal + finalDeductionsTotal;
@@ -3116,7 +3119,7 @@ async function rbBuildReport(rows) {
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: clinicSettings.mainPayment || 0,
       mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
-      deductions: [...finalDeductions, ...turnoverDeductions.filter(d => d.valueType === 'percent')], materials: [...finalMaterials, ...turnoverMaterials.filter(m => m.valueType === 'percent')], extras: execExtras,
+      deductions: execDeductions, materials: execMaterials, extras: execExtras,
     };
 
     clinicReports.push({ clinicId, clinicLabel, referralSections, executorSections, salary, performedSections });
@@ -4292,14 +4295,17 @@ async function rbBulkGenerate() {
       });
       // Итого сумма выполненных услуг врачом (для % расчёта)
       const performedServicesSum = executorRows.reduce((s, r) => s + bulkParseCost(r), 0);
-      // Рублёвые удержания «от оборота» уменьшают базу ДО расчёта бонуса
+      // Все удержания «от оборота» уменьшают базу ДО расчёта бонуса
+      const _pctOborotFactor = [...(clinicSettings.deductions || []), ...(clinicSettings.materials || [])]
+        .filter(d => d.deductionType !== 'final' && d.valueType === 'percent')
+        .reduce((f, d) => f * (1 - (parseFloat(d.value) || 0) / 100), 1);
       const _rubOborotFixed =
         (clinicSettings.deductions || []).filter(d => d.deductionType !== 'final' && d.valueType !== 'percent')
           .reduce((s, d) => s + (parseFloat(d.value) || 0), 0) +
         (clinicSettings.materials || []).filter(m => m.deductionType !== 'final' && m.valueType !== 'percent')
           .reduce((s, m) => s + (parseFloat(m.value) || 0), 0);
-      const _bonusAdjFactor = (performedServicesSum > 0 && _rubOborotFixed > 0)
-        ? Math.max(0, (performedServicesSum - _rubOborotFixed) / performedServicesSum)
+      const _bonusAdjFactor = performedServicesSum > 0
+        ? Math.max(0, performedServicesSum * _pctOborotFactor - _rubOborotFixed) / performedServicesSum
         : 1;
       let performedBonusTotal = 0;
       const _bulkPsvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
@@ -4375,9 +4381,9 @@ async function rbBulkGenerate() {
       const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
       const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
       const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
-      const turnoverDeductionsTotal = turnoverDeductions.filter(d => d.valueType === 'percent').reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
-      const turnoverMaterialsTotal  = turnoverMaterials.filter(m => m.valueType === 'percent').reduce((s, m) => s + calcItemRub(m, performedServicesSum), 0);
-      const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - turnoverDeductionsTotal - turnoverMaterialsTotal - bulkReferralCostTotal;
+      const turnoverDeductionsTotal = 0; // уже учтено в _bonusAdjFactor
+      const turnoverMaterialsTotal  = 0; // уже учтено в _bonusAdjFactor
+      const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - bulkReferralCostTotal;
       const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
       const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
       const deductionsTotal = turnoverDeductionsTotal + finalDeductionsTotal;
@@ -4402,7 +4408,7 @@ async function rbBulkGenerate() {
         paymentMethod: clinicSettings.paymentMethod,
         mainPayment: clinicSettings.mainPayment || 0,
         mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
-        deductions: [...finalDeductions, ...turnoverDeductions.filter(d => d.valueType === 'percent')], materials: [...finalMaterials, ...turnoverMaterials.filter(m => m.valueType === 'percent')], extras: execExtras,
+        deductions: execDeductions, materials: execMaterials, extras: execExtras,
       };
 
       clinicReports.push({ clinicId, clinicLabel, referralSections, executorSections, salary, performedSections });
