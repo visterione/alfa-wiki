@@ -1183,6 +1183,63 @@ const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
   ]
 });
 
+// === SERVICE CONSUMABLES MODEL ===
+const ServiceConsumable = sequelize.define('ServiceConsumable', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    comment: 'ID врача в МИС'
+  },
+  doctorName: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'ФИО врача'
+  },
+  serviceCode: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    comment: 'Код услуги из МИС'
+  },
+  serviceName: {
+    type: DataTypes.STRING(500),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'Название услуги'
+  },
+  name: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Название расходника'
+  },
+  quantity: {
+    type: DataTypes.DECIMAL(10, 3),
+    allowNull: false,
+    defaultValue: 1,
+    comment: 'Количество единиц'
+  },
+  costPerUnit: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: false,
+    defaultValue: 0,
+    comment: 'Стоимость за единицу в рублях'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    comment: 'ID пользователя, создавшего запись'
+  }
+}, {
+  tableName: 'service_consumables',
+  timestamps: true,
+  indexes: [
+    { fields: ['misUserId'] },
+    { fields: ['serviceCode'] },
+    { fields: ['misUserId', 'serviceCode'] }
+  ]
+});
+
 // === EMAIL TEMPLATE MODEL ===
 // === EMAIL FAVORITE RECIPIENTS MODEL ===
 const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
@@ -2063,5 +2120,7 @@ module.exports = {
   // Executor settings module
   ExecutorSettings,
   // Performed service bonuses module
-  PerformedServiceBonus
+  PerformedServiceBonus,
+  // Service consumables module
+  ServiceConsumable
 };
