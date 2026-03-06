@@ -29,6 +29,7 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif; background: var(--rb-bg); color: var(--rb-text); font-size: 15px; }
+input, select, button, textarea { font-family: inherit; }
 
 #rb-app { max-width: 1400px; margin: 0 auto; padding: 20px; }
 
@@ -316,8 +317,8 @@ body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display'
 .rb-panel-count-bar { padding: 5px 16px; font-size: 12px; color: var(--rb-text-secondary); border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
 
 /* Executor detail sections */
-.rb-exec-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
-.rb-exec-section-header { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid var(--rb-border); }
+.rb-exec-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: visible; }
+.rb-exec-section-header { padding: 12px 16px; background: #f8fafc; border-bottom: 1px solid var(--rb-border); border-radius: calc(var(--rb-radius) - 1px) calc(var(--rb-radius) - 1px) 0 0; overflow: hidden; }
 .rb-exec-section-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .rb-exec-section-title svg { width: 16px; height: 16px; color: var(--rb-primary); }
 .rb-exec-section-body { padding: 14px 16px; }
@@ -2220,6 +2221,9 @@ async function rbRenderExecutorDetail() {
   const d = RB.selectedDoctor;
   document.getElementById('rb-detail-panel').innerHTML =
     `<div class="rb-placeholder"><p>Загрузка...</p></div>`;
+  // Clear doctor-specific service caches to prevent stale data from a previously selected doctor
+  RB.execSvcServices = [];
+  RB.psvcServices = [];
   RB.executorData = await rbExecLoad(d.id);
   RB.executorActiveClinic = 'global';
   const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
@@ -2666,10 +2670,10 @@ function rbExecSvcMaterialAddFormHtml() {
   return `
     <div id="rb-exec-svc-mat-form" style="display:none;margin-top:8px">
       <div style="position:relative;margin-bottom:6px">
-        <input id="rb-exec-svc-mat-search" type="text" placeholder="Поиск услуги врача..."
-          style="width:100%;box-sizing:border-box;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none"
+        <input id="rb-exec-svc-mat-search" type="text" placeholder="Введите название или код услуги..."
+          class="rb-search-input" style="font-size:13px;padding:8px 12px"
           oninput="rbExecSvcMatSearch(this.value)" onfocus="rbExecSvcMatSearch(this.value)" onblur="setTimeout(()=>{const r=document.getElementById('rb-exec-svc-mat-results');if(r)r.style.display='none'},200)">
-        <div id="rb-exec-svc-mat-results" style="display:none;position:absolute;z-index:200;left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:6px;max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12);margin-top:2px"></div>
+        <div id="rb-exec-svc-mat-results" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:9999;background:#fff;border:1px solid var(--rb-border-dark);border-radius:8px;max-height:280px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.15)"></div>
       </div>
       <div id="rb-exec-svc-mat-selected-block" style="display:none">
         <div style="font-size:11px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:5px 10px;margin-bottom:8px;color:#166534;font-weight:600" id="rb-exec-svc-mat-selected-label"></div>
@@ -2750,6 +2754,8 @@ function rbExecToggleSvcMatForm() {
 function rbExecSvcMatSearch(query) {
   const resultsEl = document.getElementById('rb-exec-svc-mat-results');
   if (!resultsEl) return;
+  const inputEl = document.getElementById('rb-exec-svc-mat-search');
+  if (!inputEl) return;
   const services = RB.execSvcServices || [];
   const q = (query || '').trim().toLowerCase();
   if (!q) { resultsEl.style.display = 'none'; return; }
@@ -2757,16 +2763,16 @@ function rbExecSvcMatSearch(query) {
     s.title.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
   ).slice(0, 20);
   if (!filtered.length) {
-    resultsEl.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#94a3b8">Ничего не найдено</div>';
+    resultsEl.innerHTML = '<div style="padding:14px 16px;font-size:13px;color:var(--rb-text-secondary);text-align:center">Ничего не найдено</div>';
     resultsEl.style.display = '';
     return;
   }
   resultsEl.innerHTML = filtered.map(s =>
-    `<div style="padding:6px 12px;cursor:pointer;font-size:12px;border-bottom:1px solid #f1f5f9"
+    `<div style="padding:9px 14px;cursor:pointer;border-bottom:1px solid var(--rb-border);transition:background 0.1s"
           onmousedown="rbExecSvcMatSelect(${JSON.stringify(s).replace(/"/g, '&quot;')})"
-          onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''">
-       <div style="font-weight:600;color:#1e293b">${rbEsc(s.title)}</div>
-       <div style="color:#94a3b8;font-size:11px">Код: ${rbEsc(s.code)}${s.price ? ' &bull; ' + s.price.toFixed(2) + ' ₽' : ''}</div>
+          onmouseover="this.style.background='#f0f7ff'" onmouseout="this.style.background=''">
+       <div style="font-size:13px;font-weight:500;color:var(--rb-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${rbEsc(s.title)}</div>
+       <div style="margin-top:2px;color:var(--rb-text-secondary);font-size:11px">Код: <span style="font-family:monospace">${rbEsc(s.code)}</span>${s.price ? ' | <span style="color:var(--rb-success);font-weight:600">' + s.price.toFixed(2) + ' ₽</span>' : ''}</div>
      </div>`
   ).join('');
   resultsEl.style.display = '';
