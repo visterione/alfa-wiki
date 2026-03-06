@@ -4,6 +4,7 @@ import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
 import { useState, useRef, useEffect } from 'react';
 import Blockquote from '@tiptap/extension-blockquote';
 import TipTapTableCell from '@tiptap/extension-table-cell';
+import TipTapTableHeader from '@tiptap/extension-table-header';
 import TiptapImage from '@tiptap/extension-image';
 import { BASE_URL } from '../services/api';
 
@@ -33,7 +34,29 @@ export const TableCell = TipTapTableCell.extend({
       ...this.parent?.(),
       backgroundColor: {
         default: null,
-        parseHTML: element => element.getAttribute('data-background-color') || element.style.backgroundColor,
+        parseHTML: element => element.getAttribute('data-background-color') || element.style.backgroundColor || null,
+        renderHTML: attributes => {
+          if (!attributes.backgroundColor) {
+            return {};
+          }
+          return {
+            'data-background-color': attributes.backgroundColor,
+            style: `background-color: ${attributes.backgroundColor}`
+          };
+        }
+      }
+    };
+  }
+});
+
+// Расширенный TableHeader с поддержкой цвета фона (аналогично TableCell)
+export const TableHeader = TipTapTableHeader.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      backgroundColor: {
+        default: null,
+        parseHTML: element => element.getAttribute('data-background-color') || element.style.backgroundColor || null,
         renderHTML: attributes => {
           if (!attributes.backgroundColor) {
             return {};

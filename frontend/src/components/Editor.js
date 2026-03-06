@@ -9,7 +9,6 @@ import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
 import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Subscript from '@tiptap/extension-subscript';
@@ -19,7 +18,7 @@ import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
 import EmojiPicker from 'emoji-picker-react';
 import { LocalVideo } from './LocalVideo';
-import { CustomBlockquote, TableCell, ResizableImage } from './EditorExtensions';
+import { CustomBlockquote, TableCell, TableHeader, ResizableImage } from './EditorExtensions';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -28,7 +27,7 @@ import {
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
   Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type,
-  AlertTriangle, AlertCircle
+  AlertTriangle, AlertCircle, Scissors, GitMerge, LayoutGrid
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -856,11 +855,12 @@ function TableMenuDropdown({ editor, buttonRef }) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [showCellColors, setShowCellColors] = useState(false);
   const [showSizeSelector, setShowSizeSelector] = useState(false);
+  const [withHeaderRow, setWithHeaderRow] = useState(true);
   const menuRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target) && 
+      if (menuRef.current && !menuRef.current.contains(e.target) &&
           buttonRef.current && !buttonRef.current.contains(e.target)) {
         setIsOpen(false);
         setShowCellColors(false);
@@ -876,12 +876,12 @@ function TableMenuDropdown({ editor, buttonRef }) {
       const rect = buttonRef.current.getBoundingClientRect();
       const menuWidth = 240;
       const viewportWidth = window.innerWidth;
-      
+
       let left = rect.left;
       if (rect.left + menuWidth > viewportWidth - 20) {
         left = viewportWidth - menuWidth - 20;
       }
-      
+
       setPosition({
         top: rect.bottom + 4,
         left: left
@@ -892,17 +892,20 @@ function TableMenuDropdown({ editor, buttonRef }) {
     setShowSizeSelector(false);
   };
 
-  const runCommand = (command) => {
-    command();
+  const closeAll = () => {
     setIsOpen(false);
     setShowCellColors(false);
     setShowSizeSelector(false);
   };
 
+  const runCommand = (command) => {
+    command();
+    closeAll();
+  };
+
   const handleTableSizeSelect = (rows, cols) => {
-    editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
-    setIsOpen(false);
-    setShowSizeSelector(false);
+    editor.chain().focus().insertTable({ rows, cols, withHeaderRow }).run();
+    closeAll();
   };
 
   const setCellBgColor = (color) => {
@@ -917,6 +920,8 @@ function TableMenuDropdown({ editor, buttonRef }) {
   if (!editor) return null;
 
   const isInTable = editor.isActive('table');
+  const canMerge = editor.can().mergeCells();
+  const canSplit = editor.can().splitCell();
 
   return (
     <div className="editor-dropdown-wrapper">
@@ -932,10 +937,10 @@ function TableMenuDropdown({ editor, buttonRef }) {
       </button>
 
       {isOpen && (
-        <div 
+        <div
           ref={menuRef}
           className="table-menu-dropdown"
-          style={{ 
+          style={{
             position: 'fixed',
             top: position.top,
             left: position.left
@@ -944,13 +949,21 @@ function TableMenuDropdown({ editor, buttonRef }) {
           {!isInTable ? (
             <>
               <div className="table-menu-title">Создать таблицу</div>
+              <label className="table-menu-toggle" onClick={e => e.stopPropagation()}>
+                <input
+                  type="checkbox"
+                  checked={withHeaderRow}
+                  onChange={e => setWithHeaderRow(e.target.checked)}
+                />
+                Строка заголовков
+              </label>
               {!showSizeSelector && (
                 <button
                   type="button"
                   className="table-menu-item"
                   onClick={() => setShowSizeSelector(true)}
                 >
-                  <Grid size={16} />
+                  <LayoutGrid size={16} />
                   Выбрать размер
                 </button>
               )}
@@ -960,14 +973,14 @@ function TableMenuDropdown({ editor, buttonRef }) {
             </>
           ) : (
             <>
-              <div className="table-menu-title">Редактировать таблицу</div>
+              <div className="table-menu-title">Столбцы</div>
               <button
                 type="button"
                 className="table-menu-item"
                 onClick={() => runCommand(() => editor.chain().focus().addColumnBefore().run())}
               >
                 <Plus size={16} />
-                Колонку слева
+                Столбец слева
               </button>
               <button
                 type="button"
@@ -975,17 +988,18 @@ function TableMenuDropdown({ editor, buttonRef }) {
                 onClick={() => runCommand(() => editor.chain().focus().addColumnAfter().run())}
               >
                 <Plus size={16} />
-                Колонку справа
+                Столбец справа
               </button>
               <button
                 type="button"
-                className="table-menu-item"
+                className="table-menu-item table-menu-item--danger"
                 onClick={() => runCommand(() => editor.chain().focus().deleteColumn().run())}
               >
                 <Trash2 size={16} />
-                Удалить колонку
+                Удалить столбец
               </button>
               <div className="table-menu-divider" />
+              <div className="table-menu-title">Строки</div>
               <button
                 type="button"
                 className="table-menu-item"
@@ -1004,13 +1018,42 @@ function TableMenuDropdown({ editor, buttonRef }) {
               </button>
               <button
                 type="button"
-                className="table-menu-item"
+                className="table-menu-item table-menu-item--danger"
                 onClick={() => runCommand(() => editor.chain().focus().deleteRow().run())}
               >
                 <Trash2 size={16} />
                 Удалить строку
               </button>
               <div className="table-menu-divider" />
+              <div className="table-menu-title">Ячейки</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                disabled={!canMerge}
+                onClick={() => runCommand(() => editor.chain().focus().mergeCells().run())}
+              >
+                <GitMerge size={16} />
+                Объединить ячейки
+              </button>
+              <button
+                type="button"
+                className="table-menu-item"
+                disabled={!canSplit}
+                onClick={() => runCommand(() => editor.chain().focus().splitCell().run())}
+              >
+                <Scissors size={16} />
+                Разделить ячейку
+              </button>
+              <div className="table-menu-divider" />
+              <div className="table-menu-title">Оформление</div>
+              <button
+                type="button"
+                className="table-menu-item"
+                onClick={() => runCommand(() => editor.chain().focus().toggleHeaderRow().run())}
+              >
+                <LayoutGrid size={16} />
+                Переключить строку-шапку
+              </button>
               <button
                 type="button"
                 className="table-menu-item"
@@ -1036,7 +1079,7 @@ function TableMenuDropdown({ editor, buttonRef }) {
               <div className="table-menu-divider" />
               <button
                 type="button"
-                className="table-menu-item"
+                className="table-menu-item table-menu-item--danger"
                 onClick={() => runCommand(() => editor.chain().focus().deleteTable().run())}
               >
                 <Trash2 size={16} />
@@ -1046,6 +1089,140 @@ function TableMenuDropdown({ editor, buttonRef }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Плавающая панель управления таблицей — появляется над активной ячейкой
+function TableBubbleMenu({ editor }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const panelRef = useRef(null);
+
+  useEffect(() => {
+    if (!editor) return;
+
+    const update = () => {
+      if (editor.isDestroyed) return;
+
+      const isInTable = editor.isActive('table');
+      if (!isInTable) {
+        setVisible(false);
+        return;
+      }
+
+      // Находим активную ячейку в DOM
+      const { view } = editor;
+      const { from } = view.state.selection;
+      const domPos = view.domAtPos(from);
+      let node = domPos.node;
+
+      // Поднимаемся к td/th
+      while (node && node.nodeName !== 'TD' && node.nodeName !== 'TH' && node !== view.dom) {
+        node = node.parentNode;
+      }
+
+      if (!node || (node.nodeName !== 'TD' && node.nodeName !== 'TH')) {
+        setVisible(false);
+        return;
+      }
+
+      const cellRect = node.getBoundingClientRect();
+      const editorRect = view.dom.closest('.editor-container')?.getBoundingClientRect()
+        || view.dom.getBoundingClientRect();
+
+      setPos({
+        top: cellRect.top - editorRect.top - 44, // над ячейкой
+        left: Math.max(0, cellRect.left - editorRect.left)
+      });
+      setVisible(true);
+    };
+
+    editor.on('selectionUpdate', update);
+    editor.on('update', update);
+
+    return () => {
+      if (!editor.isDestroyed) {
+        editor.off('selectionUpdate', update);
+        editor.off('update', update);
+      }
+    };
+  }, [editor]);
+
+  if (!editor || !visible) return null;
+
+  return (
+    <div
+      ref={panelRef}
+      className="table-float-menu"
+      style={{ top: pos.top, left: pos.left }}
+      onMouseDown={e => e.preventDefault()} // не снимаем фокус с редактора
+    >
+      {/* Строки */}
+      <button
+        type="button"
+        className="table-float-btn"
+        title="Добавить строку выше"
+        onClick={() => editor.chain().focus().addRowBefore().run()}
+      >
+        <Plus size={11} />строку выше
+      </button>
+      <button
+        type="button"
+        className="table-float-btn"
+        title="Добавить строку ниже"
+        onClick={() => editor.chain().focus().addRowAfter().run()}
+      >
+        <Plus size={11} />строку ниже
+      </button>
+      <button
+        type="button"
+        className="table-float-btn table-float-btn--danger"
+        title="Удалить строку"
+        onClick={() => editor.chain().focus().deleteRow().run()}
+      >
+        <Trash2 size={11} />строку
+      </button>
+
+      <div className="table-float-sep" />
+
+      {/* Столбцы */}
+      <button
+        type="button"
+        className="table-float-btn"
+        title="Добавить столбец слева"
+        onClick={() => editor.chain().focus().addColumnBefore().run()}
+      >
+        <Plus size={11} />столбец слева
+      </button>
+      <button
+        type="button"
+        className="table-float-btn"
+        title="Добавить столбец справа"
+        onClick={() => editor.chain().focus().addColumnAfter().run()}
+      >
+        <Plus size={11} />столбец справа
+      </button>
+      <button
+        type="button"
+        className="table-float-btn table-float-btn--danger"
+        title="Удалить столбец"
+        onClick={() => editor.chain().focus().deleteColumn().run()}
+      >
+        <Trash2 size={11} />столбец
+      </button>
+
+      <div className="table-float-sep" />
+
+      {/* Объединение */}
+      <button
+        type="button"
+        className="table-float-btn"
+        title="Объединить / разделить ячейки"
+        onClick={() => editor.chain().focus().mergeOrSplit().run()}
+      >
+        <GitMerge size={11} />объединить
+      </button>
     </div>
   );
 }
@@ -1335,7 +1512,7 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       ResizableImage,
-      Table.configure({ resizable: true }),
+      Table.configure({ resizable: true, handleWidth: 3, cellMinWidth: 50, lastColumnResizable: false }),
       TableRow,
       TableCell,
       TableHeader,
@@ -1378,6 +1555,7 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       <MenuBar editor={editor} />
       <EditorContent editor={editor} className="editor-content" />
       <ImageBubbleMenu editor={editor} />
+      <TableBubbleMenu editor={editor} />
     </div>
   );
 }

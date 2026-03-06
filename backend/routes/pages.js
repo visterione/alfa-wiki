@@ -45,8 +45,8 @@ const sanitizeConfig = {
     'video': ['src', 'controls', 'width', 'height', 'poster'],
     'audio': ['src', 'controls'],
     'iframe': ['src', 'width', 'height', 'frameborder', 'allowfullscreen'],
-    'td': ['colspan', 'rowspan'],
-    'th': ['colspan', 'rowspan', 'scope']
+    'td': ['colspan', 'rowspan', 'colwidth'],
+    'th': ['colspan', 'rowspan', 'scope', 'colwidth']
   },
   allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel']
 };

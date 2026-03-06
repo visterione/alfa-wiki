@@ -5,7 +5,6 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Table from '@tiptap/extension-table';
 import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
@@ -16,7 +15,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Youtube from '@tiptap/extension-youtube';
 import { LocalVideo } from './LocalVideo';
-import { CustomBlockquote, TableCell, ResizableImageReadOnly } from './EditorExtensions';
+import { CustomBlockquote, TableCell, TableHeader, ResizableImageReadOnly } from './EditorExtensions';
 import { BASE_URL } from '../services/api';
 import './Editor.css';
 import './ContentRenderer.css';
@@ -75,7 +74,7 @@ export default function ContentRenderer({ content }) {
         },
       }),
       Table.configure({
-        resizable: false, // Отключаем resizable в режиме просмотра
+        resizable: true, // Включаем resizable чтобы сохранялись ширины колонок (colwidth)
       }),
       TableRow,
       TableHeader,
