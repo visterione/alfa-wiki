@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Users, Save, ChevronDown, ChevronUp, Check } from 'lucide-react';
-import { referralBonusAccess } from '../../services/api';
+import { referralBonusAccess, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -109,7 +109,7 @@ function UserRow({ user, onSaved }) {
         style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', cursor: 'pointer', background: open ? '#f8fafc' : 'white', userSelect: 'none' }}
       >
         {user.avatar ? (
-          <img src={user.avatar} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+          <img src={user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
           <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#2563eb', flexShrink: 0 }}>
             {initials}

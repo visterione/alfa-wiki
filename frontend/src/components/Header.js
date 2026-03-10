@@ -392,7 +392,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                 {isAdmin && (
                   <Link to="/admin/referral-bonuses-access" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <GitBranch size={16} />
-                    Доступ: Бонусы за направления
+                    Финансы: заработная плата
                   </Link>
                 )}
 
