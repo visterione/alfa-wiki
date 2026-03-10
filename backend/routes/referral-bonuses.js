@@ -1,11 +1,11 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { ReferralBonus, Page, PageHistory } = require('../models');
+const { ReferralBonus, Page, PageHistory, RbUserPermission, User, Role } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-const REFERRAL_BONUSES_PAGE_SLUG = 'refferal-bonuses';
+const REFERRAL_BONUSES_PAGE_SLUG = 'referalka';
 
 // === HELPER: Запись в историю страницы ===
 async function recordHistory(pageSlug, userId, summary, changes = []) {
@@ -183,6 +183,100 @@ router.delete('/:id', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Delete referral bonus error:', err);
     res.status(500).json({ error: 'Ошибка удаления' });
+  }
+});
+
+// ════════════════════════════════════════
+// ACCESS PERMISSIONS
+// ════════════════════════════════════════
+
+// Получить свои права доступа
+router.get('/permissions/my', authenticate, async (req, res) => {
+  try {
+    const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
+    if (!perm) {
+      return res.json({ tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] });
+    }
+    res.json({ tab1: perm.tab1, tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchive: perm.tabArchive, clinics: perm.clinics });
+  } catch (err) {
+    console.error('Get rb permissions error:', err);
+    res.status(500).json({ error: 'Ошибка получения прав' });
+  }
+});
+
+// Получить список пользователей с доступом к странице + их права (только admin)
+router.get('/permissions/users', authenticate, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
+  try {
+    const page = await Page.findOne({ where: { slug: REFERRAL_BONUSES_PAGE_SLUG } });
+    let users;
+
+    if (!page || !page.allowedRoles?.length) {
+      // Страница открыта всем — возвращаем всех активных не-ботов
+      users = await User.findAll({
+        where: { isActive: true, isBot: false },
+        attributes: ['id', 'username', 'displayName', 'avatar'],
+        include: [{ model: RbUserPermission, as: 'rbPermission', required: false }],
+        order: [['displayName', 'ASC']]
+      });
+    } else {
+      // Находим пользователей у которых есть хотя бы одна из разрешённых ролей
+      users = await User.findAll({
+        where: { isActive: true, isBot: false },
+        attributes: ['id', 'username', 'displayName', 'avatar', 'isAdmin'],
+        include: [
+          {
+            model: Role, as: 'roles', through: { attributes: [] }, required: false
+          },
+          { model: RbUserPermission, as: 'rbPermission', required: false }
+        ],
+        order: [['displayName', 'ASC']]
+      });
+      users = users.filter(u =>
+        u.isAdmin || u.roles?.some(r => page.allowedRoles.includes(r.id))
+      );
+    }
+
+    res.json(users.map(u => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.displayName || u.username,
+      avatar: u.avatar,
+      perm: u.rbPermission
+        ? { tab1: u.rbPermission.tab1, tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchive: u.rbPermission.tabArchive, clinics: u.rbPermission.clinics }
+        : { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] }
+    })));
+  } catch (err) {
+    console.error('Get rb permissions users error:', err);
+    res.status(500).json({ error: 'Ошибка получения пользователей' });
+  }
+});
+
+// Сохранить права пользователя (только admin)
+router.put('/permissions/:userId', authenticate, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
+  try {
+    const { userId } = req.params;
+    const { tab1, tab2, tab3, tab4, tabArchive, clinics } = req.body;
+    const valid = ['edit', 'read', 'block'];
+    for (const v of [tab1, tab2, tab3, tab4, tabArchive]) {
+      if (v && !valid.includes(v)) return res.status(400).json({ error: `Недопустимое значение: ${v}` });
+    }
+    const data = {
+      userId,
+      tab1: tab1 || 'edit',
+      tab2: tab2 || 'edit',
+      tab3: tab3 || 'edit',
+      tab4: tab4 || 'edit',
+      tabArchive: tabArchive || 'edit',
+      clinics: Array.isArray(clinics) ? clinics : [],
+    };
+    const [perm, created] = await RbUserPermission.findOrCreate({ where: { userId }, defaults: data });
+    if (!created) await perm.update(data);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Update rb permissions error:', err);
+    res.status(500).json({ error: 'Ошибка сохранения прав' });
   }
 });
 

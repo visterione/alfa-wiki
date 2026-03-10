@@ -531,4 +531,9 @@ export const email = {
   toggleFavoriteTemplate: (templateId) => api.post(`/email/favorites/templates/${templateId}`)
 };
 
+export const referralBonusAccess = {
+  getUsers: () => api.get('/referral-bonuses/permissions/users'),
+  saveUserPerm: (userId, data) => api.put(`/referral-bonuses/permissions/${userId}`, data),
+};
+
 export default api;

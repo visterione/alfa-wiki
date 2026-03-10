@@ -1240,6 +1240,23 @@ const ServiceConsumable = sequelize.define('ServiceConsumable', {
   ]
 });
 
+// === RB USER PERMISSION MODEL ===
+const RbUserPermission = sequelize.define('RbUserPermission', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId: { type: DataTypes.UUID, allowNull: false, unique: true, comment: 'ID пользователя wiki' },
+  clinics: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    defaultValue: [],
+    allowNull: false,
+    comment: 'Список ID медцентров (пусто = все)'
+  },
+  tab1:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab2:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab3:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab4:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchive: { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+}, { tableName: 'rb_user_permissions', timestamps: true });
+
 // === EMAIL TEMPLATE MODEL ===
 // === EMAIL FAVORITE RECIPIENTS MODEL ===
 const EmailFavoriteRecipient = sequelize.define('EmailFavoriteRecipient', {
@@ -1369,6 +1386,10 @@ Role.hasMany(User, { foreignKey: 'roleId', as: 'users' });
 // User & Role (новаяMany-to-Many связь)
 User.belongsToMany(Role, { through: UserRole, foreignKey: 'userId', as: 'roles' });
 Role.belongsToMany(User, { through: UserRole, foreignKey: 'roleId', as: 'usersWithRole' });
+
+// User & RbUserPermission
+RbUserPermission.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasOne(RbUserPermission, { foreignKey: 'userId', as: 'rbPermission' });
 
 // User & MedCenter (Many-to-Many)
 User.belongsToMany(MedCenter, { through: UserMedCenter, foreignKey: 'userId', as: 'medCenters' });
@@ -2117,6 +2138,7 @@ module.exports = {
   // Referral bonuses module
   ReferralBonus,
   ReferralReport,
+  RbUserPermission,
   // Executor settings module
   ExecutorSettings,
   // Performed service bonuses module

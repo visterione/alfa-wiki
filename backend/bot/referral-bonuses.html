@@ -498,6 +498,58 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
 
 /* ═══ SINGLE FILE ZONE (Step 4) ═══ */
 .rb-single-file-wrap { display: flex; flex-direction: column; gap: 8px; }
+
+/* ═══ ACCESS CONTROL ═══ */
+/* Blocked step in wizard */
+.rb-wizard-step.rb-step-blocked { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
+.rb-wizard-step.rb-step-blocked .rb-wizard-step-circle { background: #f1f5f9 !important; border-color: #94a3b8 !important; color: #94a3b8 !important; }
+/* Read-only badge in step label */
+.rb-step-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; display: block; margin-top: 2px; text-align: center; letter-spacing: 0.3px; }
+.rb-step-badge.read { background: #fef3c7; color: #92400e; }
+.rb-step-badge.block { background: #fee2e2; color: #991b1b; }
+/* Read-mode banner inside detail panel */
+.rb-read-banner { display: flex; align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #92400e; font-weight: 500; margin-bottom: 12px; }
+.rb-read-banner svg { width: 14px; height: 14px; flex-shrink: 0; }
+/* Read-mode detail panel — hide all edit controls */
+#rb-detail-panel[data-perm="read"] .rb-exec-save-row { display: none !important; }
+#rb-detail-panel[data-perm="read"] .rb-exec-add-form { display: none !important; }
+#rb-detail-panel[data-perm="read"] button[onclick*="rbExecToggleForm"],
+#rb-detail-panel[data-perm="read"] button[onclick*="rbExecToggleSvcMatForm"] { display: none !important; }
+#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteItem"],
+#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteExtra"],
+#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteSvcMaterial"] { display: none !important; }
+#rb-detail-panel[data-perm="read"] .rb-paytype-toggle { pointer-events: none; opacity: 0.6; }
+#rb-detail-panel[data-perm="read"] .rb-plus-pct-row { pointer-events: none; opacity: 0.6; }
+#rb-detail-panel[data-perm="read"][data-step="1"] input,
+#rb-detail-panel[data-perm="read"][data-step="1"] select { pointer-events: none; background: #f8fafc !important; color: #64748b; }
+#rb-detail-panel[data-perm="read"] .rb-psvc-footer { display: none !important; }
+#rb-detail-panel[data-perm="read"] .rb-psvc-input { pointer-events: none; background: #f8fafc !important; }
+#rb-detail-panel[data-perm="read"][data-step="3"] #rb-add-service-section { display: none !important; }
+#rb-detail-panel[data-perm="read"][data-step="3"] .rb-bonuses-section .rb-btn-xs { display: none !important; }
+/* Access modal */
+.rb-access-modal { max-width: 840px; }
+.rb-access-user-row { border-bottom: 1px solid var(--rb-border); }
+.rb-access-user-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; user-select: none; transition: background 0.1s; }
+.rb-access-user-header:hover { background: #f8fafc; }
+.rb-access-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #dbeafe; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--rb-primary); flex-shrink: 0; }
+.rb-access-user-name { font-size: 13px; font-weight: 600; flex: 1; }
+.rb-access-user-summary { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-access-user-body { padding: 14px 16px 18px 58px; background: #fafafa; border-top: 1px solid var(--rb-border); display: none; }
+.rb-access-user-row.expanded .rb-access-user-body { display: block; }
+.rb-perm-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.rb-perm-row-label { font-size: 12px; font-weight: 500; color: var(--rb-text-secondary); min-width: 210px; }
+.rb-perm-toggle { display: flex; border: 1px solid var(--rb-border-dark); border-radius: 7px; overflow: hidden; }
+.rb-perm-btn { padding: 5px 14px; font-size: 12px; font-weight: 600; border: none; background: white; cursor: pointer; transition: all 0.15s; color: var(--rb-text-secondary); }
+.rb-perm-btn:hover:not(.active) { background: #f8fafc; }
+.rb-perm-btn.active[data-val="edit"]  { background: var(--rb-success); color: white; }
+.rb-perm-btn.active[data-val="read"]  { background: var(--rb-warning); color: white; }
+.rb-perm-btn.active[data-val="block"] { background: var(--rb-danger);  color: white; }
+.rb-clinic-checks { display: flex; flex-wrap: wrap; gap: 6px; }
+.rb-clinic-check { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--rb-border); border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.1s; }
+.rb-clinic-check:hover { background: #f0f7ff; border-color: var(--rb-primary); }
+.rb-clinic-check input { width: 13px; height: 13px; accent-color: var(--rb-primary); cursor: pointer; }
+.rb-access-save-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--rb-border); }
+.rb-access-save-status { font-size: 12px; color: var(--rb-success); display: none; }
 </style>
 </head>
 <body>
@@ -539,6 +591,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <div class="rb-wizard-step-label">Архив</div>
     </div>
+
   </div>
 
   <!-- ════ STEPS 1, 2, 3: Two-column layout ════ -->
@@ -752,6 +805,30 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
   </div>
 </div>
 
+<!-- Access settings modal (admin only) -->
+<div id="rb-access-modal" class="rb-modal-overlay" style="display:none">
+  <div class="rb-modal rb-access-modal">
+    <div class="rb-modal-header">
+      <h3>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" style="margin-right:6px;color:var(--rb-primary)"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 1.87 2.69l-1.5.87a8 8 0 0 0-1.37-1.97l1-1.59z"/></svg>
+        Настройки доступа
+      </h3>
+      <button class="rb-modal-close" onclick="rbCloseAccessModal()">×</button>
+    </div>
+    <div class="rb-modal-body" style="padding:0;overflow-y:auto">
+      <div style="padding:10px 16px;background:#eff6ff;border-bottom:1px solid var(--rb-border);font-size:12px;color:#1e40af">
+        Настройте права для каждого сотрудника, имеющего доступ к странице. По умолчанию все вкладки открыты на редактирование.
+      </div>
+      <div id="rb-access-users-list">
+        <div class="rb-loading" style="padding:24px"><span class="rb-spinner"></span> Загрузка...</div>
+      </div>
+    </div>
+    <div class="rb-modal-footer">
+      <button class="rb-btn rb-btn-secondary" onclick="rbCloseAccessModal()">Закрыть</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() {
 'use strict';
@@ -779,6 +856,9 @@ const RB = {
   performedBonusActiveClinic: 'global', // active clinic tab in step 2 performed bonuses
   psvcServices: [],              // MIS services list cached for step 2
   execSvcServices: [],           // MIS services list cached for executor service materials
+  // Access control
+  currentUser: null,
+  myPerms: null, // { tab1, tab2, tab3, tab4, tabArchive, clinics }
 };
 
 // ═══════════════════════════════════════
@@ -846,7 +926,255 @@ async function rbInit() {
   RB.apiBase = window.location.protocol + '//' + window.location.hostname + ':9001';
 
   await rbLoadClinics();
+  await rbLoadMyPermissions();
   await rbLoadDoctors();
+}
+
+// ═══════════════════════════════════════
+// ACCESS PERMISSIONS
+// ═══════════════════════════════════════
+async function rbLoadMyPermissions() {
+  try {
+    // Load current user info
+    const me = await rbApi('/api/auth/me');
+    RB.currentUser = me;
+
+    // Load permissions (admins always get full edit — no restrictions)
+    if (me.isAdmin) {
+      RB.myPerms = { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] };
+    } else {
+      RB.myPerms = await rbApi('/api/referral-bonuses/permissions/my');
+    }
+
+    rbApplyMyPermissions();
+  } catch (e) {
+    console.warn('rbLoadMyPermissions failed:', e);
+    RB.myPerms = { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] };
+  }
+}
+
+// Returns 'edit' | 'read' | 'block' for the given tab key
+function rbGetTabPerm(tab) {
+  if (!RB.myPerms) return 'edit';
+  const map = { 1: 'tab1', 2: 'tab2', 3: 'tab3', 4: 'tab4', archive: 'tabArchive' };
+  return RB.myPerms[map[tab]] || 'edit';
+}
+
+function rbApplyMyPermissions() {
+  const p = RB.myPerms;
+  if (!p) return;
+
+  const tabDefs = [
+    { n: 1, key: 'tab1', label: 'Врачи' },
+    { n: 2, key: 'tab2', label: 'Выполненные услуги' },
+    { n: 3, key: 'tab3', label: 'Бонусы за направления' },
+    { n: 4, key: 'tab4', label: 'Отчёт' },
+  ];
+
+  tabDefs.forEach(({ n, key }) => {
+    const perm = p[key] || 'edit';
+    const stepEl = document.getElementById(`rb-nav-step-${n}`);
+    if (!stepEl) return;
+    stepEl.classList.toggle('rb-step-blocked', perm === 'block');
+
+    // Badge in label
+    let badge = stepEl.querySelector('.rb-step-badge');
+    if (perm === 'read') {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'rb-step-badge read';
+        stepEl.querySelector('.rb-wizard-step-label').appendChild(badge);
+      }
+      badge.textContent = 'Только чтение';
+      badge.className = 'rb-step-badge read';
+    } else if (perm === 'block') {
+      if (!badge) {
+        badge = document.createElement('span');
+        stepEl.querySelector('.rb-wizard-step-label').appendChild(badge);
+      }
+      badge.textContent = 'Заблокировано';
+      badge.className = 'rb-step-badge block';
+    } else {
+      if (badge) badge.remove();
+    }
+  });
+
+  // Archive step
+  const archiveEl = document.getElementById('rb-nav-step-archive');
+  if (archiveEl) {
+    const ap = p.tabArchive || 'edit';
+    archiveEl.classList.toggle('rb-step-blocked', ap === 'block');
+    let badge = archiveEl.querySelector('.rb-step-badge');
+    if (ap === 'read') {
+      if (!badge) { badge = document.createElement('span'); archiveEl.querySelector('.rb-wizard-step-label').appendChild(badge); }
+      badge.textContent = 'Только чтение'; badge.className = 'rb-step-badge read';
+    } else if (ap === 'block') {
+      if (!badge) { badge = document.createElement('span'); archiveEl.querySelector('.rb-wizard-step-label').appendChild(badge); }
+      badge.textContent = 'Заблокировано'; badge.className = 'rb-step-badge block';
+    } else {
+      if (badge) badge.remove();
+    }
+  }
+}
+
+// Sets data-perm and data-step on the detail panel and optionally shows read banner
+function rbApplyPanelPerm(step) {
+  const panel = document.getElementById('rb-detail-panel');
+  if (!panel) return;
+  const perm = rbGetTabPerm(step);
+  panel.dataset.perm = perm;
+  panel.dataset.step = String(step);
+  if (perm === 'read') {
+    const banner = document.createElement('div');
+    banner.className = 'rb-read-banner';
+    banner.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Режим просмотра — редактирование недоступно';
+    panel.insertBefore(banner, panel.firstChild);
+  }
+}
+
+// ═══════════════════════════════════════
+// ACCESS ADMIN PANEL
+// ═══════════════════════════════════════
+function rbOpenAccessModal() {
+  document.getElementById('rb-access-modal').style.display = 'flex';
+  rbLoadAccessUsers();
+}
+
+function rbCloseAccessModal() {
+  document.getElementById('rb-access-modal').style.display = 'none';
+}
+
+async function rbLoadAccessUsers() {
+  const listEl = document.getElementById('rb-access-users-list');
+  listEl.innerHTML = '<div class="rb-loading" style="padding:24px"><span class="rb-spinner"></span> Загрузка...</div>';
+  try {
+    const users = await rbApi('/api/referral-bonuses/permissions/users');
+    if (!users.length) {
+      listEl.innerHTML = '<div class="rb-loading" style="padding:24px">Нет пользователей с доступом</div>';
+      return;
+    }
+    listEl.innerHTML = users.map(u => rbRenderAccessUserRow(u)).join('');
+  } catch (e) {
+    listEl.innerHTML = '<div class="rb-loading" style="padding:24px;color:var(--rb-danger)">Ошибка загрузки</div>';
+    console.error(e);
+  }
+}
+
+function rbPermSummary(perm) {
+  const tabs = [
+    { key: 'tab1', label: 'Врачи' },
+    { key: 'tab2', label: 'Услуги' },
+    { key: 'tab3', label: 'Бонусы' },
+    { key: 'tab4', label: 'Отчёт' },
+    { key: 'tabArchive', label: 'Архив' },
+  ];
+  const restricted = tabs.filter(t => perm[t.key] !== 'edit').map(t => {
+    const v = perm[t.key];
+    return `${t.label}: ${v === 'read' ? 'чтение' : 'блок'}`;
+  });
+  const clinicCount = perm.clinics?.length || 0;
+  const parts = [];
+  if (clinicCount > 0) parts.push(`МЦ: ${clinicCount}`);
+  parts.push(...restricted);
+  return parts.length ? parts.join(' · ') : 'Полный доступ';
+}
+
+function rbRenderAccessUserRow(u) {
+  const initials = (u.displayName || u.username || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+  const avatarHtml = u.avatar
+    ? `<img src="${rbEsc(u.avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">`
+    : `<div class="rb-access-user-avatar">${rbEsc(initials)}</div>`;
+
+  const p = u.perm;
+  const tabDefs = [
+    { key: 'tab1', label: 'Врачи' },
+    { key: 'tab2', label: 'Выполненные услуги' },
+    { key: 'tab3', label: 'Бонусы за направления' },
+    { key: 'tab4', label: 'Отчёт' },
+    { key: 'tabArchive', label: 'Архив' },
+  ];
+
+  const tabRows = tabDefs.map(t => `
+    <div class="rb-perm-row">
+      <div class="rb-perm-row-label">${t.label}</div>
+      <div class="rb-perm-toggle" data-uid="${rbEsc(u.id)}" data-tab="${t.key}">
+        ${['edit','read','block'].map(val => `
+          <button class="rb-perm-btn${p[t.key] === val ? ' active' : ''}" data-val="${val}"
+            onclick="rbSetPermBtn('${rbEsc(u.id)}','${t.key}','${val}',this)"
+          >${val === 'edit' ? 'Редактирование' : val === 'read' ? 'Чтение' : 'Заблокировать'}</button>
+        `).join('')}
+      </div>
+    </div>`).join('');
+
+  const clinicChecks = RB.clinics.map(c => `
+    <label class="rb-clinic-check">
+      <input type="checkbox" data-uid="${rbEsc(u.id)}" data-clinic="${rbEsc(String(c.id))}"
+        ${(p.clinics || []).includes(String(c.id)) ? 'checked' : ''}>
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${rbEsc(c.color)};flex-shrink:0"></span>
+      ${rbEsc(c.name)}
+    </label>`).join('');
+
+  return `<div class="rb-access-user-row" id="rb-access-row-${rbEsc(u.id)}">
+    <div class="rb-access-user-header" onclick="rbToggleAccessRow('${rbEsc(u.id)}')">
+      ${avatarHtml}
+      <div class="rb-access-user-name">${rbEsc(u.displayName || u.username)}</div>
+      <div class="rb-access-user-summary" id="rb-access-summary-${rbEsc(u.id)}">${rbEsc(rbPermSummary(p))}</div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0;color:var(--rb-text-secondary)"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="rb-access-user-body">
+      <div style="margin-bottom:12px">
+        <div class="rb-perm-row-label" style="margin-bottom:6px">Медцентры (пусто = все)</div>
+        <div class="rb-clinic-checks">${clinicChecks}</div>
+      </div>
+      ${tabRows}
+      <div class="rb-access-save-row">
+        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbSaveUserPerm('${rbEsc(u.id)}')">Сохранить</button>
+        <span class="rb-access-save-status" id="rb-access-saved-${rbEsc(u.id)}">Сохранено</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function rbToggleAccessRow(userId) {
+  const row = document.getElementById(`rb-access-row-${userId}`);
+  if (row) row.classList.toggle('expanded');
+}
+
+function rbSetPermBtn(userId, tab, val, btnEl) {
+  const toggle = btnEl.closest('.rb-perm-toggle');
+  toggle.querySelectorAll('.rb-perm-btn').forEach(b => b.classList.remove('active'));
+  btnEl.classList.add('active');
+}
+
+async function rbSaveUserPerm(userId) {
+  const row = document.getElementById(`rb-access-row-${userId}`);
+  if (!row) return;
+
+  const tabKeys = ['tab1', 'tab2', 'tab3', 'tab4', 'tabArchive'];
+  const perm = {};
+  tabKeys.forEach(tab => {
+    const toggle = row.querySelector(`.rb-perm-toggle[data-tab="${tab}"]`);
+    const active = toggle?.querySelector('.rb-perm-btn.active');
+    perm[tab] = active?.dataset.val || 'edit';
+  });
+
+  const checkedClinics = [...row.querySelectorAll('input[type=checkbox][data-clinic]:checked')]
+    .map(cb => cb.dataset.clinic);
+  perm.clinics = checkedClinics;
+
+  try {
+    await rbApi(`/api/referral-bonuses/permissions/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(perm),
+    });
+    const statusEl = document.getElementById(`rb-access-saved-${userId}`);
+    if (statusEl) { statusEl.style.display = 'inline'; setTimeout(() => { statusEl.style.display = 'none'; }, 2500); }
+    // Update summary
+    const summaryEl = document.getElementById(`rb-access-summary-${userId}`);
+    if (summaryEl) summaryEl.textContent = rbPermSummary(perm);
+  } catch (e) {
+    rbToast('Ошибка сохранения', 'error');
+  }
 }
 
 // ═══════════════════════════════════════
@@ -1005,10 +1333,13 @@ function rbApplyFilters() {
   const clinicId = document.getElementById('rb-filter-clinic').value;
   const profession = document.getElementById('rb-filter-profession').value;
 
+  const allowedClinics = RB.myPerms?.clinics || [];
   RB.filteredDoctors = RB.doctors.filter(d => {
     if (search && !d.name.toLowerCase().includes(search)) return false;
     if (clinicId && !d.clinics.includes(String(clinicId))) return false;
     if (profession && !d.professions.some(p => rbProfessionTitle(p) === profession)) return false;
+    // Clinic access filter: if allowedClinics is set, only show doctors from those clinics
+    if (allowedClinics.length > 0 && !d.clinics.some(c => allowedClinics.includes(String(c)))) return false;
     return true;
   });
 
@@ -1060,11 +1391,14 @@ async function rbSelectDoctor(misUserId) {
 
   if (RB.currentStep === 1) {
     await rbRenderExecutorDetail();
+    rbApplyPanelPerm(1);
   } else if (RB.currentStep === 2) {
     await rbRenderPerformedServicesDetail();
+    rbApplyPanelPerm(2);
   } else {
     // Step 3 - referrer mode
     rbRenderDoctorDetail();
+    rbApplyPanelPerm(3);
     await rbLoadBonuses();
   }
 }
@@ -1262,6 +1596,7 @@ function rbRenderBonusesTable() {
 }
 
 async function rbSaveBonus() {
+  if (rbGetTabPerm(3) !== 'edit') return;
   const svc = RB.selectedService;
   if (!svc) { rbToast('Выберите услугу', 'error'); return; }
 
@@ -1287,6 +1622,7 @@ async function rbSaveBonus() {
 }
 
 async function rbDeleteBonus(id) {
+  if (rbGetTabPerm(3) !== 'edit') return;
   if (!confirm('Удалить эту запись?')) return;
   try {
     const res = await fetch(RB.apiBase + `/api/referral-bonuses/${id}`, {
@@ -1502,6 +1838,7 @@ function rbSelectCatService(idx, el) {
 }
 
 async function rbApplyCategoryBonus() {
+  if (rbGetTabPerm(3) !== 'edit') return;
   if (!_rbCatServices.length) { rbToast('Нет услуг в категории', 'error'); return; }
   const { bonusPercent: catPct, bonusRub: catRub } = rbInlineGetBonus('rb-cat-bulk-type-pct', 'rb-cat-bulk-val');
   if (catPct == null && catRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
@@ -1539,6 +1876,7 @@ async function rbApplyCategoryBonus() {
 // WIZARD NAVIGATION
 // ═══════════════════════════════════════
 function rbGoToStep(step) {
+  if (rbGetTabPerm(step) === 'block') return;
   RB.currentStep = step;
 
   // Update wizard step indicators
@@ -1666,12 +2004,21 @@ async function rbRenderPerformedServicesDetail() {
     const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
 
     // Build clinic tabs (global + each clinic)
-    const clinicTabsHtml = RB.clinics.map(c => `
-      <button class="rb-clinic-tab" data-clinic="${rbEsc(String(c.id))}"
+    const _allowedClinics2 = RB.myPerms?.clinics || [];
+    const clinicTabsHtml = RB.clinics.map(c => {
+      const isBlocked = _allowedClinics2.length > 0 && !_allowedClinics2.includes(String(c.id));
+      if (isBlocked) {
+        return `<button class="rb-clinic-tab" disabled title="Нет доступа к этому медцентру"
+          style="border-color:${rbEsc(c.color || 'var(--rb-primary)')};opacity:0.35;cursor:not-allowed;pointer-events:none">
+          ${rbEsc(c.name)}
+        </button>`;
+      }
+      return `<button class="rb-clinic-tab" data-clinic="${rbEsc(String(c.id))}"
         onclick="rbPsvcSwitchClinic('${rbEsc(String(c.id))}')"
         style="border-color:${rbEsc(c.color || 'var(--rb-primary)')}">
         ${rbEsc(c.name)}
-      </button>`).join('');
+      </button>`;
+    }).join('');
 
     let html = `<div class="rb-doctor-card">
       <div class="rb-doctor-card-header">
@@ -1826,6 +2173,7 @@ function rbPsvcFilterTable() {
 }
 
 async function rbPsvcSaveAll(misUserId) {
+  if (rbGetTabPerm(2) !== 'edit') return;
   const d = RB.selectedDoctor;
   if (!d) return;
 
@@ -2055,6 +2403,7 @@ function rbSvcFilterDoctors() {
 }
 
 async function rbSvcModeSaveBulk() {
+  if (rbGetTabPerm(3) !== 'edit') return;
   const svc = SVC.selectedService;
   if (!svc || !SVC.selectedDoctorIds.size) return;
   const { bonusPercent: svcPct, bonusRub: svcRub } = rbInlineGetBonus('rb-svc-bonus-type-pct', 'rb-svc-bonus-val');
@@ -2088,6 +2437,7 @@ async function rbSvcModeSaveBulk() {
 }
 
 async function rbSvcModeClearBulk() {
+  if (rbGetTabPerm(3) !== 'edit') return;
   const svc = SVC.selectedService;
   if (!svc || !SVC.selectedDoctorIds.size) return;
   if (!confirm(`Снять бонус по этой услуге у ${SVC.selectedDoctorIds.size} врачей?`)) return;
@@ -2265,10 +2615,15 @@ function rbExecRenderClinicTabs() {
     tabs.push({ id: cId, label: rbGetClinicName(cId), color: rbGetClinicColor(cId) });
   });
 
+  const _allowedClinics1 = RB.myPerms?.clinics || [];
   const tabsHtml = tabs.map(t => {
     const active = RB.executorActiveClinic === t.id ? ' active' : '';
     const hasCustom = t.id !== 'global' && cs[t.id];
     const dotHtml = hasCustom ? `<span class="rb-clinic-tab-dot" style="background:${t.color}"></span>` : '';
+    const isBlocked = t.id !== 'global' && _allowedClinics1.length > 0 && !_allowedClinics1.includes(String(t.id));
+    if (isBlocked) {
+      return `<button class="rb-clinic-tab" disabled title="Нет доступа к этому медцентру" style="opacity:0.35;cursor:not-allowed;pointer-events:none">${dotHtml}${rbEsc(t.label)}</button>`;
+    }
     return `<button class="rb-clinic-tab${active}" onclick="rbExecSwitchClinic('${t.id}')">${dotHtml}${rbEsc(t.label)}</button>`;
   }).join('');
 
@@ -2612,6 +2967,7 @@ function rbExecGetCurrentClinicData() {
 }
 
 async function rbExecAddItem(section) {
+  if (rbGetTabPerm(1) !== 'edit') return;
   const nameEl = document.getElementById(`rb-exec-name-${section}`);
   const valEl  = document.getElementById(`rb-exec-val-${section}`);
   const name   = nameEl?.value?.trim();
@@ -2631,6 +2987,7 @@ async function rbExecAddItem(section) {
 }
 
 async function rbExecDeleteItem(section, idx) {
+  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   clData[section].splice(idx, 1);
   await rbExecSave(RB.selectedDoctor.id, RB.executorData);
@@ -2803,6 +3160,7 @@ function rbExecSvcMatToggleDeductType(type) {
 }
 
 async function rbExecAddSvcMaterial() {
+  if (rbGetTabPerm(1) !== 'edit') return;
   if (!_rbSvcMatSelected) { rbToast('Выберите услугу', 'error'); return; }
   const name = document.getElementById('rb-exec-svc-mat-name')?.value?.trim();
   const value = parseFloat(document.getElementById('rb-exec-svc-mat-val')?.value);
@@ -2829,6 +3187,7 @@ async function rbExecAddSvcMaterial() {
 }
 
 async function rbExecDeleteSvcMaterial(idx) {
+  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   if (!clData.serviceMaterials) return;
   clData.serviceMaterials.splice(idx, 1);
@@ -2838,6 +3197,7 @@ async function rbExecDeleteSvcMaterial(idx) {
 }
 
 async function rbExecAddExtra() {
+  if (rbGetTabPerm(1) !== 'edit') return;
   const name   = document.getElementById('rb-exec-extra-name')?.value?.trim();
   const amount = parseFloat(document.getElementById('rb-exec-extra-amount')?.value);
   const hours  = parseFloat(document.getElementById('rb-exec-extra-hours')?.value) || 0;
@@ -2855,6 +3215,7 @@ async function rbExecAddExtra() {
 }
 
 async function rbExecDeleteExtra(idx) {
+  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   clData.extras.splice(idx, 1);
   await rbExecSave(RB.selectedDoctor.id, RB.executorData);
@@ -2912,11 +3273,13 @@ function rbExecUpdateMainPayment() {
 // Автосохранение при изменении полей оплаты
 let _rbExecAutoSaveTimer = null;
 function rbExecAutoSave() {
+  if (rbGetTabPerm(1) !== 'edit') return;
   clearTimeout(_rbExecAutoSaveTimer);
   _rbExecAutoSaveTimer = setTimeout(rbExecSavePayment, 1500);
 }
 
 async function rbExecSavePayment() {
+  if (rbGetTabPerm(1) !== 'edit') return;
   clearTimeout(_rbExecAutoSaveTimer);
   const cs = RB.executorData.clinicSettings;
   const clinicId = RB.executorActiveClinic;
@@ -5074,6 +5437,7 @@ async function rbBulkExport() {
 // ARCHIVE
 // ═══════════════════════════════════════
 async function rbOpenArchiveModal() {
+  if (rbGetTabPerm('archive') === 'block') return;
   document.getElementById('rb-archive-modal').style.display = 'flex';
   await rbLoadArchive();
 }
@@ -5159,9 +5523,9 @@ function rbArchiveRender() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Excel
       </button>
-      <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteArchiveReport('${r.id}')">
+      ${rbGetTabPerm('archive') === 'edit' ? `<button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteArchiveReport('${r.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-      </button>
+      </button>` : ''}
     </div>`;
   }).join('');
 
@@ -5182,6 +5546,7 @@ function rbArchiveRender() {
 }
 
 async function rbSaveReportToArchive() {
+  if (rbGetTabPerm(4) !== 'edit') return;
   if (!RB.reportData) return;
   const { doctor, misUserId, clinicReports, grandTotal, dateFrom, dateTo, periodLabel } = RB.reportData;
   const title = `${doctor}${periodLabel ? ' — ' + periodLabel : ''}`;
@@ -5203,6 +5568,7 @@ async function rbSaveReportToArchive() {
 }
 
 async function rbBulkSaveToArchive() {
+  if (rbGetTabPerm(4) !== 'edit') return;
   if (!BULK.reportData?.length) return;
   const grandTotal = BULK.reportData.reduce((s, r) => s + r.grandTotal, 0);
   const doctorNames = BULK.reportData.map(r => r.doctor.split(' ')[0]).join(', ');
@@ -5241,6 +5607,7 @@ async function rbDownloadArchiveReport(id) {
 }
 
 async function rbDeleteArchiveReport(id) {
+  if (rbGetTabPerm('archive') !== 'edit') return;
   if (!confirm('Удалить отчёт из архива?')) return;
   try {
     const res = await fetch(RB.apiBase + `/api/referral-reports/${id}`, {
@@ -5332,6 +5699,12 @@ window.rbBulkExport = rbBulkExport;
 window.rbBulkSaveToArchive = rbBulkSaveToArchive;
 window.rbOpenArchiveModal = rbOpenArchiveModal;
 window.rbCloseArchiveModal = rbCloseArchiveModal;
+// Access control admin panel
+window.rbOpenAccessModal = rbOpenAccessModal;
+window.rbCloseAccessModal = rbCloseAccessModal;
+window.rbToggleAccessRow = rbToggleAccessRow;
+window.rbSetPermBtn = rbSetPermBtn;
+window.rbSaveUserPerm = rbSaveUserPerm;
 window.rbArchiveFilter = rbArchiveFilter;
 window.rbArchivePage = rbArchivePage;
 window.rbSaveReportToArchive = rbSaveReportToArchive;
