@@ -237,12 +237,8 @@ export default function AdminRbAccess() {
       <div className="admin-header">
         <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Users size={26} />
-          Доступ к «Бонусам за направления»
+          Финансы: заработная плата
         </h1>
-      </div>
-
-      <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#1e40af', marginBottom: 20 }}>
-        Настройка прав доступа для пользователей, имеющих доступ к странице. По умолчанию все вкладки открыты на редактирование.
       </div>
 
       <div className="admin-toolbar">

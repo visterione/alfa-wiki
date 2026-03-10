@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-const REFERRAL_BONUSES_PAGE_SLUG = 'referalka';
+const REFERRAL_BONUSES_PAGE_SLUG = 'napravleniya';
 
 // === HELPER: Запись в историю страницы ===
 async function recordHistory(pageSlug, userId, summary, changes = []) {
@@ -195,7 +195,7 @@ router.get('/permissions/my', authenticate, async (req, res) => {
   try {
     const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
     if (!perm) {
-      return res.json({ tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] });
+      return res.json({ tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', clinics: [] });
     }
     res.json({ tab1: perm.tab1, tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchive: perm.tabArchive, clinics: perm.clinics });
   } catch (err) {
@@ -244,7 +244,7 @@ router.get('/permissions/users', authenticate, async (req, res) => {
       avatar: u.avatar,
       perm: u.rbPermission
         ? { tab1: u.rbPermission.tab1, tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchive: u.rbPermission.tabArchive, clinics: u.rbPermission.clinics }
-        : { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] }
+        : { tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', clinics: [] }
     })));
   } catch (err) {
     console.error('Get rb permissions users error:', err);
