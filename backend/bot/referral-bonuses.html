@@ -108,7 +108,7 @@ input, select, button, textarea { font-family: inherit; }
 
 /* Add service section */
 .rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); }
-.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; border-radius: var(--rb-radius) var(--rb-radius) 0 0; }
+.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; border-radius: var(--rb-radius) var(--rb-radius) 0 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rb-add-service-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .rb-add-service-header h3 svg { width: 16px; height: 16px; color: var(--rb-primary); }
 .rb-add-service-body { padding: 16px; }
@@ -2035,10 +2035,16 @@ async function rbRenderPerformedServicesDetail() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           Бонусы за выполненные услуги
         </h3>
-        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbPsvcSaveAll('${rbEsc(String(d.id))}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          Сохранить всё
-        </button>
+        <div style="display:flex;gap:6px">
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbForceRefreshDoctorServices()" title="Обновить список услуг врача из МИС">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Обновить из МИС
+          </button>
+          <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbPsvcSaveAll('${rbEsc(String(d.id))}')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Сохранить всё
+          </button>
+        </div>
       </div>
       <div class="rb-add-service-body">
 
@@ -5723,6 +5729,13 @@ window.rbExecAddSvcMaterial = rbExecAddSvcMaterial;
 window.rbExecDeleteSvcMaterial  = rbExecDeleteSvcMaterial;  
 // Step 2: clinic tabs
 window.rbPsvcSwitchClinic = rbPsvcSwitchClinic;
+// Step 2: force refresh doctor services from MIS
+async function rbForceRefreshDoctorServices() {
+  RB.psvcServices = null;
+  RB.execSvcServices = null;
+  await rbRenderPerformedServicesDetail();
+}
+window.rbForceRefreshDoctorServices = rbForceRefreshDoctorServices;
 rbInit().catch(console.error);
 })();
 </script>

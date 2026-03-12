@@ -90,6 +90,20 @@ const User = sequelize.define('User', {
     comment: 'Разрешение на создание, редактирование и удаление карточек врачей'
   },
 
+  // Доступ к редактированию анализов
+  canEditAnalyses: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Разрешение на редактирование и удаление анализов'
+  },
+
+  // Доступ к редактированию услуг
+  canEditServices: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Разрешение на редактирование и удаление услуг'
+  },
+
   // Флаг системного бота (Ассистент)
   isBot: {
     type: DataTypes.BOOLEAN,

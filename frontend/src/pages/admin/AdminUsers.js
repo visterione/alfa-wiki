@@ -109,6 +109,8 @@ export default function AdminUsers() {
     isActive: true,
     twoFactorEnabled: true,  // По умолчанию включена
     canEditDoctorCards: false,  // Доступ к редактированию карточек врачей
+    canEditAnalyses: false,  // Доступ к редактированию анализов
+    canEditServices: false,  // Доступ к редактированию услуг
     adminAccess: {
       pages: false,
       sidebar: false,
@@ -264,6 +266,8 @@ export default function AdminUsers() {
         isActive: user.isActive,
         twoFactorEnabled: user.twoFactorEnabled || false,
         canEditDoctorCards: user.canEditDoctorCards || false,
+        canEditAnalyses: user.canEditAnalyses || false,
+        canEditServices: user.canEditServices || false,
         adminAccess: user.adminAccess || {
           pages: false,
           sidebar: false,
@@ -291,6 +295,8 @@ export default function AdminUsers() {
         isActive: true,
         twoFactorEnabled: true,  // По умолчанию включена для новых пользователей
         canEditDoctorCards: false,
+        canEditAnalyses: false,
+        canEditServices: false,
         adminAccess: {
           pages: false,
           sidebar: false,
@@ -837,6 +843,24 @@ export default function AdminUsers() {
                       disabled={form.isAdmin}
                     />
                     <span className="admin-toggle-label">Карточки врачей</span>
+                  </label>
+                  <label className="admin-toggle-item">
+                    <span className={`admin-toggle-track${(form.isAdmin || form.canEditAnalyses) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                    <input type="checkbox" style={{ display: 'none' }}
+                      checked={form.isAdmin || form.canEditAnalyses}
+                      onChange={e => !form.isAdmin && setForm({...form, canEditAnalyses: e.target.checked})}
+                      disabled={form.isAdmin}
+                    />
+                    <span className="admin-toggle-label">Анализы</span>
+                  </label>
+                  <label className="admin-toggle-item">
+                    <span className={`admin-toggle-track${(form.isAdmin || form.canEditServices) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                    <input type="checkbox" style={{ display: 'none' }}
+                      checked={form.isAdmin || form.canEditServices}
+                      onChange={e => !form.isAdmin && setForm({...form, canEditServices: e.target.checked})}
+                      disabled={form.isAdmin}
+                    />
+                    <span className="admin-toggle-label">Услуги</span>
                   </label>
                 </div>
                   <p style={{
