@@ -381,6 +381,19 @@ input, select, button, textarea { font-family: inherit; }
 .rb-salary-total-value.negative { color: var(--rb-danger); }
 
 /* Service mode */
+.rb-svc-mode-tabs { display: flex; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+.rb-svc-mode-tab { flex: 1; padding: 8px 12px; font-size: 12px; font-weight: 600; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; }
+.rb-svc-mode-tab.active { color: var(--rb-primary); border-bottom-color: var(--rb-primary); background: #f0f7ff; }
+.rb-svc-mode-tab:hover:not(.active) { background: #f0f2f5; color: var(--rb-text); }
+.rb-svc-cat-service { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: background 0.1s; }
+.rb-svc-cat-service:hover { background: #f0f7ff; }
+.rb-svc-cat-service.checked { background: #dbeafe; }
+.rb-svc-cat-service input[type=checkbox] { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--rb-primary); cursor: pointer; }
+.rb-svc-cat-service-name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; }
+.rb-svc-cat-service-code { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-svc-cat-service-price { font-size: 12px; color: var(--rb-success); font-weight: 600; flex-shrink: 0; }
+.rb-svc-multi-bar { padding: 8px 14px; background: #eff6ff; border-bottom: 1px solid #bfdbfe; font-size: 12px; font-weight: 600; color: var(--rb-primary); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rb-svc-multi-bar-count { font-size: 14px; }
 .rb-svc-result-item { padding: 10px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: background 0.1s; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .rb-svc-result-item:hover { background: #f0f7ff; }
 .rb-svc-result-item.selected { background: #dbeafe; border-left: 3px solid var(--rb-primary); }
@@ -569,10 +582,42 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <!-- Service search (step 3 service sub-tab only) -->
       <div id="rb-svc-mode-panel" style="display:none">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--rb-border)">
-          <input id="rb-svc-mode-input" class="rb-search-input" placeholder="Введите название или код услуги..." oninput="rbSvcModeSearchDebounced()">
+        <!-- Tab switcher -->
+        <div class="rb-svc-mode-tabs">
+          <button class="rb-svc-mode-tab active" id="rb-svc-tab-search-btn" onclick="rbSvcSwitchTab('search')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:-2px;margin-right:4px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Поиск
+          </button>
+          <button class="rb-svc-mode-tab" id="rb-svc-tab-cat-btn" onclick="rbSvcSwitchTab('category')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:-2px;margin-right:4px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>По категории
+          </button>
         </div>
-        <div id="rb-svc-mode-results" style="max-height:calc(100vh - 220px);overflow-y:auto"></div>
+        <!-- Search tab -->
+        <div id="rb-svc-search-pane">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--rb-border)">
+            <input id="rb-svc-mode-input" class="rb-search-input" placeholder="Введите название или код услуги..." oninput="rbSvcModeSearchDebounced()">
+          </div>
+          <div id="rb-svc-mode-results" style="max-height:calc(100vh - 270px);overflow-y:auto"></div>
+        </div>
+        <!-- Category tab -->
+        <div id="rb-svc-cat-pane" style="display:none">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--rb-border)">
+            <div class="rb-cat-dropdown" id="rb-svc-cat-dropdown">
+              <button class="rb-cat-dropdown-btn" id="rb-svc-cat-dropdown-btn" type="button" onclick="rbSvcCatToggleDropdown(event)">
+                <span id="rb-svc-cat-dropdown-label">Выберите категорию...</span>
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+              </button>
+              <div class="rb-cat-dropdown-list" id="rb-svc-cat-dropdown-list"></div>
+            </div>
+          </div>
+          <div id="rb-svc-multi-bar" class="rb-svc-multi-bar" style="display:none">
+            <span>Выбрано услуг: <span class="rb-svc-multi-bar-count" id="rb-svc-multi-count">0</span></span>
+            <div style="display:flex;gap:6px">
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcCatSelectAll()">Все</button>
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcCatDeselectAll()">Сбросить</button>
+            </div>
+          </div>
+          <div id="rb-svc-cat-services" style="max-height:calc(100vh - 310px);overflow-y:auto"></div>
+        </div>
       </div>
       <!-- Doctor list -->
       <div class="rb-doctors-list" id="rb-doctors-list">
@@ -1874,11 +1919,14 @@ async function rbPsvcSaveAll(misUserId) {
 // SERVICE MODE
 // ═══════════════════════════════════════
 const SVC = {
-  selectedService: null,
-  bonusesByDoctor: {}, // misUserId -> { id, bonusPercent, bonusRub }
+  selectedService: null,         // single service (search mode)
+  selectedServices: new Map(),   // multi mode: code -> service object
+  bonusesByDoctor: {},           // misUserId -> { id, bonusPercent, bonusRub }
   selectedDoctorIds: new Set(),
   filteredDoctors: [],
+  tab: 'search',                 // 'search' | 'category'
 };
+let _rbSvcCatServices = []; // services in current category for SVC mode
 
 let _svcSearchTimer;
 function rbSvcModeSearchDebounced() {
@@ -1938,10 +1986,17 @@ async function rbSvcModeSelectService(s) {
 }
 
 function rbSvcModeRender() {
+  if (!SVC.filteredDoctors.length && RB.doctors.length) SVC.filteredDoctors = [...RB.doctors];
+  const isMulti = SVC.tab === 'category';
   const svc = SVC.selectedService;
-  if (!svc) return;
+  if (!isMulti && !svc) return;
+  if (isMulti && SVC.selectedServices.size === 0) {
+    // Show placeholder for multi mode without services selected
+    document.getElementById('rb-detail-panel').innerHTML =
+      `<div class="rb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><p>Выберите услуги из категории слева</p></div>`;
+    return;
+  }
 
-  const priceHtml = svc.price ? `<span style="font-size:12px;color:var(--rb-success);font-weight:600">${parseFloat(svc.price).toFixed(2)} ₽</span>` : '';
   const selectedCount = SVC.selectedDoctorIds.size;
 
   const doctorsHtml = SVC.filteredDoctors.map(d => {
@@ -1961,12 +2016,17 @@ function rbSvcModeRender() {
     </label>`;
   }).join('');
 
+  const titleHtml = isMulti
+    ? `<h2 style="font-size:15px">${SVC.selectedServices.size} ${SVC.selectedServices.size === 1 ? 'услуга' : SVC.selectedServices.size < 5 ? 'услуги' : 'услуг'} выбрано</h2>
+       <p style="margin-top:4px;font-size:12px;color:var(--rb-text-secondary)">${Array.from(SVC.selectedServices.values()).slice(0,3).map(s=>rbEsc(s.title)).join(', ')}${SVC.selectedServices.size > 3 ? ' и ещё...' : ''}</p>`
+    : `<h2 style="font-size:15px">${rbEsc(svc.title)}</h2>
+       <p style="margin-top:4px">Код: <span style="font-family:monospace">${rbEsc(svc.code)}</span>${svc.price ? ' &nbsp;•&nbsp; ' + parseFloat(svc.price).toFixed(2) + ' ₽' : ''}</p>`;
+
   document.getElementById('rb-detail-panel').innerHTML = `
     <div class="rb-doctor-card">
       <div class="rb-doctor-card-header" style="flex-wrap:wrap;gap:10px">
         <div style="flex:1;min-width:0">
-          <h2 style="font-size:15px">${rbEsc(svc.title)}</h2>
-          <p style="margin-top:4px">Код: <span style="font-family:monospace">${rbEsc(svc.code)}</span>${svc.price ? ' &nbsp;•&nbsp; ' + parseFloat(svc.price).toFixed(2) + ' ₽' : ''}</p>
+          ${titleHtml}
         </div>
       </div>
       <div style="padding:14px 16px;border-bottom:1px solid var(--rb-border);background:#fffbeb">
@@ -1995,12 +2055,16 @@ function rbSvcModeRender() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Врачи-направители
         </h3>
-        <div style="display:flex;gap:6px;margin-left:auto">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;width:100%">
+          <select id="rb-svc-clinic-filter" class="rb-select" style="font-size:12px;padding:4px 8px;flex:1;min-width:120px" onchange="rbSvcSelectByClinic()">
+            <option value="">Выбрать медцентр...</option>
+            ${RB.clinics.map(c => `<option value="${c.id}">${rbEsc(c.name)}</option>`).join('')}
+          </select>
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcSelectAll()">Все</button>
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcDeselectAll()">Сбросить</button>
         </div>
         <input class="rb-search-input" id="rb-svc-doctor-filter" placeholder="Фильтр по ФИО..."
-               style="width:100%;margin-top:4px" oninput="rbSvcFilterDoctors()">
+               style="width:100%;margin-top:6px" oninput="rbSvcFilterDoctors()">
       </div>
       <div id="rb-svc-doctor-list" style="max-height:calc(100vh - 420px);overflow-y:auto">
         ${doctorsHtml || '<div class="rb-loading" style="padding:20px">Нет врачей</div>'}
@@ -2055,8 +2119,12 @@ function rbSvcFilterDoctors() {
 }
 
 async function rbSvcModeSaveBulk() {
+  const isMulti = SVC.tab === 'category';
   const svc = SVC.selectedService;
-  if (!svc || !SVC.selectedDoctorIds.size) return;
+  if (!isMulti && !svc) return;
+  if (isMulti && SVC.selectedServices.size === 0) { rbToast('Не выбрано ни одной услуги', 'error'); return; }
+  if (!SVC.selectedDoctorIds.size) { rbToast('Не выбрано ни одного врача', 'error'); return; }
+
   const { bonusPercent: svcPct, bonusRub: svcRub } = rbInlineGetBonus('rb-svc-bonus-type-pct', 'rb-svc-bonus-val');
   if (svcPct == null && svcRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
 
@@ -2064,21 +2132,37 @@ async function rbSvcModeSaveBulk() {
   if (btn) btn.disabled = true;
 
   const selectedDoctors = RB.doctors.filter(d => SVC.selectedDoctorIds.has(d.id));
+  const services = isMulti ? Array.from(SVC.selectedServices.values()) : [svc];
   let saved = 0;
   try {
     for (const d of selectedDoctors) {
-      await rbPost('/api/referral-bonuses', {
-        misUserId: d.id,
-        doctorName: d.name,
-        serviceCode: svc.code,
-        serviceName: svc.title,
-        bonusPercent: svcPct,
-        bonusRub: svcRub,
-      });
-      SVC.bonusesByDoctor[d.id] = { bonusPercent: svcPct, bonusRub: svcRub };
+      if (isMulti) {
+        // Bulk save for multiple services at once
+        await rbPost('/api/referral-bonuses/bulk', {
+          misUserId: d.id,
+          doctorName: d.name,
+          services: services.map(s => ({
+            serviceCode: s.code || String(s.service_id || ''),
+            serviceName: s.title,
+            bonusPercent: svcPct,
+            bonusRub: svcRub,
+          })),
+        });
+      } else {
+        await rbPost('/api/referral-bonuses', {
+          misUserId: d.id,
+          doctorName: d.name,
+          serviceCode: svc.code,
+          serviceName: svc.title,
+          bonusPercent: svcPct,
+          bonusRub: svcRub,
+        });
+        SVC.bonusesByDoctor[d.id] = { bonusPercent: svcPct, bonusRub: svcRub };
+      }
       saved++;
     }
-    rbToast(`Бонус назначен ${saved} врачам`, 'success');
+    const svcWord = isMulti ? `${services.length} услуг` : 'услугу';
+    rbToast(`Бонус назначен ${saved} врачам (${svcWord})`, 'success');
     SVC.selectedDoctorIds.clear();
     rbSvcModeRender();
   } catch (err) {
@@ -2117,6 +2201,206 @@ async function rbSvcModeClearBulk() {
   }
 }
 
+
+// ═══════════════════════════════════════
+// SERVICE MODE — tab switching & category
+// ═══════════════════════════════════════
+
+function rbSvcSwitchTab(tab) {
+  SVC.tab = tab;
+  const isSearch = tab === 'search';
+  document.getElementById('rb-svc-tab-search-btn').classList.toggle('active', isSearch);
+  document.getElementById('rb-svc-tab-cat-btn').classList.toggle('active', !isSearch);
+  document.getElementById('rb-svc-search-pane').style.display = isSearch ? '' : 'none';
+  document.getElementById('rb-svc-cat-pane').style.display = isSearch ? 'none' : '';
+  if (isSearch) {
+    SVC.selectedServices.clear();
+    _rbSvcCatServices = [];
+    if (SVC.selectedService) rbSvcModeRender();
+    else document.getElementById('rb-detail-panel').innerHTML =
+      '<div class="rb-placeholder"><p>Найдите и выберите услугу</p></div>';
+  } else {
+    SVC.selectedService = null;
+    SVC.selectedDoctorIds.clear();
+    if (!SVC.filteredDoctors.length) SVC.filteredDoctors = [...RB.doctors];
+    rbSvcModeRender();
+    const list = document.getElementById('rb-svc-cat-dropdown-list');
+    if (list && list.children.length === 0) rbSvcLoadCategories();
+  }
+}
+
+async function rbSvcLoadCategories() {
+  const list = document.getElementById('rb-svc-cat-dropdown-list');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Загрузка...</div>';
+  try {
+    const data = await rbPost('/api/mis/get-service-categories', {});
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Категории не найдены</div>';
+      return;
+    }
+    list.innerHTML = '';
+    function addCats(cats, level) {
+      cats.forEach(cat => {
+        const item = document.createElement('div');
+        item.className = 'rb-cat-dropdown-item';
+        item.setAttribute('data-value', cat.id);
+        item.setAttribute('data-level', level);
+        item.textContent = cat.title + ' (' + (cat.services_count || 0) + ')';
+        item.onclick = function(e) { e.stopPropagation(); rbSvcCatSelectCategory(cat.id, cat.title); };
+        list.appendChild(item);
+        if (cat.children && cat.children.length) addCats(cat.children, level + 1);
+      });
+    }
+    addCats(data.data, 0);
+  } catch (e) {
+    list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-danger)">Ошибка</div>';
+  }
+}
+
+function rbSvcCatToggleDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('rb-svc-cat-dropdown');
+  const btn = document.getElementById('rb-svc-cat-dropdown-btn');
+  const list = document.getElementById('rb-svc-cat-dropdown-list');
+  const isOpen = dd.classList.contains('open');
+  dd.classList.toggle('open', !isOpen);
+  if (!isOpen) {
+    // Use fixed positioning to escape .rb-panel overflow:hidden clipping
+    const rect = btn.getBoundingClientRect();
+    list.style.position = 'fixed';
+    list.style.top = (rect.bottom + 4) + 'px';
+    list.style.left = rect.left + 'px';
+    list.style.width = rect.width + 'px';
+    list.style.zIndex = '9999';
+    if (list.children.length === 0) rbSvcLoadCategories();
+  }
+}
+
+async function rbSvcCatSelectCategory(catId, catTitle) {
+  const dd = document.getElementById('rb-svc-cat-dropdown');
+  if (dd) {
+    dd.classList.remove('open');
+    const label = document.getElementById('rb-svc-cat-dropdown-label');
+    if (label) label.textContent = catTitle;
+    dd.querySelectorAll('.rb-cat-dropdown-item').forEach(el =>
+      el.classList.toggle('selected', el.getAttribute('data-value') === String(catId)));
+  }
+  SVC.selectedServices.clear();
+  _rbSvcCatServices = [];
+  const servEl = document.getElementById('rb-svc-cat-services');
+  const barEl = document.getElementById('rb-svc-multi-bar');
+  if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Загрузка услуг...</div>';
+  if (barEl) barEl.style.display = 'none';
+  rbSvcModeRender();
+  try {
+    const data = await rbPost('/api/mis/get-services', { category_id: catId, show_children: true });
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)">Услуги не найдены</div>';
+      return;
+    }
+    _rbSvcCatServices = data.data;
+    SVC.filteredDoctors = [...RB.doctors];
+    rbSvcCatRenderList();
+    if (barEl) barEl.style.display = '';
+    rbSvcCatUpdateBar();
+  } catch (e) {
+    if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-danger)">Ошибка загрузки</div>';
+  }
+}
+
+function rbSvcCatRenderList() {
+  const servEl = document.getElementById('rb-svc-cat-services');
+  if (!servEl) return;
+  if (!_rbSvcCatServices.length) {
+    servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)">Нет услуг</div>';
+    return;
+  }
+  servEl.innerHTML = _rbSvcCatServices.map((s, i) => {
+    const code = s.code || String(s.service_id || '');
+    const isChecked = SVC.selectedServices.has(code);
+    const price = s.price ? parseFloat(s.price).toFixed(2) + ' ₽' : '';
+    return '<label class="rb-svc-cat-service' + (isChecked ? ' checked' : '') + '">'
+      + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="rbSvcCatToggleService(' + i + ', this.checked)">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div class="rb-svc-cat-service-name">' + rbEsc(s.title) + '</div>'
+      + '<div class="rb-svc-cat-service-code">Код: ' + rbEsc(String(code)) + '</div>'
+      + '</div>'
+      + (price ? '<div class="rb-svc-cat-service-price">' + price + '</div>' : '')
+      + '</label>';
+  }).join('');
+}
+
+function rbSvcCatToggleService(idx, checked) {
+  const s = _rbSvcCatServices[idx];
+  if (!s) return;
+  const code = s.code || String(s.service_id || '');
+  if (checked) SVC.selectedServices.set(code, s);
+  else SVC.selectedServices.delete(code);
+  const rows = document.querySelectorAll('#rb-svc-cat-services .rb-svc-cat-service');
+  if (rows[idx]) rows[idx].classList.toggle('checked', checked);
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcCatUpdateBar() {
+  const countEl = document.getElementById('rb-svc-multi-count');
+  if (countEl) countEl.textContent = SVC.selectedServices.size;
+}
+
+function rbSvcCatSelectAll() {
+  _rbSvcCatServices.forEach(s => {
+    const code = s.code || String(s.service_id || '');
+    SVC.selectedServices.set(code, s);
+  });
+  rbSvcCatRenderList();
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcCatDeselectAll() {
+  SVC.selectedServices.clear();
+  rbSvcCatRenderList();
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcSelectByClinic() {
+  const sel = document.getElementById('rb-svc-clinic-filter');
+  const clinicId = sel ? sel.value : '';
+  if (!clinicId) return;
+  if (!SVC.filteredDoctors.length && RB.doctors.length) SVC.filteredDoctors = [...RB.doctors];
+  let count = 0;
+  SVC.filteredDoctors.forEach(d => {
+    if (d.clinics && d.clinics.includes(String(clinicId))) {
+      SVC.selectedDoctorIds.add(d.id);
+      count++;
+    }
+  });
+  if (count === 0) {
+    rbToast('Нет врачей из выбранного медцентра в текущем списке', 'info');
+    if (sel) sel.value = '';
+    return;
+  }
+  const cnt = SVC.selectedDoctorIds.size;
+  const cntEl = document.getElementById('rb-svc-sel-count');
+  if (cntEl) cntEl.textContent = cnt;
+  const saveBtn = document.getElementById('rb-svc-save-btn');
+  const clearBtn = document.getElementById('rb-svc-clear-btn');
+  if (saveBtn) saveBtn.disabled = cnt === 0;
+  if (clearBtn) clearBtn.disabled = cnt === 0;
+  // Update checkboxes without full re-render
+  const listEl = document.getElementById('rb-svc-doctor-list');
+  if (listEl) {
+    listEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      const onch = cb.getAttribute('onchange') || '';
+      const m = onch.match(/'([^']+)'/);
+      if (m) cb.checked = SVC.selectedDoctorIds.has(m[1]);
+    });
+  }
+  rbToast('Выбрано ' + count + ' врачей из медцентра', 'success');
+  if (sel) sel.value = '';
+}
 // ═══════════════════════════════════════
 // EXECUTOR DETAIL
 // ═══════════════════════════════════════
@@ -5277,6 +5561,13 @@ window.rbSvcDeselectAll = rbSvcDeselectAll;
 window.rbSvcFilterDoctors = rbSvcFilterDoctors;
 window.rbSvcModeSaveBulk = rbSvcModeSaveBulk;
 window.rbSvcModeClearBulk = rbSvcModeClearBulk;
+window.rbSvcSwitchTab = rbSvcSwitchTab;
+window.rbSvcCatToggleDropdown = rbSvcCatToggleDropdown;
+window.rbSvcCatSelectCategory = rbSvcCatSelectCategory;
+window.rbSvcCatToggleService = rbSvcCatToggleService;
+window.rbSvcCatSelectAll = rbSvcCatSelectAll;
+window.rbSvcCatDeselectAll = rbSvcCatDeselectAll;
+window.rbSvcSelectByClinic = rbSvcSelectByClinic;
 // Step 1: executor settings
 window.rbExecToggleForm = rbExecToggleForm;
 window.rbExecToggleType = rbExecToggleType;
