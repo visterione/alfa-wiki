@@ -185,6 +185,7 @@ export const chat = {
   getUnreadCount: () => api.get('/chat/unread/count'),
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   getUsers: () => api.get('/chat/users'),
+  getBots: () => api.get('/chat/bots'),
   sendMessage: (chatId, content, attachments = []) => {
     const type = attachments.length > 0 
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
@@ -529,6 +530,19 @@ export const email = {
   removeFavoriteRecipient: (id) => api.delete(`/email/favorites/recipients/${id}`),
   getFavoriteTemplates: () => api.get('/email/favorites/templates'),
   toggleFavoriteTemplate: (templateId) => api.post(`/email/favorites/templates/${templateId}`)
+};
+
+export const referralBonusAccess = {
+  getUsers: () => api.get('/referral-bonuses/permissions/users'),
+  saveUserPerm: (userId, data) => api.put(`/referral-bonuses/permissions/${userId}`, data),
+};
+
+export const bots = {
+  list:            ()         => api.get('/bots'),
+  create:          (data)     => api.post('/bots', data),
+  update:          (id, data) => api.put(`/bots/${id}`, data),
+  delete:          (id)       => api.delete(`/bots/${id}`),
+  regenerateToken: (id)       => api.post(`/bots/${id}/regenerate-token`),
 };
 
 export default api;

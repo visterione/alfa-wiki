@@ -12,6 +12,7 @@ import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
 import Favorites from './pages/Favorites';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminBots from './pages/admin/AdminBots';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
 import AdminPages from './pages/admin/AdminPages';
@@ -22,6 +23,7 @@ import CourseView from './pages/CourseView';
 import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseEditor from './pages/admin/AdminCourseEditor';
 import AdminJournal from './pages/admin/AdminJournal';
+import AdminRbAccess from './pages/admin/AdminRbAccess';
 import Calendar from './pages/Calendar';
 import Kanban from './pages/Kanban';
 import KanbanArchive from './pages/KanbanArchive';
@@ -150,6 +152,15 @@ function AppRoutes() {
         {/* АДМИНКА ЖУРНАЛ СТРАНИЦ */}
         <Route path="admin/journal" element={
           <ProtectedRoute requireAdminAccess="journal"><AdminJournal /></ProtectedRoute>
+        } />
+
+        <Route path="admin/bots" element={
+          <ProtectedRoute adminOnly><AdminBots /></ProtectedRoute>
+        } />
+
+        {/* ДОСТУП К БОНУСАМ ЗА НАПРАВЛЕНИЯ */}
+        <Route path="admin/referral-bonuses-access" element={
+          <ProtectedRoute adminOnly><AdminRbAccess /></ProtectedRoute>
         } />
       </Route>
 

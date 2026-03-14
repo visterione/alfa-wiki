@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2 } from 'lucide-react';
+import { X, Upload, FileText, Send, Plus, Edit, Trash2, Save, Star, Table2, Code2, AlignLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 import Editor from './Editor';
 import { email, roles as rolesApi, media } from '../services/api';
@@ -75,6 +75,10 @@ const EmailComposeModal = ({ onClose }) => {
     }
   };
 
+  // Editor modes
+  const [editorMode, setEditorMode] = useState('wysiwyg'); // 'wysiwyg' | 'html'
+  const [templateEditorMode, setTemplateEditorMode] = useState('wysiwyg');
+
   // Template management
   const [editorKey, setEditorKey] = useState(0);
 
@@ -99,6 +103,7 @@ const EmailComposeModal = ({ onClose }) => {
       setEditingTemplate(null);
       setTemplateForm({ name: '', subject: '', htmlContent: '', isPublic: true });
     }
+    setTemplateEditorMode('wysiwyg');
     setShowTemplateManager(true);
   };
 
@@ -641,12 +646,37 @@ const EmailComposeModal = ({ onClose }) => {
 
           {/* Editor */}
           <div className="email-editor-container">
-            <Editor
-              key={editorKey}
-              content={htmlContent}
-              onChange={setHtmlContent}
-              placeholder="Введите текст письма..."
-            />
+            <div className="email-editor-mode-toggle">
+              <button
+                className={`email-mode-btn ${editorMode === 'wysiwyg' ? 'active' : ''}`}
+                onClick={() => { if (editorMode !== 'wysiwyg') { setEditorKey(k => k + 1); setEditorMode('wysiwyg'); } }}
+                title="Визуальный редактор"
+              >
+                <AlignLeft size={13} /> Визуально
+              </button>
+              <button
+                className={`email-mode-btn ${editorMode === 'html' ? 'active' : ''}`}
+                onClick={() => setEditorMode('html')}
+                title="Редактировать HTML"
+              >
+                <Code2 size={13} /> HTML
+              </button>
+            </div>
+            {editorMode === 'wysiwyg' ? (
+              <Editor
+                key={editorKey}
+                content={htmlContent}
+                onChange={setHtmlContent}
+                placeholder="Введите текст письма..."
+              />
+            ) : (
+              <textarea
+                className="email-html-textarea"
+                value={htmlContent}
+                onChange={e => setHtmlContent(e.target.value)}
+                placeholder="Вставьте HTML-код письма..."
+              />
+            )}
           </div>
         </div>
 
@@ -824,11 +854,36 @@ const EmailComposeModal = ({ onClose }) => {
 
               {/* Editor */}
               <div className="email-editor-container">
-                <Editor
-                  content={templateForm.htmlContent}
-                  onChange={(content) => setTemplateForm({ ...templateForm, htmlContent: content })}
-                  placeholder="Введите текст шаблона..."
-                />
+                <div className="email-editor-mode-toggle">
+                  <button
+                    className={`email-mode-btn ${templateEditorMode === 'wysiwyg' ? 'active' : ''}`}
+                    onClick={() => setTemplateEditorMode('wysiwyg')}
+                    title="Визуальный редактор"
+                  >
+                    <AlignLeft size={13} /> Визуально
+                  </button>
+                  <button
+                    className={`email-mode-btn ${templateEditorMode === 'html' ? 'active' : ''}`}
+                    onClick={() => setTemplateEditorMode('html')}
+                    title="Редактировать HTML"
+                  >
+                    <Code2 size={13} /> HTML
+                  </button>
+                </div>
+                {templateEditorMode === 'wysiwyg' ? (
+                  <Editor
+                    content={templateForm.htmlContent}
+                    onChange={(content) => setTemplateForm({ ...templateForm, htmlContent: content })}
+                    placeholder="Введите текст шаблона..."
+                  />
+                ) : (
+                  <textarea
+                    className="email-html-textarea"
+                    value={templateForm.htmlContent}
+                    onChange={e => setTemplateForm({ ...templateForm, htmlContent: e.target.value })}
+                    placeholder="Вставьте HTML-код шаблона..."
+                  />
+                )}
               </div>
 
               {/* Public Template Checkbox */}

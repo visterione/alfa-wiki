@@ -1,8 +1,7 @@
 const nodemailer = require('nodemailer');
 
-// Создаём транспортер для отправки писем
+// Создаём транспортер для системных писем (2FA, учётные данные)
 const createTransporter = () => {
-  // Если нет настроек email - используем консоль для разработки
   if (!process.env.SMTP_HOST) {
     console.warn('⚠️  SMTP settings not configured. Emails will be logged to console.');
     return nodemailer.createTransport({
@@ -15,19 +14,47 @@ const createTransporter = () => {
   const config = {
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: process.env.SMTP_SECURE === 'true', // true для 465, false для других портов
+    secure: process.env.SMTP_SECURE === 'true',
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
     }
   };
 
-  // Отключаем проверку сертификата для shared-хостинга
-  // (когда сертификат выдан на другой домен)
   if (process.env.SMTP_IGNORE_TLS === 'true') {
-    config.tls = {
-      rejectUnauthorized: false
-    };
+    config.tls = { rejectUnauthorized: false };
+  }
+
+  return nodemailer.createTransport(config);
+};
+
+// Создаём транспортер для рассылок (использует отдельный ящик если настроен,
+// иначе падает на основной)
+const createBroadcastTransporter = () => {
+  const host = process.env.SMTP_HOST_BROADCAST || process.env.SMTP_HOST;
+
+  if (!host) {
+    console.warn('⚠️  SMTP settings not configured. Emails will be logged to console.');
+    return nodemailer.createTransport({
+      streamTransport: true,
+      newline: 'unix',
+      buffer: true
+    });
+  }
+
+  const config = {
+    host,
+    port: parseInt(process.env.SMTP_PORT_BROADCAST || process.env.SMTP_PORT || '587'),
+    secure: (process.env.SMTP_SECURE_BROADCAST || process.env.SMTP_SECURE) === 'true',
+    auth: {
+      user: process.env.SMTP_USER_BROADCAST || process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS_BROADCAST || process.env.SMTP_PASS
+    }
+  };
+
+  const ignoreTls = process.env.SMTP_IGNORE_TLS_BROADCAST || process.env.SMTP_IGNORE_TLS;
+  if (ignoreTls === 'true') {
+    config.tls = { rejectUnauthorized: false };
   }
 
   return nodemailer.createTransport(config);
@@ -427,17 +454,11 @@ const embedImagesInline = (htmlContent) => {
 const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [], senderInfo }) => {
   const path = require('path');
   const fs = require('fs');
-  const transporter = createTransporter();
+  const transporter = createBroadcastTransporter();
   const results = { success: true, sent: 0, failed: 0, errors: [] };
 
-  // Добавляем скрытую подпись отправителя в конец письма
-  const senderSignature = senderInfo
-    ? `<div style="margin-top:20px;padding-top:8px;border-top:1px solid #e5e5e7;font-family:sans-serif;font-size:10px;color:#bbb;">Отправлено пользователем: ${senderInfo}</div>`
-    : '';
-  const contentWithSignature = htmlContent + senderSignature;
-
   // Встраиваем изображения из HTML как inline attachments
-  const { html: processedHtml, images } = embedImagesInline(contentWithSignature);
+  const { html: processedHtml, images } = embedImagesInline(htmlContent);
 
   console.log(`📧 Preparing email with ${images.length} embedded images and ${attachments.length} attachments`);
 
@@ -483,7 +504,7 @@ const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [
       }
 
       const mailOptions = {
-        from: process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+        from: process.env.SMTP_FROM_BROADCAST || process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
         to: recipient.email,
         subject: subject,
         html: processedHtml,

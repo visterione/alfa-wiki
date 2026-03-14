@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail
+  Edit2, Trash2, Smile, Mail, Bot
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -41,6 +41,7 @@ export default function Dashboard() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEmailCompose, setShowEmailCompose] = useState(false);
   const [usersList, setUsersList] = useState([]);
+  const [botsList, setBotsList] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [groupName, setGroupName] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -124,7 +125,7 @@ export default function Dashboard() {
     } catch (e) { console.error('Failed to refresh chat:', e); }
   };
 
-  useEffect(() => { loadChats(); loadUsers(); }, [loadChats]);
+  useEffect(() => { loadChats(); loadUsers(); loadBots(); }, [loadChats]);
 
   // Find all matching messages when search query is set
   useEffect(() => {
@@ -307,6 +308,13 @@ export default function Dashboard() {
       const { data } = await chat.getUsers();
       setUsersList(data.filter(u => u.id !== user.id && u.isActive));
     } catch (e) { console.error('Failed to load users:', e); }
+  };
+
+  const loadBots = async () => {
+    try {
+      const { data } = await chat.getBots();
+      setBotsList(data);
+    } catch (e) { console.error('Failed to load bots:', e); }
   };
 
   const handleNotificationClick = async (notification) => {
@@ -792,6 +800,15 @@ export default function Dashboard() {
         return isNotMember && matchesSearch;
       })
     : [];
+
+  const availableBotsToAdd = activeChat?.type === 'group'
+    ? botsList.filter(b => {
+        const isNotMember = !activeChat.members?.find(m => m.userId === b.id);
+        const displayName = (b.displayName || b.username || '').toLowerCase();
+        const matchesSearch = displayName.includes(addMemberSearchQuery.toLowerCase());
+        return isNotMember && matchesSearch;
+      })
+    : [];
   const fixUrl = (urlOrPath) => getAvatarUrl(urlOrPath);
   const getChatAvatar = (c) => c ? (c.type === 'group' ? c.avatar : c.otherUser?.avatar) : null;
   const isGroupCreator = activeChat?.type === 'group' && activeChat.createdBy === user.id;
@@ -1219,7 +1236,7 @@ export default function Dashboard() {
               </div>
               <div className="chat-info-name">{activeChat.displayName}</div>
               <div className="chat-info-section">
-                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupCreator && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); loadUsers(); }}><UserPlus size={16} /> Добавить</button>}</div>
+                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupCreator && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
                 <div className="chat-members-list">
                   {activeChat.members?.map(m => (
                     <div key={m.userId} className="chat-member-item">
@@ -1378,7 +1395,18 @@ export default function Dashboard() {
                     <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
                   </div>
                 ))}
-                {availableUsersToAdd.length === 0 && <div className="text-muted text-center">Нет доступных пользователей</div>}
+                {availableBotsToAdd.length > 0 && (
+                  <>
+                    <div className="user-list-section-title" style={{ padding: '8px 0 4px', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Боты</div>
+                    {availableBotsToAdd.map(b => (
+                      <div key={b.id} className="user-item" onClick={() => addMemberToGroup(b.id)}>
+                        <div className="user-item-avatar">{getAvatarUrl(b.avatar) ? <img src={getAvatarUrl(b.avatar)} alt="" /> : <Bot size={24} />}</div>
+                        <div className="user-item-info"><div className="user-item-name">{b.displayName || b.username}</div><div className="user-item-username">@{b.username} · бот</div></div>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {availableUsersToAdd.length === 0 && availableBotsToAdd.length === 0 && <div className="text-muted text-center">Нет доступных пользователей</div>}
               </div>
             </div>
           </div>

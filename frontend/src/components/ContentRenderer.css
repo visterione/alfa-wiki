@@ -14,6 +14,12 @@
   cursor: default;
 }
 
+/* Скрываем ручки изменения размера колонок в режиме просмотра */
+.content-renderer .column-resize-handle {
+  display: none !important;
+}
+
+
 /* Скрываем trailing break в режиме просмотра */
 .content-renderer .ProseMirror .ProseMirror-trailingBreak {
   display: none;

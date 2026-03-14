@@ -2449,6 +2449,8 @@ function rbExecClinicDefault() {
     materials: [],            // [{name, valueType:'percent'|'rub', value}]
     serviceMaterials: [],     // [{serviceCode, serviceName, name, valueType:'percent'|'rub', value, deductionType}]
     extras: [],               // [{name, amount, hours}]
+    includeReferralBonuses: true,    // начислять бонусы за направления
+    includeReferralDeductions: true, // списывать бонусы направителям
   };
 }
 
@@ -2783,6 +2785,14 @@ function rbExecSectionPaymentNew(data) {
       <div class="rb-plus-pct-row" id="rb-exec-plus-pct-row" style="${isPercent ? 'display:none' : ''}">
         <input type="checkbox" id="rb-exec-plus-pct-check" ${data.plusPercent ? 'checked' : ''} onchange="rbExecTogglePlusPct()">
         <label for="rb-exec-plus-pct-check">+ Бонусы за выполненные услуги</label>
+      </div>
+      <div class="rb-plus-pct-row">
+        <input type="checkbox" id="rb-exec-include-ref-bonuses" ${data.includeReferralBonuses !== false ? 'checked' : ''} onchange="rbExecAutoSave()">
+        <label for="rb-exec-include-ref-bonuses">Начислять бонусы за направления</label>
+      </div>
+      <div class="rb-plus-pct-row">
+        <input type="checkbox" id="rb-exec-include-ref-deductions" ${data.includeReferralDeductions !== false ? 'checked' : ''} onchange="rbExecAutoSave()">
+        <label for="rb-exec-include-ref-deductions">Списывать бонусы направителям</label>
       </div>
 
       <div class="rb-exec-fields-grid" style="margin-top:12px">
@@ -3212,6 +3222,8 @@ async function rbExecSavePayment() {
   d.advance = parseFloat(document.getElementById('rb-exec-advance')?.value) || 0;
   d.mainPaymentMethod = document.getElementById('rb-exec-main-payment-method')?.value || 'card';
   d.mainPayment = parseFloat(document.getElementById('rb-exec-main-payment')?.value) || 0;
+  d.includeReferralBonuses    = document.getElementById('rb-exec-include-ref-bonuses')?.checked ?? true;
+  d.includeReferralDeductions = document.getElementById('rb-exec-include-ref-deductions')?.checked ?? true;
 
   if (pt === 'salary') {
     d.fixedSalary = parseFloat(document.getElementById('rb-exec-fixed-salary')?.value) || 0;
@@ -3612,7 +3624,9 @@ async function rbBuildReport(rows) {
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
 
     // preFinalSalary — сумма до вычетов "от з/п" ("от оборота" уже учтены в бонусах по услугам)
-    const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - referralCostTotal;
+    const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
+    const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
+    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     // Индивидуальные расходники "от з/п" — суммируются по каждой услуге с override final
@@ -3624,11 +3638,11 @@ async function rbBuildReport(rows) {
     const materialsTotal  = finalMaterialsTotal + svcMatFinalTotal;
     const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal - svcMatFinalTotal;
 
-    referralBonusTotal && (globalGrandTotal += referralBonusTotal);
+    effectiveReferralBonusTotal && (globalGrandTotal += effectiveReferralBonusTotal);
 
     const salary = {
       basePay, basePayLabel, payType: pt,
-      referralBonuses: referralBonusTotal,
+      referralBonuses: effectiveReferralBonusTotal,
       referralSections,
       performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,
       performedSections: includePerformedBonus ? performedSections : [],
@@ -3637,7 +3651,7 @@ async function rbBuildReport(rows) {
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
       performedServicesSum, deductionPerService, totalServiceCount,
-      referralCostTotal, referralCostItems, executorSections,
+      referralCostTotal: effectiveReferralCostTotal, referralCostItems, executorSections,
       finalSalary, advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: clinicSettings.mainPayment || 0,
@@ -4975,7 +4989,9 @@ async function rbBulkGenerate() {
       const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
 
       // preFinalSalary — сумма до вычетов "от з/п" ("от оборота" уже учтены в бонусах по услугам)
-      const preFinalSalary = basePay + referralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - bulkReferralCostTotal;
+      const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
+      const effectiveBulkReferralCostTotal = clinicSettings.includeReferralDeductions !== false ? bulkReferralCostTotal : 0;
+      const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - effectiveBulkReferralCostTotal;
       const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
       const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
       // Индивидуальные расходники "от з/п" — суммируются по каждой услуге с override final
@@ -4987,11 +5003,11 @@ async function rbBulkGenerate() {
       const materialsTotal  = finalMaterialsTotal + svcMatFinalTotal;
       const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal - svcMatFinalTotal;
 
-      grandTotal += referralBonusTotal;
+      grandTotal += effectiveReferralBonusTotal;
 
       const salary = {
         basePay, basePayLabel, payType: pt,
-        referralBonuses: referralBonusTotal,
+        referralBonuses: effectiveReferralBonusTotal,
         referralSections,
         performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,
         performedSections: includePerformedBonus ? performedSections : [],
@@ -5000,7 +5016,7 @@ async function rbBulkGenerate() {
         turnoverDeductionsTotal, finalDeductionsTotal,
         turnoverMaterialsTotal, finalMaterialsTotal,
         performedServicesSum, deductionPerService, totalServiceCount,
-        referralCostTotal: bulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
+        referralCostTotal: effectiveBulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
         finalSalary, advance: clinicSettings.advance || 0,
         paymentMethod: clinicSettings.paymentMethod,
         mainPayment: clinicSettings.mainPayment || 0,

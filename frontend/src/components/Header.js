@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Database, BookOpen, TestTube, Table2
+  Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -387,6 +387,18 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <Link to="/admin/journal" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <FileText size={16} />
                     Журнал страниц
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link to="/admin/bots" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Bot size={16} />
+                    Боты
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link to="/admin/referral-bonuses-access" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <GitBranch size={16} />
+                    Финансы: заработная плата
                   </Link>
                 )}
 
