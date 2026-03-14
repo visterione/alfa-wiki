@@ -300,7 +300,8 @@ const Message = sequelize.define('Message', {
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
   replyToId: { type: DataTypes.UUID },
-  forwardedFrom: { type: DataTypes.JSONB, allowNull: true, defaultValue: null }
+  forwardedFrom: { type: DataTypes.JSONB, allowNull: true, defaultValue: null },
+  telegramMsgId: { type: DataTypes.BIGINT, allowNull: true, comment: 'ID обновления в таблице bot_updates (для Telegram Bot API совместимости)' }
 }, { tableName: 'messages', timestamps: true });
 
 // === MESSAGE REACTION MODEL ===
@@ -2062,6 +2063,74 @@ const ReviewSyncConfig = sequelize.define('ReviewSyncConfig', {
 ReviewSyncConfig.belongsTo(ReviewBoard, { foreignKey: 'boardId', as: 'board' });
 ReviewBoard.hasMany(ReviewSyncConfig, { foreignKey: 'boardId', as: 'syncConfigs', onDelete: 'CASCADE' });
 
+// === INT ID MAP MODEL (UUID → stable integer ID для Telegram Bot API) ===
+// BIGSERIAL гарантирует уникальные монотонно растущие ID без коллизий
+const IntIdMap = sequelize.define('IntIdMap', {
+  id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true, comment: 'Стабильный целочисленный ID (Telegram integer id)' },
+  uuid: { type: DataTypes.UUID, allowNull: false, unique: true, comment: 'UUID объекта (user или chat)' },
+  entityType: { type: DataTypes.STRING(20), allowNull: false, comment: 'Тип: user | chat' }
+}, {
+  tableName: 'int_id_map',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { unique: true, fields: ['uuid'] },
+    { fields: ['entityType'] }
+  ]
+});
+
+// === BOT TOKEN MODEL (Telegram Bot API compatibility) ===
+const BotToken = sequelize.define('BotToken', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  token: { type: DataTypes.STRING(150), allowNull: false, unique: true, comment: 'Токен бота (формат: числа:строка)' },
+  name: { type: DataTypes.STRING(100), allowNull: false, comment: 'Отображаемое имя бота' },
+  username: { type: DataTypes.STRING(100), allowNull: false, unique: true, comment: 'Username бота без @' },
+  description: { type: DataTypes.TEXT, defaultValue: '', comment: 'Описание бота' },
+  userId: { type: DataTypes.UUID, allowNull: false, comment: 'ID связанного User-записи бота' },
+  webhookUrl: { type: DataTypes.TEXT, allowNull: true, comment: 'URL для доставки обновлений через webhook' },
+  webhookSecretToken: { type: DataTypes.STRING(256), allowNull: true, comment: 'Секретный токен для X-Telegram-Bot-Api-Secret-Token' },
+  allowedUpdates: { type: DataTypes.ARRAY(DataTypes.TEXT), defaultValue: [], comment: 'Список типов обновлений для webhook' },
+  maxConnections: { type: DataTypes.INTEGER, defaultValue: 40, comment: 'Максимальное число webhook соединений' },
+  commands: { type: DataTypes.JSONB, defaultValue: [], comment: 'Список команд бота [{command, description}]' },
+  isActive: { type: DataTypes.BOOLEAN, defaultValue: true, comment: 'Бот активен' },
+  lastUpdateId: { type: DataTypes.BIGINT, defaultValue: 0, comment: 'Последний полученный update_id (для getUpdates)' }
+}, {
+  tableName: 'bot_tokens',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['token'] },
+    { unique: true, fields: ['username'] },
+    { fields: ['userId'] },
+    { fields: ['isActive'] }
+  ]
+});
+
+// === BOT UPDATE MODEL (очередь обновлений) ===
+const BotUpdate = sequelize.define('BotUpdate', {
+  id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true, comment: 'update_id в Telegram Bot API' },
+  botId: { type: DataTypes.UUID, allowNull: false, comment: 'ID бота' },
+  updateType: { type: DataTypes.STRING(50), allowNull: false, comment: 'Тип: message, edited_message, callback_query и т.д.' },
+  updateData: { type: DataTypes.JSONB, defaultValue: {}, comment: 'Полный объект обновления' },
+  processed: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Обновление обработано (через getUpdates или webhook)' }
+}, {
+  tableName: 'bot_updates',
+  timestamps: true,
+  indexes: [
+    { fields: ['botId'] },
+    { fields: ['processed'] },
+    { fields: ['botId', 'processed'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
+// BotToken relationships
+BotToken.belongsTo(User, { foreignKey: 'userId', as: 'botUser' });
+User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
+
+// BotUpdate relationships
+BotUpdate.belongsTo(BotToken, { foreignKey: 'botId', as: 'bot' });
+BotToken.hasMany(BotUpdate, { foreignKey: 'botId', as: 'updates', onDelete: 'CASCADE' });
+
 // AccreditationFile relationships
 AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
 AccreditationFile.belongsTo(User, { foreignKey: 'uploadedBy', as: 'uploader' });
@@ -2158,5 +2227,9 @@ module.exports = {
   // Performed service bonuses module
   PerformedServiceBonus,
   // Service consumables module
-  ServiceConsumable
+  ServiceConsumable,
+  // Telegram Bot API compatibility
+  IntIdMap,
+  BotToken,
+  BotUpdate
 };

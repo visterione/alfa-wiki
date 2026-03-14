@@ -44,6 +44,9 @@ const referralReportsRoutes = require('./routes/referral-reports');
 const executorSettingsRoutes = require('./routes/executor-settings');
 const performedServiceBonusesRoutes = require('./routes/performed-service-bonuses');
 const serviceConsumablesRoutes = require('./routes/service-consumables');
+const telegramBotApiRoutes = require('./routes/telegram-bot-api');
+const botManagementRoutes = require('./routes/bot-management');
+const notifyRoutes = require('./routes/notify');
 
 const app = express();
 const server = http.createServer(app);
@@ -192,6 +195,21 @@ app.use('/api/referral-reports', referralReportsRoutes);
 app.use('/api/executor-settings', executorSettingsRoutes);
 app.use('/api/performed-service-bonuses', performedServiceBonusesRoutes);
 app.use('/api/service-consumables', serviceConsumablesRoutes);
+app.use('/api/bots', botManagementRoutes);
+app.use('/api/notify', notifyRoutes);
+
+// Telegram Bot API compatibility layer — must come AFTER body parsing middleware
+// URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})
+app.use('/bot:token', telegramBotApiRoutes);
+
+// Telegram Bot API file download endpoint
+// URL: /file/bot{token}/{file_path}  (matches api.telegram.org/file/bot{token}/{file_path})
+app.use('/file/bot:token', async (req, res, next) => {
+  const { BotToken } = require('./models');
+  const bot = await BotToken.findOne({ where: { token: req.params.token, isActive: true } }).catch(() => null);
+  if (!bot) return res.status(401).json({ ok: false, error_code: 401, description: 'Unauthorized' });
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -12,6 +12,7 @@ import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
 import Favorites from './pages/Favorites';
 import AdminUsers from './pages/admin/AdminUsers';
+import AdminBots from './pages/admin/AdminBots';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
 import AdminPages from './pages/admin/AdminPages';
@@ -151,6 +152,10 @@ function AppRoutes() {
         {/* АДМИНКА ЖУРНАЛ СТРАНИЦ */}
         <Route path="admin/journal" element={
           <ProtectedRoute requireAdminAccess="journal"><AdminJournal /></ProtectedRoute>
+        } />
+
+        <Route path="admin/bots" element={
+          <ProtectedRoute adminOnly><AdminBots /></ProtectedRoute>
         } />
 
         {/* ДОСТУП К БОНУСАМ ЗА НАПРАВЛЕНИЯ */}

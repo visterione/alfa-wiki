@@ -8,6 +8,7 @@ const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
 const { Chat, ChatMember, Message, MessageReaction, User, Role } = require('../models');
 const notificationService = require('../services/notificationService');
+const botWebhookService = require('../services/botWebhookService');
 
 // ID Ассистента
 const ASSISTANT_ID = notificationService.ASSISTANT_ID;
@@ -524,6 +525,9 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
         }
       });
     }
+
+    // Deliver message to any bots in this chat (fire-and-forget)
+    botWebhookService.onNewMessage(fullMessage).catch(() => {});
 
     res.status(201).json(fullMessage);
   } catch (error) {
@@ -1190,6 +1194,21 @@ router.get('/users', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get chat users error:', error);
     res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Список ботов доступных для добавления в групповые чаты
+router.get('/bots', authenticate, async (req, res) => {
+  try {
+    const bots = await User.findAll({
+      where: { isActive: true, isBot: true },
+      attributes: ['id', 'username', 'displayName', 'avatar'],
+      order: [['displayName', 'ASC']]
+    });
+    res.json(bots);
+  } catch (error) {
+    console.error('Get chat bots error:', error);
+    res.status(500).json({ error: 'Failed to fetch bots' });
   }
 });
 
