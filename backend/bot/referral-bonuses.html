@@ -108,7 +108,7 @@ input, select, button, textarea { font-family: inherit; }
 
 /* Add service section */
 .rb-add-service-section { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); }
-.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; border-radius: var(--rb-radius) var(--rb-radius) 0 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rb-add-service-header { padding: 12px 16px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; border-radius: var(--rb-radius) var(--rb-radius) 0 0; }
 .rb-add-service-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .rb-add-service-header h3 svg { width: 16px; height: 16px; color: var(--rb-primary); }
 .rb-add-service-body { padding: 16px; }
@@ -381,6 +381,19 @@ input, select, button, textarea { font-family: inherit; }
 .rb-salary-total-value.negative { color: var(--rb-danger); }
 
 /* Service mode */
+.rb-svc-mode-tabs { display: flex; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+.rb-svc-mode-tab { flex: 1; padding: 8px 12px; font-size: 12px; font-weight: 600; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer; color: var(--rb-text-secondary); transition: all 0.15s; }
+.rb-svc-mode-tab.active { color: var(--rb-primary); border-bottom-color: var(--rb-primary); background: #f0f7ff; }
+.rb-svc-mode-tab:hover:not(.active) { background: #f0f2f5; color: var(--rb-text); }
+.rb-svc-cat-service { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: background 0.1s; }
+.rb-svc-cat-service:hover { background: #f0f7ff; }
+.rb-svc-cat-service.checked { background: #dbeafe; }
+.rb-svc-cat-service input[type=checkbox] { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--rb-primary); cursor: pointer; }
+.rb-svc-cat-service-name { font-size: 13px; font-weight: 500; flex: 1; min-width: 0; }
+.rb-svc-cat-service-code { font-size: 11px; color: var(--rb-text-secondary); }
+.rb-svc-cat-service-price { font-size: 12px; color: var(--rb-success); font-weight: 600; flex-shrink: 0; }
+.rb-svc-multi-bar { padding: 8px 14px; background: #eff6ff; border-bottom: 1px solid #bfdbfe; font-size: 12px; font-weight: 600; color: var(--rb-primary); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rb-svc-multi-bar-count { font-size: 14px; }
 .rb-svc-result-item { padding: 10px 16px; border-bottom: 1px solid var(--rb-border); cursor: pointer; transition: background 0.1s; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .rb-svc-result-item:hover { background: #f0f7ff; }
 .rb-svc-result-item.selected { background: #dbeafe; border-left: 3px solid var(--rb-primary); }
@@ -498,58 +511,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
 
 /* ═══ SINGLE FILE ZONE (Step 4) ═══ */
 .rb-single-file-wrap { display: flex; flex-direction: column; gap: 8px; }
-
-/* ═══ ACCESS CONTROL ═══ */
-/* Blocked step in wizard */
-.rb-wizard-step.rb-step-blocked { opacity: 0.38; cursor: not-allowed; pointer-events: none; }
-.rb-wizard-step.rb-step-blocked .rb-wizard-step-circle { background: #f1f5f9 !important; border-color: #94a3b8 !important; color: #94a3b8 !important; }
-/* Read-only badge in step label */
-.rb-step-badge { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; display: block; margin-top: 2px; text-align: center; letter-spacing: 0.3px; }
-.rb-step-badge.read { background: #fef3c7; color: #92400e; }
-.rb-step-badge.block { background: #fee2e2; color: #991b1b; }
-/* Read-mode banner inside detail panel */
-.rb-read-banner { display: flex; align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; font-size: 12px; color: #92400e; font-weight: 500; margin-bottom: 12px; }
-.rb-read-banner svg { width: 14px; height: 14px; flex-shrink: 0; }
-/* Read-mode detail panel — hide all edit controls */
-#rb-detail-panel[data-perm="read"] .rb-exec-save-row { display: none !important; }
-#rb-detail-panel[data-perm="read"] .rb-exec-add-form { display: none !important; }
-#rb-detail-panel[data-perm="read"] button[onclick*="rbExecToggleForm"],
-#rb-detail-panel[data-perm="read"] button[onclick*="rbExecToggleSvcMatForm"] { display: none !important; }
-#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteItem"],
-#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteExtra"],
-#rb-detail-panel[data-perm="read"] button[onclick*="rbExecDeleteSvcMaterial"] { display: none !important; }
-#rb-detail-panel[data-perm="read"] .rb-paytype-toggle { pointer-events: none; opacity: 0.6; }
-#rb-detail-panel[data-perm="read"] .rb-plus-pct-row { pointer-events: none; opacity: 0.6; }
-#rb-detail-panel[data-perm="read"][data-step="1"] input,
-#rb-detail-panel[data-perm="read"][data-step="1"] select { pointer-events: none; background: #f8fafc !important; color: #64748b; }
-#rb-detail-panel[data-perm="read"] .rb-psvc-footer { display: none !important; }
-#rb-detail-panel[data-perm="read"] .rb-psvc-input { pointer-events: none; background: #f8fafc !important; }
-#rb-detail-panel[data-perm="read"][data-step="3"] #rb-add-service-section { display: none !important; }
-#rb-detail-panel[data-perm="read"][data-step="3"] .rb-bonuses-section .rb-btn-xs { display: none !important; }
-/* Access modal */
-.rb-access-modal { max-width: 840px; }
-.rb-access-user-row { border-bottom: 1px solid var(--rb-border); }
-.rb-access-user-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; cursor: pointer; user-select: none; transition: background 0.1s; }
-.rb-access-user-header:hover { background: #f8fafc; }
-.rb-access-user-avatar { width: 32px; height: 32px; border-radius: 50%; background: #dbeafe; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--rb-primary); flex-shrink: 0; }
-.rb-access-user-name { font-size: 13px; font-weight: 600; flex: 1; }
-.rb-access-user-summary { font-size: 11px; color: var(--rb-text-secondary); }
-.rb-access-user-body { padding: 14px 16px 18px 58px; background: #fafafa; border-top: 1px solid var(--rb-border); display: none; }
-.rb-access-user-row.expanded .rb-access-user-body { display: block; }
-.rb-perm-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.rb-perm-row-label { font-size: 12px; font-weight: 500; color: var(--rb-text-secondary); min-width: 210px; }
-.rb-perm-toggle { display: flex; border: 1px solid var(--rb-border-dark); border-radius: 7px; overflow: hidden; }
-.rb-perm-btn { padding: 5px 14px; font-size: 12px; font-weight: 600; border: none; background: white; cursor: pointer; transition: all 0.15s; color: var(--rb-text-secondary); }
-.rb-perm-btn:hover:not(.active) { background: #f8fafc; }
-.rb-perm-btn.active[data-val="edit"]  { background: var(--rb-success); color: white; }
-.rb-perm-btn.active[data-val="read"]  { background: var(--rb-warning); color: white; }
-.rb-perm-btn.active[data-val="block"] { background: var(--rb-danger);  color: white; }
-.rb-clinic-checks { display: flex; flex-wrap: wrap; gap: 6px; }
-.rb-clinic-check { display: flex; align-items: center; gap: 5px; padding: 4px 8px; border: 1px solid var(--rb-border); border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.1s; }
-.rb-clinic-check:hover { background: #f0f7ff; border-color: var(--rb-primary); }
-.rb-clinic-check input { width: 13px; height: 13px; accent-color: var(--rb-primary); cursor: pointer; }
-.rb-access-save-row { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--rb-border); }
-.rb-access-save-status { font-size: 12px; color: var(--rb-success); display: none; }
 </style>
 </head>
 <body>
@@ -591,7 +552,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <div class="rb-wizard-step-label">Архив</div>
     </div>
-
   </div>
 
   <!-- ════ STEPS 1, 2, 3: Two-column layout ════ -->
@@ -622,10 +582,42 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       </div>
       <!-- Service search (step 3 service sub-tab only) -->
       <div id="rb-svc-mode-panel" style="display:none">
-        <div style="padding:12px 16px;border-bottom:1px solid var(--rb-border)">
-          <input id="rb-svc-mode-input" class="rb-search-input" placeholder="Введите название или код услуги..." oninput="rbSvcModeSearchDebounced()">
+        <!-- Tab switcher -->
+        <div class="rb-svc-mode-tabs">
+          <button class="rb-svc-mode-tab active" id="rb-svc-tab-search-btn" onclick="rbSvcSwitchTab('search')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:-2px;margin-right:4px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Поиск
+          </button>
+          <button class="rb-svc-mode-tab" id="rb-svc-tab-cat-btn" onclick="rbSvcSwitchTab('category')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13" style="vertical-align:-2px;margin-right:4px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>По категории
+          </button>
         </div>
-        <div id="rb-svc-mode-results" style="max-height:calc(100vh - 220px);overflow-y:auto"></div>
+        <!-- Search tab -->
+        <div id="rb-svc-search-pane">
+          <div style="padding:12px 16px;border-bottom:1px solid var(--rb-border)">
+            <input id="rb-svc-mode-input" class="rb-search-input" placeholder="Введите название или код услуги..." oninput="rbSvcModeSearchDebounced()">
+          </div>
+          <div id="rb-svc-mode-results" style="max-height:calc(100vh - 270px);overflow-y:auto"></div>
+        </div>
+        <!-- Category tab -->
+        <div id="rb-svc-cat-pane" style="display:none">
+          <div style="padding:10px 14px;border-bottom:1px solid var(--rb-border)">
+            <div class="rb-cat-dropdown" id="rb-svc-cat-dropdown">
+              <button class="rb-cat-dropdown-btn" id="rb-svc-cat-dropdown-btn" type="button" onclick="rbSvcCatToggleDropdown(event)">
+                <span id="rb-svc-cat-dropdown-label">Выберите категорию...</span>
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+              </button>
+              <div class="rb-cat-dropdown-list" id="rb-svc-cat-dropdown-list"></div>
+            </div>
+          </div>
+          <div id="rb-svc-multi-bar" class="rb-svc-multi-bar" style="display:none">
+            <span>Выбрано услуг: <span class="rb-svc-multi-bar-count" id="rb-svc-multi-count">0</span></span>
+            <div style="display:flex;gap:6px">
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcCatSelectAll()">Все</button>
+              <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcCatDeselectAll()">Сбросить</button>
+            </div>
+          </div>
+          <div id="rb-svc-cat-services" style="max-height:calc(100vh - 310px);overflow-y:auto"></div>
+        </div>
       </div>
       <!-- Doctor list -->
       <div class="rb-doctors-list" id="rb-doctors-list">
@@ -805,30 +797,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
   </div>
 </div>
 
-<!-- Access settings modal (admin only) -->
-<div id="rb-access-modal" class="rb-modal-overlay" style="display:none">
-  <div class="rb-modal rb-access-modal">
-    <div class="rb-modal-header">
-      <h3>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" style="margin-right:6px;color:var(--rb-primary)"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 1.87 2.69l-1.5.87a8 8 0 0 0-1.37-1.97l1-1.59z"/></svg>
-        Настройки доступа
-      </h3>
-      <button class="rb-modal-close" onclick="rbCloseAccessModal()">×</button>
-    </div>
-    <div class="rb-modal-body" style="padding:0;overflow-y:auto">
-      <div style="padding:10px 16px;background:#eff6ff;border-bottom:1px solid var(--rb-border);font-size:12px;color:#1e40af">
-        Настройте права для каждого сотрудника, имеющего доступ к странице. По умолчанию все вкладки открыты на редактирование.
-      </div>
-      <div id="rb-access-users-list">
-        <div class="rb-loading" style="padding:24px"><span class="rb-spinner"></span> Загрузка...</div>
-      </div>
-    </div>
-    <div class="rb-modal-footer">
-      <button class="rb-btn rb-btn-secondary" onclick="rbCloseAccessModal()">Закрыть</button>
-    </div>
-  </div>
-</div>
-
 <script>
 (function() {
 'use strict';
@@ -856,9 +824,6 @@ const RB = {
   performedBonusActiveClinic: 'global', // active clinic tab in step 2 performed bonuses
   psvcServices: [],              // MIS services list cached for step 2
   execSvcServices: [],           // MIS services list cached for executor service materials
-  // Access control
-  currentUser: null,
-  myPerms: null, // { tab1, tab2, tab3, tab4, tabArchive, clinics }
 };
 
 // ═══════════════════════════════════════
@@ -926,255 +891,7 @@ async function rbInit() {
   RB.apiBase = window.location.protocol + '//' + window.location.hostname + ':9001';
 
   await rbLoadClinics();
-  await rbLoadMyPermissions();
   await rbLoadDoctors();
-}
-
-// ═══════════════════════════════════════
-// ACCESS PERMISSIONS
-// ═══════════════════════════════════════
-async function rbLoadMyPermissions() {
-  try {
-    // Load current user info
-    const me = await rbApi('/api/auth/me');
-    RB.currentUser = me;
-
-    // Load permissions (admins always get full edit — no restrictions)
-    if (me.isAdmin) {
-      RB.myPerms = { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] };
-    } else {
-      RB.myPerms = await rbApi('/api/referral-bonuses/permissions/my');
-    }
-
-    rbApplyMyPermissions();
-  } catch (e) {
-    console.warn('rbLoadMyPermissions failed:', e);
-    RB.myPerms = { tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] };
-  }
-}
-
-// Returns 'edit' | 'read' | 'block' for the given tab key
-function rbGetTabPerm(tab) {
-  if (!RB.myPerms) return 'edit';
-  const map = { 1: 'tab1', 2: 'tab2', 3: 'tab3', 4: 'tab4', archive: 'tabArchive' };
-  return RB.myPerms[map[tab]] || 'edit';
-}
-
-function rbApplyMyPermissions() {
-  const p = RB.myPerms;
-  if (!p) return;
-
-  const tabDefs = [
-    { n: 1, key: 'tab1', label: 'Врачи' },
-    { n: 2, key: 'tab2', label: 'Выполненные услуги' },
-    { n: 3, key: 'tab3', label: 'Бонусы за направления' },
-    { n: 4, key: 'tab4', label: 'Отчёт' },
-  ];
-
-  tabDefs.forEach(({ n, key }) => {
-    const perm = p[key] || 'edit';
-    const stepEl = document.getElementById(`rb-nav-step-${n}`);
-    if (!stepEl) return;
-    stepEl.classList.toggle('rb-step-blocked', perm === 'block');
-
-    // Badge in label
-    let badge = stepEl.querySelector('.rb-step-badge');
-    if (perm === 'read') {
-      if (!badge) {
-        badge = document.createElement('span');
-        badge.className = 'rb-step-badge read';
-        stepEl.querySelector('.rb-wizard-step-label').appendChild(badge);
-      }
-      badge.textContent = 'Только чтение';
-      badge.className = 'rb-step-badge read';
-    } else if (perm === 'block') {
-      if (!badge) {
-        badge = document.createElement('span');
-        stepEl.querySelector('.rb-wizard-step-label').appendChild(badge);
-      }
-      badge.textContent = 'Заблокировано';
-      badge.className = 'rb-step-badge block';
-    } else {
-      if (badge) badge.remove();
-    }
-  });
-
-  // Archive step
-  const archiveEl = document.getElementById('rb-nav-step-archive');
-  if (archiveEl) {
-    const ap = p.tabArchive || 'edit';
-    archiveEl.classList.toggle('rb-step-blocked', ap === 'block');
-    let badge = archiveEl.querySelector('.rb-step-badge');
-    if (ap === 'read') {
-      if (!badge) { badge = document.createElement('span'); archiveEl.querySelector('.rb-wizard-step-label').appendChild(badge); }
-      badge.textContent = 'Только чтение'; badge.className = 'rb-step-badge read';
-    } else if (ap === 'block') {
-      if (!badge) { badge = document.createElement('span'); archiveEl.querySelector('.rb-wizard-step-label').appendChild(badge); }
-      badge.textContent = 'Заблокировано'; badge.className = 'rb-step-badge block';
-    } else {
-      if (badge) badge.remove();
-    }
-  }
-}
-
-// Sets data-perm and data-step on the detail panel and optionally shows read banner
-function rbApplyPanelPerm(step) {
-  const panel = document.getElementById('rb-detail-panel');
-  if (!panel) return;
-  const perm = rbGetTabPerm(step);
-  panel.dataset.perm = perm;
-  panel.dataset.step = String(step);
-  if (perm === 'read') {
-    const banner = document.createElement('div');
-    banner.className = 'rb-read-banner';
-    banner.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> Режим просмотра — редактирование недоступно';
-    panel.insertBefore(banner, panel.firstChild);
-  }
-}
-
-// ═══════════════════════════════════════
-// ACCESS ADMIN PANEL
-// ═══════════════════════════════════════
-function rbOpenAccessModal() {
-  document.getElementById('rb-access-modal').style.display = 'flex';
-  rbLoadAccessUsers();
-}
-
-function rbCloseAccessModal() {
-  document.getElementById('rb-access-modal').style.display = 'none';
-}
-
-async function rbLoadAccessUsers() {
-  const listEl = document.getElementById('rb-access-users-list');
-  listEl.innerHTML = '<div class="rb-loading" style="padding:24px"><span class="rb-spinner"></span> Загрузка...</div>';
-  try {
-    const users = await rbApi('/api/referral-bonuses/permissions/users');
-    if (!users.length) {
-      listEl.innerHTML = '<div class="rb-loading" style="padding:24px">Нет пользователей с доступом</div>';
-      return;
-    }
-    listEl.innerHTML = users.map(u => rbRenderAccessUserRow(u)).join('');
-  } catch (e) {
-    listEl.innerHTML = '<div class="rb-loading" style="padding:24px;color:var(--rb-danger)">Ошибка загрузки</div>';
-    console.error(e);
-  }
-}
-
-function rbPermSummary(perm) {
-  const tabs = [
-    { key: 'tab1', label: 'Врачи' },
-    { key: 'tab2', label: 'Услуги' },
-    { key: 'tab3', label: 'Бонусы' },
-    { key: 'tab4', label: 'Отчёт' },
-    { key: 'tabArchive', label: 'Архив' },
-  ];
-  const restricted = tabs.filter(t => perm[t.key] !== 'edit').map(t => {
-    const v = perm[t.key];
-    return `${t.label}: ${v === 'read' ? 'чтение' : 'блок'}`;
-  });
-  const clinicCount = perm.clinics?.length || 0;
-  const parts = [];
-  if (clinicCount > 0) parts.push(`МЦ: ${clinicCount}`);
-  parts.push(...restricted);
-  return parts.length ? parts.join(' · ') : 'Полный доступ';
-}
-
-function rbRenderAccessUserRow(u) {
-  const initials = (u.displayName || u.username || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
-  const avatarHtml = u.avatar
-    ? `<img src="${rbEsc(u.avatar)}" style="width:32px;height:32px;border-radius:50%;object-fit:cover">`
-    : `<div class="rb-access-user-avatar">${rbEsc(initials)}</div>`;
-
-  const p = u.perm;
-  const tabDefs = [
-    { key: 'tab1', label: 'Врачи' },
-    { key: 'tab2', label: 'Выполненные услуги' },
-    { key: 'tab3', label: 'Бонусы за направления' },
-    { key: 'tab4', label: 'Отчёт' },
-    { key: 'tabArchive', label: 'Архив' },
-  ];
-
-  const tabRows = tabDefs.map(t => `
-    <div class="rb-perm-row">
-      <div class="rb-perm-row-label">${t.label}</div>
-      <div class="rb-perm-toggle" data-uid="${rbEsc(u.id)}" data-tab="${t.key}">
-        ${['edit','read','block'].map(val => `
-          <button class="rb-perm-btn${p[t.key] === val ? ' active' : ''}" data-val="${val}"
-            onclick="rbSetPermBtn('${rbEsc(u.id)}','${t.key}','${val}',this)"
-          >${val === 'edit' ? 'Редактирование' : val === 'read' ? 'Чтение' : 'Заблокировать'}</button>
-        `).join('')}
-      </div>
-    </div>`).join('');
-
-  const clinicChecks = RB.clinics.map(c => `
-    <label class="rb-clinic-check">
-      <input type="checkbox" data-uid="${rbEsc(u.id)}" data-clinic="${rbEsc(String(c.id))}"
-        ${(p.clinics || []).includes(String(c.id)) ? 'checked' : ''}>
-      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${rbEsc(c.color)};flex-shrink:0"></span>
-      ${rbEsc(c.name)}
-    </label>`).join('');
-
-  return `<div class="rb-access-user-row" id="rb-access-row-${rbEsc(u.id)}">
-    <div class="rb-access-user-header" onclick="rbToggleAccessRow('${rbEsc(u.id)}')">
-      ${avatarHtml}
-      <div class="rb-access-user-name">${rbEsc(u.displayName || u.username)}</div>
-      <div class="rb-access-user-summary" id="rb-access-summary-${rbEsc(u.id)}">${rbEsc(rbPermSummary(p))}</div>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="flex-shrink:0;color:var(--rb-text-secondary)"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div class="rb-access-user-body">
-      <div style="margin-bottom:12px">
-        <div class="rb-perm-row-label" style="margin-bottom:6px">Медцентры (пусто = все)</div>
-        <div class="rb-clinic-checks">${clinicChecks}</div>
-      </div>
-      ${tabRows}
-      <div class="rb-access-save-row">
-        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbSaveUserPerm('${rbEsc(u.id)}')">Сохранить</button>
-        <span class="rb-access-save-status" id="rb-access-saved-${rbEsc(u.id)}">Сохранено</span>
-      </div>
-    </div>
-  </div>`;
-}
-
-function rbToggleAccessRow(userId) {
-  const row = document.getElementById(`rb-access-row-${userId}`);
-  if (row) row.classList.toggle('expanded');
-}
-
-function rbSetPermBtn(userId, tab, val, btnEl) {
-  const toggle = btnEl.closest('.rb-perm-toggle');
-  toggle.querySelectorAll('.rb-perm-btn').forEach(b => b.classList.remove('active'));
-  btnEl.classList.add('active');
-}
-
-async function rbSaveUserPerm(userId) {
-  const row = document.getElementById(`rb-access-row-${userId}`);
-  if (!row) return;
-
-  const tabKeys = ['tab1', 'tab2', 'tab3', 'tab4', 'tabArchive'];
-  const perm = {};
-  tabKeys.forEach(tab => {
-    const toggle = row.querySelector(`.rb-perm-toggle[data-tab="${tab}"]`);
-    const active = toggle?.querySelector('.rb-perm-btn.active');
-    perm[tab] = active?.dataset.val || 'edit';
-  });
-
-  const checkedClinics = [...row.querySelectorAll('input[type=checkbox][data-clinic]:checked')]
-    .map(cb => cb.dataset.clinic);
-  perm.clinics = checkedClinics;
-
-  try {
-    await rbApi(`/api/referral-bonuses/permissions/${userId}`, {
-      method: 'PUT',
-      body: JSON.stringify(perm),
-    });
-    const statusEl = document.getElementById(`rb-access-saved-${userId}`);
-    if (statusEl) { statusEl.style.display = 'inline'; setTimeout(() => { statusEl.style.display = 'none'; }, 2500); }
-    // Update summary
-    const summaryEl = document.getElementById(`rb-access-summary-${userId}`);
-    if (summaryEl) summaryEl.textContent = rbPermSummary(perm);
-  } catch (e) {
-    rbToast('Ошибка сохранения', 'error');
-  }
 }
 
 // ═══════════════════════════════════════
@@ -1333,13 +1050,10 @@ function rbApplyFilters() {
   const clinicId = document.getElementById('rb-filter-clinic').value;
   const profession = document.getElementById('rb-filter-profession').value;
 
-  const allowedClinics = RB.myPerms?.clinics || [];
   RB.filteredDoctors = RB.doctors.filter(d => {
     if (search && !d.name.toLowerCase().includes(search)) return false;
     if (clinicId && !d.clinics.includes(String(clinicId))) return false;
     if (profession && !d.professions.some(p => rbProfessionTitle(p) === profession)) return false;
-    // Clinic access filter: if allowedClinics is set, only show doctors from those clinics
-    if (allowedClinics.length > 0 && !d.clinics.some(c => allowedClinics.includes(String(c)))) return false;
     return true;
   });
 
@@ -1391,14 +1105,11 @@ async function rbSelectDoctor(misUserId) {
 
   if (RB.currentStep === 1) {
     await rbRenderExecutorDetail();
-    rbApplyPanelPerm(1);
   } else if (RB.currentStep === 2) {
     await rbRenderPerformedServicesDetail();
-    rbApplyPanelPerm(2);
   } else {
     // Step 3 - referrer mode
     rbRenderDoctorDetail();
-    rbApplyPanelPerm(3);
     await rbLoadBonuses();
   }
 }
@@ -1596,7 +1307,6 @@ function rbRenderBonusesTable() {
 }
 
 async function rbSaveBonus() {
-  if (rbGetTabPerm(3) !== 'edit') return;
   const svc = RB.selectedService;
   if (!svc) { rbToast('Выберите услугу', 'error'); return; }
 
@@ -1622,7 +1332,6 @@ async function rbSaveBonus() {
 }
 
 async function rbDeleteBonus(id) {
-  if (rbGetTabPerm(3) !== 'edit') return;
   if (!confirm('Удалить эту запись?')) return;
   try {
     const res = await fetch(RB.apiBase + `/api/referral-bonuses/${id}`, {
@@ -1838,7 +1547,6 @@ function rbSelectCatService(idx, el) {
 }
 
 async function rbApplyCategoryBonus() {
-  if (rbGetTabPerm(3) !== 'edit') return;
   if (!_rbCatServices.length) { rbToast('Нет услуг в категории', 'error'); return; }
   const { bonusPercent: catPct, bonusRub: catRub } = rbInlineGetBonus('rb-cat-bulk-type-pct', 'rb-cat-bulk-val');
   if (catPct == null && catRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
@@ -1876,7 +1584,6 @@ async function rbApplyCategoryBonus() {
 // WIZARD NAVIGATION
 // ═══════════════════════════════════════
 function rbGoToStep(step) {
-  if (rbGetTabPerm(step) === 'block') return;
   RB.currentStep = step;
 
   // Update wizard step indicators
@@ -2004,21 +1711,12 @@ async function rbRenderPerformedServicesDetail() {
     const specialty = d.professions.map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
 
     // Build clinic tabs (global + each clinic)
-    const _allowedClinics2 = RB.myPerms?.clinics || [];
-    const clinicTabsHtml = RB.clinics.map(c => {
-      const isBlocked = _allowedClinics2.length > 0 && !_allowedClinics2.includes(String(c.id));
-      if (isBlocked) {
-        return `<button class="rb-clinic-tab" disabled title="Нет доступа к этому медцентру"
-          style="border-color:${rbEsc(c.color || 'var(--rb-primary)')};opacity:0.35;cursor:not-allowed;pointer-events:none">
-          ${rbEsc(c.name)}
-        </button>`;
-      }
-      return `<button class="rb-clinic-tab" data-clinic="${rbEsc(String(c.id))}"
+    const clinicTabsHtml = RB.clinics.map(c => `
+      <button class="rb-clinic-tab" data-clinic="${rbEsc(String(c.id))}"
         onclick="rbPsvcSwitchClinic('${rbEsc(String(c.id))}')"
         style="border-color:${rbEsc(c.color || 'var(--rb-primary)')}">
         ${rbEsc(c.name)}
-      </button>`;
-    }).join('');
+      </button>`).join('');
 
     let html = `<div class="rb-doctor-card">
       <div class="rb-doctor-card-header">
@@ -2035,16 +1733,10 @@ async function rbRenderPerformedServicesDetail() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           Бонусы за выполненные услуги
         </h3>
-        <div style="display:flex;gap:6px">
-          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbForceRefreshDoctorServices()" title="Обновить список услуг врача из МИС">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Обновить из МИС
-          </button>
-          <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbPsvcSaveAll('${rbEsc(String(d.id))}')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            Сохранить всё
-          </button>
-        </div>
+        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbPsvcSaveAll('${rbEsc(String(d.id))}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Сохранить всё
+        </button>
       </div>
       <div class="rb-add-service-body">
 
@@ -2179,7 +1871,6 @@ function rbPsvcFilterTable() {
 }
 
 async function rbPsvcSaveAll(misUserId) {
-  if (rbGetTabPerm(2) !== 'edit') return;
   const d = RB.selectedDoctor;
   if (!d) return;
 
@@ -2228,11 +1919,14 @@ async function rbPsvcSaveAll(misUserId) {
 // SERVICE MODE
 // ═══════════════════════════════════════
 const SVC = {
-  selectedService: null,
-  bonusesByDoctor: {}, // misUserId -> { id, bonusPercent, bonusRub }
+  selectedService: null,         // single service (search mode)
+  selectedServices: new Map(),   // multi mode: code -> service object
+  bonusesByDoctor: {},           // misUserId -> { id, bonusPercent, bonusRub }
   selectedDoctorIds: new Set(),
   filteredDoctors: [],
+  tab: 'search',                 // 'search' | 'category'
 };
+let _rbSvcCatServices = []; // services in current category for SVC mode
 
 let _svcSearchTimer;
 function rbSvcModeSearchDebounced() {
@@ -2292,10 +1986,17 @@ async function rbSvcModeSelectService(s) {
 }
 
 function rbSvcModeRender() {
+  if (!SVC.filteredDoctors.length && RB.doctors.length) SVC.filteredDoctors = [...RB.doctors];
+  const isMulti = SVC.tab === 'category';
   const svc = SVC.selectedService;
-  if (!svc) return;
+  if (!isMulti && !svc) return;
+  if (isMulti && SVC.selectedServices.size === 0) {
+    // Show placeholder for multi mode without services selected
+    document.getElementById('rb-detail-panel').innerHTML =
+      `<div class="rb-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><p>Выберите услуги из категории слева</p></div>`;
+    return;
+  }
 
-  const priceHtml = svc.price ? `<span style="font-size:12px;color:var(--rb-success);font-weight:600">${parseFloat(svc.price).toFixed(2)} ₽</span>` : '';
   const selectedCount = SVC.selectedDoctorIds.size;
 
   const doctorsHtml = SVC.filteredDoctors.map(d => {
@@ -2315,12 +2016,17 @@ function rbSvcModeRender() {
     </label>`;
   }).join('');
 
+  const titleHtml = isMulti
+    ? `<h2 style="font-size:15px">${SVC.selectedServices.size} ${SVC.selectedServices.size === 1 ? 'услуга' : SVC.selectedServices.size < 5 ? 'услуги' : 'услуг'} выбрано</h2>
+       <p style="margin-top:4px;font-size:12px;color:var(--rb-text-secondary)">${Array.from(SVC.selectedServices.values()).slice(0,3).map(s=>rbEsc(s.title)).join(', ')}${SVC.selectedServices.size > 3 ? ' и ещё...' : ''}</p>`
+    : `<h2 style="font-size:15px">${rbEsc(svc.title)}</h2>
+       <p style="margin-top:4px">Код: <span style="font-family:monospace">${rbEsc(svc.code)}</span>${svc.price ? ' &nbsp;•&nbsp; ' + parseFloat(svc.price).toFixed(2) + ' ₽' : ''}</p>`;
+
   document.getElementById('rb-detail-panel').innerHTML = `
     <div class="rb-doctor-card">
       <div class="rb-doctor-card-header" style="flex-wrap:wrap;gap:10px">
         <div style="flex:1;min-width:0">
-          <h2 style="font-size:15px">${rbEsc(svc.title)}</h2>
-          <p style="margin-top:4px">Код: <span style="font-family:monospace">${rbEsc(svc.code)}</span>${svc.price ? ' &nbsp;•&nbsp; ' + parseFloat(svc.price).toFixed(2) + ' ₽' : ''}</p>
+          ${titleHtml}
         </div>
       </div>
       <div style="padding:14px 16px;border-bottom:1px solid var(--rb-border);background:#fffbeb">
@@ -2349,12 +2055,16 @@ function rbSvcModeRender() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
           Врачи-направители
         </h3>
-        <div style="display:flex;gap:6px;margin-left:auto">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;width:100%">
+          <select id="rb-svc-clinic-filter" class="rb-select" style="font-size:12px;padding:4px 8px;flex:1;min-width:120px" onchange="rbSvcSelectByClinic()">
+            <option value="">Выбрать медцентр...</option>
+            ${RB.clinics.map(c => `<option value="${c.id}">${rbEsc(c.name)}</option>`).join('')}
+          </select>
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcSelectAll()">Все</button>
           <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbSvcDeselectAll()">Сбросить</button>
         </div>
         <input class="rb-search-input" id="rb-svc-doctor-filter" placeholder="Фильтр по ФИО..."
-               style="width:100%;margin-top:4px" oninput="rbSvcFilterDoctors()">
+               style="width:100%;margin-top:6px" oninput="rbSvcFilterDoctors()">
       </div>
       <div id="rb-svc-doctor-list" style="max-height:calc(100vh - 420px);overflow-y:auto">
         ${doctorsHtml || '<div class="rb-loading" style="padding:20px">Нет врачей</div>'}
@@ -2409,9 +2119,12 @@ function rbSvcFilterDoctors() {
 }
 
 async function rbSvcModeSaveBulk() {
-  if (rbGetTabPerm(3) !== 'edit') return;
+  const isMulti = SVC.tab === 'category';
   const svc = SVC.selectedService;
-  if (!svc || !SVC.selectedDoctorIds.size) return;
+  if (!isMulti && !svc) return;
+  if (isMulti && SVC.selectedServices.size === 0) { rbToast('Не выбрано ни одной услуги', 'error'); return; }
+  if (!SVC.selectedDoctorIds.size) { rbToast('Не выбрано ни одного врача', 'error'); return; }
+
   const { bonusPercent: svcPct, bonusRub: svcRub } = rbInlineGetBonus('rb-svc-bonus-type-pct', 'rb-svc-bonus-val');
   if (svcPct == null && svcRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
 
@@ -2419,21 +2132,37 @@ async function rbSvcModeSaveBulk() {
   if (btn) btn.disabled = true;
 
   const selectedDoctors = RB.doctors.filter(d => SVC.selectedDoctorIds.has(d.id));
+  const services = isMulti ? Array.from(SVC.selectedServices.values()) : [svc];
   let saved = 0;
   try {
     for (const d of selectedDoctors) {
-      await rbPost('/api/referral-bonuses', {
-        misUserId: d.id,
-        doctorName: d.name,
-        serviceCode: svc.code,
-        serviceName: svc.title,
-        bonusPercent: svcPct,
-        bonusRub: svcRub,
-      });
-      SVC.bonusesByDoctor[d.id] = { bonusPercent: svcPct, bonusRub: svcRub };
+      if (isMulti) {
+        // Bulk save for multiple services at once
+        await rbPost('/api/referral-bonuses/bulk', {
+          misUserId: d.id,
+          doctorName: d.name,
+          services: services.map(s => ({
+            serviceCode: s.code || String(s.service_id || ''),
+            serviceName: s.title,
+            bonusPercent: svcPct,
+            bonusRub: svcRub,
+          })),
+        });
+      } else {
+        await rbPost('/api/referral-bonuses', {
+          misUserId: d.id,
+          doctorName: d.name,
+          serviceCode: svc.code,
+          serviceName: svc.title,
+          bonusPercent: svcPct,
+          bonusRub: svcRub,
+        });
+        SVC.bonusesByDoctor[d.id] = { bonusPercent: svcPct, bonusRub: svcRub };
+      }
       saved++;
     }
-    rbToast(`Бонус назначен ${saved} врачам`, 'success');
+    const svcWord = isMulti ? `${services.length} услуг` : 'услугу';
+    rbToast(`Бонус назначен ${saved} врачам (${svcWord})`, 'success');
     SVC.selectedDoctorIds.clear();
     rbSvcModeRender();
   } catch (err) {
@@ -2443,7 +2172,6 @@ async function rbSvcModeSaveBulk() {
 }
 
 async function rbSvcModeClearBulk() {
-  if (rbGetTabPerm(3) !== 'edit') return;
   const svc = SVC.selectedService;
   if (!svc || !SVC.selectedDoctorIds.size) return;
   if (!confirm(`Снять бонус по этой услуге у ${SVC.selectedDoctorIds.size} врачей?`)) return;
@@ -2473,6 +2201,206 @@ async function rbSvcModeClearBulk() {
   }
 }
 
+
+// ═══════════════════════════════════════
+// SERVICE MODE — tab switching & category
+// ═══════════════════════════════════════
+
+function rbSvcSwitchTab(tab) {
+  SVC.tab = tab;
+  const isSearch = tab === 'search';
+  document.getElementById('rb-svc-tab-search-btn').classList.toggle('active', isSearch);
+  document.getElementById('rb-svc-tab-cat-btn').classList.toggle('active', !isSearch);
+  document.getElementById('rb-svc-search-pane').style.display = isSearch ? '' : 'none';
+  document.getElementById('rb-svc-cat-pane').style.display = isSearch ? 'none' : '';
+  if (isSearch) {
+    SVC.selectedServices.clear();
+    _rbSvcCatServices = [];
+    if (SVC.selectedService) rbSvcModeRender();
+    else document.getElementById('rb-detail-panel').innerHTML =
+      '<div class="rb-placeholder"><p>Найдите и выберите услугу</p></div>';
+  } else {
+    SVC.selectedService = null;
+    SVC.selectedDoctorIds.clear();
+    if (!SVC.filteredDoctors.length) SVC.filteredDoctors = [...RB.doctors];
+    rbSvcModeRender();
+    const list = document.getElementById('rb-svc-cat-dropdown-list');
+    if (list && list.children.length === 0) rbSvcLoadCategories();
+  }
+}
+
+async function rbSvcLoadCategories() {
+  const list = document.getElementById('rb-svc-cat-dropdown-list');
+  if (!list) return;
+  list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Загрузка...</div>';
+  try {
+    const data = await rbPost('/api/mis/get-service-categories', {});
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-text-secondary)">Категории не найдены</div>';
+      return;
+    }
+    list.innerHTML = '';
+    function addCats(cats, level) {
+      cats.forEach(cat => {
+        const item = document.createElement('div');
+        item.className = 'rb-cat-dropdown-item';
+        item.setAttribute('data-value', cat.id);
+        item.setAttribute('data-level', level);
+        item.textContent = cat.title + ' (' + (cat.services_count || 0) + ')';
+        item.onclick = function(e) { e.stopPropagation(); rbSvcCatSelectCategory(cat.id, cat.title); };
+        list.appendChild(item);
+        if (cat.children && cat.children.length) addCats(cat.children, level + 1);
+      });
+    }
+    addCats(data.data, 0);
+  } catch (e) {
+    list.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--rb-danger)">Ошибка</div>';
+  }
+}
+
+function rbSvcCatToggleDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('rb-svc-cat-dropdown');
+  const btn = document.getElementById('rb-svc-cat-dropdown-btn');
+  const list = document.getElementById('rb-svc-cat-dropdown-list');
+  const isOpen = dd.classList.contains('open');
+  dd.classList.toggle('open', !isOpen);
+  if (!isOpen) {
+    // Use fixed positioning to escape .rb-panel overflow:hidden clipping
+    const rect = btn.getBoundingClientRect();
+    list.style.position = 'fixed';
+    list.style.top = (rect.bottom + 4) + 'px';
+    list.style.left = rect.left + 'px';
+    list.style.width = rect.width + 'px';
+    list.style.zIndex = '9999';
+    if (list.children.length === 0) rbSvcLoadCategories();
+  }
+}
+
+async function rbSvcCatSelectCategory(catId, catTitle) {
+  const dd = document.getElementById('rb-svc-cat-dropdown');
+  if (dd) {
+    dd.classList.remove('open');
+    const label = document.getElementById('rb-svc-cat-dropdown-label');
+    if (label) label.textContent = catTitle;
+    dd.querySelectorAll('.rb-cat-dropdown-item').forEach(el =>
+      el.classList.toggle('selected', el.getAttribute('data-value') === String(catId)));
+  }
+  SVC.selectedServices.clear();
+  _rbSvcCatServices = [];
+  const servEl = document.getElementById('rb-svc-cat-services');
+  const barEl = document.getElementById('rb-svc-multi-bar');
+  if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)"><span class="rb-spinner"></span> Загрузка услуг...</div>';
+  if (barEl) barEl.style.display = 'none';
+  rbSvcModeRender();
+  try {
+    const data = await rbPost('/api/mis/get-services', { category_id: catId, show_children: true });
+    if (data.error !== 0 || !data.data || !data.data.length) {
+      if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)">Услуги не найдены</div>';
+      return;
+    }
+    _rbSvcCatServices = data.data;
+    SVC.filteredDoctors = [...RB.doctors];
+    rbSvcCatRenderList();
+    if (barEl) barEl.style.display = '';
+    rbSvcCatUpdateBar();
+  } catch (e) {
+    if (servEl) servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-danger)">Ошибка загрузки</div>';
+  }
+}
+
+function rbSvcCatRenderList() {
+  const servEl = document.getElementById('rb-svc-cat-services');
+  if (!servEl) return;
+  if (!_rbSvcCatServices.length) {
+    servEl.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--rb-text-secondary)">Нет услуг</div>';
+    return;
+  }
+  servEl.innerHTML = _rbSvcCatServices.map((s, i) => {
+    const code = s.code || String(s.service_id || '');
+    const isChecked = SVC.selectedServices.has(code);
+    const price = s.price ? parseFloat(s.price).toFixed(2) + ' ₽' : '';
+    return '<label class="rb-svc-cat-service' + (isChecked ? ' checked' : '') + '">'
+      + '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="rbSvcCatToggleService(' + i + ', this.checked)">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div class="rb-svc-cat-service-name">' + rbEsc(s.title) + '</div>'
+      + '<div class="rb-svc-cat-service-code">Код: ' + rbEsc(String(code)) + '</div>'
+      + '</div>'
+      + (price ? '<div class="rb-svc-cat-service-price">' + price + '</div>' : '')
+      + '</label>';
+  }).join('');
+}
+
+function rbSvcCatToggleService(idx, checked) {
+  const s = _rbSvcCatServices[idx];
+  if (!s) return;
+  const code = s.code || String(s.service_id || '');
+  if (checked) SVC.selectedServices.set(code, s);
+  else SVC.selectedServices.delete(code);
+  const rows = document.querySelectorAll('#rb-svc-cat-services .rb-svc-cat-service');
+  if (rows[idx]) rows[idx].classList.toggle('checked', checked);
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcCatUpdateBar() {
+  const countEl = document.getElementById('rb-svc-multi-count');
+  if (countEl) countEl.textContent = SVC.selectedServices.size;
+}
+
+function rbSvcCatSelectAll() {
+  _rbSvcCatServices.forEach(s => {
+    const code = s.code || String(s.service_id || '');
+    SVC.selectedServices.set(code, s);
+  });
+  rbSvcCatRenderList();
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcCatDeselectAll() {
+  SVC.selectedServices.clear();
+  rbSvcCatRenderList();
+  rbSvcCatUpdateBar();
+  rbSvcModeRender();
+}
+
+function rbSvcSelectByClinic() {
+  const sel = document.getElementById('rb-svc-clinic-filter');
+  const clinicId = sel ? sel.value : '';
+  if (!clinicId) return;
+  if (!SVC.filteredDoctors.length && RB.doctors.length) SVC.filteredDoctors = [...RB.doctors];
+  let count = 0;
+  SVC.filteredDoctors.forEach(d => {
+    if (d.clinics && d.clinics.includes(String(clinicId))) {
+      SVC.selectedDoctorIds.add(d.id);
+      count++;
+    }
+  });
+  if (count === 0) {
+    rbToast('Нет врачей из выбранного медцентра в текущем списке', 'info');
+    if (sel) sel.value = '';
+    return;
+  }
+  const cnt = SVC.selectedDoctorIds.size;
+  const cntEl = document.getElementById('rb-svc-sel-count');
+  if (cntEl) cntEl.textContent = cnt;
+  const saveBtn = document.getElementById('rb-svc-save-btn');
+  const clearBtn = document.getElementById('rb-svc-clear-btn');
+  if (saveBtn) saveBtn.disabled = cnt === 0;
+  if (clearBtn) clearBtn.disabled = cnt === 0;
+  // Update checkboxes without full re-render
+  const listEl = document.getElementById('rb-svc-doctor-list');
+  if (listEl) {
+    listEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      const onch = cb.getAttribute('onchange') || '';
+      const m = onch.match(/'([^']+)'/);
+      if (m) cb.checked = SVC.selectedDoctorIds.has(m[1]);
+    });
+  }
+  rbToast('Выбрано ' + count + ' врачей из медцентра', 'success');
+  if (sel) sel.value = '';
+}
 // ═══════════════════════════════════════
 // EXECUTOR DETAIL
 // ═══════════════════════════════════════
@@ -2621,15 +2549,10 @@ function rbExecRenderClinicTabs() {
     tabs.push({ id: cId, label: rbGetClinicName(cId), color: rbGetClinicColor(cId) });
   });
 
-  const _allowedClinics1 = RB.myPerms?.clinics || [];
   const tabsHtml = tabs.map(t => {
     const active = RB.executorActiveClinic === t.id ? ' active' : '';
     const hasCustom = t.id !== 'global' && cs[t.id];
     const dotHtml = hasCustom ? `<span class="rb-clinic-tab-dot" style="background:${t.color}"></span>` : '';
-    const isBlocked = t.id !== 'global' && _allowedClinics1.length > 0 && !_allowedClinics1.includes(String(t.id));
-    if (isBlocked) {
-      return `<button class="rb-clinic-tab" disabled title="Нет доступа к этому медцентру" style="opacity:0.35;cursor:not-allowed;pointer-events:none">${dotHtml}${rbEsc(t.label)}</button>`;
-    }
     return `<button class="rb-clinic-tab${active}" onclick="rbExecSwitchClinic('${t.id}')">${dotHtml}${rbEsc(t.label)}</button>`;
   }).join('');
 
@@ -2973,7 +2896,6 @@ function rbExecGetCurrentClinicData() {
 }
 
 async function rbExecAddItem(section) {
-  if (rbGetTabPerm(1) !== 'edit') return;
   const nameEl = document.getElementById(`rb-exec-name-${section}`);
   const valEl  = document.getElementById(`rb-exec-val-${section}`);
   const name   = nameEl?.value?.trim();
@@ -2993,7 +2915,6 @@ async function rbExecAddItem(section) {
 }
 
 async function rbExecDeleteItem(section, idx) {
-  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   clData[section].splice(idx, 1);
   await rbExecSave(RB.selectedDoctor.id, RB.executorData);
@@ -3166,7 +3087,6 @@ function rbExecSvcMatToggleDeductType(type) {
 }
 
 async function rbExecAddSvcMaterial() {
-  if (rbGetTabPerm(1) !== 'edit') return;
   if (!_rbSvcMatSelected) { rbToast('Выберите услугу', 'error'); return; }
   const name = document.getElementById('rb-exec-svc-mat-name')?.value?.trim();
   const value = parseFloat(document.getElementById('rb-exec-svc-mat-val')?.value);
@@ -3193,7 +3113,6 @@ async function rbExecAddSvcMaterial() {
 }
 
 async function rbExecDeleteSvcMaterial(idx) {
-  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   if (!clData.serviceMaterials) return;
   clData.serviceMaterials.splice(idx, 1);
@@ -3203,7 +3122,6 @@ async function rbExecDeleteSvcMaterial(idx) {
 }
 
 async function rbExecAddExtra() {
-  if (rbGetTabPerm(1) !== 'edit') return;
   const name   = document.getElementById('rb-exec-extra-name')?.value?.trim();
   const amount = parseFloat(document.getElementById('rb-exec-extra-amount')?.value);
   const hours  = parseFloat(document.getElementById('rb-exec-extra-hours')?.value) || 0;
@@ -3221,7 +3139,6 @@ async function rbExecAddExtra() {
 }
 
 async function rbExecDeleteExtra(idx) {
-  if (rbGetTabPerm(1) !== 'edit') return;
   const clData = rbExecGetCurrentClinicData();
   clData.extras.splice(idx, 1);
   await rbExecSave(RB.selectedDoctor.id, RB.executorData);
@@ -3279,13 +3196,11 @@ function rbExecUpdateMainPayment() {
 // Автосохранение при изменении полей оплаты
 let _rbExecAutoSaveTimer = null;
 function rbExecAutoSave() {
-  if (rbGetTabPerm(1) !== 'edit') return;
   clearTimeout(_rbExecAutoSaveTimer);
   _rbExecAutoSaveTimer = setTimeout(rbExecSavePayment, 1500);
 }
 
 async function rbExecSavePayment() {
-  if (rbGetTabPerm(1) !== 'edit') return;
   clearTimeout(_rbExecAutoSaveTimer);
   const cs = RB.executorData.clinicSettings;
   const clinicId = RB.executorActiveClinic;
@@ -5443,7 +5358,6 @@ async function rbBulkExport() {
 // ARCHIVE
 // ═══════════════════════════════════════
 async function rbOpenArchiveModal() {
-  if (rbGetTabPerm('archive') === 'block') return;
   document.getElementById('rb-archive-modal').style.display = 'flex';
   await rbLoadArchive();
 }
@@ -5529,9 +5443,9 @@ function rbArchiveRender() {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Excel
       </button>
-      ${rbGetTabPerm('archive') === 'edit' ? `<button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteArchiveReport('${r.id}')">
+      <button class="rb-btn rb-btn-danger rb-btn-sm" onclick="rbDeleteArchiveReport('${r.id}')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-      </button>` : ''}
+      </button>
     </div>`;
   }).join('');
 
@@ -5552,7 +5466,6 @@ function rbArchiveRender() {
 }
 
 async function rbSaveReportToArchive() {
-  if (rbGetTabPerm(4) !== 'edit') return;
   if (!RB.reportData) return;
   const { doctor, misUserId, clinicReports, grandTotal, dateFrom, dateTo, periodLabel } = RB.reportData;
   const title = `${doctor}${periodLabel ? ' — ' + periodLabel : ''}`;
@@ -5574,7 +5487,6 @@ async function rbSaveReportToArchive() {
 }
 
 async function rbBulkSaveToArchive() {
-  if (rbGetTabPerm(4) !== 'edit') return;
   if (!BULK.reportData?.length) return;
   const grandTotal = BULK.reportData.reduce((s, r) => s + r.grandTotal, 0);
   const doctorNames = BULK.reportData.map(r => r.doctor.split(' ')[0]).join(', ');
@@ -5613,7 +5525,6 @@ async function rbDownloadArchiveReport(id) {
 }
 
 async function rbDeleteArchiveReport(id) {
-  if (rbGetTabPerm('archive') !== 'edit') return;
   if (!confirm('Удалить отчёт из архива?')) return;
   try {
     const res = await fetch(RB.apiBase + `/api/referral-reports/${id}`, {
@@ -5650,6 +5561,13 @@ window.rbSvcDeselectAll = rbSvcDeselectAll;
 window.rbSvcFilterDoctors = rbSvcFilterDoctors;
 window.rbSvcModeSaveBulk = rbSvcModeSaveBulk;
 window.rbSvcModeClearBulk = rbSvcModeClearBulk;
+window.rbSvcSwitchTab = rbSvcSwitchTab;
+window.rbSvcCatToggleDropdown = rbSvcCatToggleDropdown;
+window.rbSvcCatSelectCategory = rbSvcCatSelectCategory;
+window.rbSvcCatToggleService = rbSvcCatToggleService;
+window.rbSvcCatSelectAll = rbSvcCatSelectAll;
+window.rbSvcCatDeselectAll = rbSvcCatDeselectAll;
+window.rbSvcSelectByClinic = rbSvcSelectByClinic;
 // Step 1: executor settings
 window.rbExecToggleForm = rbExecToggleForm;
 window.rbExecToggleType = rbExecToggleType;
@@ -5705,12 +5623,6 @@ window.rbBulkExport = rbBulkExport;
 window.rbBulkSaveToArchive = rbBulkSaveToArchive;
 window.rbOpenArchiveModal = rbOpenArchiveModal;
 window.rbCloseArchiveModal = rbCloseArchiveModal;
-// Access control admin panel
-window.rbOpenAccessModal = rbOpenAccessModal;
-window.rbCloseAccessModal = rbCloseAccessModal;
-window.rbToggleAccessRow = rbToggleAccessRow;
-window.rbSetPermBtn = rbSetPermBtn;
-window.rbSaveUserPerm = rbSaveUserPerm;
 window.rbArchiveFilter = rbArchiveFilter;
 window.rbArchivePage = rbArchivePage;
 window.rbSaveReportToArchive = rbSaveReportToArchive;
@@ -5729,13 +5641,6 @@ window.rbExecAddSvcMaterial = rbExecAddSvcMaterial;
 window.rbExecDeleteSvcMaterial  = rbExecDeleteSvcMaterial;  
 // Step 2: clinic tabs
 window.rbPsvcSwitchClinic = rbPsvcSwitchClinic;
-// Step 2: force refresh doctor services from MIS
-async function rbForceRefreshDoctorServices() {
-  RB.psvcServices = null;
-  RB.execSvcServices = null;
-  await rbRenderPerformedServicesDetail();
-}
-window.rbForceRefreshDoctorServices = rbForceRefreshDoctorServices;
 rbInit().catch(console.error);
 })();
 </script>
