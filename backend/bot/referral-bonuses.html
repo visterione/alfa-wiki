@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <!-- ExcelJS для экспорта с форматированием -->
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<!-- ApexCharts для графиков -->
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.0/dist/apexcharts.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -438,6 +440,33 @@ input, select, button, textarea { font-family: inherit; }
 
 /* ═══ DUAL FILE ZONES ═══ */
 .rb-dual-file-zones { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ═══ STEP 5: ИСТОРИЯ ЗАРПЛАТ ═══ */
+.rb-hist-header { padding: 20px; border-bottom: 1px solid var(--rb-border); }
+.rb-hist-doctor-name { font-size: 17px; font-weight: 700; color: var(--rb-text); margin-bottom: 4px; }
+.rb-hist-doctor-meta { font-size: 12px; color: var(--rb-text-secondary); }
+.rb-hist-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
+.rb-hist-stat { text-align: center; }
+.rb-hist-stat-label { font-size: 11px; color: var(--rb-text-secondary); margin-bottom: 3px; }
+.rb-hist-stat-value { font-size: 15px; font-weight: 700; color: var(--rb-text); }
+.rb-hist-chart-wrap { padding: 16px 20px; border-bottom: 1px solid var(--rb-border); }
+.rb-hist-chart-title { font-size: 12px; font-weight: 600; color: var(--rb-text-secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rb-hist-records { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.rb-hist-card { background: #fff; border: 1px solid var(--rb-border); border-radius: 8px; overflow: hidden; }
+.rb-hist-card-head { display: flex; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; user-select: none; transition: background 0.15s; }
+.rb-hist-card-head:hover { background: #f8fafc; }
+.rb-hist-card-period { flex: 1; font-size: 13px; font-weight: 600; color: var(--rb-text); }
+.rb-hist-card-total { font-size: 15px; font-weight: 700; color: var(--rb-success); white-space: nowrap; }
+.rb-hist-card-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.rb-hist-card-tag { font-size: 11px; padding: 2px 7px; border-radius: 4px; background: #f1f5f9; color: var(--rb-text-secondary); white-space: nowrap; }
+.rb-hist-card-tag.neg { color: var(--rb-danger); background: #fef2f2; }
+.rb-hist-card-chevron { color: var(--rb-text-secondary); flex-shrink: 0; transition: transform 0.2s; }
+.rb-hist-card-chevron.open { transform: rotate(180deg); }
+.rb-hist-card-body { display: none; border-top: 1px solid var(--rb-border); padding: 14px; background: #fafafa; }
+.rb-hist-card-body.open { display: block; }
+.rb-hist-del { background: none; border: none; cursor: pointer; color: #cbd5e1; padding: 4px; border-radius: 4px; line-height: 0; transition: color 0.15s; flex-shrink: 0; }
+.rb-hist-del:hover { color: var(--rb-danger); }
+.rb-hist-empty { padding: 48px 20px; text-align: center; color: var(--rb-text-secondary); font-size: 14px; }
 .rb-file-zone-sm { padding: 18px 12px; }
 .rb-file-zone-sm svg { width: 28px; height: 28px; margin-bottom: 6px; }
 .rb-file-zone-sm p { font-size: 12px; }
@@ -546,11 +575,11 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
       <div class="rb-wizard-step-label">Отчёт</div>
     </div>
     <div class="rb-wizard-connector"></div>
-    <div class="rb-wizard-step" id="rb-nav-step-archive" onclick="rbOpenArchiveModal()">
+    <div class="rb-wizard-step" id="rb-nav-step-5" onclick="rbGoToStep(5)">
       <div class="rb-wizard-step-circle">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
       </div>
-      <div class="rb-wizard-step-label">Архив</div>
+      <div class="rb-wizard-step-label">История</div>
     </div>
   </div>
 
@@ -559,6 +588,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
     <!-- LEFT: Doctor list (shared across steps 1-3) -->
     <div class="rb-panel">
       <div class="rb-panel-header" style="padding:0;border-bottom:none;flex-direction:column;align-items:stretch;gap:0">
+        <!-- Step 5 toolbar (hidden by default, shown only in step 5) -->
+        <div id="rb-step5-toolbar" style="display:none;padding:8px 12px;border-bottom:1px solid var(--rb-border);justify-content:flex-end">
+          <button class="rb-btn rb-btn-secondary rb-btn-sm" onclick="rbOpenArchiveModal()" title="Открыть архив отчётов">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+            Архив отчётов
+          </button>
+        </div>
         <!-- Step 3 sub-tabs (hidden by default, shown only in step 3) -->
         <div id="rb-step3-subtabs" style="display:none">
           <div class="rb-step3-sub-tabs">
@@ -703,6 +739,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
             В архив
           </button>
+          <button class="rb-btn rb-btn-secondary" onclick="rbSaveCalculation()" id="rb-btn-save-calc" title="Сохранить расчёт в историю зарплат">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Сохранить в историю
+          </button>
           <button class="rb-btn rb-btn-success" onclick="rbExportReport()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             Скачать Excel
@@ -763,6 +803,10 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; font-fam
             <div id="rb-bulk-result"></div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
               <button class="rb-btn rb-btn-secondary" id="rb-bulk-save-btn" style="display:none" onclick="rbBulkSaveToArchive()">В архив</button>
+              <button class="rb-btn rb-btn-secondary" id="rb-bulk-save-hist-btn" style="display:none" onclick="rbBulkSaveToHistory()" title="Сохранить расчёты всех врачей в историю зарплат">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                Сохранить в историю
+              </button>
               <button class="rb-btn rb-btn-success" id="rb-bulk-export-btn" style="display:none" onclick="rbBulkExport()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Скачать Excel
@@ -820,11 +864,17 @@ const RB = {
   performedBonuses: [],  // for step 2
   rptSelectedDoctorId: null, // for step 4 individual report
   rptFileRows: null,         // unified services table (single file)
+  referralBonusActiveClinic: 'global', // active clinic tab in step 3 referral bonuses
   executorActiveClinic: 'global', // active clinic tab in executor settings
   performedBonusActiveClinic: 'global', // active clinic tab in step 2 performed bonuses
   psvcServices: [],              // MIS services list cached for step 2
   execSvcServices: [],           // MIS services list cached for executor service materials
 };
+
+// ═══════════════════════════════════════
+// SETTINGS CACHE (for report generation)
+// ═══════════════════════════════════════
+const _execSettingsCache = {}; // misUserId -> executorData
 
 // ═══════════════════════════════════════
 // INLINE BONUS TOGGLE HELPERS
@@ -1107,6 +1157,8 @@ async function rbSelectDoctor(misUserId) {
     await rbRenderExecutorDetail();
   } else if (RB.currentStep === 2) {
     await rbRenderPerformedServicesDetail();
+  } else if (RB.currentStep === 5) {
+    await rbRenderHistoryDetail();
   } else {
     // Step 3 - referrer mode
     rbRenderDoctorDetail();
@@ -1120,6 +1172,14 @@ function rbRenderDoctorDetail() {
   const clinicBadges = d.clinics.map(cId =>
     `<span class="rb-clinic-badge" style="background:${rbGetClinicColor(cId)};margin-right:4px">${rbGetClinicName(cId)}</span>`
   ).join('');
+
+  RB.referralBonusActiveClinic = 'global';
+  const clinicTabsHtml = RB.clinics.map(c => `
+    <button class="rb-clinic-tab" data-clinic="${rbEsc(String(c.id))}"
+      onclick="rbRefSwitchClinic('${rbEsc(String(c.id))}')"
+      style="border-color:${rbEsc(c.color || 'var(--rb-primary)')}">
+      ${rbEsc(c.name)}
+    </button>`).join('');
 
   document.getElementById('rb-detail-panel').innerHTML = `
     <div class="rb-doctor-card">
@@ -1136,6 +1196,19 @@ function rbRenderDoctorDetail() {
           </button>
         </div>
       </div>
+    </div>
+
+    <div style="font-size:12px;color:var(--rb-text-secondary);margin:12px 0 8px">
+      Вкладка <strong>Общие</strong> — бонусы для всех клиник по умолчанию.
+      Выберите клинику, чтобы задать отдельные ставки (перекроют общие для этой клиники).
+    </div>
+    <div class="rb-clinic-tab-wrap" id="rb-ref-clinic-tabs" style="margin-bottom:12px">
+      <button class="rb-clinic-tab active" data-clinic="global"
+        onclick="rbRefSwitchClinic('global')"
+        style="border-color:var(--rb-primary)">
+        Общие
+      </button>
+      ${clinicTabsHtml}
     </div>
 
     <div class="rb-add-service-section" id="rb-add-service-section">
@@ -1275,14 +1348,18 @@ function rbRenderBonusesTable() {
   const tbody = document.getElementById('rb-bonuses-tbody');
   if (!tbody) return;
 
-  document.getElementById('rb-bonuses-count').textContent = RB.bonuses.length ? `${RB.bonuses.length} услуг` : '';
+  const activeClinic = RB.referralBonusActiveClinic || 'global';
+  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  const filteredBonuses = RB.bonuses.filter(b => (b.clinicId || '') === dbClinicId);
 
-  if (!RB.bonuses.length) {
+  document.getElementById('rb-bonuses-count').textContent = filteredBonuses.length ? `${filteredBonuses.length} услуг` : '';
+
+  if (!filteredBonuses.length) {
     tbody.innerHTML = '<tr class="rb-empty-row"><td colspan="5">Нет услуг. Добавьте услуги выше.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = RB.bonuses.map(b => {
+  tbody.innerHTML = filteredBonuses.map(b => {
     const bonusVal = b.bonusPercent != null
       ? `<span class="rb-bonus-value rb-bonus-percent">${parseFloat(b.bonusPercent)}%</span>`
       : '—';
@@ -1306,12 +1383,22 @@ function rbRenderBonusesTable() {
   }).join('');
 }
 
+function rbRefSwitchClinic(clinicId) {
+  RB.referralBonusActiveClinic = clinicId || 'global';
+  document.querySelectorAll('#rb-ref-clinic-tabs .rb-clinic-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.clinic === RB.referralBonusActiveClinic);
+  });
+  rbRenderBonusesTable();
+}
+
 async function rbSaveBonus() {
   const svc = RB.selectedService;
   if (!svc) { rbToast('Выберите услугу', 'error'); return; }
 
   const { bonusPercent, bonusRub } = rbInlineGetBonus('rb-bonus-type-pct', 'rb-bonus-value');
   if (bonusPercent == null && bonusRub == null) { rbToast('Укажите размер бонуса', 'error'); return; }
+
+  const clinicId = (RB.referralBonusActiveClinic === 'global' || !RB.referralBonusActiveClinic) ? '' : String(RB.referralBonusActiveClinic);
 
   try {
     await rbPost('/api/referral-bonuses', {
@@ -1321,6 +1408,7 @@ async function rbSaveBonus() {
       serviceName: svc.title,
       bonusPercent,
       bonusRub,
+      clinicId,
     });
     rbToast('Бонус сохранён', 'success');
     rbClearServiceSearch();
@@ -1401,7 +1489,8 @@ function rbSelectService(s) {
   document.getElementById('rb-selected-service').style.display = 'block';
   rbInlineSetBonus('rb-bonus-type-pct', 'rb-bonus-type-rub', 'rb-bonus-value', null, null);
 
-  const existingBonus = RB.bonuses.find(b => b.serviceCode === (s.code || String(s.service_id)));
+  const dbClinicId = (RB.referralBonusActiveClinic === 'global' || !RB.referralBonusActiveClinic) ? '' : String(RB.referralBonusActiveClinic);
+  const existingBonus = RB.bonuses.find(b => b.serviceCode === (s.code || String(s.service_id)) && (b.clinicId || '') === dbClinicId);
   if (existingBonus) {
     rbInlineSetBonus('rb-bonus-type-pct', 'rb-bonus-type-rub', 'rb-bonus-value', existingBonus.bonusPercent, existingBonus.bonusRub);
   }
@@ -1561,10 +1650,12 @@ async function rbApplyCategoryBonus() {
       bonusPercent: catPct,
       bonusRub: catRub,
     }));
+    const clinicId = (RB.referralBonusActiveClinic === 'global' || !RB.referralBonusActiveClinic) ? '' : String(RB.referralBonusActiveClinic);
     const result = await rbPost('/api/referral-bonuses/bulk', {
       misUserId: RB.selectedDoctor.id,
       doctorName: RB.selectedDoctor.name,
       services,
+      clinicId,
     });
     rbToast(`Бонус применён к ${result.upserted} услуг${result.upserted === 1 ? 'е' : result.upserted < 5 ? 'ам' : 'ам'}`, 'success');
     const catBulkInp = document.getElementById('rb-cat-bulk-val');
@@ -1586,18 +1677,24 @@ async function rbApplyCategoryBonus() {
 function rbGoToStep(step) {
   RB.currentStep = step;
 
-  // Update wizard step indicators
-  [1, 2, 3, 4].forEach(n => {
-    document.getElementById(`rb-nav-step-${n}`).classList.toggle('active', n === step);
+  // Update wizard step indicators (steps 1–4 + 5)
+  [1, 2, 3, 4, 5].forEach(n => {
+    const el = document.getElementById(`rb-nav-step-${n}`);
+    if (el) el.classList.toggle('active', n === step);
   });
 
   // Show/hide two-col layout vs step 4 full page
-  document.getElementById('rb-two-col').style.display = step < 4 ? '' : 'none';
+  // Steps 1, 2, 3, 5 use two-col; step 4 uses its own full page
+  document.getElementById('rb-two-col').style.display = (step !== 4) ? '' : 'none';
   document.getElementById('rb-step4').style.display   = step === 4 ? '' : 'none';
 
   // Show/hide step 3 sub-tabs
   const subtabsEl = document.getElementById('rb-step3-subtabs');
   if (subtabsEl) subtabsEl.style.display = step === 3 ? '' : 'none';
+
+  // Show/hide step 5 toolbar
+  const step5ToolbarEl = document.getElementById('rb-step5-toolbar');
+  if (step5ToolbarEl) step5ToolbarEl.style.display = step === 5 ? 'flex' : 'none';
 
   // Left panel: show doctor filters or service search
   const isStep3Service = (step === 3 && RB.step3Mode === 'service');
@@ -1626,7 +1723,9 @@ function rbGoToStep(step) {
       ? 'Выберите врача для настройки оклада и удержаний'
       : step === 2
         ? 'Выберите врача для настройки бонусов за выполненные услуги'
-        : 'Выберите врача-направителя из списка слева';
+        : step === 5
+          ? 'Выберите врача для просмотра истории зарплат'
+          : 'Выберите врача-направителя из списка слева';
     document.getElementById('rb-detail-panel').innerHTML = `
       <div class="rb-placeholder">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM12 14a7 7 0 0 0-7 7h14a7 7 0 0 0-7-7z"/></svg>
@@ -1685,6 +1784,14 @@ async function rbRenderPerformedServicesDetail() {
     // Load saved bonuses for this doctor (all clinics at once)
     const savedBonuses = await rbApi(`/api/performed-service-bonuses?misUserId=${d.id}`);
     RB.performedBonuses = Array.isArray(savedBonuses) ? savedBonuses : [];
+
+    // Load executor settings (needed for cabinet list in Step 2)
+    try {
+      RB.executorData = _execSettingsCache[d.id] || await rbExecLoad(d.id);
+      _execSettingsCache[d.id] = RB.executorData;
+    } catch (e) {
+      RB.executorData = rbExecDefault();
+    }
 
     // Load doctor's services from MIS and cache them
     let services = [];
@@ -1781,6 +1888,7 @@ function rbPsvcRenderTable() {
   const services = RB.psvcServices || [];
   const activeClinic = RB.performedBonusActiveClinic || 'global';
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  const globalCabinets = (RB.executorData && RB.executorData.clinicSettings && RB.executorData.clinicSettings.global && RB.executorData.clinicSettings.global.cabinets) ? RB.executorData.clinicSettings.global.cabinets : [];
 
   if (!services.length) {
     wrap.innerHTML = `<div class="rb-alert rb-alert-warning">Услуги врача не найдены в МИС.</div>`;
@@ -1809,13 +1917,17 @@ function rbPsvcRenderTable() {
     const name  = svc.title || '';
     const price = svc.price ? ` (${parseFloat(svc.price).toFixed(2)} ₽)` : '';
 
-    // Look up clinic-specific bonus first, then fall back to global
-    const savedClinic = RB.performedBonuses.find(b => b.serviceCode === code && b.clinicId === dbClinicId);
+    // Look up clinic-specific non-cabinet bonus first, then fall back to global
+    const savedClinic = RB.performedBonuses.find(b => b.serviceCode === code && b.clinicId === dbClinicId && (!b.cabinetId || b.cabinetId === ''));
     const savedGlobal = dbClinicId !== ''
-      ? RB.performedBonuses.find(b => b.serviceCode === code && (!b.clinicId || b.clinicId === ''))
+      ? RB.performedBonuses.find(b => b.serviceCode === code && (!b.clinicId || b.clinicId === '') && (!b.cabinetId || b.cabinetId === ''))
       : null;
     const saved = savedClinic || savedGlobal;
-    const isFallback = !savedClinic && !!savedGlobal; // showing inherited global value
+    const isFallback = !savedClinic && !!savedGlobal;
+
+    // Cabinet-specific bonuses for this service+clinic
+    const cabinetBonuses = RB.performedBonuses.filter(b =>
+      b.serviceCode === code && b.clinicId === dbClinicId && b.cabinetId && b.cabinetId !== '');
 
     const pct = saved && saved.bonusPercent != null ? saved.bonusPercent : '';
     const rub = saved && saved.bonusRub != null ? saved.bonusRub : '';
@@ -1825,10 +1937,16 @@ function rbPsvcRenderTable() {
     const _rawVal  = hasPct ? pct : hasRub ? rub : '';
     const initVal  = _rawVal !== '' ? parseFloat(_rawVal) : '';
     const rowBg = i % 2 === 0 ? '' : 'background:#f8fafc';
-    const fallbackNote = '';
 
-    html += `<tr style="${rowBg};border-bottom:1px solid var(--rb-border)">
-      <td style="padding:6px 10px;font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(code)}</td>
+    const cabBadge = cabinetBonuses.length > 0
+      ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:var(--rb-primary);color:#fff;border-radius:50%;font-size:9px;font-weight:700;line-height:1">${cabinetBonuses.length}</span>`
+      : (globalCabinets.length > 0 ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;background:#94a3b8;color:#fff;border-radius:50%;font-size:9px;font-weight:700;line-height:1">${globalCabinets.length}</span>` : '');
+
+    html += `<tr class="psvc-main-row" data-svc-idx="${i}" style="${rowBg};border-bottom:1px solid var(--rb-border)">
+      <td style="padding:6px 10px;white-space:nowrap">
+        <button onclick="rbPsvcToggleCabinets(${i})" title="Кабинеты" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--rb-text-secondary);font-size:11px;border-radius:3px;margin-right:2px" class="psvc-expand-btn">▶ ${cabBadge}</button>
+        <span style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(code)}</span>
+      </td>
       <td style="padding:6px 10px">${rbEsc(name)}<span style="color:var(--rb-text-secondary);font-size:11px">${price}</span></td>
       <td style="padding:6px 10px">
         <div style="display:flex;align-items:center;gap:5px">
@@ -1841,14 +1959,137 @@ function rbPsvcRenderTable() {
             placeholder="${initType === 'pct' ? '%' : '₽'}" value="${rbEsc(String(initVal))}"
             data-code="${rbEsc(code)}" data-name="${rbEsc(name)}" data-field="val" data-type="${initType}"
             oninput="rbPsvcOnInput(this)">
-          ${fallbackNote}
         </div>
+      </td>
+    </tr>
+    <tr class="psvc-cab-container" id="psvc-cabs-${i}" data-svc-idx="${i}" style="display:none">
+      <td colspan="3" style="padding:4px 10px 10px 36px;background:#f0f4ff;border-bottom:1px solid var(--rb-border)">
+        ${rbPsvcBuildCabSection(i, code, name, cabinetBonuses, globalCabinets)}
       </td>
     </tr>`;
   });
 
   html += `</tbody></table>`;
   wrap.innerHTML = html;
+}
+
+function rbPsvcBuildCabSection(svcIdx, code, name, cabinetBonuses, globalCabinets) {
+  let html = '<div style="font-size:12px;color:var(--rb-text-secondary);margin-bottom:8px;font-weight:500">Бонусы по кабинетам <span style="font-weight:400">(перекрывают общий бонус для услуги)</span>:</div>';
+
+  if (globalCabinets.length) {
+    html += '<div style="font-size:11px;font-weight:600;color:var(--rb-primary);margin-bottom:6px">Кабинеты врача:</div>';
+    html += globalCabinets.map(function(cabName) {
+      var existingCabBonus = null;
+      for (var _bi = 0; _bi < cabinetBonuses.length; _bi++) {
+        if (cabinetBonuses[_bi].cabinetId === cabName) { existingCabBonus = cabinetBonuses[_bi]; break; }
+      }
+      var cBonusId = existingCabBonus ? String(existingCabBonus.id) : '';
+      var cPct = existingCabBonus && existingCabBonus.bonusPercent != null ? existingCabBonus.bonusPercent : '';
+      var cRub = existingCabBonus && existingCabBonus.bonusRub != null ? existingCabBonus.bonusRub : '';
+      var cHasPct = cPct !== '';
+      var cType = cHasPct ? 'pct' : (cRub !== '' ? 'rub' : 'pct');
+      var cVal = cHasPct ? parseFloat(cPct) : (cRub !== '' ? parseFloat(cRub) : '');
+      var isSet = !!existingCabBonus;
+      return '<div class="psvc-cab-edit-item" style="display:flex;align-items:center;gap:6px;margin-bottom:5px' + (isSet ? ';background:#f0fdf4;border-radius:4px;padding:2px 6px' : '') + '"'
+        + ' data-bonus-id="' + rbEsc(cBonusId) + '"'
+        + ' data-svc-code="' + rbEsc(code) + '"'
+        + ' data-svc-name="' + rbEsc(name) + '"'
+        + ' data-cabinet-id="' + rbEsc(cabName) + '">'
+        + '<span style="min-width:130px;font-size:12px;font-weight:500;color:var(--rb-text)">' + (isSet ? '✅ ' : '📍 ') + rbEsc(cabName) + '</span>'
+        + '<div class="rb-exec-type-toggle">'
+          + '<button class="rb-exec-type-btn' + (cType === 'pct' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'pct\')">%</button>'
+          + '<button class="rb-exec-type-btn' + (cType === 'rub' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'rub\')">₽</button>'
+        + '</div>'
+        + '<input type="number" min="0" step="any"'
+          + ' data-field="cab-edit-val" data-type="' + cType + '"'
+          + ' style="width:72px;padding:3px 6px;border:1px solid ' + (isSet ? 'var(--rb-success)' : 'var(--rb-border-dark)') + ';border-radius:4px;text-align:right;font-size:12px"'
+          + ' value="' + rbEsc(String(cVal)) + '" placeholder="' + (cType === 'pct' ? '%' : '₽') + '">'
+        + '<button onclick="rbPsvcUpdateCabinetBonus(this,' + svcIdx + ')" style="padding:3px 8px;font-size:11px;background:var(--rb-primary);color:#fff;border:none;border-radius:4px;cursor:pointer">Сохр.</button>'
+        + (isSet ? '<button onclick="rbPsvcDeleteCabinetBonus(\'' + rbEsc(cBonusId) + '\',' + svcIdx + ')" style="padding:3px 6px;font-size:11px;background:var(--rb-danger);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>' : '')
+        + '</div>';
+    }).join('');
+
+    // Extra bonuses for cabinets NOT in global list
+    var extraBonuses = cabinetBonuses.filter(function(b) { return globalCabinets.indexOf(b.cabinetId) === -1; });
+    if (extraBonuses.length) {
+      html += '<div style="font-size:11px;font-weight:600;color:var(--rb-text-secondary);margin-top:8px;margin-bottom:4px">Другие кабинеты:</div>';
+      html += extraBonuses.map(function(cab) {
+        var cPct2 = cab.bonusPercent != null ? cab.bonusPercent : '';
+        var cRub2 = cab.bonusRub != null ? cab.bonusRub : '';
+        var cHasPct2 = cPct2 !== '';
+        var cType2 = cHasPct2 ? 'pct' : 'rub';
+        var cVal2 = cHasPct2 ? parseFloat(cPct2) : (cRub2 !== '' ? parseFloat(cRub2) : '');
+        return '<div class="psvc-cab-edit-item" style="display:flex;align-items:center;gap:6px;margin-bottom:5px"'
+          + ' data-bonus-id="' + rbEsc(String(cab.id)) + '"'
+          + ' data-svc-code="' + rbEsc(code) + '"'
+          + ' data-svc-name="' + rbEsc(name) + '"'
+          + ' data-cabinet-id="' + rbEsc(cab.cabinetId) + '">'
+          + '<span style="min-width:130px;font-size:12px;font-weight:500;color:var(--rb-text)">📍 ' + rbEsc(cab.cabinetId) + '</span>'
+          + '<div class="rb-exec-type-toggle">'
+            + '<button class="rb-exec-type-btn' + (cType2 === 'pct' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'pct\')">%</button>'
+            + '<button class="rb-exec-type-btn' + (cType2 === 'rub' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'rub\')">₽</button>'
+          + '</div>'
+          + '<input type="number" min="0" step="any"'
+            + ' data-field="cab-edit-val" data-type="' + cType2 + '"'
+            + ' style="width:72px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px"'
+            + ' value="' + rbEsc(String(cVal2)) + '" placeholder="' + (cType2 === 'pct' ? '%' : '₽') + '">'
+          + '<button onclick="rbPsvcUpdateCabinetBonus(this,' + svcIdx + ')" style="padding:3px 8px;font-size:11px;background:var(--rb-primary);color:#fff;border:none;border-radius:4px;cursor:pointer">Сохр.</button>'
+          + '<button onclick="rbPsvcDeleteCabinetBonus(\'' + rbEsc(String(cab.id)) + '\',' + svcIdx + ')" style="padding:3px 6px;font-size:11px;background:var(--rb-danger);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>'
+          + '</div>';
+      }).join('');
+    }
+
+    html += '<div style="margin-top:8px;border-top:1px solid var(--rb-border);padding-top:8px">'
+      + '<div style="font-size:11px;color:var(--rb-text-secondary);margin-bottom:4px">Добавить кабинет вне списка:</div>'
+      + '<div class="psvc-cab-add-form" data-svc-idx="' + svcIdx + '" data-svc-code="' + rbEsc(code) + '" data-svc-name="' + rbEsc(name) + '" style="display:flex;align-items:center;gap:6px">'
+        + '<input type="text" placeholder="Название кабинета..." class="psvc-cab-name-input" style="width:130px;padding:3px 7px;border:1px solid var(--rb-border-dark);border-radius:4px;font-size:12px;font-family:inherit">'
+        + '<div class="rb-exec-type-toggle">'
+          + '<button class="rb-exec-type-btn active" onclick="rbPsvcCabToggleType(this,\'pct\')">%</button>'
+          + '<button class="rb-exec-type-btn" onclick="rbPsvcCabToggleType(this,\'rub\')">₽</button>'
+        + '</div>'
+        + '<input type="number" min="0" step="any" data-field="cab-val" data-type="pct" style="width:72px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px" placeholder="%" class="psvc-cab-val-input">'
+        + '<button onclick="rbPsvcSaveCabinetBonus(' + svcIdx + ')" style="padding:3px 8px;font-size:11px;background:var(--rb-success);color:#fff;border:none;border-radius:4px;cursor:pointer">+ Добавить</button>'
+      + '</div>'
+    + '</div>';
+  } else {
+    // No global cabinets defined: original behavior
+    html += cabinetBonuses.map(function(cab) {
+      var cPct3 = cab.bonusPercent != null ? cab.bonusPercent : '';
+      var cRub3 = cab.bonusRub != null ? cab.bonusRub : '';
+      var cHasPct3 = cPct3 !== '';
+      var cType3 = cHasPct3 ? 'pct' : 'rub';
+      var cVal3 = cHasPct3 ? parseFloat(cPct3) : (cRub3 !== '' ? parseFloat(cRub3) : '');
+      return '<div class="psvc-cab-edit-item" style="display:flex;align-items:center;gap:6px;margin-bottom:5px"'
+        + ' data-bonus-id="' + rbEsc(String(cab.id)) + '"'
+        + ' data-svc-code="' + rbEsc(code) + '"'
+        + ' data-svc-name="' + rbEsc(name) + '"'
+        + ' data-cabinet-id="' + rbEsc(cab.cabinetId) + '">'
+        + '<span style="min-width:120px;font-size:12px;font-weight:500;color:var(--rb-text)">📍 ' + rbEsc(cab.cabinetId) + '</span>'
+        + '<div class="rb-exec-type-toggle">'
+          + '<button class="rb-exec-type-btn' + (cType3 === 'pct' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'pct\')">%</button>'
+          + '<button class="rb-exec-type-btn' + (cType3 === 'rub' ? ' active' : '') + '" onclick="rbPsvcCabToggleType(this,\'rub\')">₽</button>'
+        + '</div>'
+        + '<input type="number" min="0" step="any"'
+          + ' data-field="cab-edit-val" data-type="' + cType3 + '"'
+          + ' style="width:72px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px"'
+          + ' value="' + rbEsc(String(cVal3)) + '" placeholder="' + (cType3 === 'pct' ? '%' : '₽') + '">'
+        + '<button onclick="rbPsvcUpdateCabinetBonus(this,' + svcIdx + ')" style="padding:3px 8px;font-size:11px;background:var(--rb-primary);color:#fff;border:none;border-radius:4px;cursor:pointer">Сохр.</button>'
+        + '<button onclick="rbPsvcDeleteCabinetBonus(\'' + rbEsc(String(cab.id)) + '\',' + svcIdx + ')" style="padding:3px 6px;font-size:11px;background:var(--rb-danger);color:#fff;border:none;border-radius:4px;cursor:pointer">✕</button>'
+        + '</div>';
+    }).join('');
+    html += '<div class="psvc-cab-add-form" data-svc-idx="' + svcIdx + '" data-svc-code="' + rbEsc(code) + '" data-svc-name="' + rbEsc(name) + '"'
+      + ' style="display:flex;align-items:center;gap:6px;margin-top:' + (cabinetBonuses.length > 0 ? '8px;border-top:1px solid var(--rb-border);padding-top:8px' : '0px') + '">'
+      + '<input type="text" placeholder="Кабинет..." class="psvc-cab-name-input" style="width:120px;padding:3px 7px;border:1px solid var(--rb-border-dark);border-radius:4px;font-size:12px;font-family:inherit">'
+      + '<div class="rb-exec-type-toggle">'
+        + '<button class="rb-exec-type-btn active" onclick="rbPsvcCabToggleType(this,\'pct\')">%</button>'
+        + '<button class="rb-exec-type-btn" onclick="rbPsvcCabToggleType(this,\'rub\')">₽</button>'
+      + '</div>'
+      + '<input type="number" min="0" step="any" data-field="cab-val" data-type="pct" style="width:72px;padding:3px 6px;border:1px solid var(--rb-border-dark);border-radius:4px;text-align:right;font-size:12px" placeholder="%" class="psvc-cab-val-input">'
+      + '<button onclick="rbPsvcSaveCabinetBonus(' + svcIdx + ')" style="padding:3px 8px;font-size:11px;background:var(--rb-success);color:#fff;border:none;border-radius:4px;cursor:pointer">+ Добавить</button>'
+    + '</div>';
+  }
+
+  return html;
 }
 
 // Track pending changes for step 2
@@ -1863,10 +2104,16 @@ function rbPsvcOnInput(input) {
 
 function rbPsvcFilterTable() {
   const term = (document.getElementById('rb-psvc-search')?.value || '').toLowerCase();
-  document.querySelectorAll('#rb-psvc-table tbody tr').forEach(row => {
+  document.querySelectorAll('#rb-psvc-table tbody .psvc-main-row').forEach(row => {
+    const idx = row.dataset.svcIdx;
     const code = (row.cells[0]?.textContent || '').toLowerCase();
     const name = (row.cells[1]?.textContent || '').toLowerCase();
-    row.style.display = (!term || code.includes(term) || name.includes(term)) ? '' : 'none';
+    const show = !term || code.includes(term) || name.includes(term);
+    row.style.display = show ? '' : 'none';
+    if (idx) {
+      const cab = document.getElementById(`psvc-cabs-${idx}`);
+      if (cab) cab.style.display = (!show || cab.dataset.expanded !== 'true') ? 'none' : '';
+    }
   });
 }
 
@@ -1913,6 +2160,124 @@ async function rbPsvcSaveAll(misUserId) {
   } catch (e) {
     rbToast('Ошибка сохранения: ' + e.message, 'error');
   }
+}
+
+// ═══════════════════════════════════════
+// CABINET BONUS FUNCTIONS
+// ═══════════════════════════════════════
+
+function rbPsvcToggleCabinets(idx) {
+  const container = document.getElementById(`psvc-cabs-${idx}`);
+  if (!container) return;
+  const isExpanded = container.dataset.expanded === 'true';
+  container.dataset.expanded = isExpanded ? 'false' : 'true';
+  container.style.display = isExpanded ? 'none' : '';
+  const mainRow = document.querySelector(`.psvc-main-row[data-svc-idx="${idx}"]`);
+  const btn = mainRow?.querySelector('.psvc-expand-btn');
+  if (btn) btn.style.color = isExpanded ? '' : 'var(--rb-primary)';
+}
+
+function rbPsvcCabToggleType(btn, type) {
+  const toggle = btn.closest('.rb-exec-type-toggle');
+  if (!toggle) return;
+  toggle.querySelectorAll('.rb-exec-type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const container = btn.closest('.psvc-cab-add-form') || btn.closest('.psvc-cab-edit-item');
+  const inp = container?.querySelector('[data-field="cab-val"],[data-field="cab-edit-val"]');
+  if (inp) { inp.dataset.type = type; inp.placeholder = type === 'pct' ? '%' : '₽'; inp.value = ''; }
+}
+
+async function rbPsvcSaveCabinetBonus(idx) {
+  const d = RB.selectedDoctor;
+  if (!d) return;
+  const form = document.querySelector(`.psvc-cab-add-form[data-svc-idx="${idx}"]`);
+  if (!form) return;
+  const cabInput = form.querySelector('.psvc-cab-name-input');
+  const valInput = form.querySelector('[data-field="cab-val"]');
+  if (!cabInput || !valInput) return;
+  const cabinetId = cabInput.value.trim();
+  if (!cabinetId) { rbToast('Введите название кабинета', 'error'); return; }
+  const valStr = valInput.value.trim();
+  if (!valStr) { rbToast('Введите значение бонуса', 'error'); return; }
+  const val = parseFloat(valStr);
+  if (isNaN(val) || val < 0) { rbToast('Некорректное значение', 'error'); return; }
+  const type = valInput.dataset.type || 'pct';
+  const svcCode = form.dataset.svcCode;
+  const svcName = form.dataset.svcName;
+  const activeClinic = RB.performedBonusActiveClinic || 'global';
+  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  try {
+    await rbPost('/api/performed-service-bonuses', {
+      misUserId: d.id, clinicId: dbClinicId, cabinetId,
+      doctorName: d.name, serviceCode: svcCode, serviceName: svcName,
+      bonusPercent: type === 'pct' ? val : null,
+      bonusRub:     type === 'rub' ? val : null,
+    });
+    rbToast('Бонус для кабинета сохранён', 'success');
+    const savedBonuses = await rbApi(`/api/performed-service-bonuses?misUserId=${d.id}`);
+    RB.performedBonuses = Array.isArray(savedBonuses) ? savedBonuses : [];
+    rbPsvcRenderTable();
+    const newCont = document.getElementById(`psvc-cabs-${idx}`);
+    if (newCont) { newCont.dataset.expanded = 'true'; newCont.style.display = ''; }
+    const mainRow = document.querySelector(`.psvc-main-row[data-svc-idx="${idx}"]`);
+    const btn = mainRow?.querySelector('.psvc-expand-btn');
+    if (btn) btn.style.color = 'var(--rb-primary)';
+  } catch (e) { rbToast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function rbPsvcUpdateCabinetBonus(saveBtn, idx) {
+  const d = RB.selectedDoctor;
+  if (!d) return;
+  const item = saveBtn.closest('.psvc-cab-edit-item');
+  if (!item) return;
+  const valInput = item.querySelector('[data-field="cab-edit-val"]');
+  if (!valInput) return;
+  const valStr = valInput.value.trim();
+  if (!valStr) { rbToast('Введите значение', 'error'); return; }
+  const val = parseFloat(valStr);
+  if (isNaN(val) || val < 0) { rbToast('Некорректное значение', 'error'); return; }
+  const type = valInput.dataset.type || 'pct';
+  const cabinetId = item.dataset.cabinetId;
+  const svcCode   = item.dataset.svcCode;
+  const svcName   = item.dataset.svcName;
+  const activeClinic = RB.performedBonusActiveClinic || 'global';
+  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  try {
+    await rbPost('/api/performed-service-bonuses', {
+      misUserId: d.id, clinicId: dbClinicId, cabinetId,
+      doctorName: d.name, serviceCode: svcCode, serviceName: svcName,
+      bonusPercent: type === 'pct' ? val : null,
+      bonusRub:     type === 'rub' ? val : null,
+    });
+    rbToast('Бонус для кабинета обновлён', 'success');
+    const savedBonuses = await rbApi(`/api/performed-service-bonuses?misUserId=${d.id}`);
+    RB.performedBonuses = Array.isArray(savedBonuses) ? savedBonuses : [];
+    rbPsvcRenderTable();
+    const newCont = document.getElementById(`psvc-cabs-${idx}`);
+    if (newCont) { newCont.dataset.expanded = 'true'; newCont.style.display = ''; }
+    const mainRow = document.querySelector(`.psvc-main-row[data-svc-idx="${idx}"]`);
+    const btn = mainRow?.querySelector('.psvc-expand-btn');
+    if (btn) btn.style.color = 'var(--rb-primary)';
+  } catch (e) { rbToast('Ошибка: ' + e.message, 'error'); }
+}
+
+async function rbPsvcDeleteCabinetBonus(bonusId, idx) {
+  if (!confirm('Удалить бонус для кабинета?')) return;
+  try {
+    const res = await fetch(RB.apiBase + `/api/performed-service-bonuses/${bonusId}`, {
+      method: 'DELETE', headers: { 'Authorization': `Bearer ${RB.token}` }
+    });
+    if (!res.ok) throw new Error();
+    rbToast('Удалено', 'success');
+    const savedBonuses = await rbApi(`/api/performed-service-bonuses?misUserId=${RB.selectedDoctor?.id}`);
+    RB.performedBonuses = Array.isArray(savedBonuses) ? savedBonuses : [];
+    rbPsvcRenderTable();
+    const newCont = document.getElementById(`psvc-cabs-${idx}`);
+    if (newCont) { newCont.dataset.expanded = 'true'; newCont.style.display = ''; }
+    const mainRow = document.querySelector(`.psvc-main-row[data-svc-idx="${idx}"]`);
+    const btn = mainRow?.querySelector('.psvc-expand-btn');
+    if (btn) btn.style.color = 'var(--rb-primary)';
+  } catch (e) { rbToast('Ошибка удаления', 'error'); }
 }
 
 // ═══════════════════════════════════════
@@ -2448,9 +2813,12 @@ function rbExecClinicDefault() {
     deductions: [],           // [{name, valueType:'percent'|'rub', value}]
     materials: [],            // [{name, valueType:'percent'|'rub', value}]
     serviceMaterials: [],     // [{serviceCode, serviceName, name, valueType:'percent'|'rub', value, deductionType}]
+    cabinets: [],             // list of cabinet names this doctor works in
     extras: [],               // [{name, amount, hours}]
     includeReferralBonuses: true,    // начислять бонусы за направления
     includeReferralDeductions: true, // списывать бонусы направителям
+    includeCorpInvoices: true,       // учитывать услуги оплаченные юр. компанией
+    assistancePercent: 0,            // % от стоимости услуги для ассистента
   };
 }
 
@@ -2607,8 +2975,10 @@ function rbExecRenderSections() {
       ⚡ Индивидуальные настройки для <strong>${rbEsc(rbGetClinicName(clinicId))}</strong>. Если не заданы — применяются общие.
     </div>` : '';
 
+  const _globalExecData = rbGetClinicSettings(RB.executorData, 'global');
   body.innerHTML = noticeHtml +
     rbExecSectionPaymentNew(data) +
+    rbExecSectionCabinets(_globalExecData) +
     rbExecSectionDeductions(data) +
     rbExecSectionMaterials(data) +
     rbExecSectionExtras(data);
@@ -2700,6 +3070,14 @@ function rbExecSectionDeductions(data) {
       </div>
     </div>
     <div class="rb-exec-section-body">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0 10px;border-bottom:1px dashed var(--rb-border);margin-bottom:10px">
+        <label style="font-size:13px;color:var(--rb-text);flex:1">% на ассистирование</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input type="number" id="rb-exec-assistance-pct" value="${data.assistancePercent || 0}" min="0" max="100" step="0.1" placeholder="0" oninput="rbExecAutoSave()" style="width:80px;padding:6px 8px;border:1px solid var(--rb-border-dark);border-radius:7px;font-size:13px;outline:none;text-align:right;font-family:inherit">
+          <span style="font-size:13px;color:var(--rb-text-secondary)">%</span>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--rb-text-secondary);margin:-6px 0 10px 0;line-height:1.4">Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту</div>
       <div id="rb-exec-list-deductions">${rbExecItemsHtml(items, 'deductions')}</div>
       ${rbExecAddFormHtml('deductions', EXEC_DEDUCTION_SUGGESTS)}
     </div>
@@ -2794,7 +3172,10 @@ function rbExecSectionPaymentNew(data) {
         <input type="checkbox" id="rb-exec-include-ref-deductions" ${data.includeReferralDeductions !== false ? 'checked' : ''} onchange="rbExecAutoSave()">
         <label for="rb-exec-include-ref-deductions">Списывать бонусы направителям</label>
       </div>
-
+      <div class="rb-plus-pct-row">
+        <input type="checkbox" id="rb-exec-include-corp" ${data.includeCorpInvoices !== false ? 'checked' : ''} onchange="rbExecAutoSave()">
+        <label for="rb-exec-include-corp">Учитывать услуги оплаченные юр. компаниями</label>
+      </div>
       <div class="rb-exec-fields-grid" style="margin-top:12px">
         <div class="rb-exec-field">
           <label>Способ выплаты аванса</label>
@@ -2876,6 +3257,82 @@ function rbExecSectionExtras(data) {
       </button>
     </div>
   </div>`;
+}
+
+function rbExecSectionCabinets(data) {
+  const cabinets = data.cabinets || [];
+  const listHtml = cabinets.length
+    ? '<div class="rb-exec-items">' + cabinets.map((cab, i) => `
+        <div class="rb-exec-item">
+          <div class="rb-exec-item-name">📍 ${rbEsc(cab)}</div>
+          <button class="rb-btn rb-btn-danger rb-btn-xs" onclick="rbExecDeleteCabinet(${i})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>`).join('') + '</div>'
+    : '<div class="rb-exec-empty">Кабинеты не указаны. Добавьте кабинеты ниже — они появятся в виде готового списка в шаге «Выполненные услуги».</div>';
+  return `<div class="rb-exec-section">
+    <div class="rb-exec-section-header">
+      <div class="rb-exec-section-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+        Кабинеты
+      </div>
+    </div>
+    <div class="rb-exec-section-body">
+      <div style="font-size:12px;color:var(--rb-text-secondary);margin-bottom:10px;line-height:1.5">
+        Укажите кабинеты, где работает врач. В шаге «Выполненные услуги» они появятся в виде готового списка — не нужно вводить вручную для каждой услуги.
+      </div>
+      <div id="rb-exec-list-cabinets">${listHtml}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+        <input id="rb-exec-cabinet-input" type="text" placeholder="Название кабинета..."
+          style="flex:1;padding:7px 10px;border:1px solid var(--rb-border-dark);border-radius:8px;font-size:13px;outline:none;font-family:inherit"
+          onfocus="this.style.borderColor='var(--rb-primary)';this.style.boxShadow='0 0 0 3px rgba(37,99,235,0.1)'"
+          onblur="this.style.borderColor='var(--rb-border-dark)';this.style.boxShadow=''"
+          onkeydown="if(event.key==='Enter')rbExecAddCabinet()">
+        <button class="rb-btn rb-btn-primary rb-btn-sm" onclick="rbExecAddCabinet()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Добавить
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function rbExecCabinetsListHtml(cabinets) {
+  if (!cabinets || !cabinets.length)
+    return '<div class="rb-exec-empty">Кабинеты не указаны. Добавьте кабинеты ниже — они появятся в виде готового списка в шаге «Выполненные услуги».</div>';
+  return '<div class="rb-exec-items">' + cabinets.map((cab, i) => `
+    <div class="rb-exec-item">
+      <div class="rb-exec-item-name">📍 ${rbEsc(cab)}</div>
+      <button class="rb-btn rb-btn-danger rb-btn-xs" onclick="rbExecDeleteCabinet(${i})">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>`).join('') + '</div>';
+}
+
+async function rbExecAddCabinet() {
+  const input = document.getElementById('rb-exec-cabinet-input');
+  const name = input && input.value ? input.value.trim() : '';
+  if (!name) { rbToast('Введите название кабинета', 'error'); return; }
+  const cs = RB.executorData.clinicSettings;
+  if (!cs['global']) cs['global'] = rbExecClinicDefault();
+  if (!cs['global'].cabinets) cs['global'].cabinets = [];
+  if (cs['global'].cabinets.includes(name)) { rbToast('Такой кабинет уже добавлен', 'error'); return; }
+  cs['global'].cabinets.push(name);
+  await rbExecSave(RB.selectedDoctor.id, RB.executorData);
+  if (input) input.value = '';
+  const listEl = document.getElementById('rb-exec-list-cabinets');
+  if (listEl) listEl.innerHTML = rbExecCabinetsListHtml(cs['global'].cabinets);
+  rbToast('Кабинет "' + name + '" добавлен', 'success');
+}
+
+async function rbExecDeleteCabinet(idx) {
+  const cs = RB.executorData.clinicSettings;
+  if (!cs['global'] || !cs['global'].cabinets) return;
+  cs['global'].cabinets.splice(idx, 1);
+  await rbExecSave(RB.selectedDoctor.id, RB.executorData);
+  const listEl = document.getElementById('rb-exec-list-cabinets');
+  if (listEl) listEl.innerHTML = rbExecCabinetsListHtml(cs['global'].cabinets);
+  rbToast('Кабинет удалён', 'success');
 }
 
 // --- Interaction handlers ---
@@ -3224,6 +3681,8 @@ async function rbExecSavePayment() {
   d.mainPayment = parseFloat(document.getElementById('rb-exec-main-payment')?.value) || 0;
   d.includeReferralBonuses    = document.getElementById('rb-exec-include-ref-bonuses')?.checked ?? true;
   d.includeReferralDeductions = document.getElementById('rb-exec-include-ref-deductions')?.checked ?? true;
+  d.includeCorpInvoices       = document.getElementById('rb-exec-include-corp')?.checked ?? true;
+  d.assistancePercent         = parseFloat(document.getElementById('rb-exec-assistance-pct')?.value) || 0;
 
   if (pt === 'salary') {
     d.fixedSalary = parseFloat(document.getElementById('rb-exec-fixed-salary')?.value) || 0;
@@ -3293,6 +3752,26 @@ function rbNormalizeName(s) {
   return String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// Сравнивает ID кабинета из БД со значением из Excel-колонки «Кабинет».
+// Убираем невидимые символы (zero-width space, неразрывный пробел и т.п.), которые
+// могут присутствовать в строке из БД или Excel несмотря на визуальное совпадение.
+function rbCabMatch(storedId, excelVal) {
+  const norm = s => String(s || '')
+    .replace(/[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200D\u2060\uFEFF]/g, '') // убираем управляющие/невидимые символы
+    .replace(/\u00A0/g, ' ') // неразрывный пробел → обычный
+    .replace(/\s+/g, ' ')    // схлопываем пробелы
+    .trim()
+    .toLowerCase();
+  const a = norm(storedId);
+  const b = norm(excelVal);
+  if (storedId && excelVal && a !== b) {
+    // Диагностика: выводим коды символов при несовпадении
+    console.log(`[rbCabMatch] MISMATCH: stored="${storedId}" [${[...String(storedId)].map(c=>c.codePointAt(0).toString(16)).join(',')}] vs excel="${excelVal}" [${[...String(excelVal)].map(c=>c.codePointAt(0).toString(16)).join(',')}]`);
+  }
+  if (!a || !b) return false;
+  return a === b;
+}
+
 // Парсит дату из строк вида "13.02.2026", "2026-02-13", "13/02/2026"
 function rbParseDate(val) {
   if (!val) return null;
@@ -3343,6 +3822,26 @@ async function rbBuildReport(rows) {
 
   // Определяем колонки из нового единого формата
   const colMap = rbMapNewColumns(rows);
+
+  // Debug: log column detection results to browser console
+  console.log('[rbBuildReport] colMap:', JSON.stringify(colMap));
+  console.log('[rbBuildReport] colMap.cabinet:', colMap.cabinet);
+  if (colMap.cabinet) {
+    const cabVals = [...new Set(rows.slice(0, 20).map(r => r[colMap.cabinet]))].filter(Boolean);
+    console.log('[rbBuildReport] sample cabinet values from Excel (first 20 rows):', cabVals);
+  } else {
+    const allKeys = rows.length ? Object.keys(rows[0]) : [];
+    console.log('[rbBuildReport] colMap.cabinet NOT detected! All Excel column names:', allKeys);
+  }
+  const cabBonuses = performedDbBonuses.filter(b => b.cabinetId && b.cabinetId !== '');
+  if (cabBonuses.length) {
+    console.log('[rbBuildReport] cabinet bonuses in DB:', cabBonuses.map(b => ({ serviceCode: b.serviceCode, cabinetId: b.cabinetId, bonusPercent: b.bonusPercent })));
+  }
+
+  // Предупреждение: в файле нет колонки «Кабинет», но для этого врача заданы кабинетные бонусы
+  if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
+    rbToast('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены. Убедитесь, что выгрузка содержит эту колонку.', 'error', 7000);
+  }
 
   if (!colMap.referrer && !colMap.executor) {
     const keys = rows.length ? Object.keys(rows[0]) : [];
@@ -3461,14 +3960,21 @@ async function rbBuildReport(rows) {
     const clinicLabel = clinicId !== 'unknown' ? rbGetClinicName(clinicId) : clinicGroup.label;
     const clinicSettings = rbGetClinicSettings(execSettings, clinicId);
 
+    // Фильтр юр. компаний
+    const _corpOk = r => {
+      if (!colMap.invoiceType) return true;
+      const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
+      return (t === 'юр. компания' || t === 'юр.компания') ? !!clinicSettings.includeCorpInvoices : true;
+    };
+
     // 1. Строки где этот врач — рекомендатель
     const referrerRows = colMap.referrer
-      ? clinicRows.filter(r => rbNamesMatch(doctorName, r[colMap.referrer] || ''))
+      ? clinicRows.filter(r => _corpOk(r) && rbNamesMatch(doctorName, r[colMap.referrer] || ''))
       : [];
 
     // 2. Строки где этот врач — исполнитель (для базовой оплаты и бонусов)
     const executorRows = colMap.executor
-      ? clinicRows.filter(r => rbNamesMatch(doctorName, r[colMap.executor] || ''))
+      ? clinicRows.filter(r => _corpOk(r) && rbNamesMatch(doctorName, r[colMap.executor] || ''))
       : [];
 
     // ── Бонусы за направления (врач — рекомендатель) ──
@@ -3492,8 +3998,12 @@ async function rbBuildReport(rows) {
         byService[key].cost += rbParseCost(r);
         byService[key].count++;
       });
+      const dbClinicId = (clinicId !== 'unknown') ? String(clinicId) : '';
       const services = Object.values(byService).map(s => {
-        const bonus = RB.bonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code));
+        const bonus = (dbClinicId
+          ? RB.bonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (b.clinicId || '') === dbClinicId)
+          : null)
+          || RB.bonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === ''));
         let bonusAmount = 0, bonusLabel = '—';
         if (bonus) {
           if (bonus.bonusPercent != null) { bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
@@ -3538,13 +4048,16 @@ async function rbBuildReport(rows) {
     // ── Бонусы за выполненные услуги (Шаг 2: по коду услуги) ──
     const perfByService = {};
     executorRows.forEach(r => {
-      const code = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
-      const name = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
-      const key  = code || name;
+      const code    = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+      const name    = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+      const cabinet = colMap.cabinet     ? String(r[colMap.cabinet]     || '').trim() : '';
+      const key     = code || name;
       if (!key) return;
-      if (!perfByService[key]) perfByService[key] = { code, name, cost: 0, count: 0 };
-      perfByService[key].cost += rbParseCost(r);
+      if (!perfByService[key]) perfByService[key] = { code, name, cost: 0, count: 0, _rows: [] };
+      const rowCost = rbParseCost(r);
+      perfByService[key].cost  += rowCost;
       perfByService[key].count++;
+      perfByService[key]._rows.push({ cost: rowCost, cabinet, assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '' });
     });
     // Итого сумма и количество выполненных услуг врачом
     const performedServicesSum = executorRows.reduce((s, r) => s + rbParseCost(r), 0);
@@ -3580,30 +4093,113 @@ async function rbBuildReport(rows) {
 
     let performedBonusTotal = 0;
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
+    const assistancePayments = {}; // assistantName -> { total, services: {} }
     const performedSections = Object.values(perfByService).map(s => {
-      // Clinic-specific bonus first, fall back to global (empty clinicId)
-      const bonus = (
-        performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _psvcClinicId)
-        || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === ''))
-      );
-      let bonusAmount = 0, bonusLabel = '—';
-      if (bonus) {
-        if (bonus.bonusPercent != null) {
-          // ИТОГО = (ОБОРОТ − ВЫЧЕТ_ОТ_ОКЛАДА × КОЛ-ВО) × БОНУС%
-          // Для услуг с индивидуальным расходом — используем его, иначе глобальный
-          const svcOverrideMat = svcMatTurnoverMap[rbNormalizeName(s.code)];
-          const matForSvc = svcOverrideMat
-            ? (svcOverrideMat.valueType === 'percent' ? s.cost * parseFloat(svcOverrideMat.value) / 100 : parseFloat(svcOverrideMat.value) * s.count)
-            : globalMaterialPerOccurrence * s.count;
-          const effectiveCost = s.cost - globalDeductionPerOccurrence * s.count - matForSvc;
-          bonusAmount = effectiveCost * parseFloat(bonus.bonusPercent) / 100;
-          bonusLabel = `${parseFloat(bonus.bonusPercent)}%`;
+      // Per-row bonus lookup: cabinet-specific > clinic > global (cabinetId='' = all cabinets)
+      let bonusAmount = 0;
+      const bonusLabels = new Set();
+      const svcOverrideMat = svcMatTurnoverMap[rbNormalizeName(s.code)];
+      (s._rows || [{ cost: s.cost, cabinet: '' }]).forEach(row => {
+        const cab = row.cabinet || '';
+        if (cab) {
+          const svcDbBonuses = performedDbBonuses.filter(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code));
+          console.log(`[row debug] service="${s.code}" cab="${cab}" clinicId="${_psvcClinicId}" | DB bonuses:`, svcDbBonuses.map(b => ({ cabinetId: b.cabinetId, clinicId: b.clinicId, bonusPercent: b.bonusPercent, cabMatch: rbCabMatch(b.cabinetId, cab) })));
         }
-        else if (bonus.bonusRub != null) { bonusAmount = parseFloat(bonus.bonusRub) * s.count; bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`; }
-      }
+        const bonus = (
+          (cab ? performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _psvcClinicId && rbCabMatch(b.cabinetId, cab)) : null)
+          || (cab ? performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === '') && rbCabMatch(b.cabinetId, cab)) : null)
+          || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _psvcClinicId && (!b.cabinetId || b.cabinetId === ''))
+          || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === '') && (!b.cabinetId || b.cabinetId === ''))
+        );
+        if (bonus) {
+          if (bonus.bonusPercent != null) {
+            const assistantName = row.assistant || '';
+            const asstPct = assistantName ? (clinicSettings.assistancePercent || 0) : 0;
+            const effectiveBonusPct = Math.max(0, parseFloat(bonus.bonusPercent) - asstPct);
+            const matForRow = svcOverrideMat
+              ? (svcOverrideMat.valueType === 'percent' ? row.cost * parseFloat(svcOverrideMat.value) / 100 : parseFloat(svcOverrideMat.value))
+              : globalMaterialPerOccurrence;
+            const effectiveCost = row.cost - globalDeductionPerOccurrence - matForRow;
+            bonusAmount += effectiveCost * effectiveBonusPct / 100;
+            bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
+            if (asstPct > 0 && assistantName) {
+              const asstBonus = effectiveCost * asstPct / 100;
+              if (!assistancePayments[assistantName]) assistancePayments[assistantName] = { total: 0, services: {} };
+              assistancePayments[assistantName].total += asstBonus;
+              const svcKey = s.code || s.name;
+              if (!assistancePayments[assistantName].services[svcKey])
+                assistancePayments[assistantName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0 };
+              assistancePayments[assistantName].services[svcKey].income += asstBonus;
+              assistancePayments[assistantName].services[svcKey].count++;
+            }
+          } else if (bonus.bonusRub != null) {
+            bonusAmount += parseFloat(bonus.bonusRub);
+            bonusLabels.add(`${parseFloat(bonus.bonusRub).toFixed(2)} ₽`);
+          }
+        }
+      });
+      const bonusLabel = bonusLabels.size === 0 ? '—' : bonusLabels.size === 1 ? [...bonusLabels][0] : [...bonusLabels].join(', ');
       performedBonusTotal += bonusAmount;
       return { ...s, bonusAmount, bonusLabel };
     }).filter(s => s.bonusAmount !== 0 || s.code);
+
+    const assistancePaidTotal = Object.values(assistancePayments).reduce((s, x) => s + x.total, 0);
+    const assistanceSections = Object.entries(assistancePayments).map(([name, data]) => ({
+      name, total: data.total, services: Object.values(data.services)
+    }));
+
+    // ── Доход как ассистент (строки где этот врач указан в "Ассистент") ──
+    let assistanceIncomeTotal = 0;
+    const assistanceIncomeSections = [];
+    if (colMap.assistant) {
+      const asstIncRows = rows.filter(r =>
+        rbNamesMatch(doctorName, String(r[colMap.assistant] || '').trim()) && rbRowInDateRange(r)
+      );
+      if (asstIncRows.length) {
+        const byExec = {};
+        asstIncRows.forEach(r => {
+          const execName = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+          const clinicRaw2 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
+          const cId2 = rbMatchClinicId(clinicRaw2) || 'unknown';
+          const cost2 = rbParseCost(r);
+          const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+          const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+          if (!execName) return;
+          if (!byExec[execName]) byExec[execName] = {};
+          if (!byExec[execName][cId2]) byExec[execName][cId2] = [];
+          byExec[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
+        });
+        for (const [execName, byClinicMap2] of Object.entries(byExec)) {
+          const execDoc = RB.doctors.find(d => rbNamesMatch(d.name, execName));
+          if (!execDoc) continue;
+          let execData2;
+          try {
+            execData2 = _execSettingsCache[execDoc.id] || (await rbExecLoad(execDoc.id));
+            _execSettingsCache[execDoc.id] = execData2;
+          } catch { continue; }
+          let secTotal = 0;
+          const svcBreakdown2 = {};
+          for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
+            const eCS = rbGetClinicSettings(execData2, cId3);
+            const aPct = eCS.assistancePercent || 0;
+            if (!aPct) continue;
+            cRows3.forEach(row2 => {
+              const inc = row2.cost * aPct / 100;
+              secTotal += inc;
+              assistanceIncomeTotal += inc;
+              const k2 = row2.svcCode || row2.svcName;
+              if (!svcBreakdown2[k2]) svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aPct };
+              svcBreakdown2[k2].cost += row2.cost;
+              svcBreakdown2[k2].count++;
+              svcBreakdown2[k2].income += inc;
+            });
+          }
+          if (secTotal > 0) {
+            assistanceIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+          }
+        }
+      }
+    }
 
     // ── Расчёт базовой оплаты ──
     const pt = clinicSettings.payType || 'salary';
@@ -3626,7 +4222,7 @@ async function rbBuildReport(rows) {
     // preFinalSalary — сумма до вычетов "от з/п" ("от оборота" уже учтены в бонусах по услугам)
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
-    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - effectiveReferralCostTotal;
+    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     // Индивидуальные расходники "от з/п" — суммируются по каждой услуге с override final
@@ -3652,6 +4248,8 @@ async function rbBuildReport(rows) {
       turnoverMaterialsTotal, finalMaterialsTotal,
       performedServicesSum, deductionPerService, totalServiceCount,
       referralCostTotal: effectiveReferralCostTotal, referralCostItems, executorSections,
+      assistancePaidTotal, assistanceSections,
+      assistanceIncomeTotal, assistanceIncomeSections,
       finalSalary, advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: clinicSettings.mainPayment || 0,
@@ -3713,12 +4311,14 @@ function rbRenderSalaryBlock(salary) {
     turnoverMaterialsTotal = 0, finalMaterialsTotal = 0,
     performedServicesSum = 0, deductionPerService = 0, totalServiceCount = 0,
     referralCostTotal, referralCostItems, executorSections = [], finalSalary,
+    assistancePaidTotal = 0, assistanceSections = [],
+    assistanceIncomeTotal = 0, assistanceIncomeSections = [],
     advance, mainPayment, paymentMethod, mainPaymentMethod,
     deductions, materials, extras } = salary;
 
   function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
   // Pre-final salary = сумма до вычетов "от з/п" ("от оборота" уже учтены в бонусах)
-  const _preFinalSalary = (basePay||0) + (referralBonuses||0) + (performedBonusTotal||0) + (extrasTotal||0) - (referralCostTotal||0);
+  const _preFinalSalary = (basePay||0) + (referralBonuses||0) + (performedBonusTotal||0) + (extrasTotal||0) + (assistanceIncomeTotal||0) - (referralCostTotal||0);
   function itemLabel(item) {
     const rub = parseFloat(item.value) || 0;
     const base = _preFinalSalary;
@@ -3745,14 +4345,15 @@ function rbRenderSalaryBlock(salary) {
     return item.valueType === 'percent' ? (performedServicesSum || 0) * v / 100 : v;
   }
 
-  const hasWage           = (basePay || 0) > 0;
-  const hasReferral       = (referralBonuses || 0) > 0;
-  const hasPerformed      = (performedBonusTotal || 0) > 0;
-  const hasExtras         = extrasTotal > 0;
-  const hasDeductions     = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0;
-  const hasMaterials      = finalMaterialsTotal > 0 || turnoverMaterialItems.length > 0;
-  const hasReferralCost   = (referralCostTotal || 0) > 0;
-  const hasAny            = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost;
+  const hasWage             = (basePay || 0) > 0;
+  const hasReferral         = (referralBonuses || 0) > 0;
+  const hasPerformed        = (performedBonusTotal || 0) > 0;
+  const hasExtras           = extrasTotal > 0;
+  const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0;
+  const hasMaterials        = finalMaterialsTotal > 0 || turnoverMaterialItems.length > 0;
+  const hasReferralCost     = (referralCostTotal || 0) > 0;
+  const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
+  const hasAny              = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome;
 
   if (!hasAny) return '';
 
@@ -3868,11 +4469,12 @@ function rbRenderSalaryBlock(salary) {
   if (hasDeductions) {
     const allDeductionItems = [...turnoverDeductionItems, ...finalDeductionItems];
     const hasTurnoverDed = turnoverDeductionItems.length > 0;
-    html += `<div class="rb-salary-row minus${allDeductionItems.length ? ' expandable' : ''}"${allDeductionItems.length ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
+    const hasAnyDeductionDetails = allDeductionItems.length > 0 || assistanceSections.length > 0;
+    html += `<div class="rb-salary-row minus${hasAnyDeductionDetails ? ' expandable' : ''}"${hasAnyDeductionDetails ? ' onclick="this.classList.toggle(\'expanded\')"' : ''}>
       <div class="rb-salary-row-icon">−</div>
       <div class="rb-salary-row-body">
-        <div class="rb-salary-row-label">${allDeductionItems.length ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Расходники / штрафы / взыскания</div>
-        ${allDeductionItems.length ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th>Тип</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${allDeductionItems.map(d => { const _v=parseFloat(d.value)||0; const isTurnover=d.deductionType!=='final'; const _rub=isTurnover?turnoverItemRub(d):(d.valueType==='percent'?_preFinalSalary*_v/100:_v); const typeTag=isTurnover?'<span style="font-size:10px;background:#e0f2fe;color:#0369a1;padding:1px 5px;border-radius:3px;font-weight:600">от оборота</span>':'<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:1px 5px;border-radius:3px;font-weight:600">от з/п</span>'; return `<tr style="${isTurnover?'opacity:0.7':''}"><td>${rbEsc(d.name)}${isTurnover?'*':''}</td><td>${typeTag}</td><td style="text-align:right">${d.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;${isTurnover?'color:var(--rb-text-secondary)':'color:var(--rb-danger)'};text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}</tbody></table>${hasTurnoverDed?'<div style="font-size:11px;color:var(--rb-text-secondary);padding-top:4px;font-style:italic">* Уже учтено при расчёте бонусов за выполнение услуг</div>':''}</div>` : ''}
+        <div class="rb-salary-row-label">${hasAnyDeductionDetails ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Расходники / штрафы / взыскания</div>
+        ${hasAnyDeductionDetails ? `<div class="rb-salary-row-detail"><table class="rb-report-table"><thead><tr><th>Название</th><th>Тип</th><th style="text-align:right">Значение</th><th style="text-align:right">Итого, руб</th></tr></thead><tbody>${allDeductionItems.map(d => { const _v=parseFloat(d.value)||0; const isTurnover=d.deductionType!=='final'; const _rub=isTurnover?turnoverItemRub(d):(d.valueType==='percent'?_preFinalSalary*_v/100:_v); const typeTag=isTurnover?'<span style="font-size:10px;background:#e0f2fe;color:#0369a1;padding:1px 5px;border-radius:3px;font-weight:600">от оборота</span>':'<span style="font-size:10px;background:#fff7ed;color:#c2410c;padding:1px 5px;border-radius:3px;font-weight:600">от з/п</span>'; return `<tr style="${isTurnover?'opacity:0.7':''}"><td>${rbEsc(d.name)}${isTurnover?'*':''}</td><td>${typeTag}</td><td style="text-align:right">${d.valueType==='percent'?_v+'%':_v.toFixed(2)+' ₽'}</td><td style="font-weight:600;${isTurnover?'color:var(--rb-text-secondary)':'color:var(--rb-danger)'};text-align:right">−${_rub.toFixed(2)} ₽</td></tr>`; }).join('')}${(assistancePaidTotal || 0) > 0 ? `<tr style="opacity:0.7"><td>Ассистирование*</td><td><span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-weight:600">ассистент</span></td><td style="text-align:right">—</td><td style="font-weight:600;color:var(--rb-text-secondary);text-align:right">−${assistancePaidTotal.toFixed(2)} ₽</td></tr>` : ''}</tbody></table>${(hasTurnoverDed || assistanceSections.length) ? '<div style="font-size:11px;color:var(--rb-text-secondary);padding-top:4px;font-style:italic">* Уже учтено при расчёте бонусов за выполнение услуг</div>' : ''}</div>` : ''}
       </div>
       <div class="rb-salary-row-value">−${fmtRub(finalDeductionsTotal)}</div>
     </div>`;
@@ -3929,6 +4531,41 @@ function rbRenderSalaryBlock(salary) {
     }
   }
 
+  if (hasAssistanceIncome) {
+    const aiGId = 'aig' + (Math.random()*1e8|0);
+    const hasAISubs = assistanceIncomeSections.length > 0;
+    html += `<div class="rb-salary-row plus${hasAISubs ? ' expandable' : ''}"${hasAISubs ? ` onclick="var g=document.getElementById('${aiGId}');var show=g.style.display==='none';g.style.display=show?'':'none';this.classList.toggle('expanded',show)"` : ''}>
+      <div class="rb-salary-row-icon">+</div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label">${hasAISubs ? '<svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>' : ''}Ассистирование (получено)</div></div>
+      <div class="rb-salary-row-value">+${fmtRub(assistanceIncomeTotal)}</div>
+    </div>`;
+    if (hasAISubs) {
+      html += `<div id="${aiGId}" class="rb-salary-subsection" style="display:none">`;
+      assistanceIncomeSections.forEach(({ execName, total, services }) => {
+        html += `<div class="rb-salary-row plus expandable" style="padding-left:24px" onclick="this.classList.toggle('expanded')">
+          <div class="rb-salary-row-icon" style="font-size:11px">▸</div>
+          <div class="rb-salary-row-body">
+            <div class="rb-salary-row-label"><svg class="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>${rbEsc(execName)}</div>
+            <div class="rb-salary-row-detail">
+              <table class="rb-report-table"><thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th></tr></thead><tbody>
+                ${services.map(s => `<tr>
+                  <td style="font-family:monospace;font-size:11px;color:var(--rb-text-secondary)">${rbEsc(s.code||'—')}</td>
+                  <td>${rbEsc(s.name||'—')}</td>
+                  <td style="text-align:right">${s.cost ? s.cost.toFixed(2)+' ₽' : '—'}</td>
+                  <td style="text-align:center">${s.count||1}</td>
+                  <td>${s.aPct ? s.aPct+'%' : '—'}</td>
+                  <td style="font-weight:600;color:var(--rb-success);text-align:right">+${fmtRub(s.income)}</td>
+                </tr>`).join('')}
+              </tbody></table>
+            </div>
+          </div>
+          <div class="rb-salary-row-value" style="font-size:12px">+${fmtRub(total)}</div>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+  }
+
   const sign = (finalSalary || 0) >= 0 ? '' : '−';
   html += `<div class="rb-salary-total-row">
     <div class="rb-salary-total-label">К выплате</div>
@@ -3952,10 +4589,11 @@ function rbRenderSalaryBlock(salary) {
         <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(mainPayment)}</div>
       </div>`;
     }
+    const _remainder = (finalSalary||0) - (advance||0) - (mainPayment||0);
     html += `<div class="rb-salary-row" style="background:#f8fafc">
       <div class="rb-salary-row-icon" style="color:var(--rb-text-secondary)">▸</div>
-      <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">Остаток к доплате</div></div>
-      <div class="rb-salary-row-value" style="color:var(--rb-text-secondary)">${fmtRub(Math.max(0, (finalSalary||0) - (advance||0) - (mainPayment||0)))}</div>
+      <div class="rb-salary-row-body"><div class="rb-salary-row-label" style="color:var(--rb-text-secondary)">${_remainder < 0 ? 'Переплата (врач должен вернуть)' : 'Остаток к доплате'}</div></div>
+      <div class="rb-salary-row-value" style="color:${_remainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)'}">${_remainder < 0 ? '−' : ''}${fmtRub(Math.abs(_remainder))}</div>
     </div>`;
     html += `</div>`;
   }
@@ -4339,36 +4977,54 @@ function rbMapNewColumns(rows) {
   const colMap = {};
   if (!rows.length) return colMap;
   const keys = Object.keys(rows[0]);
+
+  // Точные совпадения для известного формата МИС (приоритет)
+  const exactMap = {
+    date:         ['Дата выставления счета', 'Дата оплаты счета', 'Дата создания услуги'],
+    invoiceType:  ['Тип счета'],
+    clinic:       ['Клиника счета'],
+    executor:     ['ФИО исполнителя'],
+    executorSpec: ['Специальность исполнителя'],
+    referrer:     ['ФИО рекомендателя'],
+    referrerSpec: ['Специальность рекомендателя'],
+    serviceCode:  ['Код услуги'],
+    serviceName:  ['Наименование услуги'],
+    cabinet:      ['Кабинет'],
+    category:     ['Категория услуги'],
+    serviceSpec:  ['Специальность услуги'],
+    servicePrice: ['Стоимость услуги'],
+    qty:          ['Количество'],
+    discount:     ['Скидка'],
+    totalCost:    ['Итоговая стоимость'],
+    patientCard:  ['№ карты пациента'],
+    assistant:    ['Ассистент'],
+  };
+  Object.entries(exactMap).forEach(([field, candidates]) => {
+    for (const c of candidates) {
+      const found = keys.find(k => k === c);
+      if (found) { colMap[field] = found; break; }
+    }
+  });
+
+  // Нечёткий fallback для нестандартных файлов
   keys.forEach(k => {
     const kl = k.toLowerCase();
-    // Дата
-    if (!colMap.date && (kl.includes('дата') || kl.includes('date'))) colMap.date = k;
-    // Клиника счета
-    if (!colMap.clinic && kl.includes('клиник')) colMap.clinic = k;
-    // ФИО исполнителя
-    if (!colMap.executor && kl.includes('исполнител')) colMap.executor = k;
-    // Специальность исполнителя
+    if (!colMap.date         && (kl.includes('дата') || kl.includes('date'))) colMap.date = k;
+    if (!colMap.clinic       && kl.includes('клиник')) colMap.clinic = k;
+    if (!colMap.executor     && kl.includes('исполнител')) colMap.executor = k;
     if (!colMap.executorSpec && kl.includes('специальност') && kl.includes('исполнител')) colMap.executorSpec = k;
-    // ФИО рекомендателя
-    if (!colMap.referrer && (kl.includes('рекомендател') || kl.includes('направител'))) colMap.referrer = k;
-    // Код услуги
-    if (!colMap.serviceCode && kl.includes('код') && kl.includes('услуг')) colMap.serviceCode = k;
-    // Наименование услуги
-    if (!colMap.serviceName && (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим') && !kl.includes('специальн') && !kl.includes('катег')))) colMap.serviceName = k;
-    // Категория услуги
-    if (!colMap.category && kl.includes('катег')) colMap.category = k;
-    // Специальность услуги
-    if (!colMap.serviceSpec && kl.includes('специальност') && kl.includes('услуг')) colMap.serviceSpec = k;
-    // Стоимость услуги (базовая)
-    if (!colMap.servicePrice && kl.includes('стоим') && kl.includes('услуг')) colMap.servicePrice = k;
-    // Количество
-    if (!colMap.qty && (kl === 'количество' || kl.includes('кол-во') || kl.includes('кол.'))) colMap.qty = k;
-    // Скидка
-    if (!colMap.discount && kl.includes('скидк')) colMap.discount = k;
-    // Итоговая стоимость
-    if (!colMap.totalCost && (kl.includes('итогов') || (kl.includes('стоим') && !kl.includes('услуг')))) colMap.totalCost = k;
-    // Карта пациента
-    if (!colMap.patientCard && (kl.includes('карт') || kl.includes('пациент'))) colMap.patientCard = k;
+    if (!colMap.referrer     && (kl.includes('рекомендател') || kl.includes('направител'))) colMap.referrer = k;
+    if (!colMap.serviceCode  && kl.includes('код') && kl.includes('услуг')) colMap.serviceCode = k;
+    if (!colMap.serviceName  && (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим') && !kl.includes('специальн') && !kl.includes('катег')))) colMap.serviceName = k;
+    if (!colMap.category     && kl.includes('катег') && kl.includes('услуг')) colMap.category = k;
+    if (!colMap.serviceSpec  && kl.includes('специальност') && kl.includes('услуг')) colMap.serviceSpec = k;
+    if (!colMap.servicePrice && kl.includes('стоим') && kl.includes('услуг') && !kl.includes('себестоим')) colMap.servicePrice = k;
+    if (!colMap.qty          && (kl === 'количество' || kl.includes('кол-во') || kl.includes('кол.'))) colMap.qty = k;
+    if (!colMap.discount     && kl.includes('скидк')) colMap.discount = k;
+    if (!colMap.totalCost    && kl.includes('итогов')) colMap.totalCost = k;
+    if (!colMap.cabinet      && (kl === 'кабинет' || kl.includes('кабинет'))) colMap.cabinet = k;
+    if (!colMap.patientCard  && kl.includes('карт') && kl.includes('пациент')) colMap.patientCard = k;
+    if (!colMap.assistant    && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
   });
   // Fallbacks
   if (!colMap.date) colMap.date = keys[0];
@@ -4466,12 +5122,12 @@ function rbEsc(s) {
   return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function rbToast(msg, type = 'success') {
+function rbToast(msg, type = 'success', duration = 3000) {
   const el = document.createElement('div');
   el.className = `rb-toast ${type}`;
   el.textContent = msg;
   document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3000);
+  setTimeout(() => el.remove(), duration);
 }
 
 // ═══════════════════════════════════════
@@ -4569,6 +5225,8 @@ function rbOpenBulkModal() {
   if (exportBtn) exportBtn.style.display = 'none';
   const saveBtn = document.getElementById('rb-bulk-save-btn');
   if (saveBtn) saveBtn.style.display = 'none';
+  const saveHistBtn = document.getElementById('rb-bulk-save-hist-btn');
+  if (saveHistBtn) { saveHistBtn.style.display = 'none'; saveHistBtn.disabled = false; saveHistBtn.style.background = ''; saveHistBtn.style.color = ''; saveHistBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Сохранить в историю'; }
   const genBtn = document.getElementById('rb-bulk-generate-btn');
   if (genBtn) genBtn.disabled = true;
   const progressWrap = document.getElementById('rb-bulk-progress-wrap');
@@ -4679,6 +5337,15 @@ function rbBulkHandleFile(file) {
       if (!rows.length) { rbToast('Файл пустой', 'error'); return; }
 
       const colMap = rbMapNewColumns(rows);
+      // Debug: log column detection
+      console.log('[rbBulkLoad] colMap:', JSON.stringify(colMap));
+      console.log('[rbBulkLoad] colMap.cabinet:', colMap.cabinet);
+      if (colMap.cabinet) {
+        const cabVals = [...new Set(rows.slice(0, 20).map(r => r[colMap.cabinet]))].filter(Boolean);
+        console.log('[rbBulkLoad] sample cabinet values (first 20 rows):', cabVals);
+      } else {
+        console.log('[rbBulkLoad] colMap.cabinet NOT detected! All Excel columns:', rows.length ? Object.keys(rows[0]) : []);
+      }
       if (!colMap.referrer && !colMap.executor) {
         rbToast('Не найдены колонки ФИО рекомендателя / исполнителя', 'error');
         return;
@@ -4765,7 +5432,10 @@ async function rbBulkGenerate() {
     let referralBonuses = [];
     let performedDbBonuses = [];
 
-    try { execSettings = await rbExecLoad(d.id); } catch { /* дефолт */ }
+    try {
+      execSettings = _execSettingsCache[d.id] || await rbExecLoad(d.id);
+      _execSettingsCache[d.id] = execSettings;
+    } catch { /* дефолт */ }
     try {
       const bonusData = await rbApi(`/api/referral-bonuses?misUserId=${d.id}`);
       referralBonuses = Array.isArray(bonusData) ? bonusData : [];
@@ -4774,6 +5444,10 @@ async function rbBulkGenerate() {
       const pbData = await rbApi(`/api/performed-service-bonuses?misUserId=${encodeURIComponent(d.id)}`);
       performedDbBonuses = Array.isArray(pbData) ? pbData : [];
     } catch { /* нет бонусов */ }
+
+    if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
+      rbToast(`${d.name}: в файле нет колонки «Кабинет» — бонусы по кабинетам не применены`, 'error', 7000);
+    }
 
     // Фильтруем строки: врач — рекомендатель ИЛИ исполнитель
     const allRelevant = BULK.excelRows.filter(r => {
@@ -4829,14 +5503,21 @@ async function rbBulkGenerate() {
       const clinicLabel = clinicId !== 'unknown' ? rbGetClinicName(clinicId) : clinicGroup.label;
       const clinicSettings = rbGetClinicSettings(execSettings, clinicId);
 
+      // Фильтр юр. компаний
+      const _bulkCorpOk = r => {
+        if (!colMap.invoiceType) return true;
+        const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
+        return (t === 'юр. компания' || t === 'юр.компания') ? !!clinicSettings.includeCorpInvoices : true;
+      };
+
       // Строки где врач — рекомендатель
       const referrerRows = colMap.referrer
-        ? clinicRows.filter(r => rbNamesMatch(d.name, r[colMap.referrer] || ''))
+        ? clinicRows.filter(r => _bulkCorpOk(r) && rbNamesMatch(d.name, r[colMap.referrer] || ''))
         : [];
 
       // Строки где врач — исполнитель
       const executorRows = colMap.executor
-        ? clinicRows.filter(r => rbNamesMatch(d.name, r[colMap.executor] || ''))
+        ? clinicRows.filter(r => _bulkCorpOk(r) && rbNamesMatch(d.name, r[colMap.executor] || ''))
         : [];
 
       // Бонусы за направления
@@ -4858,8 +5539,12 @@ async function rbBulkGenerate() {
           byService[key].cost += bulkParseCost(r);
           byService[key].count++;
         });
+        const bulkDbClinicId = (clinicId !== 'unknown') ? String(clinicId) : '';
         const services = Object.values(byService).map(s => {
-          const bonus = referralBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code));
+          const bonus = (bulkDbClinicId
+            ? referralBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (b.clinicId || '') === bulkDbClinicId)
+            : null)
+            || referralBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === ''));
           let bonusAmount = 0, bonusLabel = '—';
           if (bonus) {
             if (bonus.bonusPercent != null) { bonusAmount = s.cost * parseFloat(bonus.bonusPercent) / 100; bonusLabel = `${parseFloat(bonus.bonusPercent)}%`; }
@@ -4874,13 +5559,16 @@ async function rbBulkGenerate() {
       // Бонусы за выполненные услуги (по кодам из шага 2)
       const perfByService = {};
       executorRows.forEach(r => {
-        const code = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
-        const name = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
-        const key  = code || name;
+        const code    = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+        const name    = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+        const cabinet = colMap.cabinet     ? String(r[colMap.cabinet]     || '').trim() : '';
+        const key     = code || name;
         if (!key) return;
-        if (!perfByService[key]) perfByService[key] = { code, name, cost: 0, count: 0 };
-        perfByService[key].cost += bulkParseCost(r);
+        if (!perfByService[key]) perfByService[key] = { code, name, cost: 0, count: 0, _rows: [] };
+        const rowCost = bulkParseCost(r);
+        perfByService[key].cost  += rowCost;
         perfByService[key].count++;
+        perfByService[key]._rows.push({ cost: rowCost, cabinet, assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '' });
       });
       // Выплаты направителям (врач — исполнитель, платим другим врачам-рекомендателям)
       const executorByReferrer = {};
@@ -4945,30 +5633,113 @@ async function rbBulkGenerate() {
 
       let performedBonusTotal = 0;
       const _bulkPsvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
+      const assistancePayments = {};
       const performedSections = Object.values(perfByService).map(s => {
-        // Clinic-specific bonus first, fall back to global (empty clinicId)
-        const bonus = (
-          performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _bulkPsvcClinicId)
-          || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === ''))
-        );
-        let bonusAmount = 0, bonusLabel = '—';
-        if (bonus) {
-          if (bonus.bonusPercent != null) {
-            // ИТОГО = (ОБОРОТ − ВЫЧЕТ_ОТ_ОКЛАДА × КОЛ-ВО) × БОНУС%
-            // Для услуг с индивидуальным расходом — используем его, иначе глобальный
-            const svcOverrideMat = svcMatTurnoverMap[rbNormalizeName(s.code)];
-            const matForSvc = svcOverrideMat
-              ? (svcOverrideMat.valueType === 'percent' ? s.cost * parseFloat(svcOverrideMat.value) / 100 : parseFloat(svcOverrideMat.value) * s.count)
-              : globalMaterialPerOccurrence * s.count;
-            const effectiveCost = s.cost - globalDeductionPerOccurrence * s.count - matForSvc;
-            bonusAmount = effectiveCost * parseFloat(bonus.bonusPercent) / 100;
-            bonusLabel = `${parseFloat(bonus.bonusPercent)}%`;
+        // Per-row bonus lookup: cabinet-specific > clinic > global (cabinetId='' = all cabinets)
+        let bonusAmount = 0;
+        const bonusLabels = new Set();
+        const svcOverrideMat = svcMatTurnoverMap[rbNormalizeName(s.code)];
+        (s._rows || [{ cost: s.cost, cabinet: '' }]).forEach(row => {
+          const cab = row.cabinet || '';
+          const bonus = (
+            (cab ? performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _bulkPsvcClinicId && rbCabMatch(b.cabinetId, cab)) : null)
+            || (cab ? performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === '') && rbCabMatch(b.cabinetId, cab)) : null)
+            || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && b.clinicId === _bulkPsvcClinicId && (!b.cabinetId || b.cabinetId === ''))
+            || performedDbBonuses.find(b => b.serviceCode && s.code && rbNormalizeName(b.serviceCode) === rbNormalizeName(s.code) && (!b.clinicId || b.clinicId === '') && (!b.cabinetId || b.cabinetId === ''))
+          );
+          if (bonus) {
+            if (bonus.bonusPercent != null) {
+              const assistantName = row.assistant || '';
+              const asstPct = assistantName ? (clinicSettings.assistancePercent || 0) : 0;
+              const effectiveBonusPct = Math.max(0, parseFloat(bonus.bonusPercent) - asstPct);
+              const matForRow = svcOverrideMat
+                ? (svcOverrideMat.valueType === 'percent' ? row.cost * parseFloat(svcOverrideMat.value) / 100 : parseFloat(svcOverrideMat.value))
+                : globalMaterialPerOccurrence;
+              const effectiveCost = row.cost - globalDeductionPerOccurrence - matForRow;
+              bonusAmount += effectiveCost * effectiveBonusPct / 100;
+              bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
+              if (asstPct > 0 && assistantName) {
+                const asstBonus = effectiveCost * asstPct / 100;
+                if (!assistancePayments[assistantName]) assistancePayments[assistantName] = { total: 0, services: {} };
+                assistancePayments[assistantName].total += asstBonus;
+                const svcKey = s.code || s.name;
+                if (!assistancePayments[assistantName].services[svcKey])
+                  assistancePayments[assistantName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0 };
+                assistancePayments[assistantName].services[svcKey].income += asstBonus;
+                assistancePayments[assistantName].services[svcKey].count++;
+              }
+            } else if (bonus.bonusRub != null) {
+              bonusAmount += parseFloat(bonus.bonusRub);
+              bonusLabels.add(`${parseFloat(bonus.bonusRub).toFixed(2)} ₽`);
+            }
           }
-          else if (bonus.bonusRub != null) { bonusAmount = parseFloat(bonus.bonusRub) * s.count; bonusLabel = `${parseFloat(bonus.bonusRub).toFixed(2)} ₽`; }
-        }
+        });
+        const bonusLabel = bonusLabels.size === 0 ? '—' : bonusLabels.size === 1 ? [...bonusLabels][0] : [...bonusLabels].join(', ');
         performedBonusTotal += bonusAmount;
         return { ...s, bonusAmount, bonusLabel };
       }).filter(s => s.bonusAmount !== 0 || s.code);
+
+      const assistancePaidTotal = Object.values(assistancePayments).reduce((s, x) => s + x.total, 0);
+      const assistanceSections = Object.entries(assistancePayments).map(([name, data]) => ({
+        name, total: data.total, services: Object.values(data.services)
+      }));
+
+      // ── Доход как ассистент (строки где этот врач указан в "Ассистент") ──
+      let assistanceIncomeTotal = 0;
+      const assistanceIncomeSections = [];
+      if (colMap.assistant) {
+        const asstIncRows2 = BULK.excelRows.filter(r =>
+          rbNamesMatch(d.name, String(r[colMap.assistant] || '').trim()) && bulkRowInDateRange(r)
+        );
+        if (asstIncRows2.length) {
+          const byExec2 = {};
+          asstIncRows2.forEach(r => {
+            const execName2 = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+            const clinicRaw3 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
+            const cId4 = rbMatchClinicId(clinicRaw3) || 'unknown';
+            const cost3 = bulkParseCost(r);
+            const svcCode3 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+            const svcName3 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+            if (!execName2) return;
+            if (!byExec2[execName2]) byExec2[execName2] = {};
+            if (!byExec2[execName2][cId4]) byExec2[execName2][cId4] = [];
+            byExec2[execName2][cId4].push({ cost: cost3, svcCode: svcCode3, svcName: svcName3 });
+          });
+          for (const [execName2, byClinicMap3] of Object.entries(byExec2)) {
+            const execDoc2 = RB.doctors.find(doc => rbNamesMatch(doc.name, execName2));
+            if (!execDoc2) continue;
+            let execData3;
+            try {
+              if (_execSettingsCache[execDoc2.id]) {
+                execData3 = _execSettingsCache[execDoc2.id];
+              } else {
+                execData3 = await rbExecLoad(execDoc2.id);
+                _execSettingsCache[execDoc2.id] = execData3;
+              }
+            } catch { continue; }
+            let secTotal2 = 0;
+            const svcBreakdown3 = {};
+            for (const [cId5, cRows5] of Object.entries(byClinicMap3)) {
+              const eCS2 = rbGetClinicSettings(execData3, cId5);
+              const aPct2 = eCS2.assistancePercent || 0;
+              if (!aPct2) continue;
+              cRows5.forEach(row3 => {
+                const inc2 = row3.cost * aPct2 / 100;
+                secTotal2 += inc2;
+                assistanceIncomeTotal += inc2;
+                const k3 = row3.svcCode || row3.svcName;
+                if (!svcBreakdown3[k3]) svcBreakdown3[k3] = { code: row3.svcCode, name: row3.svcName, cost: 0, count: 0, income: 0, aPct: aPct2 };
+                svcBreakdown3[k3].cost += row3.cost;
+                svcBreakdown3[k3].count++;
+                svcBreakdown3[k3].income += inc2;
+              });
+            }
+            if (secTotal2 > 0) {
+              assistanceIncomeSections.push({ execName: execName2, total: secTotal2, services: Object.values(svcBreakdown3) });
+            }
+          }
+        }
+      }
 
       // Базовая оплата
       const pt = clinicSettings.payType || 'salary';
@@ -4991,7 +5762,7 @@ async function rbBulkGenerate() {
       // preFinalSalary — сумма до вычетов "от з/п" ("от оборота" уже учтены в бонусах по услугам)
       const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
       const effectiveBulkReferralCostTotal = clinicSettings.includeReferralDeductions !== false ? bulkReferralCostTotal : 0;
-      const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal - effectiveBulkReferralCostTotal;
+      const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveBulkReferralCostTotal;
       const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
       const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
       // Индивидуальные расходники "от з/п" — суммируются по каждой услуге с override final
@@ -5017,6 +5788,8 @@ async function rbBulkGenerate() {
         turnoverMaterialsTotal, finalMaterialsTotal,
         performedServicesSum, deductionPerService, totalServiceCount,
         referralCostTotal: effectiveBulkReferralCostTotal, referralCostItems: bulkReferralCostItems, executorSections,
+        assistancePaidTotal, assistanceSections,
+        assistanceIncomeTotal, assistanceIncomeSections,
         finalSalary, advance: clinicSettings.advance || 0,
         paymentMethod: clinicSettings.paymentMethod,
         mainPayment: clinicSettings.mainPayment || 0,
@@ -5052,6 +5825,7 @@ async function rbBulkGenerate() {
       </div>`;
     document.getElementById('rb-bulk-export-btn').style.display = 'flex';
     document.getElementById('rb-bulk-save-btn').style.display = 'flex';
+    document.getElementById('rb-bulk-save-hist-btn').style.display = 'flex';
     rbRenderBulkPreview();
   }
 
@@ -5556,6 +6330,448 @@ async function rbDeleteArchiveReport(id) {
 }
 
 // ═══════════════════════════════════════
+// STEP 5: ИСТОРИЯ ЗАРПЛАТ
+// ═══════════════════════════════════════
+
+async function rbSaveCalculation() {
+  if (!RB.reportData) return rbToast('Нет данных отчёта', 'error');
+  const btn = document.getElementById('rb-btn-save-calc');
+  if (btn) { btn.disabled = true; btn.textContent = 'Сохраняется...'; }
+  try {
+    const { doctor, misUserId, dateFrom, dateTo, periodLabel } = RB.reportData;
+    const res = await fetch(RB.apiBase + '/api/salary-records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RB.token}` },
+      body: JSON.stringify({
+        misUserId: misUserId || '',
+        doctorName: (typeof doctor === 'string' ? doctor : (doctor?.fullName || doctor?.name)) || '',
+        dateFrom: dateFrom || null,
+        dateTo: dateTo || null,
+        periodLabel: periodLabel || null,
+        reportData: RB.reportData
+      })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    rbToast('Расчёт сохранён в историю', 'success');
+    if (btn) {
+      btn.disabled = false;
+      btn.style.background = '#dcfce7';
+      btn.style.color = '#16a34a';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Сохранить в историю';
+    }
+  } catch (e) {
+    rbToast('Ошибка сохранения: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Сохранить в историю'; }
+  }
+}
+
+async function rbBulkSaveToHistory() {
+  if (!BULK.reportData?.length) return rbToast('Нет данных отчёта', 'error');
+  const btn = document.getElementById('rb-bulk-save-hist-btn');
+  if (btn) { btn.disabled = true; btn.textContent = `Сохраняется (0/${BULK.reportData.length})...`; }
+  let saved = 0, failed = 0;
+  for (const item of BULK.reportData) {
+    try {
+      const res = await fetch(RB.apiBase + '/api/salary-records', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RB.token}` },
+        body: JSON.stringify({
+          misUserId: item.misUserId || '',
+          doctorName: item.doctor || '',
+          dateFrom: BULK.dateFrom || null,
+          dateTo: BULK.dateTo || null,
+          periodLabel: BULK.periodLabel || null,
+          reportData: item
+        })
+      });
+      if (res.ok) saved++; else failed++;
+    } catch { failed++; }
+    if (btn) btn.textContent = `Сохраняется (${saved + failed}/${BULK.reportData.length})...`;
+  }
+  if (failed === 0) {
+    rbToast(`Сохранено ${saved} записей в историю`, 'success');
+    if (btn) {
+      btn.disabled = false;
+      btn.style.background = '#dcfce7';
+      btn.style.color = '#16a34a';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Сохранить в историю';
+    }
+  } else {
+    rbToast(`Сохранено: ${saved}, ошибок: ${failed}`, failed === BULK.reportData.length ? 'error' : 'success');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Сохранить в историю'; }
+  }
+}
+
+async function rbRenderHistoryDetail() {
+  const d = RB.selectedDoctor;
+  if (!d) return;
+  const panel = document.getElementById('rb-detail-panel');
+  panel.innerHTML = `<div style="padding:32px;text-align:center;color:var(--rb-text-secondary)">Загрузка...</div>`;
+  try {
+    const res = await fetch(RB.apiBase + `/api/salary-records?misUserId=${encodeURIComponent(d.id)}`, {
+      headers: { 'Authorization': `Bearer ${RB.token}` }
+    });
+    if (!res.ok) throw new Error();
+    const records = await res.json();
+    // Сортируем по дате периода (dateFrom → dateTo → createdAt), от старых к новым
+    records.sort((a, b) => {
+      const aDate = new Date(a.dateFrom || a.dateTo || a.createdAt);
+      const bDate = new Date(b.dateFrom || b.dateTo || b.createdAt);
+      return aDate - bDate;
+    });
+    rbRenderSalaryHistory(d, records);
+  } catch {
+    panel.innerHTML = `<div style="padding:32px;text-align:center;color:var(--rb-danger)">Ошибка загрузки истории</div>`;
+  }
+}
+
+// Кэш всех записей истории для фильтрации по годам
+let _rbHistAllRecords = [];
+let _rbHistDoctor = null;
+let _rbHistCurrentYear = null;
+let _rbHistCurrentQuarter = null;
+
+function rbRenderSalaryHistory(d, records) {
+  _rbHistAllRecords = records;
+  _rbHistDoctor = d;
+
+  const panel = document.getElementById('rb-detail-panel');
+  const specialty = (d.professions || []).map(p => rbProfessionTitle(p)).filter(Boolean).join(', ');
+
+  if (!records.length) {
+    panel.innerHTML = `
+      <div class="rb-hist-header">
+        <div class="rb-hist-doctor-name">${rbEsc(d.fullName || d.name || '')}</div>
+        <div class="rb-hist-doctor-meta">${rbEsc(specialty)}</div>
+      </div>
+      <div class="rb-hist-empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36" style="margin-bottom:10px;opacity:0.4"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <div>История зарплат пуста</div>
+        <div style="font-size:12px;margin-top:6px;opacity:0.7">Сохраните расчёт в шаге «Отчёт», нажав «Сохранить в историю»</div>
+      </div>`;
+    return;
+  }
+
+  // Определяем уникальные годы из дат периодов
+  function rbHistGetYear(rec) {
+    const d = rec.dateFrom || rec.dateTo || rec.createdAt;
+    return d ? new Date(d).getFullYear() : null;
+  }
+  const years = [...new Set(records.map(rbHistGetYear).filter(Boolean))].sort((a, b) => a - b);
+  const multiYear = years.length > 1;
+  const currentYear = new Date().getFullYear();
+  // По умолчанию — последний год (самый новый), или единственный
+  const defaultYear = years.includes(currentYear) ? currentYear : years[years.length - 1];
+
+  panel.innerHTML = `
+    <div class="rb-hist-header">
+      <div class="rb-hist-doctor-name">${rbEsc(d.fullName || d.name || '')}</div>
+      <div class="rb-hist-doctor-meta">${rbEsc(specialty)} · всего ${records.length} ${records.length === 1 ? 'запись' : records.length < 5 ? 'записи' : 'записей'}</div>
+    </div>
+    ${multiYear ? `<div id="rb-hist-year-tabs" style="display:flex;gap:0;border-bottom:2px solid var(--rb-border);padding:0 20px;background:#f8fafc">
+      ${years.map(y => `<button class="rb-hist-year-tab" data-year="${y}" onclick="rbHistSetYear(${y})"
+        style="padding:9px 18px;font-size:13px;font-weight:600;background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;color:var(--rb-text-secondary);transition:all 0.15s;${y === defaultYear ? 'color:var(--rb-primary);border-bottom-color:var(--rb-primary);background:#eff6ff;' : ''}">
+        ${y}
+      </button>`).join('')}
+    </div>` : ''}
+    <div id="rb-hist-quarter-tabs" style="display:none;align-items:center;gap:4px;padding:6px 20px;background:#f8fafc;border-bottom:1px solid var(--rb-border)"></div>
+    <div id="rb-hist-year-body"></div>`;
+
+  rbHistRenderYear(multiYear ? defaultYear : years[0]);
+}
+
+function rbHistSetYear(year) {
+  document.querySelectorAll('.rb-hist-year-tab').forEach(btn => {
+    const active = parseInt(btn.dataset.year) === year;
+    btn.style.color = active ? 'var(--rb-primary)' : 'var(--rb-text-secondary)';
+    btn.style.borderBottomColor = active ? 'var(--rb-primary)' : 'transparent';
+    btn.style.background = active ? '#eff6ff' : 'none';
+  });
+  rbHistRenderYear(year);
+}
+
+function rbHistSetQuarter(q) {
+  _rbHistCurrentQuarter = (_rbHistCurrentQuarter === q) ? null : q;
+  // Update quarter tab styles
+  document.querySelectorAll('.rb-hist-quarter-tab').forEach(btn => {
+    const active = parseInt(btn.dataset.quarter) === _rbHistCurrentQuarter;
+    btn.style.color = active ? 'var(--rb-primary)' : 'var(--rb-text-secondary)';
+    btn.style.background = active ? '#eff6ff' : 'none';
+    btn.style.borderColor = active ? 'var(--rb-primary)' : 'transparent';
+  });
+  // Re-render content with quarter filter
+  const yearRecords = _rbHistCurrentYear
+    ? _rbHistAllRecords.filter(r => rbHistGetYear(r) === _rbHistCurrentYear)
+    : _rbHistAllRecords;
+  const filtered = _rbHistCurrentQuarter
+    ? yearRecords.filter(r => {
+        const m = r.dateFrom ? new Date(r.dateFrom).getMonth() : -1;
+        return m >= 0 && Math.floor(m / 3) + 1 === _rbHistCurrentQuarter;
+      })
+    : yearRecords;
+  rbHistRenderContent(filtered);
+}
+
+function rbHistGetYear(rec) {
+  const d = rec.dateFrom || rec.dateTo || rec.createdAt;
+  return d ? new Date(d).getFullYear() : null;
+}
+
+function rbHistRenderYear(year) {
+  _rbHistCurrentYear = year;
+  _rbHistCurrentQuarter = null;
+
+  // Render quarter tabs
+  const qtEl = document.getElementById('rb-hist-quarter-tabs');
+  if (qtEl) {
+    const yearRecords = year
+      ? _rbHistAllRecords.filter(r => rbHistGetYear(r) === year)
+      : _rbHistAllRecords;
+    // Check which quarters actually have data
+    const activeQuarters = new Set(yearRecords.map(r => {
+      const m = r.dateFrom ? new Date(r.dateFrom).getMonth() : -1;
+      return m >= 0 ? Math.floor(m / 3) + 1 : null;
+    }).filter(Boolean));
+    if (activeQuarters.size > 1) {
+      qtEl.style.display = 'flex';
+      qtEl.innerHTML = `<span style="font-size:11px;color:var(--rb-text-secondary);margin-right:6px;font-weight:500">Квартал:</span>` +
+        [1,2,3,4].map(q => `<button class="rb-hist-quarter-tab" data-quarter="${q}" onclick="rbHistSetQuarter(${q})"
+          style="padding:3px 10px;font-size:12px;font-weight:600;background:none;border:1px solid transparent;border-radius:4px;cursor:pointer;color:var(--rb-text-secondary);transition:all 0.15s;${activeQuarters.has(q) ? '' : 'opacity:0.35;pointer-events:none'}">
+          ${['I','II','III','IV'][q-1]}
+        </button>`).join('');
+    } else {
+      qtEl.style.display = 'none';
+      qtEl.innerHTML = '';
+    }
+  }
+
+  const records = year
+    ? _rbHistAllRecords.filter(r => rbHistGetYear(r) === year)
+    : _rbHistAllRecords;
+  rbHistRenderContent(records);
+}
+
+function rbHistRenderContent(records) {
+  const body = document.getElementById('rb-hist-year-body');
+  if (!body) return;
+
+  const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  const salaries = records.map(r => {
+    const reps = (r.reportData && r.reportData.clinicReports) || [];
+    return reps.reduce((s, cr) => s + parseFloat((cr.salary || {}).finalSalary || 0), 0);
+  });
+
+  if (!records.length) {
+    const label = _rbHistCurrentQuarter ? `Q${_rbHistCurrentQuarter} ${_rbHistCurrentYear || ''}` : (_rbHistCurrentYear ? `${_rbHistCurrentYear} год` : '');
+    body.innerHTML = `<div class="rb-hist-empty" style="padding:40px 20px">Нет записей${label ? ' за ' + label : ''}</div>`;
+    return;
+  }
+
+  const avgSalary = salaries.reduce((a, b) => a + b, 0) / salaries.length;
+  const maxSalary = Math.max(...salaries);
+  const minSalary = Math.min(...salaries);
+  const cnt = records.length;
+
+  body.innerHTML = `
+    <div class="rb-hist-stats">
+      <div class="rb-hist-stat">
+        <div class="rb-hist-stat-label">Средняя (${cnt} ${cnt === 1 ? 'мес.' : 'мес.'})</div>
+        <div class="rb-hist-stat-value">${fmtRub(avgSalary)}</div>
+      </div>
+      <div class="rb-hist-stat">
+        <div class="rb-hist-stat-label">Максимум</div>
+        <div class="rb-hist-stat-value">${fmtRub(maxSalary)}</div>
+      </div>
+      <div class="rb-hist-stat">
+        <div class="rb-hist-stat-label">Минимум</div>
+        <div class="rb-hist-stat-value">${fmtRub(minSalary)}</div>
+      </div>
+    </div>
+    ${records.length >= 2 ? `<div class="rb-hist-chart-wrap"><div class="rb-hist-chart-title">Динамика заработной платы</div><div id="rb-hist-apexchart" style="min-height:240px"></div></div>` : ''}
+    <div class="rb-hist-records">
+      ${records.map((rec, i) => rbHistRenderCard(rec, salaries[i])).join('')}
+    </div>`;
+
+  if (records.length >= 2) {
+    setTimeout(() => rbHistInitChart(salaries, records), 0);
+  }
+}
+
+function rbHistShortLabel(rec) {
+  const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  if (rec.dateFrom) {
+    const d = new Date(rec.dateFrom);
+    if (!isNaN(d)) return MONTHS[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
+  }
+  // Fallback: try to parse YYYY-MM from periodLabel or dateFrom string
+  const raw = rec.periodLabel || rec.dateFrom || '';
+  const m = raw.match(/(\d{4})-(\d{2})/);
+  if (m) return MONTHS[parseInt(m[2]) - 1] + " '" + m[1].slice(2);
+  return raw.slice(0, 7) || '?';
+}
+
+function rbHistInitChart(salaries, records) {
+  const el = document.getElementById('rb-hist-apexchart');
+  if (!el || typeof ApexCharts === 'undefined') return;
+
+  const categories = records.map(r => rbHistShortLabel(r));
+
+  const data = salaries.map(v => parseFloat(v.toFixed(2)));
+  const options = {
+    series: [
+      { name: 'К выплате', type: 'bar',  data },
+      { name: 'Тренд',     type: 'line', data },
+    ],
+    chart: {
+      type: 'bar',
+      height: 270,
+      toolbar: { show: false },
+      animations: { enabled: true, speed: 400 },
+      fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
+    },
+    colors: [
+      function({ value, w }) {
+        const vals = w.config.series[0].data;
+        const mn = Math.min(...vals);
+        const mx = Math.max(...vals);
+        if (mx === mn) return 'hsl(213,65%,58%)';
+        const t = (value - mn) / (mx - mn); // 0 = min (светлее), 1 = max (темнее)
+        const lightness = Math.round(72 - t * 30); // от 72% до 42%
+        return `hsl(213,65%,${lightness}%)`;
+      },
+      '#2563eb',
+    ],
+    plotOptions: {
+      bar: { borderRadius: 4, columnWidth: '55%' },
+    },
+    stroke: {
+      width: [0, 2.5],
+      curve: 'smooth',
+    },
+    fill: {
+      opacity: [1, 1],
+    },
+    markers: {
+      size: [0, 5],
+      colors: ['#2563eb'],
+      strokeColors: '#fff',
+      strokeWidth: 2,
+      hover: { size: 7 },
+    },
+    legend: { show: false },
+    xaxis: {
+      categories,
+      labels: {
+        style: { fontSize: '11px', colors: '#94a3b8', fontFamily: 'Inter, sans-serif' },
+        rotate: 0,
+        trim: false,
+      },
+      axisBorder: { show: false },
+      axisTicks: { show: false },
+    },
+    yaxis: {
+      labels: {
+        style: { fontSize: '11px', colors: '#94a3b8', fontFamily: 'Inter, sans-serif' },
+        formatter: v => v.toLocaleString('ru-RU') + ' ₽',
+      },
+    },
+    grid: {
+      borderColor: 'rgba(148,163,184,0.2)',
+      strokeDashArray: 4,
+      padding: { left: 4, right: 4 },
+    },
+    tooltip: {
+      shared: true,
+      intersect: false,
+      y: {
+        formatter: v => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽',
+      },
+    },
+    dataLabels: { enabled: false },
+  };
+
+  const chart = new ApexCharts(el, options);
+  chart.render();
+}
+
+function rbHistRenderCard(record, finalSalary) {
+  const uid = 'hist_' + record.id.replace(/-/g, '');
+  const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+
+  // Aggregate across clinics
+  let basePay = 0, referralBonuses = 0, performedBonusTotal = 0, extrasTotal = 0, deductionsTotal = 0;
+  const reps = (record.reportData && record.reportData.clinicReports) || [];
+  reps.forEach(cr => {
+    const s = cr.salary || {};
+    basePay += parseFloat(s.basePay || 0);
+    referralBonuses += parseFloat(s.referralBonuses || 0);
+    performedBonusTotal += parseFloat(s.performedBonusTotal || 0);
+    extrasTotal += parseFloat(s.extrasTotal || 0);
+    deductionsTotal += parseFloat(s.deductionsTotal || 0);
+  });
+
+  const period = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'Без периода');
+  const savedDate = record.createdAt ? new Date(record.createdAt).toLocaleDateString('ru-RU') : '';
+
+  const tags = [
+    basePay ? `<span class="rb-hist-card-tag">Оклад: ${fmtRub(basePay)}</span>` : '',
+    referralBonuses ? `<span class="rb-hist-card-tag">Направления: ${fmtRub(referralBonuses)}</span>` : '',
+    performedBonusTotal ? `<span class="rb-hist-card-tag">Услуги: ${fmtRub(performedBonusTotal)}</span>` : '',
+    extrasTotal ? `<span class="rb-hist-card-tag">Надбавки: ${fmtRub(extrasTotal)}</span>` : '',
+    deductionsTotal ? `<span class="rb-hist-card-tag neg">Удержания: −${fmtRub(deductionsTotal)}</span>` : ''
+  ].filter(Boolean).join('');
+
+  // Build inner salary blocks for each clinic
+  const innerBlocks = reps.map(cr => {
+    const clinicName = (RB.clinics.find(c => String(c.id) === String(cr.clinicId)) || {}).name || cr.clinicId || '';
+    const block = cr.salary ? rbRenderSalaryBlock(cr.salary) : '';
+    return clinicName && block ? `<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:600;color:var(--rb-text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:.03em">${rbEsc(clinicName)}</div>${block}</div>` : block;
+  }).join('');
+
+  return `<div class="rb-hist-card" id="${uid}">
+    <div class="rb-hist-card-head" onclick="rbHistToggle('${record.id}','${uid}')">
+      <div style="flex:1;min-width:0">
+        <div class="rb-hist-card-period">${rbEsc(period)}</div>
+        ${savedDate ? `<div style="font-size:11px;color:var(--rb-text-secondary);margin-top:2px">Сохранено ${savedDate}</div>` : ''}
+        <div class="rb-hist-card-tags" style="margin-top:6px">${tags}</div>
+      </div>
+      <div class="rb-hist-card-total">${fmtRub(finalSalary)}</div>
+      <button class="rb-hist-del" onclick="event.stopPropagation();rbDeleteSalaryRecord('${record.id}','${uid}')" title="Удалить запись">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+      <svg class="rb-hist-card-chevron" id="${uid}_chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+    <div class="rb-hist-card-body" id="${uid}_body">${innerBlocks}</div>
+  </div>`;
+}
+
+function rbHistToggle(recordId, uid) {
+  const body = document.getElementById(uid + '_body');
+  const chev = document.getElementById(uid + '_chev');
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', open);
+}
+
+async function rbDeleteSalaryRecord(id, uid) {
+  if (!confirm('Удалить эту запись из истории?')) return;
+  try {
+    const res = await fetch(RB.apiBase + `/api/salary-records/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${RB.token}` }
+    });
+    if (!res.ok) throw new Error();
+    const card = document.getElementById(uid);
+    if (card) card.remove();
+    rbToast('Запись удалена', 'success');
+    // Reload history to update stats/chart
+    if (RB.selectedDoctor) await rbRenderHistoryDetail();
+  } catch {
+    rbToast('Ошибка удаления', 'error');
+  }
+}
+
+// ═══════════════════════════════════════
 // BOOTSTRAP
 // ═══════════════════════════════════════
 // Expose functions needed by inline onclick handlers
@@ -5568,6 +6784,11 @@ window.rbSetStep3Mode = rbSetStep3Mode;
 window.rbPsvcSaveAll = rbPsvcSaveAll;
 window.rbPsvcOnInput = rbPsvcOnInput;
 window.rbPsvcFilterTable = rbPsvcFilterTable;
+window.rbPsvcToggleCabinets = rbPsvcToggleCabinets;
+window.rbPsvcCabToggleType = rbPsvcCabToggleType;
+window.rbPsvcSaveCabinetBonus = rbPsvcSaveCabinetBonus;
+window.rbPsvcUpdateCabinetBonus = rbPsvcUpdateCabinetBonus;
+window.rbPsvcDeleteCabinetBonus = rbPsvcDeleteCabinetBonus;
 // Step 3: service mode
 window.rbSvcModeSearchDebounced = rbSvcModeSearchDebounced;
 window.rbSvcModeSelectService = rbSvcModeSelectService;
@@ -5612,6 +6833,7 @@ window.rbRptClearFile = rbRptClearFile;
 window.rbRptGenerate = rbRptGenerate;
 // Export & archive
 window.rbExportReport = rbExportReport;
+window.rbRefSwitchClinic = rbRefSwitchClinic;
 window.rbSaveBonus = rbSaveBonus;
 window.rbDeleteBonus = rbDeleteBonus;
 window.rbEditBonus = rbEditBonus;
@@ -5637,6 +6859,7 @@ window.rbDragLeave = rbDragLeave;
 window.rbBulkGenerate = rbBulkGenerate;
 window.rbBulkExport = rbBulkExport;
 window.rbBulkSaveToArchive = rbBulkSaveToArchive;
+window.rbBulkSaveToHistory = rbBulkSaveToHistory;
 window.rbOpenArchiveModal = rbOpenArchiveModal;
 window.rbCloseArchiveModal = rbCloseArchiveModal;
 window.rbArchiveFilter = rbArchiveFilter;
@@ -5654,9 +6877,19 @@ window.rbExecSvcMatSelect = rbExecSvcMatSelect;
 window.rbExecSvcMatToggleType = rbExecSvcMatToggleType;  
 window.rbExecSvcMatToggleDeductType = rbExecSvcMatToggleDeductType;  
 window.rbExecAddSvcMaterial = rbExecAddSvcMaterial;  
-window.rbExecDeleteSvcMaterial  = rbExecDeleteSvcMaterial;  
+window.rbExecDeleteSvcMaterial  = rbExecDeleteSvcMaterial;
+window.rbExecAddCabinet = rbExecAddCabinet;
+window.rbExecDeleteCabinet = rbExecDeleteCabinet;
 // Step 2: clinic tabs
 window.rbPsvcSwitchClinic = rbPsvcSwitchClinic;
+// Step 5: salary history
+window.rbSaveCalculation = rbSaveCalculation;
+window.rbHistToggle = rbHistToggle;
+window.rbDeleteSalaryRecord = rbDeleteSalaryRecord;
+window.rbHistSetYear = rbHistSetYear;
+window.rbHistSetQuarter = rbHistSetQuarter;
+window.rbHistRenderYear = rbHistRenderYear;
+window.rbHistGetYear = rbHistGetYear;
 rbInit().catch(console.error);
 })();
 </script>

@@ -68,6 +68,7 @@ router.get('/by-service', authenticate, async (req, res) => {
 router.post('/', authenticate, async (req, res) => {
   try {
     const { misUserId, doctorName, serviceCode, serviceName, bonusPercent, bonusRub } = req.body;
+    const clinicId = req.body.clinicId != null ? String(req.body.clinicId).trim().substring(0, 50) : '';
 
     if (!misUserId || !serviceCode || !serviceName) {
       return res.status(400).json({ error: 'misUserId, serviceCode, serviceName обязательны' });
@@ -83,9 +84,10 @@ router.post('/', authenticate, async (req, res) => {
       serviceName,
       bonusPercent: bonusPercent != null ? parseFloat(bonusPercent) : null,
       bonusRub: bonusRub != null ? parseFloat(bonusRub) : null,
+      clinicId,
       createdBy: req.user.id
     }, {
-      conflictFields: ['misUserId', 'serviceCode'],
+      conflictFields: ['misUserId', 'serviceCode', 'clinicId'],
       returning: true
     });
 
@@ -112,6 +114,7 @@ router.post('/', authenticate, async (req, res) => {
 router.post('/bulk', authenticate, async (req, res) => {
   try {
     const { misUserId, doctorName, services } = req.body;
+    const clinicId = req.body.clinicId != null ? String(req.body.clinicId).trim().substring(0, 50) : '';
     if (!misUserId || !Array.isArray(services)) {
       return res.status(400).json({ error: 'misUserId и services обязательны' });
     }
@@ -122,7 +125,7 @@ router.post('/bulk', authenticate, async (req, res) => {
       .map(s => s.serviceCode);
 
     if (toDeleteCodes.length) {
-      await ReferralBonus.destroy({ where: { misUserId, serviceCode: toDeleteCodes } });
+      await ReferralBonus.destroy({ where: { misUserId, serviceCode: toDeleteCodes, clinicId } });
     }
 
     if (toUpsert.length) {
@@ -133,14 +136,15 @@ router.post('/bulk', authenticate, async (req, res) => {
         serviceName: String(s.serviceName || '').slice(0, 500),
         bonusPercent: s.bonusPercent != null ? parseFloat(s.bonusPercent) : null,
         bonusRub:     s.bonusRub     != null ? parseFloat(s.bonusRub)     : null,
+        clinicId,
         createdBy: req.user.id
       }));
 
       const BATCH_SIZE = 500;
       for (let i = 0; i < records.length; i += BATCH_SIZE) {
         await ReferralBonus.bulkCreate(records.slice(i, i + BATCH_SIZE), {
-          updateOnDuplicate: ['doctorName', 'serviceName', 'bonusPercent', 'bonusRub', 'createdBy', 'updatedAt'],
-          conflictAttributes: ['misUserId', 'serviceCode']
+          updateOnDuplicate: ['doctorName', 'serviceName', 'bonusPercent', 'bonusRub', 'clinicId', 'createdBy', 'updatedAt'],
+          conflictAttributes: ['misUserId', 'serviceCode', 'clinicId']
         });
       }
     }

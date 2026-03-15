@@ -1044,6 +1044,12 @@ const ReferralBonus = sequelize.define('ReferralBonus', {
     allowNull: true,
     comment: 'Размер бонуса в рублях (если фиксированная сумма)'
   },
+  clinicId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'ID клиники (пусто = общий бонус для всех клиник)'
+  },
   createdBy: {
     type: DataTypes.UUID,
     comment: 'ID пользователя, создавшего запись'
@@ -1054,7 +1060,7 @@ const ReferralBonus = sequelize.define('ReferralBonus', {
   indexes: [
     { fields: ['misUserId'] },
     { fields: ['serviceCode'] },
-    { unique: true, fields: ['misUserId', 'serviceCode'] }
+    { unique: true, fields: ['misUserId', 'serviceCode', 'clinicId'] }
   ]
 });
 
@@ -1174,6 +1180,12 @@ const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
     defaultValue: '',
     comment: 'ID клиники из МИС (пустая строка = общий бонус для всех клиник)'
   },
+  cabinetId: {
+    type: DataTypes.STRING(100),
+    allowNull: false,
+    defaultValue: '',
+    comment: 'Название кабинета (пустая строка = бонус для всех кабинетов)'
+  },
   bonusPercent: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,
@@ -1194,7 +1206,7 @@ const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
   indexes: [
     { fields: ['misUserId'] },
     { fields: ['serviceCode'] },
-    { unique: true, fields: ['misUserId', 'serviceCode', 'clinicId'] }
+    { unique: true, fields: ['misUserId', 'serviceCode', 'clinicId', 'cabinetId'] }
   ]
 });
 
@@ -2123,6 +2135,25 @@ const BotUpdate = sequelize.define('BotUpdate', {
   ]
 });
 
+// === SALARY RECORD MODEL (история зарплат) ===
+const SalaryRecord = sequelize.define('SalaryRecord', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: { type: DataTypes.STRING(50), allowNull: false },
+  doctorName: { type: DataTypes.STRING(255), allowNull: false },
+  dateFrom: { type: DataTypes.DATEONLY, allowNull: true },
+  dateTo: { type: DataTypes.DATEONLY, allowNull: true },
+  periodLabel: { type: DataTypes.STRING(100), allowNull: true },
+  reportData: { type: DataTypes.JSONB, allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'salary_records',
+  timestamps: true,
+  indexes: [
+    { fields: ['misUserId'] },
+    { fields: ['dateFrom'] }
+  ]
+});
+
 // BotToken relationships
 BotToken.belongsTo(User, { foreignKey: 'userId', as: 'botUser' });
 User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
@@ -2222,6 +2253,7 @@ module.exports = {
   ReferralBonus,
   ReferralReport,
   RbUserPermission,
+  SalaryRecord,
   // Executor settings module
   ExecutorSettings,
   // Performed service bonuses module
