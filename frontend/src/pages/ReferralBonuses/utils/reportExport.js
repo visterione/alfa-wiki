@@ -181,6 +181,11 @@ export async function exportReport(reportData) {
         }
       }
 
+      // Услуги ассистирования (вычет у основного врача)
+      if ((sal.assistancePaidTotal || 0) > 0) {
+        addSalRow('Услуги ассистирования', sal.assistancePaidTotal, '-');
+      }
+
       // Материалы
       {
         const xlsAllMats = sal.materials || [];
@@ -221,6 +226,11 @@ export async function exportReport(reportData) {
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
           services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
         });
+      }
+
+      // Ассистирование (доход врача-ассистента)
+      if ((sal.assistanceIncomeTotal || 0) > 0) {
+        addSalRow('Ассистирование', sal.assistanceIncomeTotal, '+');
       }
 
       // Итого
@@ -416,6 +426,11 @@ function _writeClinicSheets(wb, clinicReports, doctorName, fontTitle, fontBold, 
         }
       }
 
+      // Услуги ассистирования (вычет у основного врача)
+      if ((sal.assistancePaidTotal || 0) > 0) {
+        addSalRow('Услуги ассистирования', sal.assistancePaidTotal, '-');
+      }
+
       {
         const xlsAllMats = sal.materials || [];
         const xlsTurnoverMats = xlsAllMats.filter(m => m.deductionType !== 'final');
@@ -454,6 +469,11 @@ function _writeClinicSheets(wb, clinicReports, doctorName, fontTitle, fontBold, 
           addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
           services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
         });
+      }
+
+      // Ассистирование (доход врача-ассистента)
+      if ((sal.assistanceIncomeTotal || 0) > 0) {
+        addSalRow('Ассистирование', sal.assistanceIncomeTotal, '+');
       }
 
       ws.addRow([]);
