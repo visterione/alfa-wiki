@@ -123,7 +123,7 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
 }
 
 // ─── Individual mode ───────────────────────────────────────────────────────────
-function ModeIndividual({ selectedDoctor, doctors, clinics }) {
+function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -146,13 +146,15 @@ function ModeIndividual({ selectedDoctor, doctors, clinics }) {
     try {
       const rows   = await parseExcelFile(uploadedFile);
       const colMap = rbMapNewColumns(rows);
-      const [rbRes, pbRes, execSettings] = await Promise.all([
+      const [rbRes, pbRes, execSettings, savedAsstRes] = await Promise.all([
         rbApi.getByDoctor(selectedDoctor.id),
         psbApi.getByDoctor(selectedDoctor.id),
         loadExecSettings(selectedDoctor.id),
+        (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
       ]);
       const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
       const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
+      const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
       if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
         toast.error('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены.', { duration: 7000 });
       }
@@ -160,7 +162,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics }) {
         rows, colMap, doctor: selectedDoctor,
         referralBonuses, performedDbBonuses, execSettings,
         dateFrom: dateFrom || null, dateTo: dateTo || null,
-        allDoctors: doctors,
+        allDoctors: doctors, savedAssistanceIncome,
       });
       setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     } catch (e) {
@@ -233,12 +235,14 @@ function ModeIndividual({ selectedDoctor, doctors, clinics }) {
                   : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="15" x2="12" y2="9"/><polyline points="9 12 12 9 15 12"/></svg> Скачать Excel</>
                 }
               </button>
-              <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveToHistory} disabled={saving}>
-                {saving
-                  ? <><span className="rb-spinner" style={{ marginRight: 5 }} />Сохранение...</>
-                  : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>
-                }
-              </button>
+              {!readOnly && (
+                <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveToHistory} disabled={saving}>
+                  {saving
+                    ? <><span className="rb-spinner" style={{ marginRight: 5 }} />Сохранение...</>
+                    : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>
+                  }
+                </button>
+              )}
             </div>
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
@@ -266,7 +270,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics }) {
 
 // ─── Bulk mode ─────────────────────────────────────────────────────────────────
 // Doctor selection is handled by the shared rb-panel (bulkSelectedIds from props)
-function ModeBulk({ doctors, bulkSelectedIds }) {
+function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -295,6 +299,15 @@ function ModeBulk({ doctors, bulkSelectedIds }) {
     const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
     const results = [];
 
+    // Fetch saved assistance income once for the whole bulk run
+    let savedAssistanceIncome = [];
+    if (dateFrom || dateTo) {
+      try {
+        const savedAsstRes = await salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+        savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
+      } catch { /* non-critical, ignore */ }
+    }
+
     for (let i = 0; i < doctorList.length; i++) {
       const doctor = doctorList[i];
       setProgress({ current: i + 1, total: doctorList.length, currentName: doctor.name });
@@ -310,7 +323,7 @@ function ModeBulk({ doctors, bulkSelectedIds }) {
           rows, colMap, doctor,
           referralBonuses, performedDbBonuses, execSettings,
           dateFrom: dateFrom || null, dateTo: dateTo || null,
-          allDoctors: doctors,
+          allDoctors: doctors, savedAssistanceIncome,
         });
         results.push({ doctor, ...result, dateFrom, dateTo, error: null });
       } catch (e) {
@@ -415,9 +428,11 @@ function ModeBulk({ doctors, bulkSelectedIds }) {
                 <button className="rb-btn rb-btn-success rb-btn-sm" onClick={handleExportAll} disabled={exporting || !successResults.length}>
                   {exporting ? <><span className="rb-spinner" style={{ marginRight: 4 }} />Экспорт...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="15" x2="12" y2="9"/><polyline points="9 12 12 9 15 12"/></svg> Скачать Excel</>}
                 </button>
-                <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveAll} disabled={savingAll || !successResults.length}>
-                  {savingAll ? <><span className="rb-spinner" style={{ marginRight: 4 }} />Сохранение...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>}
-                </button>
+                {!readOnly && (
+                  <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveAll} disabled={savingAll || !successResults.length}>
+                    {savingAll ? <><span className="rb-spinner" style={{ marginRight: 4 }} />Сохранение...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -484,7 +499,7 @@ function ModeBulk({ doctors, bulkSelectedIds }) {
 }
 
 // ─── Main StepReport ───────────────────────────────────────────────────────────
-export default function StepReport({ selectedDoctor, doctors, clinics, reportMode, setReportMode, bulkSelectedIds }) {
+export default function StepReport({ selectedDoctor, doctors, clinics, reportMode, setReportMode, bulkSelectedIds, readOnly }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Mode tabs */}
@@ -513,8 +528,8 @@ export default function StepReport({ selectedDoctor, doctors, clinics, reportMod
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {reportMode === 'individual'
-          ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} />
-          : <ModeBulk doctors={doctors} bulkSelectedIds={bulkSelectedIds} />
+          ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} />
+          : <ModeBulk doctors={doctors} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} />
         }
       </div>
     </div>

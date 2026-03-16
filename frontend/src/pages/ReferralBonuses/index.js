@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import './ReferralBonuses.css';
 import { mis, referralBonuses as rbApi } from '../../services/api';
@@ -38,7 +39,16 @@ const STEP_LABELS = [
 // MAIN PAGE COMPONENT
 // ═══════════════════════════════════════
 export default function ReferralBonusesPage() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const navigate = useNavigate();
+
+  // ── Access guard ──
+  useEffect(() => {
+    if (user && !isAdmin && !user.canAccessSalary) {
+      toast.error('Нет доступа к разделу «Зарплата»');
+      navigate('/', { replace: true });
+    }
+  }, [user, isAdmin, navigate]);
 
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState(1);
@@ -151,6 +161,7 @@ export default function ReferralBonusesPage() {
 
   // ── Filtered doctors ──
   const filteredDoctors = doctors.filter(d => {
+    if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterClinic && !d.clinics.includes(String(filterClinic))) return false;
     if (filterProfession && !d.professions.some(p => rbProfessionTitle(p) === filterProfession)) return false;
@@ -212,23 +223,37 @@ export default function ReferralBonusesPage() {
     pinnedForCompare,
   };
 
-  const canViewStep = (tab) => {
-    const perm = permissions[tab];
+  const TAB_KEYS = ['tab1', 'tab2', 'tab3', 'tab4', 'tabArchive'];
+
+  const canViewStep = (step) => {
+    const perm = permissions[TAB_KEYS[step - 1]];
     return perm === 'edit' || perm === 'read';
   };
+
+  const isStepReadOnly = (step) => permissions[TAB_KEYS[step - 1]] === 'read';
+
+  // Auto-navigate away from blocked step after permissions load
+  useEffect(() => {
+    if (permissions.tab1 === 'edit' && permissions.tab2 === 'edit') return; // default state, skip
+    const currentPerm = permissions[TAB_KEYS[currentStep - 1]];
+    if (currentPerm === 'block') {
+      const first = TAB_KEYS.findIndex(k => permissions[k] !== 'block');
+      if (first !== -1) setCurrentStep(first + 1);
+    }
+  }, [permissions]); // eslint-disable-line
 
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <StepExecutors {...sharedProps} />;
+        return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
       case 2:
-        return <StepPerformed {...sharedProps} />;
+        return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(2)} />;
       case 3:
-        return <StepReferral {...sharedProps} />;
+        return <StepReferral {...sharedProps} readOnly={isStepReadOnly(3)} />;
       case 4:
-        return <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} />;
+        return <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} readOnly={isStepReadOnly(4)} />;
       case 5:
-        return <StepSalaryHistory {...sharedProps} />;
+        return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(5)} />;
       default:
         return null;
     }
@@ -257,17 +282,28 @@ export default function ReferralBonusesPage() {
         {STEP_LABELS.map((label, i) => {
           const step = i + 1;
           const active = currentStep === step;
+          const accessible = canViewStep(step);
+          const readonly = isStepReadOnly(step);
           return (
             <React.Fragment key={step}>
               {i > 0 && <div className="rb-wizard-connector" />}
               <div
-                className={`rb-wizard-step${active ? ' active' : ''}`}
-                onClick={() => goToStep(step)}
+                className={`rb-wizard-step${active ? ' active' : ''}${!accessible ? ' blocked' : ''}`}
+                onClick={() => accessible && goToStep(step)}
+                title={!accessible ? 'Нет доступа' : readonly ? `${label} (только просмотр)` : label}
               >
                 <div className="rb-wizard-step-circle">
-                  {STEP_ICONS[i]}
+                  {accessible ? STEP_ICONS[i] : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                  )}
                 </div>
-                <div className="rb-wizard-step-label">{label}</div>
+                <div className="rb-wizard-step-label">
+                  {label}
+                  {readonly && accessible && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>👁</span>}
+                </div>
               </div>
             </React.Fragment>
           );

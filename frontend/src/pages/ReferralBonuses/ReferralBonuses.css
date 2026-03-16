@@ -389,6 +389,8 @@
 .rb-wizard-step:hover:not(.active) .rb-wizard-step-circle { border-color: var(--rb-primary); color: var(--rb-primary); }
 .rb-wizard-step-label { font-size: 11px; font-weight: 500; color: var(--rb-text-secondary); white-space: nowrap; text-align: center; }
 .rb-wizard-step.active .rb-wizard-step-label { color: var(--rb-primary); font-weight: 700; }
+.rb-wizard-step.blocked { cursor: not-allowed; opacity: 0.4; }
+.rb-wizard-step.blocked:hover .rb-wizard-step-circle { border-color: var(--rb-border-dark); color: var(--rb-text-secondary); }
 .rb-wizard-connector { flex: 1; height: 2px; background: var(--rb-border); margin: 0 6px; margin-bottom: 16px; min-width: 20px; }
 
 /* Step 3 sub-tabs */

@@ -79,6 +79,8 @@ function ServiceRow({ svc, idx, activeClinic, bonuses, globalCabinets, onReload 
     setSaving(true);
     try {
       await performedServiceBonuses.save({
+        misUserId,
+        doctorName,
         clinicId: dbClinicId,
         cabinetId: cabForm.name.trim(),
         serviceCode: code,
@@ -102,6 +104,8 @@ function ServiceRow({ svc, idx, activeClinic, bonuses, globalCabinets, onReload 
     setSaving(true);
     try {
       await performedServiceBonuses.save({
+        misUserId,
+        doctorName,
         clinicId: dbClinicId,
         cabinetId: cab.cabinetId,
         serviceCode: code,
@@ -312,7 +316,7 @@ function CabAddForm({ form, setForm, onSave, saving }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepPerformed({ selectedDoctor, clinics }) {
+export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   const [bonuses, setBonuses] = useState([]);
   const [services, setServices] = useState([]);
   const [globalCabinets, setGlobalCabinets] = useState([]);
@@ -467,6 +471,7 @@ export default function StepPerformed({ selectedDoctor, clinics }) {
         </div>
       </div>
 
+      <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
       <div className="rb-add-service-section" style={{ margin: '12px 0 0' }}>
         <div className="rb-add-service-header">
           <h3>
@@ -549,6 +554,8 @@ export default function StepPerformed({ selectedDoctor, clinics }) {
                         onReload={loadBonuses}
                         rowVal={rv}
                         onRowChange={(code, type, val) => setRowValues(prev => ({ ...prev, [code]: { type, val } }))}
+                        misUserId={selectedDoctor.id}
+                        doctorName={selectedDoctor.name}
                       />
                     );
                   })}
@@ -558,13 +565,14 @@ export default function StepPerformed({ selectedDoctor, clinics }) {
           )}
         </div>
       </div>
+      </fieldset>
     </div>
   );
 }
 
 // ─── Controlled service row (drives save-all) ─────────────────────────────────
 
-function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange }) {
+function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange, misUserId, doctorName }) {
   const code = svc.code || '';
   const name = svc.title || '';
   const price = svc.price ? ` (${parseFloat(svc.price).toFixed(2)} ₽)` : '';
@@ -596,6 +604,8 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
     setSaving(true);
     try {
       await performedServiceBonuses.save({
+        misUserId,
+        doctorName,
         clinicId: dbClinicId,
         cabinetId: cabForm.name.trim(),
         serviceCode: code,
@@ -619,6 +629,8 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
     setSaving(true);
     try {
       await performedServiceBonuses.save({
+        misUserId,
+        doctorName,
         clinicId: dbClinicId,
         cabinetId: cab.cabinetId,
         serviceCode: code,

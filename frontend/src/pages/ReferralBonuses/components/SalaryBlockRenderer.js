@@ -200,7 +200,7 @@ export default function SalaryBlock({ salary }) {
               })}
               {(assistancePaidTotal || 0) > 0 && (
                 <tr style={{ opacity: 0.7 }}>
-                  <td>Ассистирование*</td>
+                  <td>Услуги ассистирования*</td>
                   <td><span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
                   <td style={{ textAlign: 'right' }}>—</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{assistancePaidTotal.toFixed(2)} ₽</td>
@@ -261,26 +261,7 @@ export default function SalaryBlock({ salary }) {
       )}
 
       {hasAssistanceIncome && (
-        <SalaryRow icon="+" label="Ассистирование (получено)" value={`+${fmtRub(assistanceIncomeTotal)}`} color="var(--rb-success)" expandable={assistanceIncomeSections.length > 0}>
-          {assistanceIncomeSections.map(({ execName, total, services }, i) => (
-            <SubSection key={i} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-              <table className="rb-report-table">
-                <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Бонус</th><th>Итого, руб</th></tr></thead>
-                <tbody>
-                  {services.map((s, j) => (
-                    <tr key={j}>
-                      <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
-                      <td>{s.name || '—'}</td>
-                      <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-                      <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                      <td>{s.aPct ? `${s.aPct}%` : '—'}</td>
-                      <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </SubSection>
-          ))}
+        <SalaryRow icon="+" label="Ассистирование" value={`+${fmtRub(assistanceIncomeTotal)}`} color="var(--rb-success)" expandable={false}>
         </SalaryRow>
       )}
 

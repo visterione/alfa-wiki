@@ -36,7 +36,7 @@ function execDefault() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ItemsList({ items, section, onDelete }) {
+function ItemsList({ items, section, onDelete, readOnly }) {
   if (!items || !items.length) {
     return <div className="rb-exec-empty">Нет записей</div>;
   }
@@ -56,18 +56,20 @@ function ItemsList({ items, section, onDelete }) {
               <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
             )}
           </div>
-          <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(section, i)} title="Удалить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          {!readOnly && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(section, i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function ExtrasList({ extras, onDelete }) {
+function ExtrasList({ extras, onDelete, readOnly }) {
   if (!extras || !extras.length) {
     return <div className="rb-exec-empty">Нет записей</div>;
   }
@@ -80,18 +82,20 @@ function ExtrasList({ extras, onDelete }) {
             <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{e.amount} ₽</span>
             {e.hours > 0 && <span style={{ marginLeft: 4, fontSize: 11, color: '#94a3b8' }}>{e.hours} ч.</span>}
           </div>
-          <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          {!readOnly && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function SvcMaterialsList({ items, onDelete }) {
+function SvcMaterialsList({ items, onDelete, readOnly }) {
   if (!items || !items.length) {
     return <div className="rb-exec-empty">Нет записей</div>;
   }
@@ -110,18 +114,21 @@ function SvcMaterialsList({ items, onDelete }) {
               <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
             )}
           </div>
-          <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+          {!readOnly && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
-function AddItemForm({ section, suggests, onAdd }) {
+function AddItemForm({ section, suggests, onAdd, readOnly }) {
+  if (readOnly) return null;
   const [visible, setVisible] = useState(false);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
@@ -188,7 +195,7 @@ function AddItemForm({ section, suggests, onAdd }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics }) {
+export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const [loading, setLoading] = useState(false);
@@ -260,7 +267,7 @@ export default function StepExecutors({ selectedDoctor, clinics }) {
     setSaving(true);
     try {
       const toSave = dataOverride || execData;
-      await executorSettings.save({ misUserId: selectedDoctor.id, ...toSave });
+      await executorSettings.save({ misUserId: selectedDoctor.id, doctorName: selectedDoctor.name, settings: toSave });
       toast.success('Сохранено');
     } catch {
       toast.error('Ошибка сохранения');
@@ -467,6 +474,7 @@ export default function StepExecutors({ selectedDoctor, clinics }) {
         </div>
       )}
 
+      <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
       <div style={{ padding: '0 20px 20px' }}>
 
         {/* ── Payment section ── */}
@@ -695,8 +703,8 @@ export default function StepExecutors({ selectedDoctor, clinics }) {
             <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
               Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту
             </div>
-            <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} />
-            <AddItemForm section="deductions" suggests={EXEC_DEDUCTION_SUGGESTS} onAdd={handleAddItem} />
+            <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} readOnly={readOnly} />
+            <AddItemForm section="deductions" suggests={EXEC_DEDUCTION_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
           </div>
         </div>
 
@@ -712,15 +720,15 @@ export default function StepExecutors({ selectedDoctor, clinics }) {
           </div>
           <div className="rb-exec-section-body">
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Общие (для всех услуг)</div>
-            <ItemsList items={data.materials || []} section="materials" onDelete={handleDeleteItem} />
-            <AddItemForm section="materials" suggests={EXEC_MATERIAL_SUGGESTS} onAdd={handleAddItem} />
+            <ItemsList items={data.materials || []} section="materials" onDelete={handleDeleteItem} readOnly={readOnly} />
+            <AddItemForm section="materials" suggests={EXEC_MATERIAL_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
 
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e2e8f0' }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Индивидуальные расходники по услугам</div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Для выбранных услуг применяется своё значение вместо общего</div>
-              <SvcMaterialsList items={data.serviceMaterials || []} onDelete={handleDeleteSvcMaterial} />
+              <SvcMaterialsList items={data.serviceMaterials || []} onDelete={handleDeleteSvcMaterial} readOnly={readOnly} />
               {/* Simplified add form for svc materials */}
-              <SvcMaterialAddForm suggests={EXEC_MATERIAL_SUGGESTS} form={svcMatForm} setForm={setSvcMatForm} onAdd={handleAddSvcMaterial} />
+              <SvcMaterialAddForm suggests={EXEC_MATERIAL_SUGGESTS} form={svcMatForm} setForm={setSvcMatForm} onAdd={handleAddSvcMaterial} readOnly={readOnly} />
             </div>
           </div>
         </div>
@@ -738,25 +746,28 @@ export default function StepExecutors({ selectedDoctor, clinics }) {
             </div>
           </div>
           <div className="rb-exec-section-body">
-            <ExtrasList extras={data.extras || []} onDelete={handleDeleteExtra} />
+            <ExtrasList extras={data.extras || []} onDelete={handleDeleteExtra} readOnly={readOnly} />
             <ExtraAddForm
               suggests={EXEC_EXTRA_SUGGESTS}
               form={extraForm}
               setForm={setExtraForm}
               onAdd={handleAddExtra}
+              readOnly={readOnly}
             />
           </div>
         </div>
 
       </div>
+      </fieldset>
     </div>
   );
 }
 
 // ─── Extra add form ───────────────────────────────────────────────────────────
 
-function ExtraAddForm({ suggests, form, setForm, onAdd }) {
+function ExtraAddForm({ suggests, form, setForm, onAdd, readOnly }) {
   const [visible, setVisible] = useState(false);
+  if (readOnly) return null;
   return (
     <div>
       {visible && (
@@ -800,8 +811,9 @@ function ExtraAddForm({ suggests, form, setForm, onAdd }) {
 
 // ─── Svc material add form ────────────────────────────────────────────────────
 
-function SvcMaterialAddForm({ suggests, form, setForm, onAdd }) {
+function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly }) {
   const [visible, setVisible] = useState(false);
+  if (readOnly) return null;
 
   const handleAdd = () => {
     const value = parseFloat(form.value);

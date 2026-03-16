@@ -358,6 +358,7 @@ function QuickAccessButtons({ onClose }) {
   const { user, isAdmin } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
+  const canAccessSalary = isAdmin || user?.canAccessSalary === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -450,11 +451,12 @@ function QuickAccessButtons({ onClose }) {
 
       {/* Третий ряд */}
       <button
-        className={`quick-access-btn salary ${isOnSalary ? 'active' : ''}`}
-        onClick={() => handleClick('/referral-bonuses')}
-        title="Зарплата и бонусы"
+        className={`quick-access-btn salary ${isOnSalary ? 'active' : ''} ${!canAccessSalary ? 'locked' : ''}`}
+        onClick={() => canAccessSalary ? handleClick('/referral-bonuses') : toast.error('Нет доступа к разделу «Зарплата»')}
+        title={canAccessSalary ? 'Зарплата и бонусы' : 'Зарплата и бонусы (нет доступа)'}
       >
         <Wallet size={20} />
+        {!canAccessSalary && <Lock size={10} className="quick-access-lock" />}
       </button>
 
       <button

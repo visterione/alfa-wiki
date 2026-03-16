@@ -561,6 +561,7 @@ export const executorSettings = {
 
 export const salaryRecords = {
   getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
+  getAssistanceIncome: (params) => api.get('/salary-records/assistance-income', { params }),
   create: (data) => api.post('/salary-records', data),
   delete: (id) => api.delete(`/salary-records/${id}`),
 };

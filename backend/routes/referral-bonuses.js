@@ -1,6 +1,6 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { ReferralBonus, Page, PageHistory, RbUserPermission, User, Role } = require('../models');
+const { ReferralBonus, Page, PageHistory, RbUserPermission, User } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -197,6 +197,9 @@ router.delete('/:id', authenticate, async (req, res) => {
 // Получить свои права доступа
 router.get('/permissions/my', authenticate, async (req, res) => {
   try {
+    if (req.user.isAdmin) {
+      return res.json({ tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] });
+    }
     const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
     if (!perm) {
       return res.json({ tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', clinics: [] });
@@ -208,38 +211,20 @@ router.get('/permissions/my', authenticate, async (req, res) => {
   }
 });
 
-// Получить список пользователей с доступом к странице + их права (только admin)
+// Получить список пользователей с доступом к разделу зарплаты + их права (только admin)
 router.get('/permissions/users', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
   try {
-    const page = await Page.findOne({ where: { slug: REFERRAL_BONUSES_PAGE_SLUG } });
-    let users;
-
-    if (!page || !page.allowedRoles?.length) {
-      // Страница открыта всем — возвращаем всех активных не-ботов
-      users = await User.findAll({
-        where: { isActive: true, isBot: false },
-        attributes: ['id', 'username', 'displayName', 'avatar'],
-        include: [{ model: RbUserPermission, as: 'rbPermission', required: false }],
-        order: [['displayName', 'ASC']]
-      });
-    } else {
-      // Находим пользователей у которых есть хотя бы одна из разрешённых ролей
-      users = await User.findAll({
-        where: { isActive: true, isBot: false },
-        attributes: ['id', 'username', 'displayName', 'avatar', 'isAdmin'],
-        include: [
-          {
-            model: Role, as: 'roles', through: { attributes: [] }, required: false
-          },
-          { model: RbUserPermission, as: 'rbPermission', required: false }
-        ],
-        order: [['displayName', 'ASC']]
-      });
-      users = users.filter(u =>
-        u.isAdmin || u.roles?.some(r => page.allowedRoles.includes(r.id))
-      );
-    }
+    const users = await User.findAll({
+      where: {
+        isActive: true,
+        isBot: false,
+        [Op.or]: [{ isAdmin: true }, { canAccessSalary: true }]
+      },
+      attributes: ['id', 'username', 'displayName', 'avatar'],
+      include: [{ model: RbUserPermission, as: 'rbPermission', required: false }],
+      order: [['displayName', 'ASC']]
+    });
 
     res.json(users.map(u => ({
       id: u.id,

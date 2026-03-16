@@ -89,7 +89,7 @@ function CategoryDropdown({ onSelect }) {
 // STEP 3: БОНУСЫ ЗА НАПРАВЛЕНИЯ
 // ═══════════════════════════════════════
 export default function StepReferral({
-  selectedDoctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts,
+  selectedDoctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly,
 }) {
   if (!selectedDoctor) {
     return (
@@ -108,6 +108,7 @@ export default function StepReferral({
       getClinicColor={getClinicColor}
       getClinicName={getClinicName}
       setBonusCounts={setBonusCounts}
+      readOnly={readOnly}
     />
   );
 }
@@ -115,7 +116,7 @@ export default function StepReferral({
 // ═══════════════════════════════════════
 // DOCTOR REFERRAL PANEL
 // ═══════════════════════════════════════
-function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts }) {
+function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly }) {
   const [activeClinic, setActiveClinic] = useState('global');
   const [bonuses, setBonuses] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -317,6 +318,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   ).filter(Boolean).join(', ');
 
   return (
+    <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
     <>
       {/* Doctor card header */}
       <div className="rb-doctor-card">
@@ -630,5 +632,6 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
         </div>
       </div>
     </>
+    </fieldset>
   );
 }

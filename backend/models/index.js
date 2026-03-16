@@ -104,6 +104,13 @@ const User = sequelize.define('User', {
     comment: 'Разрешение на редактирование и удаление услуг'
   },
 
+  // Доступ к разделу зарплаты (Referral Bonuses)
+  canAccessSalary: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Разрешение на доступ к разделу зарплаты и бонусов'
+  },
+
   // Флаг системного бота (Ассистент)
   isBot: {
     type: DataTypes.BOOLEAN,

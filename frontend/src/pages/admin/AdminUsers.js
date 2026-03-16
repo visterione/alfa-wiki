@@ -111,6 +111,7 @@ export default function AdminUsers() {
     canEditDoctorCards: false,  // Доступ к редактированию карточек врачей
     canEditAnalyses: false,  // Доступ к редактированию анализов
     canEditServices: false,  // Доступ к редактированию услуг
+    canAccessSalary: false,  // Доступ к разделу зарплаты
     adminAccess: {
       pages: false,
       sidebar: false,
@@ -268,6 +269,7 @@ export default function AdminUsers() {
         canEditDoctorCards: user.canEditDoctorCards || false,
         canEditAnalyses: user.canEditAnalyses || false,
         canEditServices: user.canEditServices || false,
+        canAccessSalary: user.canAccessSalary || false,
         adminAccess: user.adminAccess || {
           pages: false,
           sidebar: false,
@@ -297,6 +299,7 @@ export default function AdminUsers() {
         canEditDoctorCards: false,
         canEditAnalyses: false,
         canEditServices: false,
+        canAccessSalary: false,
         adminAccess: {
           pages: false,
           sidebar: false,
@@ -861,6 +864,15 @@ export default function AdminUsers() {
                       disabled={form.isAdmin}
                     />
                     <span className="admin-toggle-label">Услуги</span>
+                  </label>
+                  <label className="admin-toggle-item">
+                    <span className={`admin-toggle-track${(form.isAdmin || form.canAccessSalary) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                    <input type="checkbox" style={{ display: 'none' }}
+                      checked={form.isAdmin || form.canAccessSalary}
+                      onChange={e => !form.isAdmin && setForm({...form, canAccessSalary: e.target.checked})}
+                      disabled={form.isAdmin}
+                    />
+                    <span className="admin-toggle-label">Зарплата</span>
                   </label>
                 </div>
                   <p style={{

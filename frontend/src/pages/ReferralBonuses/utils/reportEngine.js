@@ -83,7 +83,7 @@ export async function loadExecSettings(misUserId) {
  */
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
-  execSettings, dateFrom, dateTo, allDoctors,
+  execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
 }) {
   const doctorName = doctor.name;
 
@@ -196,6 +196,8 @@ export async function buildReport({
   // ── Build per-clinic reports ──
   const clinicReports = [];
   let globalGrandTotal = 0;
+  // Track assistant income already credited across clinics to prevent double-counting
+  const assistedExecutorNamesUsed = new Set();
 
   for (const [clinicId, clinicGroup] of Object.entries(byClinic)) {
     const clinicRows = clinicGroup.rows;
@@ -476,6 +478,26 @@ export async function buildReport({
             assistanceIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
           }
         }
+      }
+    }
+
+    // ── Supplement assistance income from saved salary records ──
+    // Covers cases where Doctor B's Excel doesn't contain Doctor A's rows,
+    // or name matching fails. Uses exactly the amount Doctor A saved (post-deductions).
+    // Requires Doctor A to have saved their salary record for the same period.
+    assistanceIncomeSections.forEach(s => assistedExecutorNamesUsed.add(rbNormalizeName(s.execName)));
+    for (const entry of (savedAssistanceIncome || [])) {
+      if (!rbNamesMatch(doctorName, entry.assistantName)) continue;
+      const key = rbNormalizeName(entry.executorDoctorName);
+      if (assistedExecutorNamesUsed.has(key)) continue;
+      if (entry.total > 0) {
+        assistedExecutorNamesUsed.add(key);
+        assistanceIncomeTotal += entry.total;
+        assistanceIncomeSections.push({
+          execName: entry.executorDoctorName,
+          total: entry.total,
+          services: entry.services || [],
+        });
       }
     }
 

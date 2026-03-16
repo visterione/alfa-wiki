@@ -315,7 +315,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [] }) {
+export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly }) {
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);
@@ -511,7 +511,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
           <div className="rb-hist-records">
             {filteredRecords.map(rec => (
-              <HistCard key={rec.id} record={rec} clinics={clinics} onDelete={handleDelete} />
+              <HistCard key={rec.id} record={rec} clinics={clinics} onDelete={readOnly ? undefined : handleDelete} />
             ))}
           </div>
         </>

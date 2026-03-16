@@ -83,7 +83,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, adminAccess } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -145,6 +145,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       canEditDoctorCards: canEditDoctorCards || false,
       canEditAnalyses: canEditAnalyses || false,
       canEditServices: canEditServices || false,
+      canAccessSalary: canAccessSalary || false,
       adminAccess: adminAccess || {
         pages: false,
         sidebar: false,
@@ -213,7 +214,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, adminAccess } = req.body;
+    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -272,6 +273,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(canEditDoctorCards !== undefined && { canEditDoctorCards }),
       ...(canEditAnalyses !== undefined && { canEditAnalyses }),
       ...(canEditServices !== undefined && { canEditServices }),
+      ...(canAccessSalary !== undefined && { canAccessSalary }),
       ...(adminAccess !== undefined && { adminAccess })
     };
 
