@@ -381,6 +381,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnCourses = location.pathname.startsWith('/courses');
   const isOnKanban = location.pathname.startsWith('/kanban');
   const isOnReviews = location.pathname.startsWith('/reviews');
+  const isOnSalary = location.pathname.startsWith('/referral-bonuses');
 
   const handleClick = (path) => {
     navigate(path);
@@ -445,6 +446,23 @@ function QuickAccessButtons({ onClose }) {
       >
         <ThumbsUp size={20} />
         {!canAccessReviews && <Lock size={10} className="quick-access-lock" />}
+      </button>
+
+      {/* Третий ряд */}
+      <button
+        className={`quick-access-btn salary ${isOnSalary ? 'active' : ''}`}
+        onClick={() => handleClick('/referral-bonuses')}
+        title="Зарплата и бонусы"
+      >
+        <Wallet size={20} />
+      </button>
+
+      <button
+        className="quick-access-btn schedule"
+        onClick={() => handleClick('/schedule')}
+        title="Расписание"
+      >
+        <CalendarDays size={20} />
       </button>
     </div>
   );

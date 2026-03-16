@@ -29,6 +29,8 @@ import Kanban from './pages/Kanban';
 import KanbanArchive from './pages/KanbanArchive';
 import BoardsList from './pages/BoardsList';
 import BoardSettings from './pages/BoardSettings';
+// Referral Bonuses module
+import ReferralBonusesPage from './pages/ReferralBonuses';
 // Reviews module
 import ReviewBoardsList from './pages/ReviewBoardsList';
 import ReviewBoard from './pages/ReviewBoard';
@@ -156,6 +158,11 @@ function AppRoutes() {
 
         <Route path="admin/bots" element={
           <ProtectedRoute adminOnly><AdminBots /></ProtectedRoute>
+        } />
+
+        {/* МОДУЛЬ: БОНУСЫ ЗА НАПРАВЛЕНИЯ */}
+        <Route path="referral-bonuses" element={
+          <ProtectedRoute><ReferralBonusesPage /></ProtectedRoute>
         } />
 
         {/* ДОСТУП К БОНУСАМ ЗА НАПРАВЛЕНИЯ */}

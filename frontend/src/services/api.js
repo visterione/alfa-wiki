@@ -537,6 +537,51 @@ export const referralBonusAccess = {
   saveUserPerm: (userId, data) => api.put(`/referral-bonuses/permissions/${userId}`, data),
 };
 
+// === REFERRAL BONUSES MODULE ===
+export const referralBonuses = {
+  getByDoctor: (misUserId) => api.get('/referral-bonuses', { params: { misUserId } }),
+  getByService: (serviceCode) => api.get('/referral-bonuses/by-service', { params: { serviceCode } }),
+  save: (data) => api.post('/referral-bonuses', data),
+  saveBulk: (data) => api.post('/referral-bonuses/bulk', data),
+  delete: (id) => api.delete(`/referral-bonuses/${id}`),
+  getMyPermissions: () => api.get('/referral-bonuses/permissions/my'),
+};
+
+export const performedServiceBonuses = {
+  getByDoctor: (misUserId) => api.get('/performed-service-bonuses', { params: { misUserId } }),
+  save: (data) => api.post('/performed-service-bonuses', data),
+  delete: (id) => api.delete(`/performed-service-bonuses/${id}`),
+  deleteByService: (misUserId, serviceCode) => api.delete(`/performed-service-bonuses/by-service/${misUserId}/${serviceCode}`),
+};
+
+export const executorSettings = {
+  get: (misUserId) => api.get('/executor-settings', { params: { misUserId } }),
+  save: (data) => api.post('/executor-settings', data),
+};
+
+export const salaryRecords = {
+  getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
+  create: (data) => api.post('/salary-records', data),
+  delete: (id) => api.delete(`/salary-records/${id}`),
+};
+
+export const mis = {
+  getClinics: () => api.get('/mis/clinics'),
+  getDoctors: (data) => api.post('/mis/doctors', data),
+  getServices: (params) => api.get('/mis/services', { params }),
+  getDoctorInfo: (userId) => api.post('/mis/doctor-info', { userId }),
+  getServicesByIds: (serviceIds) => api.post('/mis/services', { service_ids: serviceIds, show_all: true }),
+  getServiceCategories: () => api.post('/mis/get-service-categories', {}),
+  getServicesByCategory: (categoryId) => api.post('/mis/get-services', { category_id: categoryId, show_children: true }),
+};
+
+export const referralReports = {
+  list: (params) => api.get('/referral-reports', { params }),
+  get: (id) => api.get(`/referral-reports/${id}`),
+  create: (data) => api.post('/referral-reports', data),
+  delete: (id) => api.delete(`/referral-reports/${id}`),
+};
+
 export const bots = {
   list:            ()         => api.get('/bots'),
   create:          (data)     => api.post('/bots', data),
