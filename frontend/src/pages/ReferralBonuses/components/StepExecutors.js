@@ -31,7 +31,7 @@ function execClinicDefault() {
 }
 
 function execDefault() {
-  return { clinicSettings: { global: execClinicDefault() } };
+  return { assistants: [], clinicSettings: { global: execClinicDefault() } };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const [loading, setLoading] = useState(false);
@@ -424,6 +424,22 @@ export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
     await saveToServer(newData);
   };
 
+  // ── Assistants (global, not per-clinic) ───────────────────────────────────
+  const handleAddAssistant = async (item) => {
+    const arr = [...(execData.assistants || []), item];
+    const newData = { ...execData, assistants: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+    toast.success('Добавлено');
+  };
+
+  const handleDeleteAssistant = async (idx) => {
+    const arr = (execData.assistants || []).filter((_, i) => i !== idx);
+    const newData = { ...execData, assistants: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+  };
+
   // ── SvcMaterial add form state ────────────────────────────────────────────
   const [svcMatForm, setSvcMatForm] = useState({ name: '', value: '', valueType: 'percent', deductionType: 'final' });
 
@@ -570,15 +586,6 @@ export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
               />
               <label htmlFor="exec-include-ref-deductions">Списывать бонусы направителям</label>
             </div>
-            <div className="rb-plus-pct-row">
-              <input
-                type="checkbox" id="exec-include-corp"
-                checked={data.includeCorpInvoices !== false}
-                onChange={e => handlePaymentFieldChange('includeCorpInvoices', e.target.checked)}
-              />
-              <label htmlFor="exec-include-corp">Учитывать услуги оплаченные юр. компаниями</label>
-            </div>
-
             <div className="rb-exec-fields-grid" style={{ marginTop: 12 }}>
               <div className="rb-exec-field">
                 <label>Способ выплаты аванса</label>
@@ -688,8 +695,10 @@ export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
           </div>
           <div className="rb-exec-section-body">
             {/* Assistance percent */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 10px', borderBottom: '1px dashed var(--rb-border)', marginBottom: 10 }}>
-              <label style={{ fontSize: 13, color: 'var(--rb-text)', flex: 1 }}>% на ассистирование</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 8px' }}>
+              <label style={{ fontSize: 13, color: 'var(--rb-text)', flex: 1 }}>
+                % на ассистирование <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(по умолчанию)</span>
+              </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input
                   type="number" min="0" max="100" step="0.1" placeholder="0"
@@ -701,8 +710,18 @@ export default function StepExecutors({ selectedDoctor, clinics, readOnly }) {
               </div>
             </div>
             <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
-              Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту
+              Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту.
+              Применяется для всех ассистентов, у которых не задан индивидуальный %.
             </div>
+            {/* Per-assistant overrides */}
+            <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
+                Индивидуальный % для ассистентов:
+              </div>
+              <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
+              <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
+            </div>
+            <div style={{ borderTop: '1px dashed var(--rb-border)', marginBottom: 10 }} />
             <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} readOnly={readOnly} />
             <AddItemForm section="deductions" suggests={EXEC_DEDUCTION_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
           </div>
@@ -869,6 +888,122 @@ function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly }) {
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
         </svg>
         {visible ? 'Скрыть' : 'Добавить индивидуальный расходник'}
+      </button>
+    </div>
+  );
+}
+
+// ─── Assistants list ──────────────────────────────────────────────────────────
+
+function AssistantsList({ assistants, onDelete, readOnly }) {
+  if (!assistants || !assistants.length) {
+    return <div className="rb-exec-empty">Нет записей</div>;
+  }
+  return (
+    <div className="rb-exec-items">
+      {assistants.map((a, i) => (
+        <div key={i} className="rb-exec-item">
+          <div className="rb-exec-item-name">
+            {a.name}
+            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+              {a.percent}%
+            </span>
+          </div>
+          {!readOnly && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Assistant add form with MIS autocomplete ─────────────────────────────────
+
+function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
+  const [name, setName] = useState('');
+  const [percent, setPercent] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+
+  if (readOnly) return null;
+
+  const handleNameChange = (val) => {
+    setName(val);
+    if (val.length >= 1) {
+      const matches = (doctors || [])
+        .filter(d => d.name.toLowerCase().includes(val.toLowerCase()))
+        .slice(0, 8);
+      setSuggestions(matches);
+      setOpen(matches.length > 0);
+    } else {
+      setSuggestions([]);
+      setOpen(false);
+    }
+  };
+
+  const handleSelect = (doctorName) => {
+    setName(doctorName);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  const handleAdd = () => {
+    if (!name.trim()) { toast.error('Укажите имя ассистента'); return; }
+    const pct = parseFloat(percent);
+    if (isNaN(pct) || pct < 0) { toast.error('Укажите процент'); return; }
+    onAdd({ name: name.trim(), percent: pct });
+    setName('');
+    setPercent('');
+  };
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, position: 'relative' }}>
+        <input
+          type="text"
+          placeholder="Имя ассистента..."
+          value={name}
+          onChange={e => handleNameChange(e.target.value)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onFocus={() => suggestions.length > 0 && setOpen(true)}
+          style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+        />
+        {open && suggestions.length > 0 && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
+            {suggestions.map(d => (
+              <div
+                key={d.id}
+                onMouseDown={() => handleSelect(d.name)}
+                style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+              >
+                {d.name}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input
+          type="number" min="0" max="100" step="0.1"
+          placeholder="%"
+          value={percent}
+          onChange={e => setPercent(e.target.value)}
+          style={{ width: 60, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+        />
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>%</span>
+      </div>
+      <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Добавить
       </button>
     </div>
   );

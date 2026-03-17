@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { performedServiceBonuses, executorSettings, mis } from '../../../services/api';
 
@@ -326,6 +326,12 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   const [searchTerm, setSearchTerm] = useState('');
   // Per-row bonus state for save-all
   const [rowValues, setRowValues] = useState({}); // code -> { type, val }
+  // Per-service corp invoices flag (default: false)
+  const [corpMap, setCorpMap] = useState({}); // code -> boolean
+  const [fullExecData, setFullExecData] = useState(null);
+
+  const autoSaveTimerRef = useRef(null);
+  const handleSaveAllRef = useRef(null);
 
   const loadBonuses = useCallback(async () => {
     if (!selectedDoctor) return;
@@ -338,6 +344,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     setLoading(true);
     setActiveClinic('global');
     setRowValues({});
+    setCorpMap({});
+    setFullExecData(null);
 
     Promise.all([
       performedServiceBonuses.getByDoctor(selectedDoctor.id),
@@ -353,6 +361,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
       } else {
         setGlobalCabinets([]);
       }
+      setFullExecData(execData || null);
+      setCorpMap(execData?.corpIncludedServices || {});
 
       // Load services
       try {
@@ -429,6 +439,14 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
         clinicId: dbClinicId,
         items,
       });
+      // Save corp invoices map to executor settings
+      const newExecData = { ...(fullExecData || {}), corpIncludedServices: corpMap };
+      await executorSettings.save({
+        misUserId: selectedDoctor.id,
+        doctorName: selectedDoctor.name,
+        settings: newExecData,
+      });
+      setFullExecData(newExecData);
       toast.success(`Сохранено ${items.length} бонусов`);
       await loadBonuses();
     } catch {
@@ -437,6 +455,14 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
       setSaving(false);
     }
   };
+
+  // Keep ref to latest handleSaveAll for auto-save timer
+  handleSaveAllRef.current = handleSaveAll;
+
+  const triggerAutoSave = useCallback(() => {
+    clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => handleSaveAllRef.current?.(), 1500);
+  }, []);
 
   const filteredServices = services.filter(svc => {
     if (!searchTerm) return true;
@@ -462,6 +488,14 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
 
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
 
+  const allCorpIncluded = services.length > 0 && services.every(s => !!corpMap[s.code]);
+  const someCorpIncluded = services.some(s => !!corpMap[s.code]);
+  const handleToggleAllCorp = () => {
+    const next = {};
+    services.forEach(s => { next[s.code] = !allCorpIncluded; });
+    setCorpMap(next);
+  };
+
   return (
     <div className="rb-doctor-card">
       {/* Header */}
@@ -481,13 +515,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
             </svg>
             Бонусы за выполненные услуги
           </h3>
-          <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSaveAll} disabled={saving || services.length === 0}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-              <polyline points="17 21 17 13 7 13 7 21"/>
-            </svg>
-            Сохранить всё
-          </button>
         </div>
 
         <div className="rb-add-service-body">
@@ -537,6 +564,19 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--rb-border)' }}>
                     <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600 }}>Код</th>
                     <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600 }}>Услуга</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <span style={{ fontSize: 11 }}>Юр. комп.</span>
+                        <input
+                          type="checkbox"
+                          title="Выбрать/снять все"
+                          checked={allCorpIncluded}
+                          ref={el => { if (el) el.indeterminate = someCorpIncluded && !allCorpIncluded; }}
+                          onChange={handleToggleAllCorp}
+                          style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
+                        />
+                      </div>
+                    </th>
                     <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 190 }}>Бонус</th>
                   </tr>
                 </thead>
@@ -553,9 +593,11 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                         globalCabinets={globalCabinets}
                         onReload={loadBonuses}
                         rowVal={rv}
-                        onRowChange={(code, type, val) => setRowValues(prev => ({ ...prev, [code]: { type, val } }))}
+                        onRowChange={(code, type, val) => { setRowValues(prev => ({ ...prev, [code]: { type, val } })); triggerAutoSave(); }}
                         misUserId={selectedDoctor.id}
                         doctorName={selectedDoctor.name}
+                        corpIncluded={!!corpMap[svc.code]}
+                        onCorpToggle={(code) => { setCorpMap(prev => ({ ...prev, [code]: !prev[code] })); triggerAutoSave(); }}
                       />
                     );
                   })}
@@ -572,7 +614,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
 
 // ─── Controlled service row (drives save-all) ─────────────────────────────────
 
-function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange, misUserId, doctorName }) {
+function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange, misUserId, doctorName, corpIncluded, onCorpToggle }) {
   const code = svc.code || '';
   const name = svc.title || '';
   const price = svc.price ? ` (${parseFloat(svc.price).toFixed(2)} ₽)` : '';
@@ -685,6 +727,15 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
           <span style={{ color: 'var(--rb-text-secondary)', fontSize: 11 }}>{price}</span>
           {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
         </td>
+        <td style={{ padding: '6px 10px', textAlign: 'center' }}>
+          <input
+            type="checkbox"
+            checked={corpIncluded}
+            onChange={() => onCorpToggle(code)}
+            style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
+            title="Учитывать услуги оплаченные юр. компаниями"
+          />
+        </td>
         <td style={{ padding: '6px 10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div className="rb-exec-type-toggle">
@@ -703,7 +754,7 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
       </tr>
       {expanded && (
         <tr style={{ background: '#f0f4ff', borderBottom: '1px solid var(--rb-border)' }}>
-          <td colSpan="3" style={{ padding: '4px 10px 10px 36px' }}>
+          <td colSpan="4" style={{ padding: '4px 10px 10px 36px' }}>
             <CabinetsSection
               cabinetBonuses={cabinetBonuses}
               globalCabinets={globalCabinets}

@@ -364,6 +364,21 @@ input, select, textarea, button { font-family: inherit; }
 .dc-toast.success { background: var(--dc-success); }
 .dc-toast.error { background: var(--dc-danger); }
 
+/* Reorder mode */
+.dc-drag-handle { display: none; align-items: center; justify-content: center; padding: 0 10px 0 4px; color: var(--dc-text-secondary); cursor: grab; flex-shrink: 0; touch-action: none; }
+.dc-drag-handle svg { width: 18px; height: 18px; }
+.dc-drag-handle:active { cursor: grabbing; }
+.dc-reorder-mode .dc-drag-handle { display: flex; }
+.dc-reorder-mode .dc-card { cursor: default; transition: box-shadow 0.15s, border-color 0.15s; }
+.dc-reorder-mode .dc-card.dc-dragging { opacity: 0.4; box-shadow: none; }
+.dc-reorder-mode .dc-card.dc-drag-over { border-color: var(--dc-primary); box-shadow: 0 -3px 0 var(--dc-primary); }
+.dc-btn-reorder { background: #fff; color: var(--dc-text); border: 1px solid var(--dc-border); }
+.dc-btn-reorder:hover { background: var(--dc-bg); border-color: var(--dc-primary); color: var(--dc-primary); }
+.dc-btn-save-order { background: var(--dc-success); color: #fff; }
+.dc-btn-save-order:hover { background: #15803d; }
+.dc-btn-cancel-order { background: #fff; color: var(--dc-text); border: 1px solid var(--dc-border); }
+.dc-btn-cancel-order:hover { background: var(--dc-bg); }
+
 @media (max-width: 768px) {
   #doctors-app { padding: 12px; }
   
@@ -463,6 +478,17 @@ input, select, textarea, button { font-family: inherit; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
     </div>
+    <button id="dc-reorder-btn" class="dc-btn dc-btn-reorder" onclick="dcApp.enterReorderMode()" style="display:none" title="Изменить порядок карточек">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><polyline points="8 6 3 9 8 12"/><polyline points="16 18 21 15 16 12"/></svg>
+      Порядок
+    </button>
+    <button id="dc-save-order-btn" class="dc-btn dc-btn-save-order" onclick="dcApp.saveOrder()" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+      Сохранить порядок
+    </button>
+    <button id="dc-cancel-order-btn" class="dc-btn dc-btn-cancel-order" onclick="dcApp.exitReorderMode(true)" style="display:none">
+      Отмена
+    </button>
     <button class="dc-btn dc-btn-primary" onclick="dcApp.openAddModal()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Добавить врача
@@ -615,6 +641,8 @@ window.dcApp = (function() {
   var highlightId = null;
   var selectedFilterClinic = null;
   var selectedFilterTag = null;
+  var reorderMode = false;
+  var dragSrcIdx = null;
 
   // Services management
   var modalServices = [];
@@ -733,6 +761,10 @@ window.dcApp = (function() {
     var addBtn = document.querySelector('.dc-btn-primary[onclick*="openAddModal"]');
     if (addBtn) {
       addBtn.style.display = canEdit ? '' : 'none';
+    }
+    var reorderBtn = document.getElementById('dc-reorder-btn');
+    if (reorderBtn) {
+      reorderBtn.style.display = canEdit ? '' : 'none';
     }
   }
 
@@ -949,8 +981,9 @@ window.dcApp = (function() {
         ? '<a href="' + escapeHtml(card.profileUrl) + '">' + escapeHtml(card.fullName) + '</a>'
         : escapeHtml(card.fullName);
 
-      return '<div class="dc-card' + (isHighlighted ? ' highlighted' : '') + '" data-id="' + card.id + '">' +
+      return '<div class="dc-card' + (isHighlighted ? ' highlighted' : '') + '" data-id="' + card.id + '" draggable="' + (reorderMode ? 'true' : 'false') + '">' +
         '<div class="dc-card-top">' +
+          '<div class="dc-drag-handle" title="Перетащите для изменения порядка"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1" fill="currentColor"/><circle cx="9" cy="12" r="1" fill="currentColor"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="5" r="1" fill="currentColor"/><circle cx="15" cy="12" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg></div>' +
           '<div class="dc-clinics">' + clinicBadges + '</div>' +
           tagBadges +
         '</div>' +
@@ -1030,12 +1063,121 @@ window.dcApp = (function() {
     checkNotesOverflow();
     loadAllFavorites();
 
+    if (reorderMode) {
+      setupDragAndDrop();
+    }
+
     if (highlightId) {
       setTimeout(function() {
         var el = document.querySelector('[data-id="' + highlightId + '"]');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 100);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // REORDER MODE
+  // ═══════════════════════════════════════════════════════════════
+
+  function enterReorderMode() {
+    reorderMode = true;
+    filteredCards = cards.slice(); // show all, no filters
+    renderCards();
+    document.getElementById('dc-cards-container').classList.add('dc-reorder-mode');
+    document.getElementById('dc-reorder-btn').style.display = 'none';
+    document.getElementById('dc-save-order-btn').style.display = '';
+    document.getElementById('dc-cancel-order-btn').style.display = '';
+    // Disable filters while reordering
+    ['filter-search', 'filter-specialty'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = true;
+    });
+    document.querySelectorAll('#filter-clinics .dc-filter-btn, #filter-tags .dc-filter-btn').forEach(function(b) {
+      b.disabled = true; b.style.opacity = '0.5'; b.style.pointerEvents = 'none';
+    });
+  }
+
+  function exitReorderMode(restore) {
+    reorderMode = false;
+    document.getElementById('dc-cards-container').classList.remove('dc-reorder-mode');
+    document.getElementById('dc-reorder-btn').style.display = canEdit ? '' : 'none';
+    document.getElementById('dc-save-order-btn').style.display = 'none';
+    document.getElementById('dc-cancel-order-btn').style.display = 'none';
+    ['filter-search', 'filter-specialty'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.disabled = false;
+    });
+    document.querySelectorAll('#filter-clinics .dc-filter-btn, #filter-tags .dc-filter-btn').forEach(function(b) {
+      b.disabled = false; b.style.opacity = ''; b.style.pointerEvents = '';
+    });
+    if (restore) {
+      loadCards(); // reload from server to restore original order
+    } else {
+      filterCards();
+    }
+  }
+
+  function saveOrder() {
+    var order = filteredCards.map(function(card, index) {
+      return { id: card.id, sortOrder: index + 1 };
+    });
+    fetchAPI(API_BASE + '/doctor-cards/page/' + PAGE_SLUG + '/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ order: order })
+    }).then(function() {
+      // Persist new sortOrder into local cards array
+      order.forEach(function(item) {
+        var card = cards.find(function(c) { return c.id === item.id; });
+        if (card) card.sortOrder = item.sortOrder;
+      });
+      // Reorder cards array to match new sort
+      cards.sort(function(a, b) { return a.sortOrder - b.sortOrder; });
+      showToast('Порядок сохранён', 'success');
+      exitReorderMode(false);
+    }).catch(function(e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  function setupDragAndDrop() {
+    var container = document.getElementById('dc-cards-container');
+    var cardEls = container.querySelectorAll('.dc-card');
+
+    cardEls.forEach(function(el, idx) {
+      el.addEventListener('dragstart', function(e) {
+        dragSrcIdx = idx;
+        setTimeout(function() { el.classList.add('dc-dragging'); }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      el.addEventListener('dragend', function() {
+        el.classList.remove('dc-dragging');
+        cardEls.forEach(function(c) { c.classList.remove('dc-drag-over'); });
+      });
+
+      el.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        cardEls.forEach(function(c) { c.classList.remove('dc-drag-over'); });
+        if (idx !== dragSrcIdx) el.classList.add('dc-drag-over');
+      });
+
+      el.addEventListener('dragleave', function() {
+        el.classList.remove('dc-drag-over');
+      });
+
+      el.addEventListener('drop', function(e) {
+        e.preventDefault();
+        el.classList.remove('dc-drag-over');
+        if (dragSrcIdx === null || dragSrcIdx === idx) return;
+        // Reorder filteredCards array
+        var moved = filteredCards.splice(dragSrcIdx, 1)[0];
+        filteredCards.splice(idx, 0, moved);
+        dragSrcIdx = null;
+        renderCards();
+        document.getElementById('dc-cards-container').classList.add('dc-reorder-mode');
+      });
+    });
   }
 
   function loadAllFavorites() {
@@ -2868,7 +3010,10 @@ window.dcApp = (function() {
     updateServiceAlias: updateServiceAlias,
     toggleServiceVisibility: toggleServiceVisibility,
     toggleServiceFavorite: toggleServiceFavorite,
-    setView: setView
+    setView: setView,
+    enterReorderMode: enterReorderMode,
+    exitReorderMode: exitReorderMode,
+    saveOrder: saveOrder
   };
 })();
 
