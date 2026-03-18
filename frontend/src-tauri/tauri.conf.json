@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "identifier": "ru.alfa.wiki",
   "build": {
-    "frontendDist": "../build",
+    "frontendDist": "http://192.168.22.39:9000",
     "devUrl": "http://localhost:9000",
     "beforeDevCommand": "npm start",
-    "beforeBuildCommand": "npm run build"
+    "beforeBuildCommand": ""
   },
   "app": {
     "windows": [
