@@ -323,6 +323,41 @@ router.get('/unread/count', authenticate, async (req, res) => {
   }
 });
 
+// Search messages in a specific chat
+router.get('/:chatId/messages/search', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { q } = req.query;
+
+    if (!q || !q.trim()) return res.json([]);
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+    if (!membership) return res.status(403).json({ error: 'Access denied' });
+
+    const messages = await Message.findAll({
+      where: {
+        chatId,
+        content: { [Op.iLike]: `%${q.trim()}%` },
+        type: { [Op.ne]: 'system' }
+      },
+      include: [{
+        model: User,
+        as: 'sender',
+        attributes: ['id', 'username', 'displayName', 'avatar']
+      }],
+      order: [['createdAt', 'DESC']],
+      limit: 200
+    });
+
+    res.json(messages);
+  } catch (err) {
+    console.error('Message search error:', err);
+    res.status(500).json({ error: 'Failed to search messages' });
+  }
+});
+
 // Get messages for a chat
 router.get('/:chatId/messages', authenticate, async (req, res) => {
   try {

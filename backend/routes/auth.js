@@ -98,10 +98,11 @@ router.post('/login', [
     // Если 2FA не включена - обычная авторизация
     await user.update({ lastLogin: new Date() });
 
+    const isMobile = req.headers['x-client-type'] === 'mobile';
     const token = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: isMobile ? '365d' : (process.env.JWT_EXPIRES_IN || '7d') }
     );
 
     const userData = user.toJSON();
@@ -214,10 +215,11 @@ router.post('/verify-2fa', [
     });
 
     // Генерируем токен
+    const isMobile = req.headers['x-client-type'] === 'mobile';
     const token = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+      { expiresIn: isMobile ? '365d' : (process.env.JWT_EXPIRES_IN || '7d') }
     );
 
     const userData = user.toJSON();

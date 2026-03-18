@@ -88,6 +88,24 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Chat room join/leave (for typing indicators)
+  socket.on('join_chat', ({chatId}) => {
+    if (chatId) socket.join(`chat:${chatId}`);
+  });
+  socket.on('leave_chat', ({chatId}) => {
+    if (chatId) socket.leave(`chat:${chatId}`);
+  });
+  socket.on('typing_start', ({chatId}) => {
+    if (chatId && socket.userId) {
+      socket.to(`chat:${chatId}`).emit('user_typing', {userId: socket.userId, chatId, isTyping: true});
+    }
+  });
+  socket.on('typing_stop', ({chatId}) => {
+    if (chatId && socket.userId) {
+      socket.to(`chat:${chatId}`).emit('user_typing', {userId: socket.userId, chatId, isTyping: false});
+    }
+  });
+
   socket.on('disconnect', async () => {
     const userId = socket.userId;
     if (!userId) return;
