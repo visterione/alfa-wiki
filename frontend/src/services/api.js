@@ -5,6 +5,12 @@ const getBaseUrl = () => {
   if (process.env.REACT_APP_API_URL) {
     return process.env.REACT_APP_API_URL;
   }
+  // В Tauri production hostname = 'tauri.localhost', а не 'localhost'
+  // Поэтому для desktop-приложения всегда явно используем localhost
+  const isTauriApp = typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
+  if (isTauriApp) {
+    return 'http://localhost:9001';
+  }
   const { protocol, hostname } = window.location;
   return `${protocol}//${hostname}:9001`;
 };

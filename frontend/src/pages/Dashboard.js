@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
@@ -24,6 +24,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { socket, notifications, removeNotification, userStatuses } = useSocket();
   const navigate = useNavigate();
+  const location = useLocation();
   const [chats, setChats] = useState([]);
   const [messages, setMessages] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
@@ -126,6 +127,18 @@ export default function Dashboard() {
   };
 
   useEffect(() => { loadChats(); loadUsers(); loadBots(); }, [loadChats]);
+
+  // Open specific chat when navigating from a native desktop notification click
+  useEffect(() => {
+    const openChatId = location.state?.openChatId;
+    if (!openChatId || chats.length === 0) return;
+    const chatItem = chats.find(c => c.id === openChatId);
+    if (chatItem) {
+      handleSelectChat(chatItem);
+      // Clear state so re-renders don't re-trigger
+      navigate('/', { replace: true, state: {} });
+    }
+  }, [location.state?.openChatId, chats]);
 
   // Find all matching messages when search query is set
   useEffect(() => {

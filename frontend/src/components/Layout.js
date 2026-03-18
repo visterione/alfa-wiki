@@ -9,7 +9,7 @@ import './Layout.css';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const { notifications, removeNotification } = useSocket();
+  const { notifications, removeNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -38,13 +38,16 @@ export default function Layout() {
 
   const handleNotificationClick = (notification) => {
     removeNotification(notification.id);
-
-    // Navigate to Dashboard/Chat page
-    navigate('/dashboard');
-
-    // If we need to select specific chat, we can use state
-    // This will be handled in Dashboard component
+    navigate('/', { state: { openChatId: notification.chat?.id } });
   };
+
+  // Handle native desktop notification click (Tauri): window focused → navigate to chat
+  useEffect(() => {
+    if (!pendingChatNavigation) return;
+    const chatId = pendingChatNavigation.chat?.id;
+    clearPendingNavigation();
+    navigate('/', { state: { openChatId: chatId } });
+  }, [pendingChatNavigation]);
 
   // Filter notifications: don't show if we're already on dashboard
   const shouldShowNotifications = location.pathname !== '/dashboard';

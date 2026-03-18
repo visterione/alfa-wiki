@@ -3,6 +3,43 @@ import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
 import { BASE_URL } from '../services/api';
 
+// Tauri detection
+const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
+
+// Send native desktop notification (Tauri only)
+async function sendDesktopNotification(title, body) {
+  if (!isTauri()) return;
+  try {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
+    let granted = await isPermissionGranted();
+    if (!granted) {
+      const permission = await requestPermission();
+      granted = permission === 'granted';
+    }
+    if (granted) {
+      sendNotification({ title, body });
+    }
+  } catch (e) {}
+}
+
+// Play notification sound from file (falls back silently if file not found)
+function playNotificationSound() {
+  try {
+    const audio = new Audio('/sounds/notification.mp3');
+    audio.volume = 0.5;
+    audio.play().catch(() => {});
+  } catch (e) {}
+}
+
+// Update taskbar badge count (Tauri only)
+async function updateBadge(count) {
+  if (!isTauri()) return;
+  try {
+    const { setBadgeCount } = await import('@tauri-apps/api/app');
+    await setBadgeCount(count);
+  } catch (e) {}
+}
+
 const SocketContext = createContext(null);
 
 export const useSocket = () => {
@@ -20,6 +57,10 @@ export function SocketProvider({ children }) {
   const [isConnected, setIsConnected] = useState(false);
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
+  const unreadBadgeCount = useRef(0);
+  // Pending chat navigation: set when native notification is clicked (window gets focused)
+  const [pendingChatNavigation, setPendingChatNavigation] = useState(null);
+  const lastNotifChatRef = useRef(null);
 
   // Title notification refs
   const originalTitleRef = useRef(document.title);
@@ -58,6 +99,14 @@ export function SocketProvider({ children }) {
 
     const handleFocus = () => {
       stopTitleBlink();
+      // Reset taskbar badge when user opens the window
+      unreadBadgeCount.current = 0;
+      updateBadge(0);
+      // If user clicked a native notification, trigger navigation to that chat
+      if (lastNotifChatRef.current) {
+        setPendingChatNavigation(lastNotifChatRef.current);
+        lastNotifChatRef.current = null;
+      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -132,13 +181,24 @@ export function SocketProvider({ children }) {
       // Start title blinking for new message
       startTitleBlink();
 
+      // Native desktop notification + taskbar badge (Tauri only, only when window not focused)
+      if (!document.hasFocus()) {
+        const chatName = data.chat?.displayName || data.chat?.name || 'Сообщение';
+        const senderName = data.message?.sender?.displayName || data.message?.sender?.username;
+        const messageText = data.message?.content || (data.message?.attachments?.length ? '📎 Вложение' : '');
+        const notifTitle = senderName && data.chat?.type === 'group' ? `${chatName} — ${senderName}` : (senderName || chatName);
+        const notifBody = messageText.length > 100 ? messageText.slice(0, 100) + '…' : messageText;
+        sendDesktopNotification(notifTitle, notifBody);
+
+        // Store for navigation when user clicks the notification and window focuses
+        lastNotifChatRef.current = { chat: data.chat, message: data.message };
+
+        unreadBadgeCount.current += 1;
+        updateBadge(unreadBadgeCount.current);
+      }
+
       // Play notification sound
-      try {
-        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIGGe77eafTRALUKfj8LZjHAY4ktjyzXksBSR3x/DdkUAKFF607OunVRQKRZ/f8r5sIQUsgc7y2Ik2CBhnu+3mnk0QC1Cn4/C2YhwGOJLY8s15LAUkd8fw3ZFAChRet'
-        );
-        audio.volume = 0.3;
-        audio.play().catch(() => {});
-      } catch (e) {}
+      playNotificationSound();
     });
 
     return () => {
@@ -155,13 +215,19 @@ export function SocketProvider({ children }) {
     setNotifications([]);
   };
 
+  const clearPendingNavigation = useCallback(() => {
+    setPendingChatNavigation(null);
+  }, []);
+
   const value = {
     socket: socketRef.current,
     isConnected,
     notifications,
     removeNotification,
     clearAllNotifications,
-    userStatuses
+    userStatuses,
+    pendingChatNavigation,
+    clearPendingNavigation
   };
 
   return (
