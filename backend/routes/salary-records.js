@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { SalaryRecord } = require('../models');
-const { Op } = require('sequelize');
+const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 
 // GET /api/salary-records?misUserId=...
@@ -13,6 +13,10 @@ router.get('/', authenticate, async (req, res) => {
     const records = await SalaryRecord.findAll({
       where: { misUserId },
       order: [['dateFrom', 'DESC']],
+      attributes: {
+        exclude: ['excelData'],
+        include: [[literal('("excelData" IS NOT NULL)'), 'hasExcel']],
+      },
     });
     res.json(records);
   } catch (err) {
@@ -24,7 +28,7 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/salary-records
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { misUserId, doctorName, dateFrom, dateTo, periodLabel, reportData } = req.body;
+    const { misUserId, doctorName, dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
     if (!misUserId || !doctorName) {
       return res.status(400).json({ error: 'misUserId and doctorName required' });
     }
@@ -36,12 +40,32 @@ router.post('/', authenticate, async (req, res) => {
       dateTo: dateTo || null,
       periodLabel: periodLabel || null,
       reportData: reportData || null,
+      excelData: excelBase64 || null,
       createdBy: req.user?.id || null,
     });
 
     res.status(201).json(record);
   } catch (err) {
     console.error('POST /api/salary-records error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/salary-records/:id/excel — скачать сохранённый Excel-файл
+router.get('/:id/excel', authenticate, async (req, res) => {
+  try {
+    const record = await SalaryRecord.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ error: 'Not found' });
+    if (!record.excelData) return res.status(404).json({ error: 'Excel file not saved for this record' });
+
+    const buf = Buffer.from(record.excelData, 'base64');
+    const safeName = record.doctorName.split(' ')[0] || 'salary';
+    const period = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'no-period');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`Зарплата_${safeName}_${period}.xlsx`)}`);
+    res.send(buf);
+  } catch (err) {
+    console.error('GET /api/salary-records/:id/excel error:', err);
     res.status(500).json({ error: err.message });
   }
 });

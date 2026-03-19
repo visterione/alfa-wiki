@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
 import { buildReport, loadExecSettings } from '../utils/reportEngine';
-import { exportReport, exportBulkReport } from '../utils/reportExport';
+import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 import SalaryBlock from './SalaryBlockRenderer';
 
 // ─── Inline file picker (small, fits in a toolbar) ────────────────────────────
@@ -176,12 +176,19 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
     if (!reportData || !selectedDoctor) return;
     setSaving(true);
     try {
+      let excelBase64 = null;
+      try {
+        const wb = buildSingleWorkbook(reportData);
+        excelBase64 = await workbookToBase64(wb);
+      } catch { /* non-critical */ }
+
       await salaryRecords.create({
         misUserId: selectedDoctor.id,
         doctorName: selectedDoctor.name,
         dateFrom: reportData.dateFrom || null,
         dateTo: reportData.dateTo || null,
         reportData: { clinicReports: reportData.clinicReports, grandTotal: reportData.grandTotal, periodLabel: reportData.periodLabel },
+        excelBase64,
       });
       toast.success('Отчёт сохранён в историю зарплат');
     } catch (e) {
@@ -341,7 +348,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
 
   const handleExportAll = async () => {
     setExporting(true);
-    try { await exportBulkReport(bulkResults, { dateFrom, dateTo }); }
+    try { await exportBulkReport(bulkResults); }
     catch (e) { toast.error('Ошибка экспорта: ' + e.message); }
     finally { setExporting(false); }
   };
@@ -352,10 +359,17 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
     let saved = 0, failed = 0;
     for (const r of ok) {
       try {
+        let excelBase64 = null;
+        try {
+          const wb = buildSingleWorkbook({ doctor: r.doctor, clinicReports: r.clinicReports, periodLabel: r.periodLabel });
+          excelBase64 = await workbookToBase64(wb);
+        } catch { /* non-critical */ }
+
         await salaryRecords.create({
           misUserId: r.doctor.id, doctorName: r.doctor.name,
           dateFrom: r.dateFrom || null, dateTo: r.dateTo || null,
           reportData: { clinicReports: r.clinicReports, grandTotal: r.grandTotal, periodLabel: r.periodLabel },
+          excelBase64,
         });
         saved++;
       } catch { failed++; }

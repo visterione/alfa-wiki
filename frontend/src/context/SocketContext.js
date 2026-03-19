@@ -6,8 +6,8 @@ import { BASE_URL } from '../services/api';
 // Tauri detection
 const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
 
-// Send native desktop notification (Tauri only)
-async function sendDesktopNotification(title, body) {
+// Send native desktop notification (Tauri only), returns numeric id or null
+async function sendDesktopNotification(title, body, id) {
   if (!isTauri()) return;
   try {
     const { isPermissionGranted, requestPermission, sendNotification } = await import('@tauri-apps/plugin-notification');
@@ -17,7 +17,7 @@ async function sendDesktopNotification(title, body) {
       granted = permission === 'granted';
     }
     if (granted) {
-      sendNotification({ title, body });
+      sendNotification({ title, body, id });
     }
   } catch (e) {}
 }
@@ -31,13 +31,54 @@ function playNotificationSound() {
   } catch (e) {}
 }
 
-// Update taskbar badge count (Tauri only)
+// Генерируем сырые RGBA байты красного кружка с цифрой через Canvas
+function createBadgeRgba(count) {
+  const size = 16;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#e53e3e';
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'white';
+  ctx.font = `bold ${count > 9 ? 8 : 10}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(count > 99 ? '99' : String(count), size / 2, size / 2);
+  const imageData = ctx.getImageData(0, 0, size, size);
+  // Uint8ClampedArray → Uint8Array (совместим с Image.new в Tauri v2)
+  return { rgba: new Uint8Array(imageData.data.buffer), width: size, height: size };
+}
+
+// Разворачивает и фокусирует Tauri-окно через Rust-команду (надёжнее JS-API)
+async function bringWindowToFront() {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('bring_to_front');
+    console.log('[Tauri] bring_to_front OK');
+  } catch (e) {
+    console.error('[Tauri] bring_to_front FAILED', e);
+  }
+}
+
+// Update taskbar attention (Tauri only)
+// UserAttentionType.Critical = мигает до тех пор пока пользователь не откроет окно
 async function updateBadge(count) {
   if (!isTauri()) return;
   try {
-    const { setBadgeCount } = await import('@tauri-apps/api/app');
-    await setBadgeCount(count);
-  } catch (e) {}
+    const { getCurrentWindow, UserAttentionType } = await import('@tauri-apps/api/window');
+    const win = getCurrentWindow();
+    if (count > 0) {
+      await win.requestUserAttention(UserAttentionType.Critical);
+    } else {
+      await win.requestUserAttention(null);
+    }
+  } catch (e) {
+    console.error('[Tauri badge error]', e);
+  }
 }
 
 const SocketContext = createContext(null);
@@ -58,9 +99,12 @@ export function SocketProvider({ children }) {
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
   const unreadBadgeCount = useRef(0);
-  // Pending chat navigation: set when native notification is clicked (window gets focused)
+  // Pending chat navigation: set when native notification is clicked
   const [pendingChatNavigation, setPendingChatNavigation] = useState(null);
   const lastNotifChatRef = useRef(null);
+  // Map notifId → { chat, message } для onAction
+  const notifIdCounter = useRef(1);
+  const notifChatMapRef = useRef({});
 
   // Title notification refs
   const originalTitleRef = useRef(document.title);
@@ -99,14 +143,8 @@ export function SocketProvider({ children }) {
 
     const handleFocus = () => {
       stopTitleBlink();
-      // Reset taskbar badge when user opens the window
       unreadBadgeCount.current = 0;
       updateBadge(0);
-      // If user clicked a native notification, trigger navigation to that chat
-      if (lastNotifChatRef.current) {
-        setPendingChatNavigation(lastNotifChatRef.current);
-        lastNotifChatRef.current = null;
-      }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -125,6 +163,32 @@ export function SocketProvider({ children }) {
       stopTitleBlink();
     }
   }, [notifications.length, stopTitleBlink]);
+
+  // Слушаем нативный фокус окна через Rust-событие (срабатывает при клике на Windows уведомление)
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlisten;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        unlisten = await listen('window-native-focus', async () => {
+          console.log('[Tauri] window-native-focus received, lastNotif=', lastNotifChatRef.current);
+          await bringWindowToFront();
+          stopTitleBlink();
+          unreadBadgeCount.current = 0;
+          updateBadge(0);
+          if (lastNotifChatRef.current) {
+            setPendingChatNavigation(lastNotifChatRef.current);
+            lastNotifChatRef.current = null;
+          }
+        });
+      } catch (e) {
+        console.error('[Tauri] window-native-focus setup error', e);
+      }
+    })();
+    return () => { if (unlisten) unlisten(); };
+  }, [stopTitleBlink]);
+
 
   useEffect(() => {
     if (!user?.id) {
@@ -188,10 +252,10 @@ export function SocketProvider({ children }) {
         const messageText = data.message?.content || (data.message?.attachments?.length ? '📎 Вложение' : '');
         const notifTitle = senderName && data.chat?.type === 'group' ? `${chatName} — ${senderName}` : (senderName || chatName);
         const notifBody = messageText.length > 100 ? messageText.slice(0, 100) + '…' : messageText;
-        sendDesktopNotification(notifTitle, notifBody);
-
-        // Store for navigation when user clicks the notification and window focuses
-        lastNotifChatRef.current = { chat: data.chat, message: data.message };
+        const notifId = notifIdCounter.current++;
+        notifChatMapRef.current[notifId] = { chat: data.chat, message: data.message };
+        lastNotifChatRef.current = { chat: data.chat, message: data.message }; // fallback для focus-события
+        sendDesktopNotification(notifTitle, notifBody, notifId);
 
         unreadBadgeCount.current += 1;
         updateBadge(unreadBadgeCount.current);

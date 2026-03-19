@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Альфа Вики",
-  "version": "0.1.0",
+  "version": "1.85.0",
   "identifier": "ru.alfa.wiki",
   "build": {
     "frontendDist": "http://192.168.22.39:9000",

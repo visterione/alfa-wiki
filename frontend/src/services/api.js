@@ -570,6 +570,7 @@ export const salaryRecords = {
   getAssistanceIncome: (params) => api.get('/salary-records/assistance-income', { params }),
   create: (data) => api.post('/salary-records', data),
   delete: (id) => api.delete(`/salary-records/${id}`),
+  downloadExcel: (id) => api.get(`/salary-records/${id}/excel`, { responseType: 'blob' }),
 };
 
 export const mis = {

@@ -5,6 +5,15 @@ import {
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
 import { salaryRecords } from '../../../services/api';
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 import SalaryBlock from './SalaryBlockRenderer';
 
 const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
@@ -41,7 +50,23 @@ function histSortKey(rec) {
 
 function HistCard({ record, clinics, onDelete }) {
   const [open, setOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const finalSalary = getRecordFinalSalary(record);
+
+  const handleDownloadExcel = async (e) => {
+    e.stopPropagation();
+    setDownloading(true);
+    try {
+      const res = await salaryRecords.downloadExcel(record.id);
+      const period = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'no-period');
+      const name = record.doctorName?.split(' ')[0] || 'salary';
+      downloadBlob(res.data, `Зарплата_${name}_${period}.xlsx`);
+    } catch {
+      toast.error('Ошибка скачивания Excel');
+    } finally {
+      setDownloading(false);
+    }
+  };
   const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
   const reps = (record.reportData && record.reportData.clinicReports) || [];
 
@@ -73,6 +98,25 @@ function HistCard({ record, clinics, onDelete }) {
           </div>
         </div>
         <div className="rb-hist-card-total">{fmtRub(finalSalary)}</div>
+        {record.hasExcel && (
+          <button
+            className="rb-hist-del"
+            onClick={handleDownloadExcel}
+            disabled={downloading}
+            title="Скачать Excel"
+            style={{ color: '#16a34a' }}
+          >
+            {downloading
+              ? <span className="rb-spinner" style={{ width: 14, height: 14 }} />
+              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="15" x2="12" y2="9"/>
+                  <polyline points="9 12 12 15 15 12"/>
+                </svg>
+            }
+          </button>
+        )}
         {onDelete && (
           <button className="rb-hist-del" onClick={e => { e.stopPropagation(); onDelete(record.id); }} title="Удалить запись">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">

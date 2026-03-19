@@ -2151,6 +2151,7 @@ const SalaryRecord = sequelize.define('SalaryRecord', {
   dateTo: { type: DataTypes.DATEONLY, allowNull: true },
   periodLabel: { type: DataTypes.STRING(100), allowNull: true },
   reportData: { type: DataTypes.JSONB, allowNull: true },
+  excelData: { type: DataTypes.TEXT, allowNull: true },
   createdBy: { type: DataTypes.UUID, allowNull: true }
 }, {
   tableName: 'salary_records',
