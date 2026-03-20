@@ -44,7 +44,8 @@ const TAB_DEFS = [
   { key: 'tab2',       label: 'Выполненные услуги' },
   { key: 'tab3',       label: 'Бонусы за направления' },
   { key: 'tab4',       label: 'Отчёт' },
-  { key: 'tabArchive', label: 'Архив' },
+  { key: 'tabArchive', label: 'История зарплат' },
+  { key: 'tabSummary', label: 'Сводка' },
 ];
 
 const PERM_OPTIONS = [

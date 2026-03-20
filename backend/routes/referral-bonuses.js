@@ -198,13 +198,13 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.get('/permissions/my', authenticate, async (req, res) => {
   try {
     if (req.user.isAdmin) {
-      return res.json({ tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: [] });
+      return res.json({ tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', tabSummary: 'edit', clinics: [] });
     }
     const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
     if (!perm) {
-      return res.json({ tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', clinics: [] });
+      return res.json({ tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', tabSummary: 'block', clinics: [] });
     }
-    res.json({ tab1: perm.tab1, tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchive: perm.tabArchive, clinics: perm.clinics });
+    res.json({ tab1: perm.tab1, tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchive: perm.tabArchive, tabSummary: perm.tabSummary, clinics: perm.clinics });
   } catch (err) {
     console.error('Get rb permissions error:', err);
     res.status(500).json({ error: 'Ошибка получения прав' });
@@ -232,8 +232,8 @@ router.get('/permissions/users', authenticate, async (req, res) => {
       displayName: u.displayName || u.username,
       avatar: u.avatar,
       perm: u.rbPermission
-        ? { tab1: u.rbPermission.tab1, tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchive: u.rbPermission.tabArchive, clinics: u.rbPermission.clinics }
-        : { tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', clinics: [] }
+        ? { tab1: u.rbPermission.tab1, tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchive: u.rbPermission.tabArchive, tabSummary: u.rbPermission.tabSummary, clinics: u.rbPermission.clinics }
+        : { tab1: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchive: 'block', tabSummary: 'block', clinics: [] }
     })));
   } catch (err) {
     console.error('Get rb permissions users error:', err);
@@ -246,9 +246,9 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
   try {
     const { userId } = req.params;
-    const { tab1, tab2, tab3, tab4, tabArchive, clinics } = req.body;
+    const { tab1, tab2, tab3, tab4, tabArchive, tabSummary, clinics } = req.body;
     const valid = ['edit', 'read', 'block'];
-    for (const v of [tab1, tab2, tab3, tab4, tabArchive]) {
+    for (const v of [tab1, tab2, tab3, tab4, tabArchive, tabSummary]) {
       if (v && !valid.includes(v)) return res.status(400).json({ error: `Недопустимое значение: ${v}` });
     }
     const data = {
@@ -258,6 +258,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
       tab3: tab3 || 'edit',
       tab4: tab4 || 'edit',
       tabArchive: tabArchive || 'edit',
+      tabSummary: tabSummary || 'edit',
       clinics: Array.isArray(clinics) ? clinics : [],
     };
     const [perm, created] = await RbUserPermission.findOrCreate({ where: { userId }, defaults: data });

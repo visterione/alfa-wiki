@@ -1289,6 +1289,7 @@ const RbUserPermission = sequelize.define('RbUserPermission', {
   tab3:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tab4:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tabArchive: { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabSummary: { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
 }, { tableName: 'rb_user_permissions', timestamps: true });
 
 // === EMAIL TEMPLATE MODEL ===

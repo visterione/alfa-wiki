@@ -4,6 +4,23 @@ const { SalaryRecord } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/salary-records/all — все записи (сводка)
+router.get('/all', authenticate, async (req, res) => {
+  try {
+    const records = await SalaryRecord.findAll({
+      order: [['dateFrom', 'DESC']],
+      attributes: {
+        exclude: ['excelData'],
+        include: [[literal('("excelData" IS NOT NULL)'), 'hasExcel']],
+      },
+    });
+    res.json(records);
+  } catch (err) {
+    console.error('GET /api/salary-records/all error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/salary-records?misUserId=...
 router.get('/', authenticate, async (req, res) => {
   try {

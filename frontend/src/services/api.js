@@ -6,10 +6,10 @@ const getBaseUrl = () => {
     return process.env.REACT_APP_API_URL;
   }
   // В Tauri production hostname = 'tauri.localhost', а не 'localhost'
-  // Поэтому для desktop-приложения всегда явно используем localhost
+  // Поэтому для desktop-приложения всегда явно используем адрес сервера
   const isTauriApp = typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
   if (isTauriApp) {
-    return 'http://localhost:9001';
+    return 'http://192.168.22.39:9001';
   }
   const { protocol, hostname } = window.location;
   return `${protocol}//${hostname}:9001`;
@@ -567,6 +567,7 @@ export const executorSettings = {
 
 export const salaryRecords = {
   getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
+  getAll: () => api.get('/salary-records/all'),
   getAssistanceIncome: (params) => api.get('/salary-records/assistance-income', { params }),
   create: (data) => api.post('/salary-records', data),
   delete: (id) => api.delete(`/salary-records/${id}`),

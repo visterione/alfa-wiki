@@ -1,0 +1,293 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
+import ExcelJS from 'exceljs';
+import { salaryRecords } from '../../../services/api';
+import SalaryBlock from './SalaryBlockRenderer';
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+const fmtRub = v =>
+  parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+
+const fmtDate = s => {
+  if (!s) return '—';
+  const d = new Date(s);
+  if (isNaN(d)) return s;
+  return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+};
+
+// ═══════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════
+export default function StepSummary({ doctors = [], clinics = [] }) {
+  const [records, setRecords]       = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [expandedKey, setExpandedKey] = useState(null);
+  const [exporting, setExporting]   = useState(false);
+
+  const [searchName, setSearchName]     = useState('');
+  const [filterClinic, setFilterClinic] = useState('');
+  const [sortBy, setSortBy]             = useState('date_desc');
+
+  useEffect(() => {
+    setLoading(true);
+    salaryRecords.getAll()
+      .then(res => setRecords(Array.isArray(res.data) ? res.data : []))
+      .catch(() => toast.error('Ошибка загрузки сводки'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const getDoctorSpecialty = (misUserId) => {
+    const doc = doctors.find(d => d.id === String(misUserId));
+    if (!doc) return '—';
+    return doc.professions
+      .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+      .filter(Boolean).join(', ') || '—';
+  };
+
+  // ── Flatten records → one row per clinic report ───────────────────────────
+  const allRows = useMemo(() => {
+    const rows = [];
+    records.forEach(rec => {
+      const reps = (rec.reportData && rec.reportData.clinicReports) || [];
+      if (reps.length === 0) {
+        rows.push({ key: `${rec.id}_0`, rec, cr: null, clinicObj: null, clinicName: '—' });
+      } else {
+        reps.forEach((cr, i) => {
+          const clinicObj = clinics.find(c => String(c.id) === String(cr.clinicId));
+          const clinicName = clinicObj ? clinicObj.name : (cr.clinicLabel || String(cr.clinicId || '') || '—');
+          rows.push({ key: `${rec.id}_${i}`, rec, cr, clinicObj, clinicName });
+        });
+      }
+    });
+    return rows;
+  }, [records, clinics]);
+
+  // ── Filter & sort ────────────────────────────────────────────────────────────
+  const filtered = useMemo(() => {
+    const targetClinic = filterClinic ? clinics.find(c => String(c.id) === String(filterClinic)) : null;
+
+    return allRows
+      .filter(row => {
+        if (searchName && !row.rec.doctorName?.toLowerCase().includes(searchName.toLowerCase())) return false;
+        if (targetClinic && row.clinicName !== targetClinic.name) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'date_asc')    return new Date(a.rec.dateFrom || 0) - new Date(b.rec.dateFrom || 0);
+        if (sortBy === 'name')        return (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru');
+        if (sortBy === 'salary_desc') return parseFloat(b.cr?.salary?.finalSalary || 0) - parseFloat(a.cr?.salary?.finalSalary || 0);
+        return new Date(b.rec.dateFrom || 0) - new Date(a.rec.dateFrom || 0); // date_desc
+      });
+  }, [allRows, searchName, filterClinic, clinics, sortBy]);
+
+  // ── Excel export ─────────────────────────────────────────────────────────────
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Сводка зарплат');
+
+      ws.columns = [
+        { header: 'ФИО врача',     key: 'name',      width: 32 },
+        { header: 'Медцентр',      key: 'clinic',    width: 22 },
+        { header: 'Специальность', key: 'specialty', width: 26 },
+        { header: 'Дата',          key: 'date',      width: 18 },
+        { header: 'Аванс',         key: 'advance',   width: 16 },
+        { header: 'Тело',          key: 'body',      width: 16 },
+        { header: 'Итого',         key: 'total',     width: 16 },
+      ];
+
+      const hRow = ws.getRow(1);
+      hRow.font      = { bold: true, name: 'Calibri', size: 11 };
+      hRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
+      hRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      filtered.forEach(({ rec, cr, clinicName }) => {
+        const s = cr?.salary || {};
+        ws.addRow({
+          name:      rec.doctorName || '—',
+          clinic:    clinicName,
+          specialty: getDoctorSpecialty(rec.misUserId),
+          date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
+          advance:   parseFloat(s.advance     || 0),
+          body:      parseFloat(s.mainPayment || 0),
+          total:     parseFloat(s.finalSalary || 0),
+        });
+      });
+
+      ['advance', 'body', 'total'].forEach(key => {
+        ws.getColumn(key).numFmt = '#,##0.00 ₽';
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      downloadBlob(
+        new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        'Сводка_зарплат.xlsx'
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка экспорта Excel');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
+        <span className="rb-spinner" /> Загрузка сводки...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+
+      {/* ── Toolbar ── */}
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          style={{ flex: 1, minWidth: 160, padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          placeholder="Поиск по ФИО..."
+          value={searchName}
+          onChange={e => setSearchName(e.target.value)}
+        />
+        <select
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          value={filterClinic}
+          onChange={e => setFilterClinic(e.target.value)}
+        >
+          <option value="">Все медцентры</option>
+          {clinics.filter(c => String(c.id) !== '8').map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <select
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          value={sortBy}
+          onChange={e => setSortBy(e.target.value)}
+        >
+          <option value="date_desc">По дате ↓</option>
+          <option value="date_asc">По дате ↑</option>
+          <option value="name">По имени</option>
+          <option value="salary_desc">По зарплате ↓</option>
+        </select>
+        <button
+          onClick={handleExport}
+          disabled={exporting || filtered.length === 0}
+          style={{ padding: '6px 14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: (exporting || filtered.length === 0) ? 0.55 : 1 }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="15" x2="12" y2="9"/>
+            <polyline points="9 12 12 15 15 12"/>
+          </svg>
+          {exporting ? 'Экспорт...' : 'Excel'}
+        </button>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+          {filtered.length} строк
+        </span>
+      </div>
+
+      {/* ── Table ── */}
+      {filtered.length === 0 ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+          {records.length === 0
+            ? 'История зарплат пуста. Сохраните расчёт во вкладке «Отчёт».'
+            : 'Нет записей по заданному фильтру.'}
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9' }}>
+                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'Зарплата'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
+                    {h}
+                  </th>
+                ))}
+                <th style={{ width: 28, borderBottom: '2px solid var(--rb-border)' }} />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(({ key, rec, cr, clinicObj, clinicName }) => {
+                const s         = cr?.salary || {};
+                const advance   = parseFloat(s.advance     || 0);
+                const body      = parseFloat(s.mainPayment || 0);
+                const total     = parseFloat(s.finalSalary || 0);
+                const isOpen    = expandedKey === key;
+                const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
+
+                return (
+                  <React.Fragment key={key}>
+                    <tr
+                      onClick={() => setExpandedKey(isOpen ? null : key)}
+                      style={{ cursor: 'pointer', background: isOpen ? '#eff6ff' : 'transparent', borderBottom: isOpen ? 'none' : '1px solid var(--rb-border)', transition: 'background .1s' }}
+                      onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <td style={{ padding: '10px 12px', fontWeight: 600 }}>{rec.doctorName || '—'}</td>
+                      <td style={{ padding: '10px 12px' }}>
+                        {clinicObj ? (
+                          <span style={{ background: clinicObj.color || '#94a3b8', color: '#fff', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>
+                            {clinicName}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--rb-text-secondary)' }}>{clinicName}</span>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: 'var(--rb-text-secondary)' }}>
+                        {getDoctorSpecialty(rec.misUserId)}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                        {dateLabel}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <div style={{ fontWeight: 700, color: '#1e40af' }}>{fmtRub(total)}</div>
+                        {(advance > 0 || body > 0) && (
+                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
+                            Аванс: {fmtRub(advance)} · Тело: {fmtRub(body)}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                        <svg
+                          viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"
+                          style={{ transform: isOpen ? 'rotate(180deg)' : undefined, transition: 'transform .2s', color: 'var(--rb-text-secondary)', display: 'block', margin: 'auto' }}
+                        >
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                      </td>
+                    </tr>
+
+                    {isOpen && (
+                      <tr style={{ background: '#f8fafc' }}>
+                        <td colSpan={6} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
+                          <div style={{ paddingTop: 14 }}>
+                            {cr?.salary
+                              ? <SalaryBlock salary={cr.salary} />
+                              : <div style={{ color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+                            }
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
