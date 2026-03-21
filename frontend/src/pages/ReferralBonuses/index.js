@@ -259,7 +259,7 @@ export default function ReferralBonusesPage() {
       case 5:
         return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(5)} />;
       case 6:
-        return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} />;
+        return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} permissions={permissions} />;
       default:
         return null;
     }

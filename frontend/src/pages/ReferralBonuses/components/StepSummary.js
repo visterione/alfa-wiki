@@ -26,7 +26,7 @@ const fmtDate = s => {
 // ═══════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════
-export default function StepSummary({ doctors = [], clinics = [] }) {
+export default function StepSummary({ doctors = [], clinics = [], permissions = {} }) {
   const [records, setRecords]       = useState([]);
   const [loading, setLoading]       = useState(false);
   const [expandedKey, setExpandedKey] = useState(null);
@@ -54,13 +54,16 @@ export default function StepSummary({ doctors = [], clinics = [] }) {
 
   // ── Flatten records → one row per clinic report ───────────────────────────
   const allRows = useMemo(() => {
+    const allowedClinics = permissions.clinics?.length > 0 ? permissions.clinics.map(String) : null;
     const rows = [];
     records.forEach(rec => {
       const reps = (rec.reportData && rec.reportData.clinicReports) || [];
       if (reps.length === 0) {
+        if (allowedClinics) return; // строки без клиники скрываем при ограничении
         rows.push({ key: `${rec.id}_0`, rec, cr: null, clinicObj: null, clinicName: '—' });
       } else {
         reps.forEach((cr, i) => {
+          if (allowedClinics && !allowedClinics.includes(String(cr.clinicId))) return;
           const clinicObj = clinics.find(c => String(c.id) === String(cr.clinicId));
           const clinicName = clinicObj ? clinicObj.name : (cr.clinicLabel || String(cr.clinicId || '') || '—');
           rows.push({ key: `${rec.id}_${i}`, rec, cr, clinicObj, clinicName });
@@ -68,7 +71,7 @@ export default function StepSummary({ doctors = [], clinics = [] }) {
       }
     });
     return rows;
-  }, [records, clinics]);
+  }, [records, clinics, permissions.clinics]);
 
   // ── Filter & sort ────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -126,6 +129,22 @@ export default function StepSummary({ doctors = [], clinics = [] }) {
       ['advance', 'body', 'total'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
       });
+
+      // Итоговая строка
+      const totalRow = ws.addRow({
+        name:    'ИТОГО',
+        clinic:  '',
+        specialty: '',
+        date:    '',
+        advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
+        body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
+        total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
+      });
+      totalRow.font = { bold: true, name: 'Calibri', size: 11 };
+      totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
+      totalRow.border = {
+        top: { style: 'medium', color: { argb: 'FF94A3B8' } },
+      };
 
       const buf = await wb.xlsx.writeBuffer();
       downloadBlob(
