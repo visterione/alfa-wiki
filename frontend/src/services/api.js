@@ -568,8 +568,10 @@ export const executorSettings = {
 export const salaryRecords = {
   getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
   getAll: () => api.get('/salary-records/all'),
+  find: (misUserId, dateFrom) => api.get('/salary-records/find', { params: { misUserId, dateFrom } }),
   getAssistanceIncome: (params) => api.get('/salary-records/assistance-income', { params }),
   create: (data) => api.post('/salary-records', data),
+  update: (id, data) => api.put(`/salary-records/${id}`, data),
   delete: (id) => api.delete(`/salary-records/${id}`),
   downloadExcel: (id) => api.get(`/salary-records/${id}/excel`, { responseType: 'blob' }),
 };

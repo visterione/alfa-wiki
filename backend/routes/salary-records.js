@@ -4,6 +4,34 @@ const { SalaryRecord } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 
+// GET /api/salary-records/find?misUserId=X&dateFrom=Y — найти запись за тот же год-месяц
+router.get('/find', authenticate, async (req, res) => {
+  try {
+    const { misUserId, dateFrom } = req.query;
+    if (!misUserId || !dateFrom) return res.status(400).json({ error: 'misUserId and dateFrom required' });
+
+    const d = new Date(dateFrom);
+    const year  = d.getFullYear();
+    const month = d.getMonth() + 1;
+
+    const records = await SalaryRecord.findAll({
+      where: { misUserId },
+      attributes: { exclude: ['excelData'], include: [[literal('("excelData" IS NOT NULL)'), 'hasExcel']] },
+    });
+
+    const match = records.find(r => {
+      if (!r.dateFrom) return false;
+      const rd = new Date(r.dateFrom);
+      return rd.getFullYear() === year && (rd.getMonth() + 1) === month;
+    });
+
+    res.json(match || null);
+  } catch (err) {
+    console.error('GET /api/salary-records/find error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/salary-records/all — все записи (сводка)
 router.get('/all', authenticate, async (req, res) => {
   try {
@@ -121,6 +149,26 @@ router.get('/assistance-income', authenticate, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('GET /api/salary-records/assistance-income error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/salary-records/:id — перезаписать существующую запись
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const record = await SalaryRecord.findByPk(req.params.id);
+    if (!record) return res.status(404).json({ error: 'Not found' });
+    const { dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
+    await record.update({
+      dateFrom:    dateFrom    || null,
+      dateTo:      dateTo      || null,
+      periodLabel: periodLabel || null,
+      reportData:  reportData  || null,
+      excelData:   excelBase64 !== undefined ? (excelBase64 || null) : record.excelData,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('PUT /api/salary-records/:id error:', err);
     res.status(500).json({ error: err.message });
   }
 });

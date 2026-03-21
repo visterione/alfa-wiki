@@ -172,8 +172,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
     }
   };
 
-  const handleSaveToHistory = async () => {
-    if (!reportData || !selectedDoctor) return;
+  const [dupConfirm, setDupConfirm] = useState(null); // { existingId, period, onConfirm }
+
+  const doSaveIndividual = async (existingId = null) => {
     setSaving(true);
     try {
       let excelBase64 = null;
@@ -182,18 +183,46 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
         excelBase64 = await workbookToBase64(wb);
       } catch { /* non-critical */ }
 
-      await salaryRecords.create({
+      const payload = {
         misUserId: selectedDoctor.id,
         doctorName: selectedDoctor.name,
         dateFrom: reportData.dateFrom || null,
         dateTo: reportData.dateTo || null,
         reportData: { clinicReports: reportData.clinicReports, grandTotal: reportData.grandTotal, periodLabel: reportData.periodLabel },
         excelBase64,
-      });
-      toast.success('Отчёт сохранён в историю зарплат');
+      };
+
+      if (existingId) {
+        await salaryRecords.update(existingId, payload);
+        toast.success('Запись обновлена');
+      } else {
+        await salaryRecords.create(payload);
+        toast.success('Отчёт сохранён в историю зарплат');
+      }
     } catch (e) {
       toast.error('Ошибка сохранения: ' + (e.response?.data?.error || e.message));
     } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveToHistory = async () => {
+    if (!reportData || !selectedDoctor) return;
+    setSaving(true);
+    try {
+      const res = await salaryRecords.find(selectedDoctor.id, reportData.dateFrom);
+      const existing = res.data;
+      if (existing) {
+        setSaving(false);
+        setDupConfirm({
+          existingId: existing.id,
+          period: existing.periodLabel || (existing.dateFrom ? new Date(existing.dateFrom).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }) : 'этот период'),
+        });
+        return;
+      }
+      await doSaveIndividual(null);
+    } catch (e) {
+      toast.error('Ошибка сохранения: ' + (e.response?.data?.error || e.message));
       setSaving(false);
     }
   };
@@ -208,6 +237,50 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* ── Duplicate confirmation modal ── */}
+      {dupConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="22" height="22"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Запись уже существует</span>
+            </div>
+            {dupConfirm.isBulk ? (
+              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+                Среди выбранных врачей <strong>{dupConfirm.dupCount}</strong> уже {dupConfirm.dupCount === 1 ? 'имеет запись' : 'имеют записи'} за этот период.
+                {dupConfirm.newCount > 0 && <> Новых записей: <strong>{dupConfirm.newCount}</strong>.</>}
+                <br />Перезаписать существующие данные?
+              </p>
+            ) : (
+              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+                Запись за <strong>{dupConfirm.period}</strong> уже существует в истории.<br />
+                Перезаписать её новыми данными?
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDupConfirm(null)}
+                style={{ padding: '7px 18px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#fff', cursor: 'pointer', color: '#475569' }}
+              >
+                Отменить
+              </button>
+              <button
+                onClick={() => {
+                  const confirm = dupConfirm;
+                  setDupConfirm(null);
+                  if (confirm.isBulk) confirm.onConfirmBulk();
+                  else doSaveIndividual(confirm.existingId);
+                }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+              >
+                Перезаписать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Toolbar
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
@@ -284,6 +357,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
   const [generating, setGenerating]     = useState(false);
   const [savingAll, setSavingAll]       = useState(false);
   const [exporting, setExporting]       = useState(false);
+  const [dupConfirm, setDupConfirm]     = useState(null);
 
   const [progress, setProgress]       = useState({ current: 0, total: 0, currentName: '' });
   const [bulkResults, setBulkResults] = useState([]);
@@ -353,10 +427,9 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
     finally { setExporting(false); }
   };
 
-  const handleSaveAll = async () => {
-    const ok = bulkResults.filter(r => !r.error && r.clinicReports?.length > 0);
+  const doSaveAll = async (ok, existingMap) => {
     setSavingAll(true);
-    let saved = 0, failed = 0;
+    let saved = 0, updated = 0, failed = 0;
     for (const r of ok) {
       try {
         let excelBase64 = null;
@@ -365,18 +438,59 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
           excelBase64 = await workbookToBase64(wb);
         } catch { /* non-critical */ }
 
-        await salaryRecords.create({
+        const payload = {
           misUserId: r.doctor.id, doctorName: r.doctor.name,
           dateFrom: r.dateFrom || null, dateTo: r.dateTo || null,
           reportData: { clinicReports: r.clinicReports, grandTotal: r.grandTotal, periodLabel: r.periodLabel },
           excelBase64,
-        });
-        saved++;
+        };
+        const existingId = existingMap[r.doctor.id];
+        if (existingId) {
+          await salaryRecords.update(existingId, payload);
+          updated++;
+        } else {
+          await salaryRecords.create(payload);
+          saved++;
+        }
       } catch { failed++; }
     }
     setSavingAll(false);
-    if (failed > 0) toast.error(`Сохранено: ${saved}, ошибок: ${failed}`);
-    else toast.success(`Сохранено в историю: ${saved} отчётов`);
+    const parts = [];
+    if (saved > 0)   parts.push(`создано: ${saved}`);
+    if (updated > 0) parts.push(`обновлено: ${updated}`);
+    if (failed > 0)  parts.push(`ошибок: ${failed}`);
+    if (failed > 0) toast.error(parts.join(', '));
+    else toast.success('Сохранено в историю — ' + parts.join(', '));
+  };
+
+  const handleSaveAll = async () => {
+    const ok = bulkResults.filter(r => !r.error && r.clinicReports?.length > 0);
+    if (ok.length === 0) return;
+    setSavingAll(true);
+
+    // Проверяем дубли для каждого врача
+    const existingMap = {}; // misUserId → existingId
+    await Promise.all(ok.map(async r => {
+      try {
+        const res = await salaryRecords.find(r.doctor.id, r.dateFrom);
+        if (res.data) existingMap[r.doctor.id] = res.data.id;
+      } catch { /* пропускаем */ }
+    }));
+    setSavingAll(false);
+
+    const dupCount = Object.keys(existingMap).length;
+    if (dupCount > 0) {
+      setDupConfirm({
+        isBulk: true,
+        dupCount,
+        newCount: ok.length - dupCount,
+        onConfirmBulk: () => doSaveAll(ok, existingMap),
+        ok,
+      });
+      return;
+    }
+
+    await doSaveAll(ok, {});
   };
 
   const toggleExpanded = (id) => {
@@ -393,6 +507,38 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* ── Duplicate confirmation modal ── */}
+      {dupConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: 28, maxWidth: 420, width: '90%', boxShadow: '0 20px 60px rgba(0,0,0,.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="22" height="22"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span style={{ fontWeight: 700, fontSize: 15 }}>Записи уже существуют</span>
+            </div>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6, margin: '0 0 20px' }}>
+              Среди выбранных врачей <strong>{dupConfirm.dupCount}</strong> уже {dupConfirm.dupCount === 1 ? 'имеет запись' : 'имеют записи'} за этот период.
+              {dupConfirm.newCount > 0 && <> Новых записей: <strong>{dupConfirm.newCount}</strong>.</>}
+              <br />Перезаписать существующие данные?
+            </p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setDupConfirm(null)}
+                style={{ padding: '7px 18px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#fff', cursor: 'pointer', color: '#475569' }}
+              >
+                Отменить
+              </button>
+              <button
+                onClick={() => { const c = dupConfirm; setDupConfirm(null); c.onConfirmBulk(); }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+              >
+                Перезаписать
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Toolbar
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}

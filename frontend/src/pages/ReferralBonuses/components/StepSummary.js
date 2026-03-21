@@ -205,7 +205,11 @@ export default function StepSummary({ doctors = [], clinics = [] }) {
             ? 'История зарплат пуста. Сохраните расчёт во вкладке «Отчёт».'
             : 'Нет записей по заданному фильтру.'}
         </div>
-      ) : (
+      ) : (() => {
+        const totalSalary = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
+        const totalBody   = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment  || 0), 0);
+        return (
+        <>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -287,7 +291,30 @@ export default function StepSummary({ doctors = [], clinics = [] }) {
             </tbody>
           </table>
         </div>
-      )}
+
+        {/* ── Totals footer ── */}
+        <div style={{ borderTop: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Итого ({filtered.length} строк)
+          </span>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма зарплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e40af' }}>{fmtRub(totalSalary)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма авансов</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{fmtRub(filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0))}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма тел</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBody)}</div>
+            </div>
+          </div>
+        </div>
+        </>
+        );
+      })()}
     </div>
   );
 }
