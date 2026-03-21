@@ -16,6 +16,26 @@ function downloadBlob(blob, filename) {
 const fmtRub = v =>
   parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
+// Извлекает сумму НДФЛ из объекта salary (поддерживает % и ₽, любой регистр имени)
+function getNdflAmount(salary) {
+  if (!salary) return 0;
+  const deductions = salary.deductions || [];
+  const ndfl = deductions.find(d => (d.name || '').trim().toUpperCase() === 'НДФЛ');
+  if (!ndfl) return 0;
+  const value = parseFloat(ndfl.value) || 0;
+  if (ndfl.valueType === 'rub') return value;
+  // процент — нужна база
+  if (ndfl.deductionType === 'final') {
+    const preFinal = (parseFloat(salary.finalSalary) || 0)
+      + (parseFloat(salary.finalDeductionsTotal) || 0)
+      + (parseFloat(salary.materialsTotal) || 0);
+    return preFinal * value / 100;
+  }
+  // от оборота
+  const base = parseFloat(salary.performedServicesSum) || 0;
+  return base * value / 100;
+}
+
 const fmtDate = s => {
   if (!s) return '—';
   const d = new Date(s);
@@ -103,9 +123,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         { header: 'Медцентр',      key: 'clinic',    width: 22 },
         { header: 'Специальность', key: 'specialty', width: 26 },
         { header: 'Дата',          key: 'date',      width: 18 },
+        { header: 'Начислено',     key: 'total',     width: 16 },
+        { header: 'НДФЛ',          key: 'ndfl',      width: 16 },
         { header: 'Аванс',         key: 'advance',   width: 16 },
         { header: 'Тело',          key: 'body',      width: 16 },
-        { header: 'Итого',         key: 'total',     width: 16 },
+        { header: 'Премия',        key: 'bonus',     width: 16 },
+        { header: 'Переплата',     key: 'overpay',   width: 16 },
       ];
 
       const hRow = ws.getRow(1);
@@ -115,18 +138,22 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
-        ws.addRow({
+        const remainder = (parseFloat(s.finalSalary || 0)) - (parseFloat(s.advance || 0)) - (parseFloat(s.mainPayment || 0));
+        const row = ws.addRow({
           name:      rec.doctorName || '—',
           clinic:    clinicName,
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
+          total:     parseFloat(s.finalSalary || 0),
+          ndfl:      getNdflAmount(s),
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0),
-          total:     parseFloat(s.finalSalary || 0),
+          bonus:     remainder >= 0 ? remainder : 0,
+          overpay:   remainder < 0  ? remainder : 0,
         });
       });
 
-      ['advance', 'body', 'total'].forEach(key => {
+      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
       });
 
@@ -136,15 +163,22 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         clinic:  '',
         specialty: '',
         date:    '',
+        total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
+        ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0),
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
-        total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
+        bonus:   filtered.reduce((s, r) => {
+          const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
+          return s + (rem >= 0 ? rem : 0);
+        }, 0),
+        overpay: filtered.reduce((s, r) => {
+          const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
+          return s + (rem < 0 ? rem : 0);
+        }, 0),
       });
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
       totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
-      totalRow.border = {
-        top: { style: 'medium', color: { argb: 'FF94A3B8' } },
-      };
+      totalRow.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
 
       const buf = await wb.xlsx.writeBuffer();
       downloadBlob(
@@ -247,6 +281,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 const advance   = parseFloat(s.advance     || 0);
                 const body      = parseFloat(s.mainPayment || 0);
                 const total     = parseFloat(s.finalSalary || 0);
+                const remainder = total - advance - body;
+                const bonus     = remainder >= 0 ? remainder : 0;
+                const overpay   = remainder < 0  ? remainder : 0;
                 const isOpen    = expandedKey === key;
                 const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
 
@@ -276,9 +313,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: '#1e40af' }}>{fmtRub(total)}</div>
-                        {(advance > 0 || body > 0) && (
-                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
-                            Аванс: {fmtRub(advance)} · Тело: {fmtRub(body)}
+                        {(advance > 0 || body > 0 || bonus > 0 || overpay < 0) && (
+                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                            {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
+                            {body > 0    && <span>Тело: {fmtRub(body)}</span>}
+                            {bonus > 0   && <span>Премия: {fmtRub(bonus)}</span>}
+                            {overpay < 0 && <span>Переплата: {fmtRub(overpay)}</span>}
                           </div>
                         )}
                       </td>
