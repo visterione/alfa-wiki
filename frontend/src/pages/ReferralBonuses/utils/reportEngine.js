@@ -113,6 +113,20 @@ export async function buildReport({
 
   // ── Cost parser ──
   function rbParseCost(r) {
+    // Особый случай: категория содержит "VIP" + скидка 100%
+    // Услуга бесплатна для пациента, но врач получает оплату: стоимость услуги − 30%
+    if (colMap.category && colMap.discount && colMap.servicePrice) {
+      const categoryVal = String(r[colMap.category] || '').toUpperCase();
+      if (categoryVal.includes('VIP')) {
+        const discountRaw = String(r[colMap.discount] || '').replace('%', '').trim();
+        const discountVal = parseFloat(discountRaw.replace(',', '.')) || 0;
+        if (discountVal >= 100) {
+          const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+          return price * 0.70;
+        }
+      }
+    }
+
     if (colMap.totalCost != null) {
       const tv = r[colMap.totalCost];
       if (tv === '' || tv === null || tv === undefined) return 0;
