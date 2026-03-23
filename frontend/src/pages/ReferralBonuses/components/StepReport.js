@@ -63,6 +63,9 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
     onFileSelect(file);
   };
 
+  const periodMissing = !dateFrom || !dateTo;
+  const inputBorder = (val) => val ? '1px solid var(--rb-border-dark)' : '1.5px solid #f59e0b';
+
   return (
     <div style={{
       display: 'flex',
@@ -74,21 +77,27 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
       flexWrap: 'wrap',
     }}>
       {/* Period */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Период с</span>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 7px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, outline: 'none', height: 32 }}
-        />
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>по</span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 7px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, outline: 'none', height: 32 }}
-        />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+            Период с <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
+          </span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateFrom), borderRadius: 6, outline: 'none', height: 32 }}
+          />
+          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            по <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
+          </span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateTo), borderRadius: 6, outline: 'none', height: 32 }}
+          />
+        </div>
       </div>
 
       {/* File */}
@@ -142,6 +151,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
   const handleGenerate = async () => {
     if (!selectedDoctor) { toast.error('Выберите врача из списка слева'); return; }
     if (!uploadedFile)   { toast.error('Загрузите файл Excel'); return; }
+    if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setError(''); setReportData(null);
     try {
       const rows   = await parseExcelFile(uploadedFile);
@@ -366,6 +376,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
   const handleBulkGenerate = async () => {
     if (bulkSelectedIds.size === 0) { toast.error('Выберите врачей в списке слева'); return; }
     if (!uploadedFile)              { toast.error('Загрузите файл Excel'); return; }
+    if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setBulkResults([]); setExpanded(new Set());
 
     let rows, colMap;
