@@ -676,9 +676,9 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly, interim = false }) {
 // ─── Main StepReport ───────────────────────────────────────────────────────────
 const REPORT_MODES = [
   ['individual',         'Индивидуальный'],
-  ['bulk',               'Сводный'],
   ['individual_interim', 'Инд. промежуточный'],
-  ['bulk_interim',       'Своднй промежуточный'],
+  ['bulk',               'Сводный'],
+  ['bulk_interim',       'Сводный промежуточный'],
 ];
 
 export default function StepReport({ selectedDoctor, doctors, clinics, reportMode, setReportMode, bulkSelectedIds, readOnly }) {
@@ -709,7 +709,6 @@ export default function StepReport({ selectedDoctor, doctors, clinics, reportMod
               }}
             >
               {label}
-              {isInterimTab && <span style={{ marginLeft: 5, fontSize: 10, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>пром.</span>}
             </button>
           );
         })}
