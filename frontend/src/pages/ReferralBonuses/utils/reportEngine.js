@@ -407,14 +407,14 @@ export async function buildReport({
         if (bonus) {
           if (bonus.bonusPercent != null) {
             const assistantName = row.assistant || '';
-            const asstPct = assistantName ? (clinicSettings.assistancePercent || 0) : 0;
+            const asstPct = (!interim && assistantName) ? (clinicSettings.assistancePercent || 0) : 0;
             const effectiveBonusPct = Math.max(0, parseFloat(bonus.bonusPercent) - asstPct);
-            const matForRow = svcOverrideMat
+            const matForRow = interim ? 0 : (svcOverrideMat
               ? (svcOverrideMat.valueType === 'percent'
                   ? row.cost * parseFloat(svcOverrideMat.value) / 100
                   : parseFloat(svcOverrideMat.value))
-              : globalMaterialPerOccurrence;
-            const effectiveCost = row.cost - globalDeductionPerOccurrence - matForRow;
+              : globalMaterialPerOccurrence);
+            const effectiveCost = interim ? row.cost : row.cost - globalDeductionPerOccurrence - matForRow;
             bonusAmount += effectiveCost * effectiveBonusPct / 100;
             bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
             if (asstPct > 0 && assistantName) {
