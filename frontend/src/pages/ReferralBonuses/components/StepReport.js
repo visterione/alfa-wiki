@@ -53,8 +53,8 @@ function FilePicker({ uploadedFile, onSelect, onClear, onDragOver, onDragLeave, 
   );
 }
 
-// ─── Toolbar: period + file + action button ────────────────────────────────────
-function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFileSelect, onFileClear, actionDisabled, actionLabel, onAction, actionSpinner }) {
+// ─── Toolbar: period + clinic filter + file + action button ───────────────────
+function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, uploadedFile, onFileSelect, onFileClear, actionDisabled, actionLabel, onAction, actionSpinner }) {
   const [isDragging, setIsDragging] = useState(false);
 
   const handleFileSelect = (file) => {
@@ -63,7 +63,6 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
     onFileSelect(file);
   };
 
-  const periodMissing = !dateFrom || !dateTo;
   const inputBorder = (val) => val ? '1px solid var(--rb-border-dark)' : '1.5px solid #f59e0b';
 
   return (
@@ -77,28 +76,39 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
       flexWrap: 'wrap',
     }}>
       {/* Period */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-            Период с <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
-          </span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateFrom), borderRadius: 6, outline: 'none', height: 32 }}
-          />
-          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-            по <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
-          </span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateTo), borderRadius: 6, outline: 'none', height: 32 }}
-          />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+          Период с <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
+        </span>
+        <input
+          type="date"
+          value={dateFrom}
+          onChange={e => setDateFrom(e.target.value)}
+          style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateFrom), borderRadius: 6, outline: 'none', height: 32 }}
+        />
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+          по <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
+        </span>
+        <input
+          type="date"
+          value={dateTo}
+          onChange={e => setDateTo(e.target.value)}
+          style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateTo), borderRadius: 6, outline: 'none', height: 32 }}
+        />
       </div>
+
+      {/* Clinic filter */}
+      {clinics?.length > 0 && (
+        <select
+          value={filterClinic}
+          onChange={e => setFilterClinic(e.target.value)}
+          style={{ fontSize: 12, padding: '5px 7px', border: filterClinic ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border-dark)', borderRadius: 6, height: 32, background: filterClinic ? '#eff6ff' : '#fff', color: filterClinic ? 'var(--rb-primary)' : 'inherit', cursor: 'pointer' }}
+          title="Фильтр по клинике — если выбрана, в отчёт попадёт только эта клиника"
+        >
+          <option value="">Все клиники</option>
+          {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      )}
 
       {/* File */}
       <FilePicker
@@ -135,6 +145,7 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
 function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = false }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
+  const [filterClinic, setFilterClinic] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [generating, setGenerating]     = useState(false);
   const [saving, setSaving]             = useState(false);
@@ -175,6 +186,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         allDoctors: doctors, savedAssistanceIncome,
         interim,
       });
+      if (filterClinic) {
+        result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
+      }
       setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
@@ -296,6 +310,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       <Toolbar
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
+        clinics={clinics} filterClinic={filterClinic} setFilterClinic={setFilterClinic}
         uploadedFile={uploadedFile}
         onFileSelect={f => { setUploadedFile(f); setReportData(null); setError(''); }}
         onFileClear={() => { setUploadedFile(null); setReportData(null); }}
@@ -362,9 +377,10 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
 
 // ─── Bulk mode ─────────────────────────────────────────────────────────────────
 // Doctor selection is handled by the shared rb-panel (bulkSelectedIds from props)
-function ModeBulk({ doctors, bulkSelectedIds, readOnly, interim = false }) {
+function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
+  const [filterClinic, setFilterClinic] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
   const [generating, setGenerating]     = useState(false);
   const [savingAll, setSavingAll]       = useState(false);
@@ -420,6 +436,9 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly, interim = false }) {
           allDoctors: doctors, savedAssistanceIncome,
           interim,
         });
+        if (filterClinic) {
+          result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
+        }
         results.push({ doctor, ...result, dateFrom, dateTo, error: null });
       } catch (e) {
         results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' });
@@ -557,6 +576,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly, interim = false }) {
       <Toolbar
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
+        clinics={clinics} filterClinic={filterClinic} setFilterClinic={setFilterClinic}
         uploadedFile={uploadedFile}
         onFileSelect={f => { setUploadedFile(f); setBulkResults([]); }}
         onFileClear={() => { setUploadedFile(null); setBulkResults([]); }}
@@ -717,7 +737,7 @@ export default function StepReport({ selectedDoctor, doctors, clinics, reportMod
       <div style={{ flex: 1, overflow: 'hidden' }}>
         {!isBulk
           ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} interim={isInterim} />
-          : <ModeBulk doctors={doctors} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={isInterim} />
+          : <ModeBulk doctors={doctors} clinics={clinics} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={isInterim} />
         }
       </div>
     </div>
