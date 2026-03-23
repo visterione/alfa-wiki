@@ -84,6 +84,7 @@ export async function loadExecSettings(misUserId) {
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
+  interim = false,
 }) {
   const doctorName = doctor.name;
 
@@ -573,16 +574,45 @@ export async function buildReport({
       extras: execExtras,
     };
 
+    if (interim) {
+      salary.referralBonuses = 0;
+      salary.referralSections = [];
+      salary.referralCostTotal = 0;
+      salary.referralCostItems = [];
+      salary.executorSections = [];
+      salary.deductions = [];
+      salary.materials = [];
+      salary.deductionsTotal = 0;
+      salary.materialsTotal = 0;
+      salary.finalDeductionsTotal = 0;
+      salary.turnoverDeductionsTotal = 0;
+      salary.finalMaterialsTotal = 0;
+      salary.turnoverMaterialsTotal = 0;
+      salary.assistancePaidTotal = 0;
+      salary.assistanceSections = [];
+      salary.assistanceIncomeTotal = 0;
+      salary.assistanceIncomeSections = [];
+      salary.advance = 0;
+      salary.mainPayment = 0;
+      salary.finalSalary = salary.basePay
+        + (pt !== 'percent' && !!clinicSettings.plusPercent ? performedBonusTotal : 0)
+        + extrasTotal;
+    }
+
     clinicReports.push({
       clinicId,
       clinicLabel,
       clinicColor: rbGetClinicColor(clinicId),
-      referralSections,
-      executorSections,
+      referralSections: interim ? [] : referralSections,
+      executorSections: interim ? [] : executorSections,
       salary,
       performedSections,
     });
   }
 
-  return { clinicReports, grandTotal: globalGrandTotal, periodLabel };
+  const grandTotal = interim
+    ? clinicReports.reduce((s, cr) => s + (cr.salary?.finalSalary || 0), 0)
+    : globalGrandTotal;
+
+  return { clinicReports, grandTotal, periodLabel };
 }

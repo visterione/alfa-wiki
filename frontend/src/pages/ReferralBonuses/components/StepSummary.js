@@ -77,6 +77,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     const allowedClinics = permissions.clinics?.length > 0 ? permissions.clinics.map(String) : null;
     const rows = [];
     records.forEach(rec => {
+      if (rec.reportType === 'interim') return; // промежуточные отчёты не учитываются в сводке
       const reps = (rec.reportData && rec.reportData.clinicReports) || [];
       if (reps.length === 0) {
         if (allowedClinics) return; // строки без клиники скрываем при ограничении

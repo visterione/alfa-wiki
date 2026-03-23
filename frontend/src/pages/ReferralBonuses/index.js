@@ -338,7 +338,7 @@ export default function ReferralBonusesPage() {
           getClinicColor={getClinicColor}
           getClinicName={getClinicName}
           currentStep={currentStep}
-          bulkMode={currentStep === 4 && reportMode === 'bulk'}
+          bulkMode={currentStep === 4 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
           bulkSelectedIds={bulkSelectedIds}
           setBulkSelectedIds={setBulkSelectedIds}
           compareMode={currentStep === 5}

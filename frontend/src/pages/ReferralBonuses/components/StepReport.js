@@ -132,7 +132,7 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, uploadedFile, onFil
 }
 
 // ─── Individual mode ───────────────────────────────────────────────────────────
-function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
+function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = false }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -173,6 +173,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
         referralBonuses, performedDbBonuses, execSettings,
         dateFrom: dateFrom || null, dateTo: dateTo || null,
         allDoctors: doctors, savedAssistanceIncome,
+        interim,
       });
       setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     } catch (e) {
@@ -199,6 +200,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
         dateFrom: reportData.dateFrom || null,
         dateTo: reportData.dateTo || null,
         reportData: { clinicReports: reportData.clinicReports, grandTotal: reportData.grandTotal, periodLabel: reportData.periodLabel },
+        reportType: interim ? 'interim' : 'final',
         excelBase64,
       };
 
@@ -360,7 +362,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly }) {
 
 // ─── Bulk mode ─────────────────────────────────────────────────────────────────
 // Doctor selection is handled by the shared rb-panel (bulkSelectedIds from props)
-function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
+function ModeBulk({ doctors, bulkSelectedIds, readOnly, interim = false }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo]     = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
@@ -416,6 +418,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
           referralBonuses, performedDbBonuses, execSettings,
           dateFrom: dateFrom || null, dateTo: dateTo || null,
           allDoctors: doctors, savedAssistanceIncome,
+          interim,
         });
         results.push({ doctor, ...result, dateFrom, dateTo, error: null });
       } catch (e) {
@@ -453,6 +456,7 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
           misUserId: r.doctor.id, doctorName: r.doctor.name,
           dateFrom: r.dateFrom || null, dateTo: r.dateTo || null,
           reportData: { clinicReports: r.clinicReports, grandTotal: r.grandTotal, periodLabel: r.periodLabel },
+          reportType: interim ? 'interim' : 'final',
           excelBase64,
         };
         const existingId = existingMap[r.doctor.id];
@@ -670,37 +674,51 @@ function ModeBulk({ doctors, bulkSelectedIds, readOnly }) {
 }
 
 // ─── Main StepReport ───────────────────────────────────────────────────────────
+const REPORT_MODES = [
+  ['individual',         'Индивидуальный'],
+  ['bulk',               'Сводный'],
+  ['individual_interim', 'Инд. промежуточный'],
+  ['bulk_interim',       'Своднй промежуточный'],
+];
+
 export default function StepReport({ selectedDoctor, doctors, clinics, reportMode, setReportMode, bulkSelectedIds, readOnly }) {
+  const isBulk    = reportMode === 'bulk' || reportMode === 'bulk_interim';
+  const isInterim = reportMode === 'individual_interim' || reportMode === 'bulk_interim';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Mode tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid var(--rb-border)', padding: '0 16px', background: '#fff', flexShrink: 0 }}>
-        {[['individual', 'Индивидуальный'], ['bulk', 'Сводный']].map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setReportMode(key)}
-            style={{
-              padding: '10px 20px',
-              background: 'none',
-              border: 'none',
-              borderBottom: reportMode === key ? '2px solid var(--rb-primary)' : '2px solid transparent',
-              marginBottom: -2,
-              cursor: 'pointer',
-              fontWeight: reportMode === key ? 700 : 400,
-              color: reportMode === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
-              fontSize: 13,
-              transition: 'all 0.15s',
-            }}
-          >
-            {label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', borderBottom: '2px solid var(--rb-border)', padding: '0 16px', background: '#fff', flexShrink: 0, flexWrap: 'wrap' }}>
+        {REPORT_MODES.map(([key, label]) => {
+          const isInterimTab = key.includes('interim');
+          return (
+            <button
+              key={key}
+              onClick={() => setReportMode(key)}
+              style={{
+                padding: '10px 16px',
+                background: 'none',
+                border: 'none',
+                borderBottom: reportMode === key ? `2px solid ${isInterimTab ? '#d97706' : 'var(--rb-primary)'}` : '2px solid transparent',
+                marginBottom: -2,
+                cursor: 'pointer',
+                fontWeight: reportMode === key ? 700 : 400,
+                color: reportMode === key ? (isInterimTab ? '#d97706' : 'var(--rb-primary)') : 'var(--rb-text-secondary)',
+                fontSize: 13,
+                transition: 'all 0.15s',
+              }}
+            >
+              {label}
+              {isInterimTab && <span style={{ marginLeft: 5, fontSize: 10, background: '#fef3c7', color: '#92400e', borderRadius: 4, padding: '1px 5px', verticalAlign: 'middle' }}>пром.</span>}
+            </button>
+          );
+        })}
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {reportMode === 'individual'
-          ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} />
-          : <ModeBulk doctors={doctors} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} />
+        {!isBulk
+          ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} interim={isInterim} />
+          : <ModeBulk doctors={doctors} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={isInterim} />
         }
       </div>
     </div>

@@ -299,13 +299,34 @@ export function buildBulkWorkbook(bulkResults) {
     });
   }
 
+  const usedSheetNames = new Set(['Сводка']);
+  const makeSheetName = (base) => {
+    const truncated = base.substring(0, 31);
+    if (!usedSheetNames.has(truncated)) {
+      usedSheetNames.add(truncated);
+      return truncated;
+    }
+    for (let i = 2; i < 1000; i++) {
+      const suffix = ` (${i})`;
+      const candidate = base.substring(0, 31 - suffix.length) + suffix;
+      if (!usedSheetNames.has(candidate)) {
+        usedSheetNames.add(candidate);
+        return candidate;
+      }
+    }
+    return truncated;
+  };
+
   for (const r of bulkResults) {
     if (r.error || !r.clinicReports?.length) continue;
     const doctorName = r.doctor?.name || 'Врач';
-    const lastName = doctorName.split(' ')[0] || doctorName;
+    const parts = doctorName.trim().split(/\s+/);
+    const lastName = parts[0] || doctorName;
+    const initials = parts.slice(1).map(p => p[0]).filter(Boolean).join('').toUpperCase();
+    const nameTag = initials ? `${lastName} ${initials}` : lastName;
     for (const { clinicLabel, executorSections, salary } of r.clinicReports) {
-      const sheetLabel = `${lastName} - ${clinicLabel || 'Клиника'}`;
-      const sheetName = sheetLabel.substring(0, 31);
+      const sheetLabel = `${nameTag} - ${clinicLabel || 'Клиника'}`;
+      const sheetName = makeSheetName(sheetLabel);
       _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders);
     }
   }
