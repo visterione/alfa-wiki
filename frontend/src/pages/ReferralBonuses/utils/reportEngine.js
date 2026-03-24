@@ -548,11 +548,13 @@ export async function buildReport({
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
     const svcMatFinalTotal = Object.values(perfByService).reduce((sum, svc) => {
-      const matching = svcMatFinalItems.filter(sm =>
-        sm.serviceCode
-          ? rbNormalizeName(sm.serviceCode) === rbNormalizeName(svc.code)
-          : rbNormalizeName(sm.serviceName || sm.name || '') === rbNormalizeName(svc.name)
-      );
+      const matching = svcMatFinalItems.filter(sm => {
+        // Ищем по коду если оба заданы, и/или по имени — любое совпадение подходит
+        const byCode = sm.serviceCode && svc.code &&
+          rbNormalizeName(sm.serviceCode) === rbNormalizeName(svc.code);
+        const byName = rbNormalizeName(sm.serviceName || sm.name || '') === rbNormalizeName(svc.name);
+        return byCode || byName;
+      });
       const itemTotal = matching.reduce((s, m) => {
         const rub = m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value) * svc.count;
         if (rub > 0) {
@@ -569,6 +571,27 @@ export async function buildReport({
       }, 0);
       return sum + itemTotal;
     }, 0);
+
+    // Индивидуальные расходники типа "оборот" — уже учтены в бонусах, показываем как справочную строку
+    const svcMatTurnoverBreakdown = [];
+    Object.values(perfByService).forEach(svc => {
+      const mat = svcLookup(svc);
+      if (!mat) return;
+      const rub = mat.valueType === 'percent'
+        ? svc.cost * parseFloat(mat.value) / 100
+        : parseFloat(mat.value) * svc.count;
+      if (rub > 0) {
+        svcMatTurnoverBreakdown.push({
+          name: mat.name || svc.name,
+          serviceCode: svc.code,
+          serviceName: svc.name,
+          value: mat.value,
+          valueType: mat.valueType,
+          rub,
+        });
+      }
+    });
+
     const materialsTotal = finalMaterialsTotal + svcMatFinalTotal;
     const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal - svcMatFinalTotal;
 
@@ -586,7 +609,7 @@ export async function buildReport({
       materialsTotal,
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
-      svcMatFinalTotal, svcMatBreakdown,
+      svcMatFinalTotal, svcMatBreakdown, svcMatTurnoverBreakdown,
       performedServicesSum, deductionPerService, totalServiceCount,
       referralCostTotal: effectiveReferralCostTotal,
       referralCostItems, executorSections,

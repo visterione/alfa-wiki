@@ -84,6 +84,7 @@ export default function SalaryBlock({ salary }) {
     finalMaterialsTotal = 0,
     svcMatFinalTotal = 0,
     svcMatBreakdown = [],
+    svcMatTurnoverBreakdown = [],
     performedServicesSum = 0,
     referralCostTotal, executorSections = [],
     assistancePaidTotal = 0, assistanceSections = [],
@@ -108,7 +109,7 @@ export default function SalaryBlock({ salary }) {
   const hasPerformed        = (performedBonusTotal || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0;
-  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0;
+  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0;
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
   const hasAny = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome;
@@ -252,9 +253,17 @@ export default function SalaryBlock({ salary }) {
                   <td style={{ fontWeight: 600, color: 'var(--rb-danger)', textAlign: 'right' }}>−{m.rub.toFixed(2)} ₽</td>
                 </tr>
               ))}
+              {svcMatTurnoverBreakdown.map((m, i) => (
+                <tr key={`svct-${i}`} style={{ opacity: 0.7 }}>
+                  <td>{m.name}* <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>({m.serviceName || m.serviceCode})</span></td>
+                  <td><span style={{ fontSize: 10, background: '#f0fdf4', color: '#15803d', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>оборот по услуге</span></td>
+                  <td style={{ textAlign: 'right' }}>{m.valueType === 'percent' ? `${parseFloat(m.value)}%` : `${parseFloat(m.value).toFixed(2)} ₽`}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{m.rub.toFixed(2)} ₽</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          {turnoverMaterialItems.length > 0 && (
+          {(turnoverMaterialItems.length > 0 || svcMatTurnoverBreakdown.length > 0) && (
             <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingTop: 4, fontStyle: 'italic' }}>* Уже учтено при расчёте бонусов за выполнение услуг</div>
           )}
         </SalaryRow>
