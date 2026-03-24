@@ -41,6 +41,11 @@ export function rbGetClinicSettings(execData, clinicId) {
 // ── In-memory cache for executor settings (per session) ───────────────────────
 const _execCache = {};
 
+export function clearExecCache(misUserId) {
+  if (misUserId) delete _execCache[misUserId];
+  else Object.keys(_execCache).forEach(k => delete _execCache[k]);
+}
+
 export async function loadExecSettings(misUserId) {
   if (_execCache[misUserId]) return _execCache[misUserId];
   try {
@@ -353,13 +358,16 @@ export async function buildReport({
 
     const svcMatTurnoverMap = {};
     const svcMatFinalItems = [];
+    // Вспомогательная функция: ключ для поиска по коду или по имени (если код пустой)
+    const svcKey = (m) => m.serviceCode ? rbNormalizeName(m.serviceCode) : ('name:' + rbNormalizeName(m.serviceName || m.name || ''));
+    const svcLookup = (svc) => svcMatTurnoverMap[rbNormalizeName(svc.code)] || svcMatTurnoverMap['name:' + rbNormalizeName(svc.name)];
     execServiceMaterials.forEach(m => {
       if (m.deductionType === 'final') { svcMatFinalItems.push(m); }
-      else if (m.serviceCode) { svcMatTurnoverMap[rbNormalizeName(m.serviceCode)] = m; }
+      else { svcMatTurnoverMap[svcKey(m)] = m; }
     });
 
-    const nonOverrideSum   = Object.values(perfByService).reduce((s, svc) => svcMatTurnoverMap[rbNormalizeName(svc.code)] ? s : s + svc.cost, 0);
-    const nonOverrideCount = Object.values(perfByService).reduce((s, svc) => svcMatTurnoverMap[rbNormalizeName(svc.code)] ? s : s + svc.count, 0);
+    const nonOverrideSum   = Object.values(perfByService).reduce((s, svc) => svcLookup(svc) ? s : s + svc.cost, 0);
+    const nonOverrideCount = Object.values(perfByService).reduce((s, svc) => svcLookup(svc) ? s : s + svc.count, 0);
     const turnoverDeductionsTotal = turnoverDeductions.reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
     const turnoverMaterialsTotal  = turnoverMaterials.reduce((s, m) => s + calcItemRub(m, nonOverrideSum), 0);
     const globalDeductionPerOccurrence = totalServiceCount > 0 ? turnoverDeductionsTotal / totalServiceCount : 0;
@@ -373,7 +381,7 @@ export async function buildReport({
     const performedSections = Object.values(perfByService).map(s => {
       let bonusAmount = 0;
       const bonusLabels = new Set();
-      const svcOverrideMat = svcMatTurnoverMap[rbNormalizeName(s.code)];
+      const svcOverrideMat = svcLookup(s);
 
       (s._rows || [{ cost: s.cost, cabinet: '' }]).forEach(row => {
         const cab = row.cabinet || '';
@@ -540,7 +548,11 @@ export async function buildReport({
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
     const svcMatFinalTotal = Object.values(perfByService).reduce((sum, svc) => {
-      const matching = svcMatFinalItems.filter(sm => rbNormalizeName(sm.serviceCode) === rbNormalizeName(svc.code));
+      const matching = svcMatFinalItems.filter(sm =>
+        sm.serviceCode
+          ? rbNormalizeName(sm.serviceCode) === rbNormalizeName(svc.code)
+          : rbNormalizeName(sm.serviceName || sm.name || '') === rbNormalizeName(svc.name)
+      );
       const itemTotal = matching.reduce((s, m) => {
         const rub = m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value) * svc.count;
         if (rub > 0) {

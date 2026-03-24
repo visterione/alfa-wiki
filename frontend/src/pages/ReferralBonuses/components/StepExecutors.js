@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { executorSettings } from '../../../services/api';
+import { clearExecCache } from '../utils/reportEngine';
 
 const EXEC_DEDUCTION_SUGGESTS = ['Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
 const EXEC_MATERIAL_SUGGESTS  = ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'];
@@ -268,6 +269,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     try {
       const toSave = dataOverride || execData;
       await executorSettings.save({ misUserId: selectedDoctor.id, doctorName: selectedDoctor.name, settings: toSave });
+      clearExecCache(selectedDoctor.id);
       toast.success('Сохранено');
     } catch {
       toast.error('Ошибка сохранения');
