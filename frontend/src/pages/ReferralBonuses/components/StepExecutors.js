@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { executorSettings } from '../../../services/api';
+import { executorSettings, performedServiceBonuses } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 
 const EXEC_DEDUCTION_SUGGESTS = ['Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
@@ -102,28 +102,32 @@ function SvcMaterialsList({ items, onDelete, readOnly }) {
   }
   return (
     <div className="rb-exec-items">
-      {items.map((item, i) => (
-        <div key={i} className="rb-exec-item">
-          <div className="rb-exec-item-name">
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>{item.serviceName || item.serviceCode}</span>
-            {' — '}
-            {item.name}
-            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-              {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
-            </span>
-            {item.deductionType === 'turnover' && (
-              <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
+      {items.map((item, i) => {
+        const svcLabel = item.serviceName || item.serviceCode || '—';
+        const matLabel = item.name && item.name !== svcLabel ? item.name : null;
+        return (
+          <div key={i} className="rb-exec-item">
+            <div className="rb-exec-item-name">
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>{svcLabel}</span>
+              {matLabel && <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{' → '}{matLabel}</span>}
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
+              </span>
+              {item.deductionType === 'turnover'
+                ? <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
+                : <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#fff7ed', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
+              }
+            </div>
+            {!readOnly && (
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             )}
           </div>
-          {!readOnly && (
-            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -168,7 +172,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly }) {
                 </div>
               </div>
             </div>
-            {section === 'deductions' && (
+            {(section === 'deductions' || section === 'materials') && (
               <div className="rb-exec-add-field">
                 <label>Тип</label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -209,28 +213,42 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     if (!selectedDoctor) return;
     setLoading(true);
     setActiveClinic('global');
-    executorSettings.get(selectedDoctor.id)
-      .then(res => {
-        const raw = res.data;
-        if (!raw || !Object.keys(raw).length) {
-          setExecData(execDefault());
-        } else if (!raw.clinicSettings) {
-          // Old format migration
-          const global = execClinicDefault();
-          global.deductions = raw.deductions || [];
-          global.materials  = raw.materials  || [];
-          global.extras     = raw.extras     || [];
-          global.payType = 'salary';
-          global.fixedSalary = raw.wage || raw.payment || 0;
-          global.advance     = raw.advance || 0;
-          global.paymentMethod = raw.method || 'card';
-          setExecData({ clinicSettings: { global } });
-        } else {
-          setExecData(raw);
+    setDoctorServices([]);
+    Promise.all([
+      executorSettings.get(selectedDoctor.id),
+      performedServiceBonuses.getByDoctor(selectedDoctor.id).catch(() => ({ data: [] })),
+    ]).then(([settingsRes, bonusRes]) => {
+      const raw = settingsRes.data;
+      if (!raw || !Object.keys(raw).length) {
+        setExecData(execDefault());
+      } else if (!raw.clinicSettings) {
+        // Old format migration
+        const global = execClinicDefault();
+        global.deductions = raw.deductions || [];
+        global.materials  = raw.materials  || [];
+        global.extras     = raw.extras     || [];
+        global.payType = 'salary';
+        global.fixedSalary = raw.wage || raw.payment || 0;
+        global.advance     = raw.advance || 0;
+        global.paymentMethod = raw.method || 'card';
+        setExecData({ clinicSettings: { global } });
+      } else {
+        setExecData(raw);
+      }
+      const bonuses = Array.isArray(bonusRes.data) ? bonusRes.data : [];
+      const seen = new Set();
+      const svcs = [];
+      bonuses.forEach(b => {
+        const key = b.serviceCode || b.serviceName;
+        if (key && !seen.has(key)) {
+          seen.add(key);
+          svcs.push({ code: b.serviceCode || '', name: b.serviceName || b.serviceCode || '' });
         }
-      })
-      .catch(() => setExecData(execDefault()))
-      .finally(() => setLoading(false));
+      });
+      setDoctorServices(svcs);
+    })
+    .catch(() => setExecData(execDefault()))
+    .finally(() => setLoading(false));
   }, [selectedDoctor]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -443,7 +461,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   // ── SvcMaterial add form state ────────────────────────────────────────────
-  const [svcMatForm, setSvcMatForm] = useState({ name: '', value: '', valueType: 'percent', deductionType: 'final' });
+  const [svcMatForm, setSvcMatForm] = useState({ serviceName: '', serviceCode: '', materialName: '', value: '', valueType: 'percent', deductionType: 'final' });
+  const [doctorServices, setDoctorServices] = useState([]);
 
   // ─────────────────────────────────────────────────────────────────────────
   if (!selectedDoctor) {
@@ -749,7 +768,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Для выбранных услуг применяется своё значение вместо общего</div>
               <SvcMaterialsList items={data.serviceMaterials || []} onDelete={handleDeleteSvcMaterial} readOnly={readOnly} />
               {/* Simplified add form for svc materials */}
-              <SvcMaterialAddForm suggests={EXEC_MATERIAL_SUGGESTS} form={svcMatForm} setForm={setSvcMatForm} onAdd={handleAddSvcMaterial} readOnly={readOnly} />
+              <SvcMaterialAddForm suggests={EXEC_MATERIAL_SUGGESTS} form={svcMatForm} setForm={setSvcMatForm} onAdd={handleAddSvcMaterial} readOnly={readOnly} doctorServices={doctorServices} />
             </div>
           </div>
         </div>
@@ -832,32 +851,96 @@ function ExtraAddForm({ suggests, form, setForm, onAdd, readOnly }) {
 
 // ─── Svc material add form ────────────────────────────────────────────────────
 
-function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly }) {
+function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly, doctorServices }) {
   const [visible, setVisible] = useState(false);
+  const [svcOpen, setSvcOpen] = useState(false);
+  const [svcSuggestions, setSvcSuggestions] = useState([]);
   if (readOnly) return null;
+
+  const handleSvcInput = (val) => {
+    setForm(f => ({ ...f, serviceName: val }));
+    if (val.length >= 1 && doctorServices && doctorServices.length > 0) {
+      const q = val.toLowerCase();
+      const matches = doctorServices.filter(s =>
+        s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
+      ).slice(0, 10);
+      setSvcSuggestions(matches);
+      setSvcOpen(matches.length > 0);
+    } else {
+      setSvcSuggestions([]);
+      setSvcOpen(false);
+    }
+  };
+
+  const handleSvcSelect = (svc) => {
+    setForm(f => ({ ...f, serviceName: svc.name, serviceCode: svc.code }));
+    setSvcSuggestions([]);
+    setSvcOpen(false);
+  };
 
   const handleAdd = () => {
     const value = parseFloat(form.value);
-    if (!form.name.trim()) { toast.error('Укажите название'); return; }
+    if (!(form.serviceName || '').trim()) { toast.error('Укажите услугу из Excel'); return; }
     if (isNaN(value) || value < 0) { toast.error('Укажите значение'); return; }
-    // serviceCode/serviceName left blank — user can add them as part of the name
-    onAdd({ serviceCode: '', serviceName: form.name.trim(), name: form.name.trim(), value, valueType: form.valueType, deductionType: form.deductionType });
-    setForm({ name: '', value: '', valueType: 'percent', deductionType: 'final' });
+    const serviceName = form.serviceName.trim();
+    const serviceCode = (form.serviceCode || '').trim();
+    const materialName = (form.materialName || '').trim() || serviceName;
+    onAdd({ serviceCode, serviceName, name: materialName, value, valueType: form.valueType, deductionType: form.deductionType });
+    setForm({ serviceName: '', serviceCode: '', materialName: '', value: '', valueType: 'percent', deductionType: 'final' });
+    setSvcOpen(false);
   };
 
   return (
     <div>
       {visible && (
         <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
-          <div className="rb-exec-suggests" style={{ marginBottom: 8 }}>
-            {suggests.map(s => (
-              <span key={s} className="rb-exec-suggest" onClick={() => setForm(f => ({ ...f, name: s }))}>{s}</span>
-            ))}
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, lineHeight: 1.4 }}>
+            <strong>Услуга</strong> — точное название как в Excel-файле (используется для сопоставления).
+            <br/><strong>Расходник</strong> — отображаемое название в отчёте (можно оставить пустым).
           </div>
-          <div className="rb-exec-add-row">
-            <div className="rb-exec-add-field flex-grow">
-              <label>Материал / услуга</label>
-              <input type="text" placeholder="Название..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          <div className="rb-exec-add-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+            <div className="rb-exec-add-field flex-grow" style={{ position: 'relative', minWidth: 160 }}>
+              <label>Услуга (как в Excel) <span style={{ color: 'var(--rb-danger)' }}>*</span></label>
+              <input
+                type="text"
+                placeholder="Название услуги..."
+                value={form.serviceName || ''}
+                onChange={e => handleSvcInput(e.target.value)}
+                onBlur={() => setTimeout(() => setSvcOpen(false), 150)}
+                onFocus={() => svcSuggestions.length > 0 && setSvcOpen(true)}
+              />
+              {svcOpen && svcSuggestions.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', zIndex: 200, maxHeight: 180, overflowY: 'auto' }}>
+                  {svcSuggestions.map((s, i) => (
+                    <div
+                      key={i}
+                      onMouseDown={() => handleSvcSelect(s)}
+                      style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}
+                    >
+                      {s.code && <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#94a3b8', marginRight: 6 }}>{s.code}</span>}
+                      {s.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="rb-exec-add-field flex-grow" style={{ minWidth: 130 }}>
+              <label>Название расходника</label>
+              <div>
+                <div className="rb-exec-suggests" style={{ marginBottom: 4 }}>
+                  {suggests.map(s => (
+                    <span key={s} className="rb-exec-suggest" onMouseDown={() => setForm(f => ({ ...f, materialName: s }))}>{s}</span>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Необязательно..."
+                  value={form.materialName || ''}
+                  onChange={e => setForm(f => ({ ...f, materialName: e.target.value }))}
+                />
+              </div>
             </div>
             <div className="rb-exec-add-field">
               <label>Значение</label>
