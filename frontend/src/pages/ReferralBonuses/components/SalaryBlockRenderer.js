@@ -85,6 +85,7 @@ export default function SalaryBlock({ salary }) {
     svcMatFinalTotal = 0,
     svcMatBreakdown = [],
     svcMatTurnoverBreakdown = [],
+    serviceMaterials = [],
     performedServicesSum = 0,
     referralCostTotal, executorSections = [],
     assistancePaidTotal = 0, assistanceSections = [],
@@ -109,7 +110,7 @@ export default function SalaryBlock({ salary }) {
   const hasPerformed        = (performedBonusTotal || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0;
-  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0;
+  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0;
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
   const hasAny = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome;
@@ -223,7 +224,7 @@ export default function SalaryBlock({ salary }) {
           label="Чистый расход на материалы"
           value={`−${fmtRub(finalMaterialsTotal + svcMatFinalTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0}
+          expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0}
         >
           <table className="rb-report-table">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
@@ -265,6 +266,12 @@ export default function SalaryBlock({ salary }) {
           </table>
           {(turnoverMaterialItems.length > 0 || svcMatTurnoverBreakdown.length > 0) && (
             <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingTop: 4, fontStyle: 'italic' }}>* Уже учтено при расчёте бонусов за выполнение услуг</div>
+          )}
+          {serviceMaterials.length > 0 && svcMatBreakdown.length === 0 && svcMatTurnoverBreakdown.length === 0 && (
+            <div style={{ fontSize: 11, color: '#d97706', paddingTop: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              Индивидуальные расходники настроены ({serviceMaterials.length} шт.), но ни один не совпал с услугами в Excel. Проверьте точность названий услуг.
+            </div>
           )}
         </SalaryRow>
       )}

@@ -610,6 +610,7 @@ export async function buildReport({
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
       svcMatFinalTotal, svcMatBreakdown, svcMatTurnoverBreakdown,
+      serviceMaterials: execServiceMaterials,
       performedServicesSum, deductionPerService, totalServiceCount,
       referralCostTotal: effectiveReferralCostTotal,
       referralCostItems, executorSections,
