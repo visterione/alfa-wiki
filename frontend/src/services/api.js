@@ -586,6 +586,12 @@ export const mis = {
   getServicesByCategory: (categoryId) => api.post('/mis/get-services', { category_id: categoryId, show_children: true }),
 };
 
+export const hourNorms = {
+  get: (year, month) => api.get('/hour-norms', { params: { year, month } }),
+  getPeriods: () => api.get('/hour-norms/periods'),
+  saveBulk: (year, month, norms) => api.post('/hour-norms/bulk', { year, month, norms }),
+};
+
 export const referralReports = {
   list: (params) => api.get('/referral-reports', { params }),
   get: (id) => api.get(`/referral-reports/${id}`),

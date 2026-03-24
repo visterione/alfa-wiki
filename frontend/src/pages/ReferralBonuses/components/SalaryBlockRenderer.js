@@ -82,6 +82,8 @@ export default function SalaryBlock({ salary }) {
     extrasTotal,
     finalDeductionsTotal = 0,
     finalMaterialsTotal = 0,
+    svcMatFinalTotal = 0,
+    svcMatBreakdown = [],
     performedServicesSum = 0,
     referralCostTotal, executorSections = [],
     assistancePaidTotal = 0, assistanceSections = [],
@@ -106,7 +108,7 @@ export default function SalaryBlock({ salary }) {
   const hasPerformed        = (performedBonusTotal || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0;
-  const hasMaterials        = finalMaterialsTotal > 0 || turnoverMaterialItems.length > 0;
+  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0;
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
   const hasAny = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome;
@@ -217,10 +219,10 @@ export default function SalaryBlock({ salary }) {
       {hasMaterials && (
         <SalaryRow
           icon="−"
-          label="Материалы"
-          value={`−${fmtRub(finalMaterialsTotal)}`}
+          label="Чистый расход на материалы"
+          value={`−${fmtRub(finalMaterialsTotal + svcMatFinalTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0}
+          expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0}
         >
           <table className="rb-report-table">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
@@ -242,6 +244,14 @@ export default function SalaryBlock({ salary }) {
                   </tr>
                 );
               })}
+              {svcMatBreakdown.map((m, i) => (
+                <tr key={`svc-${i}`}>
+                  <td>{m.name} <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>({m.serviceName || m.serviceCode})</span></td>
+                  <td><span style={{ fontSize: 10, background: '#fdf4ff', color: '#7e22ce', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>по услуге</span></td>
+                  <td style={{ textAlign: 'right' }}>{m.valueType === 'percent' ? `${parseFloat(m.value)}%` : `${parseFloat(m.value).toFixed(2)} ₽`}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-danger)', textAlign: 'right' }}>−{m.rub.toFixed(2)} ₽</td>
+                </tr>
+              ))}
             </tbody>
           </table>
           {turnoverMaterialItems.length > 0 && (

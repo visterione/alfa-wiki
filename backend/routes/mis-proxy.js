@@ -76,17 +76,10 @@ router.post('/doctor-info', authenticate, async (req, res) => {
   }
 });
 
-// Поиск/список врачей - поддержка нескольких ролей (doctor, sender, assistant)
+// Поиск/список сотрудников — если roles не передан, тянем всех без фильтра по роли
 router.post('/doctors', authenticate, async (req, res) => {
   try {
     const { clinic_id, profession_id, show_all, roles } = req.body;
-
-    // По умолчанию только doctor; можно передать массив roles для расширения
-    const roleList = Array.isArray(roles) && roles.length > 0
-      ? roles
-      : ['doctor'];
-
-    console.log('👨‍⚕️ Запрос списка врачей, роли:', roleList);
 
     const baseParams = {
       with_services: 1,
@@ -95,10 +88,18 @@ router.post('/doctors', authenticate, async (req, res) => {
     if (clinic_id) baseParams.clinic_id = clinic_id;
     if (profession_id) baseParams.profession_id = profession_id;
 
-    // Параллельные запросы для каждой роли
-    const results = await Promise.all(
-      roleList.map(role => misRequest('getUsers', { ...baseParams, role }))
-    );
+    let results;
+    if (Array.isArray(roles) && roles.length > 0) {
+      // Параллельные запросы для каждой роли
+      console.log('👨‍⚕️ Запрос сотрудников по ролям:', roles);
+      results = await Promise.all(
+        roles.map(role => misRequest('getUsers', { ...baseParams, role }))
+      );
+    } else {
+      // Все сотрудники без фильтра по роли
+      console.log('👨‍⚕️ Запрос всех сотрудников');
+      results = [await misRequest('getUsers', baseParams)];
+    }
 
     // Объединяем и дедублируем по id
     const merged = [];

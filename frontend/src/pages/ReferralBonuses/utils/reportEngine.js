@@ -538,9 +538,24 @@ export async function buildReport({
     const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
+    const svcMatBreakdown = [];
     const svcMatFinalTotal = Object.values(perfByService).reduce((sum, svc) => {
       const matching = svcMatFinalItems.filter(sm => rbNormalizeName(sm.serviceCode) === rbNormalizeName(svc.code));
-      return sum + matching.reduce((s, m) => s + (m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value) * svc.count), 0);
+      const itemTotal = matching.reduce((s, m) => {
+        const rub = m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value) * svc.count;
+        if (rub > 0) {
+          svcMatBreakdown.push({
+            name: m.name || svc.name,
+            serviceCode: svc.code,
+            serviceName: svc.name,
+            value: m.value,
+            valueType: m.valueType,
+            rub,
+          });
+        }
+        return s + rub;
+      }, 0);
+      return sum + itemTotal;
     }, 0);
     const materialsTotal = finalMaterialsTotal + svcMatFinalTotal;
     const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal - svcMatFinalTotal;
@@ -559,6 +574,7 @@ export async function buildReport({
       materialsTotal,
       turnoverDeductionsTotal, finalDeductionsTotal,
       turnoverMaterialsTotal, finalMaterialsTotal,
+      svcMatFinalTotal, svcMatBreakdown,
       performedServicesSum, deductionPerService, totalServiceCount,
       referralCostTotal: effectiveReferralCostTotal,
       referralCostItems, executorSections,

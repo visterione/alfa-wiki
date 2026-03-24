@@ -6,6 +6,7 @@ import './ReferralBonuses.css';
 import { mis, referralBonuses as rbApi } from '../../services/api';
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS } from './utils/clinicUtils';
 import StepExecutors from './components/StepExecutors';
+import StepHourNorms from './components/StepHourNorms';
 import StepPerformed from './components/StepPerformed';
 import StepReferral from './components/StepReferral';
 import StepReport from './components/StepReport';
@@ -16,22 +17,25 @@ import StepSummary from './components/StepSummary';
 // WIZARD STEP ICONS
 // ═══════════════════════════════════════
 const STEP_ICONS = [
-  // Step 1: Врачи
+  // Step 1: Сотрудники
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  // Step 2: Выполненные услуги
+  // Step 2: Норма часов
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  // Step 3: Выполненные услуги
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4.5 8-11.8A8 8 0 0 0 12 2a8 8 0 0 0-8 8.2c0 7.3 8 11.8 8 11.8z"/></svg>,
-  // Step 3: Бонусы за направления
+  // Step 4: Бонусы за направления
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
-  // Step 4: Отчёт
+  // Step 5: Отчёт
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
-  // Step 5: История зарплат
+  // Step 6: История зарплат
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
-  // Step 6: Сводка
+  // Step 7: Сводка
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>,
 ];
 
 const STEP_LABELS = [
-  'Врачи',
+  'Сотрудники',
+  'Норма часов',
   'Выполненные услуги',
   'Бонусы за направления',
   'Отчёт',
@@ -68,6 +72,7 @@ export default function ReferralBonusesPage() {
   // ── Filters (left panel) ──
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClinic, setFilterClinic] = useState('');
+  const [filterRole, setFilterRole] = useState('');
   const [filterProfession, setFilterProfession] = useState('');
 
   // ── Selected doctor ──
@@ -93,7 +98,7 @@ export default function ReferralBonusesPage() {
 
   // ── Permissions ──
   const [permissions, setPermissions] = useState({
-    tab1: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: []
+    tab1: 'edit', tabHourNorms: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: []
   });
 
   // ── Step 4: for jumping from step 3 to step 4 with a pre-selected doctor ──
@@ -127,7 +132,7 @@ export default function ReferralBonusesPage() {
   useEffect(() => {
     setDoctorsLoading(true);
     setDoctorsError(null);
-    mis.getDoctors({ show_all: true, roles: ['doctor', 'sender', 'assistant'] })
+    mis.getDoctors({ show_all: true })
       .then(res => {
         const data = res.data;
         if (data?.error !== 0 || !Array.isArray(data?.data)) {
@@ -147,10 +152,19 @@ export default function ReferralBonusesPage() {
           if (!Array.isArray(rawClinics)) {
             rawClinics = String(rawClinics).split(',').map(x => x.trim()).filter(Boolean);
           }
+          let roles = [];
+          if (d.role_titles) {
+            roles = String(d.role_titles).split(',').map(s => s.trim()).filter(Boolean);
+          } else if (Array.isArray(d.role_names) && d.role_names.length > 0) {
+            roles = d.role_names;
+          } else if (d.role) {
+            roles = [d.role];
+          }
           return {
             id: String(d.id),
             name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
             professions,
+            roles,
             clinics: rawClinics.map(rbClinicId),
           };
         });
@@ -168,9 +182,15 @@ export default function ReferralBonusesPage() {
     if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterClinic && !d.clinics.includes(String(filterClinic))) return false;
+    if (filterRole && !d.roles.includes(filterRole)) return false;
     if (filterProfession && !d.professions.some(p => rbProfessionTitle(p) === filterProfession)) return false;
     return true;
   });
+
+  // ── All unique roles ──
+  const allRoles = [...new Set(
+    doctors.flatMap(d => d.roles)
+  )].sort();
 
   // ── All unique professions ──
   const allProfessions = [...new Set(
@@ -194,22 +214,23 @@ export default function ReferralBonusesPage() {
     setSelectedDoctor(doctor || null);
   }, [doctors]);
 
-  // ── Navigate to step 4 with pre-selected doctor (from step 3 "Create report" button) ──
+  // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
     setPreselectedReportDoctorId(misUserId);
-    setCurrentStep(4);
+    setCurrentStep(5);
   }, []);
 
   // ── Wizard navigation ──
   const goToStep = useCallback((step) => {
     setCurrentStep(step);
-    if (step !== 4) setPreselectedReportDoctorId(null);
+    if (step !== 5) setPreselectedReportDoctorId(null);
   }, []);
 
   // ── Rendered step ──
   const sharedProps = {
     doctors,
     filteredDoctors,
+    allProfessions,
     clinics,
     selectedDoctor,
     onSelectDoctor: handleSelectDoctor,
@@ -227,7 +248,7 @@ export default function ReferralBonusesPage() {
     pinnedForCompare,
   };
 
-  const TAB_KEYS = ['tab1', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
+  const TAB_KEYS = ['tab1', 'tabHourNorms', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
 
   const canViewStep = (step) => {
     const perm = permissions[TAB_KEYS[step - 1]];
@@ -251,14 +272,16 @@ export default function ReferralBonusesPage() {
       case 1:
         return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
       case 2:
-        return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(2)} />;
+        return <StepHourNorms readOnly={isStepReadOnly(2)} />;
       case 3:
-        return <StepReferral {...sharedProps} readOnly={isStepReadOnly(3)} />;
+        return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(3)} />;
       case 4:
-        return <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} readOnly={isStepReadOnly(4)} />;
+        return <StepReferral {...sharedProps} readOnly={isStepReadOnly(4)} />;
       case 5:
-        return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(5)} />;
+        return <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} readOnly={isStepReadOnly(5)} />;
       case 6:
+        return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(6)} />;
+      case 7:
         return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} permissions={permissions} />;
       default:
         return null;
@@ -317,9 +340,9 @@ export default function ReferralBonusesPage() {
       </div>
 
       {/* Step Content */}
-      <div className="rb-layout" style={currentStep === 6 ? { gridTemplateColumns: '1fr' } : undefined}>
+      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
-        {currentStep !== 6 && <DoctorsList
+        {currentStep !== 7 && currentStep !== 2 && <DoctorsList
           doctors={filteredDoctors}
           allDoctors={doctors}
           clinics={clinics}
@@ -331,6 +354,9 @@ export default function ReferralBonusesPage() {
           setSearchQuery={setSearchQuery}
           filterClinic={filterClinic}
           setFilterClinic={setFilterClinic}
+          filterRole={filterRole}
+          setFilterRole={setFilterRole}
+          allRoles={allRoles}
           filterProfession={filterProfession}
           setFilterProfession={setFilterProfession}
           allProfessions={allProfessions}
@@ -365,6 +391,7 @@ function DoctorsList({
   selectedDoctor, onSelect,
   searchQuery, setSearchQuery,
   filterClinic, setFilterClinic,
+  filterRole, setFilterRole, allRoles,
   filterProfession, setFilterProfession,
   allProfessions, bonusCounts,
   getClinicColor, getClinicName,
@@ -393,7 +420,7 @@ function DoctorsList({
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          Врачи
+          Сотрудники
         </div>
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
           {bulkMode && bulkSelectedIds.size > 0
@@ -417,6 +444,10 @@ function DoctorsList({
         <select className="rb-select" value={filterClinic} onChange={e => setFilterClinic(e.target.value)}>
           <option value="">Все медцентры</option>
           {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select className="rb-select" value={filterRole} onChange={e => setFilterRole(e.target.value)}>
+          <option value="">Все должности</option>
+          {allRoles.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <select className="rb-select" value={filterProfession} onChange={e => setFilterProfession(e.target.value)}>
           <option value="">Все специальности</option>
