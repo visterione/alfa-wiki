@@ -3,8 +3,9 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import './ReferralBonuses.css';
-import { mis, referralBonuses as rbApi } from '../../services/api';
+import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } from '../../services/api';
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS } from './utils/clinicUtils';
+import { clearExecCache } from './utils/reportEngine';
 import StepExecutors from './components/StepExecutors';
 import StepHourNorms from './components/StepHourNorms';
 import StepPerformed from './components/StepPerformed';
@@ -214,6 +215,18 @@ export default function ReferralBonusesPage() {
     setSelectedDoctor(doctor || null);
   }, [doctors]);
 
+  // ── Global reset all unlocked items ──
+  const handleGlobalReset = useCallback(async () => {
+    if (!window.confirm('Сбросить все незафиксированные записи у ВСЕХ врачей? Это действие нельзя отменить.')) return;
+    try {
+      await execSettingsApi.resetAll();
+      clearExecCache();
+      toast.success('Незафиксированные записи сброшены у всех врачей');
+    } catch {
+      toast.error('Ошибка глобального сброса');
+    }
+  }, []);
+
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
     setPreselectedReportDoctorId(misUserId);
@@ -370,6 +383,7 @@ export default function ReferralBonusesPage() {
           compareMode={currentStep === 6}
           pinnedForCompare={pinnedForCompare}
           togglePinCompare={togglePinCompare}
+          onGlobalReset={currentStep === 1 && !isStepReadOnly(1) ? handleGlobalReset : null}
         />}
         {/* Right: Step content */}
         <div className="rb-detail-panel">
@@ -398,6 +412,7 @@ function DoctorsList({
   currentStep,
   bulkMode, bulkSelectedIds, setBulkSelectedIds,
   compareMode, pinnedForCompare, togglePinCompare,
+  onGlobalReset,
 }) {
   const toggleBulk = (id) => {
     setBulkSelectedIds(prev => {
@@ -468,6 +483,16 @@ function DoctorsList({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="4" y1="4" x2="4" y2="20"/><line x1="20" y1="4" x2="20" y2="20"/><path d="M4 12h16"/></svg>
             {pinCount === 0 ? 'Закрепите двух врачей для сравнения' : pinCount === 1 ? 'Выберите второго врача' : 'Нажмите на метку, чтобы снять'}
           </div>
+        )}
+
+        {onGlobalReset && (
+          <button
+            className="rb-btn rb-btn-danger rb-btn-xs"
+            style={{ width: '100%', marginTop: 2 }}
+            onClick={onGlobalReset}
+          >
+            🗑 Сбросить всех врачей
+          </button>
         )}
       </div>
 

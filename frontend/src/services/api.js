@@ -565,6 +565,7 @@ export const performedServiceBonuses = {
 export const executorSettings = {
   get: (misUserId) => api.get('/executor-settings', { params: { misUserId } }),
   save: (data) => api.post('/executor-settings', data),
+  resetAll: () => api.post('/executor-settings/reset-all'),
 };
 
 export const salaryRecords = {
