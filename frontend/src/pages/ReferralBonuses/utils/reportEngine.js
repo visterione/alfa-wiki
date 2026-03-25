@@ -34,8 +34,10 @@ export function execClinicDefault() {
 
 export function rbGetClinicSettings(execData, clinicId) {
   const cs = execData?.clinicSettings || {};
-  if (clinicId && cs[clinicId]) return cs[clinicId];
-  return cs['global'] || execClinicDefault();
+  const found = (clinicId && cs[clinicId]) || cs['global'];
+  if (!found) return execClinicDefault();
+  // Merge with defaults so fields added later (e.g. includeCorpInvoices) are always present
+  return { ...execClinicDefault(), ...found };
 }
 
 // ── In-memory cache for executor settings (per session) ───────────────────────
@@ -227,7 +229,14 @@ export async function buildReport({
     const _corpOk = r => {
       if (!colMap.invoiceType) return true;
       const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
-      return (t === 'юр. компания' || t === 'юр.компания') ? !!clinicSettings.includeCorpInvoices : true;
+      if (t !== 'юр. компания' && t !== 'юр.компания') return true;
+      // Per-service corp check from StepPerformed checkboxes
+      const corpMap = execSettings?.corpIncludedServices;
+      if (corpMap != null) {
+        const code = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+        return corpMap[code] !== false;
+      }
+      return !!clinicSettings.includeCorpInvoices;
     };
 
     // 1. Rows where doctor is referrer
