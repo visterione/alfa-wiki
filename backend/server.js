@@ -306,6 +306,13 @@ async function startServer() {
     // Initialize review auto-archive cron job (daily at 04:00 MSK)
     require('./cron/reviewArchiveCron');
 
+    // Initialize missed calls polling cron job (every minute, polls Nextcloud for ATC data)
+    require('./cron/missedCallsCron');
+
+    // Ensure АТС bot user exists
+    const { initMissedCallsBot } = require('./services/notificationService');
+    await initMissedCallsBot();
+
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`✅ Socket.IO initialized`);

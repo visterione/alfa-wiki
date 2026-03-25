@@ -192,11 +192,13 @@ export const chat = {
   getMessages: (chatId, params) => api.get(`/chat/${chatId}/messages`, { params }),
   getUsers: () => api.get('/chat/users'),
   getBots: () => api.get('/chat/bots'),
-  sendMessage: (chatId, content, attachments = []) => {
-    const type = attachments.length > 0 
+  sendMessage: (chatId, content, attachments = [], replyToId = null) => {
+    const type = attachments.length > 0
       ? (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file')
       : 'text';
-    return api.post(`/chat/${chatId}/messages`, { content, type, attachments });
+    const body = { content, type, attachments };
+    if (replyToId) body.replyToId = replyToId;
+    return api.post(`/chat/${chatId}/messages`, body);
   },
   markAsRead: (chatId) => api.post(`/chat/${chatId}/read`),
   

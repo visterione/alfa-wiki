@@ -332,6 +332,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
 
   const autoSaveTimerRef = useRef(null);
   const handleSaveAllRef = useRef(null);
+  const fullExecDataRef = useRef(null);
+  fullExecDataRef.current = fullExecData;
 
   const loadBonuses = useCallback(async () => {
     if (!selectedDoctor) return;
@@ -464,6 +466,22 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     autoSaveTimerRef.current = setTimeout(() => handleSaveAllRef.current?.(), 1500);
   }, []);
 
+  // Save corp map immediately to executor settings (separate from bonus save)
+  const handleCorpSave = useCallback(async (newCorpMap) => {
+    if (!selectedDoctor) return;
+    const newExecData = { ...(fullExecDataRef.current || {}), corpIncludedServices: newCorpMap };
+    try {
+      await executorSettings.save({
+        misUserId: selectedDoctor.id,
+        doctorName: selectedDoctor.name,
+        settings: newExecData,
+      });
+      setFullExecData(newExecData);
+    } catch {
+      toast.error('Ошибка сохранения Юр. комп.');
+    }
+  }, [selectedDoctor]);
+
   const filteredServices = services.filter(svc => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
@@ -488,12 +506,13 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
 
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
 
-  const allCorpIncluded = services.length > 0 && services.every(s => !!corpMap[s.code]);
-  const someCorpIncluded = services.some(s => !!corpMap[s.code]);
+  const allCorpIncluded = services.length > 0 && services.every(s => corpMap[s.code] !== false);
+  const someCorpIncluded = services.some(s => corpMap[s.code] !== false);
   const handleToggleAllCorp = () => {
     const next = {};
     services.forEach(s => { next[s.code] = !allCorpIncluded; });
     setCorpMap(next);
+    handleCorpSave(next);
   };
 
   return (
@@ -596,8 +615,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                         onRowChange={(code, type, val) => { setRowValues(prev => ({ ...prev, [code]: { type, val } })); triggerAutoSave(); }}
                         misUserId={selectedDoctor.id}
                         doctorName={selectedDoctor.name}
-                        corpIncluded={!!corpMap[svc.code]}
-                        onCorpToggle={(code) => { setCorpMap(prev => ({ ...prev, [code]: !prev[code] })); triggerAutoSave(); }}
+                        corpIncluded={corpMap[svc.code] !== false}
+                        onCorpToggle={(code) => { const newMap = { ...corpMap, [code]: corpMap[code] === false }; setCorpMap(newMap); handleCorpSave(newMap); }}
                       />
                     );
                   })}

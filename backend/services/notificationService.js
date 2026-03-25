@@ -9,6 +9,9 @@ const ASSISTANT_ID = '00000000-0000-0000-0000-000000000001';
 // ID Бота для работы с негативом (Reviews)
 const REVIEWS_BOT_ID = '00000000-0000-0000-0000-000000000002';
 
+// ID Бота АТС — пропущенные звонки
+const MISSED_CALLS_BOT_ID = '00000000-0000-0000-0000-000000000003';
+
 let io = null;
 
 /**
@@ -178,6 +181,88 @@ async function sendMessageToUser(userId, messageText, metadata = {}) {
  */
 async function sendReviewsBotMessage(userId, messageText, metadata = {}) {
   return sendMessageFromBot(userId, messageText, metadata, REVIEWS_BOT_ID, getOrCreateReviewsChat);
+}
+
+/**
+ * Инициализация бота АТС (создаёт пользователя-бота если его нет)
+ */
+async function initMissedCallsBot() {
+  let bot = await User.findByPk(MISSED_CALLS_BOT_ID);
+  if (!bot) {
+    const bcrypt = require('bcryptjs');
+    const { v4: uuidv4 } = require('uuid');
+    const randomPassword = uuidv4() + uuidv4();
+    const hashedPassword = await bcrypt.hash(randomPassword, 10);
+    bot = await User.create({
+      id: MISSED_CALLS_BOT_ID,
+      username: 'ats_bot',
+      displayName: 'Пропущенные звонки',
+      email: 'ats_bot@system.local',
+      password: hashedPassword,
+      isBot: true,
+      isActive: true,
+    });
+    console.log('✅ Created АТС bot user');
+  }
+  return bot;
+}
+
+/**
+ * Отправка сообщения о пропущенном звонке в групповой чат
+ * @param {string} chatId - UUID группового чата
+ * @param {string} text - текст сообщения
+ */
+async function sendMissedCallToGroup(chatId, text) {
+  try {
+    await initMissedCallsBot();
+
+    const member = await ChatMember.findOne({ where: { chatId, userId: MISSED_CALLS_BOT_ID } });
+    if (!member) {
+      console.error(`[MissedCalls] Бот не является участником чата ${chatId}`);
+      return false;
+    }
+
+    const message = await Message.create({
+      chatId,
+      senderId: MISSED_CALLS_BOT_ID,
+      content: text,
+      type: 'text'
+    });
+
+    const chat = await Chat.findByPk(chatId, {
+      include: [{ model: ChatMember, as: 'members' }]
+    });
+
+    await chat.update({
+      lastMessage: text,
+      lastMessageAt: message.createdAt
+    });
+
+    await ChatMember.update(
+      { isHidden: false },
+      { where: { chatId, isHidden: true } }
+    );
+
+    if (io && chat) {
+      const fullMessage = await Message.findByPk(message.id, {
+        include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar', 'isBot'] }]
+      });
+
+      chat.members.forEach(m => {
+        if (m.userId !== MISSED_CALLS_BOT_ID) {
+          io.to(`user:${m.userId}`).emit('new_message', {
+            message: fullMessage,
+            chat: { id: chat.id, type: chat.type, displayName: chat.name, avatar: chat.avatar }
+          });
+        }
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[MissedCalls] Ошибка отправки в групповой чат:', error);
+    return false;
+  }
 }
 
 /**
@@ -398,6 +483,9 @@ async function sendReviewFinalizedNotification(userId, review, decisionCategory,
 module.exports = {
   ASSISTANT_ID,
   REVIEWS_BOT_ID,
+  MISSED_CALLS_BOT_ID,
+  initMissedCallsBot,
+  sendMissedCallToGroup,
   init,
   getOrCreateAssistantChat,
   getOrCreateReviewsChat,

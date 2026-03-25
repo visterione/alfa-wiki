@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot
+  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -70,6 +70,7 @@ export default function Dashboard() {
   const [selectedMessages, setSelectedMessages] = useState([]);
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardSearchQuery, setForwardSearchQuery] = useState('');
+  const [replyingToMessage, setReplyingToMessage] = useState(null);
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -352,6 +353,7 @@ export default function Dashboard() {
     setShowChatInfo(false);
     setAttachments([]);
     setEditingMessage(null);
+    setReplyingToMessage(null);
     setNewMessage('');
     setSearchQueryForChat(searchTerm);
     setHighlightedMessageId(null);
@@ -386,9 +388,10 @@ export default function Dashboard() {
     
     setSending(true);
     try {
-      await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments);
+      await chat.sendMessage(activeChat.id, newMessage.trim() || '', attachments, replyingToMessage?.id || null);
       setNewMessage('');
       setAttachments([]);
+      setReplyingToMessage(null);
       await loadMessages(activeChat.id, true); // Прокручиваем после отправки
       await refreshActiveChat();
     } catch (e) { toast.error('Ошибка отправки'); }
@@ -484,6 +487,25 @@ export default function Dashboard() {
   const cancelEdit = () => {
     setEditingMessage(null);
     setNewMessage('');
+  };
+
+  const startReply = (msg) => {
+    setReplyingToMessage(msg);
+    setEditingMessage(null);
+    setNewMessage('');
+    setContextMenu({ visible: false, x: 0, y: 0, messageId: null, message: null, isOwnMessage: false });
+    messageInputRef.current?.focus();
+  };
+
+  const cancelReply = () => setReplyingToMessage(null);
+
+  const scrollToMessage = (messageId) => {
+    const el = document.getElementById(`message-${messageId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => setHighlightedMessageId(null), 2000);
+    }
   };
 
   const startForwardMode = (msg) => {
@@ -1098,6 +1120,12 @@ export default function Dashboard() {
                             {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
                             <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
                               {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
+                              {msg.replyTo && (
+                                <div className="reply-quote" onClick={() => scrollToMessage(msg.replyTo.id)}>
+                                  <div className="reply-quote-sender">{msg.replyTo.sender?.displayName || msg.replyTo.sender?.username}</div>
+                                  <div className="reply-quote-content">{msg.replyTo.content?.substring(0, 100)}{msg.replyTo.content?.length > 100 ? '...' : ''}</div>
+                                </div>
+                              )}
                               {msg.forwardedFrom && (
                                 <div className="forwarded-from-banner">
                                   <Send size={12} />
@@ -1151,6 +1179,15 @@ export default function Dashboard() {
                       <div className="attachment-preview-name">{att.name}</div>
                     </div>
                   ))}
+                </div>
+              )}
+              {replyingToMessage && !editingMessage && (
+                <div className="reply-banner">
+                  <div className="reply-banner-info">
+                    <CornerUpLeft size={16} />
+                    <span>Ответ <strong>{replyingToMessage.sender?.displayName || replyingToMessage.sender?.username || ''}</strong>{replyingToMessage.content ? `: ${replyingToMessage.content.substring(0, 60)}${replyingToMessage.content.length > 60 ? '...' : ''}` : ''}</span>
+                  </div>
+                  <button onClick={cancelReply}><X size={16} /></button>
                 </div>
               )}
               {editingMessage && (
@@ -1290,6 +1327,12 @@ export default function Dashboard() {
               </button>
             ))}
           </div>
+          {/* Ответить */}
+          <div className="context-menu-divider" />
+          <button onClick={() => { startReply(contextMenu.message); }}>
+            <CornerUpLeft size={16} />
+            Ответить
+          </button>
           {/* Переслать */}
           <div className="context-menu-divider" />
           <button onClick={() => { startForwardMode(contextMenu.message); }}>
