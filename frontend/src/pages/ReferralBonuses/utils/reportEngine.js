@@ -95,8 +95,16 @@ export async function buildReport({
 }) {
   const doctorName = doctor.name;
 
-  const dateFromDate = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
-  const dateToDate   = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
+  function parseDateBound(s, endOfDay) {
+    if (!s) return null;
+    const parts = s.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(isNaN)) return null;
+    return endOfDay
+      ? new Date(parts[0], parts[1] - 1, parts[2], 23, 59, 59, 999)
+      : new Date(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0);
+  }
+  const dateFromDate = parseDateBound(dateFrom, false);
+  const dateToDate   = parseDateBound(dateTo,   true);
   const periodLabel = (dateFromDate || dateToDate)
     ? `${dateFrom ? new Date(dateFrom).toLocaleDateString('ru-RU') : '…'} — ${dateTo ? new Date(dateTo).toLocaleDateString('ru-RU') : '…'}`
     : '';
