@@ -95,8 +95,8 @@ export async function buildReport({
 }) {
   const doctorName = doctor.name;
 
-  const dateFromDate = dateFrom ? new Date(dateFrom) : null;
-  const dateToDate   = dateTo   ? new Date(dateTo + 'T23:59:59') : null;
+  const dateFromDate = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+  const dateToDate   = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
   const periodLabel = (dateFromDate || dateToDate)
     ? `${dateFrom ? new Date(dateFrom).toLocaleDateString('ru-RU') : '…'} — ${dateTo ? new Date(dateTo).toLocaleDateString('ru-RU') : '…'}`
     : '';
