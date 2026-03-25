@@ -384,12 +384,14 @@ export async function buildReport({
     });
 
     const nonOverrideSum   = Object.values(perfByService).reduce((s, svc) => svcLookup(svc) ? s : s + svc.cost, 0);
-    const nonOverrideCount = Object.values(perfByService).reduce((s, svc) => svcLookup(svc) ? s : s + svc.count, 0);
     const turnoverDeductionsTotal = turnoverDeductions.reduce((s, d) => s + calcItemRub(d, performedServicesSum), 0);
     const turnoverMaterialsTotal  = turnoverMaterials.reduce((s, m) => s + calcItemRub(m, nonOverrideSum), 0);
-    const globalDeductionPerOccurrence = totalServiceCount > 0 ? turnoverDeductionsTotal / totalServiceCount : 0;
-    const globalMaterialPerOccurrence  = nonOverrideCount > 0 ? turnoverMaterialsTotal / nonOverrideCount : 0;
     const deductionPerService = totalServiceCount > 0 ? (turnoverDeductionsTotal + turnoverMaterialsTotal) / totalServiceCount : 0;
+    // Пропорциональные факторы: удержание/материалы применяются как % от стоимости строки,
+    // а не равномерно по количеству. Это гарантирует, что полная сумма удержания учтётся
+    // только в тех строках, где реально начисляется бонус (нет «потерянных» долей).
+    const deductionFactor = performedServicesSum > 0 ? turnoverDeductionsTotal / performedServicesSum : 0;
+    const materialFactor  = nonOverrideSum > 0 ? turnoverMaterialsTotal / nonOverrideSum : 0;
 
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
     let performedBonusTotal = 0;
@@ -438,8 +440,8 @@ export async function buildReport({
               ? (svcOverrideMat.valueType === 'percent'
                   ? row.cost * parseFloat(svcOverrideMat.value) / 100
                   : parseFloat(svcOverrideMat.value))
-              : globalMaterialPerOccurrence);
-            const effectiveCost = interim ? row.cost : row.cost - globalDeductionPerOccurrence - matForRow;
+              : row.cost * materialFactor);
+            const effectiveCost = interim ? row.cost : row.cost * (1 - deductionFactor) - matForRow;
             bonusAmount += effectiveCost * effectiveBonusPct / 100;
             bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
             if (asstPct > 0 && assistantName) {

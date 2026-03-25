@@ -51,10 +51,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [loading, setLoading]       = useState(false);
   const [expandedKey, setExpandedKey] = useState(null);
   const [exporting, setExporting]   = useState(false);
+  const [exportingPayout, setExportingPayout] = useState(false);
 
-  const [searchName, setSearchName]     = useState('');
-  const [filterClinic, setFilterClinic] = useState('');
-  const [sortBy, setSortBy]             = useState('date_desc');
+  const [searchName, setSearchName]         = useState('');
+  const [filterClinic, setFilterClinic]     = useState('');
+  const [filterSpecialty, setFilterSpecialty] = useState('');
+  const [filterYear, setFilterYear]         = useState('');
+  const [filterMonth, setFilterMonth]       = useState('');
+  const [sortBy, setSortBy]                 = useState('date_desc');
 
   useEffect(() => {
     setLoading(true);
@@ -94,23 +98,119 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     return rows;
   }, [records, clinics, permissions.clinics]);
 
+  // ── Unique specialties for filter ────────────────────────────────────────────
+  const allSpecialties = useMemo(() => {
+    const set = new Set();
+    allRows.forEach(({ rec }) => {
+      const s = getDoctorSpecialty(rec.misUserId);
+      if (s && s !== '—') s.split(', ').forEach(sp => set.add(sp.trim()));
+    });
+    return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [allRows, doctors]);
+
+  // ── Unique years for filter ───────────────────────────────────────────────────
+  const allYears = useMemo(() => {
+    const set = new Set();
+    allRows.forEach(({ rec }) => {
+      if (rec.dateFrom) set.add(new Date(rec.dateFrom).getFullYear());
+    });
+    return [...set].sort((a, b) => b - a);
+  }, [allRows]);
+
   // ── Filter & sort ────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const targetClinic = filterClinic ? clinics.find(c => String(c.id) === String(filterClinic)) : null;
+    const yr  = filterYear  ? parseInt(filterYear,  10) : null;
+    const mon = filterMonth ? parseInt(filterMonth, 10) : null;
 
     return allRows
       .filter(row => {
         if (searchName && !row.rec.doctorName?.toLowerCase().includes(searchName.toLowerCase())) return false;
         if (targetClinic && row.clinicName !== targetClinic.name) return false;
+        if (filterSpecialty) {
+          const sp = getDoctorSpecialty(row.rec.misUserId);
+          if (!sp.split(', ').map(s => s.trim()).includes(filterSpecialty)) return false;
+        }
+        if (yr !== null && row.rec.dateFrom) {
+          const d = new Date(row.rec.dateFrom);
+          if (d.getFullYear() !== yr) return false;
+          if (mon !== null && d.getMonth() + 1 !== mon) return false;
+        }
         return true;
       })
       .sort((a, b) => {
         if (sortBy === 'date_asc')    return new Date(a.rec.dateFrom || 0) - new Date(b.rec.dateFrom || 0);
         if (sortBy === 'name')        return (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru');
         if (sortBy === 'salary_desc') return parseFloat(b.cr?.salary?.finalSalary || 0) - parseFloat(a.cr?.salary?.finalSalary || 0);
+        if (sortBy === 'salary_asc')  return parseFloat(a.cr?.salary?.finalSalary || 0) - parseFloat(b.cr?.salary?.finalSalary || 0);
         return new Date(b.rec.dateFrom || 0) - new Date(a.rec.dateFrom || 0); // date_desc
       });
-  }, [allRows, searchName, filterClinic, clinics, sortBy]);
+  }, [allRows, searchName, filterClinic, filterSpecialty, filterYear, filterMonth, clinics, sortBy]);
+
+  // ── Выплата export ───────────────────────────────────────────────────────────
+  const handlePayoutExport = async () => {
+    setExportingPayout(true);
+    try {
+      const payoutRows = filtered.filter(({ cr }) => {
+        const s = cr?.salary || {};
+        const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
+        return remainder > 0;
+      });
+
+      if (payoutRows.length === 0) {
+        toast('Нет врачей с премией в текущей выборке');
+        return;
+      }
+
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Выплата премий');
+
+      ws.columns = [
+        { header: 'ФИО врача',    key: 'name',      width: 36 },
+        { header: 'Премия',       key: 'bonus',     width: 18 },
+        { header: 'Подпись врача', key: 'signature', width: 36 },
+      ];
+
+      const hRow = ws.getRow(1);
+      hRow.font      = { bold: true, name: 'Calibri', size: 11 };
+      hRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
+      hRow.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      const sortedPayoutRows = [...payoutRows].sort((a, b) =>
+        (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru')
+      );
+
+      sortedPayoutRows.forEach(({ rec, cr }) => {
+        const s = cr?.salary || {};
+        const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
+        ws.addRow({
+          name:      rec.doctorName || '—',
+          bonus:     remainder,
+          signature: '',
+        });
+      });
+
+      ws.getColumn('bonus').numFmt = '#,##0.00 ₽';
+
+      const blackBorder = { style: 'thin', color: { argb: 'FF000000' } };
+      ws.eachRow(row => {
+        row.eachCell({ includeEmpty: true }, cell => {
+          cell.border = { top: blackBorder, left: blackBorder, bottom: blackBorder, right: blackBorder };
+        });
+      });
+
+      const buf = await wb.xlsx.writeBuffer();
+      downloadBlob(
+        new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        'Выплата_премий.xlsx'
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Ошибка экспорта');
+    } finally {
+      setExportingPayout(false);
+    }
+  };
 
   // ── Excel export ─────────────────────────────────────────────────────────────
   const handleExport = async () => {
@@ -140,7 +240,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
         const remainder = (parseFloat(s.finalSalary || 0)) - (parseFloat(s.advance || 0)) - (parseFloat(s.mainPayment || 0));
-        const row = ws.addRow({
+        ws.addRow({
           name:      rec.doctorName || '—',
           clinic:    clinicName,
           specialty: getDoctorSpecialty(rec.misUserId),
@@ -226,6 +326,36 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         </select>
         <select
           style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          value={filterSpecialty}
+          onChange={e => setFilterSpecialty(e.target.value)}
+        >
+          <option value="">Все специальности</option>
+          {allSpecialties.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        <select
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          value={filterYear}
+          onChange={e => setFilterYear(e.target.value)}
+        >
+          <option value="">Все годы</option>
+          {allYears.map(y => (
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <select
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
+          value={filterMonth}
+          onChange={e => setFilterMonth(e.target.value)}
+        >
+          <option value="">Все месяцы</option>
+          {['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m, i) => (
+            <option key={i+1} value={i+1}>{m}</option>
+          ))}
+        </select>
+        <select
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
           value={sortBy}
           onChange={e => setSortBy(e.target.value)}
         >
@@ -233,6 +363,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           <option value="date_asc">По дате ↑</option>
           <option value="name">По имени</option>
           <option value="salary_desc">По зарплате ↓</option>
+          <option value="salary_asc">По зарплате ↑</option>
         </select>
         <button
           onClick={handleExport}
@@ -246,6 +377,19 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             <polyline points="9 12 12 15 15 12"/>
           </svg>
           {exporting ? 'Экспорт...' : 'Excel'}
+        </button>
+        <button
+          onClick={handlePayoutExport}
+          disabled={exportingPayout || filtered.length === 0}
+          style={{ padding: '6px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: (exportingPayout || filtered.length === 0) ? 0.55 : 1 }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="15" x2="12" y2="9"/>
+            <polyline points="9 12 12 15 15 12"/>
+          </svg>
+          {exportingPayout ? 'Экспорт...' : 'Выплата'}
         </button>
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
           {filtered.length} строк

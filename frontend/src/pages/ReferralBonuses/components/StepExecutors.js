@@ -37,32 +37,119 @@ function execDefault() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function ItemsList({ items, section, onDelete, readOnly }) {
-  if (!items || !items.length) {
-    return <div className="rb-exec-empty">Нет записей</div>;
-  }
+function LockBtn({ locked, onClick }) {
+  return (
+    <button
+      className="rb-btn rb-btn-xs"
+      onClick={onClick}
+      title={locked ? 'Снять фиксацию (будет сброшен)' : 'Зафиксировать (не сбрасывать)'}
+      style={{ color: locked ? '#f59e0b' : '#cbd5e1', background: 'transparent', border: 'none', padding: '0 2px', lineHeight: 1 }}
+    >
+      <svg viewBox="0 0 24 24" fill={locked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" width="13" height="13">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        {locked
+          ? <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          : <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        }
+      </svg>
+    </button>
+  );
+}
+
+function ItemsList({ items, section, onDelete, onUpdate, readOnly }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [editValueType, setEditValueType] = useState('percent');
+  const [editDeductionType, setEditDeductionType] = useState('final');
+  const showDeductionType = section === 'deductions' || section === 'materials';
+
+  if (!items || !items.length) return <div className="rb-exec-empty">Нет записей</div>;
+
+  const startEdit = (i) => {
+    setEditIdx(i);
+    setEditName(items[i].name);
+    setEditValue(String(items[i].value ?? ''));
+    setEditValueType(items[i].valueType || 'percent');
+    setEditDeductionType(items[i].deductionType || 'final');
+  };
+  const commitEdit = (i) => {
+    const name = editName.trim();
+    const val = parseFloat(editValue);
+    if (!name || isNaN(val) || val < 0) { setEditIdx(null); return; }
+    onUpdate(section, i, { ...items[i], name, value: val, valueType: editValueType, deductionType: showDeductionType ? editDeductionType : items[i].deductionType });
+    setEditIdx(null);
+  };
+
   return (
     <div className="rb-exec-items">
       {items.map((item, i) => (
-        <div key={i} className="rb-exec-item">
-          <div className="rb-exec-item-name">
-            {item.name}
-            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-              {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
-            </span>
-            {section === 'deductions' && item.deductionType === 'turnover' && (
-              <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
-            )}
-            {section === 'deductions' && item.deductionType !== 'turnover' && (
-              <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
-            )}
-          </div>
-          {!readOnly && (
-            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(section, i)} title="Удалить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+        <div key={i} className="rb-exec-item" style={item.locked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6 } : {}}>
+          {editIdx === i ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+              <input
+                autoFocus
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(i); if (e.key === 'Escape') setEditIdx(null); }}
+                placeholder="Название"
+                style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }}
+              />
+              <input
+                type="number" min="0" step="any"
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') commitEdit(i); if (e.key === 'Escape') setEditIdx(null); }}
+                style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
+              />
+              <div className="rb-exec-type-toggle">
+                <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
+                <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+              </div>
+              {showDeductionType && (
+                <div className="rb-exec-type-toggle">
+                  <button className={`rb-exec-type-btn${editDeductionType === 'final' ? ' active' : ''}`} onClick={() => setEditDeductionType('final')} title="от з/п">з/п</button>
+                  <button className={`rb-exec-type-btn${editDeductionType === 'turnover' ? ' active' : ''}`} onClick={() => setEditDeductionType('turnover')} title="от оборота">обор.</button>
+                </div>
+              )}
+              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+              <span
+                onClick={() => !readOnly && startEdit(i)}
+                title={readOnly ? undefined : 'Нажмите для редактирования'}
+                style={{ cursor: readOnly ? 'default' : 'pointer' }}
+              >{item.name}</span>
+              <span
+                onClick={() => !readOnly && startEdit(i)}
+                title={readOnly ? undefined : 'Нажмите для редактирования'}
+                style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600, cursor: readOnly ? 'default' : 'pointer' }}
+              >
+                {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
+              </span>
+              {section === 'deductions' && item.deductionType === 'turnover' && (
+                <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
+              )}
+              {section === 'deductions' && item.deductionType !== 'turnover' && (
+                <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
+              )}
+            </div>
+          )}
+          {!readOnly && editIdx !== i && (
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+              <LockBtn locked={!!item.locked} onClick={() => onUpdate(section, i, { ...item, locked: !item.locked })} />
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(section, i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
           )}
         </div>
       ))}
@@ -70,25 +157,90 @@ function ItemsList({ items, section, onDelete, readOnly }) {
   );
 }
 
-function ExtrasList({ extras, onDelete, readOnly }) {
-  if (!extras || !extras.length) {
-    return <div className="rb-exec-empty">Нет записей</div>;
-  }
+function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editAmount, setEditAmount] = useState('');
+  const [editHours, setEditHours] = useState('');
+
+  if (!extras || !extras.length) return <div className="rb-exec-empty">Нет записей</div>;
+
+  const startEdit = (i) => {
+    setEditIdx(i);
+    setEditName(extras[i].name);
+    setEditAmount(String(extras[i].amount ?? ''));
+    setEditHours(String(extras[i].hours ?? ''));
+  };
+  const commitEdit = (i) => {
+    const name = editName.trim();
+    const amount = parseFloat(editAmount);
+    if (!name || isNaN(amount) || amount < 0) { setEditIdx(null); return; }
+    const hours = parseFloat(editHours) || 0;
+    onUpdate(i, { ...extras[i], name, amount, hours });
+    setEditIdx(null);
+  };
+
   return (
     <div className="rb-exec-items">
       {extras.map((e, i) => (
-        <div key={i} className="rb-exec-item">
-          <div className="rb-exec-item-name">
-            {e.name}
-            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{e.amount} ₽</span>
-            {e.hours > 0 && <span style={{ marginLeft: 4, fontSize: 11, color: '#94a3b8' }}>{e.hours} ч.</span>}
-          </div>
-          {!readOnly && (
-            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
+        <div key={i} className="rb-exec-item" style={e.locked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6 } : {}}>
+          {editIdx === i ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+              <input
+                autoFocus
+                value={editName}
+                onChange={ev => setEditName(ev.target.value)}
+                onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }}
+                placeholder="Название"
+                style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }}
+              />
+              <input
+                type="number" min="0" step="any"
+                value={editAmount}
+                onChange={ev => setEditAmount(ev.target.value)}
+                onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }}
+                placeholder="₽"
+                style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
+              />
+              <input
+                type="number" min="0" step="0.5"
+                value={editHours}
+                onChange={ev => setEditHours(ev.target.value)}
+                onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }}
+                placeholder="ч"
+                style={{ width: 50, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
+              />
+              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+              <span
+                onClick={() => !readOnly && startEdit(i)}
+                title={readOnly ? undefined : 'Нажмите для редактирования'}
+                style={{ cursor: readOnly ? 'default' : 'pointer' }}
+              >{e.name}</span>
+              <span
+                onClick={() => !readOnly && startEdit(i)}
+                title={readOnly ? undefined : 'Нажмите для редактирования'}
+                style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600, cursor: readOnly ? 'default' : 'pointer' }}
+              >{e.amount} ₽</span>
+              {e.hours > 0 && <span style={{ marginLeft: 4, fontSize: 11, color: '#94a3b8' }}>{e.hours} ч.</span>}
+            </div>
+          )}
+          {!readOnly && editIdx !== i && (
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+              <LockBtn locked={!!e.locked} onClick={() => onUpdate(i, { ...e, locked: !e.locked })} />
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
           )}
         </div>
       ))}
@@ -96,34 +248,95 @@ function ExtrasList({ extras, onDelete, readOnly }) {
   );
 }
 
-function SvcMaterialsList({ items, onDelete, readOnly }) {
-  if (!items || !items.length) {
-    return <div className="rb-exec-empty">Нет записей</div>;
-  }
+function SvcMaterialsList({ items, onDelete, onUpdate, readOnly }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [editValueType, setEditValueType] = useState('percent');
+
+  if (!items || !items.length) return <div className="rb-exec-empty">Нет записей</div>;
+
+  const startEdit = (i) => {
+    setEditIdx(i);
+    setEditName(items[i].name || '');
+    setEditValue(String(items[i].value ?? ''));
+    setEditValueType(items[i].valueType || 'percent');
+  };
+  const commitEdit = (i) => {
+    const val = parseFloat(editValue);
+    if (isNaN(val) || val < 0) { setEditIdx(null); return; }
+    onUpdate(i, { ...items[i], name: editName.trim() || items[i].serviceName, value: val, valueType: editValueType });
+    setEditIdx(null);
+  };
+
   return (
     <div className="rb-exec-items">
       {items.map((item, i) => {
         const svcLabel = item.serviceName || item.serviceCode || '—';
         const matLabel = item.name && item.name !== svcLabel ? item.name : null;
         return (
-          <div key={i} className="rb-exec-item">
-            <div className="rb-exec-item-name">
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>{svcLabel}</span>
-              {matLabel && <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{' → '}{matLabel}</span>}
-              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
-              </span>
-              {item.deductionType === 'turnover'
-                ? <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
-                : <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#fff7ed', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
-              }
-            </div>
-            {!readOnly && (
-              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
+          <div key={i} className="rb-exec-item" style={item.locked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6 } : {}}>
+            {editIdx === i ? (
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                <span style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>{svcLabel}</span>
+                <input
+                  autoFocus
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(i); if (e.key === 'Escape') setEditIdx(null); }}
+                  placeholder="Название расходника"
+                  style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }}
+                />
+                <input
+                  type="number" min="0" step="any"
+                  value={editValue}
+                  onChange={e => setEditValue(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitEdit(i); if (e.key === 'Escape') setEditIdx(null); }}
+                  style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }}
+                />
+                <div className="rb-exec-type-toggle">
+                  <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
+                  <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+                </div>
+                <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            ) : (
+              <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>{svcLabel}</span>
+                {matLabel && (
+                  <span
+                    onClick={() => !readOnly && startEdit(i)}
+                    title={readOnly ? undefined : 'Нажмите для редактирования'}
+                    style={{ fontSize: 11, color: 'var(--rb-text-secondary)', cursor: readOnly ? 'default' : 'pointer' }}
+                  >{' → '}{matLabel}</span>
+                )}
+                <span
+                  onClick={() => !readOnly && startEdit(i)}
+                  title={readOnly ? undefined : 'Нажмите для редактирования'}
+                  style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600, cursor: readOnly ? 'default' : 'pointer' }}
+                >
+                  {item.valueType === 'percent' ? `${item.value}%` : `${item.value} ₽`}
+                </span>
+                {item.deductionType === 'turnover'
+                  ? <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#f1f5f9', borderRadius: 4, padding: '1px 5px' }}>оборот</span>
+                  : <span style={{ marginLeft: 4, fontSize: 10, color: '#64748b', background: '#fff7ed', borderRadius: 4, padding: '1px 5px' }}>от з/п</span>
+                }
+              </div>
+            )}
+            {!readOnly && editIdx !== i && (
+              <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
+                <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
             )}
           </div>
         );
@@ -166,7 +379,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly }) {
               <label>Значение</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 <input type="number" placeholder="0" min="0" step="any" value={value} onChange={e => setValue(e.target.value)} style={{ width: 80 }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div className="rb-exec-type-toggle">
                   <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
                   <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
                 </div>
@@ -175,7 +388,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly }) {
             {(section === 'deductions' || section === 'materials') && (
               <div className="rb-exec-add-field">
                 <label>Тип</label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div className="rb-exec-type-toggle">
                   <button className={`rb-exec-type-btn${deductionType === 'final' ? ' active' : ''}`} onClick={() => setDeductionType('final')} title="Вычитается из итоговой зарплаты">от з/п</button>
                   <button className={`rb-exec-type-btn${deductionType === 'turnover' ? ' active' : ''}`} onClick={() => setDeductionType('turnover')} title="Вычитается от оборота выполненных услуг">оборот</button>
                 </div>
@@ -377,10 +590,29 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   const handleDeleteCabinet = async (idx) => {
     const newCabinets = globalCabinets.filter((_, i) => i !== idx);
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, global: { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets } } };
+    const lockedCabs = (execData.clinicSettings?.global?.lockedCabinets || []).filter(n => n !== globalCabinets[idx]);
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, global: { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets, lockedCabinets: lockedCabs } } };
     setExecData(newData);
     await saveToServer(newData);
     toast.success('Кабинет удалён');
+  };
+
+  const handleToggleCabinetLock = async (cabName) => {
+    const locked = execData.clinicSettings?.global?.lockedCabinets || [];
+    const newLocked = locked.includes(cabName) ? locked.filter(n => n !== cabName) : [...locked, cabName];
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, global: { ...(execData.clinicSettings?.global || execClinicDefault()), lockedCabinets: newLocked } } };
+    setExecData(newData);
+    await saveToServer(newData);
+  };
+
+  const handleResetCabinets = async () => {
+    if (!window.confirm('Удалить все незафиксированные кабинеты?')) return;
+    const locked = execData.clinicSettings?.global?.lockedCabinets || [];
+    const newCabinets = globalCabinets.filter(c => locked.includes(c));
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, global: { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets } } };
+    setExecData(newData);
+    await saveToServer(newData);
+    toast.success('Сброшено');
   };
 
   // ── Items (deductions / materials) ───────────────────────────────────────
@@ -401,6 +633,47 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer(newData);
   };
 
+  const handleUpdateItem = async (section, idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current[section] || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ [section]: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), [section]: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleResetSection = async (section) => {
+    if (!window.confirm('Удалить все незафиксированные записи этого раздела?')) return;
+    const current = getClinicData();
+    const arr = (current[section] || []).filter(it => it.locked === true);
+    updateClinicData({ [section]: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), [section]: arr } } };
+    await saveToServer(newData);
+    toast.success('Сброшено');
+  };
+
+  const handleResetAll = async () => {
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Дополнительно, Кабинеты)?')) return;
+    const current = getClinicData();
+    const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
+    const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
+    const newSvcMaterials   = (current.serviceMaterials || []).filter(it => it.locked === true);
+    const newExtras         = (current.extras         || []).filter(it => it.locked === true);
+    const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
+    const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
+    const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
+    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras });
+    const newData = {
+      ...execData,
+      clinicSettings: {
+        ...execData.clinicSettings,
+        global: newGlobal,
+        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras },
+      },
+    };
+    await saveToServer(newData);
+    toast.success('Все незафиксированные записи сброшены');
+  };
+
   const handleAddSvcMaterial = async (item) => {
     const current = getClinicData();
     const arr = [...(current.serviceMaterials || []), item];
@@ -416,6 +689,24 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     updateClinicData({ serviceMaterials: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), serviceMaterials: arr } } };
     await saveToServer(newData);
+  };
+
+  const handleUpdateSvcMaterial = async (idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current.serviceMaterials || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ serviceMaterials: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), serviceMaterials: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleResetSvcMaterials = async () => {
+    if (!window.confirm('Удалить все незафиксированные индивидуальные расходники?')) return;
+    const current = getClinicData();
+    const arr = (current.serviceMaterials || []).filter(it => it.locked === true);
+    updateClinicData({ serviceMaterials: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), serviceMaterials: arr } } };
+    await saveToServer(newData);
+    toast.success('Сброшено');
   };
 
   // ── Extras ────────────────────────────────────────────────────────────────
@@ -442,6 +733,24 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     updateClinicData({ extras: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), extras: arr } } };
     await saveToServer(newData);
+  };
+
+  const handleUpdateExtra = async (idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current.extras || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ extras: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), extras: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleResetExtras = async () => {
+    if (!window.confirm('Удалить все незафиксированные записи раздела «Дополнительно»?')) return;
+    const current = getClinicData();
+    const arr = (current.extras || []).filter(it => it.locked === true);
+    updateClinicData({ extras: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), extras: arr } } };
+    await saveToServer(newData);
+    toast.success('Сброшено');
   };
 
   // ── Assistants (global, not per-clinic) ───────────────────────────────────
@@ -490,6 +799,24 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         <div className="rb-doctor-card-info">
           <h2>{selectedDoctor.name}</h2>
         </div>
+        {!readOnly && (() => {
+          const cur = getClinicData();
+          const lockedCabs = execData.clinicSettings?.global?.lockedCabinets || [];
+          const hasUnlocked =
+            (cur.deductions     || []).some(it => !it.locked) ||
+            (cur.materials      || []).some(it => !it.locked) ||
+            (cur.serviceMaterials || []).some(it => !it.locked) ||
+            (cur.extras         || []).some(it => !it.locked) ||
+            (execData.clinicSettings?.global?.cabinets || []).some(c => !lockedCabs.includes(c));
+          return hasUnlocked ? (
+            <button
+              onClick={handleResetAll}
+              style={{ padding: '5px 12px', background: 'transparent', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+            >
+              Сбросить всё
+            </button>
+          ) : null;
+        })()}
       </div>
 
       {/* Clinic tabs */}
@@ -670,20 +997,31 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
               {globalCabinets.length === 0
                 ? <div className="rb-exec-empty">Кабинеты не указаны</div>
-                : (
+                : (() => {
+                  const lockedCabs = execData.clinicSettings?.global?.lockedCabinets || [];
+                  return (
                   <div className="rb-exec-items">
-                    {globalCabinets.map((cab, i) => (
-                      <div key={i} className="rb-exec-item">
-                        <div className="rb-exec-item-name">📍 {cab}</div>
-                        <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => handleDeleteCabinet(i)}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
+                    {globalCabinets.map((cab, i) => {
+                      const isLocked = lockedCabs.includes(cab);
+                      return (
+                      <div key={i} className="rb-exec-item" style={isLocked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6 } : {}}>
+                        <div className="rb-exec-item-name" style={{ flex: 1 }}>📍 {cab}</div>
+                        {!readOnly && (
+                          <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
+                            <LockBtn locked={isLocked} onClick={() => handleToggleCabinetLock(cab)} />
+                            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => handleDeleteCabinet(i)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )
+                  );
+                })()
               }
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
                 <input
@@ -743,7 +1081,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
             </div>
             <div style={{ borderTop: '1px dashed var(--rb-border)', marginBottom: 10 }} />
-            <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} readOnly={readOnly} />
+            <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />
             <AddItemForm section="deductions" suggests={EXEC_DEDUCTION_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
           </div>
         </div>
@@ -760,13 +1098,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
           <div className="rb-exec-section-body">
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Общие (для всех услуг)</div>
-            <ItemsList items={data.materials || []} section="materials" onDelete={handleDeleteItem} readOnly={readOnly} />
+            <ItemsList items={data.materials || []} section="materials" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />
             <AddItemForm section="materials" suggests={EXEC_MATERIAL_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
 
             <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #e2e8f0' }}>
               <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Индивидуальные расходники по услугам</div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Для выбранных услуг применяется своё значение вместо общего</div>
-              <SvcMaterialsList items={data.serviceMaterials || []} onDelete={handleDeleteSvcMaterial} readOnly={readOnly} />
+              <SvcMaterialsList items={data.serviceMaterials || []} onDelete={handleDeleteSvcMaterial} onUpdate={handleUpdateSvcMaterial} readOnly={readOnly} />
               {/* Simplified add form for svc materials */}
               <SvcMaterialAddForm suggests={EXEC_MATERIAL_SUGGESTS} form={svcMatForm} setForm={setSvcMatForm} onAdd={handleAddSvcMaterial} readOnly={readOnly} doctorServices={doctorServices} />
             </div>
@@ -786,7 +1124,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             </div>
           </div>
           <div className="rb-exec-section-body">
-            <ExtrasList extras={data.extras || []} onDelete={handleDeleteExtra} readOnly={readOnly} />
+            <ExtrasList extras={data.extras || []} onDelete={handleDeleteExtra} onUpdate={handleUpdateExtra} readOnly={readOnly} />
             <ExtraAddForm
               suggests={EXEC_EXTRA_SUGGESTS}
               form={extraForm}
@@ -946,7 +1284,7 @@ function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly, doctorSe
               <label>Значение</label>
               <div style={{ display: 'flex', gap: 4 }}>
                 <input type="number" placeholder="0" min="0" step="any" value={form.value} onChange={e => setForm(f => ({ ...f, value: e.target.value }))} style={{ width: 80 }} />
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div className="rb-exec-type-toggle">
                   <button className={`rb-exec-type-btn${form.valueType === 'percent' ? ' active' : ''}`} onClick={() => setForm(f => ({ ...f, valueType: 'percent' }))}>%</button>
                   <button className={`rb-exec-type-btn${form.valueType === 'rub' ? ' active' : ''}`} onClick={() => setForm(f => ({ ...f, valueType: 'rub' }))}>₽</button>
                 </div>
@@ -954,7 +1292,7 @@ function SvcMaterialAddForm({ suggests, form, setForm, onAdd, readOnly, doctorSe
             </div>
             <div className="rb-exec-add-field">
               <label>Тип</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <div className="rb-exec-type-toggle">
                 <button className={`rb-exec-type-btn${form.deductionType === 'final' ? ' active' : ''}`} onClick={() => setForm(f => ({ ...f, deductionType: 'final' }))}>от з/п</button>
                 <button className={`rb-exec-type-btn${form.deductionType === 'turnover' ? ' active' : ''}`} onClick={() => setForm(f => ({ ...f, deductionType: 'turnover' }))}>оборот</button>
               </div>
