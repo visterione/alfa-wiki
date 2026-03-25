@@ -328,6 +328,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   const [rowValues, setRowValues] = useState({}); // code -> { type, val }
   // Per-service corp invoices flag (default: false)
   const [corpMap, setCorpMap] = useState({}); // code -> boolean
+  const [corpMapDirty, setCorpMapDirty] = useState(false);
+  const [corpSaving, setCorpSaving] = useState(false);
   const [fullExecData, setFullExecData] = useState(null);
 
   const autoSaveTimerRef = useRef(null);
@@ -347,6 +349,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     setActiveClinic('global');
     setRowValues({});
     setCorpMap({});
+    setCorpMapDirty(false);
     setFullExecData(null);
 
     Promise.all([
@@ -466,9 +469,10 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     autoSaveTimerRef.current = setTimeout(() => handleSaveAllRef.current?.(), 1500);
   }, []);
 
-  // Save corp map immediately to executor settings (separate from bonus save)
+  // Save corp map explicitly to executor settings (called by save button)
   const handleCorpSave = useCallback(async (newCorpMap) => {
     if (!selectedDoctor) return;
+    setCorpSaving(true);
     const newExecData = { ...(fullExecDataRef.current || {}), corpIncludedServices: newCorpMap };
     try {
       await executorSettings.save({
@@ -477,8 +481,12 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
         settings: newExecData,
       });
       setFullExecData(newExecData);
+      setCorpMapDirty(false);
+      toast.success('Юр. комп. сохранено');
     } catch {
       toast.error('Ошибка сохранения Юр. комп.');
+    } finally {
+      setCorpSaving(false);
     }
   }, [selectedDoctor]);
 
@@ -512,7 +520,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     const next = {};
     services.forEach(s => { next[s.code] = !allCorpIncluded; });
     setCorpMap(next);
-    handleCorpSave(next);
+    setCorpMapDirty(true);
   };
 
   return (
@@ -569,14 +577,23 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
             <div className="rb-alert rb-alert-warning">Услуги врача не найдены в МИС.</div>
           ) : (
             <>
-              <div style={{ marginBottom: 10 }}>
+              <div style={{ marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   type="text"
                   placeholder="Поиск по коду или названию услуги..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  style={{ width: '100%', padding: '7px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+                  style={{ flex: 1, padding: '7px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
                 />
+                {corpMapDirty && (
+                  <button
+                    onClick={() => handleCorpSave(corpMap)}
+                    disabled={corpSaving}
+                    style={{ padding: '7px 14px', background: 'var(--rb-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: corpSaving ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: corpSaving ? 0.7 : 1 }}
+                  >
+                    {corpSaving ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                )}
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
@@ -616,7 +633,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                         misUserId={selectedDoctor.id}
                         doctorName={selectedDoctor.name}
                         corpIncluded={corpMap[svc.code] !== false}
-                        onCorpToggle={(code) => { const newMap = { ...corpMap, [code]: corpMap[code] === false }; setCorpMap(newMap); handleCorpSave(newMap); }}
+                        onCorpToggle={(code) => { setCorpMap(prev => ({ ...prev, [code]: prev[code] === false })); setCorpMapDirty(true); }}
                       />
                     );
                   })}
