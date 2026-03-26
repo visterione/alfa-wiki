@@ -6,6 +6,7 @@ import { clearExecCache } from '../utils/reportEngine';
 const EXEC_DEDUCTION_SUGGESTS = ['Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
 const EXEC_MATERIAL_SUGGESTS  = ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'];
 const EXEC_EXTRA_SUGGESTS     = ['Дежурство', 'Обучение', 'Сверхурочные', 'Премия', 'Командировка'];
+const EXEC_EXTRA_NORMED_SUGGESTS = ['Отпускные', 'Увольнение'];
 
 function execClinicDefault() {
   return {
@@ -28,6 +29,8 @@ function execClinicDefault() {
     materials: [],
     serviceMaterials: [],
     extras: [],
+    normServices: [],
+    harmfulness: false,
   };
 }
 
@@ -244,6 +247,106 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Norm services list ────────────────────────────────────────────────────────
+
+function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editRate, setEditRate] = useState('');
+  const [editHours, setEditHours] = useState('');
+
+  if (!items || !items.length) return <div className="rb-exec-empty">Нет записей</div>;
+
+  const startEdit = (i) => {
+    setEditIdx(i);
+    setEditName(items[i].name);
+    setEditRate(String(items[i].rate ?? ''));
+    setEditHours(String(items[i].hours ?? ''));
+  };
+  const commitEdit = (i) => {
+    const name = editName.trim();
+    const rate = parseFloat(editRate);
+    const hours = parseFloat(editHours);
+    if (!name || isNaN(rate) || isNaN(hours) || rate < 0 || hours < 0) { setEditIdx(null); return; }
+    onUpdate(i, { ...items[i], name, rate, hours });
+    setEditIdx(null);
+  };
+
+  return (
+    <div className="rb-exec-items">
+      {items.map((item, i) => (
+        <div key={i} className="rb-exec-item">
+          {editIdx === i ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+              <input autoFocus value={editName} onChange={ev => setEditName(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="Деятельность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
+              <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="₽/ч" style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+              <input type="number" min="0" step="0.5" value={editHours} onChange={ev => setEditHours(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="ч" style={{ width: 50, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+              <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.name}</span>
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{item.rate} ₽/ч × {item.hours} ч.</span>
+              <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--rb-success)', fontWeight: 600 }}>= {((parseFloat(item.rate) || 0) * (parseFloat(item.hours) || 0)).toFixed(2)} ₽</span>
+            </div>
+          )}
+          {!readOnly && editIdx !== i && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Norm service add form ─────────────────────────────────────────────────────
+
+function NormServiceAddForm({ form, setForm, onAdd, readOnly }) {
+  const [visible, setVisible] = useState(false);
+  if (readOnly) return null;
+  return (
+    <div>
+      {visible && (
+        <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
+          <div className="rb-exec-add-row">
+            <div className="rb-exec-add-field flex-grow">
+              <label>Вид деятельности</label>
+              <input type="text" placeholder="Название..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+            </div>
+            <div className="rb-exec-add-field">
+              <label>Ставка, ₽/ч</label>
+              <input type="number" placeholder="0" min="0" step="any" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} style={{ width: 90 }} />
+            </div>
+            <div className="rb-exec-add-field">
+              <label>Часов</label>
+              <input type="number" placeholder="0" min="0" step="0.5" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} style={{ width: 70 }} />
+            </div>
+            <div style={{ paddingBottom: 1 }}>
+              <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={onAdd}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
+                Добавить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={() => setVisible(v => !v)}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        {visible ? 'Скрыть' : 'Добавить запись'}
+      </button>
     </div>
   );
 }
@@ -709,6 +812,41 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     toast.success('Сброшено');
   };
 
+  // ── Norm services ──────────────────────────────────────────────────────────
+  const [normServiceForm, setNormServiceForm] = useState({ name: '', rate: '', hours: '' });
+
+  const handleAddNormService = async () => {
+    const name = normServiceForm.name.trim();
+    const rate = parseFloat(normServiceForm.rate);
+    const hours = parseFloat(normServiceForm.hours);
+    if (!name) { toast.error('Укажите название деятельности'); return; }
+    if (isNaN(rate) || rate < 0) { toast.error('Укажите часовую ставку'); return; }
+    if (isNaN(hours) || hours < 0) { toast.error('Укажите количество часов'); return; }
+    const current = getClinicData();
+    const arr = [...(current.normServices || []), { name, rate, hours }];
+    updateClinicData({ normServices: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
+    await saveToServer(newData);
+    setNormServiceForm({ name: '', rate: '', hours: '' });
+    toast.success('Добавлено');
+  };
+
+  const handleDeleteNormService = async (idx) => {
+    const current = getClinicData();
+    const arr = (current.normServices || []).filter((_, i) => i !== idx);
+    updateClinicData({ normServices: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleUpdateNormService = async (idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current.normServices || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ normServices: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
+    await saveToServer(newData);
+  };
+
   // ── Extras ────────────────────────────────────────────────────────────────
   const [extraForm, setExtraForm] = useState({ name: '', amount: '', hours: '' });
 
@@ -854,13 +992,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           <div className="rb-exec-section-body">
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Тип оплаты</div>
             <div className="rb-paytype-toggle">
-              {['salary', 'hourly', 'percent'].map((type, i) => (
+              {['salary', 'hourly', 'percent', 'normed'].map((type, i) => (
                 <button
                   key={type}
                   className={`rb-paytype-btn${pt === type ? ' active' : ''}`}
                   onClick={() => handlePayTypeChange(type)}
                 >
-                  {['Фиксированный оклад', 'Почасовой оклад', '% от услуг'][i]}
+                  {['Фиксированный оклад', 'Почасовой оклад', '% от услуг', 'Нормированный'][i]}
                 </button>
               ))}
             </div>
@@ -907,7 +1045,18 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             )}
 
-            {pt !== 'percent' && (
+            {pt === 'normed' && (
+              <div className="rb-exec-field">
+                <label>Оклад, ₽</label>
+                <input
+                  type="number" min="0" step="any" placeholder="0"
+                  value={data.fixedSalary || ''}
+                  onChange={e => handlePaymentFieldChange('fixedSalary', parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            )}
+
+            {pt !== 'percent' && pt !== 'normed' && (
               <div className="rb-plus-pct-row">
                 <input
                   type="checkbox" id="exec-plus-pct"
@@ -1042,6 +1191,29 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
         )}
 
+        {/* ── Norm services (normed pay type only) ── */}
+        {pt === 'normed' && (
+          <div className="rb-exec-section">
+            <div className="rb-exec-section-header">
+              <div className="rb-exec-section-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                  <rect x="9" y="3" width="6" height="4" rx="1" ry="1"/>
+                  <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/>
+                </svg>
+                Выполненные услуги
+              </div>
+            </div>
+            <div className="rb-exec-section-body">
+              <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, lineHeight: 1.4 }}>
+                Укажите виды деятельности с часовой ставкой и количеством часов. Итог суммируется с окладом.
+              </div>
+              <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} />
+              <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} />
+            </div>
+          </div>
+        )}
+
         {/* ── Deductions ── */}
         <div className="rb-exec-section">
           <div className="rb-exec-section-header">
@@ -1053,33 +1225,49 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             </div>
           </div>
           <div className="rb-exec-section-body">
-            {/* Assistance percent */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 8px' }}>
-              <label style={{ fontSize: 13, color: 'var(--rb-text)', flex: 1 }}>
-                % на ассистирование <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(по умолчанию)</span>
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {pt === 'normed' ? (
+              /* Вредность для нормированного типа */
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 14px' }}>
                 <input
-                  type="number" min="0" max="100" step="0.1" placeholder="0"
-                  value={data.assistancePercent || ''}
-                  onChange={e => handlePaymentFieldChange('assistancePercent', parseFloat(e.target.value) || 0)}
-                  style={{ width: 80, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+                  type="checkbox" id="exec-harmfulness"
+                  checked={!!data.harmfulness}
+                  onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)}
                 />
-                <span style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>%</span>
+                <label htmlFor="exec-harmfulness" style={{ fontSize: 13, color: 'var(--rb-text)', cursor: 'pointer' }}>
+                  Вредность <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(вычесть 4% из зарплаты)</span>
+                </label>
               </div>
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
-              Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту.
-              Применяется для всех ассистентов, у которых не задан индивидуальный %.
-            </div>
-            {/* Per-assistant overrides */}
-            <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
-                Индивидуальный % для ассистентов:
-              </div>
-              <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
-              <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
-            </div>
+            ) : (
+              <>
+                {/* Assistance percent */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 8px' }}>
+                  <label style={{ fontSize: 13, color: 'var(--rb-text)', flex: 1 }}>
+                    % на ассистирование <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(по умолчанию)</span>
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <input
+                      type="number" min="0" max="100" step="0.1" placeholder="0"
+                      value={data.assistancePercent || ''}
+                      onChange={e => handlePaymentFieldChange('assistancePercent', parseFloat(e.target.value) || 0)}
+                      style={{ width: 80, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+                    />
+                    <span style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>%</span>
+                  </div>
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
+                  Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту.
+                  Применяется для всех ассистентов, у которых не задан индивидуальный %.
+                </div>
+                {/* Per-assistant overrides */}
+                <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
+                    Индивидуальный % для ассистентов:
+                  </div>
+                  <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
+                  <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
+                </div>
+              </>
+            )}
             <div style={{ borderTop: '1px dashed var(--rb-border)', marginBottom: 10 }} />
             <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />
             <AddItemForm section="deductions" suggests={EXEC_DEDUCTION_SUGGESTS} onAdd={handleAddItem} readOnly={readOnly} />
@@ -1126,7 +1314,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           <div className="rb-exec-section-body">
             <ExtrasList extras={data.extras || []} onDelete={handleDeleteExtra} onUpdate={handleUpdateExtra} readOnly={readOnly} />
             <ExtraAddForm
-              suggests={EXEC_EXTRA_SUGGESTS}
+              suggests={pt === 'normed' ? EXEC_EXTRA_NORMED_SUGGESTS : EXEC_EXTRA_SUGGESTS}
               form={extraForm}
               setForm={setExtraForm}
               onAdd={handleAddExtra}

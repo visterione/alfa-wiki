@@ -92,6 +92,10 @@ export default function SalaryBlock({ salary }) {
     assistanceIncomeTotal = 0, assistanceIncomeSections = [],
     finalSalary, advance, mainPayment, paymentMethod, mainPaymentMethod,
     deductions = [], materials = [], extras = [],
+    payType,
+    harmfulnessDeduction = 0,
+    normServices: normServicesList = [],
+    fixedSalary: normFixedSalary = 0,
   } = salary;
 
   const preFinalSalary = (basePay || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) - (referralCostTotal || 0);
@@ -109,7 +113,7 @@ export default function SalaryBlock({ salary }) {
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasPerformed        = (performedBonusTotal || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
-  const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0;
+  const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0;
   const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0;
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
@@ -127,8 +131,38 @@ export default function SalaryBlock({ salary }) {
       </div>
 
       {hasWage && (
-        <SalaryRow icon="≡" label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0}>
-          <ServiceTable sections={basePerformedSections} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Итого, руб']} />
+        <SalaryRow icon="≡" label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0)}>
+          {basePerformedSections.length > 0 && (
+            <ServiceTable sections={basePerformedSections} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Итого, руб']} />
+          )}
+          {payType === 'normed' && normServicesList.length > 0 && (
+            <table className="rb-report-table">
+              <thead><tr><th>Деятельность</th><th style={{ textAlign: 'right' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
+              <tbody>
+                {normFixedSalary > 0 && (
+                  <tr>
+                    <td>Оклад</td>
+                    <td style={{ textAlign: 'right' }}>—</td>
+                    <td style={{ textAlign: 'center' }}>—</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{normFixedSalary.toFixed(2)} ₽</td>
+                  </tr>
+                )}
+                {normServicesList.map((ns, i) => {
+                  const _rate = parseFloat(ns.rate) || 0;
+                  const _hrs = parseFloat(ns.hours) || 0;
+                  const _tot = _rate * _hrs;
+                  return (
+                    <tr key={i}>
+                      <td>{ns.name}</td>
+                      <td style={{ textAlign: 'right' }}>{_rate.toFixed(2)} ₽</td>
+                      <td style={{ textAlign: 'center' }}>{_hrs}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{_tot.toFixed(2)} ₽</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </SalaryRow>
       )}
 
@@ -208,6 +242,14 @@ export default function SalaryBlock({ salary }) {
                   <td><span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>ассистент</span></td>
                   <td style={{ textAlign: 'right' }}>—</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-text-secondary)', textAlign: 'right' }}>−{assistancePaidTotal.toFixed(2)} ₽</td>
+                </tr>
+              )}
+              {(harmfulnessDeduction || 0) > 0 && (
+                <tr>
+                  <td>Вредность</td>
+                  <td><span style={{ fontSize: 10, background: '#fff7ed', color: '#c2410c', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span></td>
+                  <td style={{ textAlign: 'right' }}>4%</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-danger)', textAlign: 'right' }}>−{(harmfulnessDeduction || 0).toFixed(2)} ₽</td>
                 </tr>
               )}
             </tbody>

@@ -29,6 +29,8 @@ export function execClinicDefault() {
     materials: [],
     serviceMaterials: [],
     extras: [],
+    normServices: [],
+    harmfulness: false,
   };
 }
 
@@ -557,13 +559,21 @@ export async function buildReport({
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Бонусы за выполненные услуги (по тарифам)';
+    } else if (pt === 'normed') {
+      const fixedSalary = parseFloat(clinicSettings.fixedSalary) || 0;
+      const normServices = clinicSettings.normServices || [];
+      const normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
+      basePay = fixedSalary + normServicesTotal;
+      basePayLabel = 'Нормированный оклад';
     }
 
-    const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
+    const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
+
+    const includePerformedBonus = pt !== 'percent' && pt !== 'normed' && !!clinicSettings.plusPercent;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
     const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
-    const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
+    const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
     const svcMatFinalTotal = Object.values(perfByService).reduce((sum, svc) => {
@@ -618,6 +628,9 @@ export async function buildReport({
 
     const salary = {
       basePay, basePayLabel, payType: pt,
+      harmfulnessDeduction,
+      normServices: clinicSettings.normServices || [],
+      fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
       referralBonuses: effectiveReferralBonusTotal,
       referralSections,
       performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,

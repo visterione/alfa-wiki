@@ -216,8 +216,14 @@ export default function ReferralBonusesPage() {
   }, [doctors]);
 
   // ── Global reset all unlocked items ──
-  const handleGlobalReset = useCallback(async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи у ВСЕХ врачей? Это действие нельзя отменить.')) return;
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const handleGlobalReset = useCallback(() => {
+    setShowResetConfirm(true);
+  }, []);
+
+  const handleConfirmReset = useCallback(async () => {
+    setShowResetConfirm(false);
     try {
       await execSettingsApi.resetAll();
       clearExecCache();
@@ -352,6 +358,42 @@ export default function ReferralBonusesPage() {
         })}
       </div>
 
+      {/* Global reset confirm modal */}
+      {showResetConfirm && (
+        <div className="rb-modal-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <polyline points="1 4 1 10 7 10"/>
+                  <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
+                </svg>
+                Сбросить всех врачей
+              </h3>
+              <button className="rb-modal-close" onClick={() => setShowResetConfirm(false)}>×</button>
+            </div>
+            <div className="rb-modal-body">
+              <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: '0 0 10px' }}>
+                Будут удалены все <strong>незафиксированные</strong> записи (расходники, штрафы, материалы, дополнительно) у всех врачей.
+              </p>
+              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', lineHeight: 1.5, margin: 0 }}>
+                Зафиксированные записи (🔒) останутся без изменений. Это действие нельзя отменить.
+              </p>
+            </div>
+            <div className="rb-modal-footer">
+              <button className="rb-btn rb-btn-secondary" onClick={() => setShowResetConfirm(false)}>Отмена</button>
+              <button
+                className="rb-btn"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                onClick={handleConfirmReset}
+              >
+                Сбросить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step Content */}
       <div className="rb-layout" style={currentStep === 7 || currentStep === 2 ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
@@ -450,12 +492,27 @@ function DoctorsList({
       </div>
 
       <div className="rb-filters">
-        <input
-          className="rb-search-input"
-          placeholder="Поиск по ФИО..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-        />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            className="rb-search-input"
+            placeholder="Поиск по ФИО..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            style={{ flex: 1 }}
+          />
+          {onGlobalReset && (
+            <button
+              onClick={onGlobalReset}
+              title="Сбросить всех врачей"
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <polyline points="1 4 1 10 7 10"/>
+                <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
+              </svg>
+            </button>
+          )}
+        </div>
         <select className="rb-select" value={filterClinic} onChange={e => setFilterClinic(e.target.value)}>
           <option value="">Все медцентры</option>
           {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -485,15 +542,6 @@ function DoctorsList({
           </div>
         )}
 
-        {onGlobalReset && (
-          <button
-            className="rb-btn rb-btn-danger rb-btn-xs"
-            style={{ width: '100%', marginTop: 2 }}
-            onClick={onGlobalReset}
-          >
-            🗑 Сбросить всех врачей
-          </button>
-        )}
       </div>
 
       <div className="rb-doctors-list">
