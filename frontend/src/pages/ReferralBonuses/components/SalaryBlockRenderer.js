@@ -30,7 +30,7 @@ function SalaryRow({ icon, label, value, color = 'var(--rb-text)', children, exp
   );
 }
 
-function ServiceTable({ sections, columns }) {
+function ServiceTable({ sections, columns, negative }) {
   return (
     <table className="rb-report-table">
       <thead>
@@ -44,8 +44,8 @@ function ServiceTable({ sections, columns }) {
             <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
             <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
             <td>{s.bonusLabel || '—'}</td>
-            <td style={{ fontWeight: 600, color: (s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)', textAlign: 'right' }}>
-              {(s.bonusAmount || 0) < 0 ? '' : '+'}{(s.bonusAmount || 0).toFixed(2)} ₽
+            <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
+              {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
             </td>
           </tr>
         ))}
@@ -56,14 +56,21 @@ function ServiceTable({ sections, columns }) {
 
 function SubSection({ label, value, color, type, children }) {
   const [expanded, setExpanded] = useState(false);
+  const hasChildren = !!children;
   return (
-    <div className={`rb-salary-row ${type} expandable${expanded ? ' expanded' : ''}`} style={{ paddingLeft: 24, cursor: 'pointer' }} onClick={() => setExpanded(e => !e)}>
+    <div
+      className={`rb-salary-row ${type}${hasChildren ? ' expandable' : ''}${expanded ? ' expanded' : ''}`}
+      style={{ paddingLeft: 24, cursor: hasChildren ? 'pointer' : 'default' }}
+      onClick={hasChildren ? (e) => { e.stopPropagation(); setExpanded(s => !s); } : (e) => e.stopPropagation()}
+    >
       <div className="rb-salary-row-icon" style={{ fontSize: 11 }}>▸</div>
       <div className="rb-salary-row-body">
         <div className="rb-salary-row-label">
-          <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
+          {hasChildren && (
+            <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          )}
           {label}
         </div>
         {expanded && <div className="rb-salary-row-detail">{children}</div>}
@@ -322,7 +329,7 @@ export default function SalaryBlock({ salary }) {
         <SalaryRow icon="−" label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={executorSections.length > 0}>
           {executorSections.map(({ referrer, services, total }, i) => (
             <SubSection key={i} label={referrer} value={`−${fmtRub(total)}`} color="var(--rb-danger)" type="minus">
-              <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'К выплате']} />
+              <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'К выплате']} negative />
             </SubSection>
           ))}
         </SalaryRow>

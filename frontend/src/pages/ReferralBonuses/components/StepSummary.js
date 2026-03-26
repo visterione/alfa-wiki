@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
-import { salaryRecords } from '../../../services/api';
+import { salaryRecords, executorSettings as execSettingsApi } from '../../../services/api';
+import { clearExecCache } from '../utils/reportEngine';
 import SalaryBlock from './SalaryBlockRenderer';
 
 function downloadBlob(blob, filename) {
@@ -52,6 +53,59 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [expandedKey, setExpandedKey] = useState(null);
   const [exporting, setExporting]   = useState(false);
   const [exportingPayout, setExportingPayout] = useState(false);
+  const [recalcLoading, setRecalcLoading] = useState({});
+  const [recalcDone, setRecalcDone]       = useState({});
+
+  const handleRecalculate = async (rec, rowKey, overpay, periodLabel, clinicId) => {
+    const key = rowKey;
+    setRecalcLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await execSettingsApi.get(rec.misUserId);
+      const raw = res.data && Object.keys(res.data).length ? res.data : null;
+      const settings = raw || {
+        assistants: [],
+        clinicSettings: {
+          global: {
+            payType: 'salary', fixedSalary: 0, hourlyRate: 0, hoursWorked: 0,
+            executorPercent: 0, plusPercent: false, paymentMethod: 'card',
+            mainPaymentMethod: 'card', advance: 0, mainPayment: 0,
+            includeReferralBonuses: true, includeReferralDeductions: true,
+            includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
+            deductions: [], materials: [], serviceMaterials: [],
+            extras: [], normServices: [], harmfulness: false,
+          },
+        },
+      };
+      // Если есть настройки конкретного медцентра — пишем туда, иначе в global
+      const clinicKey = clinicId && settings.clinicSettings?.[String(clinicId)] ? String(clinicId) : 'global';
+      const clinicData = settings.clinicSettings?.[clinicKey] || {};
+      const deductions = [...(clinicData.deductions || [])];
+      deductions.push({
+        name: `Переплата за ${periodLabel}`,
+        value: parseFloat(Math.abs(overpay).toFixed(2)),
+        valueType: 'rub',
+        deductionType: 'final',
+        locked: false,
+      });
+      const newSettings = {
+        ...settings,
+        clinicSettings: { ...settings.clinicSettings, [clinicKey]: { ...clinicData, deductions } },
+      };
+      await execSettingsApi.save({ misUserId: rec.misUserId, doctorName: rec.doctorName, settings: newSettings });
+      clearExecCache(rec.misUserId);
+      // Сохраняем флаг в reportData записи зарплаты
+      const updatedReportData = { ...(rec.reportData || {}), recalcDone: { ...(rec.reportData?.recalcDone || {}), [key]: true } };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      // Обновляем локальный список записей
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+      setRecalcDone(prev => ({ ...prev, [key]: true }));
+      toast.success(`Переплата зафиксирована у ${rec.doctorName}`);
+    } catch {
+      toast.error('Ошибка при фиксации переплаты');
+    } finally {
+      setRecalcLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   const [searchName, setSearchName]         = useState('');
   const [filterClinic, setFilterClinic]     = useState('');
@@ -63,7 +117,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   useEffect(() => {
     setLoading(true);
     salaryRecords.getAll()
-      .then(res => setRecords(Array.isArray(res.data) ? res.data : []))
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : [];
+        setRecords(list);
+        // Восстанавливаем состояние перерасчётов из reportData
+        const done = {};
+        list.forEach(rec => {
+          const flags = rec.reportData?.recalcDone || {};
+          Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
+        });
+        setRecalcDone(done);
+      })
       .catch(() => toast.error('Ошибка загрузки сводки'))
       .finally(() => setLoading(false));
   }, []);
@@ -435,6 +499,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 const overpay   = remainder < 0  ? remainder : 0;
                 const isOpen    = expandedKey === key;
                 const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
+                const recalcKey = key;
 
                 return (
                   <React.Fragment key={key}>
@@ -467,7 +532,28 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {body > 0    && <span>Тело: {fmtRub(body)}</span>}
                             {bonus > 0   && <span>Премия: {fmtRub(bonus)}</span>}
-                            {overpay < 0 && <span>Переплата: {fmtRub(overpay)}</span>}
+                            {overpay < 0 && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ color: recalcDone[recalcKey] ? 'var(--rb-text-secondary)' : '#dc2626' }}>Переплата: {fmtRub(overpay)}</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleRecalculate(rec, recalcKey, overpay, dateLabel, cr?.clinicId); }}
+                                  disabled={!!recalcLoading[recalcKey]}
+                                  title={recalcDone[recalcKey] ? 'Переплата зафиксирована (можно повторить)' : 'Зафиксировать переплату в расходниках сотрудника'}
+                                  style={{ padding: '3px 5px', background: recalcDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${recalcDone[recalcKey] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: recalcLoading[recalcKey] ? 0.4 : 1 }}
+                                >
+                                  {recalcDone[recalcKey] ? (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13">
+                                      <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                  ) : (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13">
+                                      <polyline points="1 4 1 10 7 10"/>
+                                      <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
+                                    </svg>
+                                  )}
+                                </button>
+                              </span>
+                            )}
                           </div>
                         )}
                       </td>
