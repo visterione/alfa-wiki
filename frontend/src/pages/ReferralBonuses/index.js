@@ -735,7 +735,7 @@ function DoctorsList({
           {onGlobalReset && (
             <button
               onClick={onGlobalReset}
-              title="Сбросить всех врачей"
+              title="Сбросить"
               style={{ flexShrink: 0, padding: '7px 9px', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
@@ -753,7 +753,7 @@ function DoctorsList({
           {onImportNdfl && (
             <button
               onClick={() => importFileRef.current?.click()}
-              title="Импорт НДФЛ"
+              title="Импорт"
               style={{ flexShrink: 0, padding: '7px 9px', color: '#16a34a', border: '1px solid #86efac', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
