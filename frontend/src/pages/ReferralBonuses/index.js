@@ -6,6 +6,8 @@ import './ReferralBonuses.css';
 import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } from '../../services/api';
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
+import { parseExcelFile } from './utils/excelUtils';
+import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import StepExecutors from './components/StepExecutors';
 import StepHourNorms from './components/StepHourNorms';
 import StepPerformed from './components/StepPerformed';
@@ -43,6 +45,46 @@ const STEP_LABELS = [
   'История зарплат',
   'Сводка',
 ];
+
+// ── Payroll Excel parser ──────────────────────────────────────────────────────
+function parsePayrollImportRows(rows) {
+  if (!rows.length) return [];
+  const keys = Object.keys(rows[0]);
+  const parseNum = v => parseFloat(String(v || '').replace(/[\s\u00A0]/g, '').replace(',', '.')) || 0;
+  // Strip everything that is not a Cyrillic or Latin letter before matching
+  const norm = k => k.toLowerCase().replace(/[^а-яёa-z]/g, '');
+
+  const nameKey = keys.find(k => {
+    const kl = norm(k);
+    return kl === 'фио' || kl.startsWith('фамили') || kl.includes('фио');
+  }) || keys[0];
+
+  // "Тело ЗП", "Тело з/п", "Тело зарп", "Тело зарплата", "Оклад" …
+  const salaryKey = keys.find(k => {
+    const kl = norm(k);
+    return (kl.includes('тело') && (kl.includes('зп') || kl.includes('жп') || kl.includes('зарп'))) ||
+           kl === 'оклад' || kl === 'телозп';
+  }) || (keys.length >= 2 ? keys.find(k => k !== nameKey) : null);
+
+  // "Аванс"
+  const advanceKey = keys.find(k => norm(k).includes('аванс'))
+    || (keys.length >= 3 ? keys.filter(k => k !== nameKey && k !== salaryKey)[0] : null);
+
+  // "НДФЛ", "Налог", "Подоходный"
+  const ndflKey = keys.find(k => {
+    const kl = norm(k);
+    return kl.includes('ндфл') || kl === 'налог' || kl.includes('подоходн');
+  }) || (keys.length >= 4 ? keys.filter(k => k !== nameKey && k !== salaryKey && k !== advanceKey)[0] : null);
+
+  return rows
+    .map(row => ({
+      name: String(row[nameKey] || '').trim(),
+      mainPayment: salaryKey  ? parseNum(row[salaryKey])  : null,
+      advance:     advanceKey ? parseNum(row[advanceKey]) : null,
+      ndfl:        ndflKey    ? parseNum(row[ndflKey])    : null,
+    }))
+    .filter(r => r.name && (r.mainPayment !== null || r.advance !== null || r.ndfl !== null));
+}
 
 // ═══════════════════════════════════════
 // MAIN PAGE COMPONENT
@@ -215,6 +257,10 @@ export default function ReferralBonusesPage() {
     setSelectedDoctor(doctor || null);
   }, [doctors]);
 
+  // ── НДФЛ import ──
+  const [ndflModal, setNdflModal] = useState(null);
+  const [ndflImporting, setNdflImporting] = useState(false);
+
   // ── Global reset all unlocked items ──
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -232,6 +278,124 @@ export default function ReferralBonusesPage() {
       toast.error('Ошибка глобального сброса');
     }
   }, []);
+
+  const matchDoctorByName = useCallback((excelName) => {
+    const normalized = rbNormalizeName(excelName);
+    return doctors.find(d => rbNormalizeName(d.name) === normalized)
+      || doctors.find(d => rbNamesMatch(d.name, excelName))
+      || null;
+  }, [doctors]);
+
+  const applyNdflImport = useCallback(async (mode, matched, settingsMap) => {
+    setNdflImporting(true);
+    setNdflModal(null);
+    let count = 0;
+    try {
+      for (const { doctor, mainPayment, advance, ndfl } of matched) {
+        const raw = settingsMap[doctor.id];
+        const settings = raw || {
+          assistants: [],
+          clinicSettings: {
+            global: {
+              payType: 'salary', fixedSalary: 0, hourlyRate: 0, hoursWorked: 0,
+              executorPercent: 0, plusPercent: false, paymentMethod: 'card',
+              mainPaymentMethod: 'card', advance: 0, mainPayment: 0,
+              includeReferralBonuses: true, includeReferralDeductions: true,
+              includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
+              deductions: [], materials: [], serviceMaterials: [],
+              extras: [], normServices: [], harmfulness: false,
+            },
+          },
+        };
+        const globalData = settings.clinicSettings?.global || {};
+        const updates = {};
+
+        if (mainPayment !== null) {
+          if (mode === 'overwrite' || !globalData.lockedMainPayment)
+            updates.mainPayment = mainPayment;
+        }
+        if (advance !== null) {
+          if (mode === 'overwrite' || !globalData.lockedAdvance)
+            updates.advance = advance;
+        }
+
+        let deductions = [...(globalData.deductions || [])];
+        if (ndfl !== null) {
+          const ndflIdx = deductions.findIndex(d => d.name === 'НДФЛ');
+          if (ndflIdx !== -1) {
+            if (mode === 'overwrite' || !deductions[ndflIdx].locked)
+              deductions[ndflIdx] = { ...deductions[ndflIdx], value: ndfl, valueType: 'rub', deductionType: 'turnover' };
+          } else {
+            deductions.push({ name: 'НДФЛ', value: ndfl, valueType: 'rub', deductionType: 'turnover', locked: false });
+          }
+          updates.deductions = deductions;
+        }
+
+        if (!Object.keys(updates).length) continue;
+
+        const newSettings = {
+          ...settings,
+          clinicSettings: { ...settings.clinicSettings, global: { ...globalData, ...updates } },
+        };
+        await execSettingsApi.save({ misUserId: doctor.id, doctorName: doctor.name, settings: newSettings });
+        clearExecCache(doctor.id);
+        count++;
+      }
+      toast.success(`Импорт завершён: ${count} сотр. обновлено`);
+      if (selectedDoctor && matched.some(m => m.doctor.id === selectedDoctor.id)) {
+        setSelectedDoctor(d => d ? { ...d } : null);
+      }
+    } catch {
+      toast.error('Ошибка при импорте');
+    } finally {
+      setNdflImporting(false);
+    }
+  }, [selectedDoctor]);
+
+  const handleImportNdfl = useCallback(async (file) => {
+    let rows;
+    try {
+      const rawRows = await parseExcelFile(file);
+      rows = parsePayrollImportRows(rawRows);
+    } catch {
+      toast.error('Не удалось прочитать Excel-файл');
+      return;
+    }
+    if (!rows.length) {
+      toast.error('Не найдено данных для импорта в файле');
+      return;
+    }
+    const matched = [];
+    rows.forEach(row => {
+      const doctor = matchDoctorByName(row.name);
+      if (doctor) matched.push({ doctor, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
+    });
+    if (!matched.length) {
+      toast.error('Ни один сотрудник из файла не найден');
+      return;
+    }
+    const settingsMap = {};
+    await Promise.all(matched.map(async ({ doctor }) => {
+      try {
+        const res = await execSettingsApi.get(doctor.id);
+        settingsMap[doctor.id] = res.data && Object.keys(res.data).length ? res.data : null;
+      } catch {
+        settingsMap[doctor.id] = null;
+      }
+    }));
+    const conflicts = matched.filter(({ doctor, mainPayment, advance, ndfl }) => {
+      const global = settingsMap[doctor.id]?.clinicSettings?.global || {};
+      const deductions = global.deductions || [];
+      return (mainPayment !== null && global.lockedMainPayment) ||
+             (advance     !== null && global.lockedAdvance) ||
+             (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked === true));
+    });
+    if (conflicts.length > 0) {
+      setNdflModal({ matched, settingsMap, conflicts });
+    } else {
+      await applyNdflImport('overwrite', matched, settingsMap);
+    }
+  }, [applyNdflImport, matchDoctorByName]);
 
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
@@ -394,6 +558,74 @@ export default function ReferralBonusesPage() {
         </div>
       )}
 
+      {/* НДФЛ import conflict modal */}
+      {ndflModal && (
+        <div className="rb-modal-overlay" onClick={() => setNdflModal(null)}>
+          <div className="rb-modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Конфликт при импорте НДФЛ
+              </h3>
+              <button className="rb-modal-close" onClick={() => setNdflModal(null)}>×</button>
+            </div>
+            <div className="rb-modal-body">
+              <p style={{ fontSize: 14, color: 'var(--rb-text)', marginBottom: 10 }}>
+                У следующих сотрудников уже есть <strong>заблокированная</strong> запись НДФЛ:
+              </p>
+              <div style={{ maxHeight: 200, overflowY: 'auto', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
+                {ndflModal.conflicts.map(({ doctor, mainPayment, advance, ndfl }) => {
+                  const global = ndflModal.settingsMap[doctor.id]?.clinicSettings?.global || {};
+                  const deductions = global.deductions || [];
+                  const locked = [];
+                  if (mainPayment !== null && global.lockedMainPayment) locked.push('Тело ЗП');
+                  if (advance     !== null && global.lockedAdvance)     locked.push('Аванс');
+                  if (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked)) locked.push('НДФЛ');
+                  return (
+                    <div key={doctor.id} style={{ fontSize: 13, padding: '3px 0', color: 'var(--rb-text)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span>🔒 {doctor.name}</span>
+                      <span style={{ color: '#92400e', fontWeight: 500 }}>{locked.join(', ')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', margin: 0 }}>
+                Что сделать с заблокированными записями?
+              </p>
+            </div>
+            <div className="rb-modal-footer">
+              <button className="rb-btn rb-btn-secondary" onClick={() => setNdflModal(null)}>Отменить</button>
+              <button
+                className="rb-btn rb-btn-secondary"
+                onClick={() => applyNdflImport('skip_locked', ndflModal.matched, ndflModal.settingsMap)}
+              >
+                Игнорировать заблокированных
+              </button>
+              <button
+                className="rb-btn"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                onClick={() => applyNdflImport('overwrite', ndflModal.matched, ndflModal.settingsMap)}
+              >
+                Перезаписать всех
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* НДФЛ import loading overlay */}
+      {ndflImporting && (
+        <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
+          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+            <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
+            <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Импорт НДФЛ...</div>
+          </div>
+        </div>
+      )}
+
       {/* Step Content */}
       <div className="rb-layout" style={currentStep === 7 || currentStep === 2 ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
@@ -426,6 +658,7 @@ export default function ReferralBonusesPage() {
           pinnedForCompare={pinnedForCompare}
           togglePinCompare={togglePinCompare}
           onGlobalReset={currentStep === 1 && !isStepReadOnly(1) ? handleGlobalReset : null}
+          onImportNdfl={currentStep === 1 && !isStepReadOnly(1) ? handleImportNdfl : null}
         />}
         {/* Right: Step content */}
         <div className="rb-detail-panel">
@@ -455,7 +688,9 @@ function DoctorsList({
   bulkMode, bulkSelectedIds, setBulkSelectedIds,
   compareMode, pinnedForCompare, togglePinCompare,
   onGlobalReset,
+  onImportNdfl,
 }) {
+  const importFileRef = React.useRef(null);
   const toggleBulk = (id) => {
     setBulkSelectedIds(prev => {
       const next = new Set(prev);
@@ -513,10 +748,25 @@ function DoctorsList({
             </button>
           )}
         </div>
-        <select className="rb-select" value={filterClinic} onChange={e => setFilterClinic(e.target.value)}>
-          <option value="">Все медцентры</option>
-          {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select className="rb-select" style={{ flex: 1 }} value={filterClinic} onChange={e => setFilterClinic(e.target.value)}>
+            <option value="">Все медцентры</option>
+            {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {onImportNdfl && (
+            <button
+              onClick={() => importFileRef.current?.click()}
+              title="Импорт НДФЛ"
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#16a34a', border: '1px solid #86efac', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </button>
+          )}
+        </div>
         <select className="rb-select" value={filterRole} onChange={e => setFilterRole(e.target.value)}>
           <option value="">Все должности</option>
           {allRoles.map(r => <option key={r} value={r}>{r}</option>)}
@@ -540,6 +790,21 @@ function DoctorsList({
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="4" y1="4" x2="4" y2="20"/><line x1="20" y1="4" x2="20" y2="20"/><path d="M4 12h16"/></svg>
             {pinCount === 0 ? 'Закрепите двух врачей для сравнения' : pinCount === 1 ? 'Выберите второго врача' : 'Нажмите на метку, чтобы снять'}
           </div>
+        )}
+
+        {onImportNdfl && (
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              e.target.value = '';
+              await onImportNdfl(file);
+            }}
+          />
         )}
 
       </div>

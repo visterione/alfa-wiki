@@ -670,6 +670,20 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer();
   };
 
+  const handleToggleMainPaymentLock = async () => {
+    const newLocked = !data.lockedMainPayment;
+    updateClinicData({ lockedMainPayment: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedMainPayment: newLocked } } };
+    await saveToServer(newData);
+  };
+
+  const handleToggleAdvanceLock = async () => {
+    const newLocked = !data.lockedAdvance;
+    updateClinicData({ lockedAdvance: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedAdvance: newLocked } } };
+    await saveToServer(newData);
+  };
+
   // ── Cabinets ──────────────────────────────────────────────────────────────
   const globalCabinets = (execData.clinicSettings?.global?.cabinets) || [];
 
@@ -755,7 +769,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Дополнительно, Кабинеты)?')) return;
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Дополнительно, Кабинеты, Тело ЗП, Аванс)?')) return;
     const current = getClinicData();
     const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
     const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
@@ -764,13 +778,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
     const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
     const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
-    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras });
+    const resetMain    = current.lockedMainPayment ? {} : { mainPayment: 0 };
+    const resetAdvance = current.lockedAdvance     ? {} : { advance: 0 };
+    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resetMain, ...resetAdvance });
     const newData = {
       ...execData,
       clinicSettings: {
         ...execData.clinicSettings,
         global: newGlobal,
-        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras },
+        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resetMain, ...resetAdvance },
       },
     };
     await saveToServer(newData);
@@ -937,24 +953,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         <div className="rb-doctor-card-info">
           <h2>{selectedDoctor.name}</h2>
         </div>
-        {!readOnly && (() => {
-          const cur = getClinicData();
-          const lockedCabs = execData.clinicSettings?.global?.lockedCabinets || [];
-          const hasUnlocked =
-            (cur.deductions     || []).some(it => !it.locked) ||
-            (cur.materials      || []).some(it => !it.locked) ||
-            (cur.serviceMaterials || []).some(it => !it.locked) ||
-            (cur.extras         || []).some(it => !it.locked) ||
-            (execData.clinicSettings?.global?.cabinets || []).some(c => !lockedCabs.includes(c));
-          return hasUnlocked ? (
-            <button
-              onClick={handleResetAll}
-              style={{ padding: '5px 12px', background: 'transparent', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-            >
-              Сбросить всё
-            </button>
-          ) : null;
-        })()}
       </div>
 
       {/* Clinic tabs */}
@@ -1091,8 +1089,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <option value="cash">Наличные</option>
                 </select>
               </div>
-              <div className="rb-exec-field">
-                <label>Аванс, ₽</label>
+              <div className="rb-exec-field" style={data.lockedAdvance ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ marginBottom: 0 }}>Аванс, ₽</label>
+                  {!readOnly && <LockBtn locked={!!data.lockedAdvance} onClick={handleToggleAdvanceLock} />}
+                </div>
                 <input
                   type="number" min="0" step="any" placeholder="0"
                   value={data.advance || ''}
@@ -1106,8 +1107,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <option value="cash">Наличные</option>
                 </select>
               </div>
-              <div className="rb-exec-field">
-                <label>Тело ЗП, ₽</label>
+              <div className="rb-exec-field" style={data.lockedMainPayment ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ marginBottom: 0 }}>Тело ЗП, ₽</label>
+                  {!readOnly && <LockBtn locked={!!data.lockedMainPayment} onClick={handleToggleMainPaymentLock} />}
+                </div>
                 <input
                   type="number" min="0" step="any" placeholder="0"
                   value={data.mainPayment || ''}
