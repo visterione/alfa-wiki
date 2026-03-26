@@ -4,7 +4,8 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
-import { salaryRecords } from '../../../services/api';
+import { salaryRecords, cashPayments as cashPaymentsApi } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -48,7 +49,7 @@ function histSortKey(rec) {
 
 // ─── Salary card ──────────────────────────────────────────────────────────────
 
-function HistCard({ record, clinics, onDelete }) {
+function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay }) {
   const [open, setOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const finalSalary = getRecordFinalSalary(record);
@@ -69,6 +70,14 @@ function HistCard({ record, clinics, onDelete }) {
   };
   const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
   const reps = (record.reportData && record.reportData.clinicReports) || [];
+
+  // Cash payment totals for this record
+  const cashPaidTotal = cashPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+  const totalRemainder = reps.reduce((s, cr) => {
+    const sal = cr.salary || {};
+    return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+  }, 0);
+  const netRemainder = totalRemainder - cashPaidTotal;
 
   let basePay = 0, referralBonuses = 0, performedBonusTotal = 0, extrasTotal = 0, deductionsTotal = 0;
   reps.forEach(cr => {
@@ -96,8 +105,29 @@ function HistCard({ record, clinics, onDelete }) {
             {extrasTotal > 0        && <span className="rb-hist-card-tag">Надбавки: {fmtRub(extrasTotal)}</span>}
             {deductionsTotal > 0    && <span className="rb-hist-card-tag neg">Удержания: −{fmtRub(deductionsTotal)}</span>}
           </div>
+          {cashPaidTotal > 0 && (
+            <div className="rb-hist-card-tags" style={{ marginTop: 3 }}>
+              <span className="rb-hist-card-tag" style={{ background: '#dcfce7', color: '#15803d' }}>Выдано: −{fmtRub(cashPaidTotal)}</span>
+              <span className="rb-hist-card-tag" style={{ background: netRemainder < 0 ? '#fee2e2' : '#f0f9ff', color: netRemainder < 0 ? '#dc2626' : '#0284c7' }}>
+                Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+              </span>
+            </div>
+          )}
         </div>
         <div className="rb-hist-card-total">{fmtRub(finalSalary)}</div>
+        {onCashPay && (
+          <button
+            className="rb-hist-del"
+            onClick={e => { e.stopPropagation(); onCashPay(record, netRemainder); }}
+            title="Зафиксировать выдачу из кассы"
+            style={{ color: '#16a34a' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+              <line x1="12" y1="1" x2="12" y2="23"/>
+              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </button>
+        )}
         {record.hasExcel && (
           <button
             className="rb-hist-del"
@@ -141,6 +171,28 @@ function HistCard({ record, clinics, onDelete }) {
               </div>
             );
           })}
+          {cashPayments.length > 0 && (
+            <div style={{ borderTop: '2px dashed #bbf7d0', marginTop: 8, paddingTop: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
+              {cashPayments.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid #f0fdf4' }}>
+                  <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
+                    {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                  <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
+                  {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
+                </div>
+              ))}
+              <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
+                <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(totalRemainder)}</strong></span>
+                <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
+                <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
+                  Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -360,12 +412,25 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly }) {
+  const { user } = useAuth();
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);
   const [activeQuarter, setActiveQuarter] = useState(null);
   const [cmpRecords, setCmpRecords]       = useState({});
   const [cmpLoading, setCmpLoading]       = useState({});
+
+  // Cash payments
+  const [viewMode, setViewMode]           = useState('history'); // 'history' | 'kassa'
+  const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
+  const [kassaData, setKassaData]         = useState([]);
+  const [kassaLoading, setKassaLoading]   = useState(false);
+  const [cashModal, setCashModal]         = useState(null); // { record, defaultAmount }
+  const [cashAmount, setCashAmount]       = useState('');
+  const [cashNote, setCashNote]           = useState('');
+  const [cashSubmitting, setCashSubmitting] = useState(false);
+  const [kassaSearch, setKassaSearch]     = useState('');
+  const [kassaSortDir, setKassaSortDir]   = useState('desc'); // 'asc' | 'desc'
 
   const isCompareMode = pinnedForCompare.length === 2;
 
@@ -382,11 +447,66 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     }
   }, [selectedDoctor?.id]); // eslint-disable-line
 
+  const loadCashPayments = useCallback(async (misUserId) => {
+    if (!misUserId) return;
+    try {
+      const res = await cashPaymentsApi.getByMisUser(misUserId);
+      const map = {};
+      (Array.isArray(res.data) ? res.data : []).forEach(p => {
+        if (!map[p.salaryRecordId]) map[p.salaryRecordId] = [];
+        map[p.salaryRecordId].push(p);
+      });
+      setCashPaymentsMap(map);
+    } catch { /* ignore */ }
+  }, []);
+
+  const loadKassa = useCallback(async () => {
+    setKassaLoading(true);
+    try {
+      const res = await cashPaymentsApi.getAll();
+      setKassaData(Array.isArray(res.data) ? res.data : []);
+    } catch { setKassaData([]); }
+    finally { setKassaLoading(false); }
+  }, []);
+
+  const handleOpenCashModal = useCallback((record, netRemainder) => {
+    setCashModal({ record });
+    setCashAmount(netRemainder > 0 ? parseFloat(netRemainder).toFixed(2) : '');
+    setCashNote('');
+  }, []);
+
+  const handleCashSubmit = async () => {
+    if (!cashModal || !cashAmount) return;
+    setCashSubmitting(true);
+    try {
+      const res = await cashPaymentsApi.create({
+        salaryRecordId: cashModal.record.id,
+        amount: parseFloat(cashAmount),
+        note: cashNote.trim() || undefined,
+      });
+      const payment = res.data;
+      setCashPaymentsMap(prev => ({
+        ...prev,
+        [cashModal.record.id]: [payment, ...(prev[cashModal.record.id] || [])],
+      }));
+      toast.success('Выдача зафиксирована');
+      setCashModal(null);
+    } catch {
+      toast.error('Ошибка при сохранении');
+    } finally {
+      setCashSubmitting(false);
+    }
+  };
+
   useEffect(() => {
     setActiveYear(null);
     setActiveQuarter(null);
     setRecords([]);
-    if (selectedDoctor && !isCompareMode) loadRecords();
+    setCashPaymentsMap({});
+    if (selectedDoctor && !isCompareMode) {
+      loadRecords();
+      loadCashPayments(selectedDoctor.id);
+    }
   }, [selectedDoctor?.id, isCompareMode]); // eslint-disable-line
 
   // Load records for pinned doctors when compare mode activates
@@ -418,53 +538,6 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
   const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
-  // ── Compare mode ──────────────────────────────────────────────────────────
-  if (isCompareMode) {
-    return (
-      <CompareView
-        pinnedForCompare={pinnedForCompare}
-        doctors={doctors}
-        clinics={clinics}
-        cmpRecords={cmpRecords}
-        cmpLoading={cmpLoading}
-        activeYear={activeYear}
-        setActiveYear={setActiveYear}
-        activeQuarter={activeQuarter}
-        setActiveQuarter={setActiveQuarter}
-      />
-    );
-  }
-
-  // ── Single doctor ─────────────────────────────────────────────────────────
-  if (!selectedDoctor) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-        <p style={{ fontSize: 14 }}>Выберите врача из списка слева</p>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Загрузка истории...</div>;
-  }
-
-  if (!records.length) {
-    return (
-      <>
-        <div className="rb-hist-header">
-          <div className="rb-hist-doctor-name">{selectedDoctor.name}</div>
-        </div>
-        <div className="rb-hist-empty">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="36" height="36" style={{ opacity: 0.4, display: 'block', margin: '0 auto 10px' }}>
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <div>История зарплат пуста</div>
-          <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Сохраните расчёт во вкладке «Отчёт», нажав «Сохранить в историю»</div>
-        </div>
-      </>
-    );
-  }
-
   const years = [...new Set(records.map(getRecordYear).filter(Boolean))].sort((a, b) => a - b);
   const multiYear = years.length > 1;
   const currentYear = new Date().getFullYear();
@@ -494,8 +567,196 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     value: parseFloat((salaries[i] || 0).toFixed(2)),
   }));
 
+  const viewToggle = (
+    <div style={{ display: 'flex', borderBottom: '1px solid var(--rb-border)', padding: '6px 12px', gap: 4, background: '#f8fafc', flexShrink: 0 }}>
+      {[
+        { key: 'history', label: 'История зарплат', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
+        { key: 'kassa', label: 'Касса', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+      ].map(({ key, label, icon }) => (
+        <button key={key}
+          onClick={() => { setViewMode(key); if (key === 'kassa') loadKassa(); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, fontWeight: 600, border: '1px solid', borderRadius: 6, cursor: 'pointer', transition: 'all .15s',
+            borderColor: viewMode === key ? 'var(--rb-primary)' : 'transparent',
+            background: viewMode === key ? '#eff6ff' : 'none',
+            color: viewMode === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
+          }}
+        >
+          {icon}{label}
+        </button>
+      ))}
+    </div>
+  );
+
+  // ── Касса view ────────────────────────────────────────────────────────────
+  if (viewMode === 'kassa') {
+    const kassaFiltered = kassaData
+      .filter(p => !kassaSearch || p.doctorName?.toLowerCase().includes(kassaSearch.toLowerCase()))
+      .sort((a, b) => {
+        const diff = new Date(a.issuedAt) - new Date(b.issuedAt);
+        return kassaSortDir === 'asc' ? diff : -diff;
+      });
+    const kassaTotal = kassaFiltered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
+    return (
+      <>
+        {viewToggle}
+        <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* Search */}
+            <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"
+                style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }}>
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input
+                type="text"
+                value={kassaSearch}
+                onChange={e => setKassaSearch(e.target.value)}
+                placeholder="Поиск по сотруднику..."
+                style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, boxSizing: 'border-box', outline: 'none' }}
+              />
+            </div>
+            {/* Sort by date */}
+            <button
+              onClick={() => setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+              title={kassaSortDir === 'desc' ? 'Сначала новые' : 'Сначала старые'}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                {kassaSortDir === 'desc'
+                  ? <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></>
+                  : <><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></>
+                }
+              </svg>
+              Дата: {kassaSortDir === 'desc' ? 'новые ↓' : 'старые ↑'}
+            </button>
+            {kassaSearch && (
+              <button onClick={() => setKassaSearch('')}
+                style={{ fontSize: 11, padding: '5px 8px', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)' }}>
+                Сбросить
+              </button>
+            )}
+          </div>
+        </div>
+
+        {kassaLoading ? (
+          <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Загрузка...</div>
+        ) : kassaData.length === 0 ? (
+          <div className="rb-hist-empty">Нет записей о выдаче средств</div>
+        ) : kassaFiltered.length === 0 ? (
+          <div className="rb-hist-empty" style={{ padding: '30px 20px' }}>Ничего не найдено</div>
+        ) : (
+          <div style={{ overflowX: 'auto', padding: '0 16px 16px' }}>
+            <table className="rb-report-table" style={{ width: '100%', marginTop: 12 }}>
+              <thead>
+                <tr>
+                  <th>ФИО сотрудника</th>
+                  <th>Период</th>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc')}>
+                    Дата выдачи {kassaSortDir === 'desc' ? '↓' : '↑'}
+                  </th>
+                  <th style={{ textAlign: 'right' }}>Сумма</th>
+                  <th>Выдал</th>
+                  <th>Примечание</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kassaFiltered.map(p => (
+                  <tr key={p.id}>
+                    <td style={{ fontWeight: 500 }}>{p.doctorName}</td>
+                    <td style={{ color: 'var(--rb-text-secondary)' }}>{p.periodLabel || '—'}</td>
+                    <td style={{ color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                      {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>
+                      {parseFloat(p.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
+                    </td>
+                    <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
+                    <td style={{ color: 'var(--rb-text-secondary)', fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid var(--rb-border)' }}>
+                  <td colSpan={3} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8 }}>
+                    {kassaSearch ? `${kassaFiltered.length} из ${kassaData.length} записей` : `${kassaData.length} записей`}
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8 }}>
+                    {kassaTotal.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ── Compare mode ──────────────────────────────────────────────────────────
+  if (isCompareMode) {
+    return (
+      <>
+        {viewToggle}
+        <CompareView
+          pinnedForCompare={pinnedForCompare}
+          doctors={doctors}
+          clinics={clinics}
+          cmpRecords={cmpRecords}
+          cmpLoading={cmpLoading}
+          activeYear={activeYear}
+          setActiveYear={setActiveYear}
+          activeQuarter={activeQuarter}
+          setActiveQuarter={setActiveQuarter}
+        />
+      </>
+    );
+  }
+
+  // ── Single doctor ─────────────────────────────────────────────────────────
+  if (!selectedDoctor) {
+    return (
+      <>
+        {viewToggle}
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
+          <p style={{ fontSize: 14 }}>Выберите врача из списка слева</p>
+        </div>
+      </>
+    );
+  }
+
+  if (loading) {
+    return (
+      <>
+        {viewToggle}
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Загрузка истории...</div>
+      </>
+    );
+  }
+
+  if (!records.length) {
+    return (
+      <>
+        {viewToggle}
+        <div className="rb-hist-header">
+          <div className="rb-hist-doctor-name">{selectedDoctor.name}</div>
+        </div>
+        <div className="rb-hist-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="36" height="36" style={{ opacity: 0.4, display: 'block', margin: '0 auto 10px' }}>
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <div>История зарплат пуста</div>
+          <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Сохраните расчёт во вкладке «Отчёт», нажав «Сохранить в историю»</div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
+      {viewToggle}
+
       <div className="rb-hist-header">
         <div className="rb-hist-doctor-name">{selectedDoctor.name}</div>
       </div>
@@ -555,10 +816,59 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
           <div className="rb-hist-records">
             {filteredRecords.map(rec => (
-              <HistCard key={rec.id} record={rec} clinics={clinics} onDelete={readOnly ? undefined : handleDelete} />
+              <HistCard
+                key={rec.id}
+                record={rec}
+                clinics={clinics}
+                onDelete={readOnly ? undefined : handleDelete}
+                cashPayments={cashPaymentsMap[rec.id] || []}
+                onCashPay={readOnly ? undefined : handleOpenCashModal}
+              />
             ))}
           </div>
         </>
+      )}
+
+      {/* Cash payment modal */}
+      {cashModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setCashModal(null); }}>
+          <div style={{ background: '#fff', borderRadius: 12, width: 380, padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Выдача из кассы</div>
+            <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>
+              {cashModal.record.doctorName} · {cashModal.record.periodLabel || cashModal.record.dateFrom?.slice(0, 7) || ''}
+            </div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Сумма, ₽</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={cashAmount}
+              onChange={e => setCashAmount(e.target.value)}
+              autoFocus
+              style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 12, boxSizing: 'border-box' }}
+              placeholder="0.00"
+            />
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Примечание (необязательно)</label>
+            <input
+              type="text"
+              value={cashNote}
+              onChange={e => setCashNote(e.target.value)}
+              style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 20, boxSizing: 'border-box' }}
+              placeholder="Комментарий..."
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setCashModal(null)}
+                style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                Отмена
+              </button>
+              <button onClick={handleCashSubmit} disabled={cashSubmitting || !cashAmount}
+                style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: cashAmount ? 'pointer' : 'default', background: cashAmount ? '#16a34a' : '#d1fae5', color: '#fff', opacity: cashSubmitting ? 0.7 : 1, transition: 'all .15s' }}>
+                {cashSubmitting ? 'Сохранение...' : 'Зафиксировать'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

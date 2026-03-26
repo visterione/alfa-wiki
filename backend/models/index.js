@@ -2178,6 +2178,28 @@ const BotUpdate = sequelize.define('BotUpdate', {
   ]
 });
 
+// === CASH PAYMENT MODEL (выдача из кассы) ===
+const CashPayment = sequelize.define('CashPayment', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  salaryRecordId: { type: DataTypes.UUID, allowNull: false },
+  misUserId: { type: DataTypes.STRING(50), allowNull: false },
+  doctorName: { type: DataTypes.STRING(255), allowNull: false },
+  periodLabel: { type: DataTypes.STRING(100), allowNull: true },
+  amount: { type: DataTypes.DECIMAL(10, 2), allowNull: false },
+  issuedAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  issuedByUserId: { type: DataTypes.UUID, allowNull: true },
+  financistName: { type: DataTypes.STRING(100), allowNull: true },
+  note: { type: DataTypes.TEXT, allowNull: true },
+}, {
+  tableName: 'cash_payments',
+  timestamps: true,
+  indexes: [
+    { fields: ['salaryRecordId'] },
+    { fields: ['misUserId'] },
+    { fields: ['issuedAt'] },
+  ],
+});
+
 // === SALARY RECORD MODEL (история зарплат) ===
 const SalaryRecord = sequelize.define('SalaryRecord', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2299,6 +2321,7 @@ module.exports = {
   ReferralReport,
   RbUserPermission,
   SalaryRecord,
+  CashPayment,
   // Executor settings module
   ExecutorSettings,
   // Performed service bonuses module

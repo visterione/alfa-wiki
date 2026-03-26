@@ -568,6 +568,13 @@ export const executorSettings = {
   resetAll: () => api.post('/executor-settings/reset-all'),
 };
 
+export const cashPayments = {
+  getByMisUser: (misUserId) => api.get('/cash-payments', { params: { misUserId } }),
+  getAll: () => api.get('/cash-payments'),
+  create: (data) => api.post('/cash-payments', data),
+  delete: (id) => api.delete(`/cash-payments/${id}`),
+};
+
 export const salaryRecords = {
   getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
   getAll: () => api.get('/salary-records/all'),
