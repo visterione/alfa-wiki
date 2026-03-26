@@ -117,15 +117,11 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay }) {
         <div className="rb-hist-card-total">{fmtRub(finalSalary)}</div>
         {onCashPay && (
           <button
-            className="rb-hist-del"
             onClick={e => { e.stopPropagation(); onCashPay(record, netRemainder); }}
             title="Зафиксировать выдачу из кассы"
-            style={{ color: '#16a34a' }}
+            style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', border: '1px solid #16a34a', borderRadius: 5, cursor: 'pointer', background: '#f0fdf4', color: '#16a34a', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-              <line x1="12" y1="1" x2="12" y2="23"/>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
+            Касса
           </button>
         )}
         {record.hasExcel && (
@@ -864,7 +860,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               </button>
               <button onClick={handleCashSubmit} disabled={cashSubmitting || !cashAmount}
                 style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: cashAmount ? 'pointer' : 'default', background: cashAmount ? '#16a34a' : '#d1fae5', color: '#fff', opacity: cashSubmitting ? 0.7 : 1, transition: 'all .15s' }}>
-                {cashSubmitting ? 'Сохранение...' : 'Зафиксировать'}
+                {cashSubmitting ? 'Сохранение...' : 'Выдать'}
               </button>
             </div>
           </div>

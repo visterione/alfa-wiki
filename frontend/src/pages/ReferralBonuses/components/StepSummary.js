@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
-import { salaryRecords, executorSettings as execSettingsApi } from '../../../services/api';
+import { salaryRecords, executorSettings as execSettingsApi, cashPayments as cashPaymentsApi } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 import SalaryBlock from './SalaryBlockRenderer';
 
@@ -55,6 +55,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [exportingPayout, setExportingPayout] = useState(false);
   const [recalcLoading, setRecalcLoading] = useState({});
   const [recalcDone, setRecalcDone]       = useState({});
+  const [cashPaymentsMap, setCashPaymentsMap] = useState({});
 
   const handleRecalculate = async (rec, rowKey, overpay, periodLabel, clinicId) => {
     const key = rowKey;
@@ -116,9 +117,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
   useEffect(() => {
     setLoading(true);
-    salaryRecords.getAll()
-      .then(res => {
-        const list = Array.isArray(res.data) ? res.data : [];
+    Promise.all([salaryRecords.getAll(), cashPaymentsApi.getAll()])
+      .then(([recRes, cpRes]) => {
+        const list = Array.isArray(recRes.data) ? recRes.data : [];
         setRecords(list);
         // Восстанавливаем состояние перерасчётов из reportData
         const done = {};
@@ -127,6 +128,13 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
         });
         setRecalcDone(done);
+        // Строим карту выплат из кассы по salaryRecordId
+        const cpMap = {};
+        (Array.isArray(cpRes.data) ? cpRes.data : []).forEach(p => {
+          if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
+          cpMap[p.salaryRecordId].push(p);
+        });
+        setCashPaymentsMap(cpMap);
       })
       .catch(() => toast.error('Ошибка загрузки сводки'))
       .finally(() => setLoading(false));
@@ -474,6 +482,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
           return s + (rem < 0 ? rem : 0);
         }, 0);
+        const totalCashPaid = (() => {
+          const seen = new Set();
+          return filtered.reduce((s, { rec }) => {
+            if (seen.has(rec.id)) return s;
+            seen.add(rec.id);
+            return s + (cashPaymentsMap[rec.id] || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
+          }, 0);
+        })();
         return (
         <>
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -527,6 +543,22 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: '#1e40af' }}>{fmtRub(total)}</div>
+                        {(() => {
+                          const rowCash = cashPaymentsMap[rec.id] || [];
+                          if (!rowCash.length) return null;
+                          const rowCashTotal = rowCash.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+                          const allRem = (rec.reportData?.clinicReports || []).reduce((s, c) => {
+                            const sal = c.salary || {};
+                            return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+                          }, 0);
+                          const netRem = allRem - rowCashTotal;
+                          return (
+                            <div style={{ fontSize: 11, marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                              <span style={{ color: '#15803d', fontWeight: 600 }}>Касса: −{fmtRub(rowCashTotal)}</span>
+                              <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                            </div>
+                          );
+                        })()}
                         {(advance > 0 || body > 0 || bonus > 0 || overpay < 0) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
@@ -567,18 +599,49 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                     </tr>
 
-                    {isOpen && (
-                      <tr style={{ background: '#f8fafc' }}>
-                        <td colSpan={6} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
-                          <div style={{ paddingTop: 14 }}>
-                            {cr?.salary
-                              ? <SalaryBlock salary={cr.salary} />
-                              : <div style={{ color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
-                            }
-                          </div>
-                        </td>
-                      </tr>
-                    )}
+                    {isOpen && (() => {
+                      const recCashPayments = cashPaymentsMap[rec.id] || [];
+                      const cashPaidTotal = recCashPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+                      const allClinicRemainder = (rec.reportData?.clinicReports || []).reduce((s, c) => {
+                        const sal = c.salary || {};
+                        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+                      }, 0);
+                      const netRemainder = allClinicRemainder - cashPaidTotal;
+                      return (
+                        <tr style={{ background: '#f8fafc' }}>
+                          <td colSpan={6} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
+                            <div style={{ paddingTop: 14 }}>
+                              {cr?.salary
+                                ? <SalaryBlock salary={cr.salary} />
+                                : <div style={{ color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+                              }
+                            </div>
+                            {recCashPayments.length > 0 && (
+                              <div style={{ borderTop: '2px dashed #bbf7d0', marginTop: 8, paddingTop: 10 }}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
+                                {recCashPayments.map(p => (
+                                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid #f0fdf4' }}>
+                                    <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
+                                      {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                    <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                                    <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
+                                    {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
+                                  </div>
+                                ))}
+                                <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
+                                  <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(allClinicRemainder)}</strong></span>
+                                  <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
+                                  <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
+                                    Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })()}
                   </React.Fragment>
                 );
               })}
@@ -608,6 +671,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
             </div>
+            {totalCashPaid > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма по кассе</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rb-text-secondary)' }}>−{fmtRub(totalCashPaid)}</div>
+              </div>
+            )}
           </div>
         </div>
         </>
