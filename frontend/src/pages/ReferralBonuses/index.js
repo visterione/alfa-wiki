@@ -220,8 +220,8 @@ export default function ReferralBonusesPage() {
       .finally(() => setDoctorsLoading(false));
   }, []);
 
-  // ── Exclude hidden roles (temporarily disabled) ──
-  const visibleDoctors = doctors; // doctors.filter(d => !d.roles.includes('КабинетыИРабота'));
+  // ── Exclude hidden roles ──
+  const visibleDoctors = doctors.filter(d => !d.roles.includes('КабинетыИРабота'));
 
   // ── Filtered doctors ──
   const filteredDoctors = visibleDoctors.filter(d => {
