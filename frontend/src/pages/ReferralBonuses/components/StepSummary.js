@@ -404,8 +404,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             : 'Нет записей по заданному фильтру.'}
         </div>
       ) : (() => {
-        const totalSalary = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
-        const totalBody   = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment  || 0), 0);
+        const totalSalary  = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
+        const totalBase    = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0) + parseFloat(r.cr?.salary?.advance || 0), 0);
+        const totalOverpay = filtered.reduce((s, r) => {
+          const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+          return s + (rem < 0 ? rem : 0);
+        }, 0);
         return (
         <>
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -511,8 +515,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{fmtRub(filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0))}</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма тел</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBody)}</div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
             </div>
           </div>
         </div>

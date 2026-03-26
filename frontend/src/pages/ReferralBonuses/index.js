@@ -220,8 +220,11 @@ export default function ReferralBonusesPage() {
       .finally(() => setDoctorsLoading(false));
   }, []);
 
+  // ── Exclude hidden roles (temporarily disabled) ──
+  const visibleDoctors = doctors; // doctors.filter(d => !d.roles.includes('КабинетыИРабота'));
+
   // ── Filtered doctors ──
-  const filteredDoctors = doctors.filter(d => {
+  const filteredDoctors = visibleDoctors.filter(d => {
     if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterClinic && !d.clinics.includes(String(filterClinic))) return false;
@@ -232,12 +235,12 @@ export default function ReferralBonusesPage() {
 
   // ── All unique roles ──
   const allRoles = [...new Set(
-    doctors.flatMap(d => d.roles)
+    visibleDoctors.flatMap(d => d.roles)
   )].sort();
 
   // ── All unique professions ──
   const allProfessions = [...new Set(
-    doctors.flatMap(d => d.professions.map(p => rbProfessionTitle(p)).filter(Boolean))
+    visibleDoctors.flatMap(d => d.professions.map(p => rbProfessionTitle(p)).filter(Boolean))
   )].sort();
 
   // ── Clinic helpers ──
@@ -628,7 +631,7 @@ export default function ReferralBonusesPage() {
         {/* Left: Doctors list (hidden on Сводка tab) */}
         {currentStep !== 7 && currentStep !== 2 && <DoctorsList
           doctors={filteredDoctors}
-          allDoctors={doctors}
+          allDoctors={visibleDoctors}
           clinics={clinics}
           loading={doctorsLoading}
           error={doctorsError}
