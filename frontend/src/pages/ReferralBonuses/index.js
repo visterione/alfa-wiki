@@ -540,9 +540,6 @@ export default function ReferralBonusesPage() {
               <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: '0 0 10px' }}>
                 Будут удалены все <strong>незафиксированные</strong> записи (расходники, штрафы, материалы, дополнительно) у всех врачей.
               </p>
-              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', lineHeight: 1.5, margin: 0 }}>
-                Зафиксированные записи (🔒) останутся без изменений. Это действие нельзя отменить.
-              </p>
             </div>
             <div className="rb-modal-footer">
               <button className="rb-btn rb-btn-secondary" onClick={() => setShowResetConfirm(false)}>Отмена</button>
@@ -574,7 +571,7 @@ export default function ReferralBonusesPage() {
             </div>
             <div className="rb-modal-body">
               <p style={{ fontSize: 14, color: 'var(--rb-text)', marginBottom: 10 }}>
-                У следующих сотрудников уже есть <strong>заблокированная</strong> запись НДФЛ:
+                У следующих сотрудников уже есть <strong>заблокированные</strong> записи:
               </p>
               <div style={{ maxHeight: 200, overflowY: 'auto', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
                 {ndflModal.conflicts.map(({ doctor, mainPayment, advance, ndfl }) => {
