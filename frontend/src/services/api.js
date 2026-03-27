@@ -572,6 +572,7 @@ export const cashPayments = {
   getByMisUser: (misUserId) => api.get('/cash-payments', { params: { misUserId } }),
   getAll: () => api.get('/cash-payments'),
   create: (data) => api.post('/cash-payments', data),
+  update: (id, data) => api.put(`/cash-payments/${id}`, data),
   delete: (id) => api.delete(`/cash-payments/${id}`),
 };
 

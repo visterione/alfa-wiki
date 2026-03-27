@@ -62,6 +62,22 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// PUT /api/cash-payments/:id — редактировать выдачу
+router.put('/:id', authenticate, async (req, res) => {
+  try {
+    const payment = await CashPayment.findByPk(req.params.id);
+    if (!payment) return res.status(404).json({ error: 'Not found' });
+    const { amount, note } = req.body;
+    if (amount != null) payment.amount = parseFloat(amount);
+    if (note !== undefined) payment.note = note || null;
+    await payment.save();
+    res.json(payment);
+  } catch (err) {
+    console.error('PUT /api/cash-payments/:id error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /api/cash-payments/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {

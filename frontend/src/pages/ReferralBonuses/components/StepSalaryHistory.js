@@ -49,9 +49,30 @@ function histSortKey(rec) {
 
 // ─── Salary card ──────────────────────────────────────────────────────────────
 
-function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay }) {
+function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onCashDelete, onCashEdit }) {
   const [open, setOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [editingPayId, setEditingPayId] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editSaving, setEditSaving] = useState(false);
+
+  const startEdit = (p) => {
+    setEditingPayId(p.id);
+    setEditAmount(parseFloat(p.amount).toFixed(2));
+    setEditNote(p.note || '');
+  };
+  const cancelEdit = () => setEditingPayId(null);
+  const saveEdit = async (p) => {
+    if (!onCashEdit) return;
+    setEditSaving(true);
+    try {
+      await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || undefined });
+      setEditingPayId(null);
+    } finally {
+      setEditSaving(false);
+    }
+  };
   const finalSalary = getRecordFinalSalary(record);
 
   const handleDownloadExcel = async (e) => {
@@ -181,13 +202,53 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay }) {
             <div style={{ borderTop: '2px dashed #bbf7d0', marginTop: 8, paddingTop: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
               {cashPayments.map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0', borderBottom: '1px solid #f0fdf4' }}>
-                  <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120 }}>
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f0fdf4', flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120, flexShrink: 0 }}>
                     {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
-                  <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
-                  <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
-                  {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
+                  {editingPayId === p.id ? (
+                    <>
+                      <input
+                        type="number" min="0" step="0.01"
+                        value={editAmount}
+                        onChange={e => setEditAmount(e.target.value)}
+                        style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, boxSizing: 'border-box' }}
+                      />
+                      <input
+                        type="text"
+                        value={editNote}
+                        onChange={e => setEditNote(e.target.value)}
+                        placeholder="Примечание..."
+                        style={{ flex: 1, minWidth: 80, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }}
+                      />
+                      <button onClick={() => saveEdit(p)} disabled={editSaving || !editAmount}
+                        style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#16a34a', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
+                        {editSaving ? '...' : 'Сохр.'}
+                      </button>
+                      <button onClick={cancelEdit}
+                        style={{ padding: '2px 6px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                        Отмена
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span style={{ fontWeight: 600, color: '#16a34a', flex: 1 }}>−{fmtRub(p.amount)}</span>
+                      <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
+                      {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
+                      {onCashEdit && (
+                        <button onClick={() => startEdit(p)} title="Редактировать"
+                          style={{ padding: '1px 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                      )}
+                      {onCashDelete && (
+                        <button onClick={() => onCashDelete(p.id)} title="Удалить"
+                          style={{ padding: '1px 5px', fontSize: 11, border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
               <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
@@ -436,6 +497,10 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [kassaSearch, setKassaSearch]     = useState('');
   const [kassaSortDir, setKassaSortDir]   = useState('desc'); // 'asc' | 'desc'
+  const [kassaEditId, setKassaEditId]     = useState(null);
+  const [kassaEditAmount, setKassaEditAmount] = useState('');
+  const [kassaEditNote, setKassaEditNote] = useState('');
+  const [kassaEditSaving, setKassaEditSaving] = useState(false);
 
   const isCompareMode = pinnedForCompare.length === 2;
 
@@ -541,6 +606,47 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     }
   };
 
+  const handleCashDelete = async (paymentId) => {
+    if (!window.confirm('Удалить эту выдачу из кассы?')) return;
+    try {
+      await cashPaymentsApi.delete(paymentId);
+      // Update cashPaymentsMap
+      setCashPaymentsMap(prev => {
+        const next = {};
+        for (const [k, arr] of Object.entries(prev)) {
+          next[k] = arr.filter(p => p.id !== paymentId);
+        }
+        return next;
+      });
+      // Also update kassaData if loaded
+      setKassaData(prev => prev.filter(p => p.id !== paymentId));
+      toast.success('Запись удалена');
+    } catch {
+      toast.error('Ошибка удаления');
+    }
+  };
+
+  const handleCashEdit = async (paymentId, data) => {
+    try {
+      const res = await cashPaymentsApi.update(paymentId, data);
+      const updated = res.data;
+      // Update cashPaymentsMap
+      setCashPaymentsMap(prev => {
+        const next = {};
+        for (const [k, arr] of Object.entries(prev)) {
+          next[k] = arr.map(p => p.id === paymentId ? updated : p);
+        }
+        return next;
+      });
+      // Also update kassaData if loaded
+      setKassaData(prev => prev.map(p => p.id === paymentId ? updated : p));
+      toast.success('Выдача обновлена');
+    } catch {
+      toast.error('Ошибка обновления');
+      throw new Error('failed');
+    }
+  };
+
   const fmtRub = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
   const years = [...new Set(records.map(getRecordYear).filter(Boolean))].sort((a, b) => a - b);
@@ -591,6 +697,16 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       ))}
     </div>
   );
+
+  const startKassaEdit = (p) => { setKassaEditId(p.id); setKassaEditAmount(parseFloat(p.amount).toFixed(2)); setKassaEditNote(p.note || ''); };
+  const cancelKassaEdit = () => setKassaEditId(null);
+  const saveKassaEdit = async (p) => {
+    setKassaEditSaving(true);
+    try {
+      await handleCashEdit(p.id, { amount: parseFloat(kassaEditAmount), note: kassaEditNote.trim() || undefined });
+      setKassaEditId(null);
+    } catch { /* error already toasted */ } finally { setKassaEditSaving(false); }
+  };
 
   // ── Касса view ────────────────────────────────────────────────────────────
   if (viewMode === 'kassa') {
@@ -663,6 +779,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <th style={{ textAlign: 'right' }}>Сумма</th>
                   <th>Выдал</th>
                   <th>Примечание</th>
+                  {!readOnly && <th style={{ width: 64 }} />}
                 </tr>
               </thead>
               <tbody>
@@ -673,11 +790,53 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                     <td style={{ color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>
-                      {parseFloat(p.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
-                    </td>
-                    <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
-                    <td style={{ color: 'var(--rb-text-secondary)', fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
+                    {kassaEditId === p.id ? (
+                      <>
+                        <td style={{ textAlign: 'right' }}>
+                          <input type="number" min="0" step="0.01" value={kassaEditAmount} onChange={e => setKassaEditAmount(e.target.value)}
+                            style={{ width: 90, padding: '2px 5px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, textAlign: 'right', boxSizing: 'border-box' }} />
+                        </td>
+                        <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
+                        <td>
+                          <input type="text" value={kassaEditNote} onChange={e => setKassaEditNote(e.target.value)} placeholder="Примечание..."
+                            style={{ width: '100%', padding: '2px 5px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button onClick={() => saveKassaEdit(p)} disabled={kassaEditSaving || !kassaEditAmount}
+                              style={{ padding: '2px 7px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#16a34a', color: '#fff', opacity: kassaEditSaving ? 0.6 : 1 }}>
+                              {kassaEditSaving ? '...' : 'Сохр.'}
+                            </button>
+                            <button onClick={cancelKassaEdit}
+                              style={{ padding: '2px 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                              ✕
+                            </button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>
+                          {parseFloat(p.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
+                        </td>
+                        <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
+                        <td style={{ color: 'var(--rb-text-secondary)', fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
+                        {!readOnly && (
+                          <td>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button onClick={() => startKassaEdit(p)} title="Редактировать"
+                                style={{ padding: '2px 5px', border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                              </button>
+                              <button onClick={() => handleCashDelete(p.id)} title="Удалить"
+                                style={{ padding: '2px 5px', border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -689,7 +848,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8 }}>
                     {kassaTotal.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
                   </td>
-                  <td colSpan={2} />
+                  <td colSpan={!readOnly ? 3 : 2} />
                 </tr>
               </tfoot>
             </table>
@@ -828,6 +987,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 onDelete={readOnly ? undefined : handleDelete}
                 cashPayments={cashPaymentsMap[rec.id] || []}
                 onCashPay={readOnly ? undefined : handleOpenCashModal}
+                onCashDelete={readOnly ? undefined : handleCashDelete}
+                onCashEdit={readOnly ? undefined : handleCashEdit}
               />
             ))}
           </div>

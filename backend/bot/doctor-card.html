@@ -2228,7 +2228,52 @@ window.dcApp = (function() {
     var cardClinics = (card && card.metadata && card.metadata.clinics) || [];
     var clinicIds = cardClinics.length > 0 ? convertOldClinicIds(cardClinics) : [];
 
-    renderFavorites(container, favorites, clinicIds);
+    // Запрашиваем живые цены из МИС (аналогично вкладке services)
+    var serviceIds = favorites.map(function(f) { return f.id; });
+    var fetchLivePrices;
+    if (clinicIds.length === 0) {
+      fetchLivePrices = fetchAPI(API_BASE + '/mis/services', {
+        method: 'POST',
+        body: JSON.stringify({ service_ids: serviceIds, show_all: true })
+      }).then(function(servData) {
+        return [{ clinicId: null, data: servData }];
+      });
+    } else {
+      fetchLivePrices = Promise.all(clinicIds.map(function(clinicId) {
+        return fetchAPI(API_BASE + '/mis/services', {
+          method: 'POST',
+          body: JSON.stringify({ service_ids: serviceIds, clinic_id: clinicId, show_all: true })
+        }).then(function(servData) {
+          return { clinicId: clinicId, data: servData };
+        });
+      }));
+    }
+
+    fetchLivePrices.then(function(clinicResults) {
+      // Строим карту живых цен: serviceId -> { clinicId: price }
+      var livePricesMap = {};
+      clinicResults.forEach(function(cr) {
+        if (cr.data && cr.data.error === 0 && cr.data.data) {
+          var services = Array.isArray(cr.data.data) ? cr.data.data : [cr.data.data];
+          services.forEach(function(s) {
+            var sid = String(s.service_id || s.id);
+            if (!livePricesMap[sid]) livePricesMap[sid] = {};
+            var key = cr.clinicId ? cr.clinicId : 'default';
+            livePricesMap[sid][key] = parseFloat(s.price) || 0;
+          });
+        }
+      });
+      // Подставляем живые цены, сохраняя кешированные как fallback
+      favorites.forEach(function(fav) {
+        if (livePricesMap[fav.id] && Object.keys(livePricesMap[fav.id]).length > 0) {
+          fav.prices = livePricesMap[fav.id];
+        }
+      });
+      renderFavorites(container, favorites, clinicIds);
+    }).catch(function() {
+      // Если МИС недоступен — используем сохранённые цены
+      renderFavorites(container, favorites, clinicIds);
+    });
   }
 
   function renderFavorites(container, favorites, clinicIds) {
