@@ -80,6 +80,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [recalcLoading, setRecalcLoading] = useState({});
   const [recalcDone, setRecalcDone]       = useState({});
   const [cashPaymentsMap, setCashPaymentsMap] = useState({});
+  const [cashOverpayLoading, setCashOverpayLoading] = useState({});
+  const [cashOverpayDone, setCashOverpayDone]       = useState({});
 
   const handleRecalculate = async (rec, rowKey, overpay, periodLabel, clinicId) => {
     const key = rowKey;
@@ -132,6 +134,53 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
+  const handleCashOverpay = async (rec, amount, dateLabel) => {
+    const key = rec.id;
+    setCashOverpayLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await execSettingsApi.get(rec.misUserId);
+      const raw = res.data && Object.keys(res.data).length ? res.data : null;
+      const settings = raw || {
+        assistants: [],
+        clinicSettings: {
+          global: {
+            payType: 'salary', fixedSalary: 0, hourlyRate: 0, hoursWorked: 0,
+            executorPercent: 0, plusPercent: false, paymentMethod: 'card',
+            mainPaymentMethod: 'card', advance: 0, mainPayment: 0,
+            includeReferralBonuses: true, includeReferralDeductions: true,
+            includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
+            deductions: [], materials: [], serviceMaterials: [],
+            extras: [], normServices: [], harmfulness: false,
+          },
+        },
+      };
+      const globalData = settings.clinicSettings?.global || {};
+      const deductions = [...(globalData.deductions || [])];
+      deductions.push({
+        name: `Переплата (касса) за ${dateLabel}`,
+        value: parseFloat(Math.abs(amount).toFixed(2)),
+        valueType: 'rub',
+        deductionType: 'final',
+        locked: false,
+      });
+      const newSettings = {
+        ...settings,
+        clinicSettings: { ...settings.clinicSettings, global: { ...globalData, deductions } },
+      };
+      await execSettingsApi.save({ misUserId: rec.misUserId, doctorName: rec.doctorName, settings: newSettings });
+      clearExecCache(rec.misUserId);
+      const updatedReportData = { ...(rec.reportData || {}), cashOverpayDone: { ...(rec.reportData?.cashOverpayDone || {}), [key]: true } };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+      setCashOverpayDone(prev => ({ ...prev, [key]: true }));
+      toast.success(`Переплата (касса) зафиксирована у ${rec.doctorName}`);
+    } catch {
+      toast.error('Ошибка при фиксации переплаты (касса)');
+    } finally {
+      setCashOverpayLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   const [searchName, setSearchName]         = useState('');
   const [filterClinic, setFilterClinic]     = useState('');
   const [filterSpecialty, setFilterSpecialty] = useState('');
@@ -146,11 +195,15 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const list = Array.isArray(res.data) ? res.data : [];
         setRecords(list);
         const done = {};
+        const cashDone = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
           Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
+          const cashFlags = rec.reportData?.cashOverpayDone || {};
+          Object.keys(cashFlags).forEach(k => { if (cashFlags[k]) cashDone[k] = true; });
         });
         setRecalcDone(done);
+        setCashOverpayDone(cashDone);
         // Загружаем кассу отдельно — не критично если упадёт
         cashPaymentsApi.getAll()
           .then(cpRes => {
@@ -358,10 +411,16 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       hRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
       hRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
+      const seenRecForCash = new Set();
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
         const remainder = (parseFloat(s.finalSalary || 0)) - (parseFloat(s.advance || 0)) - (parseFloat(s.mainPayment || 0));
-        const cashPaid = (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+        const cashPaidForRow = !seenRecForCash.has(rec.id)
+          ? (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)
+          : 0;
+        seenRecForCash.add(rec.id);
+        const netRemainder = remainder - cashPaidForRow;
+        const cashPaid = (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
         ws.addRow({
           name:      rec.doctorName || '—',
           clinic:    clinicName,
@@ -372,8 +431,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           ndfl:      -getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0),
-          bonus:     remainder >= 0 ? remainder : 0,
-          overpay:   remainder < 0  ? remainder : 0,
+          bonus:     netRemainder >= 0 ? netRemainder : 0,
+          overpay:   netRemainder < 0  ? netRemainder : 0,
           cashPaid:  cashPaid || null,
         });
       });
@@ -401,14 +460,26 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         ndfl:    -filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
-        bonus:   filtered.reduce((s, r) => {
-          const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
-          return s + (rem >= 0 ? rem : 0);
-        }, 0),
-        overpay: filtered.reduce((s, r) => {
-          const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
-          return s + (rem < 0 ? rem : 0);
-        }, 0),
+        bonus:   (() => {
+          const seenForBonus = new Set();
+          return filtered.reduce((s, r) => {
+            const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
+            const cash = !seenForBonus.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
+            seenForBonus.add(r.rec.id);
+            const net = rem - cash;
+            return s + (net >= 0 ? net : 0);
+          }, 0);
+        })(),
+        overpay: (() => {
+          const seenForOverpay = new Set();
+          return filtered.reduce((s, r) => {
+            const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
+            const cash = !seenForOverpay.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
+            seenForOverpay.add(r.rec.id);
+            const net = rem - cash;
+            return s + (net < 0 ? net : 0);
+          }, 0);
+        })(),
         cashPaid: excelCashTotal || null,
       });
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
@@ -695,8 +766,24 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                 <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
                                   <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(allClinicRemainder)}</strong></span>
                                   <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
-                                  <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
-                                    Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
+                                      Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+                                    </span>
+                                    {netRemainder < 0 && (
+                                      <button
+                                        onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRemainder, rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '?')); }}
+                                        disabled={!!cashOverpayLoading[rec.id]}
+                                        title={cashOverpayDone[rec.id] ? 'Переплата (касса) зафиксирована (можно повторить)' : 'Зафиксировать переплату по кассе в расходниках сотрудника'}
+                                        style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
+                                      >
+                                        {cashOverpayDone[rec.id] ? (
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                                        ) : (
+                                          <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+                                        )}
+                                      </button>
+                                    )}
                                   </span>
                                 </div>
                               </div>
