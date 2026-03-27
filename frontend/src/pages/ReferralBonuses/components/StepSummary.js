@@ -134,7 +134,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
-  const handleCashOverpay = async (rec, amount, dateLabel) => {
+  const handleCashOverpay = async (rec, amount, dateLabel, clinicId) => {
     const key = rec.id;
     setCashOverpayLoading(prev => ({ ...prev, [key]: true }));
     try {
@@ -154,8 +154,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           },
         },
       };
-      const globalData = settings.clinicSettings?.global || {};
-      const deductions = [...(globalData.deductions || [])];
+      const clinicKey = clinicId && settings.clinicSettings?.[String(clinicId)] ? String(clinicId) : 'global';
+      const clinicData = settings.clinicSettings?.[clinicKey] || {};
+      const deductions = [...(clinicData.deductions || [])];
       deductions.push({
         name: `Переплата (касса) за ${dateLabel}`,
         value: parseFloat(Math.abs(amount).toFixed(2)),
@@ -165,7 +166,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       });
       const newSettings = {
         ...settings,
-        clinicSettings: { ...settings.clinicSettings, global: { ...globalData, deductions } },
+        clinicSettings: { ...settings.clinicSettings, [clinicKey]: { ...clinicData, deductions } },
       };
       await execSettingsApi.save({ misUserId: rec.misUserId, doctorName: rec.doctorName, settings: newSettings });
       clearExecCache(rec.misUserId);
@@ -693,7 +694,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                 <span style={{ color: netRem < 0 ? (cashOverpayDone[rec.id] ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
                                 {netRem < 0 && (
                                   <button
-                                    onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel); }}
+                                    onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel, cr?.clinicId); }}
                                     disabled={!!cashOverpayLoading[rec.id]}
                                     title={cashOverpayDone[rec.id] ? 'Переплата (касса) зафиксирована (можно повторить)' : 'Зафиксировать переплату по кассе в расходниках сотрудника'}
                                     style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
