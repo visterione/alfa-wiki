@@ -690,7 +690,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             <div style={{ fontSize: 11, marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                               <span style={{ color: '#15803d', fontWeight: 600 }}>Касса: −{fmtRub(rowCashTotal)}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Переплата: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                                <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
                                 {netRem < 0 && (
                                   <button
                                     onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel); }}
@@ -783,7 +783,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                   <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(allClinicRemainder)}</strong></span>
                                   <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
                                   <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
-                                    Переплата: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
+                                    Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
                                   </span>
                                 </div>
                               </div>
