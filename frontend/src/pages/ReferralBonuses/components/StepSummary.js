@@ -82,6 +82,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [cashPaymentsMap, setCashPaymentsMap] = useState({});
   const [cashOverpayLoading, setCashOverpayLoading] = useState({});
   const [cashOverpayDone, setCashOverpayDone]       = useState({});
+  const [commentsMap, setCommentsMap] = useState({});
+  const [commentSaving, setCommentSaving] = useState({});
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingCommentValue, setEditingCommentValue] = useState('');
 
   const handleRecalculate = async (rec, rowKey, overpay, periodLabel, clinicId) => {
     const key = rowKey;
@@ -156,17 +160,29 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       };
       const clinicKey = clinicId && settings.clinicSettings?.[String(clinicId)] ? String(clinicId) : 'global';
       const clinicData = settings.clinicSettings?.[clinicKey] || {};
-      const deductions = [...(clinicData.deductions || [])];
-      deductions.push({
-        name: `Переплата (касса) за ${dateLabel}`,
-        value: parseFloat(Math.abs(amount).toFixed(2)),
-        valueType: 'rub',
-        deductionType: 'final',
-        locked: false,
-      });
+      let newClinicData;
+      if (amount < 0) {
+        const deductions = [...(clinicData.deductions || [])];
+        deductions.push({
+          name: `Переплата (касса) за ${dateLabel}`,
+          value: parseFloat(Math.abs(amount).toFixed(2)),
+          valueType: 'rub',
+          deductionType: 'final',
+          locked: false,
+        });
+        newClinicData = { ...clinicData, deductions };
+      } else {
+        const extras = [...(clinicData.extras || [])];
+        extras.push({
+          name: `Остаток (касса) за ${dateLabel}`,
+          amount: parseFloat(amount.toFixed(2)),
+          hours: 0,
+        });
+        newClinicData = { ...clinicData, extras };
+      }
       const newSettings = {
         ...settings,
-        clinicSettings: { ...settings.clinicSettings, [clinicKey]: { ...clinicData, deductions } },
+        clinicSettings: { ...settings.clinicSettings, [clinicKey]: newClinicData },
       };
       await execSettingsApi.save({ misUserId: rec.misUserId, doctorName: rec.doctorName, settings: newSettings });
       clearExecCache(rec.misUserId);
@@ -174,11 +190,26 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
       setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
       setCashOverpayDone(prev => ({ ...prev, [key]: true }));
-      toast.success(`Переплата (касса) зафиксирована у ${rec.doctorName}`);
+      toast.success(amount < 0 ? `Переплата (касса) добавлена в расходники — ${rec.doctorName}` : `Остаток (касса) добавлен в дополнительно — ${rec.doctorName}`);
     } catch {
       toast.error('Ошибка при фиксации переплаты (касса)');
     } finally {
       setCashOverpayLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleSaveComment = async (rec, value) => {
+    const prev = rec.reportData?.summaryComment || '';
+    if (value === prev) return;
+    setCommentSaving(s => ({ ...s, [rec.id]: true }));
+    try {
+      const updatedReportData = { ...(rec.reportData || {}), summaryComment: value };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+    } catch {
+      toast.error('Ошибка сохранения комментария');
+    } finally {
+      setCommentSaving(s => ({ ...s, [rec.id]: false }));
     }
   };
 
@@ -197,14 +228,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         setRecords(list);
         const done = {};
         const cashDone = {};
+        const comments = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
           Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
           const cashFlags = rec.reportData?.cashOverpayDone || {};
           Object.keys(cashFlags).forEach(k => { if (cashFlags[k]) cashDone[k] = true; });
+          if (rec.reportData?.summaryComment) comments[rec.id] = rec.reportData.summaryComment;
         });
         setRecalcDone(done);
         setCashOverpayDone(cashDone);
+        setCommentsMap(comments);
         // Загружаем кассу отдельно — не критично если упадёт
         cashPaymentsApi.getAll()
           .then(cpRes => {
@@ -398,13 +432,13 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         { header: 'Специальность',  key: 'specialty', width: 26 },
         { header: 'Дата',           key: 'date',      width: 18 },
         { header: 'Начислено',      key: 'total',     width: 16 },
-        { header: 'Удержание % от оборота', key: 'uderzh', width: 22 },
-        { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
+        { header: 'Детализация',    key: 'detail',    width: 52 },
         { header: 'Аванс',          key: 'advance',   width: 16 },
         { header: 'Тело',           key: 'body',      width: 16 },
         { header: 'Премия',         key: 'bonus',     width: 16 },
         { header: 'Переплата',      key: 'overpay',   width: 16 },
         { header: 'Выдано (касса)', key: 'cashPaid',  width: 16 },
+        { header: 'Комментарий',    key: 'comment',   width: 36 },
       ];
 
       const hRow = ws.getRow(1);
@@ -412,6 +446,34 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       hRow.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
       hRow.alignment = { horizontal: 'center', vertical: 'middle' };
 
+      // Формирует строку детализации из расходников, материалов и дополнительно
+      const buildDetail = (salary) => {
+        if (!salary) return '';
+        const fmtA = v => parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const preFinal = (parseFloat(salary.basePay || 0)) + (parseFloat(salary.referralBonuses || 0))
+          + (parseFloat(salary.performedBonusTotal || 0)) + (parseFloat(salary.extrasTotal || 0))
+          + (parseFloat(salary.assistanceIncomeTotal || 0)) - (parseFloat(salary.referralCostTotal || 0));
+        const turnoverBase = parseFloat(salary.performedServicesSum || 0);
+        const lines = [];
+        const formatDed = (d) => {
+          const v = parseFloat(d.value) || 0;
+          if (d.valueType === 'rub') return `${d.name}: -${fmtA(v)} ₽`;
+          const base = d.deductionType === 'final' ? preFinal : turnoverBase;
+          const amt = base * v / 100;
+          const tag = d.deductionType === 'final' ? '% от зп' : '% от об.';
+          return `${d.name}: -${fmtA(amt)} ₽ (${v}${tag})`;
+        };
+        (salary.deductions || []).forEach(d => lines.push(formatDed(d)));
+        (salary.materials  || []).forEach(m => lines.push(formatDed(m)));
+        (salary.extras     || []).forEach(e => {
+          const hrs = parseFloat(e.hours) || 0;
+          const amt = hrs > 0 ? parseFloat(e.amount) * hrs : parseFloat(e.amount);
+          lines.push(`${e.name}: +${fmtA(amt)} ₽`);
+        });
+        return lines.join('\n');
+      };
+
+      const dataRows = [];
       const seenRecForCash = new Set();
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
@@ -422,24 +484,48 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         seenRecForCash.add(rec.id);
         const netRemainder = remainder - cashPaidForRow;
         const cashPaid = (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
-        ws.addRow({
+        const detailStr = buildDetail(s);
+        const row = ws.addRow({
           name:      rec.doctorName || '—',
           clinic:    clinicName,
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
           total:     parseFloat(s.finalSalary || 0),
-          uderzh:    (() => { const { amount, percent } = getUderzhanieInfo(s); if (!amount) return null; const neg = parseFloat((-amount).toFixed(2)); return percent != null ? `${neg.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽ (${percent}%)` : neg; })(),
-          ndfl:      -getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0),
           bonus:     netRemainder >= 0 ? netRemainder : 0,
           overpay:   netRemainder < 0  ? netRemainder : 0,
           cashPaid:  cashPaid || null,
+          detail:    detailStr || null,
+          comment:   rec.reportData?.summaryComment || null,
         });
+        dataRows.push({ row, detailStr });
       });
 
-      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
+      ['total', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
+      });
+
+      // Перенос текста и высота строк по содержимому
+      dataRows.forEach(({ row, detailStr }) => {
+        row.alignment = { vertical: 'top' };
+        const detailCell = row.getCell('detail');
+        detailCell.alignment = { wrapText: true, vertical: 'top' };
+        const commentCell = row.getCell('comment');
+        commentCell.alignment = { wrapText: true, vertical: 'top' };
+        const lineCount = detailStr ? detailStr.split('\n').length : 1;
+        row.height = Math.max(20, lineCount * 16);
+      });
+
+      // Автоширина числовых и текстовых колонок по содержимому
+      const colKeys = ['name', 'clinic', 'specialty', 'date'];
+      colKeys.forEach(key => {
+        let maxLen = ws.getColumn(key).header?.length || 10;
+        ws.getColumn(key).eachCell({ includeEmpty: false }, cell => {
+          const len = String(cell.value || '').length;
+          if (len > maxLen) maxLen = len;
+        });
+        ws.getColumn(key).width = Math.min(50, maxLen + 2);
       });
 
       // Итоговая строка
@@ -453,32 +539,25 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       })();
       const totalRow = ws.addRow({
         name:    'ИТОГО',
-        clinic:  '',
-        specialty: '',
-        date:    '',
         total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
-        uderzh:  -filtered.reduce((s, r) => s + getUderzhanieAmount(r.cr?.salary), 0) || null,
-        ndfl:    -filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
         bonus:   (() => {
-          const seenForBonus = new Set();
+          const seenB = new Set();
           return filtered.reduce((s, r) => {
-            const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
-            const cash = !seenForBonus.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
-            seenForBonus.add(r.rec.id);
-            const net = rem - cash;
-            return s + (net >= 0 ? net : 0);
+            const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+            const cash = !seenB.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
+            seenB.add(r.rec.id);
+            const net = rem - cash; return s + (net >= 0 ? net : 0);
           }, 0);
         })(),
         overpay: (() => {
-          const seenForOverpay = new Set();
+          const seenO = new Set();
           return filtered.reduce((s, r) => {
-            const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
-            const cash = !seenForOverpay.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
-            seenForOverpay.add(r.rec.id);
-            const net = rem - cash;
-            return s + (net < 0 ? net : 0);
+            const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+            const cash = !seenO.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
+            seenO.add(r.rec.id);
+            const net = rem - cash; return s + (net < 0 ? net : 0);
           }, 0);
         })(),
         cashPaid: excelCashTotal || null,
@@ -486,7 +565,6 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
       totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
       totalRow.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
-      totalRow.getCell('uderzh').numFmt = '#,##0.00 ₽';
 
       const buf = await wb.xlsx.writeBuffer();
       downloadBlob(
@@ -631,7 +709,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9' }}>
-                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'Зарплата'].map(h => (
+                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'Зарплата', 'Комментарий'].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -692,11 +770,13 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               <span style={{ color: '#15803d', fontWeight: 600 }}>Касса: −{fmtRub(rowCashTotal)}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                                 <span style={{ color: netRem < 0 ? (cashOverpayDone[rec.id] ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
-                                {netRem < 0 && (
+                                {netRem !== 0 && (
                                   <button
                                     onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel, cr?.clinicId); }}
                                     disabled={!!cashOverpayLoading[rec.id]}
-                                    title={cashOverpayDone[rec.id] ? 'Переплата (касса) зафиксирована (можно повторить)' : 'Зафиксировать переплату по кассе в расходниках сотрудника'}
+                                    title={cashOverpayDone[rec.id]
+                                      ? 'Уже зафиксировано (можно повторить)'
+                                      : netRem < 0 ? 'Добавить переплату в расходники' : 'Добавить остаток в дополнительно'}
                                     style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
                                   >
                                     {cashOverpayDone[rec.id] ? (
@@ -740,6 +820,41 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           </div>
                         )}
                       </td>
+                      <td style={{ padding: '6px 10px', minWidth: 150, maxWidth: 260 }} onClick={e => e.stopPropagation()}>
+                        {editingCommentId === rec.id ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            <textarea
+                              autoFocus
+                              value={editingCommentValue}
+                              onChange={e => setEditingCommentValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Escape') { setEditingCommentId(null); } }}
+                              rows={3}
+                              style={{ width: '100%', fontSize: 12, padding: '5px 7px', border: '1px solid #93c5fd', borderRadius: 6, resize: 'none', lineHeight: 1.5, boxSizing: 'border-box', outline: 'none', background: '#f8fafc' }}
+                            />
+                            <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={() => setEditingCommentId(null)}
+                                style={{ padding: '3px 8px', fontSize: 11, background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 5, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
+                              >Отмена</button>
+                              <button
+                                disabled={!!commentSaving[rec.id]}
+                                onClick={async () => { await handleSaveComment(rec, editingCommentValue); setEditingCommentId(null); }}
+                                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: commentSaving[rec.id] ? 0.5 : 1 }}
+                              >{commentSaving[rec.id] ? '...' : 'Сохранить'}</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => { setEditingCommentId(rec.id); setEditingCommentValue(commentsMap[rec.id] ?? (rec.reportData?.summaryComment || '')); }}
+                            title="Нажмите для редактирования"
+                            style={{ minHeight: 32, padding: '4px 6px', borderRadius: 6, border: '1px solid transparent', cursor: 'text', fontSize: 12, lineHeight: 1.5, color: commentsMap[rec.id] || rec.reportData?.summaryComment ? 'var(--rb-text)' : '#94a3b8', whiteSpace: 'pre-wrap', wordBreak: 'break-word', transition: 'border-color .15s, background .15s' }}
+                            onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--rb-border)'; e.currentTarget.style.background = '#f8fafc'; }}
+                            onMouseLeave={e => { e.currentTarget.style.borderColor = 'transparent'; e.currentTarget.style.background = 'transparent'; }}
+                          >
+                            {commentsMap[rec.id] || rec.reportData?.summaryComment || ''}
+                          </div>
+                        )}
+                      </td>
                       <td style={{ padding: '10px 8px', textAlign: 'center' }}>
                         <svg
                           viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"
@@ -760,7 +875,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       const netRemainder = allClinicRemainder - cashPaidTotal;
                       return (
                         <tr style={{ background: '#f8fafc' }}>
-                          <td colSpan={6} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
+                          <td colSpan={7} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
                             <div style={{ paddingTop: 14 }}>
                               {cr?.salary
                                 ? <SalaryBlock salary={cr.salary} />
