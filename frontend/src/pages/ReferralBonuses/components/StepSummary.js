@@ -690,7 +690,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             <div style={{ fontSize: 11, marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                               <span style={{ color: '#15803d', fontWeight: 600 }}>Касса: −{fmtRub(rowCashTotal)}</span>
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                                <span style={{ color: netRem < 0 ? (cashOverpayDone[rec.id] ? 'var(--rb-text-secondary)' : '#dc2626') : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
                                 {netRem < 0 && (
                                   <button
                                     onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel); }}
