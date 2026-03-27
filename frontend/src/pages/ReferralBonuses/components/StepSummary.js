@@ -17,24 +17,48 @@ function downloadBlob(blob, filename) {
 const fmtRub = v =>
   parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
-// Извлекает сумму НДФЛ из объекта salary (поддерживает % и ₽, любой регистр имени)
-function getNdflAmount(salary) {
+// Извлекает сумму вычета по имени из объекта salary (поддерживает % и ₽)
+function _getDeductionAmount(salary, namePredicate) {
   if (!salary) return 0;
   const deductions = salary.deductions || [];
-  const ndfl = deductions.find(d => (d.name || '').trim().toUpperCase() === 'НДФЛ');
-  if (!ndfl) return 0;
-  const value = parseFloat(ndfl.value) || 0;
-  if (ndfl.valueType === 'rub') return value;
-  // процент — нужна база
-  if (ndfl.deductionType === 'final') {
+  const ded = deductions.find(d => namePredicate((d.name || '').trim()));
+  if (!ded) return 0;
+  const value = parseFloat(ded.value) || 0;
+  if (ded.valueType === 'rub') return value;
+  if (ded.deductionType === 'final') {
     const preFinal = (parseFloat(salary.finalSalary) || 0)
       + (parseFloat(salary.finalDeductionsTotal) || 0)
       + (parseFloat(salary.materialsTotal) || 0);
     return preFinal * value / 100;
   }
-  // от оборота
   const base = parseFloat(salary.performedServicesSum) || 0;
   return base * value / 100;
+}
+
+function getNdflAmount(salary) {
+  return _getDeductionAmount(salary, n => n.toUpperCase() === 'НДФЛ');
+}
+
+function getUderzhanieInfo(salary) {
+  if (!salary) return { amount: 0, percent: null };
+  const deductions = salary.deductions || [];
+  const ded = deductions.find(d => (d.name || '').trim().toLowerCase().includes('удержан'));
+  if (!ded) return { amount: 0, percent: null };
+  const value = parseFloat(ded.value) || 0;
+  if (ded.valueType === 'rub') return { amount: value, percent: null };
+  const percent = value;
+  if (ded.deductionType === 'final') {
+    const preFinal = (parseFloat(salary.finalSalary) || 0)
+      + (parseFloat(salary.finalDeductionsTotal) || 0)
+      + (parseFloat(salary.materialsTotal) || 0);
+    return { amount: preFinal * percent / 100, percent };
+  }
+  const base = parseFloat(salary.performedServicesSum) || 0;
+  return { amount: base * percent / 100, percent };
+}
+
+function getUderzhanieAmount(salary) {
+  return getUderzhanieInfo(salary).amount;
 }
 
 const fmtDate = s => {
@@ -320,6 +344,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         { header: 'Специальность',  key: 'specialty', width: 26 },
         { header: 'Дата',           key: 'date',      width: 18 },
         { header: 'Начислено',      key: 'total',     width: 16 },
+        { header: 'Удержание % от оборота', key: 'uderzh', width: 22 },
         { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
         { header: 'Аванс',          key: 'advance',   width: 16 },
         { header: 'Тело',           key: 'body',      width: 16 },
@@ -343,7 +368,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
           total:     parseFloat(s.finalSalary || 0),
-          ndfl:      getNdflAmount(s),
+          uderzh:    (() => { const { amount, percent } = getUderzhanieInfo(s); if (!amount) return null; const neg = parseFloat((-amount).toFixed(2)); return percent != null ? `${neg.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽ (${percent}%)` : neg; })(),
+          ndfl:      -getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0),
           bonus:     remainder >= 0 ? remainder : 0,
@@ -371,7 +397,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         specialty: '',
         date:    '',
         total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
-        ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0),
+        uderzh:  -filtered.reduce((s, r) => s + getUderzhanieAmount(r.cr?.salary), 0) || null,
+        ndfl:    -filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
         bonus:   filtered.reduce((s, r) => {
@@ -387,6 +414,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
       totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
       totalRow.border = { top: { style: 'medium', color: { argb: 'FF94A3B8' } } };
+      totalRow.getCell('uderzh').numFmt = '#,##0.00 ₽';
 
       const buf = await wb.xlsx.writeBuffer();
       downloadBlob(

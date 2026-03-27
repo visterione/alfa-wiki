@@ -13,7 +13,7 @@ function _makeStyles() {
 }
 
 // ─── Internal: write one clinic sheet into a workbook ─────────────────────────
-function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments) {
+function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments, totalRemainder) {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
   ws.properties.outlineLevelRow = 2;
@@ -284,6 +284,32 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       cashTotalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
       ws.mergeCells(`B${cashTotalRow.number}:E${cashTotalRow.number}`);
       autoWidth(cashTotalRow, 6);
+
+      if (totalRemainder != null) {
+        ws.addRow([]);
+        const netRemainder = totalRemainder - cashTotal;
+        const remainderColor = netRemainder < 0 ? 'FFCC0000' : 'FF166534';
+        const remainderFill  = netRemainder < 0 ? 'FFFEE2E2' : 'FFD1FAE5';
+
+        const r1 = ws.addRow(['', 'Итого к выплате', '', '', '', parseFloat(totalRemainder.toFixed(2))]);
+        r1.getCell(2).font = { ...fontBold }; r1.getCell(6).font = fontBold;
+        r1.getCell(6).numFmt = '#,##0.00'; r1.getCell(6).border = allBorders;
+        ws.mergeCells(`B${r1.number}:E${r1.number}`);
+
+        const r2 = ws.addRow(['', 'Выдано', '', '', '', parseFloat((-cashTotal).toFixed(2))]);
+        r2.getCell(2).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+        r2.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+        r2.getCell(6).numFmt = '#,##0.00'; r2.getCell(6).border = allBorders;
+        ws.mergeCells(`B${r2.number}:E${r2.number}`);
+
+        const r3 = ws.addRow(['', 'Остаток', '', '', '', parseFloat(netRemainder.toFixed(2))]);
+        r3.getCell(2).font = { ...fontBold, size: 13, color: { argb: remainderColor } };
+        r3.getCell(6).font = { ...fontBold, size: 13, color: { argb: remainderColor } };
+        r3.getCell(6).numFmt = '#,##0.00'; r3.getCell(6).border = allBorders;
+        r3.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: remainderFill } };
+        ws.mergeCells(`B${r3.number}:E${r3.number}`);
+        autoWidth(r3, 6);
+      }
     }
   }
 }
@@ -300,11 +326,18 @@ export function buildSingleWorkbook(reportData, cashPayments) {
   const { fontTitle, fontBold, fontNormal, fillHeader, allBorders } = _makeStyles();
   const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Врач');
 
+  const totalRemainder = cashPayments?.length
+    ? clinicReports.reduce((s, cr) => {
+        const sal = cr.salary || {};
+        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+      }, 0)
+    : null;
+
   for (let i = 0; i < clinicReports.length; i++) {
     const { clinicLabel, executorSections, salary } = clinicReports[i];
     const sheetName = (clinicLabel || 'Клиника').substring(0, 31);
     const isLast = i === clinicReports.length - 1;
-    _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, isLast ? cashPayments : undefined);
+    _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, isLast ? cashPayments : undefined, isLast ? totalRemainder : undefined);
   }
   return wb;
 }
