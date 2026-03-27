@@ -131,6 +131,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   const [bonusValue, setBonusValue] = useState('');
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [refPage, setRefPage] = useState(1);
+  const [refShowAll, setRefShowAll] = useState(false);
 
   // Category tab state
   const [catServices, setCatServices] = useState([]);
@@ -163,6 +165,37 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   // ── Filtered bonuses for current clinic tab ──
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
   const filteredBonuses = bonuses.filter(b => (b.clinicId || '') === dbClinicId);
+
+  const REF_PAGE_SIZE = 50;
+  const refTotalPages = Math.max(1, Math.ceil(filteredBonuses.length / REF_PAGE_SIZE));
+  const refPageSafe = Math.min(refPage, refTotalPages);
+  const refPageData = refShowAll ? filteredBonuses : filteredBonuses.slice((refPageSafe - 1) * REF_PAGE_SIZE, refPageSafe * REF_PAGE_SIZE);
+
+  function RefPagination() {
+    if (refShowAll || refTotalPages <= 1) return null;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px 0 2px' }}>
+        <button onClick={() => setRefPage(1)} disabled={refPageSafe === 1}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
+        <button onClick={() => setRefPage(p => Math.max(1, p - 1))} disabled={refPageSafe === 1}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: refPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
+        {Array.from({ length: refTotalPages }, (_, i) => i + 1)
+          .filter(n => n === 1 || n === refTotalPages || Math.abs(n - refPageSafe) <= 2)
+          .reduce((acc, n, idx, arr) => { if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…'); acc.push(n); return acc; }, [])
+          .map((item, idx) => item === '…'
+            ? <span key={`e${idx}`} style={{ padding: '4px 4px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>…</span>
+            : <button key={item} onClick={() => setRefPage(item)}
+                style={{ padding: '4px 9px', fontSize: 12, fontWeight: item === refPageSafe ? 700 : 400, border: '1px solid', borderColor: item === refPageSafe ? 'var(--rb-primary)' : 'var(--rb-border)', borderRadius: 5, cursor: item === refPageSafe ? 'default' : 'pointer', background: item === refPageSafe ? '#eff6ff' : '#fff', color: item === refPageSafe ? 'var(--rb-primary)' : 'var(--rb-text)' }}>
+                {item}
+              </button>
+          )}
+        <button onClick={() => setRefPage(p => Math.min(refTotalPages, p + 1))} disabled={refPageSafe === refTotalPages}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: '#fff', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
+        <button onClick={() => setRefPage(refTotalPages)} disabled={refPageSafe === refTotalPages}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: refPageSafe === refTotalPages ? 'default' : 'pointer', background: '#fff', color: refPageSafe === refTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
+      </div>
+    );
+  }
 
   // ── Service search ──
   const handleSearch = useCallback(async (q) => {
@@ -338,7 +371,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
         <button
           className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`}
           style={{ borderColor: 'var(--rb-primary)' }}
-          onClick={() => setActiveClinic('global')}
+          onClick={() => { setActiveClinic('global'); setRefPage(1); }}
         >
           Общие
         </button>
@@ -347,7 +380,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             key={c.id}
             className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
             style={{ borderColor: c.color || 'var(--rb-primary)' }}
-            onClick={() => setActiveClinic(String(c.id))}
+            onClick={() => { setActiveClinic(String(c.id)); setRefPage(1); }}
           >
             <span className="rb-clinic-tab-dot" style={{ background: c.color }} />
             {c.name}
@@ -564,11 +597,23 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
               {filteredBonuses.length} услуг
             </span>
           )}
+          <button
+            onClick={() => setRefShowAll(v => !v)}
+            title={refShowAll ? 'Включить пагинацию' : 'Показать все записи'}
+            style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: refShowAll ? '#eff6ff' : '#fff', color: refShowAll ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+            {refShowAll ? 'По страницам' : 'Все'}
+          </button>
         </div>
         <div className="rb-bonuses-table-wrap">
           {loading ? (
             <div className="rb-loading"><span className="rb-spinner" /> Загрузка...</div>
           ) : (
+            <>
             <table className="rb-table">
               <thead>
                 <tr>
@@ -585,7 +630,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                     <td colSpan="5">Нет услуг. Добавьте услуги выше.</td>
                   </tr>
                 ) : (
-                  filteredBonuses.map(b => (
+                  refPageData.map(b => (
                     <tr key={b.id}>
                       <td className="rb-service-code-cell">{b.serviceCode}</td>
                       <td>{b.serviceName}</td>
@@ -628,6 +673,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                 )}
               </tbody>
             </table>
+            <RefPagination />
+            </>
           )}
         </div>
       </div>

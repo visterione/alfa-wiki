@@ -497,6 +497,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [kassaSearch, setKassaSearch]     = useState('');
   const [kassaSortDir, setKassaSortDir]   = useState('desc'); // 'asc' | 'desc'
+  const [kassaPage, setKassaPage]         = useState(1);
   const [kassaEditId, setKassaEditId]     = useState(null);
   const [kassaEditAmount, setKassaEditAmount] = useState('');
   const [kassaEditNote, setKassaEditNote] = useState('');
@@ -717,6 +718,10 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         return kassaSortDir === 'asc' ? diff : -diff;
       });
     const kassaTotal = kassaFiltered.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const KASSA_PAGE_SIZE = 50;
+    const kassaTotalPages = Math.max(1, Math.ceil(kassaFiltered.length / KASSA_PAGE_SIZE));
+    const kassaPageSafe = Math.min(kassaPage, kassaTotalPages);
+    const kassaPageData = kassaFiltered.slice((kassaPageSafe - 1) * KASSA_PAGE_SIZE, kassaPageSafe * KASSA_PAGE_SIZE);
 
     return (
       <>
@@ -732,14 +737,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               <input
                 type="text"
                 value={kassaSearch}
-                onChange={e => setKassaSearch(e.target.value)}
+                onChange={e => { setKassaSearch(e.target.value); setKassaPage(1); }}
                 placeholder="Поиск по сотруднику..."
                 style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 6, paddingBottom: 6, fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, boxSizing: 'border-box', outline: 'none' }}
               />
             </div>
             {/* Sort by date */}
             <button
-              onClick={() => setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+              onClick={() => { setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc'); setKassaPage(1); }}
               title={kassaSortDir === 'desc' ? 'Сначала новые' : 'Сначала старые'}
               style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', fontSize: 12, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}
             >
@@ -752,7 +757,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               Дата: {kassaSortDir === 'desc' ? 'новые ↓' : 'старые ↑'}
             </button>
             {kassaSearch && (
-              <button onClick={() => setKassaSearch('')}
+              <button onClick={() => { setKassaSearch(''); setKassaPage(1); }}
                 style={{ fontSize: 11, padding: '5px 8px', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)' }}>
                 Сбросить
               </button>
@@ -773,7 +778,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 <tr>
                   <th>ФИО сотрудника</th>
                   <th>Период</th>
-                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc')}>
+                  <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => { setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc'); setKassaPage(1); }}>
                     Дата выдачи {kassaSortDir === 'desc' ? '↓' : '↑'}
                   </th>
                   <th style={{ textAlign: 'right' }}>Сумма</th>
@@ -783,7 +788,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 </tr>
               </thead>
               <tbody>
-                {kassaFiltered.map(p => (
+                {kassaPageData.map(p => (
                   <tr key={p.id}>
                     <td style={{ fontWeight: 500 }}>{p.doctorName}</td>
                     <td style={{ color: 'var(--rb-text-secondary)' }}>{p.periodLabel || '—'}</td>
@@ -844,6 +849,11 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 <tr style={{ borderTop: '2px solid var(--rb-border)' }}>
                   <td colSpan={3} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8 }}>
                     {kassaSearch ? `${kassaFiltered.length} из ${kassaData.length} записей` : `${kassaData.length} записей`}
+                    {kassaTotalPages > 1 && (
+                      <span style={{ fontWeight: 400, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+                        (показаны {(kassaPageSafe - 1) * KASSA_PAGE_SIZE + 1}–{Math.min(kassaPageSafe * KASSA_PAGE_SIZE, kassaFiltered.length)})
+                      </span>
+                    )}
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8 }}>
                     {kassaTotal.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
@@ -852,6 +862,40 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 </tr>
               </tfoot>
             </table>
+            {kassaTotalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 12 }}>
+                <button onClick={() => setKassaPage(1)} disabled={kassaPageSafe === 1}
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  «
+                </button>
+                <button onClick={() => setKassaPage(p => Math.max(1, p - 1))} disabled={kassaPageSafe === 1}
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  ‹
+                </button>
+                {Array.from({ length: kassaTotalPages }, (_, i) => i + 1)
+                  .filter(n => n === 1 || n === kassaTotalPages || Math.abs(n - kassaPageSafe) <= 2)
+                  .reduce((acc, n, idx, arr) => {
+                    if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…');
+                    acc.push(n);
+                    return acc;
+                  }, [])
+                  .map((item, idx) => item === '…'
+                    ? <span key={`ellipsis-${idx}`} style={{ padding: '4px 6px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>…</span>
+                    : <button key={item} onClick={() => setKassaPage(item)}
+                        style={{ padding: '4px 9px', fontSize: 12, fontWeight: item === kassaPageSafe ? 700 : 400, border: '1px solid', borderColor: item === kassaPageSafe ? 'var(--rb-primary)' : 'var(--rb-border)', borderRadius: 5, cursor: item === kassaPageSafe ? 'default' : 'pointer', background: item === kassaPageSafe ? '#eff6ff' : '#fff', color: item === kassaPageSafe ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1 }}>
+                        {item}
+                      </button>
+                  )}
+                <button onClick={() => setKassaPage(p => Math.min(kassaTotalPages, p + 1))} disabled={kassaPageSafe === kassaTotalPages}
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  ›
+                </button>
+                <button onClick={() => setKassaPage(kassaTotalPages)} disabled={kassaPageSafe === kassaTotalPages}
+                  style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: kassaPageSafe === kassaTotalPages ? 'default' : 'pointer', background: '#fff', color: kassaPageSafe === kassaTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)', lineHeight: 1 }}>
+                  »
+                </button>
+              </div>
+            )}
           </div>
         )}
       </>

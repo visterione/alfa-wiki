@@ -331,6 +331,8 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   const [corpMapDirty, setCorpMapDirty] = useState(false);
   const [corpSaving, setCorpSaving] = useState(false);
   const [fullExecData, setFullExecData] = useState(null);
+  const [perfPage, setPerfPage] = useState(1);
+  const [perfShowAll, setPerfShowAll] = useState(false);
 
   const autoSaveTimerRef = useRef(null);
   const handleSaveAllRef = useRef(null);
@@ -351,6 +353,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     setCorpMap({});
     setCorpMapDirty(false);
     setFullExecData(null);
+    setPerfPage(1);
 
     Promise.all([
       performedServiceBonuses.getByDoctor(selectedDoctor.id),
@@ -496,6 +499,37 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     return (svc.code || '').toLowerCase().includes(term) || (svc.title || '').toLowerCase().includes(term);
   });
 
+  const PERF_PAGE_SIZE = 100;
+  const perfTotalPages = Math.max(1, Math.ceil(filteredServices.length / PERF_PAGE_SIZE));
+  const perfPageSafe = Math.min(perfPage, perfTotalPages);
+  const perfPageData = perfShowAll ? filteredServices : filteredServices.slice((perfPageSafe - 1) * PERF_PAGE_SIZE, perfPageSafe * PERF_PAGE_SIZE);
+
+  function PerfPagination() {
+    if (perfShowAll || perfTotalPages <= 1) return null;
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '10px 0 2px' }}>
+        <button onClick={() => setPerfPage(1)} disabled={perfPageSafe === 1}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>«</button>
+        <button onClick={() => setPerfPage(p => Math.max(1, p - 1))} disabled={perfPageSafe === 1}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === 1 ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>‹</button>
+        {Array.from({ length: perfTotalPages }, (_, i) => i + 1)
+          .filter(n => n === 1 || n === perfTotalPages || Math.abs(n - perfPageSafe) <= 2)
+          .reduce((acc, n, idx, arr) => { if (idx > 0 && n - arr[idx - 1] > 1) acc.push('…'); acc.push(n); return acc; }, [])
+          .map((item, idx) => item === '…'
+            ? <span key={`e${idx}`} style={{ padding: '4px 4px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>…</span>
+            : <button key={item} onClick={() => setPerfPage(item)}
+                style={{ padding: '4px 9px', fontSize: 12, fontWeight: item === perfPageSafe ? 700 : 400, border: '1px solid', borderColor: item === perfPageSafe ? 'var(--rb-primary)' : 'var(--rb-border)', borderRadius: 5, cursor: item === perfPageSafe ? 'default' : 'pointer', background: item === perfPageSafe ? '#eff6ff' : '#fff', color: item === perfPageSafe ? 'var(--rb-primary)' : 'var(--rb-text)' }}>
+                {item}
+              </button>
+          )}
+        <button onClick={() => setPerfPage(p => Math.min(perfTotalPages, p + 1))} disabled={perfPageSafe === perfTotalPages}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>›</button>
+        <button onClick={() => setPerfPage(perfTotalPages)} disabled={perfPageSafe === perfTotalPages}
+          style={{ padding: '4px 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 5, cursor: perfPageSafe === perfTotalPages ? 'default' : 'pointer', background: '#fff', color: perfPageSafe === perfTotalPages ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>»</button>
+      </div>
+    );
+  }
+
   if (!selectedDoctor) {
     return (
       <div className="rb-placeholder">
@@ -555,7 +589,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
             <button
               className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`}
               style={{ borderColor: 'var(--rb-primary)' }}
-              onClick={() => setActiveClinic('global')}
+              onClick={() => { setActiveClinic('global'); setPerfPage(1); }}
             >
               Общие
             </button>
@@ -564,7 +598,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                 key={c.id}
                 className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
                 style={activeClinic === String(c.id) ? { borderBottomColor: c.color } : {}}
-                onClick={() => setActiveClinic(String(c.id))}
+                onClick={() => { setActiveClinic(String(c.id)); setPerfPage(1); }}
               >
                 <span className="rb-clinic-tab-dot" style={{ background: c.color }} />
                 {c.name}
@@ -582,9 +616,20 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                   type="text"
                   placeholder="Поиск по коду или названию услуги..."
                   value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
+                  onChange={e => { setSearchTerm(e.target.value); setPerfPage(1); }}
                   style={{ flex: 1, padding: '7px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
                 />
+                <button
+                  onClick={() => setPerfShowAll(v => !v)}
+                  title={perfShowAll ? 'Включить пагинацию' : 'Показать все записи'}
+                  style={{ padding: '6px 10px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 8, cursor: 'pointer', background: perfShowAll ? '#eff6ff' : '#fff', color: perfShowAll ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                  {perfShowAll ? 'По страницам' : 'Все'}
+                </button>
                 {corpMapDirty && (
                   <button
                     onClick={() => handleCorpSave(corpMap)}
@@ -617,7 +662,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredServices.map((svc, idx) => {
+                  {perfPageData.map((svc, idx) => {
                     const rv = rowValues[svc.code] || { type: 'pct', val: '' };
                     return (
                       <ServiceRowControlled
@@ -639,6 +684,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                   })}
                 </tbody>
               </table>
+              <PerfPagination />
             </>
           )}
         </div>
