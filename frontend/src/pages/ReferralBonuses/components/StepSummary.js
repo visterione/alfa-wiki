@@ -687,9 +687,25 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           }, 0);
                           const netRem = allRem - rowCashTotal;
                           return (
-                            <div style={{ fontSize: 11, marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                            <div style={{ fontSize: 11, marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                               <span style={{ color: '#15803d', fontWeight: 600 }}>Касса: −{fmtRub(rowCashTotal)}</span>
-                              <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Остаток: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ color: netRem < 0 ? '#dc2626' : '#0284c7' }}>Переплата: {netRem < 0 ? '−' : ''}{fmtRub(Math.abs(netRem))}</span>
+                                {netRem < 0 && (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRem, dateLabel); }}
+                                    disabled={!!cashOverpayLoading[rec.id]}
+                                    title={cashOverpayDone[rec.id] ? 'Переплата (касса) зафиксирована (можно повторить)' : 'Зафиксировать переплату по кассе в расходниках сотрудника'}
+                                    style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
+                                  >
+                                    {cashOverpayDone[rec.id] ? (
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                                    ) : (
+                                      <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+                                    )}
+                                  </button>
+                                )}
+                              </span>
                             </div>
                           );
                         })()}
@@ -766,24 +782,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                 <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12 }}>
                                   <span style={{ color: 'var(--rb-text-secondary)' }}>Итого к выплате: <strong>{fmtRub(allClinicRemainder)}</strong></span>
                                   <span style={{ color: '#15803d' }}>Выдано: <strong>−{fmtRub(cashPaidTotal)}</strong></span>
-                                  <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
-                                      Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
-                                    </span>
-                                    {netRemainder < 0 && (
-                                      <button
-                                        onClick={e => { e.stopPropagation(); handleCashOverpay(rec, netRemainder, rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '?')); }}
-                                        disabled={!!cashOverpayLoading[rec.id]}
-                                        title={cashOverpayDone[rec.id] ? 'Переплата (касса) зафиксирована (можно повторить)' : 'Зафиксировать переплату по кассе в расходниках сотрудника'}
-                                        style={{ padding: '3px 5px', background: cashOverpayDone[rec.id] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${cashOverpayDone[rec.id] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: cashOverpayLoading[rec.id] ? 0.4 : 1 }}
-                                      >
-                                        {cashOverpayDone[rec.id] ? (
-                                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
-                                        ) : (
-                                          <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
-                                        )}
-                                      </button>
-                                    )}
+                                  <span style={{ color: netRemainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text)', fontWeight: 600 }}>
+                                    Переплата: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
                                   </span>
                                 </div>
                               </div>
