@@ -5,7 +5,7 @@ import {
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
 import { salaryRecords, cashPayments as cashPaymentsApi } from '../../../services/api';
-import { useAuth } from '../../../context/AuthContext';
+import { buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -58,10 +58,20 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay }) {
     e.stopPropagation();
     setDownloading(true);
     try {
-      const res = await salaryRecords.downloadExcel(record.id);
       const period = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'no-period');
       const name = record.doctorName?.split(' ')[0] || 'salary';
-      downloadBlob(res.data, `Зарплата_${name}_${period}.xlsx`);
+      const rd = record.reportData;
+      if (rd?.clinicReports?.length) {
+        const wb = buildSingleWorkbook({ doctor: record.doctorName, clinicReports: rd.clinicReports }, cashPayments.length > 0 ? cashPayments : undefined);
+        const base64 = await workbookToBase64(wb);
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        downloadBlob(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Зарплата_${name}_${period}.xlsx`);
+      } else {
+        const res = await salaryRecords.downloadExcel(record.id);
+        downloadBlob(res.data, `Зарплата_${name}_${period}.xlsx`);
+      }
     } catch {
       toast.error('Ошибка скачивания Excel');
     } finally {
@@ -408,7 +418,6 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly }) {
-  const { user } = useAuth();
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);

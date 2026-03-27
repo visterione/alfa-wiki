@@ -13,7 +13,7 @@ function _makeStyles() {
 }
 
 // ─── Internal: write one clinic sheet into a workbook ─────────────────────────
-function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders) {
+function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments) {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
   ws.properties.outlineLevelRow = 2;
@@ -248,12 +248,50 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
         addSalRow(`Тело з/п (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
       addSalRow('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0), '=');
     }
+
+    // Касса
+    if (cashPayments?.length) {
+      ws.addRow([]);
+      const cashTitleRow = ws.addRow(['Касса']);
+      cashTitleRow.getCell(1).font = { ...fontBold, size: 13 };
+      cashTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      ws.mergeCells(`A${cashTitleRow.number}:F${cashTitleRow.number}`);
+
+      const cashHdr = ws.addRow(['Дата', 'Выдал', 'Примечание', '', '', 'Сумма, руб']);
+      cashHdr.eachCell({ includeEmpty: true }, (cell, c) => {
+        if (c <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+      });
+      ws.mergeCells(`C${cashHdr.number}:E${cashHdr.number}`);
+
+      let cashTotal = 0;
+      for (const p of cashPayments) {
+        const amt = parseFloat(p.amount || 0);
+        cashTotal += amt;
+        const dt = p.issuedAt ? new Date(p.issuedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '';
+        const row = ws.addRow([dt, p.financistName || '', p.note || '', '', '', parseFloat(amt.toFixed(2))]);
+        row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
+        ws.mergeCells(`C${row.number}:E${row.number}`);
+        row.getCell(6).numFmt = '#,##0.00';
+        row.getCell(6).font = { ...fontNormal, color: { argb: 'FF166534' } };
+        autoWidth(row, 6);
+      }
+
+      const cashTotalRow = ws.addRow(['', 'Итого', '', '', '', parseFloat(cashTotal.toFixed(2))]);
+      cashTotalRow.getCell(2).font = { ...fontBold, color: { argb: 'FF166534' } };
+      cashTotalRow.getCell(6).font = { ...fontBold, color: { argb: 'FF166534' } };
+      cashTotalRow.getCell(6).numFmt = '#,##0.00';
+      cashTotalRow.getCell(6).border = allBorders;
+      cashTotalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
+      ws.mergeCells(`B${cashTotalRow.number}:E${cashTotalRow.number}`);
+      autoWidth(cashTotalRow, 6);
+    }
   }
 }
 
 // ─── Build single-doctor workbook (returns ExcelJS.Workbook) ──────────────────
 // reportData: { doctor: {name, ...}, clinicReports: [{clinicLabel, executorSections, salary}], periodLabel }
-export function buildSingleWorkbook(reportData) {
+// cashPayments: optional array of cash payment records to append to the last clinic sheet
+export function buildSingleWorkbook(reportData, cashPayments) {
   const { doctor, clinicReports } = reportData;
   const wb = new ExcelJS.Workbook();
   wb.creator = 'alfa-wiki';
@@ -262,9 +300,11 @@ export function buildSingleWorkbook(reportData) {
   const { fontTitle, fontBold, fontNormal, fillHeader, allBorders } = _makeStyles();
   const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Врач');
 
-  for (const { clinicLabel, executorSections, salary } of clinicReports) {
+  for (let i = 0; i < clinicReports.length; i++) {
+    const { clinicLabel, executorSections, salary } = clinicReports[i];
     const sheetName = (clinicLabel || 'Клиника').substring(0, 31);
-    _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders);
+    const isLast = i === clinicReports.length - 1;
+    _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, isLast ? cashPayments : undefined);
   }
   return wb;
 }

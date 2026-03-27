@@ -117,24 +117,27 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([salaryRecords.getAll(), cashPaymentsApi.getAll()])
-      .then(([recRes, cpRes]) => {
-        const list = Array.isArray(recRes.data) ? recRes.data : [];
+    salaryRecords.getAll()
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : [];
         setRecords(list);
-        // Восстанавливаем состояние перерасчётов из reportData
         const done = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
           Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
         });
         setRecalcDone(done);
-        // Строим карту выплат из кассы по salaryRecordId
-        const cpMap = {};
-        (Array.isArray(cpRes.data) ? cpRes.data : []).forEach(p => {
-          if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
-          cpMap[p.salaryRecordId].push(p);
-        });
-        setCashPaymentsMap(cpMap);
+        // Загружаем кассу отдельно — не критично если упадёт
+        cashPaymentsApi.getAll()
+          .then(cpRes => {
+            const cpMap = {};
+            (Array.isArray(cpRes.data) ? cpRes.data : []).forEach(p => {
+              if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
+              cpMap[p.salaryRecordId].push(p);
+            });
+            setCashPaymentsMap(cpMap);
+          })
+          .catch(() => {});
       })
       .catch(() => toast.error('Ошибка загрузки сводки'))
       .finally(() => setLoading(false));
@@ -219,10 +222,24 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       });
   }, [allRows, searchName, filterClinic, filterSpecialty, filterYear, filterMonth, clinics, sortBy]);
 
+  // Вспомогательная функция: получить карту кассовых выплат (свежий запрос)
+  const fetchCashMap = async () => {
+    try {
+      const res = await cashPaymentsApi.getAll();
+      const map = {};
+      (Array.isArray(res.data) ? res.data : []).forEach(p => {
+        if (!map[p.salaryRecordId]) map[p.salaryRecordId] = [];
+        map[p.salaryRecordId].push(p);
+      });
+      return map;
+    } catch { return {}; }
+  };
+
   // ── Выплата export ───────────────────────────────────────────────────────────
   const handlePayoutExport = async () => {
     setExportingPayout(true);
     try {
+      const liveCashMap = await fetchCashMap();
       const payoutRows = filtered.filter(({ cr }) => {
         const s = cr?.salary || {};
         const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
@@ -238,9 +255,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const ws = wb.addWorksheet('Выплата премий');
 
       ws.columns = [
-        { header: 'ФИО врача',    key: 'name',      width: 36 },
-        { header: 'Премия',       key: 'bonus',     width: 18 },
-        { header: 'Подпись врача', key: 'signature', width: 36 },
+        { header: 'ФИО врача',      key: 'name',      width: 36 },
+        { header: 'Премия',         key: 'bonus',     width: 18 },
+        { header: 'Выдано (касса)', key: 'cashPaid',  width: 18 },
+        { header: 'К выплате',      key: 'netBonus',  width: 18 },
+        { header: 'Подпись врача',  key: 'signature', width: 36 },
       ];
 
       const hRow = ws.getRow(1);
@@ -255,14 +274,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       sortedPayoutRows.forEach(({ rec, cr }) => {
         const s = cr?.salary || {};
         const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
+        const cashPaid = (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
         ws.addRow({
           name:      rec.doctorName || '—',
           bonus:     remainder,
+          cashPaid:  cashPaid || null,
+          netBonus:  remainder - cashPaid,
           signature: '',
         });
       });
 
-      ws.getColumn('bonus').numFmt = '#,##0.00 ₽';
+      ['bonus', 'cashPaid', 'netBonus'].forEach(k => { ws.getColumn(k).numFmt = '#,##0.00 ₽'; });
 
       const blackBorder = { style: 'thin', color: { argb: 'FF000000' } };
       ws.eachRow(row => {
@@ -288,20 +310,22 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const handleExport = async () => {
     setExporting(true);
     try {
+      const liveCashMap = await fetchCashMap();
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet('Сводка зарплат');
 
       ws.columns = [
-        { header: 'ФИО врача',     key: 'name',      width: 32 },
-        { header: 'Медцентр',      key: 'clinic',    width: 22 },
-        { header: 'Специальность', key: 'specialty', width: 26 },
-        { header: 'Дата',          key: 'date',      width: 18 },
-        { header: 'Начислено',     key: 'total',     width: 16 },
-        { header: 'НДФЛ',          key: 'ndfl',      width: 16 },
-        { header: 'Аванс',         key: 'advance',   width: 16 },
-        { header: 'Тело',          key: 'body',      width: 16 },
-        { header: 'Премия',        key: 'bonus',     width: 16 },
-        { header: 'Переплата',     key: 'overpay',   width: 16 },
+        { header: 'ФИО врача',      key: 'name',      width: 32 },
+        { header: 'Медцентр',       key: 'clinic',    width: 22 },
+        { header: 'Специальность',  key: 'specialty', width: 26 },
+        { header: 'Дата',           key: 'date',      width: 18 },
+        { header: 'Начислено',      key: 'total',     width: 16 },
+        { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
+        { header: 'Аванс',          key: 'advance',   width: 16 },
+        { header: 'Тело',           key: 'body',      width: 16 },
+        { header: 'Премия',         key: 'bonus',     width: 16 },
+        { header: 'Переплата',      key: 'overpay',   width: 16 },
+        { header: 'Выдано (касса)', key: 'cashPaid',  width: 16 },
       ];
 
       const hRow = ws.getRow(1);
@@ -312,6 +336,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
         const remainder = (parseFloat(s.finalSalary || 0)) - (parseFloat(s.advance || 0)) - (parseFloat(s.mainPayment || 0));
+        const cashPaid = (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
         ws.addRow({
           name:      rec.doctorName || '—',
           clinic:    clinicName,
@@ -323,14 +348,23 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           body:      parseFloat(s.mainPayment || 0),
           bonus:     remainder >= 0 ? remainder : 0,
           overpay:   remainder < 0  ? remainder : 0,
+          cashPaid:  cashPaid || null,
         });
       });
 
-      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay'].forEach(key => {
+      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
       });
 
       // Итоговая строка
+      const excelCashTotal = (() => {
+        const seen = new Set();
+        return filtered.reduce((s, { rec }) => {
+          if (seen.has(rec.id)) return s;
+          seen.add(rec.id);
+          return s + (liveCashMap[rec.id] || []).reduce((ps, p) => ps + parseFloat(p.amount || 0), 0);
+        }, 0);
+      })();
       const totalRow = ws.addRow({
         name:    'ИТОГО',
         clinic:  '',
@@ -348,6 +382,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const rem = (parseFloat(r.cr?.salary?.finalSalary || 0)) - (parseFloat(r.cr?.salary?.advance || 0)) - (parseFloat(r.cr?.salary?.mainPayment || 0));
           return s + (rem < 0 ? rem : 0);
         }, 0),
+        cashPaid: excelCashTotal || null,
       });
       totalRow.font = { bold: true, name: 'Calibri', size: 11 };
       totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE9EEF4' } };
