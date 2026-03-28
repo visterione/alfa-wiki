@@ -22,10 +22,10 @@ function SalaryRow({ icon, label, value, color = 'var(--rb-text)', children, exp
             )}
             {label}
           </div>
-          {expanded && children && <div className="rb-salary-row-detail">{children}</div>}
         </div>
         <div className="rb-salary-row-value" style={{ color }}>{value}</div>
       </div>
+      {expanded && children && <div className="rb-salary-row-detail" style={{ display: 'block' }}>{children}</div>}
     </div>
   );
 }
@@ -58,24 +58,26 @@ function SubSection({ label, value, color, type, children }) {
   const [expanded, setExpanded] = useState(false);
   const hasChildren = !!children;
   return (
-    <div
-      className={`rb-salary-row ${type}${hasChildren ? ' expandable' : ''}${expanded ? ' expanded' : ''}`}
-      style={{ paddingLeft: 24, cursor: hasChildren ? 'pointer' : 'default' }}
-      onClick={hasChildren ? (e) => { e.stopPropagation(); setExpanded(s => !s); } : (e) => e.stopPropagation()}
-    >
-      <div className="rb-salary-row-icon" style={{ fontSize: 11 }}>▸</div>
-      <div className="rb-salary-row-body">
-        <div className="rb-salary-row-label">
-          {hasChildren && (
-            <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <polyline points="9 18 15 12 9 6"/>
-            </svg>
-          )}
-          {label}
+    <div>
+      <div
+        className={`rb-salary-row ${type}${hasChildren ? ' expandable' : ''}${expanded ? ' expanded' : ''}`}
+        style={{ paddingLeft: 24, cursor: hasChildren ? 'pointer' : 'default' }}
+        onClick={hasChildren ? (e) => { e.stopPropagation(); setExpanded(s => !s); } : (e) => e.stopPropagation()}
+      >
+        <div className="rb-salary-row-icon" style={{ fontSize: 11 }}>▸</div>
+        <div className="rb-salary-row-body">
+          <div className="rb-salary-row-label">
+            {hasChildren && (
+              <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            )}
+            {label}
+          </div>
         </div>
-        {expanded && <div className="rb-salary-row-detail">{children}</div>}
+        <div className="rb-salary-row-value" style={{ fontSize: 12, color }}>{value}</div>
       </div>
-      <div className="rb-salary-row-value" style={{ fontSize: 12, color }}>{value}</div>
+      {expanded && <div className="rb-salary-row-detail" style={{ display: 'block' }}>{children}</div>}
     </div>
   );
 }
