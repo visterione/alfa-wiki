@@ -1128,13 +1128,28 @@ function TableBubbleMenu({ editor }) {
       }
 
       const cellRect = node.getBoundingClientRect();
-      const editorRect = view.dom.closest('.editor-container')?.getBoundingClientRect()
-        || view.dom.getBoundingClientRect();
 
-      setPos({
-        top: cellRect.top - editorRect.top - 44, // над ячейкой
-        left: Math.max(0, cellRect.left - editorRect.left)
-      });
+      // Высота панели ~34px, отступ 6px
+      const MENU_HEIGHT = 34;
+      const MARGIN = 6;
+      const MENU_WIDTH = 460; // приблизительная ширина панели
+
+      // Выбираем: показывать выше или ниже ячейки
+      let top;
+      if (cellRect.top >= MENU_HEIGHT + MARGIN + 10) {
+        top = cellRect.top - MENU_HEIGHT - MARGIN; // над ячейкой
+      } else {
+        top = cellRect.bottom + MARGIN; // под ячейкой
+      }
+
+      // Не выходить за правый край экрана
+      let left = cellRect.left;
+      if (left + MENU_WIDTH > window.innerWidth - 8) {
+        left = window.innerWidth - MENU_WIDTH - 8;
+      }
+      left = Math.max(8, left);
+
+      setPos({ top, left });
       setVisible(true);
     };
 
