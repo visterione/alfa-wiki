@@ -50,7 +50,7 @@ function histSortKey(rec) {
 // ─── Salary card ──────────────────────────────────────────────────────────────
 
 function EditHistoryBadge({ editHistory }) {
-  const [hover, setHover] = useState(false);
+  const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   if (!editHistory || editHistory.length === 0) return null;
   const FIELD_LABELS = { amount: 'Сумма', note: 'Примечание', financistName: 'Выдал' };
@@ -60,72 +60,76 @@ function EditHistoryBadge({ editHistory }) {
     return String(val);
   };
   return (
-    <span
-      style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', verticalAlign: 'middle' }}
-      onMouseEnter={e => { setHover(true); setPos({ x: e.clientX, y: e.clientY }); }}
-      onMouseLeave={() => setHover(false)}
-    >
-      <span style={{
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        width: 15, height: 15, borderRadius: '50%', background: '#fef9c3', border: '1px solid #fde047',
-        color: '#b45309', fontSize: 9, fontWeight: 700, cursor: 'help', lineHeight: 1, flexShrink: 0,
-      }}>✎</span>
-      {hover && (
-        <div style={{
-          position: 'fixed', left: pos.x + 14, top: pos.y - 10, zIndex: 9999,
-          background: '#fff', color: '#1e293b', borderRadius: 10, width: 290,
-          boxShadow: '0 4px 6px -1px rgba(0,0,0,.08), 0 12px 32px -4px rgba(0,0,0,.18)',
-          border: '1px solid #e2e8f0', pointerEvents: 'none', overflow: 'hidden',
-        }}>
-          {/* header */}
-          <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
-              История изменений · {editHistory.length}
-            </span>
-          </div>
-          {/* entries */}
-          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-            {editHistory.map((entry, i) => (
-              <div key={i} style={{ padding: '10px 12px', borderBottom: i < editHistory.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
-                {/* who & when */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: 22, height: 22, borderRadius: '50%', background: '#eff6ff',
-                    color: '#3b82f6', fontSize: 9, fontWeight: 800, flexShrink: 0,
-                  }}>
-                    {(entry.editedBy || '?').charAt(0).toUpperCase()}
-                  </span>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', lineHeight: 1.2 }}>{entry.editedBy || '?'}</div>
-                    <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.2 }}>
-                      {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
-                    </div>
-                  </div>
-                </div>
-                {/* changes */}
-                {Object.entries(entry.changes || {}).map(([field, { from, to }]) => (
-                  <div key={field} style={{ marginBottom: 5, background: '#f8fafc', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
-                    <div style={{ padding: '3px 8px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-                      {FIELD_LABELS[field] || field}
-                    </div>
-                    <div style={{ padding: '4px 8px' }}>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 2 }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', flexShrink: 0, width: 10 }}>−</span>
-                        <span style={{ fontSize: 11, color: '#ef4444', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, from)}</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                        <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', flexShrink: 0, width: 10 }}>+</span>
-                        <span style={{ fontSize: 11, color: '#16a34a', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, to)}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+    <span style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', verticalAlign: 'middle' }}>
+      <span
+        onClick={e => { e.stopPropagation(); setPos({ x: e.clientX, y: e.clientY }); setOpen(o => !o); }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 15, height: 15, borderRadius: '50%', background: open ? '#fde047' : '#fef9c3',
+          border: `1px solid ${open ? '#ca8a04' : '#fde047'}`,
+          color: '#b45309', fontSize: 9, fontWeight: 700, cursor: 'pointer', lineHeight: 1, flexShrink: 0,
+        }}
+      >✎</span>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 9998 }} />
+          <div style={{
+            position: 'fixed', left: pos.x + 14, top: pos.y - 10, zIndex: 9999,
+            background: '#fff', color: '#1e293b', borderRadius: 10, width: 360,
+            boxShadow: '0 4px 6px -1px rgba(0,0,0,.08), 0 12px 32px -4px rgba(0,0,0,.18)',
+            border: '1px solid #e2e8f0', overflow: 'hidden',
+          }}>
+            {/* header */}
+            <div style={{ padding: '9px 14px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+                  История изменений · {editHistory.length}
+                </span>
               </div>
-            ))}
+              <span onClick={() => setOpen(false)} style={{ cursor: 'pointer', color: '#94a3b8', fontSize: 14, lineHeight: 1, padding: '0 2px' }}>✕</span>
+            </div>
+            {/* entries */}
+            <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              {editHistory.map((entry, i) => (
+                <div key={i} style={{ padding: '12px 14px', borderBottom: i < editHistory.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      width: 24, height: 24, borderRadius: '50%', background: '#eff6ff',
+                      color: '#3b82f6', fontSize: 10, fontWeight: 800, flexShrink: 0,
+                    }}>
+                      {(entry.editedBy || '?').charAt(0).toUpperCase()}
+                    </span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', lineHeight: 1.2 }}>{entry.editedBy || '?'}</div>
+                      <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.2 }}>
+                        {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                      </div>
+                    </div>
+                  </div>
+                  {Object.entries(entry.changes || {}).map(([field, { from, to }]) => (
+                    <div key={field} style={{ marginBottom: 6, background: '#f8fafc', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                      <div style={{ padding: '4px 10px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                        {FIELD_LABELS[field] || field}
+                      </div>
+                      <div style={{ padding: '6px 10px' }}>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 3 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#ef4444', flexShrink: 0, width: 12 }}>−</span>
+                          <span style={{ fontSize: 12, color: '#ef4444', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, from)}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', flexShrink: 0, width: 12 }}>+</span>
+                          <span style={{ fontSize: 12, color: '#16a34a', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, to)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </span>
   );
