@@ -2190,6 +2190,7 @@ const CashPayment = sequelize.define('CashPayment', {
   issuedByUserId: { type: DataTypes.UUID, allowNull: true },
   financistName: { type: DataTypes.STRING(100), allowNull: true },
   note: { type: DataTypes.TEXT, allowNull: true },
+  editHistory: { type: DataTypes.JSONB, defaultValue: [] },
 }, {
   tableName: 'cash_payments',
   timestamps: true,

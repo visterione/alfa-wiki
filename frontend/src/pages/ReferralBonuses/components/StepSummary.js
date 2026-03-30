@@ -432,6 +432,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         { header: 'Специальность',  key: 'specialty', width: 26 },
         { header: 'Дата',           key: 'date',      width: 18 },
         { header: 'Начислено',      key: 'total',     width: 16 },
+        { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
         { header: 'Детализация',    key: 'detail',    width: 52 },
         { header: 'Аванс',          key: 'advance',   width: 16 },
         { header: 'Тело',           key: 'body',      width: 16 },
@@ -463,7 +464,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const tag = d.deductionType === 'final' ? '% от зп' : '% от об.';
           return `${d.name}: -${fmtA(amt)} ₽ (${v}${tag})`;
         };
-        (salary.deductions || []).forEach(d => lines.push(formatDed(d)));
+        (salary.deductions || []).filter(d => (d.name || '').trim().toUpperCase() !== 'НДФЛ').forEach(d => lines.push(formatDed(d)));
         (salary.materials  || []).forEach(m => lines.push(formatDed(m)));
         (salary.extras     || []).forEach(e => {
           const hrs = parseFloat(e.hours) || 0;
@@ -491,6 +492,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
           total:     parseFloat(s.finalSalary || 0),
+          ndfl:      getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0),
           bonus:     netRemainder >= 0 ? netRemainder : 0,
@@ -502,7 +504,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         dataRows.push({ row, detailStr });
       });
 
-      ['total', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
+      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
       });
 
@@ -540,6 +542,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const totalRow = ws.addRow({
         name:    'ИТОГО',
         total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
+        ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
         bonus:   (() => {
@@ -709,7 +712,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9' }}>
-                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'Зарплата', 'Комментарий'].map(h => (
+                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'НДФЛ', 'Зарплата', 'Комментарий'].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
@@ -753,6 +756,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       </td>
                       <td style={{ padding: '10px 12px', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
                         {dateLabel}
+                      </td>
+                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
+                        {(() => { const n = getNdflAmount(s); return n > 0 ? <span style={{ color: '#dc2626', fontWeight: 600 }}>−{fmtRub(n)}</span> : <span style={{ color: 'var(--rb-text-secondary)' }}>—</span>; })()}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <div style={{ fontWeight: 700, color: '#1e40af' }}>{fmtRub(total)}</div>
@@ -875,7 +881,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       const netRemainder = allClinicRemainder - cashPaidTotal;
                       return (
                         <tr style={{ background: '#f8fafc' }}>
-                          <td colSpan={7} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
+                          <td colSpan={8} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
                             <div style={{ paddingTop: 14 }}>
                               {cr?.salary
                                 ? <SalaryBlock salary={cr.salary} />

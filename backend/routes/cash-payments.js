@@ -67,9 +67,35 @@ router.put('/:id', authenticate, async (req, res) => {
   try {
     const payment = await CashPayment.findByPk(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Not found' });
-    const { amount, note } = req.body;
-    if (amount != null) payment.amount = parseFloat(amount);
-    if (note !== undefined) payment.note = note || null;
+    const { amount, note, financistName } = req.body;
+
+    const changes = {};
+    if (amount != null) {
+      const oldVal = parseFloat(payment.amount).toFixed(2);
+      const newVal = parseFloat(amount).toFixed(2);
+      if (oldVal !== newVal) changes.amount = { from: oldVal, to: newVal };
+      payment.amount = parseFloat(amount);
+    }
+    if (note !== undefined) {
+      const oldNote = payment.note || null;
+      const newNote = note || null;
+      if (oldNote !== newNote) changes.note = { from: oldNote, to: newNote };
+      payment.note = newNote;
+    }
+    if (financistName !== undefined) {
+      const oldName = payment.financistName || null;
+      const newName = financistName || null;
+      if (oldName !== newName) changes.financistName = { from: oldName, to: newName };
+      payment.financistName = newName;
+    }
+
+    if (Object.keys(changes).length > 0) {
+      const editorName = formatFinancistName(req.user.displayName || req.user.username || '');
+      const history = Array.isArray(payment.editHistory) ? [...payment.editHistory] : [];
+      history.push({ editedBy: editorName, editedAt: new Date().toISOString(), changes });
+      payment.editHistory = history;
+    }
+
     await payment.save();
     res.json(payment);
   } catch (err) {

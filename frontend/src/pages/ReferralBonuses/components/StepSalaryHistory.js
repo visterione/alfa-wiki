@@ -49,25 +49,109 @@ function histSortKey(rec) {
 
 // ─── Salary card ──────────────────────────────────────────────────────────────
 
+function EditHistoryBadge({ editHistory }) {
+  const [hover, setHover] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  if (!editHistory || editHistory.length === 0) return null;
+  const FIELD_LABELS = { amount: 'Сумма', note: 'Примечание', financistName: 'Выдал' };
+  const fmtVal = (field, val) => {
+    if (val == null || val === '') return '—';
+    if (field === 'amount') return parseFloat(val).toLocaleString('ru-RU', { minimumFractionDigits: 2 }) + ' ₽';
+    return String(val);
+  };
+  return (
+    <span
+      style={{ display: 'inline-flex', alignItems: 'center', position: 'relative', verticalAlign: 'middle' }}
+      onMouseEnter={e => { setHover(true); setPos({ x: e.clientX, y: e.clientY }); }}
+      onMouseLeave={() => setHover(false)}
+    >
+      <span style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 15, height: 15, borderRadius: '50%', background: '#fef9c3', border: '1px solid #fde047',
+        color: '#b45309', fontSize: 9, fontWeight: 700, cursor: 'help', lineHeight: 1, flexShrink: 0,
+      }}>✎</span>
+      {hover && (
+        <div style={{
+          position: 'fixed', left: pos.x + 14, top: pos.y - 10, zIndex: 9999,
+          background: '#fff', color: '#1e293b', borderRadius: 10, width: 290,
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,.08), 0 12px 32px -4px rgba(0,0,0,.18)',
+          border: '1px solid #e2e8f0', pointerEvents: 'none', overflow: 'hidden',
+        }}>
+          {/* header */}
+          <div style={{ padding: '8px 12px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '.06em' }}>
+              История изменений · {editHistory.length}
+            </span>
+          </div>
+          {/* entries */}
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {editHistory.map((entry, i) => (
+              <div key={i} style={{ padding: '10px 12px', borderBottom: i < editHistory.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                {/* who & when */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    width: 22, height: 22, borderRadius: '50%', background: '#eff6ff',
+                    color: '#3b82f6', fontSize: 9, fontWeight: 800, flexShrink: 0,
+                  }}>
+                    {(entry.editedBy || '?').charAt(0).toUpperCase()}
+                  </span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#334155', lineHeight: 1.2 }}>{entry.editedBy || '?'}</div>
+                    <div style={{ fontSize: 10, color: '#94a3b8', lineHeight: 1.2 }}>
+                      {entry.editedAt ? new Date(entry.editedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                    </div>
+                  </div>
+                </div>
+                {/* changes */}
+                {Object.entries(entry.changes || {}).map(([field, { from, to }]) => (
+                  <div key={field} style={{ marginBottom: 5, background: '#f8fafc', borderRadius: 6, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                    <div style={{ padding: '3px 8px', background: '#f1f5f9', borderBottom: '1px solid #e2e8f0', fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                      {FIELD_LABELS[field] || field}
+                    </div>
+                    <div style={{ padding: '4px 8px' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 2 }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#ef4444', flexShrink: 0, width: 10 }}>−</span>
+                        <span style={{ fontSize: 11, color: '#ef4444', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, from)}</span>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', flexShrink: 0, width: 10 }}>+</span>
+                        <span style={{ fontSize: 11, color: '#16a34a', fontFamily: 'monospace', wordBreak: 'break-all' }}>{fmtVal(field, to)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onCashDelete, onCashEdit }) {
   const [open, setOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [editingPayId, setEditingPayId] = useState(null);
   const [editAmount, setEditAmount] = useState('');
   const [editNote, setEditNote] = useState('');
+  const [editFinancistName, setEditFinancistName] = useState('');
   const [editSaving, setEditSaving] = useState(false);
 
   const startEdit = (p) => {
     setEditingPayId(p.id);
     setEditAmount(parseFloat(p.amount).toFixed(2));
     setEditNote(p.note || '');
+    setEditFinancistName(p.financistName || '');
   };
   const cancelEdit = () => setEditingPayId(null);
   const saveEdit = async (p) => {
     if (!onCashEdit) return;
     setEditSaving(true);
     try {
-      await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || undefined });
+      await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || null, financistName: editFinancistName.trim() || null });
       setEditingPayId(null);
     } finally {
       setEditSaving(false);
@@ -203,6 +287,9 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
               <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>Выдано из кассы</div>
               {cashPayments.map(p => (
                 <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #f0fdf4', flexWrap: 'wrap' }}>
+                  <span style={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+                    <EditHistoryBadge editHistory={p.editHistory} />
+                  </span>
                   <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120, flexShrink: 0 }}>
                     {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -213,6 +300,13 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
                         value={editAmount}
                         onChange={e => setEditAmount(e.target.value)}
                         style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, boxSizing: 'border-box' }}
+                      />
+                      <input
+                        type="text"
+                        value={editFinancistName}
+                        onChange={e => setEditFinancistName(e.target.value)}
+                        placeholder="Выдал..."
+                        style={{ width: 110, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }}
                       />
                       <input
                         type="text"
@@ -501,6 +595,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [kassaEditId, setKassaEditId]     = useState(null);
   const [kassaEditAmount, setKassaEditAmount] = useState('');
   const [kassaEditNote, setKassaEditNote] = useState('');
+  const [kassaEditFinancistName, setKassaEditFinancistName] = useState('');
   const [kassaEditSaving, setKassaEditSaving] = useState(false);
 
   const isCompareMode = pinnedForCompare.length === 2;
@@ -699,12 +794,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     </div>
   );
 
-  const startKassaEdit = (p) => { setKassaEditId(p.id); setKassaEditAmount(parseFloat(p.amount).toFixed(2)); setKassaEditNote(p.note || ''); };
+  const startKassaEdit = (p) => { setKassaEditId(p.id); setKassaEditAmount(parseFloat(p.amount).toFixed(2)); setKassaEditNote(p.note || ''); setKassaEditFinancistName(p.financistName || ''); };
   const cancelKassaEdit = () => setKassaEditId(null);
   const saveKassaEdit = async (p) => {
     setKassaEditSaving(true);
     try {
-      await handleCashEdit(p.id, { amount: parseFloat(kassaEditAmount), note: kassaEditNote.trim() || undefined });
+      await handleCashEdit(p.id, { amount: parseFloat(kassaEditAmount), note: kassaEditNote.trim() || null, financistName: kassaEditFinancistName.trim() || null });
       setKassaEditId(null);
     } catch { /* error already toasted */ } finally { setKassaEditSaving(false); }
   };
@@ -776,6 +871,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             <table className="rb-report-table" style={{ width: '100%', marginTop: 12 }}>
               <thead>
                 <tr>
+                  <th style={{ width: 22, padding: '0 4px' }} />
                   <th>ФИО сотрудника</th>
                   <th>Период</th>
                   <th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => { setKassaSortDir(d => d === 'desc' ? 'asc' : 'desc'); setKassaPage(1); }}>
@@ -784,12 +880,15 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <th style={{ textAlign: 'right' }}>Сумма</th>
                   <th>Выдал</th>
                   <th>Примечание</th>
-                  {!readOnly && <th style={{ width: 64 }} />}
+                  {!readOnly && <th style={{ width: 52 }} />}
                 </tr>
               </thead>
               <tbody>
                 {kassaPageData.map(p => (
                   <tr key={p.id}>
+                    <td style={{ padding: '0 4px', textAlign: 'center' }}>
+                      <EditHistoryBadge editHistory={p.editHistory} />
+                    </td>
                     <td style={{ fontWeight: 500 }}>{p.doctorName}</td>
                     <td style={{ color: 'var(--rb-text-secondary)' }}>{p.periodLabel || '—'}</td>
                     <td style={{ color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
@@ -801,7 +900,10 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                           <input type="number" min="0" step="0.01" value={kassaEditAmount} onChange={e => setKassaEditAmount(e.target.value)}
                             style={{ width: 90, padding: '2px 5px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, textAlign: 'right', boxSizing: 'border-box' }} />
                         </td>
-                        <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
+                        <td>
+                          <input type="text" value={kassaEditFinancistName} onChange={e => setKassaEditFinancistName(e.target.value)} placeholder="Выдал..."
+                            style={{ width: '100%', padding: '2px 5px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
+                        </td>
                         <td>
                           <input type="text" value={kassaEditNote} onChange={e => setKassaEditNote(e.target.value)} placeholder="Примечание..."
                             style={{ width: '100%', padding: '2px 5px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
@@ -828,7 +930,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                         <td style={{ color: 'var(--rb-text-secondary)', fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
                         {!readOnly && (
                           <td>
-                            <div style={{ display: 'flex', gap: 4 }}>
+                            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                               <button onClick={() => startKassaEdit(p)} title="Редактировать"
                                 style={{ padding: '2px 5px', border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -847,7 +949,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--rb-border)' }}>
-                  <td colSpan={3} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8 }}>
+                  <td colSpan={4} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8 }}>
                     {kassaSearch ? `${kassaFiltered.length} из ${kassaData.length} записей` : `${kassaData.length} записей`}
                     {kassaTotalPages > 1 && (
                       <span style={{ fontWeight: 400, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
