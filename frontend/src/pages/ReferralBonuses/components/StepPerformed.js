@@ -381,7 +381,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
           if (raw && raw.error === 0 && raw.data) {
             const arr = Array.isArray(raw.data) ? raw.data : [raw.data];
             setServices(arr.map(s => ({
-              code: s.code || s.sub_code || String(s.service_id || s.id || ''),
+              code: (s.code || s.sub_code || String(s.service_id || s.id || '')).trim(),
               title: s.title || '',
               price: parseFloat(s.price) || 0,
             })));
