@@ -56,11 +56,6 @@ router.post('/reset-all', authenticate, async (req, res) => {
           materials:       resetSection(clinicData.materials),
           serviceMaterials: resetSection(clinicData.serviceMaterials),
           extras:          resetSection(clinicData.extras),
-          ...(clinicData.lockedAdvance      ? {} : { advance: 0 }),
-          ...(clinicData.lockedMainPayment  ? {} : { mainPayment: 0 }),
-          ...(clinicData.lockedFixedSalary  ? {} : { fixedSalary: 0 }),
-          ...(clinicData.lockedHourlyRate   ? {} : { hourlyRate: 0 }),
-          ...(clinicData.lockedHoursWorked  ? {} : { hoursWorked: 0 }),
           ...(clinicId === 'global' ? {
             cabinets: (clinicData.cabinets || []).filter(c => lockedCabs.includes(c)),
           } : {}),

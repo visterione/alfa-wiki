@@ -516,7 +516,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, execReloadKey }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const [loading, setLoading] = useState(false);
@@ -565,7 +565,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     })
     .catch(() => setExecData(execDefault()))
     .finally(() => setLoading(false));
-  }, [selectedDoctor, execReloadKey]); // eslint-disable-line
+  }, [selectedDoctor]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const getClinicData = useCallback((clinicId = activeClinic, data = execData) => {
@@ -684,27 +684,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer(newData);
   };
 
-  const handleToggleFixedSalaryLock = async () => {
-    const newLocked = !data.lockedFixedSalary;
-    updateClinicData({ lockedFixedSalary: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedFixedSalary: newLocked } } };
-    await saveToServer(newData);
-  };
-
-  const handleToggleHourlyRateLock = async () => {
-    const newLocked = !data.lockedHourlyRate;
-    updateClinicData({ lockedHourlyRate: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHourlyRate: newLocked } } };
-    await saveToServer(newData);
-  };
-
-  const handleToggleHoursWorkedLock = async () => {
-    const newLocked = !data.lockedHoursWorked;
-    updateClinicData({ lockedHoursWorked: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHoursWorked: newLocked } } };
-    await saveToServer(newData);
-  };
-
   // ── Cabinets ──────────────────────────────────────────────────────────────
   const globalCabinets = (execData.clinicSettings?.global?.cabinets) || [];
 
@@ -790,7 +769,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам?')) return;
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Дополнительно, Кабинеты, Тело ЗП, Аванс)?')) return;
     const current = getClinicData();
     const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
     const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
@@ -799,19 +778,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
     const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
     const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
-    const resetMain         = current.lockedMainPayment  ? {} : { mainPayment: 0 };
-    const resetAdvance      = current.lockedAdvance      ? {} : { advance: 0 };
-    const resetFixedSalary  = current.lockedFixedSalary  ? {} : { fixedSalary: 0 };
-    const resetHourlyRate   = current.lockedHourlyRate   ? {} : { hourlyRate: 0 };
-    const resetHoursWorked  = current.lockedHoursWorked  ? {} : { hoursWorked: 0 };
-    const resets = { ...resetMain, ...resetAdvance, ...resetFixedSalary, ...resetHourlyRate, ...resetHoursWorked };
-    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resets });
+    const resetMain    = current.lockedMainPayment ? {} : { mainPayment: 0 };
+    const resetAdvance = current.lockedAdvance     ? {} : { advance: 0 };
+    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resetMain, ...resetAdvance });
     const newData = {
       ...execData,
       clinicSettings: {
         ...execData.clinicSettings,
         global: newGlobal,
-        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resets },
+        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, ...resetMain, ...resetAdvance },
       },
     };
     await saveToServer(newData);
@@ -1027,11 +1002,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             </div>
 
             {pt === 'salary' && (
-              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ marginBottom: 0 }}>Фиксированный оклад, ₽</label>
-                  {!readOnly && <LockBtn locked={!!data.lockedFixedSalary} onClick={handleToggleFixedSalaryLock} />}
-                </div>
+              <div className="rb-exec-field">
+                <label>Фиксированный оклад, ₽</label>
                 <input
                   type="number" min="0" step="any" placeholder="0"
                   value={data.fixedSalary || ''}
@@ -1043,22 +1015,16 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             {pt === 'hourly' && (
               <div>
                 <div className="rb-exec-fields-grid">
-                  <div className="rb-exec-field" style={data.lockedHourlyRate ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ marginBottom: 0 }}>Ставка, ₽/час</label>
-                      {!readOnly && <LockBtn locked={!!data.lockedHourlyRate} onClick={handleToggleHourlyRateLock} />}
-                    </div>
+                  <div className="rb-exec-field">
+                    <label>Ставка, ₽/час</label>
                     <input
                       type="number" min="0" step="any" placeholder="0"
                       value={data.hourlyRate || ''}
                       onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
                     />
                   </div>
-                  <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <label style={{ marginBottom: 0 }}>Часов за период</label>
-                      {!readOnly && <LockBtn locked={!!data.lockedHoursWorked} onClick={handleToggleHoursWorkedLock} />}
-                    </div>
+                  <div className="rb-exec-field">
+                    <label>Часов за период</label>
                     <input
                       type="number" min="0" step="0.5" placeholder="0"
                       value={data.hoursWorked || ''}
@@ -1078,11 +1044,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             )}
 
             {pt === 'normed' && (
-              <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ marginBottom: 0 }}>Оклад, ₽</label>
-                  {!readOnly && <LockBtn locked={!!data.lockedFixedSalary} onClick={handleToggleFixedSalaryLock} />}
-                </div>
+              <div className="rb-exec-field">
+                <label>Оклад, ₽</label>
                 <input
                   type="number" min="0" step="any" placeholder="0"
                   value={data.fixedSalary || ''}
