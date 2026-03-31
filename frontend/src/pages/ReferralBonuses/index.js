@@ -266,6 +266,8 @@ export default function ReferralBonusesPage() {
 
   // ── Global reset all unlocked items ──
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [execReloadKey, setExecReloadKey] = useState(0);
 
   const handleGlobalReset = useCallback(() => {
     setShowResetConfirm(true);
@@ -273,12 +275,16 @@ export default function ReferralBonusesPage() {
 
   const handleConfirmReset = useCallback(async () => {
     setShowResetConfirm(false);
+    setResetting(true);
     try {
       await execSettingsApi.resetAll();
       clearExecCache();
+      setExecReloadKey(k => k + 1);
       toast.success('Незафиксированные записи сброшены у всех врачей');
     } catch {
       toast.error('Ошибка глобального сброса');
+    } finally {
+      setResetting(false);
     }
   }, []);
 
@@ -432,6 +438,7 @@ export default function ReferralBonusesPage() {
     bulkSelectedIds,
     setBulkSelectedIds,
     pinnedForCompare,
+    execReloadKey,
   };
 
   const TAB_KEYS = ['tab1', 'tabHourNorms', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
@@ -541,7 +548,7 @@ export default function ReferralBonusesPage() {
             </div>
             <div className="rb-modal-body">
               <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: '0 0 10px' }}>
-                Будут удалены все <strong>незафиксированные</strong> записи (расходники, штрафы, материалы, дополнительно) у всех врачей.
+                Будут удалены все <strong>незафиксированные</strong> записи (расходники, штрафы, материалы, дополнительно, аванс, тело ЗП, оклад, ставка, часы) у всех врачей.
               </p>
             </div>
             <div className="rb-modal-footer">
@@ -622,6 +629,16 @@ export default function ReferralBonusesPage() {
           <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
             <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
             <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Импорт НДФЛ...</div>
+          </div>
+        </div>
+      )}
+
+      {/* Reset loading overlay */}
+      {resetting && (
+        <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
+          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+            <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
+            <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Сброс незафиксированных записей...</div>
           </div>
         </div>
       )}
