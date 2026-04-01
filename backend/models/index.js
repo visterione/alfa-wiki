@@ -1308,6 +1308,40 @@ const ServiceConsumable = sequelize.define('ServiceConsumable', {
   ]
 });
 
+// === ROLE NORM MODEL ===
+const RoleNorm = sequelize.define('RoleNorm', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  roleTitle: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    comment: 'Название роли (Врач, Медсестра и т.д.)'
+  },
+  year: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  month: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: '1-12'
+  },
+  normHours: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Норма часов за период'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: true
+  }
+}, {
+  tableName: 'role_norms',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['roleTitle', 'year', 'month'] }
+  ]
+});
+
 // === RB USER PERMISSION MODEL ===
 const RbUserPermission = sequelize.define('RbUserPermission', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -1321,10 +1355,10 @@ const RbUserPermission = sequelize.define('RbUserPermission', {
   tab1:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tabHourNorms: { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tab2:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tab3:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tab4:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tabArchive:   { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tabSummary:   { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab3:          { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab4:          { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchive:    { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabSummary:    { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
 }, { tableName: 'rb_user_permissions', timestamps: true });
 
 // === EMAIL TEMPLATE MODEL ===
@@ -2318,6 +2352,7 @@ module.exports = {
   EmailFavoriteTemplate,
   // Referral bonuses module
   HourNorm,
+  RoleNorm,
   ReferralBonus,
   ReferralReport,
   RbUserPermission,

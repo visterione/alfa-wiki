@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
-import { buildReport, loadExecSettings } from '../utils/reportEngine';
+import { buildReport, loadExecSettings, rbGetClinicSettings } from '../utils/reportEngine';
 import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 import SalaryBlock from './SalaryBlockRenderer';
 
@@ -161,12 +161,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
 
   const handleGenerate = async () => {
     if (!selectedDoctor) { toast.error('Выберите врача из списка слева'); return; }
-    if (!uploadedFile)   { toast.error('Загрузите файл Excel'); return; }
     if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setError(''); setReportData(null);
     try {
-      const rows   = await parseExcelFile(uploadedFile);
-      const colMap = rbMapNewColumns(rows);
       const [rbRes, pbRes, execSettings, savedAsstRes] = await Promise.all([
         rbApi.getByDoctor(selectedDoctor.id),
         psbApi.getByDoctor(selectedDoctor.id),
@@ -176,15 +173,26 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
       const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
       const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
-      if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
-        toast.error('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены.', { duration: 7000 });
+
+      // Считаем normed, если хотя бы одна из клиник (включая global) настроена на Нормированный
+      const isNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
+      if (!isNormed && !uploadedFile) { toast.error('Загрузите файл Excel'); setGenerating(false); return; }
+
+      let rows = [], colMap = {};
+      if (uploadedFile) {
+        rows   = await parseExcelFile(uploadedFile);
+        colMap = rbMapNewColumns(rows);
+        if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
+          toast.error('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены.', { duration: 7000 });
+        }
       }
+
       const result = await buildReport({
         rows, colMap, doctor: selectedDoctor,
         referralBonuses, performedDbBonuses, execSettings,
         dateFrom: dateFrom || null, dateTo: dateTo || null,
         allDoctors: doctors, savedAssistanceIncome,
-        interim,
+        interim, normedOnly: isNormed && !uploadedFile,
       });
       if (filterClinic) {
         result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
@@ -314,7 +322,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         uploadedFile={uploadedFile}
         onFileSelect={f => { setUploadedFile(f); setReportData(null); setError(''); }}
         onFileClear={() => { setUploadedFile(null); setReportData(null); }}
-        actionDisabled={!selectedDoctor || !uploadedFile || generating}
+        actionDisabled={!selectedDoctor || generating}
         actionLabel={generating ? 'Формирование...' : 'Сформировать'}
         actionSpinner={generating}
         onAction={handleGenerate}
@@ -328,7 +336,8 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         )}
         {selectedDoctor && !reportData && !error && !generating && (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-            Загрузите файл Excel и нажмите «Сформировать»
+            Укажите период и нажмите «Сформировать»<br />
+            <span style={{ fontSize: 12 }}>(для нормированного типа оплаты Excel-файл не нужен)</span>
           </div>
         )}
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}

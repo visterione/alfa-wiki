@@ -1,47 +1,44 @@
 const express = require('express');
-const { HourNorm } = require('../models');
+const { RoleNorm } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/hour-norms?year=2026&month=3
-// Возвращает нормы часов за указанный месяц
+// GET /api/role-norms?year=2026&month=3
 router.get('/', authenticate, async (req, res) => {
   try {
     const { year, month } = req.query;
     if (!year || !month) {
       return res.status(400).json({ error: 'year и month обязательны' });
     }
-    const norms = await HourNorm.findAll({
+    const norms = await RoleNorm.findAll({
       where: { year: parseInt(year), month: parseInt(month) },
-      order: [['professionTitle', 'ASC']]
+      order: [['roleTitle', 'ASC']]
     });
     res.json(norms);
   } catch (err) {
-    console.error('hour-norms GET error:', err);
+    console.error('role-norms GET error:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 
-// GET /api/hour-norms/periods
-// Возвращает список всех периодов (year, month), для которых есть хоть одна запись
+// GET /api/role-norms/periods
 router.get('/periods', authenticate, async (req, res) => {
   try {
-    const rows = await HourNorm.findAll({
+    const rows = await RoleNorm.findAll({
       attributes: ['year', 'month'],
       group: ['year', 'month'],
       order: [['year', 'DESC'], ['month', 'DESC']]
     });
     res.json(rows.map(r => ({ year: r.year, month: r.month })));
   } catch (err) {
-    console.error('hour-norms GET /periods error:', err);
+    console.error('role-norms GET /periods error:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });
 
-// POST /api/hour-norms/bulk
-// Сохраняет (upsert) нормы для набора специальностей за период
-// Body: { year, month, norms: [{ professionTitle, normHours }] }
+// POST /api/role-norms/bulk
+// Body: { year, month, norms: [{ roleTitle, normHours }] }
 router.post('/bulk', authenticate, async (req, res) => {
   try {
     const { year, month, norms } = req.body;
@@ -50,17 +47,17 @@ router.post('/bulk', authenticate, async (req, res) => {
     }
 
     const records = norms.map(n => ({
-      professionTitle: String(n.professionTitle || '').trim(),
+      roleTitle: String(n.roleTitle || '').trim(),
       year: parseInt(year),
       month: parseInt(month),
       normHours: n.normHours != null ? parseFloat(n.normHours) : null,
       createdBy: req.user.id
-    })).filter(r => r.professionTitle);
+    })).filter(r => r.roleTitle);
 
-    const t = await HourNorm.sequelize.transaction();
+    const t = await RoleNorm.sequelize.transaction();
     try {
-      await HourNorm.destroy({ where: { year: parseInt(year), month: parseInt(month) }, transaction: t });
-      await HourNorm.bulkCreate(records, { transaction: t });
+      await RoleNorm.destroy({ where: { year: parseInt(year), month: parseInt(month) }, transaction: t });
+      await RoleNorm.bulkCreate(records, { transaction: t });
       await t.commit();
     } catch (err) {
       await t.rollback();
@@ -69,7 +66,7 @@ router.post('/bulk', authenticate, async (req, res) => {
 
     res.json({ saved: records.length });
   } catch (err) {
-    console.error('hour-norms POST /bulk error:', err);
+    console.error('role-norms POST /bulk error:', err);
     res.status(500).json({ error: 'Ошибка сервера' });
   }
 });

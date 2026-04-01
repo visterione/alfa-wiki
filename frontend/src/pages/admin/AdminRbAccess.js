@@ -40,12 +40,13 @@ const CLINICS = [
 ];
 
 const TAB_DEFS = [
-  { key: 'tab1',       label: 'Врачи' },
-  { key: 'tab2',       label: 'Выполненные услуги' },
-  { key: 'tab3',       label: 'Бонусы за направления' },
-  { key: 'tab4',       label: 'Отчёт' },
-  { key: 'tabArchive', label: 'История зарплат' },
-  { key: 'tabSummary', label: 'Сводка' },
+  { key: 'tab1',         label: 'Врачи' },
+  { key: 'tabHourNorms', label: 'Норма часов' },
+  { key: 'tab2',         label: 'Выполненные услуги' },
+  { key: 'tab3',         label: 'Бонусы за направления' },
+  { key: 'tab4',         label: 'Отчёт' },
+  { key: 'tabArchive',   label: 'История зарплат' },
+  { key: 'tabSummary',   label: 'Сводка' },
 ];
 
 const PERM_OPTIONS = [

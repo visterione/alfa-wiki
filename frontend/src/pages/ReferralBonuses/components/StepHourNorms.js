@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import { hourNorms as hourNormsApi, mis } from '../../../services/api';
+import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, mis } from '../../../services/api';
 import { rbProfessionTitle } from '../utils/clinicUtils';
 
 const MONTH_NAMES = [
@@ -11,25 +11,28 @@ const MONTH_NAMES = [
 const currentDate = new Date();
 
 export default function StepHourNorms({ readOnly }) {
+  const [mode, setMode] = useState('professions'); // 'professions' | 'roles'
+
   const [year, setYear]   = useState(currentDate.getFullYear());
   const [month, setMonth] = useState(currentDate.getMonth() + 1);
 
   const [professions, setProfessions] = useState([]);
-  const [profsLoading, setProfsLoading] = useState(true);
+  const [roles, setRoles]             = useState([]);
+  const [listLoading, setListLoading] = useState(true);
 
-  // professionTitle -> normHours (string for input)
-  const [values, setValues] = useState({});
+  const [values, setValues]   = useState({});
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]   = useState(false);
   const [periods, setPeriods] = useState([]);
 
-  // Загрузить специальности напрямую из МИС
+  // Загрузить специальности и роли из МИС
   useEffect(() => {
     mis.getDoctors({ show_all: true })
       .then(res => {
         const data = res.data;
         if (data?.error !== 0 || !Array.isArray(data?.data)) return;
-        const titles = [...new Set(
+
+        const profTitles = [...new Set(
           data.data.flatMap(d => {
             if (d.profession_titles)
               return String(d.profession_titles).split(',').map(s => s.trim()).filter(Boolean);
@@ -38,51 +41,71 @@ export default function StepHourNorms({ readOnly }) {
             return [];
           })
         )].sort();
-        setProfessions(titles);
+        setProfessions(profTitles);
+
+        const roleTitles = [...new Set(
+          data.data.flatMap(d => {
+            if (d.role_titles)
+              return String(d.role_titles).split(',').map(s => s.trim()).filter(Boolean);
+            if (Array.isArray(d.role_names) && d.role_names.length > 0)
+              return d.role_names;
+            if (d.role)
+              return [d.role];
+            return [];
+          }).filter(r => r && r !== 'КабинетыИРабота')
+        )].sort();
+        setRoles(roleTitles);
       })
       .catch(() => {})
-      .finally(() => setProfsLoading(false));
+      .finally(() => setListLoading(false));
   }, []);
 
-  // Загрузить существующие периоды (для подсказки)
+  // Загрузить список периодов при смене режима
   useEffect(() => {
-    hourNormsApi.getPeriods()
+    const api = mode === 'professions' ? hourNormsApi : roleNormsApi;
+    api.getPeriods()
       .then(res => setPeriods(res.data || []))
       .catch(() => {});
-  }, []);
+  }, [mode]);
 
-  // Загрузить нормы при смене периода
+  // Загрузить нормы при смене периода или режима
   useEffect(() => {
     setLoading(true);
-    hourNormsApi.get(year, month)
+    setValues({});
+    const api = mode === 'professions' ? hourNormsApi : roleNormsApi;
+    const key = mode === 'professions' ? 'professionTitle' : 'roleTitle';
+    api.get(year, month)
       .then(res => {
         const map = {};
         (res.data || []).forEach(n => {
-          map[n.professionTitle] = n.normHours != null ? String(n.normHours) : '';
+          map[n[key]] = n.normHours != null ? String(n.normHours) : '';
         });
         setValues(map);
       })
       .catch(() => toast.error('Не удалось загрузить нормы часов'))
       .finally(() => setLoading(false));
-  }, [year, month]);
+  }, [year, month, mode]);
 
-  const handleChange = useCallback((prof, val) => {
-    setValues(prev => ({ ...prev, [prof]: val }));
+  const handleChange = useCallback((title, val) => {
+    setValues(prev => ({ ...prev, [title]: val }));
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const norms = professions.map(prof => ({
-        professionTitle: prof,
-        normHours: values[prof] !== '' && values[prof] != null
-          ? parseFloat(values[prof])
+      const api  = mode === 'professions' ? hourNormsApi : roleNormsApi;
+      const key  = mode === 'professions' ? 'professionTitle' : 'roleTitle';
+      const list = mode === 'professions' ? professions : roles;
+
+      const norms = list.map(title => ({
+        [key]: title,
+        normHours: values[title] !== '' && values[title] != null
+          ? parseFloat(values[title])
           : null
       }));
-      await hourNormsApi.saveBulk(year, month, norms);
+      await api.saveBulk(year, month, norms);
       toast.success(`Нормы за ${MONTH_NAMES[month - 1]} ${year} сохранены`);
-      // Обновить список периодов
-      hourNormsApi.getPeriods().then(res => setPeriods(res.data || [])).catch(() => {});
+      api.getPeriods().then(res => setPeriods(res.data || [])).catch(() => {});
     } catch {
       toast.error('Ошибка при сохранении');
     } finally {
@@ -91,8 +114,8 @@ export default function StepHourNorms({ readOnly }) {
   };
 
   const hasPeriod = periods.some(p => p.year === year && p.month === month);
+  const currentList = mode === 'professions' ? professions : roles;
 
-  // Генерируем диапазон годов
   const years = [];
   for (let y = currentDate.getFullYear() + 1; y >= 2024; y--) years.push(y);
 
@@ -108,8 +131,8 @@ export default function StepHourNorms({ readOnly }) {
         </div>
       </div>
 
-      {/* Период — вне скролла, всегда виден */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc' }}>
+      {/* Период + переключатель режима */}
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text-secondary)', minWidth: 60 }}>Период:</label>
         <select
           className="rb-select"
@@ -134,22 +157,49 @@ export default function StepHourNorms({ readOnly }) {
             ✓ есть данные
           </span>
         )}
+
+        {/* Переключатель */}
+        <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--rb-border)', borderRadius: 8, padding: 2, gap: 2 }}>
+          {[
+            { value: 'professions', label: 'По специальностям' },
+            { value: 'roles',       label: 'По ролям' },
+          ].map(opt => (
+            <button
+              key={opt.value}
+              onClick={() => setMode(opt.value)}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: 600,
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                background: mode === opt.value ? 'var(--rb-bg)' : 'transparent',
+                color: mode === opt.value ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+                boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+                transition: 'all 0.15s',
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Скроллируемая область с таблицей */}
+      {/* Таблица */}
       <div style={{ maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
-        {(loading || profsLoading) ? (
+        {(loading || listLoading) ? (
           <div className="rb-loading"><span className="rb-spinner" />Загрузка...</div>
-        ) : professions.length === 0 ? (
+        ) : currentList.length === 0 ? (
           <div className="rb-loading" style={{ color: 'var(--rb-text-secondary)' }}>
-            Нет данных о специальностях
+            {mode === 'professions' ? 'Нет данных о специальностях' : 'Нет данных о ролях'}
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
               <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
                 <th style={{ textAlign: 'left', padding: '8px 12px 8px 16px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                  Специальность
+                  {mode === 'professions' ? 'Специальность' : 'Роль'}
                 </th>
                 <th style={{ textAlign: 'right', padding: '8px 16px 8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 150 }}>
                   Норма часов
@@ -157,17 +207,17 @@ export default function StepHourNorms({ readOnly }) {
               </tr>
             </thead>
             <tbody>
-              {professions.map(prof => (
-                <tr key={prof} style={{ borderBottom: '1px solid var(--rb-border)' }}>
-                  <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)' }}>{prof}</td>
+              {currentList.map(title => (
+                <tr key={title} style={{ borderBottom: '1px solid var(--rb-border)' }}>
+                  <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)' }}>{title}</td>
                   <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
                     <input
                       type="number"
                       min="0"
                       step="0.5"
                       disabled={readOnly}
-                      value={values[prof] ?? ''}
-                      onChange={e => handleChange(prof, e.target.value)}
+                      value={values[title] ?? ''}
+                      onChange={e => handleChange(title, e.target.value)}
                       placeholder="—"
                       style={{
                         width: 90,
@@ -188,8 +238,7 @@ export default function StepHourNorms({ readOnly }) {
         )}
       </div>
 
-      {/* Кнопка сохранения — всегда внизу, вне скролла */}
-      {!readOnly && professions.length > 0 && !loading && !profsLoading && (
+      {!readOnly && currentList.length > 0 && !loading && !listLoading && (
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--rb-border)', display: 'flex', justifyContent: 'flex-end' }}>
           <button
             className="rb-btn rb-btn-primary"

@@ -2,9 +2,9 @@
  * Report calculation engine — ported from backend/bot/referral-bonuses.html
  * All logic preserved verbatim, adapted to ES module + async/await with axios API calls.
  */
-import { referralBonuses as rbApi, executorSettings } from '../../../services/api';
+import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi } from '../../../services/api';
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
-import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch } from './clinicUtils';
+import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
 
 // ── Default executor clinic settings ──────────────────────────────────────────
@@ -93,7 +93,7 @@ export async function loadExecSettings(misUserId) {
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
-  interim = false,
+  interim = false, normedOnly = false,
 }) {
   const doctorName = doctor.name;
 
@@ -111,8 +111,8 @@ export async function buildReport({
     ? `${dateFrom ? new Date(dateFrom).toLocaleDateString('ru-RU') : '…'} — ${dateTo ? new Date(dateTo).toLocaleDateString('ru-RU') : '…'}`
     : '';
 
-  // ── Error: no referrer/executor columns ──
-  if (!colMap.referrer && !colMap.executor) {
+  // ── Error: no referrer/executor columns (skip for normedOnly — Excel not needed) ──
+  if (!normedOnly && !colMap.referrer && !colMap.executor) {
     const keys = rows.length ? Object.keys(rows[0]) : [];
     throw new Error(
       `Не удалось определить колонки ФИО рекомендателя/исполнителя.\nДоступные колонки: ${keys.join(', ')}`
@@ -173,7 +173,7 @@ export async function buildReport({
     return rbRowInDateRange(r);
   });
 
-  if (!allRelevant.length) {
+  if (!allRelevant.length && !normedOnly) {
     throw new Error(
       `В файле не найдено строк для врача «${doctorName}»${periodLabel ? ` за период ${periodLabel}` : ''}.\nПроверьте что в файле есть колонки "ФИО исполнителя" или "ФИО рекомендателя" с данным врачом.`
     );
@@ -202,7 +202,21 @@ export async function buildReport({
     }
   });
   if (!Object.keys(byClinic).length) {
-    Object.assign(byClinic, rawByClinic);
+    if (normedOnly) {
+      // Нормированный тип: Excel не нужен — создаём синтетические записи по клиникам с normed
+      const cs = execSettings?.clinicSettings || {};
+      const normedClinicIds = Object.keys(cs).filter(cid => cid !== 'global' && cs[cid].payType === 'normed');
+      if (normedClinicIds.length > 0) {
+        normedClinicIds.forEach(cid => {
+          byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };
+        });
+      } else {
+        // Только global = normed
+        byClinic['unknown'] = { id: 'unknown', label: 'Нормированный расчёт', rows: [] };
+      }
+    } else {
+      Object.assign(byClinic, rawByClinic);
+    }
   } else if (orphanReferrerRows.length) {
     byClinic[Object.keys(byClinic)[0]].rows.push(...orphanReferrerRows);
   }
@@ -225,6 +239,29 @@ export async function buildReport({
     }));
   }
 
+  // ── Load hour norms for normed pay type ──
+  let _normHoursForPeriod = null;
+  {
+    const hasNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
+    if (hasNormed && dateFrom) {
+      try {
+        const periodDate = new Date(dateFrom);
+        const year = periodDate.getFullYear();
+        const month = periodDate.getMonth() + 1;
+        const res = await hourNormsApi.get(year, month);
+        const norms = res.data || [];
+        for (const p of (doctor.professions || [])) {
+          const profTitle = rbProfessionTitle(p);
+          const norm = norms.find(n => n.professionTitle === profTitle);
+          if (norm && norm.normHours != null) {
+            _normHoursForPeriod = parseFloat(norm.normHours);
+            break;
+          }
+        }
+      } catch { /* continue without norm hours */ }
+    }
+  }
+
   // ── Build per-clinic reports ──
   const clinicReports = [];
   let globalGrandTotal = 0;
@@ -240,6 +277,11 @@ export async function buildReport({
       if (!colMap.invoiceType) return true;
       const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
       if (t !== 'юр. компания' && t !== 'юр.компания') return true;
+      // Hard rule: corp services before Feb 2026 are never included in salary
+      if (colMap.date) {
+        const rowDate = rbParseDate(r[colMap.date]);
+        if (rowDate && rowDate < new Date(2026, 1, 1)) return false;
+      }
       // Per-service corp check from StepPerformed checkboxes
       const corpMap = execSettings?.corpIncludedServices;
       if (corpMap != null) {
@@ -365,9 +407,11 @@ export async function buildReport({
     const totalServiceCount = executorRows.length;
 
     const execDeductions = clinicSettings.deductions || [];
-    const execMaterials  = clinicSettings.materials  || [];
+    // Для нормированного типа материалы не применяются (секция скрыта в UI)
+    const _isNormedPt = (clinicSettings.payType || 'salary') === 'normed';
+    const execMaterials  = _isNormedPt ? [] : (clinicSettings.materials  || []);
     const execExtras     = clinicSettings.extras     || [];
-    const execServiceMaterials = clinicSettings.serviceMaterials || [];
+    const execServiceMaterials = _isNormedPt ? [] : (clinicSettings.serviceMaterials || []);
     const extrasTotal = execExtras.reduce((s, e) => s + calcExtraRub(e), 0);
 
     const turnoverDeductions = execDeductions.filter(d => d.deductionType !== 'final');
@@ -548,6 +592,7 @@ export async function buildReport({
     // ── Base pay calculation ──
     const pt = clinicSettings.payType || 'salary';
     let basePay = 0, basePayLabel = '';
+    let normTotalHours = 0, normPremiumAmount = 0;
     if (pt === 'salary') {
       basePay = parseFloat(clinicSettings.fixedSalary) || 0;
       basePayLabel = 'Фиксированный оклад';
@@ -563,15 +608,22 @@ export async function buildReport({
       const fixedSalary = parseFloat(clinicSettings.fixedSalary) || 0;
       const normServices = clinicSettings.normServices || [];
       const normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
+      normTotalHours = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
       basePay = fixedSalary + normServicesTotal;
       basePayLabel = 'Нормированный оклад';
+      // Если часов отработано больше чем 2×норма — часть сверх этого считается Премией
+      if (_normHoursForPeriod != null && normTotalHours > 0 && normTotalHours > 2 * _normHoursForPeriod) {
+        const premiumHours = normTotalHours - 2 * _normHoursForPeriod;
+        normPremiumAmount = normServicesTotal * (premiumHours / normTotalHours);
+      }
     }
 
     const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
 
     const includePerformedBonus = pt !== 'percent' && pt !== 'normed' && !!clinicSettings.plusPercent;
-    const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
-    const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
+    // Для нормированного типа бонусы/списания за направления не применяются
+    const effectiveReferralBonusTotal = (pt !== 'normed' && clinicSettings.includeReferralBonuses !== false) ? referralBonusTotal : 0;
+    const effectiveReferralCostTotal  = (pt !== 'normed' && clinicSettings.includeReferralDeductions !== false) ? referralCostTotal : 0;
     const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
@@ -631,6 +683,9 @@ export async function buildReport({
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
+      normTotalHours,
+      normPremiumAmount,
+      normHoursForPeriod: _normHoursForPeriod,
       referralBonuses: effectiveReferralBonusTotal,
       referralSections,
       performedBonusTotal: includePerformedBonus ? performedBonusTotal : 0,

@@ -105,6 +105,9 @@ export default function SalaryBlock({ salary }) {
     harmfulnessDeduction = 0,
     normServices: normServicesList = [],
     fixedSalary: normFixedSalary = 0,
+    normTotalHours = 0,
+    normPremiumAmount = 0,
+    normHoursForPeriod = null,
   } = salary;
 
   const preFinalSalary = (basePay || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) - (referralCostTotal || 0);
@@ -123,7 +126,7 @@ export default function SalaryBlock({ salary }) {
   const hasPerformed        = (performedBonusTotal || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0;
-  const hasMaterials        = finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0;
+  const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
   const hasAny = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome;
@@ -169,6 +172,13 @@ export default function SalaryBlock({ salary }) {
                     </tr>
                   );
                 })}
+                {normPremiumAmount > 0 && normHoursForPeriod != null && (
+                  <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                    <td colSpan={4} style={{ fontSize: 11, color: '#b45309', fontStyle: 'italic', padding: '4px 8px' }}>
+                      ★ Из них премия за переработку сверх 2×нормы ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽ — выделена отдельной строкой ниже
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -351,7 +361,7 @@ export default function SalaryBlock({ salary }) {
       </div>
 
       {/* Advance / main payment breakdown */}
-      {((mainPayment || 0) > 0 || (advance || 0) > 0) && (
+      {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0) && (
         <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
           {(advance || 0) > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
@@ -367,8 +377,19 @@ export default function SalaryBlock({ salary }) {
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
             </div>
           )}
+          {normPremiumAmount > 0 && (
+            <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
+              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
+              <div className="rb-salary-row-body">
+                <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>
+                  Премия
+                </div>
+              </div>
+              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(normPremiumAmount)}</div>
+            </div>
+          )}
           {(() => {
-            const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0);
+            const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0);
             return (
               <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
                 <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
