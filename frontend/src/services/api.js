@@ -618,4 +618,11 @@ export const bots = {
   regenerateToken: (id)       => api.post(`/bots/${id}/regenerate-token`),
 };
 
+export const announcements = {
+  list: (params) => api.get('/announcements', { params }),
+  create: (data) => api.post('/announcements', data),
+  update: (id, data) => api.put(`/announcements/${id}`, data),
+  delete: (id) => api.delete(`/announcements/${id}`)
+};
+
 export default api;

@@ -24,6 +24,10 @@ router.get('/list', authenticate, async (req, res) => {
 
     const users = await User.findAll({
       attributes: ['id', 'username', 'displayName', 'avatar'],
+      include: [
+        { model: Role, as: 'roles', through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name'] }
+      ],
       where,
       order: [['displayName', 'ASC']]
     });

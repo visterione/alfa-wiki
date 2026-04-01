@@ -699,7 +699,6 @@ export default function Sidebar({ open, onClose }) {
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       {/* Календарь с фиксированной позицией */}
       <div className="sidebar-calendar-wrapper">
-        <SidebarCalendar />
         <QuickAccessButtons onClose={onClose} />
       </div>
 
