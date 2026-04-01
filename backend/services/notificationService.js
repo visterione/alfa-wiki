@@ -480,22 +480,6 @@ async function sendReviewFinalizedNotification(userId, review, decisionCategory,
   return sendReviewsBotMessage(userId, messageText, metadata);
 }
 
-/**
- * Рассылка нового объявления по сокету целевым пользователям
- */
-function emitAnnouncement(announcement, targetUserIds) {
-  if (!io) return;
-  for (const userId of targetUserIds) {
-    io.to(`user:${userId}`).emit('new_announcement', {
-      id: announcement.id,
-      title: announcement.title,
-      body: announcement.body,
-      author: announcement.author,
-      createdAt: announcement.createdAt,
-    });
-  }
-}
-
 module.exports = {
   ASSISTANT_ID,
   REVIEWS_BOT_ID,
@@ -519,6 +503,5 @@ module.exports = {
   sendReviewCommentNotification,
   sendReviewFinalizedNotification,
   sendReviewWorkCompleteNotification,
-  sendReviewArchivedNotification,
-  emitAnnouncement
+  sendReviewArchivedNotification
 };

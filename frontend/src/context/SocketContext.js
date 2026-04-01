@@ -95,7 +95,6 @@ export function SocketProvider({ children }) {
   const { user } = useAuth();
   const socketRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
-  const [announcementNotifications, setAnnouncementNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
@@ -266,12 +265,6 @@ export function SocketProvider({ children }) {
       playNotificationSound();
     });
 
-    socket.on('new_announcement', (data) => {
-      const id = Date.now();
-      setAnnouncementNotifications(prev => [...prev, { id, ...data }]);
-      playNotificationSound();
-    });
-
     return () => {
       socket.disconnect();
       setIsConnected(false);
@@ -280,10 +273,6 @@ export function SocketProvider({ children }) {
 
   const removeNotification = (id) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
-  };
-
-  const removeAnnouncementNotification = (id) => {
-    setAnnouncementNotifications(prev => prev.filter(n => n.id !== id));
   };
 
   const clearAllNotifications = () => {
@@ -300,8 +289,6 @@ export function SocketProvider({ children }) {
     notifications,
     removeNotification,
     clearAllNotifications,
-    announcementNotifications,
-    removeAnnouncementNotification,
     userStatuses,
     pendingChatNavigation,
     clearPendingNavigation

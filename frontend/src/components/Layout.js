@@ -3,14 +3,13 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatNotification from './ChatNotification';
-import AnnouncementNotification from './AnnouncementNotification';
 import { useSocket } from '../context/SocketContext';
 import './Layout.css';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const { notifications, removeNotification, announcementNotifications, removeAnnouncementNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
+  const { notifications, removeNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -19,10 +18,10 @@ export default function Layout() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth <= 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    
+
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
@@ -51,25 +50,25 @@ export default function Layout() {
   }, [pendingChatNavigation]);
 
   // Filter notifications: don't show if we're already on dashboard
-  const shouldShowNotifications = location.pathname !== '/dashboard';
+  const shouldShowNotifications = location.pathname !== '/';
 
   return (
     <div className="layout">
-      <Header 
-        sidebarOpen={sidebarOpen} 
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
+      <Header
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
       />
       <div className="layout-body">
         {/* Overlay для затемнения фона на мобильных */}
         {isMobile && (
-          <div 
+          <div
             className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`}
             onClick={handleCloseSidebar}
           />
         )}
-        
+
         <Sidebar open={sidebarOpen} onClose={handleCloseSidebar} />
-        
+
         <main className={`main-content ${sidebarOpen ? '' : 'sidebar-closed'}`}>
           <div className="content-wrapper">
             <Outlet />
@@ -90,18 +89,6 @@ export default function Layout() {
           ))}
         </div>
       )}
-
-      {/* Announcement Notifications */}
-      <div className="ann-notifications-container">
-        {announcementNotifications.map(n => (
-          <AnnouncementNotification
-            key={n.id}
-            notification={n}
-            onClose={() => removeAnnouncementNotification(n.id)}
-            onClick={() => navigate('/')}
-          />
-        ))}
-      </div>
     </div>
   );
 }

@@ -376,7 +376,7 @@ function QuickAccessButtons({ onClose }) {
     }
   };
 
-  const isOnChat = location.pathname === '/dashboard';
+  const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer';
   const isOnCourses = location.pathname.startsWith('/courses');
@@ -396,7 +396,7 @@ function QuickAccessButtons({ onClose }) {
       {/* Первый ряд */}
       <button 
         className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
-        onClick={() => handleClick('/dashboard')}
+        onClick={() => handleClick('/')}
         title="Сообщения"
       >
         <MessageCircle size={20} />
@@ -699,6 +699,7 @@ export default function Sidebar({ open, onClose }) {
     <aside className={`sidebar ${open ? 'open' : 'closed'}`}>
       {/* Календарь с фиксированной позицией */}
       <div className="sidebar-calendar-wrapper">
+        <SidebarCalendar />
         <QuickAccessButtons onClose={onClose} />
       </div>
 

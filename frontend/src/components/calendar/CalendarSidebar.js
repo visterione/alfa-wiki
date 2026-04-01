@@ -16,7 +16,7 @@ const EVENT_TYPES = {
 };
 
 // === MINI CALENDAR ===
-export function MiniCalendar({ selectedDate, onDateSelect, eventIndicators = {} }) {
+export function MiniCalendar({ selectedDate, onDateSelect }) {
   const [currentMonth, setCurrentMonth] = React.useState(new Date(selectedDate));
   const [animationDirection, setAnimationDirection] = React.useState(null);
 
@@ -102,8 +102,8 @@ export function MiniCalendar({ selectedDate, onDateSelect, eventIndicators = {} 
         }`}
         key={`${currentMonth.getMonth()}-${currentMonth.getFullYear()}`}
       >
-        {weekDays.map((day, index) => (
-          <div key={day} className={`mini-calendar-weekday${index >= 5 ? ' weekend' : ''}`}>
+        {weekDays.map(day => (
+          <div key={day} className="mini-calendar-weekday">
             {day}
           </div>
         ))}
@@ -111,32 +111,13 @@ export function MiniCalendar({ selectedDate, onDateSelect, eventIndicators = {} 
           const isWeekend = date && (date.getDay() === 0 || date.getDay() === 6);
           const otherMonth = isOtherMonth(date);
 
-          const formatLocalDate = (d) => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-          };
-
-          const dateKey = date ? formatLocalDate(date) : null;
-          const indicators = dateKey && eventIndicators[dateKey] ? eventIndicators[dateKey] : [];
-
           return (
             <div
               key={index}
               className={`mini-calendar-day ${!date ? 'empty' : ''} ${isToday(date) ? 'today' : ''} ${isSelected(date) ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${otherMonth ? 'other-month' : ''}`}
               onClick={() => date && !otherMonth && onDateSelect(date)}
             >
-              {date && (
-                <>
-                  <span className="mini-cal-day-number">{date.getDate()}</span>
-                  <div className="mini-cal-event-indicator">
-                    {!otherMonth && indicators.slice(0, 3).map((ev, i) => (
-                      <span key={i} className="mini-cal-event-dot" style={{ background: ev.color || '#4a90e2' }} />
-                    ))}
-                  </div>
-                </>
-              )}
+              {date ? date.getDate() : ''}
             </div>
           );
         })}

@@ -58,8 +58,7 @@ const User = sequelize.define('User', {
       courses: false,    // Курсы
       kanban: false,     // Канбан-доска
       journal: false,    // Журнал страниц
-      reviews: false,    // Отзывы
-      announcements: false // Объявления
+      reviews: false     // Отзывы
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -1446,26 +1445,6 @@ const EmailLog = sequelize.define('EmailLog', {
   ]
 });
 
-// === ANNOUNCEMENT MODEL ===
-const Announcement = sequelize.define('Announcement', {
-  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  title: { type: DataTypes.STRING(255), allowNull: false },
-  body: { type: DataTypes.TEXT, allowNull: false },
-  authorId: { type: DataTypes.UUID, allowNull: false },
-  pinned: { type: DataTypes.BOOLEAN, defaultValue: false },
-  targetRoles: { type: DataTypes.JSONB, defaultValue: [] },
-  targetMedCenterIds: { type: DataTypes.JSONB, defaultValue: [] },
-  targetUserIds: { type: DataTypes.JSONB, defaultValue: [] }
-}, {
-  tableName: 'announcements',
-  timestamps: true,
-  indexes: [
-    { fields: ['authorId'] },
-    { fields: ['pinned'] },
-    { fields: ['createdAt'] }
-  ]
-});
-
 // ═══════════════════════════════════════════════════════════════
 // RELATIONSHIPS
 // ═══════════════════════════════════════════════════════════════
@@ -2283,10 +2262,6 @@ EmailFavoriteTemplate.belongsTo(EmailTemplate, { foreignKey: 'templateId', as: '
 User.hasMany(EmailFavoriteTemplate, { foreignKey: 'userId', as: 'favoriteTemplates' });
 EmailTemplate.hasMany(EmailFavoriteTemplate, { foreignKey: 'templateId', as: 'favorites' });
 
-// Announcement relationships
-Announcement.belongsTo(User, { foreignKey: 'authorId', as: 'author' });
-User.hasMany(Announcement, { foreignKey: 'authorId', as: 'announcements' });
-
 module.exports = {
   sequelize,
   Sequelize,
@@ -2357,7 +2332,5 @@ module.exports = {
   // Telegram Bot API compatibility
   IntIdMap,
   BotToken,
-  BotUpdate,
-  // Announcements module
-  Announcement
+  BotUpdate
 };

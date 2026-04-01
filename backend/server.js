@@ -50,7 +50,6 @@ const botManagementRoutes = require('./routes/bot-management');
 const notifyRoutes = require('./routes/notify');
 const salaryRecordsRoutes = require('./routes/salary-records');
 const cashPaymentsRoutes = require('./routes/cash-payments');
-const announcementsRoutes = require('./routes/announcements');
 
 const app = express();
 const server = http.createServer(app);
@@ -222,7 +221,6 @@ app.use('/api/bots', botManagementRoutes);
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);
-app.use('/api/announcements', announcementsRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})

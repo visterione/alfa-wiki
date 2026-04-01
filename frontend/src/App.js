@@ -6,7 +6,6 @@ import { ThemeProvider } from './context/ThemeContext';
 import { SocketProvider } from './context/SocketContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Home from './pages/Home';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
@@ -39,6 +38,7 @@ import ReviewArchive from './pages/ReviewArchive';
 import ReviewStatistics from './pages/ReviewStatistics';
 import Dashboard from './pages/Dashboard';
 import './index.css';
+
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
   const { user, loading, isAdmin, hasAdminAccess } = useAuth();
@@ -91,8 +91,7 @@ function AppRoutes() {
           <Layout />
         </ProtectedRoute>
       }>
-        <Route index element={<Home />} />
-        <Route path="dashboard" element={<Dashboard />} />
+        <Route index element={<Dashboard />} />
         <Route path="page/:slug" element={<PageView />} />
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />

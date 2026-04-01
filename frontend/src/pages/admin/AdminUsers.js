@@ -270,7 +270,7 @@ export default function AdminUsers() {
         canEditAnalyses: user.canEditAnalyses || false,
         canEditServices: user.canEditServices || false,
         canAccessSalary: user.canAccessSalary || false,
-        adminAccess: {
+        adminAccess: user.adminAccess || {
           pages: false,
           sidebar: false,
           users: false,
@@ -280,9 +280,7 @@ export default function AdminUsers() {
           settings: false,
           courses: false,
           journal: false,
-          reviews: false,
-          announcements: false,
-          ...(user.adminAccess || {})
+          reviews: false
         }
       });
     } else {
@@ -312,8 +310,7 @@ export default function AdminUsers() {
           settings: false,
           courses: false,
           journal: false,
-          reviews: false,
-          announcements: false
+          reviews: false
         }
       });
     }
@@ -827,7 +824,6 @@ export default function AdminUsers() {
                     { key: 'courses', label: 'Курсы' },
                     { key: 'journal', label: 'Журнал страниц' },
                     { key: 'reviews', label: 'Отзывы' },
-                    { key: 'announcements', label: 'Объявления' },
                   ].map(({ key, label }) => {
                     const checked = form.isAdmin || (form.adminAccess[key] ?? false);
                     return (
