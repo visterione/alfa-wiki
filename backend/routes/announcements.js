@@ -3,11 +3,15 @@ const router = express.Router();
 const { Op } = require('sequelize');
 const { Announcement, User, Role, MedCenter } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const notificationService = require('../services/notificationService');
 
 const ITEMS_PER_PAGE = 10;
 
 // Проверяет, должен ли пользователь видеть объявление
 function canUserSeeAnnouncement(announcement, currentUser) {
+  // Администраторы видят все объявления
+  if (currentUser.isAdmin) return true;
+
   const { targetRoles, targetMedCenterIds, targetUserIds } = announcement;
 
   const isForAll = targetRoles.length === 0 && targetMedCenterIds.length === 0 && targetUserIds.length === 0;
@@ -38,6 +42,8 @@ router.get('/', authenticate, async (req, res) => {
       ]
     });
 
+    const dateOrder = req.query.order === 'asc' ? 'ASC' : 'DESC';
+
     const where = {};
     if (search) {
       where[Op.or] = [
@@ -49,7 +55,7 @@ router.get('/', authenticate, async (req, res) => {
     const allAnnouncements = await Announcement.findAll({
       where,
       include: [{ model: User, as: 'author', attributes: ['id', 'displayName', 'username', 'avatar'] }],
-      order: [['pinned', 'DESC'], ['createdAt', 'DESC']]
+      order: [['pinned', 'DESC'], ['createdAt', dateOrder]]
     });
 
     // Фильтрация по таргетингу
@@ -75,8 +81,8 @@ router.post('/', authenticate, async (req, res) => {
 
     const { title, body, pinned, targetRoles, targetMedCenterIds, targetUserIds } = req.body;
 
-    if (!title?.trim() || !body?.trim()) {
-      return res.status(400).json({ error: 'Title and body are required' });
+    if (!title?.trim()) {
+      return res.status(400).json({ error: 'Title is required' });
     }
 
     const announcement = await Announcement.create({
@@ -92,6 +98,25 @@ router.post('/', authenticate, async (req, res) => {
     const result = await Announcement.findByPk(announcement.id, {
       include: [{ model: User, as: 'author', attributes: ['id', 'displayName', 'username', 'avatar'] }]
     });
+
+    // Рассылаем уведомление по сокету целевым пользователям
+    try {
+      const allUsers = await User.findAll({
+        where: { isActive: true },
+        include: [
+          { model: Role, as: 'roles', through: { attributes: [] } },
+          { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+        ],
+        attributes: ['id']
+      });
+      const recipientIds = allUsers
+        .filter(u => canUserSeeAnnouncement(result, u))
+        .map(u => u.id)
+        .filter(id => id !== req.user.id); // автору не показываем
+      notificationService.emitAnnouncement(result, recipientIds);
+    } catch (e) {
+      console.error('Announcement socket emit error:', e.message);
+    }
 
     res.status(201).json(result);
   } catch (error) {

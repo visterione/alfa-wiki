@@ -3,13 +3,14 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatNotification from './ChatNotification';
+import AnnouncementNotification from './AnnouncementNotification';
 import { useSocket } from '../context/SocketContext';
 import './Layout.css';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const { notifications, removeNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
+  const { notifications, removeNotification, announcementNotifications, removeAnnouncementNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -89,6 +90,18 @@ export default function Layout() {
           ))}
         </div>
       )}
+
+      {/* Announcement Notifications */}
+      <div className="ann-notifications-container">
+        {announcementNotifications.map(n => (
+          <AnnouncementNotification
+            key={n.id}
+            notification={n}
+            onClose={() => removeAnnouncementNotification(n.id)}
+            onClick={() => navigate('/')}
+          />
+        ))}
+      </div>
     </div>
   );
 }

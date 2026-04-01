@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Pin, PinOff, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight,
-  X, Check, Users, Building2
+  X, Check, Users, Building2, ArrowUpDown
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { announcements as announcementsApi, calendar as calendarApi, users as usersApi, roles as rolesApi } from '../services/api';
@@ -11,6 +11,8 @@ import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import toast from 'react-hot-toast';
 import { BASE_URL } from '../services/api';
+import Editor from '../components/Editor';
+import ContentRenderer from '../components/ContentRenderer';
 import './Calendar.css';
 import './Home.css';
 
@@ -91,7 +93,7 @@ function AnnouncementCard({ announcement, canEdit, onEdit, onDelete, onTogglePin
         className="announcement-card__body"
         style={{ maxHeight: expanded || !overflows ? 'none' : `${COLLAPSE_HEIGHT}px` }}
       >
-        {announcement.body}
+        <ContentRenderer content={announcement.body} />
       </div>
 
       {overflows && (
@@ -181,8 +183,8 @@ function AnnouncementModal({ announcement, onClose, onSave }) {
     setTargetMedCenterIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const handleSave = async () => {
-    if (!title.trim() || !body.trim()) {
-      toast.error('Заполните заголовок и текст');
+    if (!title.trim()) {
+      toast.error('Заполните заголовок');
       return;
     }
     setSaving(true);
@@ -212,106 +214,123 @@ function AnnouncementModal({ announcement, onClose, onSave }) {
         </div>
 
         <div className="home-modal__body">
-          <label className="home-modal__label">Заголовок</label>
-          <input
-            className="home-modal__input"
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder="Заголовок объявления"
-            maxLength={255}
-          />
-
-          <label className="home-modal__label">Текст</label>
-          <textarea
-            className="home-modal__textarea"
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="Текст объявления..."
-            rows={6}
-          />
-
-          <div className="home-modal__section-title">
-            <Users size={15} />
-            Получатели
-            {isForAll
-              ? <span className="home-modal__audience-hint">— для всех сотрудников</span>
-              : <span className="home-modal__audience-hint">— {matchedCount} чел.</span>
-            }
+          {/* Заголовок — на всю ширину */}
+          <div className="home-modal__top">
+            <label className="home-modal__label">Заголовок</label>
+            <input
+              className="home-modal__input"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Заголовок объявления"
+              maxLength={255}
+            />
           </div>
 
-          {/* Строка поиска + фильтры */}
-          <div className="ann-recipients-toolbar">
-            <div className="ann-recipients-search">
-              <Search size={14} className="ann-recipients-search__icon" />
-              <input
-                className="ann-recipients-search__input"
-                placeholder="Поиск сотрудника..."
-                value={userSearch}
-                onChange={e => setUserSearch(e.target.value)}
-              />
+          {/* Две колонки */}
+          <div className="home-modal__columns">
+            {/* Левая: редактор */}
+            <div className="home-modal__col-editor">
+              <label className="home-modal__label">Текст</label>
+              <div className="home-modal__editor-wrap">
+                <Editor
+                  content={body}
+                  onChange={setBody}
+                  placeholder="Текст объявления..."
+                />
+              </div>
             </div>
 
-            <div className="ann-filter-wrap" onClick={e => e.stopPropagation()}>
-              <button
-                className={`ann-filter-btn${targetRoles.length > 0 ? ' active' : ''}${openFilter === 'roles' ? ' open' : ''}`}
-                title="Фильтр по ролям"
-                onClick={() => setOpenFilter(f => f === 'roles' ? null : 'roles')}
-              >
+            {/* Правая: получатели */}
+            <div className="home-modal__col-recipients">
+              <div className="home-modal__section-title">
                 <Users size={15} />
-                {targetRoles.length > 0 && <span className="ann-filter-badge">{targetRoles.length}</span>}
-              </button>
-              {openFilter === 'roles' && (
-                <DropdownFilter
-                  label="Роли"
-                  items={rolesList}
-                  selected={targetRoles}
-                  onToggle={toggleRole}
-                  onClose={() => setOpenFilter(null)}
-                />
-              )}
-            </div>
+                Получатели
+                {isForAll
+                  ? <span className="home-modal__audience-hint">— все</span>
+                  : <span className="home-modal__audience-hint">— {matchedCount} чел.</span>
+                }
+              </div>
 
-            <div className="ann-filter-wrap" onClick={e => e.stopPropagation()}>
-              <button
-                className={`ann-filter-btn${targetMedCenterIds.length > 0 ? ' active' : ''}${openFilter === 'medcenters' ? ' open' : ''}`}
-                title="Фильтр по медцентрам"
-                onClick={() => setOpenFilter(f => f === 'medcenters' ? null : 'medcenters')}
-              >
-                <Building2 size={15} />
-                {targetMedCenterIds.length > 0 && <span className="ann-filter-badge">{targetMedCenterIds.length}</span>}
-              </button>
-              {openFilter === 'medcenters' && (
-                <DropdownFilter
-                  label="Медцентры"
-                  items={medCentersList}
-                  selected={targetMedCenterIds}
-                  onToggle={toggleMedCenter}
-                  onClose={() => setOpenFilter(null)}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Список сотрудников */}
-          <div className="ann-users-list">
-            {filteredUsers.length === 0 && (
-              <div className="ann-users-empty">Сотрудники не найдены</div>
-            )}
-            {filteredUsers.map(u => {
-              const on = isForAll || isUserOn(u.id);
-              const autoMatched = filterMatchedIds.has(u.id);
-              return (
-                <div
-                  key={u.id}
-                  className={`ann-user-item${autoMatched ? ' ann-user-item--auto' : ''}`}
-                  onClick={() => toggleUser(u.id)}
-                >
-                  <Toggle checked={on} onChange={() => toggleUser(u.id)} />
-                  <span className="ann-user-item__name">{u.displayName || u.username}</span>
-                  {autoMatched && <span className="ann-user-item__tag">по фильтру</span>}
+              <div className="ann-recipients-toolbar">
+                <div className="ann-recipients-search">
+                  <Search size={14} className="ann-recipients-search__icon" />
+                  <input
+                    className="ann-recipients-search__input"
+                    placeholder="Поиск..."
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                  />
                 </div>
-              );
-            })}
+
+                <div className="ann-filter-wrap" onClick={e => e.stopPropagation()}>
+                  <button
+                    className={`ann-filter-btn${targetRoles.length > 0 ? ' active' : ''}${openFilter === 'roles' ? ' open' : ''}`}
+                    title="Фильтр по ролям"
+                    onClick={() => setOpenFilter(f => f === 'roles' ? null : 'roles')}
+                  >
+                    <Users size={15} />
+                    {targetRoles.length > 0 && <span className="ann-filter-badge">{targetRoles.length}</span>}
+                  </button>
+                  {openFilter === 'roles' && (
+                    <DropdownFilter
+                      label="Роли"
+                      items={rolesList}
+                      selected={targetRoles}
+                      onToggle={toggleRole}
+                      onClose={() => setOpenFilter(null)}
+                    />
+                  )}
+                </div>
+
+                <div className="ann-filter-wrap" onClick={e => e.stopPropagation()}>
+                  <button
+                    className={`ann-filter-btn${targetMedCenterIds.length > 0 ? ' active' : ''}${openFilter === 'medcenters' ? ' open' : ''}`}
+                    title="Фильтр по медцентрам"
+                    onClick={() => setOpenFilter(f => f === 'medcenters' ? null : 'medcenters')}
+                  >
+                    <Building2 size={15} />
+                    {targetMedCenterIds.length > 0 && <span className="ann-filter-badge">{targetMedCenterIds.length}</span>}
+                  </button>
+                  {openFilter === 'medcenters' && (
+                    <DropdownFilter
+                      label="Медцентры"
+                      items={medCentersList}
+                      selected={targetMedCenterIds}
+                      onToggle={toggleMedCenter}
+                      onClose={() => setOpenFilter(null)}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="ann-users-list">
+                {filteredUsers.length === 0 && (
+                  <div className="ann-users-empty">Сотрудники не найдены</div>
+                )}
+                {filteredUsers.map(u => {
+                  const on = isForAll || isUserOn(u.id);
+                  const autoMatched = filterMatchedIds.has(u.id);
+                  return (
+                    <div
+                      key={u.id}
+                      className={`ann-user-item${autoMatched ? ' ann-user-item--auto' : ''}`}
+                      onClick={() => toggleUser(u.id)}
+                    >
+                      <Toggle checked={on} onChange={() => toggleUser(u.id)} />
+                      <span className="ann-user-item__name">{u.displayName || u.username}</span>
+                      <span className="ann-user-item__meta">
+                        {(u.roles || []).map(r => (
+                          <span key={r.id} className="ann-user-item__chip ann-user-item__chip--role">{r.name}</span>
+                        ))}
+                        {(u.medCenters || []).map(m => (
+                          <span key={m.id} className="ann-user-item__chip ann-user-item__chip--mc">{m.name}</span>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -339,6 +358,7 @@ export default function Home() {
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [order, setOrder] = useState('desc');
 
   const [upcomingEvents, setUpcomingEvents] = useState([]);
   const [eventIndicators, setEventIndicators] = useState({});
@@ -347,10 +367,16 @@ export default function Home() {
   const [modal, setModal] = useState({ open: false, announcement: null });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
-  const fetchAnnouncements = useCallback(async (p = 1, s = search) => {
+  const handleToggleOrder = () => {
+    const newOrder = order === 'desc' ? 'asc' : 'desc';
+    setOrder(newOrder);
+    fetchAnnouncements(1, search, newOrder);
+  };
+
+  const fetchAnnouncements = useCallback(async (p = 1, s = search, o = order) => {
     setLoading(true);
     try {
-      const params = { page: p };
+      const params = { page: p, order: o };
       if (s) params.search = s;
       const res = await announcementsApi.list(params);
       setAnnouncements(res.data.announcements);
@@ -448,6 +474,14 @@ export default function Home() {
                   </button>
                 )}
               </form>
+              <button
+                className="home-btn-sort"
+                onClick={handleToggleOrder}
+                title={order === 'desc' ? 'Сначала новые' : 'Сначала старые'}
+              >
+                <ArrowUpDown size={15} />
+                {order === 'desc' ? 'Новые' : 'Старые'}
+              </button>
               {canEdit && (
                 <button className="home-btn-create" onClick={() => setModal({ open: true, announcement: null })}>
                   <Plus size={16} /> Создать

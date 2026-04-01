@@ -376,7 +376,7 @@ function QuickAccessButtons({ onClose }) {
     }
   };
 
-  const isOnChat = location.pathname === '/';
+  const isOnChat = location.pathname === '/dashboard';
   const isOnFavorites = location.pathname === '/favorites';
   const isOnAdminPages = location.pathname === '/explorer';
   const isOnCourses = location.pathname.startsWith('/courses');
@@ -396,7 +396,7 @@ function QuickAccessButtons({ onClose }) {
       {/* Первый ряд */}
       <button 
         className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
-        onClick={() => handleClick('/')}
+        onClick={() => handleClick('/dashboard')}
         title="Сообщения"
       >
         <MessageCircle size={20} />

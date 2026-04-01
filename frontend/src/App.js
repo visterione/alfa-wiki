@@ -37,6 +37,7 @@ import ReviewBoard from './pages/ReviewBoard';
 import ReviewBoardSettings from './pages/ReviewBoardSettings';
 import ReviewArchive from './pages/ReviewArchive';
 import ReviewStatistics from './pages/ReviewStatistics';
+import Dashboard from './pages/Dashboard';
 import './index.css';
 
 function ProtectedRoute({ children, adminOnly = false, requireAdminAccess = null }) {
@@ -91,6 +92,7 @@ function AppRoutes() {
         </ProtectedRoute>
       }>
         <Route index element={<Home />} />
+        <Route path="dashboard" element={<Dashboard />} />
         <Route path="page/:slug" element={<PageView />} />
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
