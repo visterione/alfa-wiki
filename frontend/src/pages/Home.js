@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Pin, PinOff, Plus, Pencil, Trash2, Search, ChevronLeft, ChevronRight,
-  X, Check, Users, Building2, ArrowUpDown
+  X, Check, Users, Building2, ArrowUpDown, User
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { announcements as announcementsApi, calendar as calendarApi, users as usersApi, roles as rolesApi } from '../services/api';
@@ -39,7 +39,7 @@ function AnnouncementCard({ announcement, canEdit, onEdit, onDelete, onTogglePin
   }, [announcement.body]);
 
   const avatarSrc = announcement.author?.avatar
-    ? `${BASE_URL}${announcement.author.avatar}`
+    ? `${BASE_URL}/${announcement.author.avatar}`
     : null;
 
   const authorName = announcement.author?.displayName || announcement.author?.username || 'Неизвестно';
@@ -59,7 +59,7 @@ function AnnouncementCard({ announcement, canEdit, onEdit, onDelete, onTogglePin
             <img src={avatarSrc} alt={authorName} className="announcement-card__avatar" />
           ) : (
             <div className="announcement-card__avatar announcement-card__avatar--placeholder">
-              {authorName.charAt(0).toUpperCase()}
+              <User size={18} />
             </div>
           )}
           <div>
