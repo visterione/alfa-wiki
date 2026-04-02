@@ -1013,7 +1013,7 @@ router.post('/:chatId/avatar', authenticate, (req, res, next) => {
       .jpeg({ quality: 85 })
       .toFile(outputPath);
 
-    fs.unlinkSync(inputPath);
+    try { fs.unlinkSync(inputPath); } catch (_) { /* file may be locked on Windows after sharp */ }
 
     if (chat.avatar) {
       const oldPath = path.join(__dirname, '..', chat.avatar);
