@@ -46,6 +46,16 @@ const STEP_LABELS = [
   'Сводка',
 ];
 
+// ── Clinic group mapping for payroll import ───────────────────────────────────
+// "Престиж" = Альфа(2) + Кидс(3) + Линия(6)
+// "Проф"    = Проф(1)
+// "Лабгрупп"= 3К(4) + Смайл(7)
+const IMPORT_GROUP_CLINIC_IDS = {
+  'престиж':  ['2', '3', '6'],
+  'проф':     ['1'],
+  'лабгрупп': ['4', '7'],
+};
+
 // ── Payroll Excel parser ──────────────────────────────────────────────────────
 function parsePayrollImportRows(rows) {
   if (!rows.length) return [];
@@ -81,10 +91,11 @@ function parsePayrollImportRows(rows) {
 
   return rows
     .map(row => {
-      const clinicRaw = clinicKey ? String(row[clinicKey] || '').trim() : '';
+      const clinicRaw = clinicKey ? String(row[clinicKey] || '').trim().toLowerCase() : '';
+      const clinicGroup = clinicRaw && IMPORT_GROUP_CLINIC_IDS[clinicRaw] ? clinicRaw : null;
       return {
         name:        String(row[nameKey] || '').trim(),
-        clinicId:    clinicRaw ? (rbMatchClinicId(clinicRaw) || null) : null,
+        clinicGroup, // 'престиж' | 'проф' | 'лабгрупп' | null
         mainPayment: salaryKey  ? parseNum(row[salaryKey])  : null,
         advance:     advanceKey ? parseNum(row[advanceKey]) : null,
         ndfl:        ndflKey    ? parseNum(row[ndflKey])    : null,
@@ -270,6 +281,9 @@ export default function ReferralBonusesPage() {
   // ── НДФЛ import ──
   const [ndflModal, setNdflModal] = useState(null);
   const [ndflImporting, setNdflImporting] = useState(false);
+  const [disambigModal, setDisambigModal] = useState(null); // clinic disambiguation
+  // selections for disambiguation modal: { [caseIdx]: clinicId }
+  const [disambigSelections, setDisambigSelections] = useState({});
 
   // ── Global reset all unlocked items ──
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -378,13 +392,21 @@ export default function ReferralBonusesPage() {
       return;
     }
     const matched = [];
+    const unmatchedNames = [];
     rows.forEach(row => {
       const doctor = matchDoctorByName(row.name);
-      if (doctor) matched.push({ doctor, clinicId: row.clinicId, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
+      if (doctor) {
+        matched.push({ doctor, clinicGroup: row.clinicGroup, clinicId: null, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
+      } else {
+        if (!unmatchedNames.includes(row.name)) unmatchedNames.push(row.name);
+      }
     });
     if (!matched.length) {
-      toast.error('Ни один сотрудник из файла не найден');
+      toast.error('Ни один сотрудник из файла не найден в списке сотрудников');
       return;
+    }
+    if (unmatchedNames.length > 0) {
+      toast(`Пропущено ${unmatchedNames.length} записей — сотрудники не найдены: ${unmatchedNames.slice(0, 3).join(', ')}${unmatchedNames.length > 3 ? '...' : ''}`, { duration: 5000 });
     }
     const settingsMap = {};
     await Promise.all(matched.map(async ({ doctor }) => {
@@ -395,6 +417,39 @@ export default function ReferralBonusesPage() {
         settingsMap[doctor.id] = null;
       }
     }));
+    // ── Resolve clinic groups → clinicId ──
+    // For each matched entry with a clinicGroup, determine which specific clinic to target
+    // based on the clinics the doctor is registered in (from MIS doctor data).
+    const ambiguousCases = []; // { idx, doctor, clinicGroup, options: [{id, name}] }
+    matched.forEach((entry, idx) => {
+      if (!entry.clinicGroup) {
+        entry.clinicId = null; // → 'global'
+        return;
+      }
+      const groupIds = IMPORT_GROUP_CLINIC_IDS[entry.clinicGroup] || [];
+      if (groupIds.length === 1) {
+        entry.clinicId = groupIds[0];
+        return;
+      }
+      // Find which of the group's clinics this doctor actually belongs to
+      const doctorClinics = entry.doctor.clinics.map(String);
+      const matches = groupIds.filter(id => doctorClinics.includes(id));
+      if (matches.length === 1) {
+        entry.clinicId = matches[0];
+      } else {
+        // Ambiguous: doctor works in multiple clinics of this group (or none — show all options)
+        const optionIds = matches.length > 1 ? matches : groupIds;
+        const options = optionIds.map(id => ({ id, name: rbGetClinicName(id) }));
+        ambiguousCases.push({ idx, doctor: entry.doctor, clinicGroup: entry.clinicGroup, options, mainPayment: entry.mainPayment, advance: entry.advance, ndfl: entry.ndfl });
+        entry.clinicId = null; // will be set after disambiguation
+      }
+    });
+
+    if (ambiguousCases.length > 0) {
+      setDisambigModal({ cases: ambiguousCases, matched, settingsMap });
+      return;
+    }
+
     const conflicts = matched.filter(({ doctor, clinicId, mainPayment, advance, ndfl }) => {
       const targetKey = clinicId || 'global';
       const clinicData = settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
@@ -409,6 +464,31 @@ export default function ReferralBonusesPage() {
       await applyNdflImport('overwrite', matched, settingsMap);
     }
   }, [applyNdflImport, matchDoctorByName]);
+
+  const applyDisambig = useCallback(async (selections) => {
+    if (!disambigModal) return;
+    const { cases, matched, settingsMap } = disambigModal;
+    // Apply selections to matched entries
+    cases.forEach(({ idx }) => {
+      if (selections[idx]) matched[idx].clinicId = selections[idx];
+    });
+    setDisambigModal(null);
+    setDisambigSelections({});
+    // Continue with conflict check
+    const conflicts = matched.filter(({ doctor, clinicId, mainPayment, advance, ndfl }) => {
+      const targetKey = clinicId || 'global';
+      const clinicData = settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
+      const deductions = clinicData.deductions || [];
+      return (mainPayment !== null && clinicData.lockedMainPayment) ||
+             (advance     !== null && clinicData.lockedAdvance) ||
+             (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked === true));
+    });
+    if (conflicts.length > 0) {
+      setNdflModal({ matched, settingsMap, conflicts });
+    } else {
+      await applyNdflImport('overwrite', matched, settingsMap);
+    }
+  }, [disambigModal, applyNdflImport]);
 
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
@@ -562,6 +642,96 @@ export default function ReferralBonusesPage() {
                 onClick={handleConfirmReset}
               >
                 Сбросить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Disambiguation modal — выбор конкретного медцентра при неоднозначности группы */}
+      {disambigModal && (
+        <div className="rb-modal-overlay" onClick={() => setDisambigModal(null)}>
+          <div className="rb-modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Уточните медцентр
+              </h3>
+              <button className="rb-modal-close" onClick={() => setDisambigModal(null)}>×</button>
+            </div>
+            <div className="rb-modal-body">
+              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 14 }}>
+                Врач(и) ниже работают в нескольких медцентрах одной группы. Укажите, в какой именно вкладке сохранить данные.
+              </p>
+              {(() => {
+                // Group cases by doctor to detect duplicate clinic selections within same doctor
+                const usedByDoctor = {}; // doctorId → Set of selected clinicIds
+                disambigModal.cases.forEach(({ idx, doctor }) => {
+                  if (!usedByDoctor[doctor.id]) usedByDoctor[doctor.id] = {};
+                  if (disambigSelections[idx]) {
+                    if (!usedByDoctor[doctor.id].counts) usedByDoctor[doctor.id].counts = {};
+                    const cid = disambigSelections[idx];
+                    usedByDoctor[doctor.id].counts[cid] = (usedByDoctor[doctor.id].counts[cid] || 0) + 1;
+                  }
+                });
+                const isDuplicate = (doctorId, clinicId, idx) => {
+                  const counts = usedByDoctor[doctorId]?.counts || {};
+                  return disambigSelections[idx] === clinicId && counts[clinicId] > 1;
+                };
+
+                return disambigModal.cases.map(({ idx, doctor, clinicGroup, options, mainPayment, advance, ndfl }) => {
+                  const groupLabel = { престиж: 'Престиж', проф: 'Проф', лабгрупп: 'Лабгрупп' }[clinicGroup] || clinicGroup;
+                  const valueParts = [];
+                  if (mainPayment) valueParts.push(`Тело ЗП: ${mainPayment.toLocaleString('ru-RU')} ₽`);
+                  if (advance)     valueParts.push(`Аванс: ${advance.toLocaleString('ru-RU')} ₽`);
+                  if (ndfl)        valueParts.push(`НДФЛ: ${ndfl.toLocaleString('ru-RU')} ₽`);
+                  const hasDup = options.some(opt => isDuplicate(doctor.id, opt.id, idx));
+                  return (
+                    <div key={idx} style={{ marginBottom: 12, padding: '12px 14px', border: `1px solid ${hasDup ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 8, background: hasDup ? '#fff7f7' : '#f8fafc' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14, color: '#1e293b' }}>{doctor.name}</div>
+                        <div style={{ fontSize: 12, color: '#64748b' }}>Группа: <b>{groupLabel}</b></div>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#0369a1', background: '#f0f9ff', borderRadius: 5, padding: '4px 8px', marginBottom: 10, display: 'inline-block' }}>
+                        {valueParts.join(' · ') || '—'}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {options.map(opt => {
+                          const dup = isDuplicate(doctor.id, opt.id, idx);
+                          const selected = disambigSelections[idx] === opt.id;
+                          return (
+                            <button
+                              key={opt.id}
+                              onClick={() => setDisambigSelections(prev => ({ ...prev, [idx]: opt.id }))}
+                              style={{
+                                padding: '6px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 500,
+                                border: selected ? `2px solid ${dup ? '#ef4444' : 'var(--rb-primary)'}` : '1px solid #cbd5e1',
+                                background: selected ? (dup ? '#fef2f2' : '#eff6ff') : '#fff',
+                                color: selected ? (dup ? '#dc2626' : 'var(--rb-primary)') : '#374151',
+                              }}
+                            >
+                              {opt.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {hasDup && <div style={{ marginTop: 6, fontSize: 12, color: '#dc2626' }}>Этот медцентр уже выбран для другой записи этого врача</div>}
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <div className="rb-modal-footer">
+              <button className="rb-btn rb-btn-secondary" onClick={() => { setDisambigModal(null); setDisambigSelections({}); }}>Отмена</button>
+              <button
+                className="rb-btn"
+                style={{ background: 'var(--rb-primary)', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13, opacity: (() => { const allSelected = disambigModal.cases.every(c => disambigSelections[c.idx]); const hasDups = disambigModal.cases.some(({ idx, doctor }) => { const sel = disambigSelections[idx]; return sel && disambigModal.cases.some(c2 => c2.idx !== idx && c2.doctor.id === doctor.id && disambigSelections[c2.idx] === sel); }); return allSelected && !hasDups ? 1 : 0.5; })() }}
+                disabled={!disambigModal.cases.every(c => disambigSelections[c.idx]) || disambigModal.cases.some(({ idx, doctor }) => { const sel = disambigSelections[idx]; return sel && disambigModal.cases.some(c2 => c2.idx !== idx && c2.doctor.id === doctor.id && disambigSelections[c2.idx] === sel); })}
+                onClick={() => applyDisambig(disambigSelections)}
+              >
+                Продолжить
               </button>
             </div>
           </div>

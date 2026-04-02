@@ -259,7 +259,9 @@ router.get('/', authenticate, async (req, res) => {
         members: chat.members,
         unreadCount,
         createdBy: chat.createdBy,
-        isAssistantChat // Флаг для закрепления вверху
+        isAssistantChat, // Флаг для закрепления вверху
+        isPinned: m.isPinned || false,
+        pinnedOrder: m.pinnedOrder != null ? m.pinnedOrder : null
       };
 
       // Добавляем otherUser для приватных чатов (с онлайн-статусом)
@@ -276,12 +278,18 @@ router.get('/', authenticate, async (req, res) => {
       return result;
     }));
 
-    // Сортируем: Ассистент всегда вверху, остальные по времени последнего сообщения
+    // Сортируем: Ассистент → Закреплённые (по pinnedOrder) → Остальные (по дате)
     chatsWithUnreadCount.sort((a, b) => {
-      // Ассистент всегда первый
       if (a.isAssistantChat && !b.isAssistantChat) return -1;
       if (!a.isAssistantChat && b.isAssistantChat) return 1;
-      // Остальные по дате
+      // Оба не ассистент: закреплённые идут перед обычными
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      // Оба закреплённые — сортируем по pinnedOrder
+      if (a.isPinned && b.isPinned) {
+        return (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0);
+      }
+      // Оба обычные — по дате
       const dateA = a.lastMessageAt ? new Date(a.lastMessageAt) : new Date(0);
       const dateB = b.lastMessageAt ? new Date(b.lastMessageAt) : new Date(0);
       return dateB - dateA;
@@ -1282,6 +1290,65 @@ router.patch('/:chatId/hide', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Hide chat error:', error);
     res.status(500).json({ error: 'Failed to hide chat' });
+  }
+});
+
+// Pin/unpin chat for current user
+router.patch('/:chatId/pin', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { pinned } = req.body;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this chat' });
+    }
+
+    const isPinned = pinned !== undefined ? !!pinned : !membership.isPinned;
+
+    let pinnedOrder = membership.pinnedOrder;
+    if (isPinned && pinnedOrder == null) {
+      // Assign the next available order
+      const maxOrder = await ChatMember.max('pinnedOrder', {
+        where: { userId: req.user.id, isPinned: true }
+      });
+      pinnedOrder = (maxOrder != null ? maxOrder : -1) + 1;
+    } else if (!isPinned) {
+      pinnedOrder = null;
+    }
+
+    await membership.update({ isPinned, pinnedOrder });
+
+    res.json({ isPinned, pinnedOrder });
+  } catch (error) {
+    console.error('Pin chat error:', error);
+    res.status(500).json({ error: 'Failed to pin chat' });
+  }
+});
+
+// Reorder pinned chats
+router.patch('/pins/reorder', authenticate, async (req, res) => {
+  try {
+    const { chatIds } = req.body; // Array of chatIds in new order
+
+    if (!Array.isArray(chatIds)) {
+      return res.status(400).json({ error: 'chatIds must be an array' });
+    }
+
+    await Promise.all(chatIds.map((chatId, index) =>
+      ChatMember.update(
+        { pinnedOrder: index },
+        { where: { chatId, userId: req.user.id, isPinned: true } }
+      )
+    ));
+
+    res.json({ message: 'Reordered' });
+  } catch (error) {
+    console.error('Reorder pinned chats error:', error);
+    res.status(500).json({ error: 'Failed to reorder pinned chats' });
   }
 });
 

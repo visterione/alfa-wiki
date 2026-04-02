@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft
+  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -80,6 +80,8 @@ export default function Dashboard() {
   const contextMenuRef = useRef(null);
   const chatContextMenuRef = useRef(null);
   const messageInputRef = useRef(null);
+  const draggedPinnedId = useRef(null);
+  const dragOverPinnedId = useRef(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
@@ -679,6 +681,67 @@ export default function Dashboard() {
     }
   };
 
+  const handlePinChat = async () => {
+    const { chatId, chat: chatItem } = chatContextMenu;
+    if (!chatId) return;
+    setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
+    try {
+      const newPinned = !chatItem.isPinned;
+      await chat.pinChat(chatId, newPinned);
+      await loadChats();
+      toast.success(newPinned ? 'Чат закреплён' : 'Чат откреплён');
+    } catch (e) {
+      toast.error('Ошибка');
+    }
+  };
+
+  const handlePinnedDragStart = (e, chatId) => {
+    draggedPinnedId.current = chatId;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.classList.add('dragging');
+  };
+
+  const handlePinnedDragOver = (e, chatId) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dragOverPinnedId.current = chatId;
+  };
+
+  const handlePinnedDrop = async (e, targetChatId) => {
+    e.preventDefault();
+    const fromId = draggedPinnedId.current;
+    if (!fromId || fromId === targetChatId) return;
+
+    const pinnedChats = chats.filter(c => c.isPinned);
+    const fromIndex = pinnedChats.findIndex(c => c.id === fromId);
+    const toIndex = pinnedChats.findIndex(c => c.id === targetChatId);
+    if (fromIndex === -1 || toIndex === -1) return;
+
+    const reordered = [...pinnedChats];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+
+    // Optimistic update
+    const newOrder = reordered.map(c => c.id);
+    setChats(prev => {
+      const nonPinned = prev.filter(c => !c.isPinned);
+      const updatedPinned = reordered.map((c, i) => ({ ...c, pinnedOrder: i }));
+      return [...updatedPinned, ...nonPinned];
+    });
+
+    try {
+      await chat.reorderPinnedChats(newOrder);
+    } catch (e) {
+      await loadChats(); // rollback
+    }
+  };
+
+  const handlePinnedDragEnd = (e) => {
+    draggedPinnedId.current = null;
+    dragOverPinnedId.current = null;
+    e.currentTarget.classList.remove('dragging');
+  };
+
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1019,17 +1082,18 @@ export default function Dashboard() {
           </div>
           <div className="chat-search"><Search size={18} /><input placeholder="Поиск по чатам, сообщениям и файлам..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
           <div className="chat-list">
-            {(loading || searching) ? <div className="chat-loading"><div className="loading-spinner" /></div> : filteredChats.length > 0 ? filteredChats.map(chatItem => {
-              // Определяем, был ли чат найден по содержимому сообщений
-              const foundByMessage = searchResults.find(r => r.id === chatItem.id);
-              const searchTerm = foundByMessage ? searchQuery : '';
-
-              return (
+            {(loading || searching) ? <div className="chat-loading"><div className="loading-spinner" /></div> : (() => {
+              const renderChatItem = (chatItem, { draggable: isDraggable = false, searchTerm = '' } = {}) => (
                 <div
                   key={chatItem.id}
-                  className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''}`}
+                  className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''} ${chatItem.isPinned && !searchQuery.trim() ? 'pinned' : ''}`}
                   onClick={() => handleSelectChat(chatItem, searchTerm)}
                   onContextMenu={(e) => handleChatContextMenu(e, chatItem)}
+                  draggable={isDraggable}
+                  onDragStart={isDraggable ? (e) => handlePinnedDragStart(e, chatItem.id) : undefined}
+                  onDragOver={isDraggable ? (e) => handlePinnedDragOver(e, chatItem.id) : undefined}
+                  onDrop={isDraggable ? (e) => handlePinnedDrop(e, chatItem.id) : undefined}
+                  onDragEnd={isDraggable ? handlePinnedDragEnd : undefined}
                 >
                   <div className="chat-item-avatar-wrap">
                     <div className="chat-item-avatar">{getChatAvatar(chatItem) ? <img src={getAvatarUrl(getChatAvatar(chatItem))} alt="" /> : (chatItem.type === 'group' ? <Users size={24} /> : <User size={24} />)}</div>
@@ -1041,10 +1105,36 @@ export default function Dashboard() {
                     <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
                     <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
                   </div>
+                  {chatItem.isPinned && !searchQuery.trim() && <span className="chat-item-pin-icon"><Pin size={12} /></span>}
                   {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
                 </div>
               );
-            }) : <div className="chat-empty">Нет чатов</div>}
+
+              if (searchQuery.trim()) {
+                // В режиме поиска — показываем все результаты без разделения
+                if (filteredChats.length === 0) return <div className="chat-empty">Нет чатов</div>;
+                return filteredChats.map(chatItem => {
+                  const foundByMessage = searchResults.find(r => r.id === chatItem.id);
+                  return renderChatItem(chatItem, { searchTerm: foundByMessage ? searchQuery : '' });
+                });
+              }
+
+              // Обычный режим: закреплённые → разделитель → остальные
+              const pinnedChats = chats.filter(c => c.isPinned).sort((a, b) => (a.pinnedOrder ?? 0) - (b.pinnedOrder ?? 0));
+              const regularChats = chats.filter(c => !c.isPinned);
+
+              if (chats.length === 0) return <div className="chat-empty">Нет чатов</div>;
+
+              return (
+                <>
+                  {pinnedChats.map(chatItem => renderChatItem(chatItem, { draggable: true }))}
+                  {pinnedChats.length > 0 && regularChats.length > 0 && (
+                    <div className="chat-list-divider"><span>Все чаты</span></div>
+                  )}
+                  {regularChats.map(chatItem => renderChatItem(chatItem))}
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -1365,6 +1455,10 @@ export default function Dashboard() {
           className="message-context-menu"
           style={{ top: chatContextMenu.y, left: chatContextMenu.x }}
         >
+          <button onClick={handlePinChat}>
+            {chatContextMenu.chat?.isPinned ? <PinOff size={16} /> : <Pin size={16} />}
+            {chatContextMenu.chat?.isPinned ? 'Открепить' : 'Закрепить'}
+          </button>
           <button onClick={handleHideChat}>
             <X size={16} />
             Удалить чат

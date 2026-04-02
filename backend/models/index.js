@@ -290,7 +290,9 @@ const ChatMember = sequelize.define('ChatMember', {
   role: { type: DataTypes.ENUM('admin', 'member'), defaultValue: 'member' },
   lastReadAt: { type: DataTypes.DATE },
   isNotificationMuted: { type: DataTypes.BOOLEAN, defaultValue: false },
-  isHidden: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат скрыт у пользователя' }
+  isHidden: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат скрыт у пользователя' },
+  isPinned: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат закреплён у пользователя' },
+  pinnedOrder: { type: DataTypes.INTEGER, allowNull: true, comment: 'Порядок среди закреплённых чатов' }
 }, {
   tableName: 'chat_members',
   timestamps: true,

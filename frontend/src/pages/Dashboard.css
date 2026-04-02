@@ -245,6 +245,59 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
+/* ========== PINNED CHATS ========== */
+.chat-item.pinned {
+  background: var(--bg-secondary);
+}
+
+.chat-item.pinned:hover {
+  background: var(--bg-tertiary);
+}
+
+.chat-item.pinned.active {
+  background: var(--primary-light);
+}
+
+.chat-item.pinned[draggable="true"] {
+  cursor: grab;
+}
+
+.chat-item.pinned[draggable="true"]:active,
+.chat-item.dragging {
+  cursor: grabbing;
+  opacity: 0.5;
+}
+
+.chat-item-pin-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+}
+
+.chat-list-divider {
+  display: flex;
+  align-items: center;
+  padding: 6px 16px;
+  gap: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.chat-list-divider::before,
+.chat-list-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-light);
+}
+
 /* ========== CHAT MAIN ========== */
 .chat-main {
   flex: 1;
