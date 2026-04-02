@@ -103,9 +103,12 @@ export function extractCorpRows(rows, colMap, dateFrom, dateTo) {
     .filter(({ row }) => {
       const t = String(row[colMap.invoiceType] || '').toLowerCase().trim();
       if (t !== 'юр. компания' && t !== 'юр.компания') return false;
+      if (colMap.invoiceCreatedDate) {
+        const invoiceDate = rbParseDate(row[colMap.invoiceCreatedDate]);
+        if (invoiceDate && invoiceDate < new Date(2026, 1, 1)) return false;
+      }
       if (colMap.date) {
         const rowDate = rbParseDate(row[colMap.date]);
-        if (rowDate && rowDate < new Date(2026, 1, 1)) return false;
         if (rowDate && dfDate && rowDate < dfDate) return false;
         if (rowDate && dtDate && rowDate > dtDate) return false;
       }
@@ -305,9 +308,9 @@ export async function buildReport({
       const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
       if (t !== 'юр. компания' && t !== 'юр.компания') return true;
       // Hard rule: corp services before Feb 2026 are never included in salary
-      if (colMap.date) {
-        const rowDate = rbParseDate(r[colMap.date]);
-        if (rowDate && rowDate < new Date(2026, 1, 1)) return false;
+      if (colMap.invoiceCreatedDate) {
+        const invoiceDate = rbParseDate(r[colMap.invoiceCreatedDate]);
+        if (invoiceDate && invoiceDate < new Date(2026, 1, 1)) return false;
       }
       // New: per-transaction selection from report modal (takes priority over legacy)
       if (corpIncludedKeys !== null) {
