@@ -1008,12 +1008,16 @@ router.post('/:chatId/avatar', authenticate, (req, res, next) => {
 
     const inputPath = path.resolve(req.file.path);
     const outputPath = inputPath.replace(/\.[^.]+$/, '-processed.jpg');
-    await sharp(inputPath)
+
+    const inputBuffer = fs.readFileSync(inputPath);
+    fs.unlinkSync(inputPath);
+
+    const outputBuffer = await sharp(inputBuffer)
       .resize(200, 200, { fit: 'cover' })
       .jpeg({ quality: 85 })
-      .toFile(outputPath);
+      .toBuffer();
 
-    try { fs.unlinkSync(inputPath); } catch (_) { /* file may be locked on Windows after sharp */ }
+    fs.writeFileSync(outputPath, outputBuffer);
 
     if (chat.avatar) {
       const oldPath = path.join(__dirname, '..', chat.avatar);
