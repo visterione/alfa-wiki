@@ -665,7 +665,7 @@
 
         <div class="srv-form-group">
           <label>Медцентр <span>*</span></label>
-          <select id="edit-medcenter" required class="srv-select">
+          <select id="edit-medcenter" required class="srv-select" onchange="servicesApp.onModalMedcenterChange()">
             <option value="">Выберите...</option>
             <option value="Альфа">Альфа</option>
             <option value="Кидс">Кидс</option>
@@ -722,6 +722,16 @@ window.servicesApp = (function() {
   // Backend всегда на порту 9001
   var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
   var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
+
+  // Маппинг медцентров к clinic_id из МИС
+  var MEDCENTER_CLINIC_IDS = {
+    'Альфа': 2,
+    'Кидс':  3,
+    'Проф':  1,
+    'Линия': 6,
+    '3К':    4,
+    'Смайл': 7
+  };
   var services = [];
   var medcenters = [];
   var sortField = 'medCenter';
@@ -1017,9 +1027,14 @@ window.servicesApp = (function() {
     resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="srv-mis-empty">Поиск...</div>';
 
+    var selectedCenter = document.getElementById('edit-medcenter').value;
+    var clinicId = MEDCENTER_CLINIC_IDS[selectedCenter] || null;
+    var searchBody = { term: term };
+    if (clinicId) searchBody.clinic_id = clinicId;
+
     fetchAPI(MIS_URL + '/search-mis', {
       method: 'POST',
-      body: JSON.stringify({ term: term })
+      body: JSON.stringify(searchBody)
     })
     .then(function(res) {
       if (!res.success || !res.data || res.data.length === 0) {
@@ -1047,6 +1062,36 @@ window.servicesApp = (function() {
       resultsDiv.innerHTML = '<div class="srv-mis-empty">Ошибка поиска</div>';
       showToast('Ошибка: ' + e.message, 'error');
     });
+  }
+
+  function onModalMedcenterChange() {
+    var selectedCenter = document.getElementById('edit-medcenter').value;
+    var clinicId = MEDCENTER_CLINIC_IDS[selectedCenter] || null;
+    var misServiceId = document.getElementById('edit-misserviceid').value;
+
+    // Если уже выбрана услуга из МИС — обновляем цену для нового медцентра
+    if (misServiceId && clinicId) {
+      var MIS_PROXY_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis/services';
+      fetchAPI(MIS_PROXY_URL, {
+        method: 'POST',
+        body: JSON.stringify({ service_ids: [misServiceId], clinic_id: clinicId })
+      }).then(function(res) {
+        var list = (res && res.data) ? res.data : [];
+        var svc = list.find(function(s) { return String(s.service_id) === String(misServiceId); });
+        if (svc && svc.price !== undefined && parseFloat(svc.price) > 0) {
+          document.getElementById('edit-price').value = parseFloat(svc.price);
+          showToast('Цена обновлена для медцентра ' + selectedCenter, 'success');
+        }
+      }).catch(function() {});
+      return;
+    }
+
+    // Иначе — обновляем результаты поиска, если они показаны
+    var term = document.getElementById('mis-search-input').value;
+    var resultsDiv = document.getElementById('mis-results');
+    if (term && term.length >= 2 && resultsDiv.style.display !== 'none') {
+      searchMIS();
+    }
   }
 
   function selectMISService(serviceId, code, title, price) {
@@ -1140,7 +1185,8 @@ window.servicesApp = (function() {
     goToPage: goToPage,
     scrollToRecord: scrollToRecord,
     searchMIS: searchMIS,
-    selectMISService: selectMISService
+    selectMISService: selectMISService,
+    onModalMedcenterChange: onModalMedcenterChange
   };
 })();
 </script>

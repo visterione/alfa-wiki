@@ -687,7 +687,7 @@ export default function Dashboard() {
       await chat.updateAvatar(activeChat.id, file);
       await refreshActiveChat();
       toast.success('Аватар обновлён');
-    } catch (e) { toast.error('Ошибка загрузки'); }
+    } catch (e) { toast.error(e.response?.data?.error || 'Ошибка загрузки'); }
     finally { setAvatarUploading(false); if (avatarInputRef.current) avatarInputRef.current.value = ''; }
   };
 

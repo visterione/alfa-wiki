@@ -979,7 +979,17 @@ router.post('/group', authenticate, async (req, res) => {
 });
 
 // Update group chat avatar
-router.post('/:chatId/avatar', authenticate, avatarUpload.single('avatar'), async (req, res) => {
+router.post('/:chatId/avatar', authenticate, (req, res, next) => {
+  avatarUpload.single('avatar')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'Файл слишком большой. Максимальный размер: 5 МБ.' });
+      }
+      return res.status(400).json({ error: 'Ошибка загрузки файла: ' + err.message });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { chatId } = req.params;
 
@@ -996,13 +1006,14 @@ router.post('/:chatId/avatar', authenticate, avatarUpload.single('avatar'), asyn
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const outputPath = req.file.path.replace(/\.[^.]+$/, '-processed.jpg');
-    await sharp(req.file.path)
+    const inputPath = path.resolve(req.file.path);
+    const outputPath = inputPath.replace(/\.[^.]+$/, '-processed.jpg');
+    await sharp(inputPath)
       .resize(200, 200, { fit: 'cover' })
       .jpeg({ quality: 85 })
       .toFile(outputPath);
 
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(inputPath);
 
     if (chat.avatar) {
       const oldPath = path.join(__dirname, '..', chat.avatar);
@@ -1017,7 +1028,7 @@ router.post('/:chatId/avatar', authenticate, avatarUpload.single('avatar'), asyn
     res.json({ avatar: avatarPath });
   } catch (error) {
     console.error('Update chat avatar error:', error);
-    res.status(500).json({ error: 'Failed to update avatar' });
+    res.status(500).json({ error: 'Failed to update avatar: ' + error.message });
   }
 });
 
