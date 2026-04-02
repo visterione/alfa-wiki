@@ -62,7 +62,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
 
   const buildDisplayRows = rows => rows.map(({ row, key }) => ({
     key,
-    date:         colMap.date            ? String(row[colMap.date]             || '') : '',
+    date:         (colMap.invoiceCreatedDate || colMap.date) ? String(row[colMap.invoiceCreatedDate || colMap.date] || '') : '',
     patientCard:  colMap.patientCard     ? String(row[colMap.patientCard]      || '').trim() : '',
     patientName:  colMap.patientName     ? String(row[colMap.patientName]      || '').trim() : '',
     legalCompany: colMap.legalCompanyName ? String(row[colMap.legalCompanyName] || '').trim() : '',

@@ -668,7 +668,7 @@ export async function buildReport({
         return byCode || byName;
       });
       const itemTotal = matching.reduce((s, m) => {
-        const rub = m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value) * svc.count;
+        const rub = m.valueType === 'percent' ? svc.cost * parseFloat(m.value) / 100 : parseFloat(m.value);
         if (rub > 0) {
           svcMatBreakdown.push({
             name: m.name || svc.name,

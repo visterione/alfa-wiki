@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import './ReferralBonuses.css';
 import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } from '../../services/api';
-import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS } from './utils/clinicUtils';
+import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
@@ -59,30 +59,37 @@ function parsePayrollImportRows(rows) {
     return kl === 'фио' || kl.startsWith('фамили') || kl.includes('фио');
   }) || keys[0];
 
+  // "Клиника" — столбик после ФИО
+  const clinicKey = keys.find(k => norm(k).includes('клиник')) || null;
+
   // "Тело ЗП", "Тело з/п", "Тело зарп", "Тело зарплата", "Оклад" …
   const salaryKey = keys.find(k => {
     const kl = norm(k);
     return (kl.includes('тело') && (kl.includes('зп') || kl.includes('жп') || kl.includes('зарп'))) ||
            kl === 'оклад' || kl === 'телозп';
-  }) || (keys.length >= 2 ? keys.find(k => k !== nameKey) : null);
+  }) || (keys.length >= 2 ? keys.find(k => k !== nameKey && k !== clinicKey) : null);
 
   // "Аванс"
   const advanceKey = keys.find(k => norm(k).includes('аванс'))
-    || (keys.length >= 3 ? keys.filter(k => k !== nameKey && k !== salaryKey)[0] : null);
+    || (keys.length >= 3 ? keys.filter(k => k !== nameKey && k !== clinicKey && k !== salaryKey)[0] : null);
 
   // "НДФЛ", "Налог", "Подоходный"
   const ndflKey = keys.find(k => {
     const kl = norm(k);
     return kl.includes('ндфл') || kl === 'налог' || kl.includes('подоходн');
-  }) || (keys.length >= 4 ? keys.filter(k => k !== nameKey && k !== salaryKey && k !== advanceKey)[0] : null);
+  }) || (keys.length >= 4 ? keys.filter(k => k !== nameKey && k !== clinicKey && k !== salaryKey && k !== advanceKey)[0] : null);
 
   return rows
-    .map(row => ({
-      name: String(row[nameKey] || '').trim(),
-      mainPayment: salaryKey  ? parseNum(row[salaryKey])  : null,
-      advance:     advanceKey ? parseNum(row[advanceKey]) : null,
-      ndfl:        ndflKey    ? parseNum(row[ndflKey])    : null,
-    }))
+    .map(row => {
+      const clinicRaw = clinicKey ? String(row[clinicKey] || '').trim() : '';
+      return {
+        name:        String(row[nameKey] || '').trim(),
+        clinicId:    clinicRaw ? (rbMatchClinicId(clinicRaw) || null) : null,
+        mainPayment: salaryKey  ? parseNum(row[salaryKey])  : null,
+        advance:     advanceKey ? parseNum(row[advanceKey]) : null,
+        ndfl:        ndflKey    ? parseNum(row[ndflKey])    : null,
+      };
+    })
     .filter(r => r.name && (r.mainPayment !== null || r.advance !== null || r.ndfl !== null));
 }
 
@@ -294,7 +301,7 @@ export default function ReferralBonusesPage() {
     setNdflModal(null);
     let count = 0;
     try {
-      for (const { doctor, mainPayment, advance, ndfl } of matched) {
+      for (const { doctor, clinicId, mainPayment, advance, ndfl } of matched) {
         const raw = settingsMap[doctor.id];
         const settings = raw || {
           assistants: [],
@@ -310,19 +317,20 @@ export default function ReferralBonusesPage() {
             },
           },
         };
-        const globalData = settings.clinicSettings?.global || {};
+        const targetKey = clinicId || 'global';
+        const clinicData = settings.clinicSettings?.[targetKey] || {};
         const updates = {};
 
         if (mainPayment !== null) {
-          if (mode === 'overwrite' || !globalData.lockedMainPayment)
+          if (mode === 'overwrite' || !clinicData.lockedMainPayment)
             updates.mainPayment = mainPayment;
         }
         if (advance !== null) {
-          if (mode === 'overwrite' || !globalData.lockedAdvance)
+          if (mode === 'overwrite' || !clinicData.lockedAdvance)
             updates.advance = advance;
         }
 
-        let deductions = [...(globalData.deductions || [])];
+        let deductions = [...(clinicData.deductions || [])];
         if (ndfl !== null) {
           const ndflIdx = deductions.findIndex(d => d.name === 'НДФЛ');
           if (ndflIdx !== -1) {
@@ -338,9 +346,10 @@ export default function ReferralBonusesPage() {
 
         const newSettings = {
           ...settings,
-          clinicSettings: { ...settings.clinicSettings, global: { ...globalData, ...updates } },
+          clinicSettings: { ...settings.clinicSettings, [targetKey]: { ...clinicData, ...updates } },
         };
         await execSettingsApi.save({ misUserId: doctor.id, doctorName: doctor.name, settings: newSettings });
+        settingsMap[doctor.id] = newSettings;
         clearExecCache(doctor.id);
         count++;
       }
@@ -371,7 +380,7 @@ export default function ReferralBonusesPage() {
     const matched = [];
     rows.forEach(row => {
       const doctor = matchDoctorByName(row.name);
-      if (doctor) matched.push({ doctor, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
+      if (doctor) matched.push({ doctor, clinicId: row.clinicId, mainPayment: row.mainPayment, advance: row.advance, ndfl: row.ndfl });
     });
     if (!matched.length) {
       toast.error('Ни один сотрудник из файла не найден');
@@ -386,11 +395,12 @@ export default function ReferralBonusesPage() {
         settingsMap[doctor.id] = null;
       }
     }));
-    const conflicts = matched.filter(({ doctor, mainPayment, advance, ndfl }) => {
-      const global = settingsMap[doctor.id]?.clinicSettings?.global || {};
-      const deductions = global.deductions || [];
-      return (mainPayment !== null && global.lockedMainPayment) ||
-             (advance     !== null && global.lockedAdvance) ||
+    const conflicts = matched.filter(({ doctor, clinicId, mainPayment, advance, ndfl }) => {
+      const targetKey = clinicId || 'global';
+      const clinicData = settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
+      const deductions = clinicData.deductions || [];
+      return (mainPayment !== null && clinicData.lockedMainPayment) ||
+             (advance     !== null && clinicData.lockedAdvance) ||
              (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked === true));
     });
     if (conflicts.length > 0) {
@@ -577,16 +587,18 @@ export default function ReferralBonusesPage() {
                 У следующих сотрудников уже есть <strong>заблокированные</strong> записи:
               </p>
               <div style={{ maxHeight: 200, overflowY: 'auto', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '8px 12px', marginBottom: 12 }}>
-                {ndflModal.conflicts.map(({ doctor, mainPayment, advance, ndfl }) => {
-                  const global = ndflModal.settingsMap[doctor.id]?.clinicSettings?.global || {};
-                  const deductions = global.deductions || [];
+                {ndflModal.conflicts.map(({ doctor, clinicId, mainPayment, advance, ndfl }, idx) => {
+                  const targetKey = clinicId || 'global';
+                  const clinicData = ndflModal.settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
+                  const deductions = clinicData.deductions || [];
                   const locked = [];
-                  if (mainPayment !== null && global.lockedMainPayment) locked.push('Тело ЗП');
-                  if (advance     !== null && global.lockedAdvance)     locked.push('Аванс');
+                  if (mainPayment !== null && clinicData.lockedMainPayment) locked.push('Тело ЗП');
+                  if (advance     !== null && clinicData.lockedAdvance)     locked.push('Аванс');
                   if (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked)) locked.push('НДФЛ');
+                  const clinicLabel = clinicId ? rbGetClinicName(clinicId) : null;
                   return (
-                    <div key={doctor.id} style={{ fontSize: 13, padding: '3px 0', color: 'var(--rb-text)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span>🔒 {doctor.name}</span>
+                    <div key={`${doctor.id}_${idx}`} style={{ fontSize: 13, padding: '3px 0', color: 'var(--rb-text)', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span>🔒 {doctor.name}{clinicLabel && <span style={{ color: '#64748b', marginLeft: 5 }}>({clinicLabel})</span>}</span>
                       <span style={{ color: '#92400e', fontWeight: 500 }}>{locked.join(', ')}</span>
                     </div>
                   );
