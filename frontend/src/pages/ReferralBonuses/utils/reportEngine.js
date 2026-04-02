@@ -90,10 +90,34 @@ export async function loadExecSettings(misUserId) {
  * @param {object[]} allDoctors - All doctors list (for assistant income)
  * @returns {Promise<{clinicReports, grandTotal, periodLabel}>}
  */
+/**
+ * Extract corp-paid rows from the data for a given period.
+ * Returns array of { row, key } where key is the stable string index.
+ */
+export function extractCorpRows(rows, colMap, dateFrom, dateTo) {
+  if (!colMap.invoiceType) return [];
+  const dfDate = dateFrom ? new Date(dateFrom + 'T00:00:00') : null;
+  const dtDate = dateTo   ? new Date(dateTo   + 'T23:59:59') : null;
+  return rows
+    .map((row, idx) => ({ row, key: String(idx) }))
+    .filter(({ row }) => {
+      const t = String(row[colMap.invoiceType] || '').toLowerCase().trim();
+      if (t !== 'юр. компания' && t !== 'юр.компания') return false;
+      if (colMap.date) {
+        const rowDate = rbParseDate(row[colMap.date]);
+        if (rowDate && rowDate < new Date(2026, 1, 1)) return false;
+        if (rowDate && dfDate && rowDate < dfDate) return false;
+        if (rowDate && dtDate && rowDate > dtDate) return false;
+      }
+      return true;
+    });
+}
+
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
   interim = false, normedOnly = false,
+  corpIncludedKeys = null, // Set<string> of row indices; null = use legacy logic
 }) {
   const doctorName = doctor.name;
 
@@ -268,6 +292,9 @@ export async function buildReport({
   // Track assistant income already credited across clinics to prevent double-counting
   const assistedExecutorNamesUsed = new Set();
 
+  // Stable row → key map for per-transaction corp selection
+  const rowKeyMap = new Map(rows.map((r, i) => [r, String(i)]));
+
   for (const [clinicId, clinicGroup] of Object.entries(byClinic)) {
     const clinicRows = clinicGroup.rows;
     const clinicLabel = clinicId !== 'unknown' ? rbGetClinicName(clinicId) : clinicGroup.label;
@@ -282,7 +309,11 @@ export async function buildReport({
         const rowDate = rbParseDate(r[colMap.date]);
         if (rowDate && rowDate < new Date(2026, 1, 1)) return false;
       }
-      // Per-service corp check from StepPerformed checkboxes
+      // New: per-transaction selection from report modal (takes priority over legacy)
+      if (corpIncludedKeys !== null) {
+        return corpIncludedKeys.has(rowKeyMap.get(r));
+      }
+      // Legacy: per-service-code from executorSettings
       const corpMap = execSettings?.corpIncludedServices;
       if (corpMap != null) {
         const code = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';

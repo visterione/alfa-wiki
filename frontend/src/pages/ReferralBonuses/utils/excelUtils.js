@@ -45,6 +45,8 @@ export function rbMapNewColumns(rows) {
     discount:     ['Скидка'],
     totalCost:    ['Итоговая стоимость'],
     patientCard:  ['№ карты пациента'],
+    patientName:  ['ФИО пациента', 'Пациент'],
+    legalCompanyName: ['Юр. компания', 'Плательщик', 'Наименование плательщика', 'Организация', 'Контрагент'],
     assistant:    ['Ассистент'],
   };
   Object.entries(exactMap).forEach(([field, candidates]) => {
@@ -71,8 +73,10 @@ export function rbMapNewColumns(rows) {
     if (!colMap.discount     && kl.includes('скидк')) colMap.discount = k;
     if (!colMap.totalCost    && kl.includes('итогов')) colMap.totalCost = k;
     if (!colMap.cabinet      && (kl === 'кабинет' || kl.includes('кабинет'))) colMap.cabinet = k;
-    if (!colMap.patientCard  && kl.includes('карт') && kl.includes('пациент')) colMap.patientCard = k;
-    if (!colMap.assistant    && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
+    if (!colMap.patientCard      && kl.includes('карт') && kl.includes('пациент')) colMap.patientCard = k;
+    if (!colMap.patientName      && ((kl.includes('фио') && kl.includes('пациент')) || kl === 'пациент')) colMap.patientName = k;
+    if (!colMap.legalCompanyName && (kl.includes('плательщик') || kl === 'организация' || kl === 'контрагент')) colMap.legalCompanyName = k;
+    if (!colMap.assistant        && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
   });
   // Fallbacks
   if (!colMap.date) colMap.date = keys[0];

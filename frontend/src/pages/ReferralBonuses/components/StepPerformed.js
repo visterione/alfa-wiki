@@ -326,18 +326,11 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   const [searchTerm, setSearchTerm] = useState('');
   // Per-row bonus state for save-all
   const [rowValues, setRowValues] = useState({}); // code -> { type, val }
-  // Per-service corp invoices flag (default: false)
-  const [corpMap, setCorpMap] = useState({}); // code -> boolean
-  const [corpMapDirty, setCorpMapDirty] = useState(false);
-  const [corpSaving, setCorpSaving] = useState(false);
-  const [fullExecData, setFullExecData] = useState(null);
   const [perfPage, setPerfPage] = useState(1);
   const [perfShowAll, setPerfShowAll] = useState(false);
 
   const autoSaveTimerRef = useRef(null);
   const handleSaveAllRef = useRef(null);
-  const fullExecDataRef = useRef(null);
-  fullExecDataRef.current = fullExecData;
 
   const loadBonuses = useCallback(async () => {
     if (!selectedDoctor) return;
@@ -350,9 +343,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     setLoading(true);
     setActiveClinic('global');
     setRowValues({});
-    setCorpMap({});
-    setCorpMapDirty(false);
-    setFullExecData(null);
     setPerfPage(1);
 
     Promise.all([
@@ -369,8 +359,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
       } else {
         setGlobalCabinets([]);
       }
-      setFullExecData(execData || null);
-      setCorpMap(execData?.corpIncludedServices || {});
 
       // Load services
       try {
@@ -447,14 +435,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
         clinicId: dbClinicId,
         items,
       });
-      // Save corp invoices map to executor settings
-      const newExecData = { ...(fullExecData || {}), corpIncludedServices: corpMap };
-      await executorSettings.save({
-        misUserId: selectedDoctor.id,
-        doctorName: selectedDoctor.name,
-        settings: newExecData,
-      });
-      setFullExecData(newExecData);
       toast.success(`Сохранено ${items.length} бонусов`);
       await loadBonuses();
     } catch {
@@ -471,27 +451,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
     clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => handleSaveAllRef.current?.(), 1500);
   }, []);
-
-  // Save corp map explicitly to executor settings (called by save button)
-  const handleCorpSave = useCallback(async (newCorpMap) => {
-    if (!selectedDoctor) return;
-    setCorpSaving(true);
-    const newExecData = { ...(fullExecDataRef.current || {}), corpIncludedServices: newCorpMap };
-    try {
-      await executorSettings.save({
-        misUserId: selectedDoctor.id,
-        doctorName: selectedDoctor.name,
-        settings: newExecData,
-      });
-      setFullExecData(newExecData);
-      setCorpMapDirty(false);
-      toast.success('Юр. комп. сохранено');
-    } catch {
-      toast.error('Ошибка сохранения Юр. комп.');
-    } finally {
-      setCorpSaving(false);
-    }
-  }, [selectedDoctor]);
 
   const filteredServices = services.filter(svc => {
     if (!searchTerm) return true;
@@ -547,15 +506,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
   }
 
   const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
-
-  const allCorpIncluded = services.length > 0 && services.every(s => corpMap[s.code] !== false);
-  const someCorpIncluded = services.some(s => corpMap[s.code] !== false);
-  const handleToggleAllCorp = () => {
-    const next = {};
-    services.forEach(s => { next[s.code] = !allCorpIncluded; });
-    setCorpMap(next);
-    setCorpMapDirty(true);
-  };
 
   return (
     <div className="rb-doctor-card">
@@ -630,34 +580,12 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                   </svg>
                   {perfShowAll ? 'По страницам' : 'Все'}
                 </button>
-                {corpMapDirty && (
-                  <button
-                    onClick={() => handleCorpSave(corpMap)}
-                    disabled={corpSaving}
-                    style={{ padding: '7px 14px', background: 'var(--rb-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: corpSaving ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', opacity: corpSaving ? 0.7 : 1 }}
-                  >
-                    {corpSaving ? 'Сохранение...' : 'Сохранить'}
-                  </button>
-                )}
               </div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: '#f8fafc', borderBottom: '2px solid var(--rb-border)' }}>
                     <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600 }}>Код</th>
                     <th style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600 }}>Услуга</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <span style={{ fontSize: 11 }}>Юр. комп.</span>
-                        <input
-                          type="checkbox"
-                          title="Выбрать/снять все"
-                          checked={allCorpIncluded}
-                          ref={el => { if (el) el.indeterminate = someCorpIncluded && !allCorpIncluded; }}
-                          onChange={handleToggleAllCorp}
-                          style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
-                        />
-                      </div>
-                    </th>
                     <th style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 600, width: 190 }}>Бонус</th>
                   </tr>
                 </thead>
@@ -677,8 +605,6 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
                         onRowChange={(code, type, val) => { setRowValues(prev => ({ ...prev, [code]: { type, val } })); triggerAutoSave(); }}
                         misUserId={selectedDoctor.id}
                         doctorName={selectedDoctor.name}
-                        corpIncluded={corpMap[svc.code] !== false}
-                        onCorpToggle={(code) => { setCorpMap(prev => ({ ...prev, [code]: prev[code] === false })); setCorpMapDirty(true); }}
                       />
                     );
                   })}
@@ -696,7 +622,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
 
 // ─── Controlled service row (drives save-all) ─────────────────────────────────
 
-function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange, misUserId, doctorName, corpIncluded, onCorpToggle }) {
+function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, onReload, rowVal, onRowChange, misUserId, doctorName }) {
   const code = svc.code || '';
   const name = svc.title || '';
   const price = svc.price ? ` (${parseFloat(svc.price).toFixed(2)} ₽)` : '';
@@ -809,15 +735,6 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
           <span style={{ color: 'var(--rb-text-secondary)', fontSize: 11 }}>{price}</span>
           {isFallback && <span style={{ marginLeft: 6, fontSize: 10, color: '#94a3b8', background: '#f1f5f9', borderRadius: 4, padding: '1px 4px' }}>общий</span>}
         </td>
-        <td style={{ padding: '6px 10px', textAlign: 'center' }}>
-          <input
-            type="checkbox"
-            checked={corpIncluded}
-            onChange={() => onCorpToggle(code)}
-            style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
-            title="Учитывать услуги оплаченные юр. компаниями"
-          />
-        </td>
         <td style={{ padding: '6px 10px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div className="rb-exec-type-toggle">
@@ -836,7 +753,7 @@ function ServiceRowControlled({ svc, idx, dbClinicId, bonuses, globalCabinets, o
       </tr>
       {expanded && (
         <tr style={{ background: '#f0f4ff', borderBottom: '1px solid var(--rb-border)' }}>
-          <td colSpan="4" style={{ padding: '4px 10px 10px 36px' }}>
+          <td colSpan="3" style={{ padding: '4px 10px 10px 36px' }}>
             <CabinetsSection
               cabinetBonuses={cabinetBonuses}
               globalCabinets={globalCabinets}

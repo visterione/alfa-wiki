@@ -2,9 +2,11 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
-import { buildReport, loadExecSettings, rbGetClinicSettings } from '../utils/reportEngine';
+import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows } from '../utils/reportEngine';
 import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
+import { rbNamesMatch } from '../utils/nameMatching';
 import SalaryBlock from './SalaryBlockRenderer';
+import CorpReviewModal from './CorpReviewModal';
 
 // ─── Inline file picker (small, fits in a toolbar) ────────────────────────────
 function FilePicker({ uploadedFile, onSelect, onClear, onDragOver, onDragLeave, onDrop }) {
@@ -153,11 +155,42 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
   const [reportData, setReportData]     = useState(null);
   const [error, setError]               = useState('');
 
+  const [corpModalState, setCorpModalState]     = useState(null);
+  // corpModalState = { corpRows, colMap, pendingData } | null
+  const [corpRecalcState, setCorpRecalcState]   = useState(null);
+  // corpRecalcState = { corpRows, colMap, corpIncludedKeys, pendingData } — kept after generation for re-editing
+
   // Reset report when doctor changes
   useEffect(() => {
     setReportData(null);
     setError('');
+    setCorpRecalcState(null);
   }, [selectedDoctor?.id]); // eslint-disable-line
+
+  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows }) => {
+    const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
+    const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
+    const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
+    const isNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
+    const result = await buildReport({
+      rows, colMap, doctor: selectedDoctor,
+      referralBonuses, performedDbBonuses, execSettings,
+      dateFrom: dateFrom || null, dateTo: dateTo || null,
+      allDoctors: doctors, savedAssistanceIncome,
+      interim, normedOnly: isNormed && !uploadedFile,
+      corpIncludedKeys,
+    });
+    if (filterClinic) {
+      result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
+    }
+    setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
+    // Save context for post-generation re-editing
+    if (corpRows?.length > 0) {
+      setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes } });
+    } else {
+      setCorpRecalcState(null);
+    }
+  };
 
   const handleGenerate = async () => {
     if (!selectedDoctor) { toast.error('Выберите врача из списка слева'); return; }
@@ -170,11 +203,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         loadExecSettings(selectedDoctor.id),
         (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
       ]);
-      const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
-      const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
-      const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
 
-      // Считаем normed, если хотя бы одна из клиник (включая global) настроена на Нормированный
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
       if (!isNormed && !uploadedFile) { toast.error('Загрузите файл Excel'); setGenerating(false); return; }
 
@@ -182,22 +211,39 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       if (uploadedFile) {
         rows   = await parseExcelFile(uploadedFile);
         colMap = rbMapNewColumns(rows);
-        if (!colMap.cabinet && performedDbBonuses.some(b => b.cabinetId && b.cabinetId !== '')) {
+        if (!colMap.cabinet && Array.isArray(pbRes.data) && pbRes.data.some(b => b.cabinetId && b.cabinetId !== '')) {
           toast.error('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены.', { duration: 7000 });
         }
       }
 
-      const result = await buildReport({
-        rows, colMap, doctor: selectedDoctor,
-        referralBonuses, performedDbBonuses, execSettings,
-        dateFrom: dateFrom || null, dateTo: dateTo || null,
-        allDoctors: doctors, savedAssistanceIncome,
-        interim, normedOnly: isNormed && !uploadedFile,
-      });
-      if (filterClinic) {
-        result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
+      const allCorpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
+      // For individual report — only show rows where this doctor is executor
+      const corpRows = colMap.executor
+        ? allCorpRows.filter(({ row }) => rbNamesMatch(selectedDoctor.name, String(row[colMap.executor] || '').trim()))
+        : allCorpRows;
+      if (corpRows.length > 0) {
+        // Pause generation, show modal
+        setGenerating(false);
+        setCorpModalState({ corpRows, colMap, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes } });
+        return;
       }
-      setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
+
+      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows });
+    } catch (e) {
+      setError(e.message || 'Ошибка при построении отчёта');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCorpConfirm = async (includedKeys) => {
+    const { pendingData, corpRows: cr, isRecalc } = corpModalState;
+    setCorpModalState(null);
+    if (!pendingData) return;
+    setGenerating(true); setError('');
+    if (isRecalc) setReportData(null);
+    try {
+      await runBuildReport({ ...pendingData, corpIncludedKeys: includedKeys, corpRows: cr });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
     } finally {
@@ -270,6 +316,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
   };
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* ── Duplicate confirmation modal ── */}
@@ -359,6 +406,20 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
                   }
                 </button>
               )}
+              {corpRecalcState && (
+                <button
+                  className="rb-btn rb-btn-secondary rb-btn-sm"
+                  onClick={() => setCorpModalState({ corpRows: corpRecalcState.corpRows, colMap: corpRecalcState.colMap, pendingData: corpRecalcState.pendingData, isRecalc: true })}
+                  title="Изменить учёт оплат юридическими компаниями и пересчитать"
+                  style={{ marginLeft: 'auto' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                  </svg>
+                  Юр. компании
+                </button>
+              )}
             </div>
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
@@ -381,6 +442,16 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         )}
       </div>
     </div>
+    {corpModalState && (
+      <CorpReviewModal
+        corpRows={corpModalState.corpRows}
+        colMap={corpModalState.colMap}
+        initialSelected={corpModalState.isRecalc ? corpRecalcState?.corpIncludedKeys : undefined}
+        onConfirm={handleCorpConfirm}
+        onCancel={() => setCorpModalState(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -399,34 +470,11 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
   const [progress, setProgress]       = useState({ current: 0, total: 0, currentName: '' });
   const [bulkResults, setBulkResults] = useState([]);
   const [expanded, setExpanded]       = useState(new Set());
+  const [corpModalState, setCorpModalState] = useState(null);
 
-  const handleBulkGenerate = async () => {
-    if (bulkSelectedIds.size === 0) { toast.error('Выберите врачей в списке слева'); return; }
-    if (!uploadedFile)              { toast.error('Загрузите файл Excel'); return; }
-    if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
-    setGenerating(true); setBulkResults([]); setExpanded(new Set());
-
-    let rows, colMap;
-    try {
-      rows   = await parseExcelFile(uploadedFile);
-      colMap = rbMapNewColumns(rows);
-    } catch (e) {
-      toast.error('Ошибка чтения файла: ' + e.message);
-      setGenerating(false); return;
-    }
-
+  const runBulk = async ({ rows, colMap, savedAssistanceIncome, corpIncludedKeys }) => {
     const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
     const results = [];
-
-    // Fetch saved assistance income once for the whole bulk run
-    let savedAssistanceIncome = [];
-    if (dateFrom || dateTo) {
-      try {
-        const savedAsstRes = await salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
-        savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
-      } catch { /* non-critical, ignore */ }
-    }
-
     for (let i = 0; i < doctorList.length; i++) {
       const doctor = doctorList[i];
       setProgress({ current: i + 1, total: doctorList.length, currentName: doctor.name });
@@ -443,7 +491,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
           referralBonuses, performedDbBonuses, execSettings,
           dateFrom: dateFrom || null, dateTo: dateTo || null,
           allDoctors: doctors, savedAssistanceIncome,
-          interim,
+          interim, corpIncludedKeys,
         });
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
@@ -453,13 +501,67 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' });
       }
     }
-
     setBulkResults(results);
     setGenerating(false);
     const ok  = results.filter(r => !r.error).length;
     const err = results.filter(r => r.error).length;
     if (err > 0) toast.error(`Готово: ${ok} успешно, ${err} ошибок`);
     else toast.success(`Сводный отчёт готов: ${ok} врачей`);
+  };
+
+  const handleBulkGenerate = async () => {
+    if (bulkSelectedIds.size === 0) { toast.error('Выберите врачей в списке слева'); return; }
+    if (!uploadedFile)              { toast.error('Загрузите файл Excel'); return; }
+    if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
+    setGenerating(true); setBulkResults([]); setExpanded(new Set());
+
+    let rows, colMap;
+    try {
+      rows   = await parseExcelFile(uploadedFile);
+      colMap = rbMapNewColumns(rows);
+    } catch (e) {
+      toast.error('Ошибка чтения файла: ' + e.message);
+      setGenerating(false); return;
+    }
+
+    // Fetch saved assistance income once for the whole bulk run
+    let savedAssistanceIncome = [];
+    if (dateFrom || dateTo) {
+      try {
+        const savedAsstRes = await salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
+        savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
+      } catch { /* non-critical, ignore */ }
+    }
+
+    const corpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
+    if (corpRows.length > 0) {
+      // Group corp rows by selected doctor using name matching
+      const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
+      const corpByDoctor = doctorList.map(doctor => ({
+        doctor,
+        rows: colMap.executor
+          ? corpRows.filter(({ row }) => rbNamesMatch(doctor.name, String(row[colMap.executor] || '').trim()))
+          : [],
+      })).filter(g => g.rows.length > 0);
+      // Rows not matched to any doctor — append as "Прочие"
+      const matchedKeys = new Set(corpByDoctor.flatMap(g => g.rows.map(r => r.key)));
+      const unmatched = corpRows.filter(r => !matchedKeys.has(r.key));
+      if (unmatched.length > 0) corpByDoctor.push({ doctor: { name: 'Прочие' }, rows: unmatched });
+
+      setGenerating(false);
+      setCorpModalState({ corpRows, corpByDoctor, colMap, pendingData: { rows, colMap, savedAssistanceIncome }, isBulk: true });
+      return;
+    }
+
+    await runBulk({ rows, colMap, savedAssistanceIncome, corpIncludedKeys: null });
+  };
+
+  const handleBulkCorpConfirm = async (includedKeys) => {
+    const pending = corpModalState?.pendingData;
+    setCorpModalState(null);
+    if (!pending) return;
+    setGenerating(true); setBulkResults([]); setExpanded(new Set());
+    await runBulk({ ...pending, corpIncludedKeys: includedKeys });
   };
 
   const handleExportAll = async () => {
@@ -549,6 +651,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
   const fmtRub = v => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 2 }).format(v || 0);
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
 
       {/* ── Duplicate confirmation modal ── */}
@@ -699,6 +802,17 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         )}
       </div>
     </div>
+    {corpModalState && (
+      <CorpReviewModal
+        corpRows={corpModalState.corpRows}
+        corpByDoctor={corpModalState.corpByDoctor}
+        colMap={corpModalState.colMap}
+        isBulk={!!corpModalState.isBulk}
+        onConfirm={handleBulkCorpConfirm}
+        onCancel={() => setCorpModalState(null)}
+      />
+    )}
+    </>
   );
 }
 
