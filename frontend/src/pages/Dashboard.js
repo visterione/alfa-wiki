@@ -1494,7 +1494,7 @@ export default function Dashboard() {
                         <div className="chat-member-info">
                           <div className="chat-member-name">{m.user?.displayName || m.user?.username}</div>
                           {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
-                          {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px', background: 'var(--color-warning, #f59e0b)', color: '#fff' }}>Администратор</div>}
+                          {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Админ</div>}
                         </div>
                         {m.userId !== user.id && (
                           <div className="chat-member-actions">

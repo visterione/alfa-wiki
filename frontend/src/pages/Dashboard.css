@@ -938,7 +938,7 @@
 
 /* ========== CHAT INFO PANEL ========== */
 .chat-info-panel {
-  width: 320px;
+  width: 380px;
   border-left: 1px solid var(--border-light);
   background: var(--bg-primary);
   display: flex;
