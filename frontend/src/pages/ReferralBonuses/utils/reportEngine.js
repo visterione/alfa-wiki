@@ -536,7 +536,7 @@ export async function buildReport({
             const matForRow = interim ? 0 : (svcOverrideMat
               ? (svcOverrideMat.valueType === 'percent'
                   ? row.cost * parseFloat(svcOverrideMat.value) / 100
-                  : parseFloat(svcOverrideMat.value))
+                  : parseFloat(svcOverrideMat.value) / (s.count || 1))
               : row.cost * materialFactor);
             const effectiveCost = interim ? row.cost : row.cost * (1 - deductionFactor) - matForRow;
             bonusAmount += effectiveCost * effectiveBonusPct / 100;
