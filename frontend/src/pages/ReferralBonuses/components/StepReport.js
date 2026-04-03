@@ -511,17 +511,18 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
 
   const handleBulkGenerate = async () => {
     if (bulkSelectedIds.size === 0) { toast.error('Выберите врачей в списке слева'); return; }
-    if (!uploadedFile)              { toast.error('Загрузите файл Excel'); return; }
     if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setBulkResults([]); setExpanded(new Set());
 
-    let rows, colMap;
-    try {
-      rows   = await parseExcelFile(uploadedFile);
-      colMap = rbMapNewColumns(rows);
-    } catch (e) {
-      toast.error('Ошибка чтения файла: ' + e.message);
-      setGenerating(false); return;
+    let rows = [], colMap = {};
+    if (uploadedFile) {
+      try {
+        rows   = await parseExcelFile(uploadedFile);
+        colMap = rbMapNewColumns(rows);
+      } catch (e) {
+        toast.error('Ошибка чтения файла: ' + e.message);
+        setGenerating(false); return;
+      }
     }
 
     // Fetch saved assistance income once for the whole bulk run
@@ -692,7 +693,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         uploadedFile={uploadedFile}
         onFileSelect={f => { setUploadedFile(f); setBulkResults([]); }}
         onFileClear={() => { setUploadedFile(null); setBulkResults([]); }}
-        actionDisabled={generating || bulkSelectedIds.size === 0 || !uploadedFile}
+        actionDisabled={generating || bulkSelectedIds.size === 0}
         actionLabel={generating ? `${progress.current}/${progress.total}...` : `Сформировать (${bulkSelectedIds.size})`}
         actionSpinner={generating}
         onAction={handleBulkGenerate}
@@ -857,11 +858,19 @@ export default function StepReport({ selectedDoctor, doctors, clinics, reportMod
         })}
       </div>
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        {!isBulk
-          ? <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} interim={isInterim} />
-          : <ModeBulk doctors={doctors} clinics={clinics} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={isInterim} />
-        }
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <div style={{ display: reportMode === 'individual' ? 'contents' : 'none' }}>
+          <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} interim={false} />
+        </div>
+        <div style={{ display: reportMode === 'individual_interim' ? 'contents' : 'none' }}>
+          <ModeIndividual selectedDoctor={selectedDoctor} doctors={doctors} clinics={clinics} readOnly={readOnly} interim={true} />
+        </div>
+        <div style={{ display: reportMode === 'bulk' ? 'contents' : 'none' }}>
+          <ModeBulk doctors={doctors} clinics={clinics} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={false} />
+        </div>
+        <div style={{ display: reportMode === 'bulk_interim' ? 'contents' : 'none' }}>
+          <ModeBulk doctors={doctors} clinics={clinics} bulkSelectedIds={bulkSelectedIds} readOnly={readOnly} interim={true} />
+        </div>
       </div>
     </div>
   );
