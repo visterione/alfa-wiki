@@ -2,7 +2,7 @@
  * Report calculation engine — ported from backend/bot/referral-bonuses.html
  * All logic preserved verbatim, adapted to ES module + async/await with axios API calls.
  */
-import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi } from '../../../services/api';
+import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, roleNorms as roleNormsApi } from '../../../services/api';
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
@@ -275,6 +275,7 @@ export async function buildReport({
         const periodDate = new Date(dateFrom);
         const year = periodDate.getFullYear();
         const month = periodDate.getMonth() + 1;
+        // Try by profession/specialty first
         const res = await hourNormsApi.get(year, month);
         const norms = res.data || [];
         for (const p of (doctor.professions || [])) {
@@ -283,6 +284,22 @@ export async function buildReport({
           if (norm && norm.normHours != null) {
             _normHoursForPeriod = parseFloat(norm.normHours);
             break;
+          }
+        }
+        // Fallback: try by role if not found by specialty
+        if (_normHoursForPeriod == null) {
+          const roleRes = await roleNormsApi.get(year, month);
+          const roleNorms = roleRes.data || [];
+          const doctorRoles = doctor.role_titles
+            ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
+            : Array.isArray(doctor.role_names) ? doctor.role_names
+            : doctor.role ? [doctor.role] : [];
+          for (const roleTitle of doctorRoles) {
+            const norm = roleNorms.find(n => n.roleTitle === roleTitle);
+            if (norm && norm.normHours != null) {
+              _normHoursForPeriod = parseFloat(norm.normHours);
+              break;
+            }
           }
         }
       } catch { /* continue without norm hours */ }

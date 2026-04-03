@@ -233,7 +233,7 @@ export default function SalaryBlock({ salary }) {
           label="Расходники / штрафы / взыскания"
           value={`−${fmtRub(finalDeductionsTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0}
+          expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
         >
           <table className="rb-report-table">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
