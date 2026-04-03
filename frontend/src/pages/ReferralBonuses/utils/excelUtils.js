@@ -39,7 +39,7 @@ export function rbMapNewColumns(rows) {
     serviceCode:  ['Код услуги'],
     serviceName:  ['Наименование услуги'],
     cabinet:      ['Кабинет'],
-    category:     ['Категория пациента', 'Категория услуги'],
+    category:     ['Категории пациента', 'Категория пациента', 'Категория услуги'],
     serviceSpec:  ['Специальность услуги'],
     servicePrice: ['Стоимость услуги'],
     qty:          ['Количество'],
