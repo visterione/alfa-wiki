@@ -158,14 +158,15 @@ export async function buildReport({
 
   // ── Cost parser ──
   function rbParseCost(r) {
-    // Особый случай: категория содержит "VIP" + скидка 100%
-    // Услуга бесплатна для пациента, но врач получает оплату: стоимость услуги − 30%
+    // Особые случаи: VIP или Сотрудник со скидкой 50%/100% — врач получает 70% от прайса
     if (colMap.category && colMap.discount && colMap.servicePrice) {
       const categoryVal = String(r[colMap.category] || '').toUpperCase();
-      if (categoryVal.includes('VIP')) {
+      const isVip      = categoryVal.includes('VIP');
+      const isEmployee = categoryVal.includes('СОТРУДНИК');
+      if (isVip || isEmployee) {
         const discountRaw = String(r[colMap.discount] || '').replace('%', '').trim();
         const discountVal = parseFloat(discountRaw.replace(',', '.')) || 0;
-        if (discountVal >= 100) {
+        if (discountVal === 50 || discountVal >= 100) {
           const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
           return price * 0.70;
         }
