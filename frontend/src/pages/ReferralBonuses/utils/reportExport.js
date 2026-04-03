@@ -94,6 +94,21 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
           addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1)
         );
       }
+      // Нормированный тип: детализация по видам деятельности
+      if (sal.payType === 'normed' && (sal.normServices || []).length > 0) {
+        addTblHdr(['Деятельность', '', '', 'Часов', 'Ставка, ₽/ч', 'Итого, руб'], 1);
+        if ((sal.fixedSalary || 0) > 0) {
+          addTblRow(['Оклад', '', '', '', '', parseFloat((sal.fixedSalary || 0).toFixed(2))], 1);
+        }
+        (sal.normServices || []).forEach(ns => {
+          const rate = parseFloat(ns.rate) || 0;
+          const hrs  = parseFloat(ns.hours) || 0;
+          addTblRow([ns.name || '—', '', '', hrs, rate, parseFloat((rate * hrs).toFixed(2))], 1);
+        });
+        if ((sal.normPremiumAmount || 0) > 0 && sal.normHoursForPeriod != null) {
+          addTblRow([`* Премия за переработку сверх 2×нормы (${sal.normTotalHours} ч / ${sal.normHoursForPeriod} ч)`, '', '', '', '', parseFloat((sal.normPremiumAmount || 0).toFixed(2))], 1);
+        }
+      }
     }
 
     // Бонусы за направления
