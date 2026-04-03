@@ -20,6 +20,7 @@ function execClinicDefault() {
     mainPaymentMethod: 'card',
     advance: 0,
     mainPayment: 0,
+    extraPayments: [],
     includeReferralBonuses: true,
     includeReferralDeductions: true,
     includeCorpInvoices: true,
@@ -813,13 +814,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
     const resetMain    = current.lockedMainPayment ? {} : { mainPayment: 0 };
     const resetAdvance = current.lockedAdvance     ? {} : { advance: 0 };
-    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, ...resetMain, ...resetAdvance });
+    const newExtraPayments = (current.extraPayments || []).filter(ep => ep.locked === true);
+    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance });
     const newData = {
       ...execData,
       clinicSettings: {
         ...execData.clinicSettings,
         global: newGlobal,
-        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, ...resetMain, ...resetAdvance },
+        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance },
       },
     };
     await saveToServer(newData);
@@ -1167,9 +1169,81 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   onChange={e => handlePaymentFieldChange('mainPayment', parseFloat(e.target.value) || 0)}
                 />
               </div>
+
+              {/* Extra payments */}
+              {(data.extraPayments || []).map((ep, idx) => (
+                <div key={idx} className="rb-exec-field" style={{ gridColumn: '1 / -1', ...(ep.locked ? { background: '#fffbeb', borderLeft: '2px solid #f59e0b', paddingLeft: 6, borderRadius: 6 } : {}) }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <label style={{ marginBottom: 0 }}>Доп. выплата {idx + 1}</label>
+                    {!readOnly && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <LockBtn locked={!!ep.locked} onClick={() => {
+                          const arr = [...(data.extraPayments || [])];
+                          arr[idx] = { ...arr[idx], locked: !ep.locked };
+                          handlePaymentFieldChange('extraPayments', arr);
+                        }} />
+                        <button
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--rb-danger)', fontSize: 16, lineHeight: 1, padding: '0 2px' }}
+                          onClick={() => {
+                            const arr = (data.extraPayments || []).filter((_, i) => i !== idx);
+                            handlePaymentFieldChange('extraPayments', arr);
+                          }}
+                          title="Удалить"
+                        >×</button>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <select
+                      value={ep.method || 'card'}
+                      onChange={e => {
+                        const arr = [...(data.extraPayments || [])];
+                        arr[idx] = { ...arr[idx], method: e.target.value };
+                        handlePaymentFieldChange('extraPayments', arr);
+                      }}
+                      style={{ flexShrink: 0 }}
+                    >
+                      <option value="card">Карта</option>
+                      <option value="cash">Наличные</option>
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="Название"
+                      value={ep.label || ''}
+                      onChange={e => {
+                        const arr = [...(data.extraPayments || [])];
+                        arr[idx] = { ...arr[idx], label: e.target.value };
+                        handlePaymentFieldChange('extraPayments', arr);
+                      }}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                    <input
+                      type="number" min="0" step="any" placeholder="0"
+                      value={ep.amount || ''}
+                      onChange={e => {
+                        const arr = [...(data.extraPayments || [])];
+                        arr[idx] = { ...arr[idx], amount: parseFloat(e.target.value) || 0 };
+                        handlePaymentFieldChange('extraPayments', arr);
+                      }}
+                      style={{ width: 90, flexShrink: 0, textAlign: 'right' }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div className="rb-exec-save-row">
+              {!readOnly && (
+                <button
+                  className="rb-btn rb-btn-secondary rb-btn-sm"
+                  onClick={() => {
+                    const arr = [...(data.extraPayments || []), { label: '', amount: 0, method: 'card' }];
+                    handlePaymentFieldChange('extraPayments', arr);
+                  }}
+                >
+                  + Доп. выплата
+                </button>
+              )}
               <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSavePayment} disabled={saving}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>

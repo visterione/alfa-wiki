@@ -762,6 +762,7 @@ export async function buildReport({
       paymentMethod: clinicSettings.paymentMethod,
       mainPayment: clinicSettings.mainPayment || 0,
       mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
+      extraPayments: clinicSettings.extraPayments || [],
       deductions: execDeductions,
       materials: execMaterials,
       extras: execExtras,

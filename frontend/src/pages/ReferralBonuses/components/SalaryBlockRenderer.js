@@ -100,6 +100,7 @@ export default function SalaryBlock({ salary }) {
     assistancePaidTotal = 0, assistanceSections = [],
     assistanceIncomeTotal = 0, assistanceIncomeSections = [],
     finalSalary, advance, mainPayment, paymentMethod, mainPaymentMethod,
+    extraPayments = [],
     deductions = [], materials = [], extras = [],
     payType,
     harmfulnessDeduction = 0,
@@ -361,7 +362,7 @@ export default function SalaryBlock({ salary }) {
       </div>
 
       {/* Advance / main payment breakdown */}
-      {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0) && (
+      {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0) && (
         <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
           {(advance || 0) > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
@@ -377,6 +378,13 @@ export default function SalaryBlock({ salary }) {
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
             </div>
           )}
+          {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
+            <div key={i} className="rb-salary-row" style={{ background: '#f8fafc' }}>
+              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
+              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}{ep.method ? ` (${fmtMethod(ep.method)})` : ''}</div></div>
+              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
+            </div>
+          ))}
           {normPremiumAmount > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
               <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
@@ -389,7 +397,8 @@ export default function SalaryBlock({ salary }) {
             </div>
           )}
           {(() => {
-            const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0);
+            const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+            const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
             return (
               <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
                 <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>

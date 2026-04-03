@@ -263,13 +263,19 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     ws.mergeCells(`B${totalRow.number}:E${totalRow.number}`);
     autoWidth(totalRow, 6);
 
-    // Аванс / тело з/п
-    if ((sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0) {
+    // Аванс / тело з/п / доп. выплаты
+    const _extraPayments = sal.extraPayments || [];
+    const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+    if ((sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || _extraTotal > 0) {
       if ((sal.advance || 0) > 0)
         addSalRow(`Аванс (${sal.paymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.advance, '-');
       if ((sal.mainPayment || 0) > 0)
         addSalRow(`Тело з/п (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
-      addSalRow('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0), '=');
+      _extraPayments.forEach(ep => {
+        if ((ep.amount || 0) > 0)
+          addSalRow(`${ep.label || 'Доп. выплата'} (${ep.method === 'cash' ? 'наличные' : 'карта'})`, ep.amount, '-');
+      });
+      addSalRow('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - _extraTotal, '=');
     }
 
     // Касса
@@ -352,7 +358,8 @@ export function buildSingleWorkbook(reportData, cashPayments) {
   const totalRemainder = cashPayments?.length
     ? clinicReports.reduce((s, cr) => {
         const sal = cr.salary || {};
-        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+        const extraTot = (sal.extraPayments || []).reduce((es, ep) => es + (parseFloat(ep.amount) || 0), 0);
+        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTot;
       }, 0)
     : null;
 
