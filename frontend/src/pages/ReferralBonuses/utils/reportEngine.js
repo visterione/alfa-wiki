@@ -278,8 +278,8 @@ export async function buildReport({
         // Try by role first
         const roleRes = await roleNormsApi.get(year, month);
         const roleNormsData = roleRes.data || [];
-        const doctorRoles = doctor.role_titles
-          ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
+        const doctorRoles = Array.isArray(doctor.roles) ? doctor.roles
+          : doctor.role_titles ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
           : Array.isArray(doctor.role_names) ? doctor.role_names
           : doctor.role ? [doctor.role] : [];
         for (const roleTitle of doctorRoles) {
