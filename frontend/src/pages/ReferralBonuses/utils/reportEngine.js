@@ -694,7 +694,7 @@ export async function buildReport({
       if (!mat) return;
       const rub = mat.valueType === 'percent'
         ? svc.cost * parseFloat(mat.value) / 100
-        : parseFloat(mat.value) * svc.count;
+        : parseFloat(mat.value);
       if (rub > 0) {
         svcMatTurnoverBreakdown.push({
           name: mat.name || svc.name,
