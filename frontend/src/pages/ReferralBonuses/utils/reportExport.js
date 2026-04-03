@@ -106,7 +106,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
           addTblRow([ns.name || '—', '', '', hrs, rate, parseFloat((rate * hrs).toFixed(2))], 1);
         });
         if ((sal.normPremiumAmount || 0) > 0 && sal.normHoursForPeriod != null) {
-          addTblRow([`* Премия за переработку сверх 2×нормы (${sal.normTotalHours} ч / ${sal.normHoursForPeriod} ч)`, '', '', '', '', parseFloat((sal.normPremiumAmount || 0).toFixed(2))], 1);
+          addTblRow(['Премия', '', '', '', '', parseFloat((sal.normPremiumAmount || 0).toFixed(2))], 1);
         }
       }
     }
@@ -162,10 +162,12 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     {
       const xlsAllDeds = sal.deductions || [];
       const xlsTurnoverDeds = xlsAllDeds.filter(d => d.deductionType !== 'final');
-      if ((sal.finalDeductionsTotal || 0) > 0 || xlsTurnoverDeds.length > 0) {
+      const xlsHarmfulness = sal.harmfulnessDeduction || 0;
+      const xlsDedsTotal = (sal.finalDeductionsTotal || 0) + xlsHarmfulness;
+      if (xlsDedsTotal > 0 || xlsTurnoverDeds.length > 0 || (sal.assistancePaidTotal || 0) > 0) {
         const xlsPreFinal = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Расходники / штрафы / взыскания (от з/п)', sal.finalDeductionsTotal, '-');
-        if (xlsAllDeds.length) {
+        addSalRow('Расходники / штрафы / взыскания', xlsDedsTotal, '-');
+        if (xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllDeds.forEach(d => {
             const v = parseFloat(d.value) || 0;
@@ -180,6 +182,12 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
             if (isTurnover) row.getCell(6).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true };
             autoWidth(row, 6); row.outlineLevel = 1; row.hidden = true;
           });
+          if (xlsHarmfulness > 0) {
+            addTblRow(['Вредность', 'от з/п', '', '', '4%', parseFloat(xlsHarmfulness.toFixed(2))], 1);
+          }
+          if ((sal.assistancePaidTotal || 0) > 0) {
+            addTblRow(['Услуги ассистирования', 'ассистент', '', '', '—', parseFloat((sal.assistancePaidTotal || 0).toFixed(2))], 1);
+          }
           if (xlsTurnoverDeds.length) {
             const noteRow = ws.addRow(['', '* Уже учтено при расчёте бонусов за выполненные услуги']);
             noteRow.getCell(2).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true, size: 10 };
