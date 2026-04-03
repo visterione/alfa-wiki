@@ -39,7 +39,7 @@ export function rbMapNewColumns(rows) {
     serviceCode:  ['Код услуги'],
     serviceName:  ['Наименование услуги'],
     cabinet:      ['Кабинет'],
-    category:     ['Категория услуги'],
+    category:     ['Категория пациента', 'Категория услуги'],
     serviceSpec:  ['Специальность услуги'],
     servicePrice: ['Стоимость услуги'],
     qty:          ['Количество'],
@@ -67,7 +67,7 @@ export function rbMapNewColumns(rows) {
     if (!colMap.referrer     && (kl.includes('рекомендател') || kl.includes('направител'))) colMap.referrer = k;
     if (!colMap.serviceCode  && kl.includes('код') && kl.includes('услуг')) colMap.serviceCode = k;
     if (!colMap.serviceName  && (kl.includes('наименован') || (kl.includes('услуг') && !kl.includes('код') && !kl.includes('стоим') && !kl.includes('специальн') && !kl.includes('катег')))) colMap.serviceName = k;
-    if (!colMap.category     && kl.includes('катег') && kl.includes('услуг')) colMap.category = k;
+    if (!colMap.category     && kl.includes('катег') && (kl.includes('услуг') || kl.includes('пациент'))) colMap.category = k;
     if (!colMap.serviceSpec  && kl.includes('специальност') && kl.includes('услуг')) colMap.serviceSpec = k;
     if (!colMap.servicePrice && kl.includes('стоим') && kl.includes('услуг') && !kl.includes('себестоим')) colMap.servicePrice = k;
     if (!colMap.qty          && (kl === 'количество' || kl.includes('кол-во') || kl.includes('кол.'))) colMap.qty = k;
