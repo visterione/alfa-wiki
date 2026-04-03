@@ -275,27 +275,27 @@ export async function buildReport({
         const periodDate = new Date(dateFrom);
         const year = periodDate.getFullYear();
         const month = periodDate.getMonth() + 1;
-        // Try by profession/specialty first
-        const res = await hourNormsApi.get(year, month);
-        const norms = res.data || [];
-        for (const p of (doctor.professions || [])) {
-          const profTitle = rbProfessionTitle(p);
-          const norm = norms.find(n => n.professionTitle === profTitle);
+        // Try by role first
+        const roleRes = await roleNormsApi.get(year, month);
+        const roleNormsData = roleRes.data || [];
+        const doctorRoles = doctor.role_titles
+          ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
+          : Array.isArray(doctor.role_names) ? doctor.role_names
+          : doctor.role ? [doctor.role] : [];
+        for (const roleTitle of doctorRoles) {
+          const norm = roleNormsData.find(n => n.roleTitle === roleTitle);
           if (norm && norm.normHours != null) {
             _normHoursForPeriod = parseFloat(norm.normHours);
             break;
           }
         }
-        // Fallback: try by role if not found by specialty
+        // Fallback: try by profession/specialty if not found by role
         if (_normHoursForPeriod == null) {
-          const roleRes = await roleNormsApi.get(year, month);
-          const roleNorms = roleRes.data || [];
-          const doctorRoles = doctor.role_titles
-            ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
-            : Array.isArray(doctor.role_names) ? doctor.role_names
-            : doctor.role ? [doctor.role] : [];
-          for (const roleTitle of doctorRoles) {
-            const norm = roleNorms.find(n => n.roleTitle === roleTitle);
+          const res = await hourNormsApi.get(year, month);
+          const norms = res.data || [];
+          for (const p of (doctor.professions || [])) {
+            const profTitle = rbProfessionTitle(p);
+            const norm = norms.find(n => n.professionTitle === profTitle);
             if (norm && norm.normHours != null) {
               _normHoursForPeriod = parseFloat(norm.normHours);
               break;
@@ -662,8 +662,8 @@ export async function buildReport({
       normTotalHours = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
       basePay = fixedSalary + normServicesTotal;
       basePayLabel = 'Нормированный оклад';
-      // Если часов отработано больше чем 2×норма — часть сверх этого считается Премией
-      if (_normHoursForPeriod != null && normTotalHours > 0 && normTotalHours > 2 * _normHoursForPeriod) {
+      // Если часов отработано х2 и больше от нормы — часть сверх этого считается Премией
+      if (_normHoursForPeriod != null && normTotalHours > 0 && normTotalHours >= 2 * _normHoursForPeriod) {
         const premiumHours = normTotalHours - 2 * _normHoursForPeriod;
         normPremiumAmount = normServicesTotal * (premiumHours / normTotalHours);
       }
