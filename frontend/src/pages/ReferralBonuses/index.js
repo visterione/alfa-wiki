@@ -554,7 +554,7 @@ export default function ReferralBonusesPage() {
       case 4:
         return <StepReferral {...sharedProps} readOnly={isStepReadOnly(4)} />;
       case 5:
-        return <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} readOnly={isStepReadOnly(5)} />;
+        return null; // StepReport is always mounted above to preserve state
       case 6:
         return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(6)} />;
       case 7:
@@ -844,7 +844,10 @@ export default function ReferralBonusesPage() {
         />}
         {/* Right: Step content */}
         <div className="rb-detail-panel">
-          {renderStep()}
+          <div style={{ display: currentStep === 5 ? 'contents' : 'none' }}>
+            <StepReport {...sharedProps} preselectedDoctorId={preselectedReportDoctorId} readOnly={isStepReadOnly(5)} />
+          </div>
+          {currentStep !== 5 && renderStep()}
         </div>
       </div>
     </div>

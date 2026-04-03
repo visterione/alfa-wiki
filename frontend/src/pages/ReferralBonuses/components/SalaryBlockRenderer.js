@@ -174,8 +174,8 @@ export default function SalaryBlock({ salary }) {
                 })}
                 {normPremiumAmount > 0 && normHoursForPeriod != null && (
                   <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
-                    <td colSpan={4} style={{ fontSize: 11, color: '#b45309', fontStyle: 'italic', padding: '4px 8px' }}>
-                      ★ Из них премия за переработку сверх 2×нормы ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽ — выделена отдельной строкой ниже
+                    <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
+                      * Из них премия за переработку сверх 2×нормы ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽ — выделена отдельной строкой ниже
                     </td>
                   </tr>
                 )}
