@@ -744,6 +744,7 @@
 }
 
 /* ========== CHAT INPUT ========== */
+
 .chat-input {
   display: flex;
   align-items: center;
@@ -1079,9 +1080,9 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-member-badge {
@@ -1091,6 +1092,14 @@
   color: var(--primary);
   border-radius: 100px;
   font-weight: 600;
+  display: inline-block;
+  width: fit-content;
+}
+
+.chat-member-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .chat-info-actions {

@@ -4,7 +4,7 @@ import {
   MessageCircle, Send, Search, User, CheckCheck, ArrowLeft, UserPlus, Users,
   MoreVertical, LogOut, X, Check, Paperclip, Image, FileText, File, Download,
   Camera, UserMinus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Film, Eye,
-  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff
+  Edit2, Trash2, Smile, Mail, Bot, CornerUpLeft, Pin, PinOff, Pencil, Shield, ShieldOff, VolumeX, Volume2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
@@ -71,6 +71,10 @@ export default function Dashboard() {
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [forwardSearchQuery, setForwardSearchQuery] = useState('');
   const [replyingToMessage, setReplyingToMessage] = useState(null);
+  const [showRenameGroup, setShowRenameGroup] = useState(false);
+  const [renameGroupValue, setRenameGroupValue] = useState('');
+  const [quickAddRoleFilter, setQuickAddRoleFilter] = useState('');
+  const [quickAddMedCenterFilter, setQuickAddMedCenterFilter] = useState('');
 
   const messagesEndRef = useRef(null);
   const activeChatRef = useRef(null);
@@ -287,10 +291,37 @@ export default function Dashboard() {
     };
     socket.on('messages_read', handleMessagesRead);
 
+    const handleMemberUpdated = ({ chatId, userId, isReadOnly }) => {
+      if (activeChatRef.current?.id === chatId) {
+        setActiveChat(prev => ({
+          ...prev,
+          members: prev.members?.map(m => m.userId === userId ? { ...m, isReadOnly } : m)
+        }));
+        // Если заглушка применена к текущему пользователю
+        if (userId === user?.id && isReadOnly) {
+          toast('Администратор ограничил вам отправку сообщений', { icon: '🔇' });
+        }
+      }
+    };
+    socket.on('member_updated', handleMemberUpdated);
+
+    const handleGroupDeleted = ({ chatId }) => {
+      setChats(prev => prev.filter(c => c.id !== chatId));
+      if (activeChatRef.current?.id === chatId) {
+        setActiveChat(null);
+        setShowChatInfo(false);
+        setMessages([]);
+        toast('Группа была удалена создателем', { icon: 'ℹ️' });
+      }
+    };
+    socket.on('group_deleted', handleGroupDeleted);
+
     return () => {
       socket.off('new_message', handleNewMessage);
       socket.off('message_reaction_updated', handleReactionUpdate);
       socket.off('messages_read', handleMessagesRead);
+      socket.off('group_deleted', handleGroupDeleted);
+      socket.off('member_updated', handleMemberUpdated);
     };
   }, [socket, loadChats, loadMessages, user?.id]);
 
@@ -626,6 +657,28 @@ export default function Dashboard() {
     } catch (e) { toast.error('Ошибка добавления'); }
   };
 
+  const bulkAddMembersToGroup = async (userIds) => {
+    if (!userIds.length) return;
+    try {
+      const { data } = await chat.bulkAddMembers(activeChat.id, userIds);
+      await refreshActiveChat();
+      await loadChats();
+      setShowAddMember(false);
+      toast.success(`Добавлено участников: ${data.added}`);
+    } catch (e) { toast.error('Ошибка добавления'); }
+  };
+
+  const handleRenameGroup = async () => {
+    if (!renameGroupValue.trim()) return;
+    try {
+      await chat.renameGroup(activeChat.id, renameGroupValue.trim());
+      setActiveChat(prev => ({ ...prev, name: renameGroupValue.trim(), displayName: renameGroupValue.trim() }));
+      await loadChats();
+      setShowRenameGroup(false);
+      toast.success('Группа переименована');
+    } catch (e) { toast.error('Ошибка переименования'); }
+  };
+
   const removeMemberFromGroup = async (userId) => {
     if (!window.confirm('Удалить участника?')) return;
     try {
@@ -633,6 +686,17 @@ export default function Dashboard() {
       await refreshActiveChat();
       toast.success('Участник удалён');
     } catch (e) { toast.error('Ошибка удаления'); }
+  };
+
+  const toggleMemberAdmin = async (userId, currentRole) => {
+    const newRole = currentRole === 'admin' ? 'member' : 'admin';
+    const label = newRole === 'admin' ? 'назначить администратором' : 'снять права администратора';
+    if (!window.confirm(`Вы уверены, что хотите ${label}?`)) return;
+    try {
+      await chat.setMemberRole(activeChat.id, userId, newRole);
+      await refreshActiveChat();
+      toast.success(newRole === 'admin' ? 'Права администратора выданы' : 'Права администратора сняты');
+    } catch (e) { toast.error('Ошибка изменения прав'); }
   };
 
   const leaveGroup = async () => {
@@ -644,6 +708,29 @@ export default function Dashboard() {
       await loadChats();
       toast.success('Вы покинули группу');
     } catch (e) { toast.error('Ошибка'); }
+  };
+
+  const toggleMemberReadOnly = async (userId, currentVal) => {
+    const newVal = !currentVal;
+    try {
+      await chat.setMemberReadOnly(activeChat.id, userId, newVal);
+      setActiveChat(prev => ({
+        ...prev,
+        members: prev.members.map(m => m.userId === userId ? { ...m, isReadOnly: newVal } : m)
+      }));
+      toast.success(newVal ? 'Заглушка включена' : 'Заглушка снята');
+    } catch (e) { toast.error('Ошибка изменения настройки'); }
+  };
+
+  const deleteGroup = async () => {
+    if (!window.confirm(`Удалить группу "${activeChat.name || activeChat.displayName}"? Это действие необратимо — чат пропадёт у всех участников.`)) return;
+    try {
+      await chat.deleteGroup(activeChat.id);
+      setActiveChat(null);
+      setShowChatInfo(false);
+      await loadChats();
+      toast.success('Группа удалена');
+    } catch (e) { toast.error('Ошибка удаления группы'); }
   };
 
   const handleChatContextMenu = (e, chatItem) => {
@@ -804,9 +891,18 @@ export default function Dashboard() {
       ]
     : chats;
 
+  const uniqueRoles = [...new Set(usersList.map(u => u.role?.name).filter(Boolean))].sort();
+  const uniqueMedCenters = [...new Set(usersList.flatMap(u => (u.medCenters || []).map(m => m.name)).filter(Boolean))].sort();
+
+  const matchesQuickFilters = (u) => {
+    if (quickAddRoleFilter && u.role?.name !== quickAddRoleFilter) return false;
+    if (quickAddMedCenterFilter && !(u.medCenters || []).some(m => m.name === quickAddMedCenterFilter)) return false;
+    return true;
+  };
+
   const filteredUsers = usersList.filter(u => {
     const displayName = (u.displayName || u.username || '').toLowerCase();
-    return displayName.includes(userSearchQuery.toLowerCase());
+    return displayName.includes(userSearchQuery.toLowerCase()) && matchesQuickFilters(u);
   });
 
   const getAvatarUrl = (avatar) => {
@@ -895,7 +991,7 @@ export default function Dashboard() {
         const isNotMember = !activeChat.members?.find(m => m.userId === u.id);
         const displayName = (u.displayName || u.username || '').toLowerCase();
         const matchesSearch = displayName.includes(addMemberSearchQuery.toLowerCase());
-        return isNotMember && matchesSearch;
+        return isNotMember && matchesSearch && matchesQuickFilters(u);
       })
     : [];
 
@@ -910,6 +1006,8 @@ export default function Dashboard() {
   const fixUrl = (urlOrPath) => getAvatarUrl(urlOrPath);
   const getChatAvatar = (c) => c ? (c.type === 'group' ? c.avatar : c.otherUser?.avatar) : null;
   const isGroupCreator = activeChat?.type === 'group' && activeChat.createdBy === user.id;
+  const currentMembership = activeChat?.type === 'group' ? activeChat.members?.find(m => m.userId === user.id) : null;
+  const isGroupAdmin = isGroupCreator || currentMembership?.role === 'admin';
 
   // Форматирование времени последнего визита
   const formatLastSeen = (lastSeenStr) => {
@@ -1076,7 +1174,7 @@ export default function Dashboard() {
             <h2><MessageCircle size={20} /> Сообщения</h2>
             <div className="chat-sidebar-actions">
               <button className="btn-icon-chat" onClick={() => setShowEmailCompose(true)} title="Email-рассылка"><Mail size={20} /></button>
-              <button className="btn-icon-chat" onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); }} title="Создать группу"><Users size={20} /></button>
+              <button className="btn-icon-chat" onClick={() => { setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }} title="Создать группу"><Users size={20} /></button>
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
           </div>
@@ -1307,33 +1405,35 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              <form className="chat-input" onSubmit={handleSendMessage}>
-                <input type="file" ref={fileInputRef} hidden multiple onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
-                {!editingMessage && (
-                  <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
-                    {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
+              {currentMembership?.isReadOnly ? null : (
+                <form className="chat-input" onSubmit={handleSendMessage}>
+                  <input type="file" ref={fileInputRef} hidden multiple onChange={handleFileSelect} accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip,.rar" />
+                  {!editingMessage && (
+                    <button type="button" className="btn-icon-chat" onClick={() => fileInputRef.current?.click()} disabled={uploading} title="Прикрепить файл">
+                      {uploading ? <div className="loading-spinner" style={{width: 20, height: 20}} /> : <Paperclip size={20} />}
+                    </button>
+                  )}
+                  <div className="chat-input-wrapper">
+                    <input
+                      ref={messageInputRef}
+                      placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."}
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn-icon-chat emoji-picker-button"
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      title="Эмодзи"
+                    >
+                      <Smile size={20} />
+                    </button>
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}>
+                    <Send size={20} />
                   </button>
-                )}
-                <div className="chat-input-wrapper">
-                  <input 
-                    ref={messageInputRef}
-                    placeholder={editingMessage ? "Введите новый текст..." : "Введите сообщение..."} 
-                    value={newMessage} 
-                    onChange={(e) => setNewMessage(e.target.value)} 
-                  />
-                  <button 
-                    type="button" 
-                    className="btn-icon-chat emoji-picker-button" 
-                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                    title="Эмодзи"
-                  >
-                    <Smile size={20} />
-                  </button>
-                </div>
-                <button type="submit" className="btn btn-primary btn-icon" disabled={(!newMessage.trim() && attachments.length === 0) || sending}>
-                  <Send size={20} />
-                </button>
-              </form>
+                </form>
+              )}
               {showEmojiPicker && (
                 <div className="emoji-picker-container" ref={emojiPickerRef}>
                   <EmojiPicker
@@ -1366,7 +1466,7 @@ export default function Dashboard() {
             <div className="chat-info-body">
               <div className="chat-info-avatar-wrapper">
                 <div className="chat-info-avatar">{getChatAvatar(activeChat) ? <img src={getAvatarUrl(getChatAvatar(activeChat))} alt="" /> : <Users size={48} />}</div>
-                {isGroupCreator && (
+                {isGroupAdmin && (
                   <div className="chat-info-avatar-actions">
                     <input type="file" ref={avatarInputRef} hidden accept="image/*" onChange={handleAvatarChange} />
                     <button className="btn btn-sm btn-ghost" onClick={() => avatarInputRef.current?.click()} disabled={avatarUploading}>{avatarUploading ? <div className="loading-spinner" style={{width: 16, height: 16}} /> : <Camera size={16} />}{activeChat.avatar ? 'Изменить' : 'Добавить'}</button>
@@ -1374,22 +1474,65 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
-              <div className="chat-info-name">{activeChat.displayName}</div>
+              <div className="chat-info-name" style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                {activeChat.displayName}
+                {isGroupAdmin && (
+                  <button className="btn-icon-chat sm" title="Переименовать" onClick={() => { setRenameGroupValue(activeChat.name || activeChat.displayName || ''); setShowRenameGroup(true); }}>
+                    <Pencil size={14} />
+                  </button>
+                )}
+              </div>
               <div className="chat-info-section">
-                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupCreator && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
+                <div className="chat-info-section-header"><span>Участники ({activeChat.members?.length || 0})</span>{isGroupAdmin && <button className="btn btn-sm btn-ghost" onClick={() => { setShowAddMember(true); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); loadUsers(); loadBots(); }}><UserPlus size={16} /> Добавить</button>}</div>
                 <div className="chat-members-list">
-                  {activeChat.members?.map(m => (
-                    <div key={m.userId} className="chat-member-item">
-                      <div className="chat-member-avatar">{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
-                      <div className="chat-member-info">
-                        <div className="chat-member-name">{m.user?.displayName || m.user?.username}{m.userId === activeChat.createdBy && <span className="chat-member-badge">Создатель</span>}</div>
+                  {activeChat.members?.map(m => {
+                    const isCreatorMember = m.userId === activeChat.createdBy;
+                    const isAdminMember = m.role === 'admin';
+                    return (
+                      <div key={m.userId} className="chat-member-item">
+                        <div className="chat-member-avatar">{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
+                        <div className="chat-member-info">
+                          <div className="chat-member-name">{m.user?.displayName || m.user?.username}</div>
+                          {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
+                          {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px', background: 'var(--color-warning, #f59e0b)', color: '#fff' }}>Администратор</div>}
+                        </div>
+                        {m.userId !== user.id && (
+                          <div className="chat-member-actions">
+                            {isGroupAdmin && !isCreatorMember && (
+                              <button
+                                className={`btn-icon-chat sm${m.isReadOnly ? ' active' : ''}`}
+                                title={m.isReadOnly ? 'Снять заглушку' : 'Включить заглушку (только чтение)'}
+                                onClick={() => toggleMemberReadOnly(m.userId, m.isReadOnly)}
+                                style={m.isReadOnly ? { color: 'var(--primary)' } : {}}
+                              >
+                                {m.isReadOnly ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                              </button>
+                            )}
+                            {isGroupCreator && !isCreatorMember && (
+                              <button
+                                className="btn-icon-chat sm"
+                                title={isAdminMember ? 'Снять права администратора' : 'Назначить администратором'}
+                                onClick={() => toggleMemberAdmin(m.userId, m.role)}
+                              >
+                                {isAdminMember ? <ShieldOff size={16} /> : <Shield size={16} />}
+                              </button>
+                            )}
+                            {isGroupAdmin && !isCreatorMember && (
+                              <button className="btn-icon-chat sm" title="Удалить из группы" onClick={() => removeMemberFromGroup(m.userId)}>
+                                <UserMinus size={16} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {isGroupCreator && m.userId !== user.id && <button className="btn-icon-chat sm" onClick={() => removeMemberFromGroup(m.userId)}><UserMinus size={16} /></button>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <button className="btn btn-ghost text-danger" onClick={leaveGroup}><LogOut size={16} /> Покинуть группу</button>
+              {isGroupCreator && (
+                <button className="btn btn-ghost text-danger" onClick={deleteGroup} style={{ marginTop: '8px' }}><Trash2 size={16} /> Удалить группу</button>
+              )}
             </div>
           </div>
         )}
@@ -1495,13 +1638,13 @@ export default function Dashboard() {
       )}
 
       {showNewGroup && (
-        <div className="modal-overlay" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}>
+        <div className="modal-overlay" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Создать группу</h2><button className="modal-close" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}><X size={20} /></button></div>
             <div className="modal-body">
               <div className="form-group"><label className="form-label">Название группы</label><input className="input" value={groupName} onChange={e => setGroupName(e.target.value)} placeholder="Название группы" /></div>
-              <div className="form-group"><label className="form-label">Участники</label>
-                <div className="chat-search" style={{ marginBottom: '12px' }}>
+              <div className="form-group"><label className="form-label">Участники {selectedUsers.length > 0 && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>({selectedUsers.length} выбрано)</span>}</label>
+                <div className="chat-search" style={{ marginBottom: '8px' }}>
                   <Search size={18} />
                   <input
                     placeholder="Поиск по ФИО..."
@@ -1509,28 +1652,57 @@ export default function Dashboard() {
                     onChange={(e) => setUserSearchQuery(e.target.value)}
                   />
                 </div>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                  <select className="input" style={{ flex: 1, minWidth: 0 }} value={quickAddRoleFilter} onChange={e => setQuickAddRoleFilter(e.target.value)}>
+                    <option value="">Все роли</option>
+                    {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <select className="input" style={{ flex: 1, minWidth: 0 }} value={quickAddMedCenterFilter} onChange={e => setQuickAddMedCenterFilter(e.target.value)}>
+                    <option value="">Все медцентры</option>
+                    {uniqueMedCenters.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    style={{ whiteSpace: 'nowrap' }}
+                    onClick={() => {
+                      const ids = filteredUsers.map(u => u.id);
+                      setSelectedUsers(prev => [...new Set([...prev, ...ids])]);
+                    }}
+                    disabled={filteredUsers.length === 0}
+                    title="Выбрать всех подходящих"
+                  >
+                    <Check size={14} /> Выбрать всех
+                  </button>
+                </div>
                 <div className="user-list">
                   {filteredUsers.map(u => (
                     <div key={u.id} className={`user-item ${selectedUsers.includes(u.id) ? 'selected' : ''}`} onClick={() => toggleUserSelection(u.id)}>
                       <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
-                      <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
+                      <div className="user-item-info">
+                        <div className="user-item-name">{u.displayName || u.username}</div>
+                        <div className="user-item-username">
+                          {u.role?.name && <span style={{ marginRight: '6px' }}>{u.role.name}</span>}
+                          {(u.medCenters || []).map(m => m.name).join(', ')}
+                        </div>
+                      </div>
                       {selectedUsers.includes(u.id) && <Check size={20} />}
                     </div>
                   ))}
+                  {filteredUsers.length === 0 && <div className="text-muted text-center">Нет пользователей</div>}
                 </div>
               </div>
             </div>
-            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); }}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
+            <div className="modal-footer"><button className="btn btn-ghost" onClick={() => { setShowNewGroup(false); setUserSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>Отмена</button><button className="btn btn-primary" onClick={createGroup} disabled={!groupName.trim() || selectedUsers.length === 0}>Создать</button></div>
           </div>
         </div>
       )}
 
       {showAddMember && (
-        <div className="modal-overlay" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); }}>
+        <div className="modal-overlay" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="modal-header"><h2>Добавить участника</h2><button className="modal-close" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); }}><X size={20} /></button></div>
+            <div className="modal-header"><h2>Добавить участника</h2><button className="modal-close" onClick={() => { setShowAddMember(false); setAddMemberSearchQuery(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}><X size={20} /></button></div>
             <div className="modal-body">
-              <div className="chat-search" style={{ marginBottom: '16px' }}>
+              <div className="chat-search" style={{ marginBottom: '8px' }}>
                 <Search size={18} />
                 <input
                   placeholder="Поиск по ФИО..."
@@ -1538,11 +1710,36 @@ export default function Dashboard() {
                   onChange={(e) => setAddMemberSearchQuery(e.target.value)}
                 />
               </div>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <select className="input" style={{ flex: 1, minWidth: 0 }} value={quickAddRoleFilter} onChange={e => setQuickAddRoleFilter(e.target.value)}>
+                  <option value="">Все роли</option>
+                  {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <select className="input" style={{ flex: 1, minWidth: 0 }} value={quickAddMedCenterFilter} onChange={e => setQuickAddMedCenterFilter(e.target.value)}>
+                  <option value="">Все медцентры</option>
+                  {uniqueMedCenters.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <button
+                  className="btn btn-sm btn-primary"
+                  style={{ whiteSpace: 'nowrap' }}
+                  onClick={() => bulkAddMembersToGroup(availableUsersToAdd.map(u => u.id))}
+                  disabled={availableUsersToAdd.length === 0}
+                  title="Добавить всех подходящих"
+                >
+                  <UserPlus size={14} /> Добавить всех ({availableUsersToAdd.length})
+                </button>
+              </div>
               <div className="user-list">
                 {availableUsersToAdd.map(u => (
                   <div key={u.id} className="user-item" onClick={() => addMemberToGroup(u.id)}>
                     <div className="user-item-avatar">{getAvatarUrl(u.avatar) ? <img src={getAvatarUrl(u.avatar)} alt="" /> : <User size={24} />}</div>
-                    <div className="user-item-info"><div className="user-item-name">{u.displayName || u.username}</div><div className="user-item-username">@{u.username}</div></div>
+                    <div className="user-item-info">
+                      <div className="user-item-name">{u.displayName || u.username}</div>
+                      <div className="user-item-username">
+                        {u.role?.name && <span style={{ marginRight: '6px' }}>{u.role.name}</span>}
+                        {(u.medCenters || []).map(m => m.name).join(', ')}
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {availableBotsToAdd.length > 0 && (
@@ -1558,6 +1755,31 @@ export default function Dashboard() {
                 )}
                 {availableUsersToAdd.length === 0 && availableBotsToAdd.length === 0 && <div className="text-muted text-center">Нет доступных пользователей</div>}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRenameGroup && (
+        <div className="modal-overlay" onClick={() => setShowRenameGroup(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header"><h2>Переименовать группу</h2><button className="modal-close" onClick={() => setShowRenameGroup(false)}><X size={20} /></button></div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label className="form-label">Новое название</label>
+                <input
+                  className="input"
+                  value={renameGroupValue}
+                  onChange={e => setRenameGroupValue(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleRenameGroup()}
+                  autoFocus
+                  placeholder="Название группы"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowRenameGroup(false)}>Отмена</button>
+              <button className="btn btn-primary" onClick={handleRenameGroup} disabled={!renameGroupValue.trim()}>Сохранить</button>
             </div>
           </div>
         </div>

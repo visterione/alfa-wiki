@@ -216,9 +216,14 @@ export const chat = {
   },
   deleteAvatar: (chatId) => api.delete(`/chat/${chatId}/avatar`),
   
+  renameGroup: (chatId, name) => api.patch(`/chat/${chatId}/rename`, { name }),
+  setMemberRole: (chatId, userId, role) => api.patch(`/chat/${chatId}/members/${userId}/role`, { role }),
+  setMemberReadOnly: (chatId, userId, isReadOnly) => api.patch(`/chat/${chatId}/members/${userId}/readonly`, { isReadOnly }),
   addMember: (chatId, userId) => api.post(`/chat/${chatId}/members`, { userId }),
+  bulkAddMembers: (chatId, userIds) => api.post(`/chat/${chatId}/members/bulk`, { userIds }),
   removeMember: (chatId, userId) => api.delete(`/chat/${chatId}/members/${userId}`),
   leave: (chatId) => api.delete(`/chat/${chatId}/leave`),
+  deleteGroup: (chatId) => api.delete(`/chat/${chatId}`),
   deleteChat: (chatId) => api.delete(`/chat/${chatId}`),
   
   uploadFiles: (chatId, files) => {

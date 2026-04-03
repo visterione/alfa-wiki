@@ -6,7 +6,7 @@ const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
-const { Chat, ChatMember, Message, MessageReaction, User, Role } = require('../models');
+const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 
@@ -488,6 +488,11 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
 
     if (!membership) {
       return res.status(403).json({ error: 'Not a member of this chat' });
+    }
+
+    // Проверка индивидуальной заглушки "только чтение"
+    if (membership.isReadOnly) {
+      return res.status(403).json({ error: 'You are in read-only mode in this chat' });
     }
 
     let messageType = 'text';
@@ -1006,8 +1011,9 @@ router.post('/:chatId/avatar', authenticate, (req, res, next) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    if (chat.createdBy !== req.user.id) {
-      return res.status(403).json({ error: 'Only group creator can update avatar' });
+    const requesterMembership = await ChatMember.findOne({ where: { chatId, userId: req.user.id, role: 'admin' } });
+    if (!requesterMembership) {
+      return res.status(403).json({ error: 'Only admins can update avatar' });
     }
 
     if (!req.file) {
@@ -1054,8 +1060,9 @@ router.delete('/:chatId/avatar', authenticate, async (req, res) => {
       return res.status(404).json({ error: 'Group not found' });
     }
 
-    if (chat.createdBy !== req.user.id) {
-      return res.status(403).json({ error: 'Only group creator can delete avatar' });
+    const requesterMembership = await ChatMember.findOne({ where: { chatId, userId: req.user.id, role: 'admin' } });
+    if (!requesterMembership) {
+      return res.status(403).json({ error: 'Only admins can delete avatar' });
     }
 
     if (chat.avatar) {
@@ -1123,6 +1130,102 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
   }
 });
 
+// Bulk add members to group (admin only)
+router.post('/:chatId/members/bulk', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return res.status(400).json({ error: 'userIds array is required' });
+    }
+
+    const chatRecord = await Chat.findByPk(chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const requesterMembership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id, role: 'admin' }
+    });
+    if (!requesterMembership) {
+      return res.status(403).json({ error: 'Only admins can add members' });
+    }
+
+    // Filter out already-existing members
+    const existingMembers = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    const existingIds = new Set(existingMembers.map(m => m.userId));
+    const newUserIds = userIds.filter(id => !existingIds.has(id) && id !== req.user.id);
+
+    if (newUserIds.length === 0) {
+      return res.json({ added: 0, message: 'All users are already members' });
+    }
+
+    await ChatMember.bulkCreate(newUserIds.map(userId => ({ chatId, userId, role: 'member' })));
+
+    const newUsers = await User.findAll({
+      where: { id: newUserIds },
+      attributes: ['displayName', 'username']
+    });
+    const names = newUsers.map(u => u.displayName || u.username).join(', ');
+    const systemMsg = `${req.user.displayName || req.user.username} добавил в группу: ${names}`;
+
+    await Message.create({ chatId, senderId: req.user.id, content: systemMsg, type: 'system' });
+    await Chat.update({ lastMessage: systemMsg, lastMessageAt: new Date() }, { where: { id: chatId } });
+
+    res.json({ added: newUserIds.length, message: 'Members added' });
+  } catch (error) {
+    console.error('Bulk add members error:', error);
+    res.status(500).json({ error: 'Failed to add members' });
+  }
+});
+
+// Set member role (admin/member) — only creator can promote/demote
+router.patch('/:chatId/members/:userId/role', authenticate, async (req, res) => {
+  try {
+    const { chatId, userId } = req.params;
+    const { role } = req.body;
+
+    if (!['admin', 'member'].includes(role)) {
+      return res.status(400).json({ error: 'Role must be admin or member' });
+    }
+
+    const chatRecord = await Chat.findByPk(chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Только создатель может менять роли
+    if (chatRecord.createdBy !== req.user.id) {
+      return res.status(403).json({ error: 'Only group creator can change member roles' });
+    }
+
+    // Нельзя изменить роль самого создателя
+    if (userId === chatRecord.createdBy) {
+      return res.status(400).json({ error: 'Cannot change role of group creator' });
+    }
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId } });
+    if (!membership) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    await membership.update({ role });
+
+    const targetUser = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
+    const action = role === 'admin' ? 'назначил администратором' : 'снял права администратора у';
+    const systemMsg = `${req.user.displayName || req.user.username} ${action} ${targetUser.displayName || targetUser.username}`;
+
+    await Message.create({ chatId, senderId: req.user.id, content: systemMsg, type: 'system' });
+    await Chat.update({ lastMessage: systemMsg, lastMessageAt: new Date() }, { where: { id: chatId } });
+
+    res.json({ userId, role });
+  } catch (error) {
+    console.error('Set member role error:', error);
+    res.status(500).json({ error: 'Failed to update member role' });
+  }
+});
+
 // Remove member from group
 router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
   try {
@@ -1141,13 +1244,14 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Not a member of this chat' });
     }
 
-    const isCreator = chat.createdBy === req.user.id;
+    const isAdmin = requesterMembership.role === 'admin';
     const isSelf = userId === req.user.id;
 
-    if (!isCreator && !isSelf) {
-      return res.status(403).json({ error: 'Only group creator can remove members' });
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({ error: 'Only admins can remove members' });
     }
 
+    // Нельзя исключить создателя группы
     if (userId === chat.createdBy && !isSelf) {
       return res.status(403).json({ error: 'Cannot remove group creator' });
     }
@@ -1232,20 +1336,98 @@ router.delete('/:chatId/leave', authenticate, async (req, res) => {
   }
 });
 
+// Toggle read-only for a specific member (admin only, can't apply to creator)
+router.patch('/:chatId/members/:userId/readonly', authenticate, async (req, res) => {
+  try {
+    const { chatId, userId } = req.params;
+    const { isReadOnly } = req.body;
+
+    const chatRecord = await Chat.findByPk(chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const requesterMembership = await ChatMember.findOne({ where: { chatId, userId: req.user.id, role: 'admin' } });
+    if (!requesterMembership) {
+      return res.status(403).json({ error: 'Only admins can change read-only mode' });
+    }
+
+    if (userId === chatRecord.createdBy) {
+      return res.status(400).json({ error: 'Cannot restrict group creator' });
+    }
+
+    const membership = await ChatMember.findOne({ where: { chatId, userId } });
+    if (!membership) {
+      return res.status(404).json({ error: 'Member not found' });
+    }
+
+    await membership.update({ isReadOnly: Boolean(isReadOnly) });
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`user:${userId}`).emit('member_updated', { chatId, userId, isReadOnly: Boolean(isReadOnly) });
+    }
+
+    res.json({ chatId, userId, isReadOnly: Boolean(isReadOnly) });
+  } catch (error) {
+    console.error('Toggle member read-only error:', error);
+    res.status(500).json({ error: 'Failed to update read-only mode' });
+  }
+});
+
+// Delete group entirely (creator only) — removes chat for all members
+router.delete('/:chatId', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    const chatRecord = await Chat.findByPk(chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    if (chatRecord.createdBy !== req.user.id) {
+      return res.status(403).json({ error: 'Only group creator can delete the group' });
+    }
+
+    // Собираем ID всех участников до удаления
+    const members = await ChatMember.findAll({ where: { chatId }, attributes: ['userId'] });
+    const memberIds = members.map(m => m.userId);
+
+    await Message.destroy({ where: { chatId } });
+    await ChatMember.destroy({ where: { chatId } });
+    await chatRecord.destroy();
+
+    // Уведомляем всех участников через сокет
+    const io = req.app.get('io');
+    if (io) {
+      memberIds.forEach(userId => {
+        io.to(`user:${userId}`).emit('group_deleted', { chatId });
+      });
+    }
+
+    res.json({ message: 'Group deleted' });
+  } catch (error) {
+    console.error('Delete group error:', error);
+    res.status(500).json({ error: 'Failed to delete group' });
+  }
+});
+
 // Get users for chat (all authenticated users can access)
 router.get('/users', authenticate, async (req, res) => {
   try {
     const users = await User.findAll({
       where: {
         isActive: true,
-        [Op.or]: [{ isBot: false }, { isBot: null }] // Исключаем ботов
+        [Op.or]: [{ isBot: false }, { isBot: null }]
       },
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name', 'displayName'] }
+      ],
       attributes: ['id', 'username', 'displayName', 'avatar', 'email', 'isActive'],
       order: [['displayName', 'ASC']]
     });
 
-    // Исключаем текущего пользователя
     const filteredUsers = users.filter(u => u.id !== req.user.id);
 
     res.json(filteredUsers);
@@ -1267,6 +1449,42 @@ router.get('/bots', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get chat bots error:', error);
     res.status(500).json({ error: 'Failed to fetch bots' });
+  }
+});
+
+// Rename group chat (admin only)
+router.patch('/:chatId/rename', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { name } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const chatRecord = await Chat.findByPk(chatId);
+    if (!chatRecord || chatRecord.type !== 'group') {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id, role: 'admin' }
+    });
+    if (!membership) {
+      return res.status(403).json({ error: 'Only admins can rename the group' });
+    }
+
+    const oldName = chatRecord.name;
+    await chatRecord.update({ name: name.trim() });
+
+    const systemMsg = `${req.user.displayName || req.user.username} переименовал группу с "${oldName}" на "${name.trim()}"`;
+    await Message.create({ chatId, senderId: req.user.id, content: systemMsg, type: 'system' });
+    await Chat.update({ lastMessage: systemMsg, lastMessageAt: new Date() }, { where: { id: chatId } });
+
+    res.json({ id: chatId, name: name.trim() });
+  } catch (error) {
+    console.error('Rename group error:', error);
+    res.status(500).json({ error: 'Failed to rename group' });
   }
 });
 

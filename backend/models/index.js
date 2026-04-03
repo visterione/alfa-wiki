@@ -292,7 +292,8 @@ const ChatMember = sequelize.define('ChatMember', {
   isNotificationMuted: { type: DataTypes.BOOLEAN, defaultValue: false },
   isHidden: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат скрыт у пользователя' },
   isPinned: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Чат закреплён у пользователя' },
-  pinnedOrder: { type: DataTypes.INTEGER, allowNull: true, comment: 'Порядок среди закреплённых чатов' }
+  pinnedOrder: { type: DataTypes.INTEGER, allowNull: true, comment: 'Порядок среди закреплённых чатов' },
+  isReadOnly: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Участнику запрещено отправлять сообщения' }
 }, {
   tableName: 'chat_members',
   timestamps: true,
