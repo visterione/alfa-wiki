@@ -532,7 +532,7 @@ export async function buildReport({
         if (bonus) {
           if (bonus.bonusPercent != null) {
             const assistantName = row.assistant || '';
-            const _indivAsst = assistantName ? (clinicSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName)) : null;
+            const _indivAsst = assistantName ? ((execSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName))) : null;
             const asstPct = (!interim && assistantName) ? ((_indivAsst != null ? parseFloat(_indivAsst.percent) : null) ?? (clinicSettings.assistancePercent || 0)) : 0;
             const effectiveBonusPct = Math.max(0, parseFloat(bonus.bonusPercent) - asstPct);
             const matForRow = interim ? 0 : (svcOverrideMat
@@ -601,7 +601,7 @@ export async function buildReport({
           const svcBreakdown2 = {};
           for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
             const eCS = rbGetClinicSettings(execData2, cId3);
-            const _indivEntry = (eCS.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
+            const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
             const aPct = _indivEntry != null ? (parseFloat(_indivEntry.percent) || 0) : (eCS.assistancePercent || 0);
             if (!aPct) continue;
             cRows3.forEach(row2 => {
