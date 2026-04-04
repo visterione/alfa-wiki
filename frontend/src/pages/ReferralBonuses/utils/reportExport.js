@@ -198,8 +198,12 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       }
     }
 
-    // Услуги ассистирования (вычет у основного врача)
-    if ((sal.assistancePaidTotal || 0) > 0) {
+    // Услуги ассистирования (вычет у основного врача) — отдельная строка на каждого ассистента
+    if ((sal.assistanceSections || []).length > 0) {
+      (sal.assistanceSections || []).forEach(s => {
+        if ((s.total || 0) > 0) addSalRow(`Услуги ассистирования ${s.name}`, s.total, '-');
+      });
+    } else if ((sal.assistancePaidTotal || 0) > 0) {
       addSalRow('Услуги ассистирования', sal.assistancePaidTotal, '-');
     }
 
@@ -245,9 +249,22 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       });
     }
 
-    // Ассистирование (доход врача-ассистента)
+    // Ассистирование (доход врача-ассистента) — с детализацией по врачам
     if ((sal.assistanceIncomeTotal || 0) > 0) {
       addSalRow('Ассистирование', sal.assistanceIncomeTotal, '+');
+      (sal.assistanceIncomeSections || []).forEach(({ execName, total, services }) => {
+        addSubHdr(execName, total, 'FF166534', 1);
+        if ((services || []).length > 0) {
+          addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', '%', 'Итого, руб'], 2);
+          services.forEach(s => addTblRow([
+            s.code || '—', s.name || '—',
+            parseFloat((s.cost || 0).toFixed(2)),
+            s.count || 1,
+            s.aPct ? `${s.aPct}%` : '—',
+            parseFloat((s.income || 0).toFixed(2)),
+          ], 2));
+        }
+      });
     }
 
     // Итого
