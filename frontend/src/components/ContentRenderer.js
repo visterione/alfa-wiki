@@ -3,8 +3,7 @@ import { useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
+
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
@@ -15,7 +14,7 @@ import Subscript from '@tiptap/extension-subscript';
 import Superscript from '@tiptap/extension-superscript';
 import Youtube from '@tiptap/extension-youtube';
 import { LocalVideo } from './LocalVideo';
-import { CustomBlockquote, TableCell, TableHeader, ResizableImageReadOnly } from './EditorExtensions';
+import { CustomBlockquote, ResizableImageReadOnly, InteractiveTableReadOnly } from './EditorExtensions';
 import { BASE_URL } from '../services/api';
 import './Editor.css';
 import './ContentRenderer.css';
@@ -73,12 +72,7 @@ export default function ContentRenderer({ content }) {
           rel: 'noopener noreferrer',
         },
       }),
-      Table.configure({
-        resizable: true, // Включаем resizable чтобы сохранялись ширины колонок (colwidth)
-      }),
-      TableRow,
-      TableHeader,
-      TableCell, // Кастомный TableCell с поддержкой backgroundColor
+      InteractiveTableReadOnly,
       TextAlign.configure({
         types: ['heading', 'paragraph'],
       }),

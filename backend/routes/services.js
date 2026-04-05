@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { Service, SearchIndex, Page, PageHistory } = require('../models');
+const { Service, ServicePageNote, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 // === HELPER: Запись в историю страницы ===
@@ -308,6 +308,41 @@ router.post('/',
     }
   }
 );
+
+// GET /api/services/notes?pageSlug=...
+router.get('/notes', authenticate, async (req, res) => {
+  try {
+    const { pageSlug } = req.query;
+    if (!pageSlug) return res.json({ notes: null });
+    const record = await ServicePageNote.findOne({ where: { pageSlug } });
+    res.json({ notes: record ? record.notes : null });
+  } catch (error) {
+    console.error('Error fetching service notes:', error);
+    res.status(500).json({ error: 'Ошибка при получении заметок' });
+  }
+});
+
+// PUT /api/services/notes
+router.put('/notes', authenticate, async (req, res) => {
+  try {
+    const canEdit = req.user.isAdmin || req.user.canEditServices;
+    if (!canEdit) return res.status(403).json({ error: 'Нет прав для редактирования заметок' });
+
+    const { pageSlug, notes } = req.body;
+    if (!pageSlug) return res.status(400).json({ error: 'pageSlug обязателен' });
+
+    await ServicePageNote.upsert({
+      pageSlug,
+      notes: notes || null,
+      updatedBy: req.user.id
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving service notes:', error);
+    res.status(500).json({ error: 'Ошибка при сохранении заметок' });
+  }
+});
 
 // PUT /api/services/:id - Обновить услугу
 router.put('/:id',

@@ -116,6 +116,13 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'Системный бот-пользователь (Ассистент для уведомлений)'
+  },
+
+  // Доступ к управлению акциями
+  canManagePromotions: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Разрешение на создание, редактирование и удаление акций медцентров'
   }
 }, { tableName: 'users', timestamps: true });
 
@@ -533,6 +540,21 @@ const Analysis = sequelize.define('Analysis', {
   ]
 });
 
+// === ANALYSIS PAGE NOTES MODEL ===
+const AnalysisPageNote = sequelize.define('AnalysisPageNote', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  pageSlug: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    unique: true
+  },
+  notes: { type: DataTypes.TEXT },
+  updatedBy: { type: DataTypes.UUID }
+}, {
+  tableName: 'analysis_page_notes',
+  timestamps: true
+});
+
 // === SERVICE MODEL ===
 const Service = sequelize.define('Service', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -590,6 +612,21 @@ const Service = sequelize.define('Service', {
     { fields: ['isStopped'] },
     { fields: ['misServiceId'] }
   ]
+});
+
+// === SERVICE PAGE NOTES MODEL ===
+const ServicePageNote = sequelize.define('ServicePageNote', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  pageSlug: {
+    type: DataTypes.STRING(255),
+    allowNull: false,
+    unique: true
+  },
+  notes: { type: DataTypes.TEXT },
+  updatedBy: { type: DataTypes.UUID }
+}, {
+  tableName: 'service_page_notes',
+  timestamps: true
 });
 
 // === MED CENTER MODEL ===
@@ -2258,6 +2295,27 @@ const SalaryRecord = sequelize.define('SalaryRecord', {
   ]
 });
 
+// === PROMOTION MODEL ===
+const Promotion = sequelize.define('Promotion', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: { type: DataTypes.STRING(255), allowNull: false },
+  description: { type: DataTypes.TEXT },
+  medCenter: {
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    allowNull: false
+  },
+  dateFrom: { type: DataTypes.DATEONLY, allowNull: true, comment: 'Дата начала акции (опционально)' },
+  deadline: { type: DataTypes.DATEONLY, allowNull: true, comment: 'null = постоянная акция' },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'promotions',
+  timestamps: true,
+  indexes: [
+    { fields: ['medCenter'] },
+    { fields: ['deadline'] }
+  ]
+});
+
 // BotToken relationships
 BotToken.belongsTo(User, { foreignKey: 'userId', as: 'botUser' });
 User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
@@ -2330,7 +2388,9 @@ module.exports = {
   CourseRole,
   CourseMedCenter,
   Analysis,
+  AnalysisPageNote,
   Service,
+  ServicePageNote,
   CalendarEvent,
   MedCenter,
   UserMedCenter,
@@ -2370,5 +2430,7 @@ module.exports = {
   // Telegram Bot API compatibility
   IntIdMap,
   BotToken,
-  BotUpdate
+  BotUpdate,
+  // Promotions module
+  Promotion
 };

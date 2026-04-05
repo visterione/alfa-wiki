@@ -112,6 +112,7 @@ export default function AdminUsers() {
     canEditAnalyses: false,  // Доступ к редактированию анализов
     canEditServices: false,  // Доступ к редактированию услуг
     canAccessSalary: false,  // Доступ к разделу зарплаты
+    canManagePromotions: false,  // Доступ к управлению акциями
     adminAccess: {
       pages: false,
       sidebar: false,
@@ -270,6 +271,7 @@ export default function AdminUsers() {
         canEditAnalyses: user.canEditAnalyses || false,
         canEditServices: user.canEditServices || false,
         canAccessSalary: user.canAccessSalary || false,
+        canManagePromotions: user.canManagePromotions || false,
         adminAccess: user.adminAccess || {
           pages: false,
           sidebar: false,
@@ -300,6 +302,7 @@ export default function AdminUsers() {
         canEditAnalyses: false,
         canEditServices: false,
         canAccessSalary: false,
+        canManagePromotions: false,
         adminAccess: {
           pages: false,
           sidebar: false,
@@ -873,6 +876,15 @@ export default function AdminUsers() {
                       disabled={form.isAdmin}
                     />
                     <span className="admin-toggle-label">Зарплата</span>
+                  </label>
+                  <label className="admin-toggle-item">
+                    <span className={`admin-toggle-track${(form.isAdmin || form.canManagePromotions) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                    <input type="checkbox" style={{ display: 'none' }}
+                      checked={form.isAdmin || form.canManagePromotions}
+                      onChange={e => !form.isAdmin && setForm({...form, canManagePromotions: e.target.checked})}
+                      disabled={form.isAdmin}
+                    />
+                    <span className="admin-toggle-label">Акции</span>
                   </label>
                 </div>
                   <p style={{

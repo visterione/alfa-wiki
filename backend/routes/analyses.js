@@ -3,7 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const axios = require('axios');
 const qs = require('qs');
-const { Analysis, SearchIndex, Page, PageHistory } = require('../models');
+const { Analysis, AnalysisPageNote, SearchIndex, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -293,6 +293,41 @@ router.post('/',
     }
   }
 );
+
+// GET /api/analyses/notes?pageSlug=...
+router.get('/notes', authenticate, async (req, res) => {
+  try {
+    const { pageSlug } = req.query;
+    if (!pageSlug) return res.json({ notes: null });
+    const record = await AnalysisPageNote.findOne({ where: { pageSlug } });
+    res.json({ notes: record ? record.notes : null });
+  } catch (error) {
+    console.error('Error fetching analysis notes:', error);
+    res.status(500).json({ error: 'Ошибка при получении заметок' });
+  }
+});
+
+// PUT /api/analyses/notes
+router.put('/notes', authenticate, async (req, res) => {
+  try {
+    const canEdit = req.user.isAdmin || req.user.canEditAnalyses;
+    if (!canEdit) return res.status(403).json({ error: 'Нет прав для редактирования заметок' });
+
+    const { pageSlug, notes } = req.body;
+    if (!pageSlug) return res.status(400).json({ error: 'pageSlug обязателен' });
+
+    await AnalysisPageNote.upsert({
+      pageSlug,
+      notes: notes || null,
+      updatedBy: req.user.id
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error saving analysis notes:', error);
+    res.status(500).json({ error: 'Ошибка при сохранении заметок' });
+  }
+});
 
 // PUT /api/analyses/:id - Обновить анализ
 router.put('/:id',

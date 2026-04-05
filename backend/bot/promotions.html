@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Акции медцентров</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --pr-bg: #f8fafc;
+  --pr-card-bg: #ffffff;
+  --pr-border: #e2e8f0;
+  --pr-text: #1e293b;
+  --pr-text-secondary: #64748b;
+  --pr-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --pr-shadow-hover: 0 4px 16px rgba(0,0,0,0.12);
+  --pr-radius: 12px;
+  --pr-primary: #2563eb;
+
+  --alfa-color: #be185d;
+  --alfa-bg: #fdf2f8;
+  --alfa-border: #f9a8d4;
+
+  --kids-color: #c2410c;
+  --kids-bg: #fff7ed;
+  --kids-border: #fed7aa;
+
+  --liniya-color: #92400e;
+  --liniya-bg: #fffbeb;
+  --liniya-border: #fcd34d;
+
+  --prof-color: #6d28d9;
+  --prof-bg: #f5f3ff;
+  --prof-border: #ddd6fe;
+
+  --3k-color: #a21caf;
+  --3k-bg: #fdf4ff;
+  --3k-border: #f0abfc;
+
+  --smile-color: #374151;
+  --smile-bg: #f9fafb;
+  --smile-border: #d1d5db;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  background: var(--pr-bg);
+  color: var(--pr-text);
+  font-size: 14px;
+}
+
+#pr-app { max-width: 1400px; margin: 0 auto; }
+
+/* ─── SHELF ─── */
+.pr-shelf {
+  margin-bottom: 16px;
+  border-radius: var(--pr-radius);
+  border: 1px solid var(--pr-border);
+  overflow: hidden;
+  background: var(--pr-card-bg);
+}
+
+.pr-shelf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.pr-shelf-header:hover { filter: brightness(0.97); }
+
+.pr-shelf-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pr-shelf-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.pr-shelf-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.1);
+}
+.pr-shelf-count.expired-present { background: #fee2e2; color: #dc2626; }
+
+.pr-shelf-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pr-shelf-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  background: rgba(0,0,0,0.08);
+  color: inherit;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: inherit;
+}
+.pr-shelf-add-btn:hover { background: rgba(0,0,0,0.15); }
+.pr-shelf-add-btn svg { width: 13px; height: 13px; }
+.pr-shelf-add-btn.hidden { display: none; }
+
+.pr-shelf-chevron {
+  width: 18px;
+  height: 18px;
+  color: rgba(0,0,0,0.35);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+.pr-shelf.collapsed .pr-shelf-chevron { transform: rotate(-90deg); }
+
+/* ─── CARDS AREA ─── */
+.pr-cards-wrap {
+  padding: 16px 20px 20px;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.2s;
+}
+.pr-shelf.collapsed .pr-cards-wrap {
+  max-height: 0 !important;
+  padding: 0;
+  opacity: 0;
+}
+
+.pr-cards-scroll {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+.pr-cards-scroll::-webkit-scrollbar { height: 5px; }
+.pr-cards-scroll::-webkit-scrollbar-track { background: transparent; }
+.pr-cards-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* ─── EMPTY STATE ─── */
+.pr-shelf-empty {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px 0;
+  color: var(--pr-text-secondary);
+  font-size: 13px;
+}
+.pr-shelf-empty svg { width: 32px; height: 32px; opacity: 0.25; }
+
+/* ─── CARD ─── */
+.pr-card {
+  flex-shrink: 0;
+  width: 240px;
+  background: var(--pr-card-bg);
+  border: 1px solid var(--pr-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--pr-shadow);
+  transition: box-shadow 0.2s, transform 0.15s;
+  overflow: hidden;
+}
+.pr-card:hover {
+  box-shadow: var(--pr-shadow-hover);
+  transform: translateY(-2px);
+}
+
+.pr-card-accent {
+  height: 4px;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.pr-card-body {
+  padding: 14px 14px 10px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pr-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--pr-text);
+}
+
+.pr-card-desc {
+  font-size: 13px;
+  color: var(--pr-text-secondary);
+  line-height: 1.5;
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.pr-card-footer {
+  padding: 8px 14px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pr-deadline-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+.pr-deadline-badge.expired { background: #fee2e2; color: #dc2626; }
+
+.pr-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.pr-card-actions.hidden { display: none; }
+
+.pr-card-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  background: transparent;
+  font-family: inherit;
+}
+.pr-card-btn svg { width: 14px; height: 14px; }
+.pr-card-btn.edit { color: #2563eb; }
+.pr-card-btn.edit:hover { background: #dbeafe; }
+.pr-card-btn.del { color: #dc2626; }
+.pr-card-btn.del:hover { background: #fee2e2; }
+
+.pr-card.expired { opacity: 0.65; }
+.pr-card.expired .pr-card-title {
+  text-decoration: line-through;
+  text-decoration-color: #dc2626;
+}
+
+/* ─── MODAL ─── */
+.pr-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,23,42,0.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.pr-overlay.open { display: flex; }
+
+.pr-modal {
+  background: #fff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  overflow: hidden;
+  animation: pr-modal-in 0.18s ease;
+}
+@keyframes pr-modal-in {
+  from { opacity: 0; transform: scale(0.95) translateY(8px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.pr-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--pr-border);
+}
+.pr-modal-title { font-size: 16px; font-weight: 700; }
+.pr-modal-close {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border: none; background: none; border-radius: 8px;
+  cursor: pointer; color: var(--pr-text-secondary); transition: background 0.15s;
+}
+.pr-modal-close:hover { background: #f1f5f9; }
+.pr-modal-close svg { width: 18px; height: 18px; }
+
+.pr-modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+.pr-form-group { display: flex; flex-direction: column; gap: 6px; }
+.pr-form-label { font-size: 13px; font-weight: 600; color: var(--pr-text); }
+
+.pr-form-input, .pr-form-select, .pr-form-textarea {
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--pr-text);
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  outline: none;
+}
+.pr-form-input:focus, .pr-form-select:focus, .pr-form-textarea:focus {
+  border-color: var(--pr-primary);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+.pr-form-textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+
+.pr-deadline-row { display: flex; gap: 8px; }
+.pr-deadline-type-btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+  color: var(--pr-text-secondary);
+  text-align: center;
+}
+.pr-deadline-type-btn.active {
+  border-color: var(--pr-primary);
+  background: #eff6ff;
+  color: var(--pr-primary);
+}
+
+.pr-date-range { display: none; flex-direction: column; gap: 8px; margin-top: 8px; }
+.pr-date-range.visible { display: flex; }
+.pr-date-range-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.pr-date-range-label { font-size: 11px; font-weight: 600; color: var(--pr-text-secondary); margin-bottom: 4px; }
+
+.pr-modal-footer {
+  padding: 14px 20px;
+  border-top: 1px solid var(--pr-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pr-btn {
+  padding: 9px 20px; border-radius: 8px;
+  font-size: 14px; font-weight: 500;
+  cursor: pointer; border: none; font-family: inherit; transition: all 0.15s;
+}
+.pr-btn-cancel { background: #f1f5f9; color: var(--pr-text); }
+.pr-btn-cancel:hover { background: #e2e8f0; }
+.pr-btn-save { background: var(--pr-primary); color: #fff; }
+.pr-btn-save:hover { background: #1d4ed8; }
+.pr-btn-save:disabled { background: #93c5fd; cursor: not-allowed; }
+
+/* ─── DELETE CONFIRM ─── */
+.pr-confirm-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(15,23,42,0.45); z-index: 1001;
+  align-items: center; justify-content: center; padding: 20px;
+}
+.pr-confirm-overlay.open { display: flex; }
+.pr-confirm-box {
+  background: #fff; border-radius: 12px; padding: 24px;
+  max-width: 360px; width: 100%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  text-align: center; animation: pr-modal-in 0.18s ease;
+}
+.pr-confirm-icon { margin: 0 auto 12px; width: 48px; height: 48px; background: #fee2e2; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+.pr-confirm-icon svg { width: 24px; height: 24px; color: #dc2626; }
+.pr-confirm-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.pr-confirm-text { font-size: 14px; color: var(--pr-text-secondary); margin-bottom: 20px; line-height: 1.5; }
+.pr-confirm-btns { display: flex; gap: 10px; justify-content: center; }
+.pr-btn-danger { background: #dc2626; color: #fff; }
+.pr-btn-danger:hover { background: #b91c1c; }
+
+/* ─── TOAST ─── */
+.pr-toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(80px);
+  background: #1e293b; color: #fff;
+  padding: 11px 20px; border-radius: 8px;
+  font-size: 14px; font-weight: 500;
+  z-index: 2000; opacity: 0;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+  white-space: nowrap;
+}
+.pr-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.pr-toast.success { background: #15803d; }
+.pr-toast.error { background: #dc2626; }
+
+/* ─── Shelf colors ─── */
+.pr-shelf[data-center="Альфа"] .pr-shelf-header { background: var(--alfa-bg); color: var(--alfa-color); border-bottom: 1px solid var(--alfa-border); }
+.pr-shelf[data-center="Альфа"] .pr-shelf-count { background: rgba(190,24,93,0.12); }
+.pr-shelf[data-center="Альфа"] .pr-card-accent { background: var(--alfa-color); }
+
+.pr-shelf[data-center="Кидс"] .pr-shelf-header { background: var(--kids-bg); color: var(--kids-color); border-bottom: 1px solid var(--kids-border); }
+.pr-shelf[data-center="Кидс"] .pr-shelf-count { background: rgba(194,65,12,0.12); }
+.pr-shelf[data-center="Кидс"] .pr-card-accent { background: var(--kids-color); }
+
+.pr-shelf[data-center="Линия"] .pr-shelf-header { background: var(--liniya-bg); color: var(--liniya-color); border-bottom: 1px solid var(--liniya-border); }
+.pr-shelf[data-center="Линия"] .pr-shelf-count { background: rgba(146,64,14,0.12); }
+.pr-shelf[data-center="Линия"] .pr-card-accent { background: var(--liniya-color); }
+
+.pr-shelf[data-center="Проф"] .pr-shelf-header { background: var(--prof-bg); color: var(--prof-color); border-bottom: 1px solid var(--prof-border); }
+.pr-shelf[data-center="Проф"] .pr-shelf-count { background: rgba(109,40,217,0.12); }
+.pr-shelf[data-center="Проф"] .pr-card-accent { background: var(--prof-color); }
+
+.pr-shelf[data-center="3К"] .pr-shelf-header { background: var(--3k-bg); color: var(--3k-color); border-bottom: 1px solid var(--3k-border); }
+.pr-shelf[data-center="3К"] .pr-shelf-count { background: rgba(162,28,175,0.12); }
+.pr-shelf[data-center="3К"] .pr-card-accent { background: var(--3k-color); }
+
+.pr-shelf[data-center="Смайл"] .pr-shelf-header { background: var(--smile-bg); color: var(--smile-color); border-bottom: 1px solid var(--smile-border); }
+.pr-shelf[data-center="Смайл"] .pr-shelf-count { background: rgba(55,65,81,0.1); }
+.pr-shelf[data-center="Смайл"] .pr-card-accent { background: var(--smile-color); }
+
+@media (max-width: 600px) {
+  .pr-card { width: 200px; }
+  .pr-date-range-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div id="pr-app">
+  <div id="pr-shelves"></div>
+</div>
+
+<!-- MODAL -->
+<div class="pr-overlay" id="pr-overlay" onclick="handleOverlayClick(event)">
+  <div class="pr-modal">
+    <div class="pr-modal-header">
+      <span class="pr-modal-title" id="pr-modal-title">Новая акция</span>
+      <button class="pr-modal-close" onclick="closeModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pr-modal-body">
+      <div class="pr-form-group">
+        <label class="pr-form-label">Медцентр</label>
+        <select class="pr-form-select" id="pr-form-center">
+          <option value="Альфа">Альфа</option>
+          <option value="Кидс">Кидс</option>
+          <option value="Линия">Линия</option>
+          <option value="Проф">Проф</option>
+          <option value="3К">3К</option>
+          <option value="Смайл">Смайл</option>
+        </select>
+      </div>
+      <div class="pr-form-group">
+        <label class="pr-form-label">Заголовок акции</label>
+        <input type="text" class="pr-form-input" id="pr-form-title" placeholder="Например: Скидка 20% на УЗИ" maxlength="255">
+      </div>
+      <div class="pr-form-group">
+        <label class="pr-form-label">Описание</label>
+        <textarea class="pr-form-textarea" id="pr-form-desc" placeholder="Условия, категории граждан, дни недели..."></textarea>
+      </div>
+      <div class="pr-form-group">
+        <label class="pr-form-label">Срок действия</label>
+        <div class="pr-deadline-row">
+          <button type="button" class="pr-deadline-type-btn active" id="pr-dl-perm" onclick="setDeadlineType('permanent')">Постоянно</button>
+          <button type="button" class="pr-deadline-type-btn" id="pr-dl-temp" onclick="setDeadlineType('temporary')">Период</button>
+        </div>
+        <div class="pr-date-range" id="pr-date-range">
+          <div class="pr-date-range-row">
+            <div>
+              <div class="pr-date-range-label">С (необязательно)</div>
+              <input type="date" class="pr-form-input" id="pr-form-date-from">
+            </div>
+            <div>
+              <div class="pr-date-range-label">По (обязательно)</div>
+              <input type="date" class="pr-form-input" id="pr-form-deadline">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="pr-modal-footer">
+      <button class="pr-btn pr-btn-cancel" onclick="closeModal()">Отмена</button>
+      <button class="pr-btn pr-btn-save" id="pr-btn-save" onclick="savePromotion()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE CONFIRM -->
+<div class="pr-confirm-overlay" id="pr-confirm-overlay" onclick="handleConfirmOverlayClick(event)">
+  <div class="pr-confirm-box">
+    <div class="pr-confirm-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+    </div>
+    <div class="pr-confirm-title">Удалить акцию?</div>
+    <div class="pr-confirm-text" id="pr-confirm-text">Это действие нельзя отменить.</div>
+    <div class="pr-confirm-btns">
+      <button class="pr-btn pr-btn-cancel" onclick="closeConfirm()">Отмена</button>
+      <button class="pr-btn pr-btn-danger" onclick="confirmDelete()">Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div class="pr-toast" id="pr-toast"></div>
+
+<script>
+var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/promotions';
+var MED_CENTERS = ['Альфа', 'Кидс', 'Линия', 'Проф', '3К', 'Смайл'];
+var CENTER_COLORS = {
+  'Альфа': '#be185d', 'Кидс': '#c2410c', 'Линия': '#92400e',
+  'Проф': '#6d28d9', '3К': '#a21caf', 'Смайл': '#374151'
+};
+
+var state = {
+  promotions: [],
+  canManage: false,
+  editingId: null,
+  deletingId: null,
+  deadlineType: 'permanent',
+  collapsed: {}
+};
+
+function getToken() { return localStorage.getItem('token'); }
+
+function fetchAPI(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() }, opts.headers || {});
+  return fetch(url, opts).then(function(r) {
+    if (!r.ok) return r.json().then(function(d) { throw new Error(d.error || 'Ошибка'); });
+    return r.json();
+  });
+}
+
+function init() {
+  fetch(window.location.protocol + '//' + window.location.hostname + ':9001/api/auth/me', {
+    headers: { 'Authorization': 'Bearer ' + getToken() }
+  }).then(function(r) { return r.json(); }).then(function(user) {
+    state.canManage = !!(user && (user.canManagePromotions || user.isAdmin));
+    loadPromotions();
+  }).catch(function() { loadPromotions(); });
+}
+
+function loadPromotions() {
+  fetchAPI(API_URL).then(function(data) {
+    state.promotions = data;
+    render();
+  }).catch(function(e) { showToast(e.message, 'error'); });
+}
+
+function today() {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isExpired(deadline) {
+  return !!(deadline && deadline < today());
+}
+
+function fmt(dateStr) {
+  if (!dateStr) return null;
+  var p = dateStr.split('-');
+  return p[2] + '.' + p[1] + '.' + p[0];
+}
+
+function fmtShort(dateStr) {
+  if (!dateStr) return null;
+  var p = dateStr.split('-');
+  return p[2] + '.' + p[1];
+}
+
+function buildBadge(p) {
+  var expired = isExpired(p.deadline);
+  var cls = 'pr-deadline-badge' + (expired ? ' expired' : '');
+
+  if (!p.deadline && !p.dateFrom) {
+    return '<span class="' + cls + '">Постоянно</span>';
+  }
+  if (p.dateFrom && p.deadline) {
+    return '<span class="' + cls + '">' + fmtShort(p.dateFrom) + ' — ' + fmt(p.deadline) + '</span>';
+  }
+  if (p.deadline) {
+    return '<span class="' + cls + '">до ' + fmt(p.deadline) + '</span>';
+  }
+  return '<span class="' + cls + '">с ' + fmt(p.dateFrom) + '</span>';
+}
+
+function render() {
+  var container = document.getElementById('pr-shelves');
+  container.innerHTML = '';
+
+  MED_CENTERS.forEach(function(center) {
+    var items = state.promotions.filter(function(p) { return p.medCenter === center; });
+    var expiredCount = items.filter(function(p) { return isExpired(p.deadline); }).length;
+    var activeCount = items.length - expiredCount;
+    var collapsed = !!state.collapsed[center];
+
+    var countClass = 'pr-shelf-count' + (expiredCount > 0 ? ' expired-present' : '');
+    var countLabel = items.length > 0
+      ? (expiredCount > 0 ? activeCount + ' + ' + expiredCount + ' истекло' : activeCount)
+      : 0;
+
+    var shelf = document.createElement('div');
+    shelf.className = 'pr-shelf' + (collapsed ? ' collapsed' : '');
+    shelf.setAttribute('data-center', center);
+
+    shelf.innerHTML =
+      '<div class="pr-shelf-header" onclick="toggleShelf(\'' + center + '\')">' +
+        '<div class="pr-shelf-left">' +
+          '<span class="pr-shelf-name">' + center + '</span>' +
+          '<span class="' + countClass + '">' + countLabel + '</span>' +
+        '</div>' +
+        '<div class="pr-shelf-right">' +
+          '<button class="pr-shelf-add-btn' + (state.canManage ? '' : ' hidden') + '" onclick="event.stopPropagation(); openModal(null, \'' + center + '\')">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+            'Добавить' +
+          '</button>' +
+          '<svg class="pr-shelf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>' +
+        '</div>' +
+      '</div>' +
+      '<div class="pr-cards-wrap" style="max-height:' + (collapsed ? '0' : '500px') + '">' +
+        '<div class="pr-cards-scroll" id="shelf-' + center + '"></div>' +
+      '</div>';
+
+    container.appendChild(shelf);
+
+    var cardsEl = shelf.querySelector('#shelf-' + center);
+
+    if (items.length === 0) {
+      cardsEl.innerHTML =
+        '<div class="pr-shelf-empty">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>' +
+          '<span>Нет активных акций</span>' +
+        '</div>';
+    } else {
+      items.forEach(function(p) {
+        var expired = isExpired(p.deadline);
+        var card = document.createElement('div');
+        card.className = 'pr-card' + (expired ? ' expired' : '');
+        card.innerHTML =
+          '<div class="pr-card-accent" style="background:' + CENTER_COLORS[center] + '"></div>' +
+          '<div class="pr-card-body">' +
+            '<div class="pr-card-title">' + escHtml(p.title) + '</div>' +
+            (p.description ? '<div class="pr-card-desc">' + escHtml(p.description) + '</div>' : '') +
+          '</div>' +
+          '<div class="pr-card-footer">' +
+            buildBadge(p) +
+            '<div class="pr-card-actions' + (state.canManage ? '' : ' hidden') + '">' +
+              '<button class="pr-card-btn edit" title="Редактировать" onclick="openModal(\'' + p.id + '\', null)">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>' +
+              '</button>' +
+              '<button class="pr-card-btn del" title="Удалить" onclick="askDelete(\'' + p.id + '\', \'' + escHtml(p.title).replace(/'/g, "\\'") + '\')">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>' +
+              '</button>' +
+            '</div>' +
+          '</div>';
+        cardsEl.appendChild(card);
+      });
+    }
+  });
+}
+
+function toggleShelf(center) {
+  state.collapsed[center] = !state.collapsed[center];
+  render();
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ─── MODAL ───
+function openModal(id, center) {
+  state.editingId = id;
+  var titleEl = document.getElementById('pr-modal-title');
+  var centerSel = document.getElementById('pr-form-center');
+  var titleInput = document.getElementById('pr-form-title');
+  var descInput = document.getElementById('pr-form-desc');
+  var dateFromInput = document.getElementById('pr-form-date-from');
+  var deadlineInput = document.getElementById('pr-form-deadline');
+
+  if (id) {
+    var p = state.promotions.find(function(x) { return x.id === id; });
+    if (!p) return;
+    titleEl.textContent = 'Редактировать акцию';
+    centerSel.value = p.medCenter;
+    titleInput.value = p.title;
+    descInput.value = p.description || '';
+    if (p.deadline || p.dateFrom) {
+      setDeadlineType('temporary');
+      dateFromInput.value = p.dateFrom || '';
+      deadlineInput.value = p.deadline || '';
+    } else {
+      setDeadlineType('permanent');
+      dateFromInput.value = '';
+      deadlineInput.value = '';
+    }
+  } else {
+    titleEl.textContent = 'Новая акция';
+    centerSel.value = center || 'Альфа';
+    titleInput.value = '';
+    descInput.value = '';
+    dateFromInput.value = '';
+    deadlineInput.value = '';
+    setDeadlineType('permanent');
+  }
+
+  document.getElementById('pr-overlay').classList.add('open');
+  setTimeout(function() { titleInput.focus(); }, 50);
+}
+
+function closeModal() {
+  document.getElementById('pr-overlay').classList.remove('open');
+  state.editingId = null;
+}
+
+function handleOverlayClick(e) {
+  if (e.target === document.getElementById('pr-overlay')) closeModal();
+}
+
+function setDeadlineType(type) {
+  state.deadlineType = type;
+  document.getElementById('pr-dl-perm').classList.toggle('active', type === 'permanent');
+  document.getElementById('pr-dl-temp').classList.toggle('active', type === 'temporary');
+  document.getElementById('pr-date-range').classList.toggle('visible', type === 'temporary');
+}
+
+function savePromotion() {
+  var title = document.getElementById('pr-form-title').value.trim();
+  var center = document.getElementById('pr-form-center').value;
+  var desc = document.getElementById('pr-form-desc').value.trim();
+  var dateFrom = state.deadlineType === 'temporary' ? document.getElementById('pr-form-date-from').value : null;
+  var deadline = state.deadlineType === 'temporary' ? document.getElementById('pr-form-deadline').value : null;
+
+  if (!title) { showToast('Введите заголовок акции', 'error'); return; }
+  if (state.deadlineType === 'temporary' && !deadline) { showToast('Укажите дату окончания', 'error'); return; }
+
+  var saveBtn = document.getElementById('pr-btn-save');
+  saveBtn.disabled = true;
+  saveBtn.textContent = 'Сохранение...';
+
+  var body = { title: title, description: desc || null, medCenter: center, dateFrom: dateFrom || null, deadline: deadline || null };
+  var url = state.editingId ? API_URL + '/' + state.editingId : API_URL;
+  var method = state.editingId ? 'PUT' : 'POST';
+
+  fetchAPI(url, { method: method, body: JSON.stringify(body) }).then(function() {
+    closeModal();
+    loadPromotions();
+    showToast(state.editingId ? 'Акция обновлена' : 'Акция добавлена', 'success');
+  }).catch(function(e) {
+    showToast(e.message, 'error');
+  }).finally(function() {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Сохранить';
+  });
+}
+
+// ─── DELETE ───
+function askDelete(id, title) {
+  state.deletingId = id;
+  document.getElementById('pr-confirm-text').textContent = 'Акция «' + title + '» будет удалена безвозвратно.';
+  document.getElementById('pr-confirm-overlay').classList.add('open');
+}
+
+function closeConfirm() {
+  document.getElementById('pr-confirm-overlay').classList.remove('open');
+  state.deletingId = null;
+}
+
+function handleConfirmOverlayClick(e) {
+  if (e.target === document.getElementById('pr-confirm-overlay')) closeConfirm();
+}
+
+function confirmDelete() {
+  if (!state.deletingId) return;
+  fetchAPI(API_URL + '/' + state.deletingId, { method: 'DELETE' }).then(function() {
+    closeConfirm();
+    loadPromotions();
+    showToast('Акция удалена', 'success');
+  }).catch(function(e) { showToast(e.message, 'error'); });
+}
+
+// ─── TOAST ───
+var toastTimer;
+function showToast(msg, type) {
+  var el = document.getElementById('pr-toast');
+  el.textContent = msg;
+  el.className = 'pr-toast ' + (type || '');
+  void el.offsetWidth;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() { el.classList.remove('show'); }, 3000);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeModal(); closeConfirm(); }
+});
+
+init();
+</script>
+</body>
+</html>

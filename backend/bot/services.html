@@ -17,6 +17,162 @@
   margin: 0 auto;
 }
 
+/* Блок заметок */
+.srv-notes-card {
+  position: relative;
+  background: #fffbeb;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.srv-notes-edit-icon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #b45309;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.srv-notes-edit-icon:hover { opacity: 1; background: #fde68a; }
+.srv-notes-edit-icon svg { width: 15px; height: 15px; }
+
+.srv-btn-sm {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.srv-btn-secondary {
+  background: #f3f4f6;
+  color: #374151;
+  border: none;
+}
+.srv-btn-secondary:hover { background: #e5e7eb; }
+
+.srv-notes-content {
+  padding: 14px 42px 14px 18px;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.srv-notes-add-hint {
+  padding: 12px 18px;
+  font-size: 13px;
+  color: #b45309;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  opacity: 0.5;
+}
+.srv-notes-add-hint:hover { opacity: 1; }
+
+.srv-notes-edit-wrap {
+  padding: 12px 14px 14px;
+}
+
+.srv-notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.srv-toolbar-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.srv-toolbar-btn:hover { background: #e5e7eb; }
+.srv-toolbar-btn b { font-weight: 700; font-family: Georgia, serif; }
+.srv-toolbar-btn i { font-style: italic; font-family: Georgia, serif; }
+.srv-toolbar-btn u { text-decoration: underline; font-family: Georgia, serif; }
+.srv-toolbar-btn s { text-decoration: line-through; font-family: Georgia, serif; }
+
+.srv-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: #d1d5db;
+  margin: 0 4px;
+}
+
+.srv-color-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.srv-color-btn:hover { background: #e5e7eb; }
+.srv-color-btn svg { width: 16px; height: 16px; pointer-events: none; }
+.srv-color-btn input[type="color"] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+
+.srv-notes-editor {
+  min-height: 90px;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 0 0 8px 8px;
+  background: #fffde7;
+  font-size: 14px;
+  font-family: inherit;
+  color: #374151;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  word-break: break-word;
+}
+.srv-notes-editor:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.1);
+}
+
+.srv-notes-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 /* Кнопки и фильтры */
 .srv-header {
   display: flex;
@@ -57,6 +213,7 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 14px;
+  font-family: inherit;
   transition: all 0.2s;
 }
 
@@ -71,6 +228,7 @@
   border: 1px solid #d1d5db;
   border-radius: 8px;
   font-size: 14px;
+  font-family: inherit;
   background: #fff;
   cursor: pointer;
   transition: all 0.2s;
@@ -89,6 +247,7 @@
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
+  font-family: inherit;
   cursor: pointer;
   transition: all 0.2s;
   display: inline-flex;
@@ -598,6 +757,37 @@
 }
 </style>
 
+  <!-- Блок заметок -->
+  <div id="srv-notes-block" style="display:none">
+    <div class="srv-notes-card">
+      <button id="srv-notes-edit-btn" class="srv-notes-edit-icon" onclick="servicesApp.startEditNotes()" title="Редактировать заметку">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      </button>
+      <div id="srv-notes-view" class="srv-notes-content" style="display:none"></div>
+      <div id="srv-notes-add-hint" class="srv-notes-add-hint" style="display:none" onclick="servicesApp.startEditNotes()">+ Добавить заметку</div>
+      <div id="srv-notes-edit-wrap" class="srv-notes-edit-wrap" style="display:none">
+        <div class="srv-notes-toolbar">
+          <button type="button" class="srv-toolbar-btn" onclick="document.execCommand('bold')" title="Жирный (Ctrl+B)"><b>B</b></button>
+          <button type="button" class="srv-toolbar-btn" onclick="document.execCommand('italic')" title="Курсив (Ctrl+I)"><i>I</i></button>
+          <button type="button" class="srv-toolbar-btn" onclick="document.execCommand('underline')" title="Подчёркивание (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="srv-toolbar-btn" onclick="document.execCommand('strikeThrough')" title="Зачёркивание"><s>S</s></button>
+          <div class="srv-toolbar-divider"></div>
+          <label class="srv-color-btn" title="Цвет текста">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+            <input type="color" value="#e11d48" onchange="document.execCommand('foreColor', false, this.value)" title="Цвет текста">
+          </label>
+          <div class="srv-toolbar-divider"></div>
+          <button type="button" class="srv-toolbar-btn" onclick="document.execCommand('removeFormat')" title="Сбросить форматирование" style="font-size:12px;color:#6b7280">✕</button>
+        </div>
+        <div id="srv-notes-editor" class="srv-notes-editor" contenteditable="true"></div>
+        <div class="srv-notes-edit-actions">
+          <button type="button" class="srv-btn srv-btn-secondary" onclick="servicesApp.cancelEditNotes()">Отмена</button>
+          <button type="button" class="srv-btn srv-btn-primary" onclick="servicesApp.saveNotes()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Заголовок и фильтры -->
   <div class="srv-header">
     <div class="srv-filters">
@@ -1103,6 +1293,81 @@ window.servicesApp = (function() {
     showToast('Данные из МИС загружены', 'success');
   }
 
+  // === ЗАМЕТКИ ===
+  var notesData = null;
+
+  function loadNotes() {
+    if (!currentPageSlug) return;
+    fetchAPI(API_URL + '/notes?pageSlug=' + encodeURIComponent(currentPageSlug))
+      .then(function(data) {
+        notesData = data.notes;
+        renderNotes();
+      }).catch(function() {});
+  }
+
+  function renderNotes() {
+    var block = document.getElementById('srv-notes-block');
+    var viewEl = document.getElementById('srv-notes-view');
+    var editBtn = document.getElementById('srv-notes-edit-btn');
+    var addHint = document.getElementById('srv-notes-add-hint');
+
+    var hasContent = notesData && notesData.trim();
+
+    if (hasContent) {
+      block.style.display = '';
+      viewEl.innerHTML = notesData;
+      viewEl.style.display = '';
+      addHint.style.display = 'none';
+    } else if (canEditServices) {
+      block.style.display = '';
+      viewEl.style.display = 'none';
+      addHint.style.display = '';
+    } else {
+      block.style.display = 'none';
+      return;
+    }
+
+    if (canEditServices) {
+      editBtn.style.display = hasContent ? 'flex' : 'none';
+    }
+  }
+
+  function startEditNotes() {
+    var editor = document.getElementById('srv-notes-editor');
+    var editWrap = document.getElementById('srv-notes-edit-wrap');
+    var viewEl = document.getElementById('srv-notes-view');
+    var editBtn = document.getElementById('srv-notes-edit-btn');
+    var addHint = document.getElementById('srv-notes-add-hint');
+
+    editor.innerHTML = notesData || '';
+    editWrap.style.display = '';
+    viewEl.style.display = 'none';
+    editBtn.style.display = 'none';
+    addHint.style.display = 'none';
+    setTimeout(function() { editor.focus(); }, 0);
+  }
+
+  function cancelEditNotes() {
+    document.getElementById('srv-notes-edit-wrap').style.display = 'none';
+    renderNotes();
+  }
+
+  function saveNotes() {
+    var editor = document.getElementById('srv-notes-editor');
+    var html = editor.innerHTML.trim();
+    if (html === '<br>') html = '';
+
+    fetchAPI(API_URL + '/notes', {
+      method: 'PUT',
+      body: JSON.stringify({ pageSlug: currentPageSlug, notes: html || null })
+    }).then(function() {
+      notesData = html || null;
+      document.getElementById('srv-notes-edit-wrap').style.display = 'none';
+      renderNotes();
+      showToast('Заметки сохранены', 'success');
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
   // === ДЕЙСТВИЯ ===
   function sortTable(field) {
     var ths = document.querySelectorAll('.srv-table th');
@@ -1156,6 +1421,7 @@ window.servicesApp = (function() {
     }).catch(function() {}).finally(function() {
       loadData();
       loadMedcenters();
+      loadNotes();
     });
 
     if (highlightParam) {
@@ -1186,7 +1452,10 @@ window.servicesApp = (function() {
     scrollToRecord: scrollToRecord,
     searchMIS: searchMIS,
     selectMISService: selectMISService,
-    onModalMedcenterChange: onModalMedcenterChange
+    onModalMedcenterChange: onModalMedcenterChange,
+    startEditNotes: startEditNotes,
+    cancelEditNotes: cancelEditNotes,
+    saveNotes: saveNotes
   };
 })();
 </script>

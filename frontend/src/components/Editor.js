@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { useEditor, EditorContent, NodeViewWrapper, BubbleMenu } from '@tiptap/react';
+import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -7,8 +7,6 @@ import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
 import Link from '@tiptap/extension-link';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
 import TextStyle from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Subscript from '@tiptap/extension-subscript';
@@ -18,7 +16,7 @@ import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
 import EmojiPicker from 'emoji-picker-react';
 import { LocalVideo } from './LocalVideo';
-import { CustomBlockquote, TableCell, TableHeader, ResizableImage } from './EditorExtensions';
+import { CustomBlockquote, ResizableImage, InteractiveTable } from './EditorExtensions';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   AlignLeft, AlignCenter, AlignRight, AlignJustify,
@@ -27,7 +25,7 @@ import {
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
   Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type,
-  AlertTriangle, AlertCircle, Scissors, GitMerge, LayoutGrid
+  AlertTriangle, AlertCircle, LayoutGrid
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -1249,7 +1247,6 @@ function MenuBar({ editor }) {
   const videoInputRef = useRef(null);
   const highlightButtonRef = useRef(null);
   const colorButtonRef = useRef(null);
-  const tableButtonRef = useRef(null);
   const fontFamilyButtonRef = useRef(null);
   const emojiButtonRef = useRef(null);
   const blockquoteButtonRef = useRef(null);
@@ -1498,7 +1495,12 @@ function MenuBar({ editor }) {
           hidden
           onChange={handleVideoUpload}
         />
-        <TableMenuDropdown editor={editor} buttonRef={tableButtonRef} />
+        <MenuButton
+          onClick={() => editor.chain().focus().insertInteractiveTable({ rows: 3, cols: 3, header: true }).run()}
+          title="Вставить таблицу"
+        >
+          <TableIcon size={16} />
+        </MenuButton>
       </div>
 
       <MenuDivider />
@@ -1527,10 +1529,7 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Highlight.configure({ multicolor: true }),
       Link.configure({ openOnClick: false }),
       ResizableImage,
-      Table.configure({ resizable: true, handleWidth: 3, cellMinWidth: 50, lastColumnResizable: false }),
-      TableRow,
-      TableCell,
-      TableHeader,
+      InteractiveTable,
       TextStyle,
       Color,
       Subscript,
@@ -1570,7 +1569,6 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       <MenuBar editor={editor} />
       <EditorContent editor={editor} className="editor-content" />
       <ImageBubbleMenu editor={editor} />
-      <TableBubbleMenu editor={editor} />
     </div>
   );
 }
