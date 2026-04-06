@@ -17,6 +17,151 @@
   margin: 0 auto;
 }
 
+/* Блок заметок */
+.ana-notes-card {
+  position: relative;
+  background: #fffbeb;
+  border-radius: 12px;
+  border: 1px solid #fde68a;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.ana-notes-edit-icon {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: #b45309;
+  opacity: 0.5;
+  transition: opacity 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.ana-notes-edit-icon:hover { opacity: 1; background: #fde68a; }
+.ana-notes-edit-icon svg { width: 15px; height: 15px; }
+
+.ana-notes-content {
+  padding: 14px 42px 14px 18px;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.ana-notes-add-hint {
+  padding: 12px 18px;
+  font-size: 13px;
+  color: #b45309;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  opacity: 0.5;
+}
+.ana-notes-add-hint:hover { opacity: 1; }
+
+.ana-notes-edit-wrap {
+  padding: 12px 14px 14px;
+}
+
+.ana-notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+}
+
+.ana-toolbar-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  color: #374151;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.ana-toolbar-btn:hover { background: #e5e7eb; }
+.ana-toolbar-btn b { font-weight: 700; font-family: Georgia, serif; }
+.ana-toolbar-btn i { font-style: italic; font-family: Georgia, serif; }
+.ana-toolbar-btn u { text-decoration: underline; font-family: Georgia, serif; }
+.ana-toolbar-btn s { text-decoration: line-through; font-family: Georgia, serif; }
+
+.ana-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: #d1d5db;
+  margin: 0 4px;
+}
+
+.ana-color-btn {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.ana-color-btn:hover { background: #e5e7eb; }
+.ana-color-btn svg { width: 16px; height: 16px; pointer-events: none; }
+.ana-color-btn input[type="color"] {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+}
+
+.ana-notes-editor {
+  min-height: 90px;
+  padding: 10px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 0 0 8px 8px;
+  background: #fffde7;
+  font-size: 14px;
+  font-family: inherit;
+  color: #374151;
+  line-height: 1.6;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  word-break: break-word;
+}
+.ana-notes-editor:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245,158,11,0.1);
+}
+
+.ana-notes-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+
 /* Кнопки и фильтры */
 .ana-header {
   display: flex;
@@ -655,6 +800,37 @@
 }
 </style>
 
+  <!-- Блок заметок -->
+  <div id="ana-notes-block" style="display:none">
+    <div class="ana-notes-card">
+      <button id="ana-notes-edit-btn" class="ana-notes-edit-icon" onclick="anaApp.startEditNotes()" title="Редактировать заметку">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+      </button>
+      <div id="ana-notes-view" class="ana-notes-content" style="display:none"></div>
+      <div id="ana-notes-add-hint" class="ana-notes-add-hint" style="display:none" onclick="anaApp.startEditNotes()">+ Добавить заметку</div>
+      <div id="ana-notes-edit-wrap" class="ana-notes-edit-wrap" style="display:none">
+        <div class="ana-notes-toolbar">
+          <button type="button" class="ana-toolbar-btn" onclick="document.execCommand('bold')" title="Жирный (Ctrl+B)"><b>B</b></button>
+          <button type="button" class="ana-toolbar-btn" onclick="document.execCommand('italic')" title="Курсив (Ctrl+I)"><i>I</i></button>
+          <button type="button" class="ana-toolbar-btn" onclick="document.execCommand('underline')" title="Подчёркивание (Ctrl+U)"><u>U</u></button>
+          <button type="button" class="ana-toolbar-btn" onclick="document.execCommand('strikeThrough')" title="Зачёркивание"><s>S</s></button>
+          <div class="ana-toolbar-divider"></div>
+          <label class="ana-color-btn" title="Цвет текста">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+            <input type="color" value="#e11d48" onchange="document.execCommand('foreColor', false, this.value)" title="Цвет текста">
+          </label>
+          <div class="ana-toolbar-divider"></div>
+          <button type="button" class="ana-toolbar-btn" onclick="document.execCommand('removeFormat')" title="Сбросить форматирование" style="font-size:12px;color:#6b7280">✕</button>
+        </div>
+        <div id="ana-notes-editor" class="ana-notes-editor" contenteditable="true"></div>
+        <div class="ana-notes-edit-actions">
+          <button type="button" class="ana-btn ana-btn-secondary" onclick="anaApp.cancelEditNotes()">Отмена</button>
+          <button type="button" class="ana-btn ana-btn-primary" onclick="anaApp.saveNotes()">Сохранить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Заголовок и фильтры -->
   <div class="ana-header">
     <div class="ana-filters">
@@ -791,10 +967,24 @@ window.anaApp = (function() {
   var currentPage = 1;
   var pageSize = 50;
   var debounceTimer;
+  var currentPageSlug = '';
   var highlightId = null;
   var canEditAnalyses = false;
 
   // === HELPERS ===
+  function initPageSlug() {
+    var appEl = document.getElementById('analyses-app');
+    if (appEl && appEl.dataset.pageSlug) {
+      currentPageSlug = appEl.dataset.pageSlug;
+      return;
+    }
+    var pathParts = window.location.pathname.split('/');
+    var pageIndex = pathParts.indexOf('page');
+    if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
+      currentPageSlug = pathParts[pageIndex + 1];
+    }
+  }
+
   function getToken() {
     return localStorage.getItem('token');
   }
@@ -1162,6 +1352,81 @@ window.anaApp = (function() {
     showToast('Данные из МИС загружены', 'success');
   }
 
+  // === ЗАМЕТКИ ===
+  var notesData = null;
+
+  function loadNotes() {
+    if (!currentPageSlug) return;
+    fetchAPI(API_URL + '/notes?pageSlug=' + encodeURIComponent(currentPageSlug))
+      .then(function(data) {
+        notesData = data.notes;
+        renderNotes();
+      }).catch(function() {});
+  }
+
+  function renderNotes() {
+    var block = document.getElementById('ana-notes-block');
+    var viewEl = document.getElementById('ana-notes-view');
+    var editBtn = document.getElementById('ana-notes-edit-btn');
+    var addHint = document.getElementById('ana-notes-add-hint');
+
+    var hasContent = notesData && notesData.trim();
+
+    if (hasContent) {
+      block.style.display = '';
+      viewEl.innerHTML = notesData;
+      viewEl.style.display = '';
+      addHint.style.display = 'none';
+    } else if (canEditAnalyses) {
+      block.style.display = '';
+      viewEl.style.display = 'none';
+      addHint.style.display = '';
+    } else {
+      block.style.display = 'none';
+      return;
+    }
+
+    if (canEditAnalyses) {
+      editBtn.style.display = hasContent ? 'flex' : 'none';
+    }
+  }
+
+  function startEditNotes() {
+    var editor = document.getElementById('ana-notes-editor');
+    var editWrap = document.getElementById('ana-notes-edit-wrap');
+    var viewEl = document.getElementById('ana-notes-view');
+    var editBtn = document.getElementById('ana-notes-edit-btn');
+    var addHint = document.getElementById('ana-notes-add-hint');
+
+    editor.innerHTML = notesData || '';
+    editWrap.style.display = '';
+    viewEl.style.display = 'none';
+    editBtn.style.display = 'none';
+    addHint.style.display = 'none';
+    setTimeout(function() { editor.focus(); }, 0);
+  }
+
+  function cancelEditNotes() {
+    document.getElementById('ana-notes-edit-wrap').style.display = 'none';
+    renderNotes();
+  }
+
+  function saveNotes() {
+    var editor = document.getElementById('ana-notes-editor');
+    var html = editor.innerHTML.trim();
+    if (html === '<br>') html = '';
+
+    fetchAPI(API_URL + '/notes', {
+      method: 'PUT',
+      body: JSON.stringify({ pageSlug: currentPageSlug, notes: html || null })
+    }).then(function() {
+      notesData = html || null;
+      document.getElementById('ana-notes-edit-wrap').style.display = 'none';
+      renderNotes();
+      showToast('Заметки сохранены', 'success');
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
   // === ДЕЙСТВИЯ ===
   function toggleStop(id) {
     fetchAPI(API_URL + '/' + id + '/toggle-stop', { method: 'PATCH' })
@@ -1255,6 +1520,8 @@ window.anaApp = (function() {
   if (!getToken()) {
     document.getElementById('analyses-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
+    initPageSlug();
+
     var urlParams = new URLSearchParams(window.location.search);
     var highlightParam = urlParams.get('highlight');
 
@@ -1270,6 +1537,7 @@ window.anaApp = (function() {
     }).catch(function() {}).finally(function() {
       loadData();
       loadLabs();
+      loadNotes();
     });
 
     if (highlightParam) {
@@ -1302,7 +1570,10 @@ window.anaApp = (function() {
     selectMISService: selectMISService,
     toggleStop: toggleStop,
     openLink: openLink,
-    copyLink: copyLink
+    copyLink: copyLink,
+    startEditNotes: startEditNotes,
+    cancelEditNotes: cancelEditNotes,
+    saveNotes: saveNotes
   };
 })();
 </script>

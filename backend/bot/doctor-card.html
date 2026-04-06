@@ -172,7 +172,21 @@ input, select, textarea, button { font-family: inherit; }
 .dc-calendar-day.selected { background: var(--dc-primary); color: white; border-color: var(--dc-primary); }
 .dc-calendar-day.other-month { color: var(--dc-text-secondary); opacity: 0.4; }
 .dc-calendar-day:nth-child(7n+6), .dc-calendar-day:nth-child(7n) { color: #dc2626; }
+.dc-calendar-day.cancelled { background: #f1f5f9; border-color: #94a3b8; color: #475569; }
+.dc-calendar-day.cancelled:hover { background: #e2e8f0; border-color: #64748b; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(71,85,105,0.15); }
+.dc-calendar-day.cancelled.today { background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%); border-color: #64748b; box-shadow: 0 0 0 3px rgba(71,85,105,0.15); }
+.dc-calendar-day.cancelled.today::after { color: #475569; }
 .dc-calendar-hint { text-align: center; font-size: 11px; color: var(--dc-text-secondary); margin-top: 4px; }
+.dc-calendar-legend { display: flex; justify-content: center; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.dc-calendar-legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--dc-text-secondary); }
+.dc-calendar-legend-box { width: 13px; height: 13px; border-radius: 3px; border: 2px solid; flex-shrink: 0; }
+.dc-calendar-legend-box.work { background: #f0f7ff; border-color: var(--dc-primary); }
+.dc-calendar-legend-box.cancel { background: #f1f5f9; border-color: #94a3b8; }
+/* Cancellation block in day schedule view */
+.dc-cancellation-block { display: flex; align-items: flex-start; gap: 10px; background: #f1f5f9; border: 1.5px solid #94a3b8; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px; }
+.dc-cancellation-block-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
+.dc-cancellation-block-title { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 3px; }
+.dc-cancellation-block-desc { font-size: 12px; color: #475569; }
 
 /* Day Schedule View */
 .dc-day-schedule-view { display: flex; flex-direction: column; gap: 12px; padding-top: 16px; border-top: 2px solid var(--dc-border); margin-top: 16px; }
@@ -1049,6 +1063,7 @@ window.dcApp = (function() {
                   '<div class="dc-calendar-weekday">Вс</div>' +
                 '</div>' +
                 '<div class="dc-calendar-grid" id="calendar-grid-' + card.id + '"></div>' +
+                '<div id="calendar-legend-' + card.id + '"></div>' +
                 // Day Schedule View (shows after day click, now inside calendar view)
                 '<div class="dc-day-schedule-view" id="day-schedule-view-' + card.id + '" style="display: none;">' +
                   '<div class="dc-day-schedule-header">' +
@@ -1330,36 +1345,40 @@ window.dcApp = (function() {
         }) : [];
       }
 
-      // Create a map of dates that have schedule
+      // Create map for days that have any periods (work or cancellation = clickable)
       var datesWithSchedule = {};
+      var datesWithAnyPeriod = {};
       allPeriods.forEach(function(period) {
         if (period.time_start) {
-          var dateStr = period.time_start.split(' ')[0]; // Extract date part
-          // Convert from "yyyy-mm-dd" or "dd.mm.yyyy" to "dd.mm.yyyy"
+          var dateStr = period.time_start.split(' ')[0];
           var normalizedDate;
           if (dateStr.indexOf('-') !== -1) {
-            // ISO format: "2026-01-18"
             var parts = dateStr.split('-');
             normalizedDate = parts[2] + '.' + parts[1] + '.' + parts[0];
           } else {
             normalizedDate = dateStr;
           }
-          datesWithSchedule[normalizedDate] = true;
+          datesWithAnyPeriod[normalizedDate] = true;
+          if (period.type != 3) {
+            datesWithSchedule[normalizedDate] = true;
+          }
         }
       });
 
-      // Render calendar with availability info
+      // Render calendar — no cancellation marking, just work/no-work distinction
       calendarGrid.innerHTML = days.map(function(date) {
         var isToday = date.getTime() === today.getTime();
         var dayNumber = date.getDate();
         var dateKey = formatDateForAPI(date);
         var hasSchedule = datesWithSchedule[dateKey] || false;
+        var hasAnyPeriod = datesWithAnyPeriod[dateKey] || false;
 
         var classes = ['dc-calendar-day'];
         if (isToday) classes.push('today');
-        if (!hasSchedule) classes.push('other-month'); // Reuse existing style for inactive days
+        if (!hasSchedule) classes.push('other-month');
 
-        var onclickAttr = hasSchedule
+        var isClickable = hasAnyPeriod;
+        var onclickAttr = isClickable
           ? 'onclick="dcApp.loadDaySchedule(\'' + cardId + '\', \'' + misUserId + '\', \'' + dateKey + '\')"'
           : 'style="cursor: not-allowed;"';
 
@@ -1369,6 +1388,10 @@ window.dcApp = (function() {
           '<span style="font-size: 14px;">' + dayNumber + '</span>' +
           '</div>';
       }).join('');
+
+      // Clear legend
+      var legendEl = document.getElementById('calendar-legend-' + cardId);
+      if (legendEl) legendEl.innerHTML = '';
     }).catch(function(e) {
       console.log('Calendar load error:', e);
       // Fallback: render calendar without availability info (all clickable)
@@ -1487,8 +1510,79 @@ window.dcApp = (function() {
     var dayScheduleContent = document.getElementById('day-schedule-content-' + cardId);
     if (!dayScheduleContent) return;
 
-    // If no periods, show empty state
-    if (!periods || periods.length === 0) {
+    // Split periods by type: 1 = work schedule, 3 = cancellation
+    var workPeriods = periods ? periods.filter(function(p) { return p.type != 3; }) : [];
+    var cancelPeriods = periods ? periods.filter(function(p) { return p.type == 3; }) : [];
+
+    // Build cancellation block HTML
+    var cancellationHtml = '';
+    if (cancelPeriods.length > 0) {
+      var cancelTimes = [];
+      cancelPeriods.forEach(function(p) {
+        var ts = p.time_start ? p.time_start.split(' ')[1] : null;
+        var te = p.time_end ? p.time_end.split(' ')[1] : null;
+        if (ts && te) {
+          cancelTimes.push(ts.substring(0, 5) + ' \u2014 ' + te.substring(0, 5));
+        }
+      });
+      var timeDesc = cancelTimes.length > 0 ? 'Период: ' + cancelTimes.join(', ') : '';
+      cancellationHtml =
+        '<div class="dc-cancellation-block">' +
+          '<div class="dc-cancellation-block-icon">\u2298</div>' +
+          '<div>' +
+            '<div class="dc-cancellation-block-title">Отмена расписания</div>' +
+            (timeDesc ? '<div class="dc-cancellation-block-desc">' + timeDesc + '</div>' : '') +
+          '</div>' +
+        '</div>';
+    }
+
+    // If cancellation exists — check if it's full-day or partial
+    if (cancelPeriods.length > 0) {
+      // Determine if cancellation covers the entire work window
+      var isFullCancellation = false;
+      if (workPeriods.length === 0) {
+        // No work periods at all — definitely full cancellation
+        isFullCancellation = true;
+      } else {
+        // Find work window: min start to max end across all work periods
+        var workStarts = [];
+        var workEnds = [];
+        workPeriods.forEach(function(p) {
+          var s = parseAPITime(p.time_start);
+          var e = parseAPITime(p.time_end);
+          if (s) workStarts.push(s.getTime());
+          if (e) workEnds.push(e.getTime());
+        });
+        // Find cancel window: min start to max end across all cancel periods
+        var cancelStarts = [];
+        var cancelEnds = [];
+        cancelPeriods.forEach(function(p) {
+          var s = parseAPITime(p.time_start);
+          var e = parseAPITime(p.time_end);
+          if (s) cancelStarts.push(s.getTime());
+          if (e) cancelEnds.push(e.getTime());
+        });
+        if (workStarts.length > 0 && workEnds.length > 0 && cancelStarts.length > 0 && cancelEnds.length > 0) {
+          var workWindowStart = Math.min.apply(null, workStarts);
+          var workWindowEnd = Math.max.apply(null, workEnds);
+          var cancelWindowStart = Math.min.apply(null, cancelStarts);
+          var cancelWindowEnd = Math.max.apply(null, cancelEnds);
+          // Full cancellation = cancel window fully contains the entire work window
+          isFullCancellation = cancelWindowStart <= workWindowStart && cancelWindowEnd >= workWindowEnd;
+        }
+      }
+
+      if (isFullCancellation && workPeriods.length === 0) {
+        // Full cancellation with no work periods — render timeline from cancel periods with full grey overlay
+        var timelineHtml = renderUnifiedTimeline(cancelPeriods, [], step, cancelPeriods);
+        dayScheduleContent.innerHTML = cancellationHtml + timelineHtml;
+        return;
+      }
+      // Partial or full cancellation with work periods — fall through to render work schedule below
+    }
+
+    // If no work periods and no cancellation — empty state
+    if (workPeriods.length === 0) {
       dayScheduleContent.innerHTML = '<div style="text-align: center; padding: 40px; color: #999;">' +
         '<div style="font-size: 48px; margin-bottom: 12px;">📅</div>' +
         '<div>Нет расписания на этот день</div>' +
@@ -1496,9 +1590,9 @@ window.dcApp = (function() {
       return;
     }
 
-    // Group periods by clinic_id
+    // Group work periods by clinic_id
     var clinicPeriods = {};
-    periods.forEach(function(period) {
+    workPeriods.forEach(function(period) {
       var clinicId = period.clinic_id || 'unknown';
       if (!clinicPeriods[clinicId]) {
         clinicPeriods[clinicId] = [];
@@ -1510,13 +1604,13 @@ window.dcApp = (function() {
 
     // If only one clinic, render unified timeline without clinic header (like before)
     if (clinicIds.length === 1) {
-      var timelineHtml = renderUnifiedTimeline(periods, slots, step);
-      dayScheduleContent.innerHTML = timelineHtml;
+      var timelineHtml = renderUnifiedTimeline(workPeriods, slots, step, cancelPeriods);
+      dayScheduleContent.innerHTML = cancellationHtml + timelineHtml;
       return;
     }
 
     // Multiple clinics - render separate timeline for each
-    var html = '';
+    var html = cancellationHtml;
     clinicIds.forEach(function(clinicId) {
       var clinic = getClinicById(clinicId);
       var clinicPeriodsData = clinicPeriods[clinicId];
@@ -1553,15 +1647,15 @@ window.dcApp = (function() {
       }
       html += '</div>';
 
-      // Render timeline for this clinic
-      html += renderUnifiedTimeline(clinicPeriodsData, clinicSlots, step);
+      // Render timeline for this clinic (pass cancelPeriods for overlay)
+      html += renderUnifiedTimeline(clinicPeriodsData, clinicSlots, step, cancelPeriods);
     });
 
     dayScheduleContent.innerHTML = html;
   }
 
   // Render unified timeline for multiple periods across all clinics
-  function renderUnifiedTimeline(periods, slots, step) {
+  function renderUnifiedTimeline(periods, slots, step, cancelPeriods) {
     if (!periods || periods.length === 0) {
       return '<div style="color: #999; padding: 8px;">Нет периодов</div>';
     }
@@ -1699,6 +1793,41 @@ window.dcApp = (function() {
         'cursor: help;' +
         '"></div>';
     });
+
+    // Render cancellation overlay zones (grey hatching on top of everything)
+    if (cancelPeriods && cancelPeriods.length > 0) {
+      cancelPeriods.forEach(function(cp) {
+        var cpStart = parseAPITime(cp.time_start);
+        var cpEnd = parseAPITime(cp.time_end);
+        if (!cpStart || !cpEnd) return;
+
+        var cpStartMin = cpStart.getHours() * 60 + cpStart.getMinutes();
+        var cpEndMin = cpEnd.getHours() * 60 + cpEnd.getMinutes();
+
+        // Clamp to the visible timeline range
+        var leftMin = Math.max(cpStartMin, startMinutes);
+        var rightMin = Math.min(cpEndMin, endMinutes);
+        if (leftMin >= rightMin) return;
+
+        var leftPercent = ((leftMin - startMinutes) / totalMinutes) * 100;
+        var widthPercent = ((rightMin - leftMin) / totalMinutes) * 100;
+
+        var cancelStartLabel = pad(Math.floor(leftMin / 60)) + ':' + pad(leftMin % 60);
+        var cancelEndLabel = pad(Math.floor(rightMin / 60)) + ':' + pad(rightMin % 60);
+
+        html += '<div title="Отмена расписания: ' + cancelStartLabel + ' — ' + cancelEndLabel + '" style="' +
+          'position: absolute; ' +
+          'left: ' + leftPercent + '%; ' +
+          'width: ' + widthPercent + '%; ' +
+          'height: 100%; ' +
+          'background: repeating-linear-gradient(45deg, #cbd5e1, #cbd5e1 4px, #e2e8f0 4px, #e2e8f0 8px); ' +
+          'border-left: 2px solid #64748b; ' +
+          'border-right: 2px solid #64748b; ' +
+          'z-index: 4; ' +
+          'cursor: default;' +
+          '"></div>';
+      });
+    }
 
     html += '</div>'; // Close timeline
     html += '</div>'; // Close period-block
