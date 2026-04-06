@@ -261,7 +261,8 @@ router.get('/', authenticate, async (req, res) => {
         createdBy: chat.createdBy,
         isAssistantChat, // Флаг для закрепления вверху
         isPinned: m.isPinned || false,
-        pinnedOrder: m.pinnedOrder != null ? m.pinnedOrder : null
+        pinnedOrder: m.pinnedOrder != null ? m.pinnedOrder : null,
+        isNotificationMuted: m.isNotificationMuted || false
       };
 
       // Добавляем otherUser для приватных чатов (с онлайн-статусом)
@@ -1508,6 +1509,30 @@ router.patch('/:chatId/hide', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Hide chat error:', error);
     res.status(500).json({ error: 'Failed to hide chat' });
+  }
+});
+
+// Mute/unmute chat notifications for current user
+router.patch('/:chatId/mute', authenticate, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const { muted } = req.body;
+
+    const membership = await ChatMember.findOne({
+      where: { chatId, userId: req.user.id }
+    });
+
+    if (!membership) {
+      return res.status(404).json({ error: 'Not a member of this chat' });
+    }
+
+    const isNotificationMuted = muted !== undefined ? !!muted : !membership.isNotificationMuted;
+    await membership.update({ isNotificationMuted });
+
+    res.json({ isNotificationMuted });
+  } catch (error) {
+    console.error('Mute chat error:', error);
+    res.status(500).json({ error: 'Failed to mute chat' });
   }
 });
 

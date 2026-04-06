@@ -99,6 +99,8 @@ export function SocketProvider({ children }) {
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
   const unreadBadgeCount = useRef(0);
+  // Set of muted chat IDs — updated by Dashboard after loading chats
+  const mutedChatIdsRef = useRef(new Set());
   // Pending chat navigation: set when native notification is clicked
   const [pendingChatNavigation, setPendingChatNavigation] = useState(null);
   const lastNotifChatRef = useRef(null);
@@ -231,16 +233,19 @@ export function SocketProvider({ children }) {
     socket.on('new_message', (data) => {
       console.log('New message received:', data);
 
-      // Add notification
-      const notificationId = Date.now();
-      const notification = {
-        id: notificationId,
-        chat: data.chat,
-        message: data.message,
-        timestamp: new Date()
-      };
+      const isMuted = data.chat?.id && mutedChatIdsRef.current.has(data.chat.id);
 
-      setNotifications(prev => [...prev, notification]);
+      // Add banner notification only if chat is not muted
+      if (!isMuted) {
+        const notificationId = Date.now();
+        const notification = {
+          id: notificationId,
+          chat: data.chat,
+          message: data.message,
+          timestamp: new Date()
+        };
+        setNotifications(prev => [...prev, notification]);
+      }
 
       // Start title blinking for new message
       startTitleBlink();
@@ -283,6 +288,10 @@ export function SocketProvider({ children }) {
     setPendingChatNavigation(null);
   }, []);
 
+  const setMutedChatIds = useCallback((ids) => {
+    mutedChatIdsRef.current = new Set(ids);
+  }, []);
+
   const value = {
     socket: socketRef.current,
     isConnected,
@@ -291,7 +300,8 @@ export function SocketProvider({ children }) {
     clearAllNotifications,
     userStatuses,
     pendingChatNavigation,
-    clearPendingNavigation
+    clearPendingNavigation,
+    setMutedChatIds
   };
 
   return (

@@ -278,6 +278,16 @@
   opacity: 0.6;
 }
 
+.chat-item-mute-icon {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+}
+
 .chat-list-divider {
   display: flex;
   align-items: center;

@@ -22,7 +22,7 @@ import './Dashboard.css';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { socket, notifications, removeNotification, userStatuses } = useSocket();
+  const { socket, notifications, removeNotification, userStatuses, setMutedChatIds } = useSocket();
   const navigate = useNavigate();
   const location = useLocation();
   const [chats, setChats] = useState([]);
@@ -95,9 +95,10 @@ export default function Dashboard() {
     try {
       const { data } = await chat.list();
       setChats(data);
+      setMutedChatIds(data.filter(c => c.isNotificationMuted).map(c => c.id));
     } catch (e) { console.error('Failed to load chats:', e); }
     finally { setLoading(false); }
-  }, []);
+  }, [setMutedChatIds]);
 
   const loadMessages = useCallback(async (chatId, shouldScroll = false) => {
     try {
@@ -782,6 +783,20 @@ export default function Dashboard() {
     }
   };
 
+  const handleMuteChat = async () => {
+    const { chatId, chat: chatItem } = chatContextMenu;
+    if (!chatId) return;
+    setChatContextMenu({ visible: false, x: 0, y: 0, chatId: null, chat: null });
+    try {
+      const newMuted = !chatItem.isNotificationMuted;
+      await chat.muteChat(chatId, newMuted);
+      await loadChats();
+      toast.success(newMuted ? 'Уведомления отключены' : 'Уведомления включены');
+    } catch (e) {
+      toast.error('Ошибка');
+    }
+  };
+
   const handlePinnedDragStart = (e, chatId) => {
     draggedPinnedId.current = chatId;
     e.dataTransfer.effectAllowed = 'move';
@@ -1204,6 +1219,7 @@ export default function Dashboard() {
                     <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
                   </div>
                   {chatItem.isPinned && !searchQuery.trim() && <span className="chat-item-pin-icon"><Pin size={12} /></span>}
+                  {chatItem.isNotificationMuted && <span className="chat-item-mute-icon"><VolumeX size={12} /></span>}
                   {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
                 </div>
               );
@@ -1601,6 +1617,10 @@ export default function Dashboard() {
           <button onClick={handlePinChat}>
             {chatContextMenu.chat?.isPinned ? <PinOff size={16} /> : <Pin size={16} />}
             {chatContextMenu.chat?.isPinned ? 'Открепить' : 'Закрепить'}
+          </button>
+          <button onClick={handleMuteChat}>
+            {chatContextMenu.chat?.isNotificationMuted ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            {chatContextMenu.chat?.isNotificationMuted ? 'Включить уведомления' : 'Заглушить'}
           </button>
           <button onClick={handleHideChat}>
             <X size={16} />

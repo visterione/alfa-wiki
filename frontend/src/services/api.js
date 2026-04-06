@@ -236,6 +236,7 @@ export const chat = {
   editMessage: (chatId, messageId, content) => api.put(`/chat/${chatId}/messages/${messageId}`, { content }),
   deleteMessage: (chatId, messageId) => api.delete(`/chat/${chatId}/messages/${messageId}`),
   hideChat: (chatId, hidden = true) => api.patch(`/chat/${chatId}/hide`, { hidden }),
+  muteChat: (chatId, muted) => api.patch(`/chat/${chatId}/mute`, { muted }),
   pinChat: (chatId, pinned) => api.patch(`/chat/${chatId}/pin`, { pinned }),
   reorderPinnedChats: (chatIds) => api.patch('/chat/pins/reorder', { chatIds }),
 
