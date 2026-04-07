@@ -63,12 +63,14 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
   const buildDisplayRows = rows => rows.map(({ row, key }) => ({
     key,
     date:         (colMap.invoiceCreatedDate || colMap.date) ? String(row[colMap.invoiceCreatedDate || colMap.date] || '') : '',
-    patientCard:  colMap.patientCard     ? String(row[colMap.patientCard]      || '').trim() : '',
-    patientName:  colMap.patientName     ? String(row[colMap.patientName]      || '').trim() : '',
+    payDate:      colMap.date             ? String(row[colMap.date]             || '').trim() : '',
+    clinic:       colMap.clinic           ? String(row[colMap.clinic]           || '').trim() : '',
+    patientCard:  colMap.patientCard      ? String(row[colMap.patientCard]      || '').trim() : '',
+    patientName:  colMap.patientName      ? String(row[colMap.patientName]      || '').trim() : '',
     legalCompany: colMap.legalCompanyName ? String(row[colMap.legalCompanyName] || '').trim() : '',
-    code:         colMap.serviceCode     ? String(row[colMap.serviceCode]      || '').trim() : '',
-    serviceName:  colMap.serviceName     ? String(row[colMap.serviceName]      || '').trim() : '',
-    executor:     colMap.executor        ? String(row[colMap.executor]          || '').trim() : '',
+    code:         colMap.serviceCode      ? String(row[colMap.serviceCode]      || '').trim() : '',
+    serviceName:  colMap.serviceName      ? String(row[colMap.serviceName]      || '').trim() : '',
+    executor:     colMap.executor         ? String(row[colMap.executor]          || '').trim() : '',
     amount: colMap.totalCost != null
       ? parseAmount(row[colMap.totalCost])
       : colMap.servicePrice ? parseAmount(row[colMap.servicePrice]) : 0,
@@ -83,12 +85,13 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
       .some(v => v && v.toLowerCase().includes(q));
   };
 
+  const showPayDate      = allDisplayRows.some(r => r.payDate);
+  const showClinic       = allDisplayRows.some(r => r.clinic);
   const showPatientCard  = allDisplayRows.some(r => r.patientCard);
   const showPatientName  = allDisplayRows.some(r => r.patientName);
   const showLegalCompany = allDisplayRows.some(r => r.legalCompany);
   const showCode         = allDisplayRows.some(r => r.code);
-  // Executor column only in flat mode (bulk groups by doctor already)
-  const showExecutor     = !isBulk && allDisplayRows.some(r => r.executor);
+  const showExecutor     = allDisplayRows.some(r => r.executor);
 
   const totalAmount = allDisplayRows
     .filter(r => selected.has(r.key))
@@ -107,13 +110,15 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
         <thead>
           <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
             <th style={{ ...thStyle, width: 36, textAlign: 'center' }} />
-            <th style={thStyle}>Дата</th>
+            <th style={thStyle}>Дата выставления</th>
+            {showPayDate      && <th style={thStyle}>Дата оплаты</th>}
+            {showClinic       && <th style={thStyle}>Клиника</th>}
             {showPatientCard  && <th style={thStyle}>№ карты</th>}
             {showPatientName  && <th style={thStyle}>ФИО пациента</th>}
             {showLegalCompany && <th style={thStyle}>Юр. компания</th>}
             {showCode         && <th style={thStyle}>Код</th>}
             <th style={thStyle}>Услуга</th>
-            {showExecutor     && <th style={thStyle}>Исполнитель</th>}
+            {showExecutor     && <th style={thStyle}>ФИО врача</th>}
             <th style={thRStyle}>Сумма, ₽</th>
           </tr>
         </thead>
@@ -135,6 +140,12 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                   />
                 </td>
                 <td style={{ padding: '7px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.date || '—'}</td>
+                {showPayDate && (
+                  <td style={{ padding: '7px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.payDate || '—'}</td>
+                )}
+                {showClinic && (
+                  <td style={{ padding: '7px 8px', color: '#334155', fontSize: 12, whiteSpace: 'nowrap' }}>{r.clinic || '—'}</td>
+                )}
                 {showPatientCard && (
                   <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{r.patientCard || '—'}</td>
                 )}
@@ -214,7 +225,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     }}>
       <div style={{
         background: '#fff', borderRadius: 14, boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-        width: 'min(1100px, 96vw)', maxHeight: '85vh',
+        width: 'min(1500px, 98vw)', maxHeight: '90vh',
         display: 'flex', flexDirection: 'column',
         fontFamily: 'inherit',
       }}>
@@ -305,13 +316,15 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                         title="Выбрать / снять все"
                       />
                     </th>
-                    <th style={thStyle}>Дата</th>
+                    <th style={thStyle}>Дата выставления</th>
+                    {showPayDate      && <th style={thStyle}>Дата оплаты</th>}
+                    {showClinic       && <th style={thStyle}>Клиника</th>}
                     {showPatientCard  && <th style={thStyle}>№ карты</th>}
                     {showPatientName  && <th style={thStyle}>ФИО пациента</th>}
                     {showLegalCompany && <th style={thStyle}>Юр. компания</th>}
                     {showCode         && <th style={thStyle}>Код</th>}
                     <th style={thStyle}>Услуга</th>
-                    {showExecutor     && <th style={thStyle}>Исполнитель</th>}
+                    {showExecutor     && <th style={thStyle}>ФИО врача</th>}
                     <th style={thRStyle}>Сумма, ₽</th>
                   </tr>
                 </thead>
@@ -333,6 +346,12 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                           />
                         </td>
                         <td style={{ padding: '7px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.date || '—'}</td>
+                        {showPayDate && (
+                          <td style={{ padding: '7px 8px', color: '#64748b', whiteSpace: 'nowrap' }}>{r.payDate || '—'}</td>
+                        )}
+                        {showClinic && (
+                          <td style={{ padding: '7px 8px', color: '#334155', fontSize: 12, whiteSpace: 'nowrap' }}>{r.clinic || '—'}</td>
+                        )}
                         {showPatientCard && (
                           <td style={{ padding: '7px 8px', fontFamily: 'monospace', fontSize: 12, color: '#64748b', whiteSpace: 'nowrap' }}>{r.patientCard || '—'}</td>
                         )}
