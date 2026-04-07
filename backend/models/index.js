@@ -664,6 +664,11 @@ const PriceComparison = sequelize.define('PriceComparison', {
     type: DataTypes.UUID,
     comment: 'ID пользователя-создателя'
   },
+  comparisonType: {
+    type: DataTypes.STRING(20),
+    defaultValue: 'external',
+    comment: 'Тип сравнения: external (с конкурентами) или internal (внутреннее по клиникам)'
+  },
   competitors: {
     type: DataTypes.JSONB,
     defaultValue: [],
@@ -719,6 +724,11 @@ const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
     type: DataTypes.JSONB,
     defaultValue: {},
     comment: 'Себестоимость услуги по медцентрам: {"Альфа": 120, "Кидс": 100}'
+  },
+  lab: {
+    type: DataTypes.STRING(255),
+    defaultValue: '',
+    comment: 'Лаборатория, выполняющая анализ'
   },
   sortOrder: {
     type: DataTypes.INTEGER,

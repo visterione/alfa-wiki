@@ -29,10 +29,13 @@ async function recordHistory(pageSlug, userId, summary, changes = []) {
 // ═══════════════════════════════════════════════════════════════
 router.get('/', authenticate, async (req, res) => {
   try {
+    const where = { createdBy: req.user.id };
+    if (req.query.type) where.comparisonType = req.query.type;
+
     const comparisons = await PriceComparison.findAll({
-      where: { createdBy: req.user.id },
+      where,
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'name', 'description', 'competitors', 'ownMedCenters', 'createdAt', 'updatedAt']
+      attributes: ['id', 'name', 'description', 'competitors', 'ownMedCenters', 'comparisonType', 'createdAt', 'updatedAt']
     });
 
     res.json(comparisons);
@@ -58,7 +61,7 @@ router.get('/:id', authenticate, async (req, res) => {
         {
           model: PriceComparisonItem,
           as: 'items',
-          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'costPrices', 'sortOrder'],
+          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'costPrices', 'lab', 'sortOrder'],
           order: [['sortOrder', 'ASC']]
         }
       ]
@@ -96,7 +99,8 @@ router.post('/',
         name,
         description = '',
         ownMedCenters = [],
-        competitors = []
+        competitors = [],
+        comparisonType = 'external'
       } = req.body;
 
       const comparison = await PriceComparison.create({
@@ -104,6 +108,7 @@ router.post('/',
         description,
         ownMedCenters,
         competitors,
+        comparisonType,
         createdBy: req.user.id
       });
 
@@ -243,7 +248,8 @@ router.post('/:id/items',
         serviceName,
         misServiceId = null,
         prices = {},
-        costPrices = {}
+        costPrices = {},
+        lab = ''
       } = req.body;
 
       // Проверяем, что сравнение принадлежит пользователю
@@ -270,6 +276,7 @@ router.post('/:id/items',
         misServiceId,
         prices,
         costPrices,
+        lab,
         sortOrder: maxSortOrder + 1
       });
 
@@ -305,7 +312,7 @@ router.put('/:id/items/:itemId',
 
     try {
       const { id, itemId } = req.params;
-      const { prices, serviceCode, serviceName, costPrices } = req.body;
+      const { prices, serviceCode, serviceName, costPrices, lab } = req.body;
 
       // Проверяем, что сравнение принадлежит пользователю
       const comparison = await PriceComparison.findOne({
@@ -366,6 +373,7 @@ router.put('/:id/items/:itemId',
         updateData.costPrices = costPrices;
         item.changed('costPrices', true);
       }
+      if (lab !== undefined) updateData.lab = lab;
 
       await item.update(updateData);
 

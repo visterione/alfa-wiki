@@ -380,11 +380,11 @@ router.post('/search-mis', authenticate, async (req, res) => {
     // Фильтруем и форматируем результаты
     const services = data.data.map(service => ({
       service_id: service.service_id,
-      code: service.code || service.sub_code || '',
-      oms_code: service.oms_code || service.sub_code || '',
+      code: service.code || '',
+      oms_code: service.sub_code || '',
       title: service.title,
       price: parseFloat(service.price) || 0,
-      cost_price: parseFloat(service.cost_price) || 0,
+      cost_price: parseFloat(service.original_price) || 0,
       category: service.category_title || '',
       lab: service.lab || '',
       preparation: service.preparation || ''

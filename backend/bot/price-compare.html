@@ -1068,7 +1068,7 @@ window.priceApp = (function() {
 
   // === ЗАГРУЗКА ДАННЫХ ===
   function loadComparisons() {
-    fetchAPI(API_URL).then(function(comparisons) {
+    fetchAPI(API_URL + '?type=external').then(function(comparisons) {
       var selector = document.getElementById('comparison-selector');
       selector.innerHTML = '<option value="">Создать новую страницу...</option>';
 
@@ -1428,6 +1428,7 @@ window.priceApp = (function() {
       body: JSON.stringify({
         name: name,
         description: description,
+        comparisonType: 'external',
         ownMedCenters: [],
         competitors: []
       })
