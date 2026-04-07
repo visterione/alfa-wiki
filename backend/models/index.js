@@ -715,6 +715,11 @@ const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
     defaultValue: {},
     comment: 'История изменений цен: {"Неомед": [{price: 330, userId: "uuid", username: "Иванов И.И.", changedAt: "2026-02-06T10:00:00Z"}]}'
   },
+  costPrices: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Себестоимость услуги по медцентрам: {"Альфа": 120, "Кидс": 100}'
+  },
   sortOrder: {
     type: DataTypes.INTEGER,
     defaultValue: 0,

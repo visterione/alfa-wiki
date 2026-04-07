@@ -58,7 +58,7 @@ router.get('/:id', authenticate, async (req, res) => {
         {
           model: PriceComparisonItem,
           as: 'items',
-          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'sortOrder'],
+          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'costPrices', 'sortOrder'],
           order: [['sortOrder', 'ASC']]
         }
       ]
@@ -226,7 +226,7 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.post('/:id/items',
   authenticate,
   [
-    body('serviceCode').notEmpty().withMessage('Код услуги обязателен'),
+    body('serviceCode').isString().withMessage('Код услуги должен быть строкой'),
     body('serviceName').notEmpty().withMessage('Название услуги обязательно'),
     body('prices').isObject().withMessage('prices должен быть объектом')
   ],
@@ -239,10 +239,11 @@ router.post('/:id/items',
     try {
       const { id } = req.params;
       const {
-        serviceCode,
+        serviceCode = '',
         serviceName,
         misServiceId = null,
-        prices = {}
+        prices = {},
+        costPrices = {}
       } = req.body;
 
       // Проверяем, что сравнение принадлежит пользователю
@@ -268,6 +269,7 @@ router.post('/:id/items',
         serviceName,
         misServiceId,
         prices,
+        costPrices,
         sortOrder: maxSortOrder + 1
       });
 
@@ -303,7 +305,7 @@ router.put('/:id/items/:itemId',
 
     try {
       const { id, itemId } = req.params;
-      const { prices, serviceCode, serviceName } = req.body;
+      const { prices, serviceCode, serviceName, costPrices } = req.body;
 
       // Проверяем, что сравнение принадлежит пользователю
       const comparison = await PriceComparison.findOne({
@@ -358,8 +360,12 @@ router.put('/:id/items/:itemId',
       // Явно помечаем что JSONB поля изменились
       item.changed('prices', true);
       item.changed('priceHistory', true);
-      if (serviceCode) updateData.serviceCode = serviceCode;
+      if (serviceCode !== undefined) updateData.serviceCode = serviceCode;
       if (serviceName) updateData.serviceName = serviceName;
+      if (costPrices !== undefined) {
+        updateData.costPrices = costPrices;
+        item.changed('costPrices', true);
+      }
 
       await item.update(updateData);
 

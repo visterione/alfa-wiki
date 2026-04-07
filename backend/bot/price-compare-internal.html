@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Внутреннее сравнение цен</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+</head>
+<body>
+<div id="price-app">
+
+<style>
+#price-app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px 40px;
+}
+
+.price-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.price-header-left {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex: 1;
+}
+
+.price-header-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.price-comparison-selector {
+  min-width: 250px;
+}
+
+.price-filters {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+  margin-bottom: 20px;
+}
+
+.price-search-box {
+  position: relative;
+  flex: 1;
+  min-width: 250px;
+}
+
+.price-search-box svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: #9ca3af;
+  pointer-events: none;
+}
+
+.price-search {
+  width: 100%;
+  padding: 10px 12px 10px 38px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.price-search:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.price-select {
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 150px;
+}
+
+.price-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.price-category-select {
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.price-category-select option {
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.price-category-select option[data-level="0"] {
+  font-weight: 600;
+  color: #1f2937;
+  background: #f9fafb;
+}
+
+.price-category-select option[data-level="1"] {
+  padding-left: 24px;
+  color: #374151;
+}
+
+.price-category-select option[data-level="2"] {
+  padding-left: 48px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.price-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.price-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+.price-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.price-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.price-btn-primary {
+  background: #3b82f6;
+  color: #fff;
+}
+
+.price-btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.price-btn-success {
+  background: #16a34a;
+  color: #fff;
+}
+
+.price-btn-success:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.price-btn-secondary {
+  background: #fff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+}
+
+.price-btn-secondary:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.price-btn svg { width: 18px; height: 18px; }
+
+/* Таблица */
+.price-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+
+.price-table-scroll {
+  overflow-x: auto;
+}
+
+.price-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.price-table th {
+  padding: 10px 12px;
+  text-align: center;
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 12px;
+  color: #4b5563;
+  border-bottom: 2px solid #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.price-table th.col-service { width: auto; text-align: left; }
+.price-table th.col-code { width: 110px; }
+.price-table th.col-actions { width: 70px; }
+.price-table th.col-clinic-group { min-width: 220px; border-left: 2px solid #e5e7eb; }
+.price-table th.col-sub { min-width: 90px; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; color: #6b7280; }
+.price-table th.col-diff { min-width: 70px; }
+.price-table th.hidden, .price-table td.hidden { display: none; }
+
+.price-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+  color: #374151;
+  vertical-align: middle;
+}
+
+.price-table td.center { text-align: center; }
+.price-table td.col-border-left { border-left: 2px solid #e5e7eb; }
+
+.price-table tr:hover { background: #f8fafc; }
+.price-table tr:last-child td { border-bottom: none; }
+
+/* Ячейки с ценой */
+.price-value {
+  font-weight: 600;
+  color: #16a34a;
+  display: block;
+}
+
+.cost-value {
+  font-size: 12px;
+  color: #6b7280;
+  display: block;
+  margin-top: 2px;
+}
+
+.price-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.price-diff {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.price-diff.positive {
+  color: #16a34a;
+  background: #dcfce7;
+}
+
+.price-diff.negative {
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.price-diff.neutral {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+/* Кнопки действий */
+.price-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.price-action-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  color: #6b7280;
+}
+
+.price-action-btn:hover { background: #e5e7eb; color: #374151; }
+.price-action-btn svg { width: 16px; height: 16px; }
+.price-action-btn.delete { color: #ef4444; }
+.price-action-btn.delete:hover { background: #fee2e2; }
+
+.price-loading, .price-empty { text-align: center; padding: 40px !important; color: #9ca3af; }
+
+/* Модальное окно */
+.price-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  backdrop-filter: blur(4px);
+}
+
+.price-modal-content {
+  background: #fff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  margin: 16px;
+}
+
+.price-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.price-modal-header h3 { margin: 0; font-size: 18px; font-weight: 600; color: #1f2937; }
+
+.price-modal-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: #f3f4f6;
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.price-modal-close:hover { background: #e5e7eb; }
+.price-modal-body { padding: 24px; }
+
+.price-form-group { margin-bottom: 20px; }
+
+.price-form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.price-form-group label span { color: #ef4444; margin-left: 2px; }
+
+.price-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: all 0.2s;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.price-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+}
+
+/* Поиск услуг */
+.price-mis-search {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.price-mis-search-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.price-mis-results {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.price-mis-result {
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.price-mis-result:hover { background: #f8fafc; }
+.price-mis-result:last-child { border-bottom: none; }
+
+.price-mis-result-title {
+  font-weight: 500;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.price-mis-result-meta {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.price-mis-result-price { color: #16a34a; font-weight: 600; }
+.price-mis-result-cost { color: #6b7280; font-weight: 500; }
+
+.price-mis-empty {
+  padding: 24px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+.price-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+/* Вкладки */
+.price-tab-btn {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  transition: all 0.2s;
+}
+
+.price-tab-btn:hover { color: #374151; }
+.price-tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+.price-tab-content { animation: fadeIn 0.2s ease-in; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* Toast */
+.price-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #fff;
+  padding: 16px 20px;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10001;
+  animation: slideIn 0.3s ease-out;
+  border-left: 4px solid #3b82f6;
+}
+
+.price-toast.success { border-left-color: #16a34a; }
+.price-toast.error { border-left-color: #ef4444; }
+.price-toast svg { width: 20px; height: 20px; flex-shrink: 0; }
+.price-toast.success svg { color: #16a34a; }
+.price-toast.error svg { color: #ef4444; }
+
+@keyframes slideIn {
+  from { transform: translateX(400px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Управление колонками */
+.columns-manager {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.columns-manager h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.columns-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.column-chip {
+  padding: 6px 12px;
+  background: #dbeafe;
+  border: 1px solid #3b82f6;
+  color: #1e40af;
+  border-radius: 6px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  padding-left: 28px;
+}
+
+.column-chip.hidden-col { opacity: 0.4; }
+
+.column-chip input[type="radio"] {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  opacity: 1;
+  margin: 0;
+}
+
+.column-chip button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Print styles */
+@media print {
+  @page { size: landscape; margin: 10mm; }
+
+  body * { visibility: hidden; }
+
+  #price-app, #price-app * { visibility: visible; }
+
+  #price-app {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+
+  .price-header, .price-filters, .price-modal, .price-toast,
+  .columns-manager, .price-table th.col-actions, .price-table td.col-actions {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  .price-table-container {
+    box-shadow: none;
+    border: 1px solid #000;
+    page-break-inside: avoid;
+  }
+
+  .price-table { width: 100%; border-collapse: collapse; }
+
+  .price-table th, .price-table td {
+    border: 1px solid #000 !important;
+    padding: 3px 5px !important;
+    font-size: 7.5pt !important;
+  }
+
+  .price-table th { background: #f0f0f0 !important; font-weight: bold !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  .price-diff {
+    font-size: 7pt !important;
+    padding: 1px 3px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .price-diff.positive { background: #dcfce7 !important; color: #16a34a !important; }
+  .price-diff.negative { background: #fee2e2 !important; color: #dc2626 !important; }
+  .price-table td.hidden, .price-table th.hidden { display: none !important; }
+}
+
+@media (max-width: 768px) {
+  .price-header { flex-direction: column; align-items: stretch; }
+  .price-header-right { justify-content: flex-start; }
+  .price-filters { flex-direction: column; }
+  .price-search-box { min-width: 100%; }
+  .price-select { min-width: 100%; }
+  #creation-date-display { font-size: 12px !important; margin-right: 0 !important; margin-bottom: 8px; }
+}
+</style>
+
+  <!-- Заголовок и управление -->
+  <div class="price-header">
+    <div class="price-header-left">
+      <select id="comparison-selector" class="price-select price-comparison-selector" onchange="priceApp.loadComparison()">
+        <option value="">Создать новую страницу...</option>
+      </select>
+      <button class="price-btn price-btn-primary" onclick="priceApp.openNewComparisonModal()">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+        Новая страница
+      </button>
+      <button class="price-btn price-btn-secondary" onclick="priceApp.deleteComparison()" id="delete-comparison-btn" disabled style="color: #ef4444;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        Удалить страницу
+      </button>
+    </div>
+    <div class="price-header-right">
+      <span id="creation-date-display" style="display:none; font-size:13px; color:#6b7280; white-space: nowrap;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px; height:14px; display:inline-block; vertical-align:middle; margin-right:4px;">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+        </svg>
+        <span id="creation-date-text"></span>
+      </span>
+      <button class="price-btn price-btn-success" onclick="priceApp.exportToExcel()" id="export-excel-btn" disabled>
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Excel
+      </button>
+    </div>
+  </div>
+
+  <!-- Управление колонками -->
+  <div id="columns-manager" class="columns-manager" style="display:none;">
+    <h4>Медицинские центры</h4>
+    <div class="columns-list" id="columns-list"></div>
+  </div>
+
+  <!-- Фильтры и поиск -->
+  <div class="price-filters" id="price-filters" style="display:none;">
+    <div class="price-search-box">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input type="text" id="filter-search" class="price-search" placeholder="Поиск по названию, коду 804н..." oninput="priceApp.filterTable()">
+    </div>
+    <button class="price-btn price-btn-primary" onclick="priceApp.openAddServiceModal()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+      Добавить услугу
+    </button>
+  </div>
+
+  <!-- Таблица -->
+  <div class="price-table-container" id="table-container">
+    <div class="price-table-scroll">
+      <table class="price-table">
+        <thead id="table-thead">
+          <tr id="table-header">
+            <th class="col-code" rowspan="2">Код 804н</th>
+            <th class="col-service" rowspan="2">Название услуги</th>
+            <th class="col-actions" rowspan="2"></th>
+          </tr>
+          <tr id="table-subheader"></tr>
+        </thead>
+        <tbody id="price-table-body">
+          <tr><td colspan="3" class="price-empty">Создайте сравнение или выберите существующее</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Модальное окно: Новая страница -->
+  <div id="new-comparison-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('new-comparison-modal')">
+    <div class="price-modal-content">
+      <div class="price-modal-header">
+        <h3>Новая страница</h3>
+        <button class="price-modal-close" onclick="priceApp.closeModal('new-comparison-modal')">&times;</button>
+      </div>
+      <form class="price-modal-body" onsubmit="priceApp.createComparison(event)">
+        <div class="price-form-group">
+          <label>Название <span>*</span></label>
+          <input type="text" id="new-comparison-name" required class="price-input" placeholder="Сравнение цен январь 2026">
+        </div>
+        <div class="price-form-group">
+          <label>Описание</label>
+          <textarea id="new-comparison-description" class="price-textarea" placeholder="Дополнительная информация..."></textarea>
+        </div>
+        <div class="price-form-actions">
+          <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.closeModal('new-comparison-modal')">Отмена</button>
+          <button type="submit" class="price-btn price-btn-primary">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+            Создать
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модальное окно: Добавить услугу -->
+  <div id="add-service-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-service-modal')">
+    <div class="price-modal-content">
+      <div class="price-modal-header">
+        <h3>Добавить услугу</h3>
+        <button class="price-modal-close" onclick="priceApp.closeModal('add-service-modal')">&times;</button>
+      </div>
+      <div class="price-modal-body">
+        <!-- Вкладки -->
+        <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
+          <button class="price-tab-btn active" onclick="priceApp.switchTab('search')" id="tab-search">Поиск услуги</button>
+          <button class="price-tab-btn" onclick="priceApp.switchTab('category')" id="tab-category">По категории</button>
+        </div>
+
+        <!-- Вкладка: Поиск -->
+        <div id="tab-content-search" class="price-tab-content">
+          <div class="price-mis-search">
+            <div class="price-mis-search-header">
+              <input type="text" id="mis-search-input" class="price-input" placeholder="Поиск услуги в МИС..." style="flex:1">
+              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.searchMIS()">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Найти
+              </button>
+            </div>
+            <div class="price-mis-results" id="mis-results" style="display:none">
+              <div class="price-mis-empty">Введите запрос и нажмите "Найти"</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Вкладка: По категории -->
+        <div id="tab-content-category" class="price-tab-content" style="display:none">
+          <div class="price-mis-search">
+            <div style="margin-bottom: 16px;">
+              <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: #374151;">Выберите категорию услуг</label>
+              <select id="category-select" class="price-select price-category-select" onchange="priceApp.onCategorySelected()">
+                <option value="">Загрузка категорий...</option>
+              </select>
+            </div>
+            <div id="category-info" style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; display: none;">
+              <div style="font-size: 13px; color: #0369a1;">
+                <strong>Выбрана категория:</strong> <span id="selected-category-name"></span>
+              </div>
+              <div style="font-size: 12px; color: #075985; margin-top: 4px;">
+                При нажатии кнопки будут загружены и добавлены все услуги из этой категории.
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.addAllCategoryServices()" id="add-category-btn" disabled>
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Добавить все услуги
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+window.priceApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/price-comparisons';
+  var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis';
+
+  var currentComparison = null;
+  var currentItems = [];
+  var allColumns = [];       // Только свои медцентры
+  var hiddenColumns = [];
+  var availableClinics = [];
+  var baseColumnName = null;
+
+  // === HELPERS ===
+  function getToken() { return localStorage.getItem('token'); }
+
+  function fetchAPI(url, options) {
+    options = options || {};
+    return fetch(url, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
+      return r.json();
+    });
+  }
+
+  function showToast(msg, type) {
+    var toast = document.createElement('div');
+    toast.className = 'price-toast' + (type ? ' ' + type : '');
+    var icon = type === 'success'
+      ? '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
+      : '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+    toast.innerHTML = icon + '<span>' + msg + '</span>';
+    document.body.appendChild(toast);
+    setTimeout(function() { toast.remove(); }, 3000);
+  }
+
+  function formatPrice(p) {
+    if (!p && p !== 0) return '—';
+    var v = parseFloat(p);
+    if (isNaN(v) || v === 0) return '—';
+    return v.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + '\u00a0\u20bd';
+  }
+
+  function calculateDiff(basePrice, comparePrice) {
+    if (!basePrice || !comparePrice) return { text: '—', className: 'neutral' };
+    var diff = (parseFloat(comparePrice) - parseFloat(basePrice)).toFixed(2);
+    var className = diff > 0 ? 'positive' : (diff < 0 ? 'negative' : 'neutral');
+    return { text: (diff > 0 ? '+' : '') + diff, className: className };
+  }
+
+  function closeModal(modalId) { document.getElementById(modalId).style.display = 'none'; }
+  function openModal(modalId) { document.getElementById(modalId).style.display = 'flex'; }
+
+  // === ЗАГРУЗКА ДАННЫХ ===
+  function loadComparisons() {
+    fetchAPI(API_URL).then(function(comparisons) {
+      var selector = document.getElementById('comparison-selector');
+      selector.innerHTML = '<option value="">Создать новую страницу...</option>';
+      comparisons.forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        selector.appendChild(opt);
+      });
+    }).catch(function(e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  function loadComparison() {
+    var comparisonId = document.getElementById('comparison-selector').value;
+
+    if (!comparisonId) {
+      currentComparison = null;
+      currentItems = [];
+      allColumns = [];
+      document.getElementById('columns-manager').style.display = 'none';
+      document.getElementById('price-filters').style.display = 'none';
+      document.getElementById('export-excel-btn').disabled = true;
+      document.getElementById('delete-comparison-btn').disabled = true;
+      document.getElementById('creation-date-display').style.display = 'none';
+      renderTable();
+      return;
+    }
+
+    fetchAPI(API_URL + '/' + comparisonId).then(function(comparison) {
+      currentComparison = comparison;
+      currentItems = comparison.items || [];
+
+      // Определяем медцентры из загруженных услуг (только свои — не конкуренты)
+      var ownMedCentersSet = {};
+      currentItems.forEach(function(item) {
+        if (item.prices) {
+          Object.keys(item.prices).forEach(function(clinicName) {
+            if ((comparison.competitors || []).indexOf(clinicName) < 0) {
+              ownMedCentersSet[clinicName] = true;
+            }
+          });
+        }
+      });
+
+      allColumns = Object.keys(ownMedCentersSet).map(function(mc) {
+        return { name: mc, type: 'own' };
+      });
+
+      document.getElementById('columns-manager').style.display = 'block';
+      document.getElementById('price-filters').style.display = 'flex';
+      document.getElementById('export-excel-btn').disabled = false;
+      document.getElementById('delete-comparison-btn').disabled = false;
+
+      if (comparison.createdAt) {
+        var d = new Date(comparison.createdAt);
+        document.getElementById('creation-date-text').textContent = d.toLocaleDateString('ru-RU', {
+          year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        document.getElementById('creation-date-display').style.display = 'inline-block';
+      } else {
+        document.getElementById('creation-date-display').style.display = 'none';
+      }
+
+      renderColumnsManager();
+      renderTable();
+    }).catch(function(e) {
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  // === РЕНДЕРИНГ ===
+  function renderColumnsManager() {
+    var list = document.getElementById('columns-list');
+    list.innerHTML = '';
+
+    if (!baseColumnName && allColumns.length > 0) {
+      baseColumnName = allColumns[0].name;
+    }
+
+    allColumns.forEach(function(col, idx) {
+      var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+      var isBase = col.name === baseColumnName;
+
+      var chip = document.createElement('div');
+      chip.className = 'column-chip' + (isHidden ? ' hidden-col' : '');
+      chip.style.cursor = 'pointer';
+      chip.onclick = function(e) {
+        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) return;
+        priceApp.toggleColumn(col.name);
+      };
+
+      var radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'base-column';
+      radio.checked = isBase;
+      radio.style.cssText = 'position:absolute;left:8px;top:50%;transform:translateY(-50%);cursor:pointer;width:14px;height:14px;opacity:1;margin:0;';
+      radio.onclick = function(e) {
+        e.stopPropagation();
+        priceApp.setBaseColumn(col.name);
+      };
+
+      var label = document.createElement('span');
+      label.textContent = col.name + (isBase ? ' (эталон)' : '');
+
+      var removeBtn = document.createElement('button');
+      removeBtn.innerHTML = '&times;';
+      removeBtn.onclick = function(e) {
+        e.stopPropagation();
+        priceApp.removeColumn(idx);
+      };
+
+      chip.appendChild(radio);
+      chip.appendChild(label);
+      chip.appendChild(removeBtn);
+      list.appendChild(chip);
+    });
+  }
+
+  function toggleColumn(columnName) {
+    var idx = hiddenColumns.indexOf(columnName);
+    if (idx >= 0) hiddenColumns.splice(idx, 1);
+    else hiddenColumns.push(columnName);
+    renderColumnsManager();
+    renderTable();
+  }
+
+  function setBaseColumn(columnName) {
+    baseColumnName = columnName;
+    renderColumnsManager();
+    renderTable();
+  }
+
+  // Упорядочить колонки: базовая первая
+  function getOrderedColumns() {
+    var base = null;
+    var others = [];
+    allColumns.forEach(function(col) {
+      if (col.name === baseColumnName) base = col;
+      else others.push(col);
+    });
+    var result = [];
+    if (base) result.push(base);
+    return result.concat(others);
+  }
+
+  function renderTable() {
+    var thead = document.getElementById('table-header');
+    var subheader = document.getElementById('table-subheader');
+    var tbody = document.getElementById('price-table-body');
+
+    // Базовые заголовки (colspan по всем видимым колонкам)
+    if (!currentComparison || allColumns.length === 0) {
+      thead.innerHTML =
+        '<th class="col-code" rowspan="2">Код 804н</th>' +
+        '<th class="col-service" rowspan="2">Название услуги</th>' +
+        '<th class="col-actions" rowspan="2"></th>';
+      subheader.innerHTML = '';
+      tbody.innerHTML = '<tr><td colspan="3" class="price-empty">Добавьте услуги для начала работы</td></tr>';
+      return;
+    }
+
+    var orderedColumns = getOrderedColumns();
+
+    // Считаем общее количество data-колонок (для colspan при пустой строке)
+    var totalDataCols = 0;
+    orderedColumns.forEach(function(col) {
+      var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+      if (!isHidden) {
+        var isBase = col.name === baseColumnName;
+        totalDataCols += isBase ? 2 : 3; // Цена + Себест. [+ Разница]
+      }
+    });
+
+    // Строка 1: названия клиник
+    var headerHtml = '<th class="col-code" rowspan="2">Код 804н</th>';
+    headerHtml += '<th class="col-service" rowspan="2">Название услуги</th>';
+
+    orderedColumns.forEach(function(col) {
+      var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+      var hiddenClass = isHidden ? ' hidden' : '';
+      var isBase = col.name === baseColumnName;
+      var colspan = isBase ? 2 : 3;
+      headerHtml += '<th class="col-clinic-group' + hiddenClass + '" colspan="' + colspan + '">' +
+        col.name + (isBase ? ' <span style="font-size:10px;font-weight:400;opacity:0.7">(эталон)</span>' : '') +
+        '</th>';
+    });
+
+    headerHtml += '<th class="col-actions" rowspan="2"></th>';
+    thead.innerHTML = headerHtml;
+
+    // Строка 2: подзаголовки
+    var subHtml = '';
+    orderedColumns.forEach(function(col) {
+      var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+      var hiddenClass = isHidden ? ' hidden' : '';
+      var isBase = col.name === baseColumnName;
+      subHtml += '<th class="col-sub' + hiddenClass + '">Цена</th>';
+      subHtml += '<th class="col-sub' + hiddenClass + '">Себест.</th>';
+      if (!isBase) {
+        subHtml += '<th class="col-sub col-diff' + hiddenClass + '">Разница</th>';
+      }
+    });
+    subheader.innerHTML = subHtml;
+
+    // Тело
+    var totalCols = 2 + totalDataCols + 1;
+
+    if (currentItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="price-empty">Нет услуг. Добавьте услугу для сравнения.</td></tr>';
+      return;
+    }
+
+    var filterText = document.getElementById('filter-search').value.toLowerCase();
+    var filteredItems = currentItems.filter(function(item) {
+      if (!filterText) return true;
+      return item.serviceName.toLowerCase().indexOf(filterText) >= 0 ||
+             (item.serviceCode || '').toLowerCase().indexOf(filterText) >= 0;
+    });
+
+    if (filteredItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="' + totalCols + '" class="price-empty">Ничего не найдено</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filteredItems.map(function(item) {
+      var html = '<tr data-item-id="' + item.id + '">';
+      html += '<td class="center">' + (item.serviceCode || '—') + '</td>';
+      html += '<td>' + item.serviceName + '</td>';
+
+      var basePrice = (item.prices && item.prices[baseColumnName]) || null;
+
+      orderedColumns.forEach(function(col) {
+        var isHidden = hiddenColumns.indexOf(col.name) >= 0;
+        var hiddenClass = isHidden ? ' hidden' : '';
+        var isBase = col.name === baseColumnName;
+        var price = (item.prices && item.prices[col.name]) || null;
+        var costPrice = (item.costPrices && item.costPrices[col.name]) || null;
+
+        // Цена
+        html += '<td class="center col-border-left' + hiddenClass + '">';
+        html += '<span class="price-value">' + formatPrice(price) + '</span>';
+        html += '</td>';
+
+        // Себестоимость
+        html += '<td class="center' + hiddenClass + '">';
+        html += '<span style="color:#6b7280; font-size:13px;">' + formatPrice(costPrice) + '</span>';
+        html += '</td>';
+
+        // Разница (только для не-эталонных)
+        if (!isBase) {
+          html += '<td class="center' + hiddenClass + '">';
+          if (basePrice && price) {
+            var diff = calculateDiff(basePrice, price);
+            html += '<span class="price-diff ' + diff.className + '">' + diff.text + '</span>';
+          } else {
+            html += '<span class="price-diff neutral">—</span>';
+          }
+          html += '</td>';
+        }
+      });
+
+      html += '<td class="center">';
+      html += '<div class="price-actions">';
+      html += '<button class="price-action-btn delete" onclick="priceApp.deleteItem(\'' + item.id + '\')" title="Удалить">';
+      html += '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>';
+      html += '</button>';
+      html += '</div>';
+      html += '</td>';
+      html += '</tr>';
+      return html;
+    }).join('');
+  }
+
+  function filterTable() { renderTable(); }
+
+  // === СОЗДАНИЕ/УДАЛЕНИЕ СРАВНЕНИЯ ===
+  function openNewComparisonModal() {
+    document.getElementById('new-comparison-name').value = '';
+    document.getElementById('new-comparison-description').value = '';
+    openModal('new-comparison-modal');
+  }
+
+  function createComparison(e) {
+    e.preventDefault();
+    var name = document.getElementById('new-comparison-name').value;
+    var description = document.getElementById('new-comparison-description').value;
+
+    fetchAPI(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ name: name, description: description, ownMedCenters: [], competitors: [] })
+    }).then(function(comparison) {
+      showToast('Страница создана', 'success');
+      closeModal('new-comparison-modal');
+      loadComparisons();
+      document.getElementById('comparison-selector').value = comparison.id;
+      loadComparison();
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  function deleteComparison() {
+    if (!currentComparison || !confirm('Удалить страницу "' + currentComparison.name + '"?')) return;
+    fetchAPI(API_URL + '/' + currentComparison.id, { method: 'DELETE' }).then(function() {
+      showToast('Страница удалена', 'success');
+      document.getElementById('comparison-selector').value = '';
+      loadComparisons();
+      loadComparison();
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // === УПРАВЛЕНИЕ КОЛОНКАМИ ===
+  function loadClinics() {
+    fetchAPI(MIS_URL + '/get-clinics', { method: 'POST', body: JSON.stringify({}) })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || !res.data.length) return;
+      availableClinics = res.data;
+      console.log('✅ Загружено клиник:', availableClinics.length);
+    })
+    .catch(function(e) { console.error('Ошибка загрузки клиник:', e); });
+  }
+
+  function removeColumn(idx) {
+    if (!currentComparison || !confirm('Удалить колонку?')) return;
+
+    var col = allColumns[idx];
+    if (col.name === baseColumnName) {
+      for (var i = 0; i < allColumns.length; i++) {
+        if (allColumns[i].name !== col.name) { baseColumnName = allColumns[i].name; break; }
+      }
+    }
+
+    // Удаляем цены из всех услуг
+    var promises = currentItems
+      .filter(function(item) { return item.prices && item.prices[col.name] !== undefined; })
+      .map(function(item) {
+        var newPrices = Object.assign({}, item.prices);
+        var newCostPrices = Object.assign({}, item.costPrices || {});
+        delete newPrices[col.name];
+        delete newCostPrices[col.name];
+        return fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + item.id, {
+          method: 'PUT',
+          body: JSON.stringify({ prices: newPrices, costPrices: newCostPrices })
+        });
+      });
+
+    Promise.all(promises).then(function() {
+      showToast('Колонка удалена', 'success');
+      loadComparison();
+    }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // === ПОИСК В МИС ===
+  function openAddServiceModal() {
+    if (!currentComparison) { showToast('Сначала создайте сравнение', 'error'); return; }
+    document.getElementById('mis-search-input').value = '';
+    document.getElementById('mis-results').style.display = 'none';
+    document.getElementById('category-select').value = '';
+    document.getElementById('category-info').style.display = 'none';
+    document.getElementById('add-category-btn').disabled = true;
+    if (document.getElementById('category-select').options.length <= 1) loadCategories();
+    openModal('add-service-modal');
+  }
+
+  function switchTab(tabName) {
+    document.getElementById('tab-search').classList.remove('active');
+    document.getElementById('tab-category').classList.remove('active');
+    document.getElementById('tab-' + tabName).classList.add('active');
+    document.getElementById('tab-content-search').style.display = tabName === 'search' ? 'block' : 'none';
+    document.getElementById('tab-content-category').style.display = tabName === 'category' ? 'block' : 'none';
+  }
+
+  function loadCategories() {
+    var select = document.getElementById('category-select');
+    select.innerHTML = '<option value="">Загрузка категорий...</option>';
+
+    fetchAPI(MIS_URL + '/get-service-categories', { method: 'POST', body: JSON.stringify({}) })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || !res.data.length) {
+        select.innerHTML = '<option value="">Категории не найдены</option>';
+        return;
+      }
+      select.innerHTML = '<option value="">Выберите категорию...</option>';
+      function addCategories(cats, level) {
+        level = level || 0;
+        cats.forEach(function(cat) {
+          var opt = document.createElement('option');
+          opt.value = cat.id;
+          var indent = level === 0 ? '' : '\u3000'.repeat(level);
+          opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
+          opt.setAttribute('data-count', cat.services_count || 0);
+          opt.setAttribute('data-level', level);
+          opt.setAttribute('data-name', cat.title);
+          select.appendChild(opt);
+          if (cat.children && cat.children.length) addCategories(cat.children, level + 1);
+        });
+      }
+      addCategories(res.data);
+    })
+    .catch(function(e) {
+      showToast('Ошибка загрузки категорий: ' + e.message, 'error');
+      select.innerHTML = '<option value="">Ошибка загрузки</option>';
+    });
+  }
+
+  function onCategorySelected() {
+    var select = document.getElementById('category-select');
+    var categoryId = select.value;
+    var infoDiv = document.getElementById('category-info');
+    var addBtn = document.getElementById('add-category-btn');
+
+    if (!categoryId) { infoDiv.style.display = 'none'; addBtn.disabled = true; return; }
+
+    var selectedOption = select.options[select.selectedIndex];
+    document.getElementById('selected-category-name').textContent =
+      selectedOption.getAttribute('data-name') || selectedOption.textContent;
+    infoDiv.style.display = 'block';
+    addBtn.disabled = false;
+  }
+
+  function addAllCategoryServices() {
+    if (!currentComparison) { showToast('Сначала создайте сравнение', 'error'); return; }
+    var categoryId = document.getElementById('category-select').value;
+    if (!categoryId) { showToast('Выберите категорию', 'error'); return; }
+    if (!availableClinics.length) { showToast('Загрузка списка клиник...', 'error'); return; }
+
+    var addBtn = document.getElementById('add-category-btn');
+    addBtn.disabled = true;
+    addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Загрузка услуг...';
+
+    // Загружаем услуги для каждой клиники
+    var clinicRequests = availableClinics.map(function(clinic) {
+      return fetchAPI(MIS_URL + '/get-services', {
+        method: 'POST',
+        body: JSON.stringify({ category_id: categoryId, show_children: true, clinic_id: clinic.id })
+      }).then(function(res) {
+        return { clinicName: clinic.title, success: res.error === 0, data: res.data || [] };
+      }).catch(function() {
+        return { clinicName: clinic.title, success: false, data: [] };
+      });
+    });
+
+    Promise.all(clinicRequests).then(function(results) {
+      // Объединяем услуги по service_id
+      var servicesMap = {};
+
+      results.forEach(function(result) {
+        if (!result.success) return;
+        result.data.forEach(function(service) {
+          var serviceId = service.service_id || service.code;
+          if (!servicesMap[serviceId]) {
+            servicesMap[serviceId] = {
+              service_id: service.service_id,
+              oms_code: service.oms_code || service.sub_code || '',
+              title: service.title,
+              prices: {},
+              costPrices: {}
+            };
+          }
+          servicesMap[serviceId].prices[result.clinicName] = parseFloat(service.price) || 0;
+          servicesMap[serviceId].costPrices[result.clinicName] = parseFloat(service.cost_price) || 0;
+        });
+      });
+
+      var services = Object.values(servicesMap);
+
+      if (!services.length) {
+        showToast('В категории нет услуг', 'error');
+        addBtn.disabled = false;
+        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+        return;
+      }
+
+      addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавление ' + services.length + ' услуг...';
+
+      var addedCount = 0, errorCount = 0;
+      var promises = services.map(function(service) {
+        return fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
+          method: 'POST',
+          body: JSON.stringify({
+            serviceCode: service.oms_code || '',
+            serviceName: service.title,
+            misServiceId: service.service_id,
+            prices: service.prices,
+            costPrices: service.costPrices
+          })
+        }).then(function() { addedCount++; }).catch(function(e) {
+          errorCount++;
+          console.error('Ошибка добавления услуги:', service.title, e);
+        });
+      });
+
+      Promise.all(promises).then(function() {
+        if (addedCount > 0) showToast('Добавлено услуг: ' + addedCount, 'success');
+        if (errorCount > 0) showToast('Ошибок при добавлении: ' + errorCount, 'error');
+        closeModal('add-service-modal');
+        loadComparison();
+        addBtn.disabled = false;
+        addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+      });
+    }).catch(function(e) {
+      showToast('Ошибка загрузки услуг: ' + e.message, 'error');
+      addBtn.disabled = false;
+      addBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить все услуги';
+    });
+  }
+
+  function searchMIS() {
+    var term = document.getElementById('mis-search-input').value;
+    if (!term || term.length < 2) { showToast('Минимум 2 символа для поиска', 'error'); return; }
+
+    var resultsDiv = document.getElementById('mis-results');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="price-mis-empty">Поиск...</div>';
+
+    fetchAPI(MIS_URL + '/search-mis', { method: 'POST', body: JSON.stringify({ term: term }) })
+    .then(function(res) {
+      if (!res.success || !res.data || !res.data.length) {
+        resultsDiv.innerHTML = '<div class="price-mis-empty">Ничего не найдено</div>';
+        return;
+      }
+
+      resultsDiv.innerHTML = res.data.map(function(s) {
+        var omsCode = (s.oms_code || '').replace(/'/g, "\\'");
+        var title = (s.title || '').replace(/'/g, "\\'");
+        var serviceId = s.service_id || '';
+
+        return '<div class="price-mis-result" onclick="priceApp.selectMISService(\'' +
+          serviceId + "','" + omsCode + "','" + title + "'," + (s.price || 0) + ',' + (s.cost_price || 0) +
+          ')">' +
+          '<div class="price-mis-result-title">' + s.title + '</div>' +
+          '<div class="price-mis-result-meta">' +
+            '804н: ' + (s.oms_code || '—') + ' | ' +
+            '<span class="price-mis-result-price">' + formatPrice(s.price) + '</span>' +
+            (s.cost_price ? ' | Себест.: <span class="price-mis-result-cost">' + formatPrice(s.cost_price) + '</span>' : '') +
+            (s.category ? ' | ' + s.category : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+    })
+    .catch(function(e) {
+      resultsDiv.innerHTML = '<div class="price-mis-empty">Ошибка поиска</div>';
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  function selectMISService(serviceId, omsCode, title, defaultPrice, defaultCostPrice) {
+    if (!currentComparison) return;
+    if (!availableClinics.length) { showToast('Загрузка списка клиник...', 'error'); return; }
+
+    // Загружаем цены для каждой клиники
+    var clinicRequests = availableClinics.map(function(clinic) {
+      return fetchAPI(MIS_URL + '/get-services', {
+        method: 'POST',
+        body: JSON.stringify({ service_id: serviceId, clinic_id: clinic.id })
+      }).then(function(res) {
+        var serviceData = (res.error === 0 && res.data && res.data[0]) ? res.data[0] : null;
+        return {
+          clinicName: clinic.title,
+          price: serviceData ? (parseFloat(serviceData.price) || defaultPrice) : defaultPrice,
+          costPrice: serviceData ? (parseFloat(serviceData.cost_price) || defaultCostPrice) : defaultCostPrice
+        };
+      }).catch(function() {
+        return { clinicName: clinic.title, price: defaultPrice, costPrice: defaultCostPrice };
+      });
+    });
+
+    Promise.all(clinicRequests).then(function(results) {
+      var prices = {};
+      var costPrices = {};
+      results.forEach(function(r) {
+        prices[r.clinicName] = r.price;
+        costPrices[r.clinicName] = r.costPrice;
+      });
+
+      fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          serviceCode: omsCode || '',
+          serviceName: title,
+          misServiceId: serviceId,
+          prices: prices,
+          costPrices: costPrices
+        })
+      }).then(function() {
+        showToast('Услуга добавлена', 'success');
+        closeModal('add-service-modal');
+        loadComparison();
+      }).catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+    });
+  }
+
+  // === УДАЛЕНИЕ УСЛУГИ ===
+  function deleteItem(itemId) {
+    if (!currentComparison || !confirm('Удалить услугу?')) return;
+    fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + itemId, { method: 'DELETE' })
+    .then(function() { showToast('Услуга удалена', 'success'); loadComparison(); })
+    .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // === ЭКСПОРТ В EXCEL ===
+  function exportToExcel() {
+    if (!currentComparison || !allColumns.length || !currentItems.length) {
+      showToast('Нечего экспортировать', 'error');
+      return;
+    }
+
+    var ExcelJS = window.ExcelJS;
+    if (!ExcelJS) { showToast('Библиотека ExcelJS не загружена', 'error'); return; }
+
+    var workbook = new ExcelJS.Workbook();
+    var worksheet = workbook.addWorksheet('Сравнение цен');
+
+    var borderStyle = {
+      top: { style: 'thin', color: { argb: 'FF000000' } },
+      left: { style: 'thin', color: { argb: 'FF000000' } },
+      bottom: { style: 'thin', color: { argb: 'FF000000' } },
+      right: { style: 'thin', color: { argb: 'FF000000' } }
+    };
+
+    if (currentComparison.createdAt) {
+      var createdDate = new Date(currentComparison.createdAt);
+      var dateRow = worksheet.addRow(['Дата создания:', createdDate.toLocaleDateString('ru-RU', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      })]);
+      dateRow.getCell(1).font = { bold: true };
+      worksheet.addRow([]);
+    }
+
+    var visibleColumns = getOrderedColumns().filter(function(col) {
+      return hiddenColumns.indexOf(col.name) < 0;
+    });
+
+    // Строка 1: названия клиник
+    var headerRow1 = ['Код 804н', 'Название услуги'];
+    visibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      headerRow1.push(col.name + (isBase ? ' (эталон)' : ''));
+      headerRow1.push('');      // себестоимость
+      if (!isBase) headerRow1.push(''); // разница
+    });
+
+    // Строка 2: подзаголовки
+    var headerRow2 = ['', ''];
+    visibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      headerRow2.push('Цена');
+      headerRow2.push('Себест.');
+      if (!isBase) headerRow2.push('Разница');
+    });
+
+    var r1 = worksheet.addRow(headerRow1);
+    var r1Num = r1.number;
+    var r2 = worksheet.addRow(headerRow2);
+
+    // Объединение ячеек
+    // Kod 804н: rowspan 2
+    worksheet.mergeCells('A' + r1Num + ':A' + (r1Num + 1));
+    worksheet.mergeCells('B' + r1Num + ':B' + (r1Num + 1));
+
+    var currentColIdx = 3;
+    visibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      var span = isBase ? 2 : 3;
+      var startLetter = colToLetter(currentColIdx);
+      var endLetter = colToLetter(currentColIdx + span - 1);
+      if (span > 1) {
+        worksheet.mergeCells(startLetter + r1Num + ':' + endLetter + r1Num);
+      }
+      currentColIdx += span;
+    });
+
+    // Стили заголовков
+    var headerFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    var headerFont = { bold: true };
+    var headerAlign = { vertical: 'middle', horizontal: 'center' };
+
+    [r1Num, r1Num + 1].forEach(function(rowNum) {
+      var row = worksheet.getRow(rowNum);
+      row.eachCell(function(cell) {
+        cell.fill = headerFill;
+        cell.font = headerFont;
+        cell.alignment = headerAlign;
+        cell.border = borderStyle;
+      });
+      row.height = 18;
+    });
+
+    // Данные
+    currentItems.forEach(function(item) {
+      var row = [item.serviceCode || '', item.serviceName];
+      var rowData = [];
+
+      var basePriceValue = item.prices && item.prices[baseColumnName] ? parseFloat(item.prices[baseColumnName]) : null;
+
+      visibleColumns.forEach(function(col) {
+        var isBase = col.name === baseColumnName;
+        var price = item.prices && item.prices[col.name] ? parseFloat(item.prices[col.name]) : null;
+        var costPrice = item.costPrices && item.costPrices[col.name] ? parseFloat(item.costPrices[col.name]) : null;
+
+        row.push(price || '');
+        rowData.push({ type: 'price' });
+
+        row.push(costPrice || '');
+        rowData.push({ type: 'cost' });
+
+        if (!isBase) {
+          var diffValue = null;
+          var diffText = '-';
+          if (basePriceValue && price) {
+            diffValue = parseFloat((price - basePriceValue).toFixed(2));
+            diffText = (diffValue > 0 ? '+' : '') + diffValue;
+          }
+          row.push(diffText);
+          rowData.push({ type: 'diff', value: diffValue });
+        }
+      });
+
+      var addedRow = worksheet.addRow(row);
+      addedRow.eachCell({ includeEmpty: true }, function(cell, colNumber) {
+        cell.border = borderStyle;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (colNumber === 2) cell.alignment = { vertical: 'middle', horizontal: 'left' };
+
+        var dataIdx = colNumber - 3;
+        if (dataIdx >= 0 && dataIdx < rowData.length && rowData[dataIdx].type === 'diff') {
+          var dv = rowData[dataIdx].value;
+          if (dv !== null && !isNaN(dv)) {
+            if (dv > 0) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+              cell.font = { color: { argb: 'FF16A34A' }, bold: true };
+            } else if (dv < 0) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+              cell.font = { color: { argb: 'FFDC2626' }, bold: true };
+            }
+          }
+        }
+
+        if (dataIdx >= 0 && dataIdx < rowData.length && rowData[dataIdx].type === 'cost') {
+          cell.font = { color: { argb: 'FF6B7280' } };
+        }
+      });
+    });
+
+    // Автоширина
+    worksheet.columns.forEach(function(column) {
+      var maxLength = 8;
+      column.eachCell({ includeEmpty: true }, function(cell) {
+        if (cell.value) {
+          var l = cell.value.toString().length;
+          if (l > maxLength) maxLength = l;
+        }
+      });
+      column.width = Math.min(maxLength + 2, 50);
+    });
+
+    workbook.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = currentComparison.name + '.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Excel файл создан', 'success');
+    }).catch(function(e) { showToast('Ошибка экспорта: ' + e.message, 'error'); });
+  }
+
+  function colToLetter(n) {
+    var result = '';
+    while (n > 0) {
+      var rem = (n - 1) % 26;
+      result = String.fromCharCode(65 + rem) + result;
+      n = Math.floor((n - 1) / 26);
+    }
+    return result;
+  }
+
+  // === INIT ===
+  if (!getToken()) {
+    document.getElementById('price-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
+  } else {
+    loadComparisons();
+    loadClinics();
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeModal('new-comparison-modal');
+        closeModal('add-service-modal');
+      }
+    });
+  }
+
+  return {
+    loadComparisons: loadComparisons,
+    loadComparison: loadComparison,
+    openNewComparisonModal: openNewComparisonModal,
+    createComparison: createComparison,
+    deleteComparison: deleteComparison,
+    removeColumn: removeColumn,
+    toggleColumn: toggleColumn,
+    setBaseColumn: setBaseColumn,
+    openAddServiceModal: openAddServiceModal,
+    searchMIS: searchMIS,
+    selectMISService: selectMISService,
+    deleteItem: deleteItem,
+    filterTable: filterTable,
+    exportToExcel: exportToExcel,
+    closeModal: closeModal,
+    switchTab: switchTab,
+    onCategorySelected: onCategorySelected,
+    addAllCategoryServices: addAllCategoryServices
+  };
+})();
+</script>
+
+</body>
+</html>
