@@ -165,7 +165,9 @@ export async function buildReport({
       const isEmployee = categoryVal.includes('СОТРУДНИК');
       if (isVip || isEmployee) {
         const discountRaw = String(r[colMap.discount] || '').replace('%', '').trim();
-        const discountVal = parseFloat(discountRaw.replace(',', '.')) || 0;
+        const discountRawVal = parseFloat(discountRaw.replace(',', '.')) || 0;
+        // Excel хранит проценты как десятичные дроби (50% → 0.5, 100% → 1.0)
+        const discountVal = (discountRawVal > 0 && discountRawVal <= 1) ? discountRawVal * 100 : discountRawVal;
         if (discountVal === 50 || discountVal >= 100) {
           const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
           return price * 0.70;
