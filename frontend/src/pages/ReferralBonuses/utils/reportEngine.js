@@ -207,18 +207,20 @@ export async function buildReport({
   console.log('[RB DEBUG] colMap.date:', colMap.date, '| colMap.invoiceCreatedDate:', colMap.invoiceCreatedDate);
   console.log('[RB DEBUG] allRelevant:', allRelevant.length, 'из', rows.length);
   {
-    const corpFiltered = allRelevant.filter(r => {
-      const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
-      return t === 'юр. компания' || t === 'юр.компания';
+    // Ищем строки с Макаровым И 100% скидкой по всему файлу
+    const disc100All = rows.filter(r => {
+      const execName = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+      if (!rbNamesMatch(doctorName, execName)) return false;
+      const discRaw = String(r[colMap.discount] || '').replace('%','').trim();
+      const discVal = parseFloat(discRaw.replace(',','.')) || 0;
+      const normalized = (discVal > 0 && discVal <= 1) ? discVal * 100 : discVal;
+      return normalized >= 100;
     });
-    const vipFiltered = allRelevant.filter(r => {
-      const cat = String(r[colMap.category] || '').toUpperCase();
-      return cat.includes('VIP') || cat.includes('СОТРУДНИК');
-    });
-    console.log('[RB DEBUG] юр.компания в allRelevant:', corpFiltered.length);
-    console.log('[RB DEBUG] VIP/Сотрудник в allRelevant:', vipFiltered.length);
-    vipFiltered.forEach((r, i) => {
-      console.log(`[RB DEBUG] VIP row ${i}:`, r[colMap.date], '| скидка:', r[colMap.discount], '| итог:', r[colMap.totalCost], '| кат:', r[colMap.category]);
+    console.log('[RB DEBUG] Строк с Макаровым И скидка≥100% во всём файле:', disc100All.length);
+    disc100All.forEach((r, i) => {
+      const payDate = r[colMap.date];
+      const inRange = rbRowInDateRange(r);
+      console.log(`[RB DEBUG] 100% row ${i}: оплата="${payDate}" | inRange=${inRange} | кат="${r[colMap.category]}" | итог=${r[colMap.totalCost]}`);
     });
   }
   // END DEBUG
