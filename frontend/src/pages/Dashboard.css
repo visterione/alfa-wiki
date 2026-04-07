@@ -13,7 +13,7 @@
 
 /* ========== SIDEBAR ========== */
 .chat-sidebar {
-  width: 340px;
+  width: 410px;
   border-right: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
@@ -196,26 +196,14 @@
   min-width: 0;
 }
 
-.chat-item.has-unread .chat-item-content {
-  padding-right: 40px;
-}
-
-.chat-item-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
-}
-
 .chat-item-name {
   font-weight: 500;
   font-size: 15px;
   color: var(--text-primary);
-}
-
-.chat-item-time {
-  font-size: 12px;
-  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
 }
 
 .chat-item-preview {
@@ -226,11 +214,30 @@
   text-overflow: ellipsis;
 }
 
+.chat-item-right {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 36px;
+}
+
+.chat-item-time {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.chat-item-right-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 20px;
+}
+
 .chat-item-unread {
-  position: absolute;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
   min-width: 20px;
   height: 20px;
   padding: 0 6px;
@@ -243,6 +250,25 @@
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* ========== MUTED CHATS ========== */
+.chat-item.muted.has-unread {
+  background: transparent;
+}
+
+.chat-item.muted.has-unread .chat-item-name {
+  font-weight: 500;
+}
+
+.chat-item.muted.has-unread .chat-item-preview {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.chat-item.muted .chat-item-unread {
+  background: var(--text-tertiary);
+  box-shadow: none;
 }
 
 /* ========== PINNED CHATS ========== */
@@ -269,9 +295,6 @@
 }
 
 .chat-item-pin-icon {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   color: var(--text-tertiary);
   display: flex;
   align-items: center;
@@ -279,9 +302,6 @@
 }
 
 .chat-item-mute-icon {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
   color: var(--text-tertiary);
   display: flex;
   align-items: center;

@@ -1199,7 +1199,7 @@ export default function Dashboard() {
               const renderChatItem = (chatItem, { draggable: isDraggable = false, searchTerm = '' } = {}) => (
                 <div
                   key={chatItem.id}
-                  className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''} ${chatItem.isPinned && !searchQuery.trim() ? 'pinned' : ''}`}
+                  className={`chat-item ${activeChat?.id === chatItem.id ? 'active' : ''} ${chatItem.unreadCount > 0 ? 'has-unread' : ''} ${chatItem.isPinned && !searchQuery.trim() ? 'pinned' : ''} ${chatItem.isNotificationMuted ? 'muted' : ''}`}
                   onClick={() => handleSelectChat(chatItem, searchTerm)}
                   onContextMenu={(e) => handleChatContextMenu(e, chatItem)}
                   draggable={isDraggable}
@@ -1215,12 +1215,17 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="chat-item-content">
-                    <div className="chat-item-header"><div className="chat-item-name">{chatItem.displayName}</div><div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div></div>
+                    <div className="chat-item-name">{chatItem.displayName}</div>
                     <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
                   </div>
-                  {chatItem.isPinned && !searchQuery.trim() && <span className="chat-item-pin-icon"><Pin size={12} /></span>}
-                  {chatItem.isNotificationMuted && <span className="chat-item-mute-icon"><VolumeX size={12} /></span>}
-                  {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
+                  <div className="chat-item-right">
+                    <div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div>
+                    <div className="chat-item-right-meta">
+                      {chatItem.isPinned && !searchQuery.trim() && <span className="chat-item-pin-icon"><Pin size={12} /></span>}
+                      {chatItem.isNotificationMuted && <span className="chat-item-mute-icon"><VolumeX size={12} /></span>}
+                      {chatItem.unreadCount > 0 && <div className="chat-item-unread">{chatItem.unreadCount > 99 ? '99+' : chatItem.unreadCount}</div>}
+                    </div>
+                  </div>
                 </div>
               );
 

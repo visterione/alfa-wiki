@@ -247,8 +247,10 @@ export function SocketProvider({ children }) {
         setNotifications(prev => [...prev, notification]);
       }
 
-      // Start title blinking for new message
-      startTitleBlink();
+      // Start title blinking for new message (skip if chat is muted)
+      if (!isMuted) {
+        startTitleBlink();
+      }
 
       // Native desktop notification + taskbar badge (Tauri only, only when window not focused)
       if (!document.hasFocus()) {
