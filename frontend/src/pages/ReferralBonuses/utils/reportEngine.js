@@ -202,28 +202,6 @@ export async function buildReport({
     if (!isRef && !isExec) return false;
     return rbRowInDateRange(r);
   });
-  // DEBUG
-  console.log('[RB DEBUG] doctorName:', doctorName);
-  console.log('[RB DEBUG] colMap.date:', colMap.date, '| colMap.invoiceCreatedDate:', colMap.invoiceCreatedDate);
-  console.log('[RB DEBUG] allRelevant:', allRelevant.length, 'из', rows.length);
-  {
-    // Ищем строки с Макаровым И 100% скидкой по всему файлу
-    const disc100All = rows.filter(r => {
-      const execName = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
-      if (!rbNamesMatch(doctorName, execName)) return false;
-      const discRaw = String(r[colMap.discount] || '').replace('%','').trim();
-      const discVal = parseFloat(discRaw.replace(',','.')) || 0;
-      const normalized = (discVal > 0 && discVal <= 1) ? discVal * 100 : discVal;
-      return normalized >= 100;
-    });
-    console.log('[RB DEBUG] Строк с Макаровым И скидка≥100% во всём файле:', disc100All.length);
-    disc100All.forEach((r, i) => {
-      const payDate = r[colMap.date];
-      const inRange = rbRowInDateRange(r);
-      console.log(`[RB DEBUG] 100% row ${i}: оплата="${payDate}" | inRange=${inRange} | кат="${r[colMap.category]}" | итог=${r[colMap.totalCost]}`);
-    });
-  }
-  // END DEBUG
 
   if (!allRelevant.length && !normedOnly) {
     throw new Error(

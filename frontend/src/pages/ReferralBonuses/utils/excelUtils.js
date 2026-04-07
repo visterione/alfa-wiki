@@ -6,8 +6,15 @@ import * as XLSX from 'xlsx';
 // ═══════════════════════════════════════
 
 // Парсит дату из строк вида "13.02.2026", "2026-02-13", "13/02/2026"
+// а также из Excel serial number (напр. 46099 = 17.03.2026)
 export function rbParseDate(val) {
   if (!val) return null;
+  // Excel serial date: числа в диапазоне дат (xlsx.js не конвертирует их в строки)
+  const numVal = typeof val === 'number' ? val : parseFloat(String(val).trim());
+  if (!isNaN(numVal) && numVal > 40000 && numVal < 60000) {
+    // Excel epoch = 30 Dec 1899; Unix epoch смещение = 25569 дней
+    return new Date(Math.round((numVal - 25569) * 86400 * 1000));
+  }
   const s = String(val).trim();
   // DD.MM.YYYY или DD/MM/YYYY
   const m1 = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
