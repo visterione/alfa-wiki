@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { executorSettings, performedServiceBonuses } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 
-const EXEC_DEDUCTION_SUGGESTS = ['Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
+const EXEC_DEDUCTION_SUGGESTS = ['НДФЛ', 'Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'];
 const EXEC_MATERIAL_SUGGESTS  = ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'];
 const EXEC_EXTRA_SUGGESTS     = ['Дежурство', 'Обучение', 'Сверхурочные', 'Премия', 'Командировка'];
 const EXEC_EXTRA_NORMED_SUGGESTS = ['Отпускные', 'Увольнение'];
@@ -1348,7 +1348,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
               </svg>
-              Расходники / Штрафы / Взыскания
+              Взыскания
             </div>
           </div>
           <div className="rb-exec-section-body">

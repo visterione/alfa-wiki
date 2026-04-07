@@ -318,10 +318,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const sp = getDoctorSpecialty(row.rec.misUserId);
           if (!sp.split(', ').map(s => s.trim()).includes(filterSpecialty)) return false;
         }
-        if (yr !== null && row.rec.dateFrom) {
+        if ((yr !== null || mon !== null) && row.rec.dateFrom) {
           const d = new Date(row.rec.dateFrom);
-          if (d.getFullYear() !== yr) return false;
-          if (mon !== null && d.getMonth() + 1 !== mon) return false;
+          if (yr  !== null && d.getFullYear()  !== yr)        return false;
+          if (mon !== null && d.getMonth() + 1 !== mon)       return false;
         }
         return true;
       })
