@@ -147,10 +147,12 @@ export async function buildReport({
   }
 
   // ── Date range filter ──
+  const GLOBAL_DATE_CUTOFF = new Date(2026, 1, 1); // 01.02.2026 — раньше не берём ничего
   function rbRowInDateRange(r) {
     if (!dateFromDate && !dateToDate) return true;
     const rowDate = rbParseDate(r[colMap.date]);
     if (!rowDate) return true;
+    if (rowDate < GLOBAL_DATE_CUTOFF) return false;
     if (dateFromDate && rowDate < dateFromDate) return false;
     if (dateToDate   && rowDate > dateToDate)   return false;
     return true;
