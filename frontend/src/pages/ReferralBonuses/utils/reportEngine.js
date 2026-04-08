@@ -158,23 +158,30 @@ export async function buildReport({
     return true;
   }
 
+  // ── Row quantity helper (для правила VIP/Сотрудник со скидкой) ──
+  function rbGetRowQty(r) {
+    if (!colMap.qty) return 1;
+    const q = parseFloat(String(r[colMap.qty] || '1').replace(',', '.'));
+    return (isFinite(q) && q > 0) ? q : 1;
+  }
+
+  // Возвращает true если строка попадает под правило VIP/Сотрудник + скидка 50%/100%
+  function rbIsSpecialDiscountRow(r) {
+    if (!colMap.category || !colMap.discount || !colMap.servicePrice) return false;
+    const categoryVal = String(r[colMap.category] || '').toUpperCase();
+    if (!categoryVal.includes('VIP') && !categoryVal.includes('СОТРУДНИК')) return false;
+    const discountRaw = String(r[colMap.discount] || '').replace('%', '').trim();
+    const discountRawVal = parseFloat(discountRaw.replace(',', '.')) || 0;
+    const discountVal = (discountRawVal > 0 && discountRawVal <= 1) ? discountRawVal * 100 : discountRawVal;
+    return discountVal === 50 || discountVal >= 100;
+  }
+
   // ── Cost parser ──
   function rbParseCost(r) {
-    // Особые случаи: VIP или Сотрудник со скидкой 50%/100% — врач получает 70% от прайса
-    if (colMap.category && colMap.discount && colMap.servicePrice) {
-      const categoryVal = String(r[colMap.category] || '').toUpperCase();
-      const isVip      = categoryVal.includes('VIP');
-      const isEmployee = categoryVal.includes('СОТРУДНИК');
-      if (isVip || isEmployee) {
-        const discountRaw = String(r[colMap.discount] || '').replace('%', '').trim();
-        const discountRawVal = parseFloat(discountRaw.replace(',', '.')) || 0;
-        // Excel хранит проценты как десятичные дроби (50% → 0.5, 100% → 1.0)
-        const discountVal = (discountRawVal > 0 && discountRawVal <= 1) ? discountRawVal * 100 : discountRawVal;
-        if (discountVal === 50 || discountVal >= 100) {
-          const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-          return price * 0.70;
-        }
-      }
+    // Особые случаи: VIP или Сотрудник со скидкой 50%/100% — врач получает 70% от прайса × количество
+    if (rbIsSpecialDiscountRow(r)) {
+      const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+      return price * 0.70 * rbGetRowQty(r);
     }
 
     if (colMap.totalCost != null) {
@@ -376,7 +383,7 @@ export async function buildReport({
         const key  = code || name || 'unknown';
         if (!byService[key]) byService[key] = { code, name, cost: 0, count: 0 };
         byService[key].cost += rbParseCost(r);
-        byService[key].count++;
+        byService[key].count += rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
       });
       const dbClinicId = (clinicId !== 'unknown') ? String(clinicId) : '';
       const services = Object.values(byService).map(s => {
@@ -419,7 +426,7 @@ export async function buildReport({
       }
       const entry = executorByReferrer[refDoctor.name][key];
       entry.cost += cost;
-      entry.count++;
+      entry.count += rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
       if (bonus) {
         if (bonus.bonusPercent != null) {
           entry.bonusAmount += cost * parseFloat(bonus.bonusPercent) / 100;
@@ -451,7 +458,7 @@ export async function buildReport({
       if (!perfByService[key]) perfByService[key] = { code, name, cost: 0, count: 0, _rows: [] };
       const rowCost = rbParseCost(r);
       perfByService[key].cost  += rowCost;
-      perfByService[key].count++;
+      perfByService[key].count += rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
       perfByService[key]._rows.push({
         cost: rowCost,
         cabinet,
@@ -460,7 +467,7 @@ export async function buildReport({
     });
 
     const performedServicesSum = executorRows.reduce((s, r) => s + rbParseCost(r), 0);
-    const totalServiceCount = executorRows.length;
+    const totalServiceCount = executorRows.reduce((s, r) => s + (rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1), 0);
 
     const execDeductions = clinicSettings.deductions || [];
     // Для нормированного типа материалы не применяются (секция скрыта в UI)
