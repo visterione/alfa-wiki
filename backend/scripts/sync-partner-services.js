@@ -4,7 +4,8 @@
  * Запуск: node backend/scripts/sync-partner-services.js
  */
 
-require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const { syncPartnerServicesCache } = require('../cron/partnerServicesCacheCron');
 
