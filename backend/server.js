@@ -52,6 +52,7 @@ const notifyRoutes = require('./routes/notify');
 const salaryRecordsRoutes = require('./routes/salary-records');
 const cashPaymentsRoutes = require('./routes/cash-payments');
 const promotionsRoutes = require('./routes/promotions');
+const partnerServicesRoutes = require('./routes/partner-services');
 
 const app = express();
 const server = http.createServer(app);
@@ -225,6 +226,7 @@ app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);
 app.use('/api/promotions', promotionsRoutes);
+app.use('/api/partner-services', partnerServicesRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})
@@ -314,6 +316,9 @@ async function startServer() {
 
     // Initialize missed calls polling cron job (every minute, polls Nextcloud for ATC data)
     require('./cron/missedCallsCron');
+
+    // Initialize partner services cache cron job (nightly at 02:00 MSK)
+    require('./cron/partnerServicesCacheCron');
 
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');

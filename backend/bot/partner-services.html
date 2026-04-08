@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Услуги партнёров</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="ps-app">
+
+<style>
+#ps-app,
+#ps-app button,
+#ps-app input,
+#ps-app select,
+#ps-app textarea,
+#ps-app th,
+#ps-app td,
+#ps-app span,
+#ps-app label {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+#ps-app { max-width: 1600px; margin: 0 auto; padding: 20px 40px; }
+
+/* ── Top bar ── */
+.ps-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+/* Custom clinic dropdown */
+.ps-clinic-dd { position: relative; }
+.ps-clinic-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px 7px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  background: #fff;
+  color: #111827;
+  cursor: pointer;
+  min-width: 140px;
+  transition: border-color 0.15s;
+  white-space: nowrap;
+}
+.ps-clinic-trigger:hover { border-color: #9ca3af; }
+.ps-clinic-trigger.open { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.ps-clinic-trigger svg { width: 14px; height: 14px; color: #9ca3af; margin-left: auto; flex-shrink: 0; transition: transform 0.2s; }
+.ps-clinic-trigger.open svg { transform: rotate(180deg); }
+.ps-clinic-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: #9ca3af;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.ps-clinic-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 100%;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 600;
+  display: none;
+  overflow: hidden;
+}
+.ps-clinic-list.open { display: block; }
+.ps-clinic-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.ps-clinic-option:hover { background: #f3f4f6; }
+.ps-clinic-option.selected { background: #eff6ff; color: #1d4ed8; }
+
+.ps-view-toggle {
+  display: flex;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+  margin-left: auto;
+}
+.ps-view-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: #6b7280;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.ps-view-btn.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.ps-view-btn svg { width: 15px; height: 15px; }
+
+/* ── Results bar ── */
+.ps-results-bar {
+  font-size: 13px; color: #6b7280;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 10px;
+}
+.ps-results-bar strong { color: #111827; }
+.ps-limit-select {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 13px; font-family: inherit;
+  background: #fff; cursor: pointer;
+  margin-left: auto;
+}
+.ps-clear-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+  background: #fff; cursor: pointer;
+  color: #6b7280; font-family: inherit;
+  transition: all 0.12s; display: none;
+}
+.ps-clear-btn:hover { background: #f3f4f6; color: #374151; }
+
+/* ── Table ── */
+.ps-table-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+.ps-table-scroll { overflow-x: auto; }
+.ps-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px;
+}
+
+/* Заголовки — все по центру */
+.ps-table th {
+  padding: 10px 12px;
+  background: #f8fafc;
+  font-weight: 600;
+  font-size: 11px;
+  color: #4b5563;
+  border-bottom: 1px solid #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+}
+.ps-table th:hover { background: #f1f5f9; }
+.ps-table th.col-name { text-align: left; }
+.ps-table th .sort-icon { display: inline-block; margin-left: 4px; opacity: 0.4; font-style: normal; }
+.ps-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
+.ps-table th.has-filter { background: #eff6ff !important; color: #1d4ed8; }
+.ps-table th.has-filter .sort-icon { color: #1d4ed8; }
+
+/* Данные */
+.ps-table td {
+  padding: 9px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 13px;
+  color: #374151;
+  vertical-align: middle;
+  text-align: center;
+}
+.ps-table td.col-name { text-align: left; }
+.ps-table tr:hover td { background: #f8fafc; }
+.ps-table tr:last-child td { border-bottom: none; }
+.ps-table td.col-price { font-weight: 600; color: #16a34a; }
+
+/* ── Inline filter row ── */
+.ps-filter-row th {
+  padding: 4px 6px;
+  background: #fafafa;
+  border-bottom: 2px solid #e5e7eb;
+  cursor: default;
+}
+.ps-filter-row th:hover { background: #fafafa; }
+.ps-fi-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ps-fi {
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #374151;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  background: #fff;
+  min-width: 0;
+}
+.ps-fi::placeholder { color: #9ca3af; }
+.ps-fi:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+.ps-fi.active { border-color: #3b82f6; background: #eff6ff; }
+.ps-fi-dd-btn {
+  flex-shrink: 0;
+  padding: 4px 5px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: #f9fafb;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 10px;
+  line-height: 1;
+  transition: all 0.12s;
+}
+.ps-fi-dd-btn:hover { background: #f3f4f6; color: #374151; border-color: #9ca3af; }
+.ps-fi-dd-btn.open { background: #eff6ff; color: #3b82f6; border-color: #93c5fd; }
+.ps-fi-dropdown {
+  position: fixed;
+  min-width: 180px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 1000;
+  max-height: 220px;
+  overflow-y: auto;
+  display: none;
+}
+.ps-fi-dropdown.open { display: block; }
+.ps-fi-dd-item {
+  padding: 7px 12px;
+  font-size: 12px;
+  color: #374151;
+  cursor: pointer;
+  font-weight: 400;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ps-fi-dd-item:hover { background: #f3f4f6; }
+.ps-fi-dd-item.selected { color: #3b82f6; background: #eff6ff; font-weight: 500; }
+.ps-fi-dd-empty { padding: 8px 12px; font-size: 12px; color: #9ca3af; text-align: left; }
+
+/* ── Pagination ── */
+.ps-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f8fafc;
+  flex-wrap: wrap; gap: 8px;
+}
+.ps-pagination-info { font-size: 13px; color: #6b7280; }
+.ps-pagination-btns { display: flex; gap: 4px; align-items: center; }
+.ps-page-btn {
+  padding: 5px 10px;
+  border: 1px solid #d1d5db; border-radius: 6px;
+  background: #fff; font-size: 13px; cursor: pointer;
+  color: #374151; min-width: 32px; text-align: center;
+  transition: all 0.15s;
+}
+.ps-page-btn:hover:not(:disabled) { background: #f3f4f6; }
+.ps-page-btn.active { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.ps-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ps-page-dots { padding: 5px 4px; color: #9ca3af; font-size: 13px; }
+
+/* ── States ── */
+.ps-empty, .ps-loading, .ps-no-cache {
+  text-align: center; padding: 60px 20px; color: #9ca3af;
+}
+.ps-no-cache p { margin: 8px 0 0; font-size: 14px; }
+.ps-no-cache .hint { font-size: 13px; color: #d1d5db; margin-top: 4px; }
+.ps-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid #e5e7eb; border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Tree view ── */
+.ps-tree-search-wrap {
+  margin-bottom: 10px;
+  position: relative;
+}
+.ps-tree-search {
+  width: 100%;
+  padding: 8px 14px 8px 36px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #fff;
+  color: #374151;
+  box-sizing: border-box;
+}
+.ps-tree-search:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+.ps-tree-search-icon {
+  position: absolute;
+  left: 10px; top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
+}
+.ps-tree {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+}
+.ps-tree-node { border-bottom: 1px solid #f1f5f9; }
+.ps-tree-node:last-child { border-bottom: none; }
+.ps-tree-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  cursor: pointer; user-select: none;
+  transition: background 0.15s; background: #fff;
+}
+.ps-tree-header:hover { background: #f8fafc; }
+.ps-tree-header.level-0 { background: #f8fafc; font-weight: 600; }
+.ps-tree-header.level-0:hover { background: #f1f5f9; }
+.ps-tree-header.level-1 { padding-left: 36px; }
+.ps-tree-header.level-2 { padding-left: 60px; background: #fdfdfd; }
+.ps-tree-chevron {
+  width: 16px; height: 16px; color: #9ca3af;
+  transition: transform 0.2s; flex-shrink: 0;
+}
+.ps-tree-chevron.open { transform: rotate(90deg); }
+.ps-tree-icon { width: 16px; height: 16px; color: #6b7280; flex-shrink: 0; }
+.ps-tree-name { font-size: 14px; color: #111827; flex: 1; }
+.ps-tree-header.level-0 .ps-tree-name { font-weight: 600; }
+.ps-tree-name em { font-style: normal; background: #fef08a; border-radius: 2px; padding: 0 1px; }
+.ps-tree-count {
+  font-size: 11px; color: #9ca3af;
+  background: #f3f4f6; padding: 2px 7px;
+  border-radius: 10px; flex-shrink: 0;
+}
+.ps-tree-children { display: none; }
+.ps-tree-children.open { display: block; }
+
+/* Tree services table */
+.ps-tree-services { padding: 0 16px 10px 60px; }
+.ps-tree-services-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+}
+.ps-tree-services-table th {
+  padding: 6px 10px;
+  font-size: 11px; font-weight: 600; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: 0.4px;
+  text-align: center; border-bottom: 1px solid #f1f5f9;
+}
+.ps-tree-services-table th.col-name { text-align: left; }
+.ps-tree-services-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid #f9fafb;
+  color: #374151; vertical-align: middle;
+  text-align: center;
+}
+.ps-tree-services-table td.col-name { text-align: left; }
+.ps-tree-services-table tr:last-child td { border-bottom: none; }
+.ps-tree-services-table tr:hover td { background: #f8fafc; }
+.ps-tree-services-table td.col-price { font-weight: 600; color: #16a34a; }
+</style>
+
+<!-- ════════════════════════ HTML ════════════════════════ -->
+
+<div class="ps-topbar">
+  <div class="ps-clinic-dd" id="ps-clinic-dd">
+    <button class="ps-clinic-trigger" id="ps-clinic-trigger" onclick="psApp.toggleClinicDd()">
+      <span class="ps-clinic-dot" id="ps-clinic-dot"></span>
+      <span id="ps-clinic-name">Загрузка...</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="ps-clinic-list" id="ps-clinic-list"></div>
+  </div>
+
+  <div class="ps-view-toggle">
+    <button class="ps-view-btn active" id="ps-btn-table" onclick="psApp.setView('table')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+      Таблица
+    </button>
+    <button class="ps-view-btn" id="ps-btn-tree" onclick="psApp.setView('tree')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+      Дерево услуг
+    </button>
+  </div>
+</div>
+
+<!-- Results bar (table) -->
+<div class="ps-results-bar" id="ps-results-bar" style="display:none">
+  <span>Найдено: <strong id="ps-total-count">0</strong></span>
+  <button class="ps-clear-btn" id="ps-btn-clear-all" onclick="psApp.clearAllFilters()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:12px;height:12px;vertical-align:middle;margin-right:3px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Сбросить фильтры
+  </button>
+  <select class="ps-limit-select" id="ps-limit-select" onchange="psApp.onLimitChange()">
+    <option value="25">25 на странице</option>
+    <option value="50" selected>50 на странице</option>
+    <option value="100">100 на странице</option>
+  </select>
+</div>
+
+<!-- Table view -->
+<div id="ps-view-table">
+  <div class="ps-table-container">
+    <div class="ps-pagination" id="ps-pagination" style="display:none">
+      <span class="ps-pagination-info" id="ps-pagination-info"></span>
+      <div class="ps-pagination-btns" id="ps-pagination-btns"></div>
+    </div>
+    <div class="ps-table-scroll">
+      <table class="ps-table" id="ps-table">
+        <thead>
+          <!-- Заголовки столбцов -->
+          <tr>
+            <th onclick="psApp.sortBy('code')">Артикул <i class="sort-icon" id="sort-code">↕</i></th>
+            <th onclick="psApp.sortBy('subCode')">Код 804н <i class="sort-icon" id="sort-subCode">↕</i></th>
+            <th class="col-name" onclick="psApp.sortBy('title')" style="min-width:260px">Название <i class="sort-icon" id="sort-title">↕</i></th>
+            <th id="th-category" class="col-name" onclick="psApp.sortBy('categoryTitle')">Категория <i class="sort-icon" id="sort-categoryTitle">↕</i></th>
+            <th onclick="psApp.sortBy('price')">Стоимость <i class="sort-icon" id="sort-price">↕</i></th>
+            <th onclick="psApp.sortBy('duration')">Длит. <i class="sort-icon" id="sort-duration">↕</i></th>
+            <th id="th-lab" onclick="psApp.sortBy('lab')">Лаборатория <i class="sort-icon" id="sort-lab">↕</i></th>
+          </tr>
+          <!-- Строка фильтров -->
+          <tr class="ps-filter-row" onclick="event.stopPropagation()">
+            <th>
+              <div class="ps-fi-cell">
+                <input class="ps-fi" id="fi-code" placeholder="Поиск..." oninput="psApp.onFiInput('code',this)">
+              </div>
+            </th>
+            <th>
+              <div class="ps-fi-cell">
+                <input class="ps-fi" id="fi-subCode" placeholder="Поиск..." oninput="psApp.onFiInput('subCode',this)">
+              </div>
+            </th>
+            <th class="col-name">
+              <div class="ps-fi-cell">
+                <input class="ps-fi" id="fi-title" placeholder="Поиск..." oninput="psApp.onFiInput('title',this)">
+              </div>
+            </th>
+            <th class="col-name">
+              <div class="ps-fi-cell">
+                <input class="ps-fi" id="fi-category" placeholder="Поиск..." oninput="psApp.onFiInput('category',this)">
+                <button class="ps-fi-dd-btn" id="fib-category" onclick="psApp.toggleFiDropdown('category',this)" title="Выбрать из списка">▾</button>
+                <div class="ps-fi-dropdown" id="fid-category"></div>
+              </div>
+            </th>
+            <th><!-- нет фильтра --></th>
+            <th><!-- нет фильтра --></th>
+            <th>
+              <div class="ps-fi-cell">
+                <input class="ps-fi" id="fi-lab" placeholder="Поиск..." oninput="psApp.onFiInput('lab',this)">
+                <button class="ps-fi-dd-btn" id="fib-lab" onclick="psApp.toggleFiDropdown('lab',this)" title="Выбрать из списка">▾</button>
+                <div class="ps-fi-dropdown" id="fid-lab"></div>
+              </div>
+            </th>
+          </tr>
+        </thead>
+        <tbody id="ps-table-body">
+          <tr><td colspan="7" class="ps-loading"><div class="ps-spinner"></div>Загрузка...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Tree view -->
+<div id="ps-view-tree" style="display:none">
+  <div class="ps-tree-search-wrap">
+    <svg class="ps-tree-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input type="text" class="ps-tree-search" id="ps-tree-search" placeholder="Поиск по категориям..." oninput="psApp.onTreeSearch()">
+  </div>
+  <div class="ps-tree" id="ps-tree-container">
+    <div class="ps-loading"><div class="ps-spinner"></div>Загрузка дерева...</div>
+  </div>
+</div>
+
+</div><!-- #ps-app -->
+
+<script>
+window.psApp = (function() {
+  var API = window.location.protocol + '//' + window.location.hostname + ':9001/api/partner-services';
+
+  var currentClinicId = null;
+  var currentView = 'table';
+  var currentPage = 1;
+  var currentLimit = 50;
+  var currentSort = { field: 'title', dir: 'asc' };
+  var clinics = [];
+  var nodeData = {};
+  var nodeServicesState = {};
+  var treeData = null;
+  var treeSearchTimer = null;
+  var fiTimer = null;
+
+  var colFilters = { code: '', subCode: '', title: '', category: '', lab: '' };
+  var colFilterLists = { category: [], lab: [] };
+  var openDropdown = null; // 'category' | 'lab' | null
+
+  var CLINICS_MAP = {}; // id → clinic obj
+
+  // ─── Auth ────────────────────────────────────────────────────────────────
+  function getToken() { return localStorage.getItem('token'); }
+
+  function api(path, opts, timeoutMs) {
+    opts = opts || {};
+    timeoutMs = timeoutMs || 15000;
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = controller ? setTimeout(function() { controller.abort(); }, timeoutMs) : null;
+    return fetch(API + path, {
+      method: opts.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: opts.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      if (timer) clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).catch(function(err) {
+      if (timer) clearTimeout(timer);
+      if (err.name === 'AbortError') throw new Error('Таймаут (' + Math.round(timeoutMs/1000) + ' сек)');
+      throw err;
+    });
+  }
+
+  // ─── Init ────────────────────────────────────────────────────────────────
+  function init() {
+    // Закрываем дропдауны при клике вне
+    document.addEventListener('click', function(e) {
+      if (openDropdown && !e.target.closest('.ps-fi-cell')) {
+        closeAllDropdowns();
+      }
+    });
+
+    api('/clinics').then(function(res) {
+      if (!res.success) return;
+      clinics = res.data;
+      clinics.forEach(function(c) { CLINICS_MAP[c.id] = c; });
+      var list = document.getElementById('ps-clinic-list');
+      list.innerHTML = clinics.map(function(c) {
+        return '<div class="ps-clinic-option" data-id="' + c.id + '" onclick="psApp.selectClinic(' + c.id + ')">' +
+          '<span class="ps-clinic-dot" style="background:' + esc(c.color || '#9ca3af') + '"></span>' +
+          esc(c.name) +
+          '</div>';
+      }).join('');
+      if (clinics.length > 0) selectClinic(clinics[0].id);
+    }).catch(function() {
+      document.getElementById('ps-clinic-name').textContent = 'Ошибка загрузки';
+    });
+  }
+
+  function toggleClinicDd() {
+    var trigger = document.getElementById('ps-clinic-trigger');
+    var list = document.getElementById('ps-clinic-list');
+    var open = list.classList.contains('open');
+    trigger.classList.toggle('open', !open);
+    list.classList.toggle('open', !open);
+  }
+
+  function selectClinic(clinicId) {
+    currentClinicId = clinicId;
+    currentPage = 1;
+    nodeData = {};
+    nodeServicesState = {};
+    treeData = null;
+
+    // Обновляем кнопку-триггер
+    var clinic = CLINICS_MAP[clinicId];
+    if (clinic) {
+      document.getElementById('ps-clinic-dot').style.background = clinic.color || '#9ca3af';
+      document.getElementById('ps-clinic-name').textContent = clinic.name;
+    }
+
+    // Отмечаем выбранный пункт
+    var options = document.querySelectorAll('#ps-clinic-list .ps-clinic-option');
+    options.forEach(function(opt) {
+      opt.classList.toggle('selected', parseInt(opt.dataset.id) === clinicId);
+    });
+
+    // Закрываем список
+    document.getElementById('ps-clinic-trigger').classList.remove('open');
+    document.getElementById('ps-clinic-list').classList.remove('open');
+
+    loadFilterLists();
+    if (currentView === 'table') loadTable();
+    else loadTree();
+  }
+
+  // ─── Filter lists ─────────────────────────────────────────────────────────
+  function loadFilterLists() {
+    var cid = currentClinicId;
+    api('/categories?clinic_id=' + cid).then(function(res) {
+      colFilterLists.category = res.success ? res.data.map(function(c) { return c.title; }) : [];
+    }).catch(function() {});
+    api('/labs?clinic_id=' + cid).then(function(res) {
+      colFilterLists.lab = res.success ? res.data : [];
+    }).catch(function() {});
+  }
+
+  // ─── Inline filter row ───────────────────────────────────────────────────
+  function onFiInput(col, input) {
+    colFilters[col] = input.value.trim();
+    input.classList.toggle('active', !!colFilters[col]);
+    // Обновляем подсветку th
+    var thId = col === 'category' ? 'th-category' : (col === 'lab' ? 'th-lab' : null);
+    if (thId) {
+      var th = document.getElementById(thId);
+      if (th) th.classList.toggle('has-filter', !!colFilters[col]);
+    }
+    // Синхронизируем дропдаун если открыт
+    if (openDropdown === col) renderFiDropdown(col);
+    clearTimeout(fiTimer);
+    fiTimer = setTimeout(function() { currentPage = 1; updateClearBtn(); loadTable(); }, 350);
+  }
+
+  function toggleFiDropdown(col, btnEl) {
+    if (openDropdown === col) {
+      closeAllDropdowns();
+      return;
+    }
+    closeAllDropdowns();
+    openDropdown = col;
+
+    var dd = document.getElementById('fid-' + col);
+    var btn = document.getElementById('fib-' + col);
+    if (!dd || !btn) return;
+
+    renderFiDropdown(col);
+    dd.classList.add('open');
+    if (btn) btn.classList.add('open');
+
+    // Позиционируем как fixed, чтобы не обрезался overflow контейнерами
+    var rect = btn.getBoundingClientRect();
+    dd.style.top  = (rect.bottom + 3) + 'px';
+    dd.style.left = rect.left + 'px';
+
+    // Не выходить за правый край
+    requestAnimationFrame(function() {
+      var ddRect = dd.getBoundingClientRect();
+      if (ddRect.right > window.innerWidth - 8) {
+        dd.style.left = (window.innerWidth - ddRect.width - 8) + 'px';
+      }
+    });
+  }
+
+  function renderFiDropdown(col) {
+    var dd = document.getElementById('fid-' + col);
+    if (!dd) return;
+    var list = colFilterLists[col] || [];
+    var current = colFilters[col];
+    var inputVal = (document.getElementById('fi-' + col) || {}).value || '';
+
+    // Фильтруем список по тексту в input
+    var filtered = inputVal
+      ? list.filter(function(v) { return v.toLowerCase().indexOf(inputVal.toLowerCase()) !== -1; })
+      : list;
+
+    if (filtered.length === 0) {
+      dd.innerHTML = '<div class="ps-fi-dd-empty">Нет значений</div>';
+      return;
+    }
+    dd.innerHTML = filtered.map(function(v) {
+      return '<div class="ps-fi-dd-item' + (v === current ? ' selected' : '') + '" onclick="psApp.selectFiValue(\'' + col + '\',this)">' + esc(v) + '</div>';
+    }).join('');
+  }
+
+  function selectFiValue(col, itemEl) {
+    var val = itemEl.textContent || '';
+    colFilters[col] = val;
+    var input = document.getElementById('fi-' + col);
+    if (input) { input.value = val; input.classList.add('active'); }
+    var thId = col === 'category' ? 'th-category' : (col === 'lab' ? 'th-lab' : null);
+    if (thId) {
+      var th = document.getElementById(thId);
+      if (th) th.classList.add('has-filter');
+    }
+    closeAllDropdowns();
+    currentPage = 1;
+    updateClearBtn();
+    loadTable();
+  }
+
+  function closeAllDropdowns() {
+    ['category', 'lab'].forEach(function(col) {
+      var dd = document.getElementById('fid-' + col);
+      var btn = document.getElementById('fib-' + col);
+      if (dd) dd.classList.remove('open');
+      if (btn) btn.classList.remove('open');
+    });
+    openDropdown = null;
+  }
+
+  function clearAllFilters() {
+    Object.keys(colFilters).forEach(function(k) { colFilters[k] = ''; });
+    ['code','subCode','title','category','lab'].forEach(function(col) {
+      var inp = document.getElementById('fi-' + col);
+      if (inp) { inp.value = ''; inp.classList.remove('active'); }
+    });
+    var thCat = document.getElementById('th-category');
+    var thLab = document.getElementById('th-lab');
+    if (thCat) thCat.classList.remove('has-filter');
+    if (thLab) thLab.classList.remove('has-filter');
+    currentPage = 1;
+    updateClearBtn();
+    loadTable();
+  }
+
+  function updateClearBtn() {
+    var hasAny = Object.values(colFilters).some(function(v) { return !!v; });
+    var btn = document.getElementById('ps-btn-clear-all');
+    if (btn) btn.style.display = hasAny ? '' : 'none';
+  }
+
+  // ─── Table view ──────────────────────────────────────────────────────────
+  function loadTable() {
+    if (!currentClinicId) return;
+
+    var params = new URLSearchParams({ clinic_id: currentClinicId, page: currentPage, limit: currentLimit });
+    if (colFilters.code)     params.set('filter_code',    colFilters.code);
+    if (colFilters.subCode)  params.set('filter_subcode', colFilters.subCode);
+    if (colFilters.title)    params.set('filter_title',   colFilters.title);
+    if (colFilters.category) params.set('category',       colFilters.category);
+    if (colFilters.lab)      params.set('lab',            colFilters.lab);
+
+    var tbody = document.getElementById('ps-table-body');
+    tbody.innerHTML = '<tr><td colspan="7" class="ps-loading"><div class="ps-spinner"></div>Загрузка...</td></tr>';
+    document.getElementById('ps-pagination').style.display = 'none';
+    document.getElementById('ps-results-bar').style.display = 'none';
+
+    api('/?' + params.toString()).then(function(res) {
+      if (!res.success) {
+        tbody.innerHTML = '<tr><td colspan="7" class="ps-empty" style="color:#ef4444">Ошибка: ' + esc(res.error || '') + '</td></tr>';
+        return;
+      }
+      var data = res.data, pag = res.pagination;
+      document.getElementById('ps-total-count').textContent = pag.total.toLocaleString('ru-RU');
+      document.getElementById('ps-results-bar').style.display = 'flex';
+
+      if (data.length === 0) {
+        var hasF = Object.values(colFilters).some(function(v) { return !!v; });
+        tbody.innerHTML = '<tr><td colspan="7" class="ps-empty">' +
+          (!hasF && pag.total === 0
+            ? '<div class="ps-no-cache"><p>Кэш услуг пуст</p><p class="hint">Данные загружаются ночью автоматически</p></div>'
+            : 'Ничего не найдено по заданным фильтрам') + '</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = sortData(data).map(function(s) {
+        return '<tr>' +
+          '<td>' + esc(s.code || '—') + '</td>' +
+          '<td>' + esc(s.subCode || '—') + '</td>' +
+          '<td class="col-name">' + esc(s.title) + '</td>' +
+          '<td class="col-name">' + esc(s.categoryTitle || '—') + '</td>' +
+          '<td class="col-price">' + (s.price ? formatPrice(s.price) : '—') + '</td>' +
+          '<td>' + (s.duration ? s.duration + ' мин' : '—') + '</td>' +
+          '<td>' + esc(s.lab || '—') + '</td>' +
+          '</tr>';
+      }).join('');
+
+      renderPagination(pag);
+    }).catch(function(err) {
+      tbody.innerHTML = '<tr><td colspan="7" class="ps-empty" style="color:#ef4444">Ошибка: ' + esc(err.message) + '</td></tr>';
+    });
+  }
+
+  // ─── Tree view ───────────────────────────────────────────────────────────
+  function loadTree() {
+    if (!currentClinicId) return;
+    nodeData = {};
+    nodeServicesState = {};
+    treeData = null;
+
+    var container = document.getElementById('ps-tree-container');
+    container.innerHTML = '<div class="ps-loading"><div class="ps-spinner"></div>Загрузка...</div>';
+
+    api('/tree-structure?clinic_id=' + currentClinicId).then(function(res) {
+      if (!res.success || !res.data || res.data.length === 0) {
+        container.innerHTML = '<div class="ps-empty">Данных нет</div>';
+        return;
+      }
+      treeData = res.data;
+      renderTreeFiltered('');
+    }).catch(function(err) {
+      container.innerHTML = '<div class="ps-empty" style="color:#ef4444">Ошибка: ' + esc(err.message) + '</div>';
+    });
+  }
+
+  function onTreeSearch() {
+    clearTimeout(treeSearchTimer);
+    treeSearchTimer = setTimeout(function() {
+      var val = (document.getElementById('ps-tree-search') || {}).value || '';
+      renderTreeFiltered(val.trim());
+    }, 300);
+  }
+
+  function renderTreeFiltered(search) {
+    if (!treeData) return;
+    nodeData = {};
+    nodeServicesState = {};
+    var container = document.getElementById('ps-tree-container');
+
+    var nodes = search ? filterTreeNodes(treeData, search.toLowerCase()) : treeData;
+    if (nodes.length === 0) {
+      container.innerHTML = '<div class="ps-empty">Ничего не найдено</div>';
+      return;
+    }
+    container.innerHTML = renderLazyTree(nodes, 0, '', search.toLowerCase());
+  }
+
+  function filterTreeNodes(nodes, search) {
+    var result = [];
+    nodes.forEach(function(node) {
+      var nameMatch = node.name.toLowerCase().indexOf(search) !== -1;
+      var filteredChildren = node.children ? filterTreeNodes(node.children, search) : [];
+      if (nameMatch || filteredChildren.length > 0) {
+        result.push(Object.assign({}, node, { children: filteredChildren, _searchMatch: nameMatch }));
+      }
+    });
+    return result;
+  }
+
+  function highlightMatch(text, search) {
+    if (!search) return esc(text);
+    var idx = text.toLowerCase().indexOf(search);
+    if (idx === -1) return esc(text);
+    return esc(text.slice(0, idx)) + '<em>' + esc(text.slice(idx, idx + search.length)) + '</em>' + esc(text.slice(idx + search.length));
+  }
+
+  function renderLazyTree(nodes, level, parentPath, search) {
+    return nodes.map(function(node) {
+      if (!node.totalCount) return '';
+      var nodeId = 'tnode-' + Math.random().toString(36).slice(2, 10);
+      var namePath = parentPath ? parentPath + ' / ' + node.name : node.name;
+      var hasChildren = node.children && node.children.filter(function(c) { return c.totalCount > 0; }).length > 0;
+      var autoOpen = !!(search); // при поиске открываем всё
+
+      nodeData[nodeId] = {
+        selfCount: node.selfCount,
+        categoryTitle: node.categoryTitle,
+        categoryId: node.categoryId,
+        hasChildren: hasChildren,
+        namePath: namePath
+      };
+
+      var icon = level === 0
+        ? '<svg class="ps-tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+        : '<svg class="ps-tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>';
+
+      var html = '<div class="ps-tree-node">' +
+        '<div class="ps-tree-header level-' + level + '" onclick="psApp.toggleLazyNode(\'' + nodeId + '\')">' +
+          '<svg class="ps-tree-chevron' + (autoOpen ? ' open' : '') + '" id="chev-' + nodeId + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>' +
+          icon +
+          '<span class="ps-tree-name">' + highlightMatch(node.name, search) + '</span>' +
+          '<span class="ps-tree-count">' + node.totalCount + '</span>' +
+        '</div>' +
+        '<div class="ps-tree-children' + (autoOpen ? ' open' : '') + '" id="' + nodeId + '">';
+
+      if (hasChildren) html += renderLazyTree(node.children, level + 1, namePath, search);
+      if (node.selfCount > 0 || !hasChildren) html += '<div id="svc-' + nodeId + '"></div>';
+
+      html += '</div></div>';
+      return html;
+    }).join('');
+  }
+
+  function toggleLazyNode(nodeId) {
+    var el = document.getElementById(nodeId);
+    var chev = document.getElementById('chev-' + nodeId);
+    if (!el) return;
+    var open = el.classList.toggle('open');
+    if (chev) chev.classList.toggle('open', open);
+
+    if (open) {
+      var info = nodeData[nodeId];
+      if (!info) return;
+      if (info.selfCount > 0 || !info.hasChildren) {
+        var svcEl = document.getElementById('svc-' + nodeId);
+        if (svcEl && !nodeServicesState[nodeId]) loadNodeServices(nodeId, svcEl);
+      }
+    }
+  }
+
+  function loadNodeServices(nodeId, svcEl) {
+    var info = nodeData[nodeId];
+    if (!info) return;
+    nodeServicesState[nodeId] = 'loading';
+
+    svcEl.innerHTML = '<div style="padding:8px 16px 8px 60px;font-size:12px;color:#9ca3af;display:flex;align-items:center;gap:6px">' +
+      '<div class="ps-spinner" style="width:14px;height:14px;border-width:2px;flex-shrink:0"></div>Загрузка услуг...</div>';
+
+    var params = new URLSearchParams({ clinic_id: currentClinicId, limit: 500, page: 1 });
+    if (info.hasChildren) params.set('category_prefix', info.namePath);
+    else if (info.categoryId) params.set('category_id', info.categoryId);
+    else params.set('category', info.categoryTitle);
+
+    api('/?' + params.toString(), {}, 30000).then(function(res) {
+      nodeServicesState[nodeId] = 'loaded';
+      if (!res.success || !res.data || res.data.length === 0) { svcEl.innerHTML = ''; return; }
+
+      var services = res.data;
+      var hasLab = services.some(function(s) { return !!s.lab; });
+
+      var html = '<div class="ps-tree-services"><table class="ps-tree-services-table"><thead><tr>' +
+        '<th>Артикул</th><th>Код 804н</th><th class="col-name" style="min-width:220px">Название</th>' +
+        '<th>Стоимость</th><th>Длит.</th>' + (hasLab ? '<th>Лаборатория</th>' : '') +
+        '</tr></thead><tbody>' +
+        services.map(function(s) {
+          return '<tr>' +
+            '<td>' + esc(s.code || '—') + '</td>' +
+            '<td>' + esc(s.subCode || '—') + '</td>' +
+            '<td class="col-name">' + esc(s.title) + '</td>' +
+            '<td class="col-price">' + (s.price ? formatPrice(s.price) : '—') + '</td>' +
+            '<td>' + (s.duration ? s.duration + ' мин' : '—') + '</td>' +
+            (hasLab ? '<td>' + esc(s.lab || '—') + '</td>' : '') +
+            '</tr>';
+        }).join('') +
+        '</tbody></table>';
+
+      if (res.pagination && res.pagination.total > services.length) {
+        html += '<div style="padding:4px 10px 8px;font-size:12px;color:#9ca3af">Показано ' + services.length + ' из ' + res.pagination.total + '</div>';
+      }
+      html += '</div>';
+      svcEl.innerHTML = html;
+    }).catch(function() {
+      nodeServicesState[nodeId] = 'error';
+      svcEl.innerHTML = '<div style="padding:6px 16px 6px 60px;font-size:12px;color:#ef4444">Ошибка загрузки услуг</div>';
+    });
+  }
+
+  // ─── Pagination ──────────────────────────────────────────────────────────
+  function renderPagination(pag) {
+    var container = document.getElementById('ps-pagination');
+    if (pag.pages <= 1) { container.style.display = 'none'; return; }
+
+    container.style.display = 'flex';
+    var from = (pag.page - 1) * pag.limit + 1;
+    var to   = Math.min(pag.page * pag.limit, pag.total);
+    document.getElementById('ps-pagination-info').textContent = 'Показано ' + from + '–' + to + ' из ' + pag.total.toLocaleString('ru-RU');
+
+    var p = pag.page, total = pag.pages, pages = [1];
+    if (p > 3) pages.push('…');
+    for (var i = Math.max(2, p - 1); i <= Math.min(total - 1, p + 1); i++) pages.push(i);
+    if (p < total - 2) pages.push('…');
+    if (total > 1) pages.push(total);
+
+    var html = '<button class="ps-page-btn" onclick="psApp.goPage(' + (p-1) + ')" ' + (p<=1?'disabled':'') + '>‹</button>';
+    pages.forEach(function(pg) {
+      html += pg === '…'
+        ? '<span class="ps-page-dots">…</span>'
+        : '<button class="ps-page-btn' + (pg===p?' active':'') + '" onclick="psApp.goPage('+pg+')">' + pg + '</button>';
+    });
+    html += '<button class="ps-page-btn" onclick="psApp.goPage(' + (p+1) + ')" ' + (p>=total?'disabled':'') + '>›</button>';
+    document.getElementById('ps-pagination-btns').innerHTML = html;
+  }
+
+  function goPage(page) {
+    currentPage = page;
+    loadTable();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ─── Sorting ─────────────────────────────────────────────────────────────
+  function sortBy(field) {
+    if (currentSort.field === field) currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+    else { currentSort.field = field; currentSort.dir = 'asc'; }
+    updateSortIcons();
+    currentPage = 1;
+    loadTable();
+  }
+
+  function sortData(data) {
+    var field = currentSort.field, dir = currentSort.dir === 'asc' ? 1 : -1;
+    return data.slice().sort(function(a, b) {
+      var av = a[field] || '', bv = b[field] || '';
+      if (field === 'price' || field === 'duration') return ((parseFloat(av)||0) - (parseFloat(bv)||0)) * dir;
+      return String(av).localeCompare(String(bv), 'ru') * dir;
+    });
+  }
+
+  function updateSortIcons() {
+    ['code','subCode','title','categoryTitle','price','duration','lab'].forEach(function(f) {
+      var el = document.getElementById('sort-' + f);
+      if (!el) return;
+      var th = el.closest('th');
+      if (f === currentSort.field) {
+        el.textContent = currentSort.dir === 'asc' ? '↑' : '↓';
+        if (th) th.classList.add('sorted');
+      } else {
+        el.textContent = '↕';
+        if (th) th.classList.remove('sorted');
+      }
+    });
+  }
+
+  // ─── View toggle ─────────────────────────────────────────────────────────
+  function setView(view) {
+    currentView = view;
+    document.getElementById('ps-btn-table').classList.toggle('active', view === 'table');
+    document.getElementById('ps-btn-tree').classList.toggle('active',  view === 'tree');
+    document.getElementById('ps-view-table').style.display = view === 'table' ? 'block' : 'none';
+    document.getElementById('ps-view-tree').style.display  = view === 'tree'  ? 'block' : 'none';
+    document.getElementById('ps-results-bar').style.display = view === 'table' ? 'flex' : 'none';
+    if (view === 'table') loadTable();
+    else { document.getElementById('ps-tree-search').value = ''; loadTree(); }
+  }
+
+  function onLimitChange() {
+    currentLimit = parseInt(document.getElementById('ps-limit-select').value) || 50;
+    currentPage = 1;
+    loadTable();
+  }
+
+  // ─── Helpers ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function formatPrice(p) {
+    return parseFloat(p).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ₽';
+  }
+
+  // Закрываем клинику-дропдаун при клике снаружи
+  document.addEventListener('click', function(e) {
+    var dd = document.getElementById('ps-clinic-dd');
+    if (dd && !dd.contains(e.target)) {
+      document.getElementById('ps-clinic-trigger').classList.remove('open');
+      document.getElementById('ps-clinic-list').classList.remove('open');
+    }
+  });
+
+  return {
+    init: init,
+    toggleClinicDd: toggleClinicDd,
+    selectClinic: selectClinic,
+    setView: setView,
+    onLimitChange: onLimitChange,
+    sortBy: sortBy,
+    toggleLazyNode: toggleLazyNode,
+    goPage: goPage,
+    onFiInput: onFiInput,
+    toggleFiDropdown: toggleFiDropdown,
+    selectFiValue: selectFiValue,
+    clearAllFilters: clearAllFilters,
+    onTreeSearch: onTreeSearch
+  };
+})();
+
+psApp.init();
+</script>
+
+</body>
+</html>

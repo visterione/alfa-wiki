@@ -2331,6 +2331,42 @@ const Promotion = sequelize.define('Promotion', {
   ]
 });
 
+// === PARTNER SERVICE CACHE MODEL ===
+const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
+  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+  clinicId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'ID клиники из МИС (1,2,3,4,6,7)'
+  },
+  serviceId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'ID услуги в МИС'
+  },
+  code: { type: DataTypes.STRING(100), comment: 'Артикул' },
+  subCode: { type: DataTypes.STRING(100), comment: 'Код 804н' },
+  title: { type: DataTypes.STRING(500), allowNull: false, comment: 'Название услуги' },
+  categoryId: { type: DataTypes.INTEGER, comment: 'ID категории' },
+  categoryTitle: { type: DataTypes.STRING(500), comment: 'Название категории' },
+  categoryPath: { type: DataTypes.TEXT, comment: 'Полный путь категории (для дерева)' },
+  price: { type: DataTypes.DECIMAL(10, 2), comment: 'Стоимость' },
+  duration: { type: DataTypes.INTEGER, comment: 'Длительность в минутах' },
+  lab: { type: DataTypes.STRING(255), comment: 'Лаборатория' },
+  isHidden: { type: DataTypes.BOOLEAN, defaultValue: false },
+  isDeleted: { type: DataTypes.BOOLEAN, defaultValue: false },
+  syncedAt: { type: DataTypes.DATE, comment: 'Время последней синхронизации' }
+}, {
+  tableName: 'partner_service_cache',
+  timestamps: false,
+  indexes: [
+    { unique: true, fields: ['clinicId', 'serviceId'], name: 'partner_service_clinic_service_unique' },
+    { fields: ['clinicId'] },
+    { fields: ['categoryId'] },
+    { fields: ['title'], name: 'partner_service_title_idx' }
+  ]
+});
+
 // BotToken relationships
 BotToken.belongsTo(User, { foreignKey: 'userId', as: 'botUser' });
 User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
@@ -2447,5 +2483,7 @@ module.exports = {
   BotToken,
   BotUpdate,
   // Promotions module
-  Promotion
+  Promotion,
+  // Partner services cache
+  PartnerServiceCache
 };
