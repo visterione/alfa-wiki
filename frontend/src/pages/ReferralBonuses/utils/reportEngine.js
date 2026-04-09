@@ -124,13 +124,13 @@ export async function buildReport({
 }) {
   const doctorName = doctor.name;
 
-  // If doctor has at least one normed clinic and no percent clinics — Excel rows are not required
+  // If doctor has no percent clinics — Excel rows are not required (normed/hourly/salary calculate from settings)
   const _clinicPayTypes = execSettings
     ? Object.values(execSettings.clinicSettings || {}).map(cs => cs.payType).filter(Boolean)
     : [];
-  const _hasNormedClinic  = _clinicPayTypes.some(pt => pt === 'normed');
   const _hasPercentClinic = _clinicPayTypes.some(pt => pt === 'percent');
-  if (_hasNormedClinic && !_hasPercentClinic) normedOnly = true;
+  const _hasNonExcelClinic = _clinicPayTypes.some(pt => pt === 'normed' || pt === 'hourly' || pt === 'salary');
+  if (_hasNonExcelClinic && !_hasPercentClinic) normedOnly = true;
 
   function parseDateBound(s, endOfDay) {
     if (!s) return null;
@@ -250,16 +250,18 @@ export async function buildReport({
   });
   if (!Object.keys(byClinic).length) {
     if (normedOnly) {
-      // Нормированный тип: Excel не нужен — создаём синтетические записи по клиникам с normed
+      // Типы без Excel (normed/hourly/salary) — создаём синтетические записи по настроенным клиникам
       const cs = execSettings?.clinicSettings || {};
-      const normedClinicIds = Object.keys(cs).filter(cid => cid !== 'global' && cs[cid].payType === 'normed');
-      if (normedClinicIds.length > 0) {
-        normedClinicIds.forEach(cid => {
+      const noExcelClinicIds = Object.keys(cs).filter(
+        cid => cid !== 'global' && (cs[cid].payType === 'normed' || cs[cid].payType === 'hourly' || cs[cid].payType === 'salary')
+      );
+      if (noExcelClinicIds.length > 0) {
+        noExcelClinicIds.forEach(cid => {
           byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };
         });
       } else {
-        // Только global = normed
-        byClinic['unknown'] = { id: 'unknown', label: 'Нормированный расчёт', rows: [] };
+        // Только global настройки
+        byClinic['unknown'] = { id: 'unknown', label: 'Расчёт', rows: [] };
       }
     } else {
       Object.assign(byClinic, rawByClinic);

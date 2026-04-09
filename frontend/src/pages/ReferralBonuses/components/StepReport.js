@@ -171,7 +171,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
-    const isNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
+    const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
+      cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+    );
     const result = await buildReport({
       rows, colMap, doctor: selectedDoctor,
       referralBonuses, performedDbBonuses, execSettings,
@@ -204,7 +206,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
       ]);
 
-      const isNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
+      const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
+        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+      );
       if (!isNormed && !uploadedFile) { toast.error('Загрузите файл Excel'); setGenerating(false); return; }
 
       let rows = [], colMap = {};
