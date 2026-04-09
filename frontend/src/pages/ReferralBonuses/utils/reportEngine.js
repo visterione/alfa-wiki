@@ -178,10 +178,10 @@ export async function buildReport({
 
   // ── Cost parser ──
   function rbParseCost(r) {
-    // Особые случаи: VIP или Сотрудник со скидкой 50%/100% — врач получает 70% от прайса × количество
+    // Особые случаи: VIP или Сотрудник со скидкой 50%/100% — врач получает 80% от прайса × количество
     if (rbIsSpecialDiscountRow(r)) {
       const price = parseFloat(String(r[colMap.servicePrice] || '0').replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-      return price * 0.70 * rbGetRowQty(r);
+      return price * 0.80 * rbGetRowQty(r);
     }
 
     if (colMap.totalCost != null) {

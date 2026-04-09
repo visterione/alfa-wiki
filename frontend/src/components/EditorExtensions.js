@@ -767,6 +767,15 @@ function InteractiveTableComponent({ node, updateAttributes }) {
     setWidthMode(p.widthMode);
   }, [node.attrs.tableHtml]);
 
+  // Авто-высота textarea: подстраиваем при монтировании и после изменения rows (undo/redo)
+  useEffect(() => {
+    Object.values(textareaRefs.current).forEach(el => {
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = el.scrollHeight + 'px';
+    });
+  }, [rows]);
+
   // Закрыть color-picker при клике вне
   useEffect(() => {
     const h = (e) => {
@@ -1261,7 +1270,11 @@ function InteractiveTableComponent({ node, updateAttributes }) {
 function InteractiveTableReadOnlyComponent({ node }) {
   return (
     <NodeViewWrapper className="itable-wrapper itable-wrapper--readonly" contentEditable={false}>
-      <div dangerouslySetInnerHTML={{ __html: node.attrs.tableHtml || '' }} />
+      <div
+        dangerouslySetInnerHTML={{ __html: node.attrs.tableHtml || '' }}
+        onMouseDown={e => e.stopPropagation()}
+        onDragStart={e => e.preventDefault()}
+      />
     </NodeViewWrapper>
   );
 }

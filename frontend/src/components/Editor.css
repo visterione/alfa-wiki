@@ -800,6 +800,12 @@
 .itable-wrapper--readonly {
   border: none;
   margin: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.itable-wrapper--readonly * {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .itable-wrapper--readonly table {

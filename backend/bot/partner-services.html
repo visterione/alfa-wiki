@@ -305,6 +305,54 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* ── Checks mode ── */
+.ps-view-btn.btn-checks { color: #d97706; }
+.ps-view-btn.btn-checks.active { background: #fff; color: #b45309; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.ps-view-btn.btn-checks.locked { color: #d1d5db; cursor: not-allowed; opacity: 0.7; }
+.ps-view-btn.btn-checks.locked:hover { background: transparent; color: #d1d5db; }
+.ps-checks-summary {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #374151;
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+.ps-checks-summary strong { color: #92400e; }
+.ps-checks-ok { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.ps-check-cell { background: #fef9c3 !important; }
+.ps-check-badge-cell { white-space: nowrap; }
+.ps-check-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  margin: 1px 2px;
+}
+mark.ps-spm {
+  background: #fbbf24;
+  color: #451a03;
+  border-radius: 2px;
+  font-family: monospace;
+  padding: 0 1px;
+  outline: 1px solid #f59e0b;
+}
+mark.ps-nbspm {
+  background: #f87171;
+  color: #fff;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 0 3px;
+  outline: 1px solid #ef4444;
+}
+
 /* ── Tree view ── */
 .ps-tree-search-wrap {
   margin-bottom: 10px;
@@ -411,6 +459,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
       Дерево услуг
     </button>
+    <button class="ps-view-btn btn-checks" id="ps-btn-checks" onclick="psApp.setView('checks')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Проверки
+    </button>
   </div>
 </div>
 
@@ -501,6 +553,9 @@
   </div>
 </div>
 
+<!-- Checks view -->
+<div id="ps-view-checks" style="display:none"></div>
+
 </div><!-- #ps-app -->
 
 <script>
@@ -524,6 +579,7 @@ window.psApp = (function() {
   var openDropdown = null; // 'category' | 'lab' | null
 
   var CLINICS_MAP = {}; // id → clinic obj
+  var currentUserIsAdmin = false;
 
   // ─── Auth ────────────────────────────────────────────────────────────────
   function getToken() { return localStorage.getItem('token'); }
@@ -550,12 +606,42 @@ window.psApp = (function() {
   }
 
   // ─── Init ────────────────────────────────────────────────────────────────
+  function applyChecksAccess() {
+    var btn = document.getElementById('ps-btn-checks');
+    if (!btn) return;
+    if (currentUserIsAdmin) {
+      btn.classList.remove('locked');
+      btn.removeAttribute('title');
+      btn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        'Проверки';
+    } else {
+      btn.classList.add('locked');
+      btn.removeAttribute('title');
+      btn.setAttribute('onclick', '');
+      btn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+        'Проверки';
+    }
+  }
+
   function init() {
     // Закрываем дропдауны при клике вне
     document.addEventListener('click', function(e) {
       if (openDropdown && !e.target.closest('.ps-fi-cell')) {
         closeAllDropdowns();
       }
+    });
+
+    // Проверяем права пользователя
+    fetch(window.location.protocol + '//' + window.location.hostname + ':9001/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) { return r.json(); }).then(function(me) {
+      currentUserIsAdmin = !!(me && me.isAdmin);
+    }).catch(function() {
+      currentUserIsAdmin = false;
+    }).finally(function() {
+      applyChecksAccess();
     });
 
     api('/clinics').then(function(res) {
@@ -609,6 +695,7 @@ window.psApp = (function() {
 
     loadFilterLists();
     if (currentView === 'table') loadTable();
+    else if (currentView === 'checks') loadChecks();
     else loadTree();
   }
 
@@ -1018,16 +1105,104 @@ window.psApp = (function() {
     });
   }
 
+  // ─── Checks mode ─────────────────────────────────────────────────────────
+  var INVIS_RE = /[\u00a0\u200b\u200c\u200d\u2060\ufeff\u2000-\u200a\u202f\u205f\u3000]/;
+
+  function hasExtraChars(val) {
+    if (!val) return false;
+    var s = String(val);
+    if (/^\s/.test(s) || /\s$/.test(s)) return true;
+    if (INVIS_RE.test(s)) return true;
+    if (/  /.test(s)) return true;
+    return false;
+  }
+
+  function escWithMarkers(val) {
+    if (val == null || val === '') return '—';
+    var s = String(val);
+    var e = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    e = e.replace(/\u00a0/g, '<mark class="ps-nbspm" title="Неразрывный пробел (NBSP)">NBSP</mark>');
+    e = e.replace(/\u200b/g, '<mark class="ps-nbspm" title="Zero-width space">ZWS</mark>');
+    e = e.replace(/\ufeff/g,  '<mark class="ps-nbspm" title="BOM">BOM</mark>');
+    e = e.replace(/\u200c/g,  '<mark class="ps-nbspm" title="Zero-width non-joiner">ZWNJ</mark>');
+    e = e.replace(/\u200d/g,  '<mark class="ps-nbspm" title="Zero-width joiner">ZWJ</mark>');
+    e = e.replace(/^( +)/, function(m) { return '<mark class="ps-spm" title="Пробел в начале строки">'+m+'</mark>'; });
+    e = e.replace(/( +)$/, function(m) { return '<mark class="ps-spm" title="Пробел в конце строки">'+m+'</mark>'; });
+    e = e.replace(/( {2,})/g, function(m) { return '<mark class="ps-spm" title="Лишние пробелы">'+m+'</mark>'; });
+    return e;
+  }
+
+  function loadChecks() {
+    if (!currentClinicId) return;
+    if (!currentUserIsAdmin) return;
+    var container = document.getElementById('ps-view-checks');
+    container.innerHTML = '<div class="ps-table-container"><div class="ps-loading"><div class="ps-spinner"></div>Загрузка всех услуг для проверки...</div></div>';
+
+    api('/?clinic_id=' + currentClinicId + '&limit=9999&page=1', {}, 60000).then(function(res) {
+      if (!res.success) {
+        container.innerHTML = '<div class="ps-table-container"><div class="ps-empty" style="color:#ef4444">Ошибка: ' + esc(res.error || '') + '</div></div>';
+        return;
+      }
+      var data = res.data;
+      var problems = [];
+      data.forEach(function(s) {
+        var fields = [];
+        if (hasExtraChars(s.code))    fields.push('code');
+        if (hasExtraChars(s.subCode)) fields.push('subCode');
+        if (hasExtraChars(s.title))   fields.push('title');
+        if (fields.length > 0) problems.push({ service: s, fields: fields });
+      });
+
+      var total = (res.pagination && res.pagination.total) ? res.pagination.total : data.length;
+
+      if (problems.length === 0) {
+        container.innerHTML = '<div class="ps-checks-summary ps-checks-ok">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:middle;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg>' +
+          'Лишних символов не обнаружено в <strong>' + total.toLocaleString('ru-RU') + '</strong> записях</div>';
+        return;
+      }
+
+      var fnames = { code: 'Артикул', subCode: 'Код804н', title: 'Название' };
+      var html = '<div class="ps-checks-summary">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;vertical-align:middle;margin-right:4px;color:#d97706"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>' +
+        'Обнаружено <strong>' + problems.length + '</strong> записей с лишними символами из ' + total.toLocaleString('ru-RU') +
+        '</div>' +
+        '<div class="ps-table-container"><div class="ps-table-scroll"><table class="ps-table">' +
+        '<thead><tr>' +
+        '<th>Артикул</th><th>Код 804н</th><th class="col-name" style="min-width:260px">Название</th>' +
+        '<th class="col-name">Категория</th><th>Поля с ошибками</th>' +
+        '</tr></thead><tbody>' +
+        problems.map(function(p) {
+          var s = p.service, f = p.fields;
+          return '<tr>' +
+            '<td class="' + (f.indexOf('code')    !== -1 ? 'ps-check-cell' : '') + '">' + escWithMarkers(s.code)    + '</td>' +
+            '<td class="' + (f.indexOf('subCode') !== -1 ? 'ps-check-cell' : '') + '">' + escWithMarkers(s.subCode) + '</td>' +
+            '<td class="col-name ' + (f.indexOf('title') !== -1 ? 'ps-check-cell' : '') + '">' + escWithMarkers(s.title) + '</td>' +
+            '<td class="col-name">' + esc(s.categoryTitle || '—') + '</td>' +
+            '<td class="ps-check-badge-cell">' + f.map(function(x) { return '<span class="ps-check-badge">'+fnames[x]+'</span>'; }).join('') + '</td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div></div>';
+
+      container.innerHTML = html;
+    }).catch(function(err) {
+      container.innerHTML = '<div class="ps-table-container"><div class="ps-empty" style="color:#ef4444">Ошибка: ' + esc(err.message) + '</div></div>';
+    });
+  }
+
   // ─── View toggle ─────────────────────────────────────────────────────────
   function setView(view) {
     currentView = view;
-    document.getElementById('ps-btn-table').classList.toggle('active', view === 'table');
-    document.getElementById('ps-btn-tree').classList.toggle('active',  view === 'tree');
-    document.getElementById('ps-view-table').style.display = view === 'table' ? 'block' : 'none';
-    document.getElementById('ps-view-tree').style.display  = view === 'tree'  ? 'block' : 'none';
-    document.getElementById('ps-results-bar').style.display = view === 'table' ? 'flex' : 'none';
+    document.getElementById('ps-btn-table').classList.toggle('active',  view === 'table');
+    document.getElementById('ps-btn-tree').classList.toggle('active',   view === 'tree');
+    document.getElementById('ps-btn-checks').classList.toggle('active', view === 'checks');
+    document.getElementById('ps-view-table').style.display  = view === 'table'  ? 'block' : 'none';
+    document.getElementById('ps-view-tree').style.display   = view === 'tree'   ? 'block' : 'none';
+    document.getElementById('ps-view-checks').style.display = view === 'checks' ? 'block' : 'none';
+    document.getElementById('ps-results-bar').style.display = view === 'table'  ? 'flex'  : 'none';
     if (view === 'table') loadTable();
-    else { document.getElementById('ps-tree-search').value = ''; loadTree(); }
+    else if (view === 'tree') { document.getElementById('ps-tree-search').value = ''; loadTree(); }
+    else if (view === 'checks') loadChecks();
   }
 
   function onLimitChange() {
