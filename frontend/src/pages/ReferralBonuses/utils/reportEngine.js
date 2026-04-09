@@ -124,6 +124,14 @@ export async function buildReport({
 }) {
   const doctorName = doctor.name;
 
+  // If doctor has at least one normed clinic and no percent clinics — Excel rows are not required
+  const _clinicPayTypes = execSettings
+    ? Object.values(execSettings.clinicSettings || {}).map(cs => cs.payType).filter(Boolean)
+    : [];
+  const _hasNormedClinic  = _clinicPayTypes.some(pt => pt === 'normed');
+  const _hasPercentClinic = _clinicPayTypes.some(pt => pt === 'percent');
+  if (_hasNormedClinic && !_hasPercentClinic) normedOnly = true;
+
   function parseDateBound(s, endOfDay) {
     if (!s) return null;
     const parts = s.split('-').map(Number);
@@ -685,10 +693,9 @@ export async function buildReport({
 
     const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
 
-    const includePerformedBonus = pt !== 'percent' && pt !== 'normed' && !!clinicSettings.plusPercent;
-    // Для нормированного типа бонусы/списания за направления не применяются
-    const effectiveReferralBonusTotal = (pt !== 'normed' && clinicSettings.includeReferralBonuses !== false) ? referralBonusTotal : 0;
-    const effectiveReferralCostTotal  = (pt !== 'normed' && clinicSettings.includeReferralDeductions !== false) ? referralCostTotal : 0;
+    const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
+    const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
+    const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
     const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);

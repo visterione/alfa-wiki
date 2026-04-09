@@ -1101,7 +1101,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             )}
 
-            {pt !== 'percent' && pt !== 'normed' && (
+            {pt !== 'percent' && (
               <div className="rb-plus-pct-row">
                 <input
                   type="checkbox" id="exec-plus-pct"
@@ -1112,26 +1112,22 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             )}
 
-            {pt !== 'normed' && (
-              <>
-                <div className="rb-plus-pct-row">
-                  <input
-                    type="checkbox" id="exec-include-ref-bonuses"
-                    checked={data.includeReferralBonuses !== false}
-                    onChange={e => handlePaymentFieldChange('includeReferralBonuses', e.target.checked)}
-                  />
-                  <label htmlFor="exec-include-ref-bonuses">Начислять бонусы за направления</label>
-                </div>
-                <div className="rb-plus-pct-row">
-                  <input
-                    type="checkbox" id="exec-include-ref-deductions"
-                    checked={data.includeReferralDeductions !== false}
-                    onChange={e => handlePaymentFieldChange('includeReferralDeductions', e.target.checked)}
-                  />
-                  <label htmlFor="exec-include-ref-deductions">Списывать бонусы направителям</label>
-                </div>
-              </>
-            )}
+            <div className="rb-plus-pct-row">
+              <input
+                type="checkbox" id="exec-include-ref-bonuses"
+                checked={data.includeReferralBonuses !== false}
+                onChange={e => handlePaymentFieldChange('includeReferralBonuses', e.target.checked)}
+              />
+              <label htmlFor="exec-include-ref-bonuses">Начислять бонусы за направления</label>
+            </div>
+            <div className="rb-plus-pct-row">
+              <input
+                type="checkbox" id="exec-include-ref-deductions"
+                checked={data.includeReferralDeductions !== false}
+                onChange={e => handlePaymentFieldChange('includeReferralDeductions', e.target.checked)}
+              />
+              <label htmlFor="exec-include-ref-deductions">Списывать бонусы направителям</label>
+            </div>
             <div className="rb-exec-fields-grid" style={{ marginTop: 12 }}>
               <div className="rb-exec-field">
                 <label>Способ выплаты аванса</label>

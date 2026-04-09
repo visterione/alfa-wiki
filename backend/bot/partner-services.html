@@ -22,6 +22,7 @@
 #ps-app label {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+body { margin: 0; padding: 0; }
 #ps-app { max-width: 1600px; margin: 0 auto; padding: 20px 40px; }
 
 /* ── Top bar ── */
@@ -116,20 +117,6 @@
 .ps-view-btn.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 .ps-view-btn svg { width: 15px; height: 15px; }
 
-/* ── Results bar ── */
-.ps-results-bar {
-  font-size: 13px; color: #6b7280;
-  margin-bottom: 8px;
-  display: flex; align-items: center; gap: 10px;
-}
-.ps-results-bar strong { color: #111827; }
-.ps-limit-select {
-  padding: 4px 8px;
-  border: 1px solid #d1d5db; border-radius: 6px;
-  font-size: 13px; font-family: inherit;
-  background: #fff; cursor: pointer;
-  margin-left: auto;
-}
 .ps-clear-btn {
   padding: 4px 10px;
   font-size: 12px;
@@ -139,6 +126,26 @@
   transition: all 0.12s; display: none;
 }
 .ps-clear-btn:hover { background: #f3f4f6; color: #374151; }
+.ps-limit-toggle {
+  display: flex;
+  background: #f3f4f6;
+  border-radius: 7px;
+  padding: 2px;
+  gap: 2px;
+}
+.ps-limit-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: transparent;
+  color: #6b7280;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.ps-limit-btn.active { background: #fff; color: #111827; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
 /* ── Table ── */
 .ps-table-container {
@@ -153,6 +160,7 @@
   width: 100%;
   border-collapse: collapse;
   min-width: 700px;
+  margin: 0 !important;
 }
 
 /* Заголовки — все по центру */
@@ -171,7 +179,6 @@
   user-select: none;
 }
 .ps-table th:hover { background: #f1f5f9; }
-.ps-table th.col-name { text-align: left; }
 .ps-table th .sort-icon { display: inline-block; margin-left: 4px; opacity: 0.4; font-style: normal; }
 .ps-table th.sorted .sort-icon { opacity: 1; color: #3b82f6; }
 .ps-table th.has-filter { background: #eff6ff !important; color: #1d4ed8; }
@@ -276,6 +283,7 @@
   background: #f8fafc;
   flex-wrap: wrap; gap: 8px;
 }
+.ps-pagination-left { display: flex; align-items: center; gap: 10px; }
 .ps-pagination-info { font-size: 13px; color: #6b7280; }
 .ps-pagination-btns { display: flex; gap: 4px; align-items: center; }
 .ps-page-btn {
@@ -466,24 +474,21 @@ mark.ps-nbspm {
   </div>
 </div>
 
-<!-- Results bar (table) -->
-<div class="ps-results-bar" id="ps-results-bar" style="display:none">
-  <span>Найдено: <strong id="ps-total-count">0</strong></span>
-  <button class="ps-clear-btn" id="ps-btn-clear-all" onclick="psApp.clearAllFilters()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:12px;height:12px;vertical-align:middle;margin-right:3px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Сбросить фильтры
-  </button>
-  <select class="ps-limit-select" id="ps-limit-select" onchange="psApp.onLimitChange()">
-    <option value="25">25 на странице</option>
-    <option value="50" selected>50 на странице</option>
-    <option value="100">100 на странице</option>
-  </select>
-</div>
-
 <!-- Table view -->
 <div id="ps-view-table">
   <div class="ps-table-container">
     <div class="ps-pagination" id="ps-pagination" style="display:none">
-      <span class="ps-pagination-info" id="ps-pagination-info"></span>
+      <div class="ps-pagination-left">
+        <span class="ps-pagination-info" id="ps-pagination-info"></span>
+        <button class="ps-clear-btn" id="ps-btn-clear-all" onclick="psApp.clearAllFilters()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:12px;height:12px;vertical-align:middle;margin-right:3px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Сбросить фильтры
+        </button>
+        <div class="ps-limit-toggle">
+          <button class="ps-limit-btn" data-limit="25" onclick="psApp.setLimit(25)">25</button>
+          <button class="ps-limit-btn active" data-limit="50" onclick="psApp.setLimit(50)">50</button>
+          <button class="ps-limit-btn" data-limit="100" onclick="psApp.setLimit(100)">100</button>
+        </div>
+      </div>
       <div class="ps-pagination-btns" id="ps-pagination-btns"></div>
     </div>
     <div class="ps-table-scroll">
@@ -838,7 +843,6 @@ window.psApp = (function() {
     var tbody = document.getElementById('ps-table-body');
     tbody.innerHTML = '<tr><td colspan="7" class="ps-loading"><div class="ps-spinner"></div>Загрузка...</td></tr>';
     document.getElementById('ps-pagination').style.display = 'none';
-    document.getElementById('ps-results-bar').style.display = 'none';
 
     api('/?' + params.toString()).then(function(res) {
       if (!res.success) {
@@ -846,8 +850,6 @@ window.psApp = (function() {
         return;
       }
       var data = res.data, pag = res.pagination;
-      document.getElementById('ps-total-count').textContent = pag.total.toLocaleString('ru-RU');
-      document.getElementById('ps-results-bar').style.display = 'flex';
 
       if (data.length === 0) {
         var hasF = Object.values(colFilters).some(function(v) { return !!v; });
@@ -1048,7 +1050,7 @@ window.psApp = (function() {
     container.style.display = 'flex';
     var from = (pag.page - 1) * pag.limit + 1;
     var to   = Math.min(pag.page * pag.limit, pag.total);
-    document.getElementById('ps-pagination-info').textContent = 'Показано ' + from + '–' + to + ' из ' + pag.total.toLocaleString('ru-RU');
+    document.getElementById('ps-pagination-info').textContent = from + '–' + to + ' из ' + pag.total.toLocaleString('ru-RU');
 
     var p = pag.page, total = pag.pages, pages = [1];
     if (p > 3) pages.push('…');
@@ -1199,14 +1201,16 @@ window.psApp = (function() {
     document.getElementById('ps-view-table').style.display  = view === 'table'  ? 'block' : 'none';
     document.getElementById('ps-view-tree').style.display   = view === 'tree'   ? 'block' : 'none';
     document.getElementById('ps-view-checks').style.display = view === 'checks' ? 'block' : 'none';
-    document.getElementById('ps-results-bar').style.display = view === 'table'  ? 'flex'  : 'none';
     if (view === 'table') loadTable();
     else if (view === 'tree') { document.getElementById('ps-tree-search').value = ''; loadTree(); }
     else if (view === 'checks') loadChecks();
   }
 
-  function onLimitChange() {
-    currentLimit = parseInt(document.getElementById('ps-limit-select').value) || 50;
+  function setLimit(n) {
+    currentLimit = n;
+    document.querySelectorAll('.ps-limit-btn').forEach(function(b) {
+      b.classList.toggle('active', parseInt(b.dataset.limit) === n);
+    });
     currentPage = 1;
     loadTable();
   }
@@ -1233,7 +1237,7 @@ window.psApp = (function() {
     toggleClinicDd: toggleClinicDd,
     selectClinic: selectClinic,
     setView: setView,
-    onLimitChange: onLimitChange,
+    setLimit: setLimit,
     sortBy: sortBy,
     toggleLazyNode: toggleLazyNode,
     goPage: goPage,
