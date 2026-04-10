@@ -529,6 +529,16 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const [activeClinic, setActiveClinic] = useState('global');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const serviceSpecialties = React.useMemo(() => {
+    const set = new Set();
+    (doctors || []).forEach(d => {
+      (d.professions || []).forEach(p => {
+        const t = typeof p === 'object' ? (p.title || '') : String(p || '');
+        if (t) set.add(t);
+      });
+    });
+    return [...set].sort();
+  }, [doctors]);
   const [cabinetInput, setCabinetInput] = useState('');
   const autoSaveTimer = useRef(null);
 
@@ -1437,9 +1447,10 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                       onDelete={handleDeleteAnesthesiologistRule}
                       onReorder={handleReorderAnesthesiologistRules}
                       onEdit={handleEditAnesthesiologistRule}
+                      specialties={serviceSpecialties}
                       readOnly={readOnly}
                     />
-                    <AnesthesiologistRuleAddForm onAdd={handleAddAnesthesiologistRule} saving={saving} readOnly={readOnly} />
+                    <AnesthesiologistRuleAddForm onAdd={handleAddAnesthesiologistRule} saving={saving} readOnly={readOnly} specialties={serviceSpecialties} />
                   </div>
                 )}
               </>
@@ -2137,7 +2148,7 @@ function fmtRuleConditions(r) {
   return <>{parts[0]}{sep}{parts[1]}</>;
 }
 
-function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnly }) {
+function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, specialties, readOnly }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editContains, setEditContains] = useState('');
   const [editSpecialty, setEditSpecialty] = useState('');
@@ -2178,38 +2189,29 @@ function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnl
       {rules.map((r, i) => editIdx === i ? (
         <div key={i} style={{ border: '1px solid #3b82f6', borderRadius: 7, padding: '6px 8px', background: '#f0f7ff', display: 'flex', flexDirection: 'column', gap: 5 }}>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Название содержит</span>
             <input
               autoFocus value={editContains} onChange={e => setEditContains(e.target.value)}
               onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
-              placeholder="необязательно"
+              placeholder="Название содержит..."
               style={{ flex: 1, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
             />
-          </div>
-          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Специальность</span>
-            <input
-              value={editSpecialty} onChange={e => setEditSpecialty(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
-              placeholder="необязательно"
-              style={{ flex: 1, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
-            />
-          </div>
-          {editContains.trim() && editSpecialty.trim() && (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Условие</span>
-              <div className="rb-exec-type-toggle">
-                <button className={`rb-exec-type-btn${editMatchMode === 'or' ? ' active' : ''}`} onClick={() => setEditMatchMode('or')}>ИЛИ</button>
-                <button className={`rb-exec-type-btn${editMatchMode === 'and' ? ' active' : ''}`} onClick={() => setEditMatchMode('and')}>И</button>
-              </div>
+            <div className="rb-exec-type-toggle">
+              <button className={`rb-exec-type-btn${editMatchMode === 'or' ? ' active' : ''}`} onClick={() => setEditMatchMode('or')}>ИЛИ</button>
+              <button className={`rb-exec-type-btn${editMatchMode === 'and' ? ' active' : ''}`} onClick={() => setEditMatchMode('and')}>И</button>
             </div>
-          )}
+            <select
+              value={editSpecialty} onChange={e => setEditSpecialty(e.target.value)}
+              style={{ width: 160, minWidth: 0, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit', background: '#fff' }}
+            >
+              <option value="">Специальность...</option>
+              {(specialties || []).map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Сумма</span>
             <input
               type="number" step="0.1" value={editValue} onChange={e => setEditValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
-              placeholder="напр. 500 или -150"
+              placeholder="0"
               style={{ width: 100, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
             />
             <div className="rb-exec-type-toggle">
@@ -2257,7 +2259,7 @@ function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnl
 
 // ─── Anesthesiologist rule add form ──────────────────────────────────────────
 
-function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly }) {
+function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly, specialties }) {
   const [contains, setContains] = useState('');
   const [specialty, setSpecialty] = useState('');
   const [matchMode, setMatchMode] = useState('or');
@@ -2269,14 +2271,12 @@ function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly }) {
   const handleAdd = () => {
     if (!contains.trim() && !specialty.trim()) { toast.error('Укажите хотя бы одно условие (название или специальность)'); return; }
     const v = parseFloat(value);
-    if (isNaN(v)) { toast.error('Укажите значение (можно отрицательное, например -150)'); return; }
+    if (isNaN(v)) { toast.error('Укажите значение'); return; }
     onAdd({ contains: contains.trim(), specialty: specialty.trim(), matchMode, value: v, valueType });
     setContains('');
     setSpecialty('');
     setValue('');
   };
-
-  const bothFilled = contains.trim() && specialty.trim();
 
   return (
     <div style={{ border: '1px dashed var(--rb-border-dark)', borderRadius: 7, padding: '8px 10px', marginTop: 4, background: '#fafafa', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -2287,34 +2287,30 @@ function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly }) {
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
           style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
         />
-        <input
-          type="text" placeholder="Специальность..."
+        <div className="rb-exec-type-toggle">
+          <button className={`rb-exec-type-btn${matchMode === 'or' ? ' active' : ''}`} onClick={() => setMatchMode('or')}>ИЛИ</button>
+          <button className={`rb-exec-type-btn${matchMode === 'and' ? ' active' : ''}`} onClick={() => setMatchMode('and')}>И</button>
+        </div>
+        <select
           value={specialty} onChange={e => setSpecialty(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
-        />
+          style={{ width: 160, minWidth: 0, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit', background: '#fff' }}
+        >
+          <option value="">Специальность...</option>
+          {(specialties || []).map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {bothFilled && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ fontSize: 11, color: '#64748b' }}>Если оба:</span>
-            <div className="rb-exec-type-toggle">
-              <button className={`rb-exec-type-btn${matchMode === 'or' ? ' active' : ''}`} onClick={() => setMatchMode('or')}>ИЛИ</button>
-              <button className={`rb-exec-type-btn${matchMode === 'and' ? ' active' : ''}`} onClick={() => setMatchMode('and')}>И</button>
-            </div>
-          </div>
-        )}
         <input
-          type="number" step="0.1" placeholder="напр. 500 или -150"
+          type="number" step="0.1" placeholder="0"
           value={value} onChange={e => setValue(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          style={{ width: 130, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit', marginLeft: bothFilled ? 0 : 'auto' }}
+          style={{ width: 100, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
         />
         <div className="rb-exec-type-toggle">
           <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
           <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
         </div>
-        <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
+        <button className="rb-btn rb-btn-primary rb-btn-sm" style={{ marginLeft: 'auto' }} onClick={handleAdd} disabled={saving}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
