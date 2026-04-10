@@ -794,7 +794,7 @@ export async function buildReport({
             svcBreakdown2[k2].count++;
             svcBreakdown2[k2].income += inc;
           });
-          if (secTotal > 0) {
+          if (secTotal !== 0) {
             anesthesiologistIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
           }
         }
