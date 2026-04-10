@@ -132,7 +132,7 @@ export default function SalaryBlock({ salary }) {
   const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasAssistanceIncome = (assistanceIncomeTotal || 0) > 0;
-  const hasAnesthesiologistIncome = (anesthesiologistIncomeTotal || 0) > 0;
+  const hasAnesthesiologistIncome = (anesthesiologistIncomeTotal || 0) !== 0 || anesthesiologistIncomeSections.length > 0;
   const hasAny = hasWage || hasReferral || hasPerformed || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasAssistanceIncome || hasAnesthesiologistIncome;
 
   if (!hasAny) return null;
@@ -407,32 +407,47 @@ export default function SalaryBlock({ salary }) {
         </SalaryRow>
       )}
 
-      {hasAnesthesiologistIncome && (
-        <SalaryRow icon="+" label="Анестезиология" value={`+${fmtRub(anesthesiologistIncomeTotal)}`} color="var(--rb-success)" expandable={anesthesiologistIncomeSections.length > 0}>
-          {anesthesiologistIncomeSections.map(({ execName, total, services }, i) => (
-            <SubSection key={i} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-              {services.length > 0 && (
-                <table className="rb-report-table">
-                  <thead>
-                    <tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr>
-                  </thead>
-                  <tbody>
-                    {services.map((s, j) => (
-                      <tr key={j}>
-                        <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
-                        <td>{s.name || '—'}</td>
-                        <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                        <td>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
-                        <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </SubSection>
-          ))}
-        </SalaryRow>
-      )}
+      {hasAnesthesiologistIncome && (() => {
+        const net = anesthesiologistIncomeTotal || 0;
+        const netPositive = net >= 0;
+        const netColor = netPositive ? 'var(--rb-success)' : 'var(--rb-danger)';
+        const netLabel = netPositive ? `+${fmtRub(net)}` : `−${fmtRub(Math.abs(net))}`;
+        return (
+          <SalaryRow icon={netPositive ? '+' : '−'} label="Анестезиологическое ассистирование" value={netLabel} color={netColor} expandable={anesthesiologistIncomeSections.length > 0}>
+            {anesthesiologistIncomeSections.map(({ execName, total, services }, i) => {
+              const secPos = total >= 0;
+              return (
+                <SubSection key={i} label={execName} value={(secPos ? '+' : '−') + fmtRub(Math.abs(total))} color={secPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={secPos ? 'plus' : 'minus'}>
+                  {services.length > 0 && (
+                    <table className="rb-report-table">
+                      <thead>
+                        <tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr>
+                      </thead>
+                      <tbody>
+                        {services.map((s, j) => {
+                          const inc = s.income || 0;
+                          const incPos = inc >= 0;
+                          return (
+                            <tr key={j}>
+                              <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
+                              <td>{s.name || '—'}</td>
+                              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                              <td>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                              <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
+                                {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </SubSection>
+              );
+            })}
+          </SalaryRow>
+        );
+      })()}
 
       {/* Total */}
       <div className="rb-salary-total-row">

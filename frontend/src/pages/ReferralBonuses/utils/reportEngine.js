@@ -117,6 +117,18 @@ export function extractCorpRows(rows, colMap, dateFrom, dateTo) {
     });
 }
 
+// Проверяет совпадение правила анестезиолога с услугой по названию и/или специальности
+function anestRuleMatches(rule, svcName, svcSpec) {
+  const hasContains  = !!(rule.contains  || '').trim();
+  const hasSpecialty = !!(rule.specialty || '').trim();
+  if (!hasContains && !hasSpecialty) return false;
+  const nameMatch = hasContains  && svcName.includes(rule.contains);
+  const specMatch = hasSpecialty && svcSpec.toLowerCase().includes((rule.specialty || '').toLowerCase());
+  if (hasContains && hasSpecialty)
+    return (rule.matchMode || 'or') === 'and' ? (nameMatch && specMatch) : (nameMatch || specMatch);
+  return nameMatch || specMatch;
+}
+
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
@@ -475,6 +487,7 @@ export async function buildReport({
         cabinet,
         assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '',
         anesthesiologist: colMap.anesthesiologist ? String(r[colMap.anesthesiologist] || '').trim() : '',
+        serviceSpec: colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '',
       });
     });
 
@@ -593,7 +606,7 @@ export async function buildReport({
               }
             }
 
-            // ── Anesthesiologist deduction (rule-based by service name) ──
+            // ── Anesthesiologist deduction (rule-based) — только положительные правила трогают основного врача ──
             let anestBonus = 0;
             let anestMatchedRule = null;
             const anesthesiologistName = row.anesthesiologist || '';
@@ -601,10 +614,15 @@ export async function buildReport({
               const anestOwnData = anestSettingsCache[anesthesiologistName];
               if (anestOwnData && (anestOwnData.anesthesiologistRules || []).length) {
                 const svcName = s.name || '';
-                anestMatchedRule = (anestOwnData.anesthesiologistRules || []).find(r => r.contains && svcName.includes(r.contains)) || null;
+                const svcSpec = row.serviceSpec || '';
+                anestMatchedRule = (anestOwnData.anesthesiologistRules || []).find(r => anestRuleMatches(r, svcName, svcSpec)) || null;
                 if (anestMatchedRule) {
                   const val = parseFloat(anestMatchedRule.value) || 0;
-                  anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
+                  if (val > 0) {
+                    // только положительные правила вычитаются из бонуса основного врача
+                    anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
+                  }
+                  // отрицательные правила — только у анестезиолога, основной врач не затрагивается
                 }
               }
             }
@@ -750,9 +768,10 @@ export async function buildReport({
           const cost2    = rbParseCost(r);
           const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
           const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+          const svcSpec2 = colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '';
           if (!execName) return;
           if (!byExec[execName]) byExec[execName] = [];
-          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2 });
         });
 
         for (const [execName, svcRows] of Object.entries(byExec)) {
@@ -760,11 +779,12 @@ export async function buildReport({
           const svcBreakdown2 = {};
           svcRows.forEach(row2 => {
             const svcName = row2.svcName || '';
-            const matchedRule = myAnestRules.find(r => r.contains && svcName.includes(r.contains));
+            const svcSpec = row2.svcSpec || '';
+            const matchedRule = myAnestRules.find(r => anestRuleMatches(r, svcName, svcSpec));
             if (!matchedRule) return;
             const val = parseFloat(matchedRule.value) || 0;
             const inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
-            if (!inc) return;
+            if (inc === 0) return;
             secTotal += inc;
             anesthesiologistIncomeTotal += inc;
             const k2 = row2.svcCode || row2.svcName;

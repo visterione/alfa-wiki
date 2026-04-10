@@ -1426,11 +1426,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
                   <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
                 </div>
-                {/* Anesthesiologist own rules — only for CT/MRI doctors */}
-                {(selectedDoctor?.professions || []).some(p => {
-                  const t = (typeof p === 'object' ? (p.title || '') : String(p || '')).toLowerCase();
-                  return t.includes('компьютерная томография') || t.includes('мрт') || t.includes('магнитно-резонанс');
-                }) && (
+                {/* Anesthesiologist own rules */}
+                {true && (
                   <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
                     <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>
                       Анестезиологическое ассистирование:
@@ -2109,21 +2106,61 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
 
 // ─── Anesthesiologist flat rules list ────────────────────────────────────────
 
+const GRIP_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+    <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
+    <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
+  </svg>
+);
+
+function fmtRuleValue(r) {
+  const v = parseFloat(r.value) || 0;
+  const sign = v < 0 ? '−' : '+';
+  const color = v < 0 ? 'var(--rb-danger)' : 'var(--rb-success)';
+  const label = r.valueType === 'rub' ? `${Math.abs(v)} ₽` : `${Math.abs(v)}%`;
+  return <span style={{ fontWeight: 600, color }}>{sign}{label}</span>;
+}
+
+function fmtRuleConditions(r) {
+  const parts = [];
+  if ((r.contains || '').trim()) parts.push(<span key="c">название <b>«{r.contains}»</b></span>);
+  if ((r.specialty || '').trim()) parts.push(<span key="s">специальность <b>«{r.specialty}»</b></span>);
+  if (parts.length === 0) return <span style={{ color: '#94a3b8' }}>нет условий</span>;
+  if (parts.length === 1) return parts[0];
+  const sep = (r.matchMode || 'or') === 'and'
+    ? <span key="sep" style={{ background: '#dbeafe', color: '#1d4ed8', borderRadius: 3, padding: '0 4px', fontSize: 10, fontWeight: 700, margin: '0 3px' }}>И</span>
+    : <span key="sep" style={{ background: '#f3f4f6', color: '#6b7280', borderRadius: 3, padding: '0 4px', fontSize: 10, fontWeight: 700, margin: '0 3px' }}>ИЛИ</span>;
+  return <>{parts[0]}{sep}{parts[1]}</>;
+}
+
 function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnly }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editContains, setEditContains] = useState('');
+  const [editSpecialty, setEditSpecialty] = useState('');
+  const [editMatchMode, setEditMatchMode] = useState('or');
   const [editValue, setEditValue] = useState('');
   const [editValueType, setEditValueType] = useState('rub');
 
   if (!rules || !rules.length) return <div className="rb-exec-empty">Нет правил</div>;
 
-  const startEdit = (i, r) => { setEditIdx(i); setEditContains(r.contains); setEditValue(String(r.value)); setEditValueType(r.valueType || 'rub'); };
+  const startEdit = (i, r) => {
+    setEditIdx(i);
+    setEditContains(r.contains || '');
+    setEditSpecialty(r.specialty || '');
+    setEditMatchMode(r.matchMode || 'or');
+    setEditValue(String(r.value));
+    setEditValueType(r.valueType || 'rub');
+  };
   const cancelEdit = () => setEditIdx(null);
   const saveEdit = (i) => {
-    if (!editContains.trim()) return;
+    if (!editContains.trim() && !editSpecialty.trim()) { toast.error('Укажите хотя бы одно условие'); return; }
     const v = parseFloat(editValue);
-    if (isNaN(v) || v < 0) return;
-    onEdit(i, { contains: editContains.trim(), value: v, valueType: editValueType });
+    if (isNaN(v)) { toast.error('Укажите значение'); return; }
+    onEdit(i, { contains: editContains.trim(), specialty: editSpecialty.trim(), matchMode: editMatchMode, value: v, valueType: editValueType });
     setEditIdx(null);
   };
 
@@ -2137,30 +2174,55 @@ function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnl
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>
       {rules.map((r, i) => editIdx === i ? (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: '2px solid transparent' }}>
-          <span style={{ color: '#94a3b8', minWidth: 18, textAlign: 'right', flexShrink: 0, fontSize: 11 }}>{i + 1}.</span>
-          <input
-            autoFocus value={editContains} onChange={e => setEditContains(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') cancelEdit(); }}
-            style={{ flex: 1, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
-          />
-          <input
-            type="number" min="0" step="0.1" value={editValue} onChange={e => setEditValue(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') cancelEdit(); }}
-            style={{ width: 65, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
-          />
-          <div className="rb-exec-type-toggle">
-            <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
-            <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+        <div key={i} style={{ border: '1px solid #3b82f6', borderRadius: 7, padding: '6px 8px', background: '#f0f7ff', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Название содержит</span>
+            <input
+              autoFocus value={editContains} onChange={e => setEditContains(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
+              placeholder="необязательно"
+              style={{ flex: 1, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+            />
           </div>
-          <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => saveEdit(i)} title="Сохранить">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
-          </button>
-          <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={cancelEdit} title="Отмена">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Специальность</span>
+            <input
+              value={editSpecialty} onChange={e => setEditSpecialty(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
+              placeholder="необязательно"
+              style={{ flex: 1, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+            />
+          </div>
+          {editContains.trim() && editSpecialty.trim() && (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Условие</span>
+              <div className="rb-exec-type-toggle">
+                <button className={`rb-exec-type-btn${editMatchMode === 'or' ? ' active' : ''}`} onClick={() => setEditMatchMode('or')}>ИЛИ</button>
+                <button className={`rb-exec-type-btn${editMatchMode === 'and' ? ' active' : ''}`} onClick={() => setEditMatchMode('and')}>И</button>
+              </div>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <span style={{ fontSize: 11, color: '#64748b', minWidth: 90 }}>Сумма</span>
+            <input
+              type="number" step="0.1" value={editValue} onChange={e => setEditValue(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }}
+              placeholder="напр. 500 или -150"
+              style={{ width: 100, padding: '3px 7px', border: '1px solid #93c5fd', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+            />
+            <div className="rb-exec-type-toggle">
+              <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
+              <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+            </div>
+            <button className="rb-btn rb-btn-primary rb-btn-xs" style={{ marginLeft: 'auto' }} onClick={() => saveEdit(i)} title="Сохранить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={cancelEdit} title="Отмена">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
         </div>
       ) : (
         <div
@@ -2172,21 +2234,11 @@ function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnl
           onDrop={readOnly ? undefined : e => handleDrop(e, i)}
           style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--rb-text-secondary)', padding: '2px 0', borderTop: '2px solid transparent', cursor: readOnly ? 'default' : 'grab' }}
         >
-          {!readOnly && (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
-              <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
-              <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
-              <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
-              <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
-              <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
-              <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
-            </svg>
-          )}
+          {!readOnly && GRIP_ICON}
           <span style={{ color: '#94a3b8', minWidth: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
-          <span style={{ color: '#64748b' }}>содержит </span>
-          <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
+          {fmtRuleConditions(r)}
           <span style={{ color: '#64748b' }}> → </span>
-          <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
+          {fmtRuleValue(r)}
           {!readOnly && (
             <>
               <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={() => startEdit(i, r)} title="Редактировать">
@@ -2207,44 +2259,68 @@ function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnl
 
 function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly }) {
   const [contains, setContains] = useState('');
+  const [specialty, setSpecialty] = useState('');
+  const [matchMode, setMatchMode] = useState('or');
   const [value, setValue] = useState('');
   const [valueType, setValueType] = useState('rub');
 
   if (readOnly) return null;
 
   const handleAdd = () => {
-    if (!contains.trim()) { toast.error('Укажите текст для поиска в названии услуги'); return; }
+    if (!contains.trim() && !specialty.trim()) { toast.error('Укажите хотя бы одно условие (название или специальность)'); return; }
     const v = parseFloat(value);
-    if (isNaN(v) || v < 0) { toast.error('Укажите значение'); return; }
-    onAdd({ contains: contains.trim(), value: v, valueType });
+    if (isNaN(v)) { toast.error('Укажите значение (можно отрицательное, например -150)'); return; }
+    onAdd({ contains: contains.trim(), specialty: specialty.trim(), matchMode, value: v, valueType });
     setContains('');
+    setSpecialty('');
     setValue('');
   };
 
+  const bothFilled = contains.trim() && specialty.trim();
+
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
-      <input
-        type="text" placeholder="Название содержит..."
-        value={contains} onChange={e => setContains(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && handleAdd()}
-        style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
-      />
-      <input
-        type="number" min="0" step="0.1" placeholder="0"
-        value={value} onChange={e => setValue(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && handleAdd()}
-        style={{ width: 70, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
-      />
-      <div className="rb-exec-type-toggle">
-        <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
-        <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
+    <div style={{ border: '1px dashed var(--rb-border-dark)', borderRadius: 7, padding: '8px 10px', marginTop: 4, background: '#fafafa', display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <input
+          type="text" placeholder="Название содержит..."
+          value={contains} onChange={e => setContains(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+        />
+        <input
+          type="text" placeholder="Специальность..."
+          value={specialty} onChange={e => setSpecialty(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+        />
       </div>
-      <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        Добавить
-      </button>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        {bothFilled && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 11, color: '#64748b' }}>Если оба:</span>
+            <div className="rb-exec-type-toggle">
+              <button className={`rb-exec-type-btn${matchMode === 'or' ? ' active' : ''}`} onClick={() => setMatchMode('or')}>ИЛИ</button>
+              <button className={`rb-exec-type-btn${matchMode === 'and' ? ' active' : ''}`} onClick={() => setMatchMode('and')}>И</button>
+            </div>
+          </div>
+        )}
+        <input
+          type="number" step="0.1" placeholder="напр. 500 или -150"
+          value={value} onChange={e => setValue(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          style={{ width: 130, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit', marginLeft: bothFilled ? 0 : 'auto' }}
+        />
+        <div className="rb-exec-type-toggle">
+          <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
+          <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
+        </div>
+        <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Добавить
+        </button>
+      </div>
     </div>
   );
 }
