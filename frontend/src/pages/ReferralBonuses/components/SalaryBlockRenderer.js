@@ -414,7 +414,7 @@ export default function SalaryBlock({ salary }) {
               {services.length > 0 && (
                 <table className="rb-report-table">
                   <thead>
-                    <tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Правило</th><th>Ставка</th><th>Итого, руб</th></tr>
+                    <tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr>
                   </thead>
                   <tbody>
                     {services.map((s, j) => (
@@ -422,7 +422,6 @@ export default function SalaryBlock({ salary }) {
                         <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
                         <td>{s.name || '—'}</td>
                         <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                        <td style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.ruleContains ? `содержит «${s.ruleContains}»` : '—'}</td>
                         <td>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
                         <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
                       </tr>
