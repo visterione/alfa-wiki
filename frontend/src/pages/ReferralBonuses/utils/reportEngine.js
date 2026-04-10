@@ -519,6 +519,20 @@ export async function buildReport({
     const assistancePayments = {};
     const anesthesiologistPayments = {};
 
+    // Pre-load own settings for each unique anesthesiologist name in rows
+    const anestSettingsCache = {};
+    if (colMap.anesthesiologist) {
+      const anestNames = [...new Set(
+        rows.filter(rbRowInDateRange).map(r => String(r[colMap.anesthesiologist] || '').trim()).filter(Boolean)
+      )];
+      for (const name of anestNames) {
+        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
+        if (doc) {
+          try { anestSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+        }
+      }
+    }
+
     const performedSections = Object.values(perfByService).map(s => {
       let bonusAmount = 0;
       const bonusLabels = new Set();
@@ -584,10 +598,10 @@ export async function buildReport({
             let anestMatchedRule = null;
             const anesthesiologistName = row.anesthesiologist || '';
             if (!interim && anesthesiologistName) {
-              const _indivAnest = (execSettings.anesthesiologists || []).find(a => rbNamesMatch(a.name, anesthesiologistName));
-              if (_indivAnest) {
-                const svcNameLower = (s.name || '').toLowerCase();
-                anestMatchedRule = (_indivAnest.rules || []).find(r => r.contains && svcNameLower.includes(r.contains.toLowerCase())) || null;
+              const anestOwnData = anestSettingsCache[anesthesiologistName];
+              if (anestOwnData && (anestOwnData.anesthesiologistRules || []).length) {
+                const svcName = s.name || '';
+                anestMatchedRule = (anestOwnData.anesthesiologistRules || []).find(r => r.contains && svcName.includes(r.contains)) || null;
                 if (anestMatchedRule) {
                   const val = parseFloat(anestMatchedRule.value) || 0;
                   anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
@@ -724,52 +738,42 @@ export async function buildReport({
     // ── Anesthesiologist income (rows where THIS doctor is listed as anesthesiologist) ──
     let anesthesiologistIncomeTotal = 0;
     const anesthesiologistIncomeSections = [];
-    if (colMap.anesthesiologist) {
+    const myAnestRules = execData.anesthesiologistRules || [];
+    if (colMap.anesthesiologist && myAnestRules.length) {
       const anestIncRows = rows.filter(r =>
         rbNamesMatch(doctorName, String(r[colMap.anesthesiologist] || '').trim()) && rbRowInDateRange(r)
       );
       if (anestIncRows.length) {
-        const byExecAnest = {};
+        const byExec = {};
         anestIncRows.forEach(r => {
-          const execName   = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
-          const clinicRaw2 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
-          const cId2  = rbMatchClinicId(clinicRaw2) || 'unknown';
-          const cost2 = rbParseCost(r);
+          const execName = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+          const cost2    = rbParseCost(r);
           const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
           const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
           if (!execName) return;
-          if (!byExecAnest[execName]) byExecAnest[execName] = {};
-          if (!byExecAnest[execName][cId2]) byExecAnest[execName][cId2] = [];
-          byExecAnest[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
+          if (!byExec[execName]) byExec[execName] = [];
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
         });
 
-        for (const [execName, byClinicMap2] of Object.entries(byExecAnest)) {
-          const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-          if (!execDoc) continue;
-          let execData2;
-          try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
+        for (const [execName, svcRows] of Object.entries(byExec)) {
           let secTotal = 0;
           const svcBreakdown2 = {};
-          for (const [, cRows3] of Object.entries(byClinicMap2)) {
-            const _indivEntry = (execData2.anesthesiologists || []).find(a => rbNamesMatch(a.name, doctorName));
-            if (!_indivEntry || !(_indivEntry.rules || []).length) continue;
-            cRows3.forEach(row2 => {
-              const svcNameLower = (row2.svcName || '').toLowerCase();
-              const matchedRule = (_indivEntry.rules || []).find(r => r.contains && svcNameLower.includes(r.contains.toLowerCase()));
-              if (!matchedRule) return;
-              const val = parseFloat(matchedRule.value) || 0;
-              const inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
-              if (!inc) return;
-              secTotal += inc;
-              anesthesiologistIncomeTotal += inc;
-              const k2 = row2.svcCode || row2.svcName;
-              if (!svcBreakdown2[k2])
-                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains: matchedRule.contains, aValue: matchedRule.value, aValueType: matchedRule.valueType };
-              svcBreakdown2[k2].cost   += row2.cost;
-              svcBreakdown2[k2].count++;
-              svcBreakdown2[k2].income += inc;
-            });
-          }
+          svcRows.forEach(row2 => {
+            const svcName = row2.svcName || '';
+            const matchedRule = myAnestRules.find(r => r.contains && svcName.includes(r.contains));
+            if (!matchedRule) return;
+            const val = parseFloat(matchedRule.value) || 0;
+            const inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
+            if (!inc) return;
+            secTotal += inc;
+            anesthesiologistIncomeTotal += inc;
+            const k2 = row2.svcCode || row2.svcName;
+            if (!svcBreakdown2[k2])
+              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains: matchedRule.contains, aValue: matchedRule.value, aValueType: matchedRule.valueType };
+            svcBreakdown2[k2].cost   += row2.cost;
+            svcBreakdown2[k2].count++;
+            svcBreakdown2[k2].income += inc;
+          });
           if (secTotal > 0) {
             anesthesiologistIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
           }

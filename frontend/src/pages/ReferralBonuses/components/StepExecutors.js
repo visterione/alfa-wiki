@@ -958,18 +958,36 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer(newData);
   };
 
-  // ── Anesthesiologists (global, not per-clinic) ────────────────────────────
-  const handleAddAnesthesiologist = async (item) => {
-    const arr = [...(execData.anesthesiologists || []), item];
-    const newData = { ...execData, anesthesiologists: arr };
+  // ── Anesthesiologist own rules (flat, only for CT/MRI doctors) ──────────
+  const handleAddAnesthesiologistRule = async (rule) => {
+    const arr = [...(execData.anesthesiologistRules || []), rule];
+    const newData = { ...execData, anesthesiologistRules: arr };
     setExecData(newData);
     await saveToServer(newData);
     toast.success('Добавлено');
   };
 
-  const handleDeleteAnesthesiologist = async (idx) => {
-    const arr = (execData.anesthesiologists || []).filter((_, i) => i !== idx);
-    const newData = { ...execData, anesthesiologists: arr };
+  const handleDeleteAnesthesiologistRule = async (idx) => {
+    const arr = (execData.anesthesiologistRules || []).filter((_, i) => i !== idx);
+    const newData = { ...execData, anesthesiologistRules: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+  };
+
+  const handleReorderAnesthesiologistRules = async (fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const arr = [...(execData.anesthesiologistRules || [])];
+    const [moved] = arr.splice(fromIdx, 1);
+    arr.splice(toIdx, 0, moved);
+    const newData = { ...execData, anesthesiologistRules: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+  };
+
+  const handleEditAnesthesiologistRule = async (idx, newRule) => {
+    const arr = [...(execData.anesthesiologistRules || [])];
+    arr[idx] = newRule;
+    const newData = { ...execData, anesthesiologistRules: arr };
     setExecData(newData);
     await saveToServer(newData);
   };
@@ -1408,17 +1426,25 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
                   <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
                 </div>
-                {/* Anesthesiologist rules */}
-                <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>
-                    Анестезиологи:
+                {/* Anesthesiologist own rules — only for CT/MRI doctors */}
+                {(selectedDoctor?.professions || []).some(p => {
+                  const t = (typeof p === 'object' ? (p.title || '') : String(p || '')).toLowerCase();
+                  return t.includes('компьютерная томография') || t.includes('мрт') || t.includes('магнитно-резонанс');
+                }) && (
+                  <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>
+                      Анестезиологическое ассистирование:
+                    </div>
+                    <AnesthesiologistRulesList
+                      rules={execData.anesthesiologistRules || []}
+                      onDelete={handleDeleteAnesthesiologistRule}
+                      onReorder={handleReorderAnesthesiologistRules}
+                      onEdit={handleEditAnesthesiologistRule}
+                      readOnly={readOnly}
+                    />
+                    <AnesthesiologistRuleAddForm onAdd={handleAddAnesthesiologistRule} saving={saving} readOnly={readOnly} />
                   </div>
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, lineHeight: 1.4 }}>
-                    Для каждого анестезиолога задаются правила: если название услуги содержит указанный текст — начисляется соответствующая сумма.
-                  </div>
-                  <AnesthesiologistsList anesthesiologists={execData.anesthesiologists || []} onDelete={handleDeleteAnesthesiologist} readOnly={readOnly} />
-                  <AnesthesiologistAddForm doctors={doctors} onAdd={handleAddAnesthesiologist} saving={saving} readOnly={readOnly} />
-                </div>
+                )}
               </>
             )}
             <div style={{ borderTop: '1px dashed var(--rb-border)', marginBottom: 10 }} />
@@ -1784,10 +1810,46 @@ function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
 
 // ─── Anesthesiologist list ────────────────────────────────────────────────────
 
-function AnesthesiologistsList({ anesthesiologists, onDelete, readOnly }) {
+function AnesthesiologistsList({ anesthesiologists, onDelete, onReorderRules, onEditRule, readOnly }) {
+  const [editKey, setEditKey] = useState(null); // `${anestIdx}:${ruleIdx}`
+  const [editContains, setEditContains] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [editValueType, setEditValueType] = useState('rub');
+
   if (!anesthesiologists || !anesthesiologists.length) {
     return <div className="rb-exec-empty">Нет записей</div>;
   }
+
+  const startEdit = (i, j, r) => {
+    setEditKey(`${i}:${j}`);
+    setEditContains(r.contains);
+    setEditValue(String(r.value));
+    setEditValueType(r.valueType || 'rub');
+  };
+  const cancelEdit = () => setEditKey(null);
+  const saveEdit = (i, j) => {
+    if (!editContains.trim()) return;
+    const v = parseFloat(editValue);
+    if (isNaN(v) || v < 0) return;
+    onEditRule(i, j, { contains: editContains.trim(), value: v, valueType: editValueType });
+    setEditKey(null);
+  };
+
+  const handleDragStart = (e, anestIdx, ruleIdx) => {
+    e.dataTransfer.setData('anest-idx', String(anestIdx));
+    e.dataTransfer.setData('rule-idx', String(ruleIdx));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const handleDragOver = (e) => { e.preventDefault(); e.currentTarget.style.borderTop = '2px solid #3b82f6'; };
+  const handleDragLeave = (e) => { e.currentTarget.style.borderTop = ''; };
+  const handleDrop = (e, anestIdx, ruleIdx) => {
+    e.preventDefault();
+    e.currentTarget.style.borderTop = '';
+    const fromAnest = parseInt(e.dataTransfer.getData('anest-idx'));
+    const fromRule  = parseInt(e.dataTransfer.getData('rule-idx'));
+    if (fromAnest === anestIdx && fromRule !== ruleIdx) onReorderRules(anestIdx, fromRule, ruleIdx);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
       {anesthesiologists.map((a, i) => (
@@ -1804,14 +1866,70 @@ function AnesthesiologistsList({ anesthesiologists, onDelete, readOnly }) {
           </div>
           {(a.rules || []).length === 0
             ? <div style={{ fontSize: 11, color: '#94a3b8' }}>Нет правил</div>
-            : (a.rules || []).map((r, j) => (
-              <div key={j} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingLeft: 4, lineHeight: 1.8 }}>
-                <span style={{ color: '#64748b' }}>содержит </span>
-                <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
-                <span style={{ color: '#64748b' }}> → </span>
-                <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
-              </div>
-            ))
+            : (a.rules || []).map((r, j) => {
+              const key = `${i}:${j}`;
+              const isEditing = editKey === key;
+              return isEditing ? (
+                <div key={j} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: '2px solid transparent' }}>
+                  <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right', flexShrink: 0, fontSize: 11 }}>{j + 1}.</span>
+                  <input
+                    autoFocus
+                    value={editContains}
+                    onChange={e => setEditContains(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(i, j); if (e.key === 'Escape') cancelEdit(); }}
+                    style={{ flex: 1, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+                  />
+                  <input
+                    type="number" min="0" step="0.1"
+                    value={editValue}
+                    onChange={e => setEditValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEdit(i, j); if (e.key === 'Escape') cancelEdit(); }}
+                    style={{ width: 65, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+                  />
+                  <div className="rb-exec-type-toggle">
+                    <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
+                    <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+                  </div>
+                  <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => saveEdit(i, j)} title="Сохранить">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                  <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={cancelEdit} title="Отмена">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              ) : (
+                <div
+                  key={j}
+                  draggable={!readOnly}
+                  onDragStart={readOnly ? undefined : e => handleDragStart(e, i, j)}
+                  onDragOver={readOnly ? undefined : handleDragOver}
+                  onDragLeave={readOnly ? undefined : handleDragLeave}
+                  onDrop={readOnly ? undefined : e => handleDrop(e, i, j)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--rb-text-secondary)', padding: '2px 0', borderTop: '2px solid transparent', cursor: readOnly ? 'default' : 'grab' }}
+                >
+                  {!readOnly && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+                      <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
+                      <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
+                    </svg>
+                  )}
+                  <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right', flexShrink: 0 }}>{j + 1}.</span>
+                  <span style={{ color: '#64748b' }}>содержит </span>
+                  <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
+                  <span style={{ color: '#64748b' }}> → </span>
+                  <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
+                  {!readOnly && (
+                    <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={() => startEdit(i, j, r)} title="Редактировать">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                  )}
+                </div>
+              );
+            })
           }
         </div>
       ))}
@@ -1908,7 +2026,36 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
         {rules.length > 0 && (
           <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {rules.map((r, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '4px 8px' }}>
+              <div
+                key={i}
+                draggable
+                onDragStart={e => { e.dataTransfer.setData('form-rule-idx', String(i)); e.dataTransfer.effectAllowed = 'move'; }}
+                onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderTop = '2px solid #3b82f6'; }}
+                onDragLeave={e => { e.currentTarget.style.borderTop = ''; }}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.currentTarget.style.borderTop = '';
+                  const from = parseInt(e.dataTransfer.getData('form-rule-idx'));
+                  if (!isNaN(from) && from !== i) {
+                    setRules(prev => {
+                      const arr = [...prev];
+                      const [moved] = arr.splice(from, 1);
+                      arr.splice(i, 0, moved);
+                      return arr;
+                    });
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '4px 8px', cursor: 'grab', borderTop: '2px solid transparent' }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+                  <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
+                </svg>
+                <span style={{ color: '#94a3b8', minWidth: 14, textAlign: 'right' }}>{i + 1}.</span>
                 <span style={{ color: '#64748b' }}>содержит</span>
                 <span style={{ fontWeight: 600 }}>«{r.contains}»</span>
                 <span style={{ color: '#64748b' }}>→</span>
@@ -1956,6 +2103,148 @@ function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
         <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={() => { setExpanded(false); setName(''); setRules([]); setRuleContains(''); setRuleValue(''); }}>Отмена</button>
         <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSave} disabled={saving}>Сохранить</button>
       </div>
+    </div>
+  );
+}
+
+// ─── Anesthesiologist flat rules list ────────────────────────────────────────
+
+function AnesthesiologistRulesList({ rules, onDelete, onReorder, onEdit, readOnly }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editContains, setEditContains] = useState('');
+  const [editValue, setEditValue] = useState('');
+  const [editValueType, setEditValueType] = useState('rub');
+
+  if (!rules || !rules.length) return <div className="rb-exec-empty">Нет правил</div>;
+
+  const startEdit = (i, r) => { setEditIdx(i); setEditContains(r.contains); setEditValue(String(r.value)); setEditValueType(r.valueType || 'rub'); };
+  const cancelEdit = () => setEditIdx(null);
+  const saveEdit = (i) => {
+    if (!editContains.trim()) return;
+    const v = parseFloat(editValue);
+    if (isNaN(v) || v < 0) return;
+    onEdit(i, { contains: editContains.trim(), value: v, valueType: editValueType });
+    setEditIdx(null);
+  };
+
+  const handleDragOver = (e) => { e.preventDefault(); e.currentTarget.style.borderTop = '2px solid #3b82f6'; };
+  const handleDragLeave = (e) => { e.currentTarget.style.borderTop = ''; };
+  const handleDrop = (e, toIdx) => {
+    e.preventDefault();
+    e.currentTarget.style.borderTop = '';
+    const from = parseInt(e.dataTransfer.getData('anest-rule-idx'));
+    if (!isNaN(from) && from !== toIdx) onReorder(from, toIdx);
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+      {rules.map((r, i) => editIdx === i ? (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 0', borderTop: '2px solid transparent' }}>
+          <span style={{ color: '#94a3b8', minWidth: 18, textAlign: 'right', flexShrink: 0, fontSize: 11 }}>{i + 1}.</span>
+          <input
+            autoFocus value={editContains} onChange={e => setEditContains(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') cancelEdit(); }}
+            style={{ flex: 1, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+          />
+          <input
+            type="number" min="0" step="0.1" value={editValue} onChange={e => setEditValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') cancelEdit(); }}
+            style={{ width: 65, padding: '3px 7px', border: '1px solid #3b82f6', borderRadius: 5, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+          />
+          <div className="rb-exec-type-toggle">
+            <button className={`rb-exec-type-btn${editValueType === 'percent' ? ' active' : ''}`} onClick={() => setEditValueType('percent')}>%</button>
+            <button className={`rb-exec-type-btn${editValueType === 'rub' ? ' active' : ''}`} onClick={() => setEditValueType('rub')}>₽</button>
+          </div>
+          <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => saveEdit(i)} title="Сохранить">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+          <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={cancelEdit} title="Отмена">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      ) : (
+        <div
+          key={i}
+          draggable={!readOnly}
+          onDragStart={readOnly ? undefined : e => { e.dataTransfer.setData('anest-rule-idx', String(i)); e.dataTransfer.effectAllowed = 'move'; }}
+          onDragOver={readOnly ? undefined : handleDragOver}
+          onDragLeave={readOnly ? undefined : handleDragLeave}
+          onDrop={readOnly ? undefined : e => handleDrop(e, i)}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--rb-text-secondary)', padding: '2px 0', borderTop: '2px solid transparent', cursor: readOnly ? 'default' : 'grab' }}
+        >
+          {!readOnly && (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10" style={{ color: '#cbd5e1', flexShrink: 0 }}>
+              <circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/>
+              <circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/>
+              <circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/>
+              <circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/>
+              <circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/>
+              <circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/>
+            </svg>
+          )}
+          <span style={{ color: '#94a3b8', minWidth: 18, textAlign: 'right', flexShrink: 0 }}>{i + 1}.</span>
+          <span style={{ color: '#64748b' }}>содержит </span>
+          <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
+          <span style={{ color: '#64748b' }}> → </span>
+          <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
+          {!readOnly && (
+            <>
+              <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ marginLeft: 'auto', flexShrink: 0 }} onClick={() => startEdit(i, r)} title="Редактировать">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-danger rb-btn-xs" style={{ flexShrink: 0 }} onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Anesthesiologist rule add form ──────────────────────────────────────────
+
+function AnesthesiologistRuleAddForm({ onAdd, saving, readOnly }) {
+  const [contains, setContains] = useState('');
+  const [value, setValue] = useState('');
+  const [valueType, setValueType] = useState('rub');
+
+  if (readOnly) return null;
+
+  const handleAdd = () => {
+    if (!contains.trim()) { toast.error('Укажите текст для поиска в названии услуги'); return; }
+    const v = parseFloat(value);
+    if (isNaN(v) || v < 0) { toast.error('Укажите значение'); return; }
+    onAdd({ contains: contains.trim(), value: v, valueType });
+    setContains('');
+    setValue('');
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+      <input
+        type="text" placeholder="Название содержит..."
+        value={contains} onChange={e => setContains(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+      />
+      <input
+        type="number" min="0" step="0.1" placeholder="0"
+        value={value} onChange={e => setValue(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && handleAdd()}
+        style={{ width: 70, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+      />
+      <div className="rb-exec-type-toggle">
+        <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
+        <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
+      </div>
+      <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Добавить
+      </button>
     </div>
   );
 }
