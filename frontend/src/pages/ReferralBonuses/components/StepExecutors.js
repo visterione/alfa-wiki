@@ -958,6 +958,22 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer(newData);
   };
 
+  // ── Anesthesiologists (global, not per-clinic) ────────────────────────────
+  const handleAddAnesthesiologist = async (item) => {
+    const arr = [...(execData.anesthesiologists || []), item];
+    const newData = { ...execData, anesthesiologists: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+    toast.success('Добавлено');
+  };
+
+  const handleDeleteAnesthesiologist = async (idx) => {
+    const arr = (execData.anesthesiologists || []).filter((_, i) => i !== idx);
+    const newData = { ...execData, anesthesiologists: arr };
+    setExecData(newData);
+    await saveToServer(newData);
+  };
+
   // ── SvcMaterial add form state ────────────────────────────────────────────
   const [svcMatForm, setSvcMatForm] = useState({ serviceName: '', serviceCode: '', materialName: '', value: '', valueType: 'percent', deductionType: 'final' });
   const [doctorServices, setDoctorServices] = useState([]);
@@ -1362,32 +1378,46 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             ) : (
               <>
-                {/* Assistance percent */}
+                {/* Assistance default */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0 8px' }}>
                   <label style={{ fontSize: 13, color: 'var(--rb-text)', flex: 1 }}>
-                    % на ассистирование <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(по умолчанию)</span>
+                    Ассистирование <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 400 }}>(по умолчанию)</span>
                   </label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                     <input
-                      type="number" min="0" max="100" step="0.1" placeholder="0"
+                      type="number" min="0" step="0.1" placeholder="0"
                       value={data.assistancePercent || ''}
                       onChange={e => handlePaymentFieldChange('assistancePercent', parseFloat(e.target.value) || 0)}
                       style={{ width: 80, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
                     />
-                    <span style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>%</span>
+                    <div className="rb-exec-type-toggle">
+                      <button className={`rb-exec-type-btn${(data.assistanceValueType || 'percent') === 'percent' ? ' active' : ''}`} onClick={() => handlePaymentFieldChange('assistanceValueType', 'percent')}>%</button>
+                      <button className={`rb-exec-type-btn${data.assistanceValueType === 'rub' ? ' active' : ''}`} onClick={() => handlePaymentFieldChange('assistanceValueType', 'rub')}>₽</button>
+                    </div>
                   </div>
                 </div>
                 <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10, lineHeight: 1.4 }}>
-                  Если при выполнении услуги задействован ассистент, этот % вычитается из бонуса врача и начисляется ассистенту.
-                  Применяется для всех ассистентов, у которых не задан индивидуальный %.
+                  Если при выполнении услуги задействован ассистент, указанное значение вычитается из бонуса врача и начисляется ассистенту.
+                  Применяется для всех ассистентов, у которых не задано индивидуальное значение.
                 </div>
                 {/* Per-assistant overrides */}
                 <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
                   <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
-                    Индивидуальный % для ассистентов:
+                    Индивидуально для ассистентов:
                   </div>
                   <AssistantsList assistants={execData.assistants || []} onDelete={handleDeleteAssistant} readOnly={readOnly} />
                   <AssistantAddForm doctors={doctors} onAdd={handleAddAssistant} saving={saving} readOnly={readOnly} />
+                </div>
+                {/* Anesthesiologist rules */}
+                <div style={{ borderTop: '1px dashed var(--rb-border)', paddingTop: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>
+                    Анестезиологи:
+                  </div>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8, lineHeight: 1.4 }}>
+                    Для каждого анестезиолога задаются правила: если название услуги содержит указанный текст — начисляется соответствующая сумма.
+                  </div>
+                  <AnesthesiologistsList anesthesiologists={execData.anesthesiologists || []} onDelete={handleDeleteAnesthesiologist} readOnly={readOnly} />
+                  <AnesthesiologistAddForm doctors={doctors} onAdd={handleAddAnesthesiologist} saving={saving} readOnly={readOnly} />
                 </div>
               </>
             )}
@@ -1636,23 +1666,27 @@ function AssistantsList({ assistants, onDelete, readOnly }) {
   }
   return (
     <div className="rb-exec-items">
-      {assistants.map((a, i) => (
-        <div key={i} className="rb-exec-item">
-          <div className="rb-exec-item-name">
-            {a.name}
-            <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-              {a.percent}%
-            </span>
+      {assistants.map((a, i) => {
+        const vt = a.valueType || 'percent';
+        const val = a.value ?? a.percent ?? 0;
+        return (
+          <div key={i} className="rb-exec-item">
+            <div className="rb-exec-item-name">
+              {a.name}
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                {vt === 'rub' ? `${val} ₽` : `${val}%`}
+              </span>
+            </div>
+            {!readOnly && (
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            )}
           </div>
-          {!readOnly && (
-            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-              </svg>
-            </button>
-          )}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1661,7 +1695,8 @@ function AssistantsList({ assistants, onDelete, readOnly }) {
 
 function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
   const [name, setName] = useState('');
-  const [percent, setPercent] = useState('');
+  const [value, setValue] = useState('');
+  const [valueType, setValueType] = useState('percent');
   const [suggestions, setSuggestions] = useState([]);
   const [open, setOpen] = useState(false);
 
@@ -1689,11 +1724,11 @@ function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
 
   const handleAdd = () => {
     if (!name.trim()) { toast.error('Укажите имя ассистента'); return; }
-    const pct = parseFloat(percent);
-    if (isNaN(pct) || pct < 0) { toast.error('Укажите процент'); return; }
-    onAdd({ name: name.trim(), percent: pct });
+    const v = parseFloat(value);
+    if (isNaN(v) || v < 0) { toast.error('Укажите значение'); return; }
+    onAdd({ name: name.trim(), value: v, valueType });
     setName('');
-    setPercent('');
+    setValue('');
   };
 
   return (
@@ -1726,13 +1761,16 @@ function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <input
-          type="number" min="0" max="100" step="0.1"
-          placeholder="%"
-          value={percent}
-          onChange={e => setPercent(e.target.value)}
-          style={{ width: 60, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+          type="number" min="0" step="0.1"
+          placeholder="0"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          style={{ width: 70, padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
         />
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>%</span>
+        <div className="rb-exec-type-toggle">
+          <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
+          <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
+        </div>
       </div>
       <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd} disabled={saving}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
@@ -1740,6 +1778,184 @@ function AssistantAddForm({ doctors, onAdd, saving, readOnly }) {
         </svg>
         Добавить
       </button>
+    </div>
+  );
+}
+
+// ─── Anesthesiologist list ────────────────────────────────────────────────────
+
+function AnesthesiologistsList({ anesthesiologists, onDelete, readOnly }) {
+  if (!anesthesiologists || !anesthesiologists.length) {
+    return <div className="rb-exec-empty">Нет записей</div>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+      {anesthesiologists.map((a, i) => (
+        <div key={i} style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 10px', background: '#f8fafc' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)' }}>{a.name}</div>
+            {!readOnly && (
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          {(a.rules || []).length === 0
+            ? <div style={{ fontSize: 11, color: '#94a3b8' }}>Нет правил</div>
+            : (a.rules || []).map((r, j) => (
+              <div key={j} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', paddingLeft: 4, lineHeight: 1.8 }}>
+                <span style={{ color: '#64748b' }}>содержит </span>
+                <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>«{r.contains}»</span>
+                <span style={{ color: '#64748b' }}> → </span>
+                <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
+              </div>
+            ))
+          }
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── Anesthesiologist add form with MIS autocomplete ──────────────────────────
+
+function AnesthesiologistAddForm({ doctors, onAdd, saving, readOnly }) {
+  const [expanded, setExpanded] = useState(false);
+  const [name, setName] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [rules, setRules] = useState([]);
+  const [ruleContains, setRuleContains] = useState('');
+  const [ruleValue, setRuleValue] = useState('');
+  const [ruleValueType, setRuleValueType] = useState('rub');
+
+  if (readOnly) return null;
+
+  const handleNameChange = (val) => {
+    setName(val);
+    if (val.length >= 1) {
+      const matches = (doctors || []).filter(d => d.name.toLowerCase().includes(val.toLowerCase())).slice(0, 8);
+      setSuggestions(matches);
+      setOpen(matches.length > 0);
+    } else {
+      setSuggestions([]);
+      setOpen(false);
+    }
+  };
+
+  const handleAddRule = () => {
+    if (!ruleContains.trim()) { toast.error('Укажите текст для поиска в названии услуги'); return; }
+    const v = parseFloat(ruleValue);
+    if (isNaN(v) || v < 0) { toast.error('Укажите значение'); return; }
+    setRules(prev => [...prev, { contains: ruleContains.trim(), value: v, valueType: ruleValueType }]);
+    setRuleContains('');
+    setRuleValue('');
+  };
+
+  const handleDeleteRule = (idx) => setRules(prev => prev.filter((_, i) => i !== idx));
+
+  const handleSave = () => {
+    if (!name.trim()) { toast.error('Укажите имя анестезиолога'); return; }
+    if (!rules.length) { toast.error('Добавьте хотя бы одно правило'); return; }
+    onAdd({ name: name.trim(), rules });
+    setName(''); setRules([]); setRuleContains(''); setRuleValue(''); setExpanded(false);
+  };
+
+  if (!expanded) {
+    return (
+      <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={() => setExpanded(true)} style={{ marginTop: 4 }}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Добавить анестезиолога
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ border: '1px dashed var(--rb-border-dark)', borderRadius: 8, padding: 12, marginTop: 6, background: '#f0f7ff' }}>
+      {/* Doctor name */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Врач-анестезиолог</div>
+        <div style={{ position: 'relative' }}>
+          <input
+            type="text"
+            placeholder="Начните вводить имя..."
+            value={name}
+            onChange={e => handleNameChange(e.target.value)}
+            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onFocus={() => suggestions.length > 0 && setOpen(true)}
+            style={{ width: '100%', padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+          />
+          {open && suggestions.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid var(--rb-border-dark)', borderRadius: 6, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: 200, overflowY: 'auto' }}>
+              {suggestions.map(d => (
+                <div key={d.id} onMouseDown={() => { setName(d.name); setSuggestions([]); setOpen(false); }}
+                  style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 12, borderBottom: '1px solid #f1f5f9' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+                  onMouseLeave={e => e.currentTarget.style.background = ''}>{d.name}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Rules */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Правила начисления</div>
+        {rules.length > 0 && (
+          <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {rules.map((r, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '4px 8px' }}>
+                <span style={{ color: '#64748b' }}>содержит</span>
+                <span style={{ fontWeight: 600 }}>«{r.contains}»</span>
+                <span style={{ color: '#64748b' }}>→</span>
+                <span style={{ fontWeight: 600, color: 'var(--rb-success)' }}>{r.valueType === 'rub' ? `${r.value} ₽` : `${r.value}%`}</span>
+                <button className="rb-btn rb-btn-danger rb-btn-xs" style={{ marginLeft: 'auto' }} onClick={() => handleDeleteRule(i)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Add rule row */}
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input
+            type="text"
+            placeholder="Название содержит..."
+            value={ruleContains}
+            onChange={e => setRuleContains(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddRule()}
+            style={{ flex: 1, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', fontFamily: 'inherit' }}
+          />
+          <input
+            type="number" min="0" step="0.1" placeholder="0"
+            value={ruleValue}
+            onChange={e => setRuleValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddRule()}
+            style={{ width: 70, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', textAlign: 'right', fontFamily: 'inherit' }}
+          />
+          <div className="rb-exec-type-toggle">
+            <button className={`rb-exec-type-btn${ruleValueType === 'percent' ? ' active' : ''}`} onClick={() => setRuleValueType('percent')}>%</button>
+            <button className={`rb-exec-type-btn${ruleValueType === 'rub' ? ' active' : ''}`} onClick={() => setRuleValueType('rub')}>₽</button>
+          </div>
+          <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={handleAddRule} title="Добавить правило">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={() => { setExpanded(false); setName(''); setRules([]); setRuleContains(''); setRuleValue(''); }}>Отмена</button>
+        <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSave} disabled={saving}>Сохранить</button>
+      </div>
     </div>
   );
 }

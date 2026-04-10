@@ -24,6 +24,7 @@ export function execClinicDefault() {
     includeReferralDeductions: true,
     includeCorpInvoices: true,
     assistancePercent: 0,
+    assistanceValueType: 'percent',
     cabinets: [],
     deductions: [],
     materials: [],
@@ -473,6 +474,7 @@ export async function buildReport({
         cost: rowCost,
         cabinet,
         assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '',
+        anesthesiologist: colMap.anesthesiologist ? String(r[colMap.anesthesiologist] || '').trim() : '',
       });
     });
 
@@ -515,6 +517,7 @@ export async function buildReport({
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
     let performedBonusTotal = 0;
     const assistancePayments = {};
+    const anesthesiologistPayments = {};
 
     const performedSections = Object.values(perfByService).map(s => {
       let bonusAmount = 0;
@@ -552,20 +555,50 @@ export async function buildReport({
 
         if (bonus) {
           if (bonus.bonusPercent != null) {
-            const assistantName = row.assistant || '';
-            const _indivAsst = assistantName ? ((execSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName))) : null;
-            const asstPct = (!interim && assistantName) ? ((_indivAsst != null ? parseFloat(_indivAsst.percent) : null) ?? (clinicSettings.assistancePercent || 0)) : 0;
-            const effectiveBonusPct = Math.max(0, parseFloat(bonus.bonusPercent) - asstPct);
             const matForRow = interim ? 0 : (svcOverrideMat
               ? (svcOverrideMat.valueType === 'percent'
                   ? row.cost * parseFloat(svcOverrideMat.value) / 100
                   : parseFloat(svcOverrideMat.value) / (s.count || 1))
               : row.cost * materialFactor);
             const effectiveCost = interim ? row.cost : row.cost * (1 - deductionFactor) - matForRow;
-            bonusAmount += effectiveCost * effectiveBonusPct / 100;
+            const grossBonus = effectiveCost * parseFloat(bonus.bonusPercent) / 100;
+
+            // ── Assistant deduction ──
+            let asstBonus = 0;
+            const assistantName = row.assistant || '';
+            if (!interim && assistantName) {
+              const _indivAsst = (execSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName));
+              if (_indivAsst != null) {
+                const vt = _indivAsst.valueType || 'percent';
+                const val = parseFloat(_indivAsst.value ?? _indivAsst.percent) || 0;
+                asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+              } else {
+                const vt = clinicSettings.assistanceValueType || 'percent';
+                const val = parseFloat(clinicSettings.assistancePercent) || 0;
+                asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+              }
+            }
+
+            // ── Anesthesiologist deduction (rule-based by service name) ──
+            let anestBonus = 0;
+            let anestMatchedRule = null;
+            const anesthesiologistName = row.anesthesiologist || '';
+            if (!interim && anesthesiologistName) {
+              const _indivAnest = (execSettings.anesthesiologists || []).find(a => rbNamesMatch(a.name, anesthesiologistName));
+              if (_indivAnest) {
+                const svcNameLower = (s.name || '').toLowerCase();
+                anestMatchedRule = (_indivAnest.rules || []).find(r => r.contains && svcNameLower.includes(r.contains.toLowerCase())) || null;
+                if (anestMatchedRule) {
+                  const val = parseFloat(anestMatchedRule.value) || 0;
+                  anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
+                }
+              }
+            }
+
+            bonusAmount += Math.max(0, grossBonus - asstBonus - anestBonus);
             bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
-            if (asstPct > 0 && assistantName) {
-              const asstBonus = effectiveCost * asstPct / 100;
+
+            if (asstBonus > 0 && assistantName) {
               if (!assistancePayments[assistantName]) assistancePayments[assistantName] = { total: 0, services: {} };
               assistancePayments[assistantName].total += asstBonus;
               const svcKey = s.code || s.name;
@@ -573,6 +606,18 @@ export async function buildReport({
                 assistancePayments[assistantName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0 };
               assistancePayments[assistantName].services[svcKey].income += asstBonus;
               assistancePayments[assistantName].services[svcKey].count++;
+            }
+            if (anestBonus > 0 && anesthesiologistName) {
+              if (!anesthesiologistPayments[anesthesiologistName]) anesthesiologistPayments[anesthesiologistName] = { total: 0, services: {} };
+              anesthesiologistPayments[anesthesiologistName].total += anestBonus;
+              const svcKey = s.code || s.name;
+              if (!anesthesiologistPayments[anesthesiologistName].services[svcKey])
+                anesthesiologistPayments[anesthesiologistName].services[svcKey] = {
+                  code: s.code, name: s.name, income: 0, count: 0,
+                  ruleContains: anestMatchedRule?.contains, aValue: anestMatchedRule?.value, aValueType: anestMatchedRule?.valueType,
+                };
+              anesthesiologistPayments[anesthesiologistName].services[svcKey].income += anestBonus;
+              anesthesiologistPayments[anesthesiologistName].services[svcKey].count++;
             }
           } else if (bonus.bonusRub != null) {
             bonusAmount += parseFloat(bonus.bonusRub);
@@ -588,6 +633,11 @@ export async function buildReport({
 
     const assistancePaidTotal = Object.values(assistancePayments).reduce((s, x) => s + x.total, 0);
     const assistanceSections  = Object.entries(assistancePayments).map(([name, data]) => ({
+      name, total: data.total, services: Object.values(data.services),
+    }));
+
+    const anesthesiologistPaidTotal = Object.values(anesthesiologistPayments).reduce((s, x) => s + x.total, 0);
+    const anesthesiologistSections  = Object.entries(anesthesiologistPayments).map(([name, data]) => ({
       name, total: data.total, services: Object.values(data.services),
     }));
 
@@ -623,15 +673,22 @@ export async function buildReport({
           for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
             const eCS = rbGetClinicSettings(execData2, cId3);
             const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
-            const aPct = _indivEntry != null ? (parseFloat(_indivEntry.percent) || 0) : (eCS.assistancePercent || 0);
-            if (!aPct) continue;
+            let aValueType, aValue;
+            if (_indivEntry != null) {
+              aValueType = _indivEntry.valueType || 'percent';
+              aValue = parseFloat(_indivEntry.value ?? _indivEntry.percent) || 0;
+            } else {
+              aValueType = eCS.assistanceValueType || 'percent';
+              aValue = parseFloat(eCS.assistancePercent) || 0;
+            }
+            if (!aValue) continue;
             cRows3.forEach(row2 => {
-              const inc = row2.cost * aPct / 100;
+              const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
               secTotal += inc;
               assistanceIncomeTotal += inc;
               const k2 = row2.svcCode || row2.svcName;
               if (!svcBreakdown2[k2])
-                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aPct };
+                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
               svcBreakdown2[k2].cost   += row2.cost;
               svcBreakdown2[k2].count++;
               svcBreakdown2[k2].income += inc;
@@ -661,6 +718,62 @@ export async function buildReport({
           total: entry.total,
           services: entry.services || [],
         });
+      }
+    }
+
+    // ── Anesthesiologist income (rows where THIS doctor is listed as anesthesiologist) ──
+    let anesthesiologistIncomeTotal = 0;
+    const anesthesiologistIncomeSections = [];
+    if (colMap.anesthesiologist) {
+      const anestIncRows = rows.filter(r =>
+        rbNamesMatch(doctorName, String(r[colMap.anesthesiologist] || '').trim()) && rbRowInDateRange(r)
+      );
+      if (anestIncRows.length) {
+        const byExecAnest = {};
+        anestIncRows.forEach(r => {
+          const execName   = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+          const clinicRaw2 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
+          const cId2  = rbMatchClinicId(clinicRaw2) || 'unknown';
+          const cost2 = rbParseCost(r);
+          const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+          const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+          if (!execName) return;
+          if (!byExecAnest[execName]) byExecAnest[execName] = {};
+          if (!byExecAnest[execName][cId2]) byExecAnest[execName][cId2] = [];
+          byExecAnest[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
+        });
+
+        for (const [execName, byClinicMap2] of Object.entries(byExecAnest)) {
+          const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          if (!execDoc) continue;
+          let execData2;
+          try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
+          let secTotal = 0;
+          const svcBreakdown2 = {};
+          for (const [, cRows3] of Object.entries(byClinicMap2)) {
+            const _indivEntry = (execData2.anesthesiologists || []).find(a => rbNamesMatch(a.name, doctorName));
+            if (!_indivEntry || !(_indivEntry.rules || []).length) continue;
+            cRows3.forEach(row2 => {
+              const svcNameLower = (row2.svcName || '').toLowerCase();
+              const matchedRule = (_indivEntry.rules || []).find(r => r.contains && svcNameLower.includes(r.contains.toLowerCase()));
+              if (!matchedRule) return;
+              const val = parseFloat(matchedRule.value) || 0;
+              const inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
+              if (!inc) return;
+              secTotal += inc;
+              anesthesiologistIncomeTotal += inc;
+              const k2 = row2.svcCode || row2.svcName;
+              if (!svcBreakdown2[k2])
+                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains: matchedRule.contains, aValue: matchedRule.value, aValueType: matchedRule.valueType };
+              svcBreakdown2[k2].cost   += row2.cost;
+              svcBreakdown2[k2].count++;
+              svcBreakdown2[k2].income += inc;
+            });
+          }
+          if (secTotal > 0) {
+            anesthesiologistIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+          }
+        }
       }
     }
 
@@ -698,7 +811,7 @@ export async function buildReport({
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
-    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal - effectiveReferralCostTotal;
+    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
@@ -777,6 +890,8 @@ export async function buildReport({
       referralCostItems, executorSections,
       assistancePaidTotal, assistanceSections,
       assistanceIncomeTotal, assistanceIncomeSections,
+      anesthesiologistPaidTotal, anesthesiologistSections,
+      anesthesiologistIncomeTotal, anesthesiologistIncomeSections,
       finalSalary,
       advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
@@ -806,6 +921,10 @@ export async function buildReport({
       salary.assistanceSections = [];
       salary.assistanceIncomeTotal = 0;
       salary.assistanceIncomeSections = [];
+      salary.anesthesiologistPaidTotal = 0;
+      salary.anesthesiologistSections = [];
+      salary.anesthesiologistIncomeTotal = 0;
+      salary.anesthesiologistIncomeSections = [];
       salary.advance = 0;
       salary.mainPayment = 0;
       salary.finalSalary = salary.basePay

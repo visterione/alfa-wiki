@@ -188,6 +188,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
           if ((sal.assistancePaidTotal || 0) > 0) {
             addTblRow(['Услуги ассистирования', 'ассистент', '', '', '—', parseFloat((sal.assistancePaidTotal || 0).toFixed(2))], 1);
           }
+          if ((sal.anesthesiologistPaidTotal || 0) > 0) {
+            addTblRow(['Услуги анестезиолога', 'анестезиолог', '', '', '—', parseFloat((sal.anesthesiologistPaidTotal || 0).toFixed(2))], 1);
+          }
           if (xlsTurnoverDeds.length) {
             const noteRow = ws.addRow(['', '* Уже учтено при расчёте бонусов за выполненные услуги']);
             noteRow.getCell(2).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true, size: 10 };
@@ -205,6 +208,15 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       });
     } else if ((sal.assistancePaidTotal || 0) > 0) {
       addSalRow('Услуги ассистирования', sal.assistancePaidTotal, '-');
+    }
+
+    // Услуги анестезиолога (вычет у основного врача) — отдельная строка на каждого анестезиолога
+    if ((sal.anesthesiologistSections || []).length > 0) {
+      (sal.anesthesiologistSections || []).forEach(s => {
+        if ((s.total || 0) > 0) addSalRow(`Услуги анестезиолога ${s.name}`, s.total, '-');
+      });
+    } else if ((sal.anesthesiologistPaidTotal || 0) > 0) {
+      addSalRow('Услуги анестезиолога', sal.anesthesiologistPaidTotal, '-');
     }
 
     // Материалы
@@ -255,12 +267,30 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       (sal.assistanceIncomeSections || []).forEach(({ execName, total, services }) => {
         addSubHdr(execName, total, 'FF166534', 1);
         if ((services || []).length > 0) {
-          addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', '%', 'Итого, руб'], 2);
+          addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', 'Ставка', 'Итого, руб'], 2);
           services.forEach(s => addTblRow([
             s.code || '—', s.name || '—',
             parseFloat((s.cost || 0).toFixed(2)),
             s.count || 1,
-            s.aPct ? `${s.aPct}%` : '—',
+            s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—'),
+            parseFloat((s.income || 0).toFixed(2)),
+          ], 2));
+        }
+      });
+    }
+
+    // Анестезиология (доход врача-анестезиолога) — с детализацией по врачам
+    if ((sal.anesthesiologistIncomeTotal || 0) > 0) {
+      addSalRow('Анестезиология', sal.anesthesiologistIncomeTotal, '+');
+      (sal.anesthesiologistIncomeSections || []).forEach(({ execName, total, services }) => {
+        addSubHdr(execName, total, 'FF166534', 1);
+        if ((services || []).length > 0) {
+          addTblHdr(['Код', 'Услуга', 'К-во', 'Правило', 'Ставка', 'Итого, руб'], 2);
+          services.forEach(s => addTblRow([
+            s.code || '—', s.name || '—',
+            s.count || 1,
+            s.ruleContains ? `содержит «${s.ruleContains}»` : '—',
+            s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—',
             parseFloat((s.income || 0).toFixed(2)),
           ], 2));
         }
