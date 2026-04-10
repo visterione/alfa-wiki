@@ -194,7 +194,8 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   const cashPaidTotal = cashPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
   const totalRemainder = reps.reduce((s, cr) => {
     const sal = cr.salary || {};
-    return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+    const extraTotal = (sal.extraPayments || []).reduce((e, ep) => e + (parseFloat(ep.amount) || 0), 0);
+    return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTotal;
   }, 0);
   const netRemainder = totalRemainder - cashPaidTotal;
 

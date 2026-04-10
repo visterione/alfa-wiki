@@ -17,6 +17,13 @@ function downloadBlob(blob, filename) {
 const fmtRub = v =>
   parseFloat(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
 
+// Вычисляет остаток к доплате (к выплате = финалсалари − аванс − тело − доп.выплаты)
+function calcRemainder(sal) {
+  if (!sal) return 0;
+  const extraTotal = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+  return parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTotal;
+}
+
 // Извлекает сумму вычета по имени из объекта salary (поддерживает % и ₽)
 function _getDeductionAmount(salary, namePredicate) {
   if (!salary) return 0;
@@ -354,7 +361,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const liveCashMap = await fetchCashMap();
       const payoutRows = filtered.filter(({ cr }) => {
         const s = cr?.salary || {};
-        const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
+        const remainder = calcRemainder(s);
         return remainder > 0;
       });
 
@@ -385,7 +392,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
       sortedPayoutRows.forEach(({ rec, cr }) => {
         const s = cr?.salary || {};
-        const remainder = parseFloat(s.finalSalary || 0) - parseFloat(s.advance || 0) - parseFloat(s.mainPayment || 0);
+        const remainder = calcRemainder(s);
         const cashPaid = (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
         ws.addRow({
           name:      rec.doctorName || '—',
@@ -478,7 +485,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const seenRecForCash = new Set();
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
-        const remainder = (parseFloat(s.finalSalary || 0)) - (parseFloat(s.advance || 0)) - (parseFloat(s.mainPayment || 0));
+        const remainder = calcRemainder(s);
         const cashPaidForRow = !seenRecForCash.has(rec.id)
           ? (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)
           : 0;
@@ -548,7 +555,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         bonus:   (() => {
           const seenB = new Set();
           return filtered.reduce((s, r) => {
-            const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+            const rem = calcRemainder(r.cr?.salary);
             const cash = !seenB.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
             seenB.add(r.rec.id);
             const net = rem - cash; return s + (net >= 0 ? net : 0);
@@ -557,7 +564,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         overpay: (() => {
           const seenO = new Set();
           return filtered.reduce((s, r) => {
-            const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+            const rem = calcRemainder(r.cr?.salary);
             const cash = !seenO.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
             seenO.add(r.rec.id);
             const net = rem - cash; return s + (net < 0 ? net : 0);
@@ -695,7 +702,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const totalSalary  = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
         const totalBase    = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0) + parseFloat(r.cr?.salary?.advance || 0), 0);
         const totalOverpay = filtered.reduce((s, r) => {
-          const rem = parseFloat(r.cr?.salary?.finalSalary || 0) - parseFloat(r.cr?.salary?.advance || 0) - parseFloat(r.cr?.salary?.mainPayment || 0);
+          const rem = calcRemainder(r.cr?.salary);
           return s + (rem < 0 ? rem : 0);
         }, 0);
         const totalCashPaid = (() => {
@@ -768,7 +775,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           const rowCashTotal = rowCash.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
                           const allRem = (rec.reportData?.clinicReports || []).reduce((s, c) => {
                             const sal = c.salary || {};
-                            return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+                            return s + calcRemainder(sal);
                           }, 0);
                           const netRem = allRem - rowCashTotal;
                           return (
@@ -875,8 +882,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       const recCashPayments = cashPaymentsMap[rec.id] || [];
                       const cashPaidTotal = recCashPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
                       const allClinicRemainder = (rec.reportData?.clinicReports || []).reduce((s, c) => {
-                        const sal = c.salary || {};
-                        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0);
+                        return s + calcRemainder(c.salary);
                       }, 0);
                       const netRemainder = allClinicRemainder - cashPaidTotal;
                       return (
