@@ -729,13 +729,15 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             </thead>
             <tbody>
               {filtered.map(({ key, rec, cr, clinicObj, clinicName }) => {
-                const s         = cr?.salary || {};
-                const advance   = parseFloat(s.advance     || 0);
-                const body      = parseFloat(s.mainPayment || 0);
-                const total     = parseFloat(s.finalSalary || 0);
-                const remainder = total - advance - body;
-                const bonus     = remainder >= 0 ? remainder : 0;
-                const overpay   = remainder < 0  ? remainder : 0;
+                const s           = cr?.salary || {};
+                const advance     = parseFloat(s.advance     || 0);
+                const body        = parseFloat(s.mainPayment || 0);
+                const total       = parseFloat(s.finalSalary || 0);
+                const extraPayments = s.extraPayments || [];
+                const extraTotal  = extraPayments.reduce((acc, ep) => acc + (parseFloat(ep.amount) || 0), 0);
+                const remainder   = calcRemainder(s);
+                const bonus       = remainder >= 0 ? remainder : 0;
+                const overpay     = remainder < 0  ? remainder : 0;
                 const isOpen    = expandedKey === key;
                 const dateLabel = rec.periodLabel || (rec.dateFrom ? fmtDate(rec.dateFrom) : '—');
                 const recalcKey = key;
@@ -803,10 +805,13 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             </div>
                           );
                         })()}
-                        {(advance > 0 || body > 0 || bonus > 0 || overpay < 0) && (
+                        {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {body > 0    && <span>Тело: {fmtRub(body)}</span>}
+                            {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
+                              <span key={i}>{ep.label || `Доп. выплата ${i + 1}`}: {fmtRub(ep.amount)}</span>
+                            ))}
                             {bonus > 0   && <span>Премия: {fmtRub(bonus)}</span>}
                             {overpay < 0 && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
