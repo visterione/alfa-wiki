@@ -738,7 +738,7 @@ export async function buildReport({
     // ── Anesthesiologist income (rows where THIS doctor is listed as anesthesiologist) ──
     let anesthesiologistIncomeTotal = 0;
     const anesthesiologistIncomeSections = [];
-    const myAnestRules = execData.anesthesiologistRules || [];
+    const myAnestRules = execSettings.anesthesiologistRules || [];
     if (colMap.anesthesiologist && myAnestRules.length) {
       const anestIncRows = rows.filter(r =>
         rbNamesMatch(doctorName, String(r[colMap.anesthesiologist] || '').trim()) && rbRowInDateRange(r)
