@@ -1,6 +1,6 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { ReferralBonus, Page, PageHistory, RbUserPermission, User } = require('../models');
+const { ReferralBonus, Page, PageHistory, RbUserPermission, User, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -22,6 +22,37 @@ async function recordHistory(pageSlug, userId, summary, changes = []) {
     console.error('History record error:', err.message);
   }
 }
+
+// === Suggests (подсказки автозаполнения) ===
+const RB_SUGGESTS_KEY = 'rb_exec_suggests';
+
+router.get('/suggests', authenticate, async (req, res) => {
+  try {
+    const setting = await Setting.findByPk(RB_SUGGESTS_KEY);
+    if (!setting) return res.json({});
+    const val = setting.value;
+    res.json(typeof val === 'string' ? JSON.parse(val) : val);
+  } catch (err) {
+    console.error('Get rb suggests error:', err);
+    res.status(500).json({ error: 'Ошибка получения подсказок' });
+  }
+});
+
+router.put('/suggests', authenticate, async (req, res) => {
+  try {
+    const value = JSON.stringify(req.body);
+    let setting = await Setting.findByPk(RB_SUGGESTS_KEY);
+    if (setting) {
+      await setting.update({ value });
+    } else {
+      await Setting.create({ key: RB_SUGGESTS_KEY, value, description: 'ReferralBonuses executor suggests' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Save rb suggests error:', err);
+    res.status(500).json({ error: 'Ошибка сохранения подсказок' });
+  }
+});
 
 // Получить все бонусы для врача
 router.get('/', authenticate, async (req, res) => {

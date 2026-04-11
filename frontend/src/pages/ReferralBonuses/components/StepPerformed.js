@@ -316,7 +316,7 @@ function CabAddForm({ form, setForm, onSave, saving }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
+export default function StepPerformed({ selectedDoctor, clinics, readOnly, panelCollapsed, onTogglePanel }) {
   const [bonuses, setBonuses] = useState([]);
   const [services, setServices] = useState([]);
   const [globalCabinets, setGlobalCabinets] = useState([]);
@@ -514,6 +514,15 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly }) {
         <div className="rb-doctor-card-info">
           <h2>{selectedDoctor.name}</h2>
         </div>
+        {onTogglePanel && (
+          <button onClick={onTogglePanel} title={panelCollapsed ? 'Свернуть' : 'На всю ширину'} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+            {panelCollapsed ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            )}
+          </button>
+        )}
       </div>
 
       <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>

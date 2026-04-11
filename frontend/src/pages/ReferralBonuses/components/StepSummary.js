@@ -686,9 +686,6 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           </svg>
           {exportingPayout ? 'Экспорт...' : 'Выплата'}
         </button>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-          {filtered.length} строк
-        </span>
       </div>
 
       {/* ── Table ── */}
@@ -716,15 +713,15 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         return (
         <>
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="rb-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9' }}>
+              <tr>
                 {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'НДФЛ', 'Зарплата', 'Комментарий'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
+                  <th key={h} style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'center', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0', whiteSpace: 'nowrap' }}>
                     {h}
                   </th>
                 ))}
-                <th style={{ width: 28, borderBottom: '2px solid var(--rb-border)' }} />
+                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 28, borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
               </tr>
             </thead>
             <tbody>
@@ -746,12 +743,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                   <React.Fragment key={key}>
                     <tr
                       onClick={() => setExpandedKey(isOpen ? null : key)}
-                      style={{ cursor: 'pointer', background: isOpen ? '#eff6ff' : 'transparent', borderBottom: isOpen ? 'none' : '1px solid var(--rb-border)', transition: 'background .1s' }}
+                      style={{ cursor: 'pointer', background: '#fff', borderBottom: isOpen ? 'none' : '1px solid var(--rb-border)', transition: 'background .1s' }}
                       onMouseEnter={e => { if (!isOpen) e.currentTarget.style.background = '#f8fafc'; }}
-                      onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = 'transparent'; }}
+                      onMouseLeave={e => { if (!isOpen) e.currentTarget.style.background = '#fff'; }}
                     >
-                      <td style={{ padding: '10px 12px', fontWeight: 600 }}>{rec.doctorName || '—'}</td>
-                      <td style={{ padding: '10px 12px' }}>
+                      <td style={{ padding: '10px 12px' }}>{rec.doctorName || '—'}</td>
+                      <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                         {clinicObj ? (
                           <span style={{ background: clinicObj.color || '#94a3b8', color: '#fff', fontSize: 11, padding: '2px 8px', borderRadius: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>
                             {clinicName}
@@ -760,10 +757,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           <span style={{ color: 'var(--rb-text-secondary)' }}>{clinicName}</span>
                         )}
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--rb-text-secondary)' }}>
+                      <td style={{ padding: '10px 12px' }}>
                         {getDoctorSpecialty(rec.misUserId)}
                       </td>
-                      <td style={{ padding: '10px 12px', color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
                         {dateLabel}
                       </td>
                       <td style={{ padding: '10px 12px', whiteSpace: 'nowrap' }}>
@@ -806,7 +803,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           );
                         })()}
                         {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0) && (
-                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                          <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {body > 0    && <span>Тело: {fmtRub(body)}</span>}
                             {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
@@ -891,7 +888,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                       }, 0);
                       const netRemainder = allClinicRemainder - cashPaidTotal;
                       return (
-                        <tr style={{ background: '#f8fafc' }}>
+                        <tr style={{ background: '#fff' }}>
                           <td colSpan={8} style={{ padding: '0 16px 16px', borderBottom: '2px solid var(--rb-border)' }}>
                             <div style={{ paddingTop: 14 }}>
                               {cr?.salary

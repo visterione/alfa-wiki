@@ -121,6 +121,7 @@ export default function ReferralBonusesPage() {
 
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState(1);
+  const [panelCollapsed, setPanelCollapsed] = useState(false);
 
   // ── Clinics ──
   const [clinics, setClinics] = useState(DEFAULT_CLINICS);
@@ -522,6 +523,8 @@ export default function ReferralBonusesPage() {
     bulkSelectedIds,
     setBulkSelectedIds,
     pinnedForCompare,
+    panelCollapsed,
+    onTogglePanel: () => setPanelCollapsed(v => !v),
   };
 
   const TAB_KEYS = ['tab1', 'tabHourNorms', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
@@ -566,21 +569,6 @@ export default function ReferralBonusesPage() {
 
   return (
     <div className="rb-app">
-      {/* Header */}
-      <div className="rb-header">
-        <h1>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="12" y1="1" x2="12" y2="23"/>
-            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
-          Заработная плата
-        </h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-            {user?.displayName || user?.username}
-          </span>
-        </div>
-      </div>
 
       {/* Wizard Navigation */}
       <div className="rb-wizard-nav">
@@ -809,9 +797,9 @@ export default function ReferralBonusesPage() {
       )}
 
       {/* Step Content */}
-      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 ? { gridTemplateColumns: '1fr' } : undefined}>
+      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 || panelCollapsed ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
-        {currentStep !== 7 && currentStep !== 2 && <DoctorsList
+        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && <DoctorsList
           doctors={filteredDoctors}
           allDoctors={visibleDoctors}
           clinics={clinics}
@@ -924,9 +912,9 @@ function DoctorsList({
             <button
               onClick={onGlobalReset}
               title="Сбросить"
-              style={{ flexShrink: 0, padding: '7px 9px', color: '#ef4444', border: '1px solid #fca5a5', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <polyline points="1 4 1 10 7 10"/>
                 <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
               </svg>
@@ -942,9 +930,9 @@ function DoctorsList({
             <button
               onClick={() => importFileRef.current?.click()}
               title="Импорт"
-              style={{ flexShrink: 0, padding: '7px 9px', color: '#16a34a', border: '1px solid #86efac', borderRadius: 8, background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#16a34a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>

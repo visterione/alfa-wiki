@@ -561,6 +561,8 @@ export const referralBonuses = {
   saveBulk: (data) => api.post('/referral-bonuses/bulk', data),
   delete: (id) => api.delete(`/referral-bonuses/${id}`),
   getMyPermissions: () => api.get('/referral-bonuses/permissions/my'),
+  getSuggests: () => api.get('/referral-bonuses/suggests'),
+  saveSuggests: (data) => api.put('/referral-bonuses/suggests', data),
 };
 
 export const performedServiceBonuses = {

@@ -89,7 +89,7 @@ function CategoryDropdown({ onSelect }) {
 // STEP 3: БОНУСЫ ЗА НАПРАВЛЕНИЯ
 // ═══════════════════════════════════════
 export default function StepReferral({
-  selectedDoctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly,
+  selectedDoctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly, panelCollapsed, onTogglePanel,
 }) {
   if (!selectedDoctor) {
     return (
@@ -359,14 +359,19 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
           <div className="rb-doctor-card-info">
             <h2>{doctor.name}</h2>
           </div>
+          {onTogglePanel && (
+            <button onClick={onTogglePanel} title={panelCollapsed ? 'Свернуть' : 'На всю ширину'} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+              {panelCollapsed ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
       {/* Clinic tabs */}
-      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', margin: '12px 0 8px' }}>
-        Вкладка <strong>Общие</strong> — бонусы для всех клиник по умолчанию.
-        Выберите клинику для отдельных ставок (перекрывают общие).
-      </div>
       <div className="rb-clinic-tab-wrap">
         <button
           className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`}
@@ -592,11 +597,6 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             </svg>
             Список услуг с бонусами
           </h3>
-          {filteredBonuses.length > 0 && (
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-              {filteredBonuses.length} услуг
-            </span>
-          )}
           <button
             onClick={() => setRefShowAll(v => !v)}
             title={refShowAll ? 'Включить пагинацию' : 'Показать все записи'}
