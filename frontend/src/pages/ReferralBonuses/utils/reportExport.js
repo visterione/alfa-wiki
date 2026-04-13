@@ -317,7 +317,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       if ((sal.advance || 0) > 0)
         addSalRow(`Аванс (${sal.paymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.advance, '-');
       if ((sal.mainPayment || 0) > 0)
-        addSalRow(`Тело з/п (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
+        addSalRow(`Основная ЗП (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
       _extraPayments.forEach(ep => {
         if ((ep.amount || 0) > 0)
           addSalRow(`${ep.label || 'Доп. выплата'} (${ep.method === 'cash' ? 'наличные' : 'карта'})`, ep.amount, '-');

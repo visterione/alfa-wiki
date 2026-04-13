@@ -475,7 +475,7 @@ export default function SalaryBlock({ salary }) {
           {(mainPayment || 0) > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
               <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Тело з/п</div></div>
+              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
               <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
             </div>

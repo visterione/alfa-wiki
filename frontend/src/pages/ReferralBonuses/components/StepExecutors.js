@@ -978,7 +978,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Тело ЗП, Аванс)?')) return;
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Основная ЗП, Аванс)?')) return;
     const current = getClinicData();
     const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
     const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
@@ -1398,7 +1398,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               <div />
               <div className="rb-exec-field">
                 <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
-                  <label style={{ marginBottom: 0 }}>Способ выплаты тела ЗП</label>
+                  <label style={{ marginBottom: 0 }}>Способ выплаты основной ЗП</label>
                 </div>
                 <select value={data.mainPaymentMethod || 'card'} onChange={e => handlePaymentFieldChange('mainPaymentMethod', e.target.value)}>
                   <option value="card">Карта</option>
@@ -1407,7 +1407,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
               <div className="rb-exec-field" style={data.lockedMainPayment ? { background: '#eff6ff', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 20 }}>
-                  <label style={{ marginBottom: 0 }}>Тело ЗП, ₽</label>
+                  <label style={{ marginBottom: 0 }}>Основная ЗП, ₽</label>
                   {!readOnly && <LockBtn locked={!!data.lockedMainPayment} onClick={handleToggleMainPaymentLock} />}
                 </div>
                 <input

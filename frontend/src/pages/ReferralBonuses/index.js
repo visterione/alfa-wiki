@@ -682,7 +682,7 @@ export default function ReferralBonusesPage() {
                 return disambigModal.cases.map(({ idx, doctor, clinicGroup, options, mainPayment, advance, ndfl }) => {
                   const groupLabel = { престиж: 'Престиж', проф: 'Проф', лабгрупп: 'Лабгрупп' }[clinicGroup] || clinicGroup;
                   const valueParts = [];
-                  if (mainPayment) valueParts.push(`Тело ЗП: ${mainPayment.toLocaleString('ru-RU')} ₽`);
+                  if (mainPayment) valueParts.push(`Основная ЗП: ${mainPayment.toLocaleString('ru-RU')} ₽`);
                   if (advance)     valueParts.push(`Аванс: ${advance.toLocaleString('ru-RU')} ₽`);
                   if (ndfl)        valueParts.push(`НДФЛ: ${ndfl.toLocaleString('ru-RU')} ₽`);
                   const hasDup = options.some(opt => isDuplicate(doctor.id, opt.id, idx));
@@ -760,7 +760,7 @@ export default function ReferralBonusesPage() {
                   const clinicData = ndflModal.settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
                   const deductions = clinicData.deductions || [];
                   const locked = [];
-                  if (mainPayment !== null && clinicData.lockedMainPayment) locked.push('Тело ЗП');
+                  if (mainPayment !== null && clinicData.lockedMainPayment) locked.push('Основная ЗП');
                   if (advance     !== null && clinicData.lockedAdvance)     locked.push('Аванс');
                   if (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ' && d.locked)) locked.push('НДФЛ');
                   const clinicLabel = clinicId ? rbGetClinicName(clinicId) : null;
