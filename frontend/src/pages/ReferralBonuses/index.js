@@ -24,25 +24,25 @@ const STEP_ICONS = [
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
   // Step 2: Норма часов
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
-  // Step 3: Выполненные услуги
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4.5 8-11.8A8 8 0 0 0 12 2a8 8 0 0 0-8 8.2c0 7.3 8 11.8 8 11.8z"/></svg>,
-  // Step 5: Бонусы за направления
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+  // Step 3: Услуги — чекбокс со списком (выполненные процедуры)
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
+  // Step 4: Направления — стрелка-перенаправление (пациент → врач)
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 8l4 4-4 4"/><path d="M3 12h18"/><path d="M3 6h7"/><path d="M3 18h7"/></svg>,
   // Step 5: Отчёт
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>,
-  // Step 6: История зарплат
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
-  // Step 7: Сводка
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>,
+  // Step 6: Архив — коробка с крышкой
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
+  // Step 7: Сводка — диаграмма-пирог / итоговый дашборд
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
 ];
 
 const STEP_LABELS = [
   'Сотрудники',
   'Норма часов',
-  'Выполненные услуги',
-  'Бонусы за направления',
+  'Услуги',
+  'Направления',
   'Отчёт',
-  'История зарплат',
+  'Архив',
   'Сводка',
 ];
 
@@ -122,6 +122,18 @@ export default function ReferralBonusesPage() {
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState(1);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const wizardNavRef = React.useRef(null);
+  const [wizardSlider, setWizardSlider] = React.useState({ left: 0, width: 0, duration: 0 });
+  React.useLayoutEffect(() => {
+    const nav = wizardNavRef.current;
+    if (!nav) return;
+    const active = nav.querySelector('.rb-wizard-step.active');
+    if (!active) return;
+    const newLeft = active.offsetLeft;
+    const distance = Math.abs(newLeft - wizardSlider.left);
+    const duration = Math.min(0.65, 0.3 + distance / 2000);
+    setWizardSlider({ left: newLeft, width: active.offsetWidth, duration });
+  }, [currentStep]);
 
   // ── Clinics ──
   const [clinics, setClinics] = useState(DEFAULT_CLINICS);
@@ -571,7 +583,8 @@ export default function ReferralBonusesPage() {
     <div className="rb-app">
 
       {/* Wizard Navigation */}
-      <div className="rb-wizard-nav">
+      <div className="rb-wizard-nav" ref={wizardNavRef}>
+        <div className="rb-wizard-nav-slider" style={{ left: wizardSlider.left, width: wizardSlider.width, '--slider-duration': `${wizardSlider.duration}s` }} />
         {STEP_LABELS.map((label, i) => {
           const step = i + 1;
           const active = currentStep === step;
@@ -579,24 +592,21 @@ export default function ReferralBonusesPage() {
           const readonly = isStepReadOnly(step);
           return (
             <React.Fragment key={step}>
-              {i > 0 && <div className="rb-wizard-connector" />}
               <div
                 className={`rb-wizard-step${active ? ' active' : ''}${!accessible ? ' blocked' : ''}`}
                 onClick={() => accessible && goToStep(step)}
                 title={!accessible ? 'Нет доступа' : readonly ? `${label} (только просмотр)` : label}
               >
-                <div className="rb-wizard-step-circle">
-                  {accessible ? STEP_ICONS[i] : (
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                    </svg>
-                  )}
-                </div>
-                <div className="rb-wizard-step-label">
+                {accessible ? STEP_ICONS[i] : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                )}
+                <span className="rb-wizard-step-label">
                   {label}
-                  {readonly && accessible && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.7 }}>👁</span>}
-                </div>
+                  {readonly && accessible && <span style={{ fontSize: 10, marginLeft: 3, opacity: 0.6 }}>👁</span>}
+                </span>
               </div>
             </React.Fragment>
           );
@@ -845,7 +855,7 @@ export default function ReferralBonusesPage() {
 // ═══════════════════════════════════════
 // DOCTORS LIST (left panel — steps 1-3)
 // ═══════════════════════════════════════
-const PIN_COLORS = ['#2563eb', '#ea580c'];
+const PIN_COLORS = ['#007AFF', '#ea580c'];
 const PIN_LABELS = ['А', 'Б'];
 
 function DoctorsList({
@@ -1031,8 +1041,6 @@ function DoctorsList({
                 >
                   {isPinned ? PIN_LABELS[pinIdx] : '⊕'}
                 </button>
-              ) : !bulkMode && count != null ? (
-                <span className="rb-bonus-count">{count} бонусов</span>
               ) : null}
             </div>
           );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTabSlider } from '../utils/useTabSlider';
 import toast from 'react-hot-toast';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -18,7 +19,7 @@ function downloadBlob(blob, filename) {
 import SalaryBlock from './SalaryBlockRenderer';
 
 const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
-const COLOR_A = '#2563eb';
+const COLOR_A = '#007AFF';
 const COLOR_B = '#ea580c';
 
 function histShortLabel(rec) {
@@ -212,68 +213,73 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   const period    = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'Без периода');
   const savedDate = record.createdAt ? new Date(record.createdAt).toLocaleDateString('ru-RU') : '';
 
+  const hasActions = !!(onCashPay || onDelete);
+  const btnW = 78;
+
   return (
     <div className="rb-hist-card">
-      <div className="rb-hist-card-head" onClick={() => setOpen(o => !o)}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className="rb-hist-card-period">{period}</div>
-          {savedDate && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>Сохранено {savedDate}</div>}
-          <div className="rb-hist-card-tags" style={{ marginTop: 6 }}>
-            {basePay > 0            && <span className="rb-hist-card-tag">Оклад: {fmtRub(basePay)}</span>}
-            {referralBonuses > 0    && <span className="rb-hist-card-tag">Направления: {fmtRub(referralBonuses)}</span>}
-            {performedBonusTotal > 0 && <span className="rb-hist-card-tag">Услуги: {fmtRub(performedBonusTotal)}</span>}
-            {extrasTotal > 0        && <span className="rb-hist-card-tag">Надбавки: {fmtRub(extrasTotal)}</span>}
-            {deductionsTotal > 0    && <span className="rb-hist-card-tag neg">Удержания: −{fmtRub(deductionsTotal)}</span>}
+      <div className="rb-hist-card-head" style={{ flexDirection: 'column', alignItems: 'stretch' }} onClick={() => setOpen(o => !o)}>
+        {/* Top row: period + salary + chevron */}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+          <div className="rb-hist-card-period" style={{ flex: 1 }}>
+            {period}
+            {savedDate && <span style={{ marginLeft: 6 }}>от {savedDate}</span>}
           </div>
-          {cashPaidTotal > 0 && (
-            <div className="rb-hist-card-tags" style={{ marginTop: 3 }}>
-              <span className="rb-hist-card-tag" style={{ background: '#dcfce7', color: '#15803d' }}>Выдано: −{fmtRub(cashPaidTotal)}</span>
-              <span className="rb-hist-card-tag" style={{ background: netRemainder < 0 ? '#fee2e2' : '#f0f9ff', color: netRemainder < 0 ? '#dc2626' : '#0284c7' }}>
-                Остаток: {netRemainder < 0 ? '−' : ''}{fmtRub(Math.abs(netRemainder))}
-              </span>
-            </div>
+          <div className="rb-hist-card-total" style={{ marginRight: 6 }}>{fmtRub(finalSalary)}</div>
+          {record.hasExcel && (
+            <button className="rb-hist-del" onClick={e => { e.stopPropagation(); handleDownloadExcel(); }} disabled={downloading} title="Скачать Excel" style={{ color: '#16a34a', marginRight: 2 }}>
+              {downloading
+                ? <span className="rb-spinner" style={{ width: 14, height: 14 }} />
+                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="15" x2="12" y2="9"/>
+                    <polyline points="9 12 12 15 15 12"/>
+                  </svg>
+              }
+            </button>
           )}
+          <svg className={`rb-hist-card-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
         </div>
-        <div className="rb-hist-card-total">{fmtRub(finalSalary)}</div>
-        {onCashPay && (
-          <button
-            onClick={e => { e.stopPropagation(); onCashPay(record, netRemainder); }}
-            title="Зафиксировать выдачу из кассы"
-            style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', border: '1px solid #16a34a', borderRadius: 5, cursor: 'pointer', background: '#f0fdf4', color: '#16a34a', whiteSpace: 'nowrap', flexShrink: 0 }}
-          >
-            Касса
-          </button>
+
+        {/* Breakdown rows */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {[
+            { label: 'Оклад',        value: fmtRub(basePay),            color: null },
+            { label: 'Направления',  value: fmtRub(referralBonuses),    color: null },
+            { label: 'Услуги',       value: fmtRub(performedBonusTotal),color: null },
+            { label: 'Надбавки',     value: fmtRub(extrasTotal),        color: null },
+            { label: 'Удержания',    value: deductionsTotal > 0 ? `−${fmtRub(deductionsTotal)}` : fmtRub(0), color: deductionsTotal > 0 ? 'var(--rb-danger)' : null },
+            { label: 'Выдано',       value: cashPaidTotal > 0 ? `−${fmtRub(cashPaidTotal)}` : fmtRub(0),    color: cashPaidTotal > 0 ? '#15803d' : null },
+            { label: 'Остаток',      value: cashPaidTotal > 0 ? `${netRemainder < 0 ? '−' : ''}${fmtRub(Math.abs(netRemainder))}` : fmtRub(0), color: cashPaidTotal > 0 ? (netRemainder < 0 ? '#dc2626' : '#0284c7') : null },
+          ].map(({ label, value, color }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'baseline' }}>
+              <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{label}</span>
+              <span style={{ flex: 1, borderBottom: '1px dotted #cbd5e1', margin: '0 5px 3px' }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: color || 'var(--rb-text)', flexShrink: 0 }}>{value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Action buttons full-width below breakdown */}
+        {hasActions && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 10 }} onClick={e => e.stopPropagation()}>
+            {onCashPay && (
+              <button onClick={() => onCashPay(record, netRemainder)}
+                style={{ width: btnW, fontSize: 11, fontWeight: 600, padding: '6px 0', border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff' }}>
+                Касса
+              </button>
+            )}
+            {onDelete && (
+              <button onClick={() => onDelete(record.id)}
+                style={{ width: btnW, fontSize: 11, fontWeight: 600, padding: '6px 0', border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-danger)', color: '#fff' }}>
+                Удалить
+              </button>
+            )}
+          </div>
         )}
-        {record.hasExcel && (
-          <button
-            className="rb-hist-del"
-            onClick={handleDownloadExcel}
-            disabled={downloading}
-            title="Скачать Excel"
-            style={{ color: '#16a34a' }}
-          >
-            {downloading
-              ? <span className="rb-spinner" style={{ width: 14, height: 14 }} />
-              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                  <line x1="12" y1="15" x2="12" y2="9"/>
-                  <polyline points="9 12 12 15 15 12"/>
-                </svg>
-            }
-          </button>
-        )}
-        {onDelete && (
-          <button className="rb-hist-del" onClick={e => { e.stopPropagation(); onDelete(record.id); }} title="Удалить запись">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-            </svg>
-          </button>
-        )}
-        <svg className={`rb-hist-card-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
       </div>
       {open && (
         <div className="rb-hist-card-body open">
@@ -464,28 +470,31 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
         </div>
       </div>
 
-      {/* Year tabs */}
-      {multiYear && (
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--rb-border)', padding: '0 20px', background: '#f8fafc' }}>
-          {years.map(y => (
-            <button key={y} onClick={() => { setActiveYear(y); setActiveQuarter(null); }}
-              style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, border: 'none', borderBottom: displayYear === y ? '2px solid var(--rb-primary)' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', color: displayYear === y ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', background: displayYear === y ? '#eff6ff' : 'none', transition: 'all .15s' }}>
-              {y}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Quarter tabs */}
-      {showQuarterTabs && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
-          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 6, fontWeight: 500 }}>Квартал:</span>
-          {[1, 2, 3, 4].map(q => (
-            <button key={q} onClick={() => setActiveQuarter(activeQuarter === q ? null : q)} disabled={!activeQuarters.has(q)}
-              style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.35, transition: 'all .15s' }}>
-              {['I', 'II', 'III', 'IV'][q - 1]}
-            </button>
-          ))}
+      {/* Year + Quarter tabs combined */}
+      {(multiYear || showQuarterTabs) && (
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
+          {multiYear && (
+            <div style={{ display: 'flex', flex: 1 }}>
+              {years.map(y => (
+                <button key={y} onClick={() => { setActiveYear(y); setActiveQuarter(null); }}
+                  style={{ flex: 1, textAlign: 'center', padding: '5px 8px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', color: displayYear === y ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', background: displayYear === y ? '#eff6ff' : 'none', transition: 'all .15s' }}>
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
+          {showQuarterTabs && (
+            <div className="rb-quarter-roll" key={displayYear}>
+              {multiYear && <span style={{ width: 1, height: 20, background: 'var(--rb-border)', margin: '0 10px', flexShrink: 0 }} />}
+              <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>Квартал:</span>
+              {[1, 2, 3, 4].map(q => (
+                <button key={q} onClick={() => setActiveQuarter(activeQuarter === q ? null : q)} disabled={!activeQuarters.has(q)}
+                  style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.35, transition: 'all .15s' }}>
+                  {['I', 'II', 'III', 'IV'][q - 1]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -587,6 +596,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
   // Cash payments
   const [viewMode, setViewMode]           = useState('history'); // 'history' | 'kassa'
+  const { wrapRef: salaryTabRef, sliderEl: salarySlider } = useTabSlider(viewMode);
   const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
   const [kassaData, setKassaData]         = useState([]);
   const [kassaLoading, setKassaLoading]   = useState(false);
@@ -780,20 +790,17 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   }));
 
   const viewToggle = (
-    <div style={{ display: 'flex', borderBottom: '1px solid var(--rb-border)', padding: '6px 12px', gap: 4, background: '#f8fafc', flexShrink: 0 }}>
+    <div className="rb-clinic-tab-wrap" style={{ margin: '6px 12px', flexShrink: 0 }} ref={salaryTabRef}>
+      {salarySlider}
       {[
-        { key: 'history', label: 'История зарплат', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> },
-        { key: 'kassa', label: 'Касса', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
-      ].map(({ key, label, icon }) => (
+        { key: 'history', label: 'История зарплат' },
+        { key: 'kassa', label: 'Касса' },
+      ].map(({ key, label }) => (
         <button key={key}
+          className={`rb-clinic-tab${viewMode === key ? ' active' : ''}`}
           onClick={() => { setViewMode(key); if (key === 'kassa') loadKassa(); }}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px', fontSize: 12, fontWeight: 600, border: '1px solid', borderRadius: 6, cursor: 'pointer', transition: 'all .15s',
-            borderColor: viewMode === key ? 'var(--rb-primary)' : 'transparent',
-            background: viewMode === key ? '#eff6ff' : 'none',
-            color: viewMode === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
-          }}
         >
-          {icon}{label}
+          {label}
         </button>
       ))}
     </div>
@@ -873,7 +880,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
           <div className="rb-hist-empty" style={{ padding: '30px 20px' }}>Ничего не найдено</div>
         ) : (
           <div style={{ overflowX: 'auto', padding: '0 16px 16px' }}>
-            <table className="rb-report-table" style={{ width: '100%', marginTop: 12 }}>
+            <table className="rb-report-table rb-report-table--bordered" style={{ width: '100%', marginTop: 12 }}>
               <thead>
                 <tr>
                   <th style={{ width: 22, padding: '0 4px' }} />
@@ -895,15 +902,15 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                       <EditHistoryBadge editHistory={p.editHistory} />
                     </td>
                     <td style={{ fontWeight: 500 }}>{p.doctorName}</td>
-                    <td style={{ color: 'var(--rb-text-secondary)' }}>{p.periodLabel || '—'}</td>
-                    <td style={{ color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                    <td>{p.periodLabel || '—'}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     {kassaEditId === p.id ? (
                       <>
                         <td style={{ textAlign: 'right' }}>
                           <input type="number" min="0" step="0.01" value={kassaEditAmount} onChange={e => setKassaEditAmount(e.target.value)}
-                            style={{ width: 90, padding: '2px 5px', fontSize: 12, border: '1px solid #16a34a', borderRadius: 4, textAlign: 'right', boxSizing: 'border-box' }} />
+                            style={{ width: 90, padding: '2px 5px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, textAlign: 'right', boxSizing: 'border-box' }} />
                         </td>
                         <td>
                           <input type="text" value={kassaEditFinancistName} onChange={e => setKassaEditFinancistName(e.target.value)} placeholder="Выдал..."
@@ -916,12 +923,15 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                         <td>
                           <div style={{ display: 'flex', gap: 4 }}>
                             <button onClick={() => saveKassaEdit(p)} disabled={kassaEditSaving || !kassaEditAmount}
-                              style={{ padding: '2px 7px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#16a34a', color: '#fff', opacity: kassaEditSaving ? 0.6 : 1 }}>
-                              {kassaEditSaving ? '...' : 'Сохр.'}
+                              style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', opacity: kassaEditSaving ? 0.6 : 1, flexShrink: 0 }}>
+                              {kassaEditSaving
+                                ? <span className="rb-spinner" style={{ width: 12, height: 12 }} />
+                                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>
+                              }
                             </button>
                             <button onClick={cancelKassaEdit}
-                              style={{ padding: '2px 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
-                              ✕
+                              style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--rb-danger)', color: '#fff', flexShrink: 0 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                           </div>
                         </td>
@@ -931,17 +941,17 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                         <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>
                           {parseFloat(p.amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
                         </td>
-                        <td style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</td>
-                        <td style={{ color: 'var(--rb-text-secondary)', fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
+                        <td>{p.financistName || '—'}</td>
+                        <td style={{ fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
                         {!readOnly && (
                           <td>
                             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                               <button onClick={() => startKassaEdit(p)} title="Редактировать"
-                                style={{ padding: '2px 5px', border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+                                style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', flexShrink: 0 }}>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                               </button>
                               <button onClick={() => handleCashDelete(p.id)} title="Удалить"
-                                style={{ padding: '2px 5px', border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                                style={{ width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', borderRadius: 4, cursor: 'pointer', background: 'var(--rb-danger)', color: '#fff', flexShrink: 0 }}>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                               </button>
                             </div>
@@ -954,7 +964,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               </tbody>
               <tfoot>
                 <tr style={{ borderTop: '2px solid var(--rb-border)' }}>
-                  <td colSpan={4} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8 }}>
+                  <td colSpan={4} style={{ fontWeight: 600, fontSize: 12, paddingTop: 8, border: 'none' }}>
                     {kassaSearch ? `${kassaFiltered.length} из ${kassaData.length} записей` : `${kassaData.length} записей`}
                     {kassaTotalPages > 1 && (
                       <span style={{ fontWeight: 400, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
@@ -962,10 +972,10 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                       </span>
                     )}
                   </td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8 }}>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8, border: 'none' }}>
                     {kassaTotal.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
                   </td>
-                  <td colSpan={!readOnly ? 3 : 2} />
+                  <td colSpan={!readOnly ? 3 : 2} style={{ border: 'none' }} />
                 </tr>
               </tfoot>
             </table>
@@ -1076,26 +1086,30 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         <div className="rb-hist-doctor-name">{selectedDoctor.name}</div>
       </div>
 
-      {multiYear && (
-        <div style={{ display: 'flex', borderBottom: '2px solid var(--rb-border)', padding: '0 20px', background: '#f8fafc' }}>
-          {years.map(y => (
-            <button key={y} onClick={() => setActiveYear(y)}
-              style={{ padding: '9px 18px', fontSize: 13, fontWeight: 600, border: 'none', borderBottom: displayYear === y ? '2px solid var(--rb-primary)' : '2px solid transparent', marginBottom: -2, cursor: 'pointer', color: displayYear === y ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', background: displayYear === y ? '#eff6ff' : 'none', transition: 'all .15s' }}>
-              {y}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {showQuarterTabs && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
-          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 6, fontWeight: 500 }}>Квартал:</span>
-          {[1, 2, 3, 4].map(q => (
-            <button key={q} onClick={() => setActiveQuarter(activeQuarter === q ? null : q)} disabled={!activeQuarters.has(q)}
-              style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.35, transition: 'all .15s' }}>
-              {['I', 'II', 'III', 'IV'][q - 1]}
-            </button>
-          ))}
+      {(multiYear || showQuarterTabs) && (
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
+          {multiYear && (
+            <div style={{ display: 'flex', flex: 1 }}>
+              {years.map(y => (
+                <button key={y} onClick={() => setActiveYear(y)}
+                  style={{ flex: 1, textAlign: 'center', padding: '5px 8px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', color: displayYear === y ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', background: displayYear === y ? '#eff6ff' : 'none', transition: 'all .15s' }}>
+                  {y}
+                </button>
+              ))}
+            </div>
+          )}
+          {showQuarterTabs && (
+            <div className="rb-quarter-roll" key={displayYear}>
+              {multiYear && <span style={{ width: 1, height: 20, background: 'var(--rb-border)', margin: '0 10px', flexShrink: 0 }} />}
+              <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>Квартал:</span>
+              {[1, 2, 3, 4].map(q => (
+                <button key={q} onClick={() => setActiveQuarter(activeQuarter === q ? null : q)} disabled={!activeQuarters.has(q)}
+                  style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.35, transition: 'all .15s' }}>
+                  {['I', 'II', 'III', 'IV'][q - 1]}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1122,7 +1136,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                     <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => v.toLocaleString('ru-RU')} width={70} />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#3b82f6" fillOpacity={0.85} maxBarSize={48} />
-                    <Line type="monotone" dataKey="value" stroke="#2563eb" strokeWidth={2} dot={{ r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#fff' }} />
+                    <Line type="monotone" dataKey="value" stroke="#007AFF" strokeWidth={2} dot={{ r: 4, fill: '#007AFF', strokeWidth: 2, stroke: '#fff' }} />
                   </ComposedChart>
                 </ResponsiveContainer>
               </div>
@@ -1176,12 +1190,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             />
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button onClick={() => setCashModal(null)}
-                style={{ padding: '8px 16px', fontSize: 13, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
                 Отмена
               </button>
               <button onClick={handleCashSubmit} disabled={cashSubmitting || !cashAmount}
-                style={{ padding: '8px 18px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: cashAmount ? 'pointer' : 'default', background: cashAmount ? '#16a34a' : '#d1fae5', color: '#fff', opacity: cashSubmitting ? 0.7 : 1, transition: 'all .15s' }}>
-                {cashSubmitting ? 'Сохранение...' : 'Выдать'}
+                style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: cashAmount ? 'pointer' : 'default', background: cashAmount ? 'var(--rb-primary)' : '#bfdbfe', color: '#fff', opacity: cashSubmitting ? 0.7 : 1, transition: 'all .15s' }}>
+                {cashSubmitting ? 'Сохранение...' : 'Сохранить'}
               </button>
             </div>
           </div>

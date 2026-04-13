@@ -216,7 +216,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
         background: openFilter === field ? '#eff6ff' : 'none',
         border: 'none', cursor: 'pointer',
         padding: '1px 3px', marginLeft: 3, verticalAlign: 'middle',
-        color: isFilterActive(field) ? '#2563eb' : '#cbd5e1',
+        color: isFilterActive(field) ? '#007AFF' : '#cbd5e1',
         lineHeight: 1, display: 'inline-flex', alignItems: 'center',
         borderRadius: 3, transition: 'color 0.15s',
       }}
@@ -492,7 +492,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             </div>
             {anyFilterActive && (
               <button onClick={clearAllFilters}
-                style={{ padding: '7px 12px', fontSize: 12, border: '1px solid #bfdbfe', borderRadius: 7, background: '#eff6ff', color: '#2563eb', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
+                style={{ padding: '7px 12px', fontSize: 12, border: '1px solid #bfdbfe', borderRadius: 7, background: '#eff6ff', color: '#007AFF', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontFamily: 'inherit' }}>
                 Сбросить фильтры
               </button>
             )}

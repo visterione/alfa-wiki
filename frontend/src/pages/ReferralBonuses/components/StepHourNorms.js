@@ -78,7 +78,7 @@ export default function StepHourNorms({ readOnly }) {
       .then(res => {
         const map = {};
         (res.data || []).forEach(n => {
-          map[n[key]] = n.normHours != null ? String(n.normHours) : '';
+          map[n[key]] = n.normHours != null ? String(parseFloat(n.normHours)) : '';
         });
         setValues(map);
       })
@@ -129,60 +129,24 @@ export default function StepHourNorms({ readOnly }) {
           </svg>
           Норма часов
         </div>
-      </div>
-
-      {/* Период + переключатель режима */}
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 12, background: '#f8fafc', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text-secondary)', minWidth: 60 }}>Период:</label>
-        <select
-          className="rb-select"
-          style={{ width: 140 }}
-          value={month}
-          onChange={e => setMonth(parseInt(e.target.value))}
-        >
-          {MONTH_NAMES.map((name, i) => (
-            <option key={i + 1} value={i + 1}>{name}</option>
-          ))}
-        </select>
-        <select
-          className="rb-select"
-          style={{ width: 90 }}
-          value={year}
-          onChange={e => setYear(parseInt(e.target.value))}
-        >
-          {years.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
-        {hasPeriod && (
-          <span style={{ fontSize: 12, color: 'var(--rb-success, #16a34a)', fontWeight: 500 }}>
-            ✓ есть данные
-          </span>
-        )}
-
-        {/* Переключатель */}
-        <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--rb-border)', borderRadius: 8, padding: 2, gap: 2 }}>
-          {[
-            { value: 'professions', label: 'По специальностям' },
-            { value: 'roles',       label: 'По ролям' },
-          ].map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => setMode(opt.value)}
-              style={{
-                padding: '4px 12px',
-                fontSize: 12,
-                fontWeight: 600,
-                border: 'none',
-                borderRadius: 6,
-                cursor: 'pointer',
-                background: mode === opt.value ? 'var(--rb-bg)' : 'transparent',
-                color: mode === opt.value ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
-                boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
-                transition: 'all 0.15s',
-              }}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+          <select className="rb-select" style={{ width: 130, height: 32, padding: '0 10px' }} value={month} onChange={e => setMonth(parseInt(e.target.value))}>
+            {MONTH_NAMES.map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
+          </select>
+          <select className="rb-select" style={{ width: 80, height: 32, padding: '0 10px' }} value={year} onChange={e => setYear(parseInt(e.target.value))}>
+            {years.map(y => <option key={y} value={y}>{y}</option>)}
+          </select>
+          {hasPeriod && <span style={{ fontSize: 12, color: 'var(--rb-success, #16a34a)', fontWeight: 500 }}>✓</span>}
+          <div style={{ display: 'flex', height: 32, background: 'var(--rb-border)', borderRadius: 8, padding: 2, gap: 2, boxSizing: 'border-box' }}>
+            {[
+              { value: 'professions', label: 'По специальностям' },
+              { value: 'roles',       label: 'По ролям' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setMode(opt.value)} style={{ height: '100%', padding: '0 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer', background: mode === opt.value ? 'var(--rb-bg)' : 'transparent', color: mode === opt.value ? 'var(--rb-text)' : 'var(--rb-text-secondary)', boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -195,46 +159,54 @@ export default function StepHourNorms({ readOnly }) {
             {mode === 'professions' ? 'Нет данных о специальностях' : 'Нет данных о ролях'}
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-              <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 12px 8px 16px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                  {mode === 'professions' ? 'Специальность' : 'Роль'}
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 16px 8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 150 }}>
-                  Норма часов
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentList.map(title => (
-                <tr key={title} style={{ borderBottom: '1px solid var(--rb-border)' }}>
-                  <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)' }}>{title}</td>
-                  <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      disabled={readOnly}
-                      value={values[title] ?? ''}
-                      onChange={e => handleChange(title, e.target.value)}
-                      placeholder="—"
-                      style={{
-                        width: 90,
-                        textAlign: 'right',
-                        padding: '4px 8px',
-                        border: '1px solid var(--rb-border)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: readOnly ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
-                        color: 'var(--rb-text)',
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+            {[0, 1, 2].map(col => {
+              const third = Math.ceil(currentList.length / 3);
+              const slice = currentList.slice(col * third, (col + 1) * third);
+              return (
+                <table key={col} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, borderLeft: col > 0 ? '2px solid var(--rb-border)' : 'none' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                    <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
+                      <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                        {mode === 'professions' ? 'Специальность' : 'Роль'}
+                      </th>
+                      <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 110 }}>
+                        Норма часов
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slice.map(title => (
+                      <tr key={title} style={{ borderBottom: '1px solid var(--rb-border)' }}>
+                        <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)' }}>{title}</td>
+                        <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            disabled={readOnly}
+                            value={values[title] ?? ''}
+                            onChange={e => handleChange(title, e.target.value)}
+                            placeholder="—"
+                            style={{
+                              width: 90,
+                              textAlign: 'right',
+                              padding: '4px 8px',
+                              border: '1px solid var(--rb-border)',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              background: readOnly ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
+                              color: 'var(--rb-text)',
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -245,7 +217,7 @@ export default function StepHourNorms({ readOnly }) {
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? 'Сохранение...' : `Сохранить за ${MONTH_NAMES[month - 1]} ${year}`}
+            {saving ? 'Сохранение...' : 'Сохранить'}
           </button>
         </div>
       )}

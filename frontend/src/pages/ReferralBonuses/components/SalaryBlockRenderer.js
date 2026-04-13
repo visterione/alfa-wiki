@@ -84,7 +84,7 @@ function SubSection({ label, value, color, type, children }) {
 
 export default function SalaryBlock({ salary }) {
   const {
-    basePay, basePayLabel,
+    basePay, basePayLabel: rawBasePayLabel,
     referralBonuses, referralSections = [],
     performedBonusTotal, performedSections = [],
     basePerformedSections = [],
@@ -112,6 +112,10 @@ export default function SalaryBlock({ salary }) {
     normPremiumAmount = 0,
     normHoursForPeriod = null,
   } = salary;
+
+  const basePayLabel = rawBasePayLabel === 'Бонусы за выполненные услуги (по тарифам)' || rawBasePayLabel === 'Бонусы за выполненные услуги'
+    ? 'Выполненные услуги'
+    : rawBasePayLabel;
 
   const preFinalSalary = (basePay || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) - (referralCostTotal || 0);
   const turnoverDeductionItems = deductions.filter(d => d.deductionType !== 'final');
@@ -143,7 +147,7 @@ export default function SalaryBlock({ salary }) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
         </svg>
-        Расчёт зарплаты
+        Расчётный лист
       </div>
 
       {hasWage && (
@@ -203,7 +207,7 @@ export default function SalaryBlock({ salary }) {
       )}
 
       {hasPerformed && (
-        <SalaryRow icon="+" label="Бонусы за выполненные услуги" value={`+${fmtRub(performedBonusTotal)}`} color="var(--rb-success)" expandable={performedSections.length > 0}>
+        <SalaryRow icon="+" label="Выполненные услуги" value={`+${fmtRub(performedBonusTotal)}`} color="var(--rb-success)" expandable={performedSections.length > 0}>
           <ServiceTable sections={performedSections} columns={['Код', 'Услуга', 'Оборот', 'К-во', 'Бонус', 'Итого, руб']} />
         </SalaryRow>
       )}
@@ -234,7 +238,7 @@ export default function SalaryBlock({ salary }) {
       {hasDeductions && (
         <SalaryRow
           icon="−"
-          label="Расходники / штрафы / взыскания"
+          label="Взыскания"
           value={`−${fmtRub(finalDeductionsTotal)}`}
           color="var(--rb-danger)"
           expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
@@ -314,7 +318,7 @@ export default function SalaryBlock({ salary }) {
       {hasMaterials && (
         <SalaryRow
           icon="−"
-          label="Чистый расход на материалы"
+          label="Материалы-расходники"
           value={`−${fmtRub(finalMaterialsTotal + svcMatFinalTotal)}`}
           color="var(--rb-danger)"
           expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0}
@@ -461,23 +465,26 @@ export default function SalaryBlock({ salary }) {
       {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0) && (
         <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
           {(advance || 0) > 0 && (
-            <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс{paymentMethod ? ` (${fmtMethod(paymentMethod)})` : ''}</div></div>
+            <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
+              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>
+              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{paymentMethod ? fmtMethod(paymentMethod) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
             </div>
           )}
           {(mainPayment || 0) > 0 && (
-            <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Тело з/п{mainPaymentMethod ? ` (${fmtMethod(mainPaymentMethod)})` : ''}</div></div>
+            <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
+              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Тело з/п</div></div>
+              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
             </div>
           )}
           {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
-            <div key={i} className="rb-salary-row" style={{ background: '#f8fafc' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}{ep.method ? ` (${fmtMethod(ep.method)})` : ''}</div></div>
+            <div key={i} className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
+              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}</div></div>
+              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{ep.method ? fmtMethod(ep.method) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
             </div>
           ))}
@@ -498,7 +505,7 @@ export default function SalaryBlock({ salary }) {
             return (
               <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
                 <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
-                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{_remainder < 0 ? 'Переплата (врач должен вернуть)' : 'Остаток к доплате'}</div></div>
+                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{_remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div></div>
                 <div className="rb-salary-row-value" style={{ color: _remainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)' }}>{_remainder < 0 ? '−' : ''}{fmtRub(Math.abs(_remainder))}</div>
               </div>
             );

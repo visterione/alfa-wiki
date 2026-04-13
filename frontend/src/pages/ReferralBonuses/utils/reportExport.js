@@ -80,7 +80,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
   if (salary) {
     const sal = salary;
     ws.addRow([]);
-    const salTitleRow = ws.addRow(['Расчёт зарплаты']);
+    const salTitleRow = ws.addRow(['Расчётный лист']);
     salTitleRow.getCell(1).font = { ...fontBold, size: 13 };
     salTitleRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } };
     ws.mergeCells(`A${salTitleRow.number}:F${salTitleRow.number}`);
@@ -124,7 +124,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
 
     // Бонусы за выполненные услуги
     if ((sal.performedBonusTotal || 0) > 0) {
-      addSalRow('Бонусы за выполненные услуги', sal.performedBonusTotal, '+');
+      addSalRow('Выполненные услуги', sal.performedBonusTotal, '+');
       if ((sal.performedSections || []).length) {
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
         (sal.performedSections || []).forEach(s => {
@@ -166,7 +166,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       const xlsDedsTotal = (sal.finalDeductionsTotal || 0) + xlsHarmfulness;
       if (xlsDedsTotal > 0 || xlsTurnoverDeds.length > 0 || (sal.assistancePaidTotal || 0) > 0) {
         const xlsPreFinal = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Расходники / штрафы / взыскания', xlsDedsTotal, '-');
+        addSalRow('Взыскания', xlsDedsTotal, '-');
         if (xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllDeds.forEach(d => {
@@ -225,7 +225,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       const xlsTurnoverMats = xlsAllMats.filter(m => m.deductionType !== 'final');
       if ((sal.finalMaterialsTotal || 0) > 0 || xlsTurnoverMats.length > 0) {
         const xlsPreFinal2 = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Материалы (от з/п)', sal.finalMaterialsTotal, '-');
+        addSalRow('Материалы-расходники', sal.finalMaterialsTotal, '-');
         if (xlsAllMats.length) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllMats.forEach(m => {

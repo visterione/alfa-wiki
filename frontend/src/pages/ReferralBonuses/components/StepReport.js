@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
+import { useTabSlider } from '../utils/useTabSlider';
 import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
 import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows } from '../utils/reportEngine';
@@ -8,137 +9,341 @@ import { rbNamesMatch } from '../utils/nameMatching';
 import SalaryBlock from './SalaryBlockRenderer';
 import CorpReviewModal from './CorpReviewModal';
 
-// ─── Inline file picker (small, fits in a toolbar) ────────────────────────────
-function FilePicker({ uploadedFile, onSelect, onClear, onDragOver, onDragLeave, onDrop }) {
-  const ref = useRef();
-  if (uploadedFile) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 8px', height: 32, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 12, maxWidth: 220 }}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" style={{ color: '#16a34a', flexShrink: 0 }}>
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-        </svg>
-        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{uploadedFile.name}</span>
-        <button
-          onClick={onClear}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', color: '#6b7280', lineHeight: 1, fontSize: 14, flexShrink: 0 }}
-          title="Убрать файл"
-        >×</button>
-      </div>
-    );
-  }
+// ─── Calendar ─────────────────────────────────────────────────────────────────
+const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const DAYS_RU   = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+
+function CalendarPopover({ dateFrom, dateTo, focusField, onSelect }) {
+  const initDate = (focusField === 'to' && dateTo ? dateTo : dateFrom) || '';
+  const initD = initDate ? new Date(initDate + 'T00:00:00') : new Date();
+  const [viewYear,  setViewYear]  = useState(initD.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initD.getMonth());
+  const [hover,     setHover]     = useState(null);
+
+  const fmt = (y, m, d) => `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const today = fmt(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
+
+  const daysInMonth  = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayRaw  = new Date(viewYear, viewMonth, 1).getDay();
+  const firstDay     = firstDayRaw === 0 ? 6 : firstDayRaw - 1;
+  const cells        = Array(firstDay).fill(null).concat(Array.from({ length: daysInMonth }, (_, i) => i + 1));
+
+  const prevMonth = () => viewMonth === 0 ? (setViewMonth(11), setViewYear(y => y-1)) : setViewMonth(m => m-1);
+  const nextMonth = () => viewMonth === 11 ? (setViewMonth(0),  setViewYear(y => y+1)) : setViewMonth(m => m+1);
+
+  // When actively picking 'to', hover previews the range; otherwise show confirmed dateTo
+  const previewEnd   = focusField === 'to'   ? (hover || dateTo)   : dateTo;
+  const previewStart = focusField === 'from' ? (hover || dateFrom) : dateFrom;
+
+  const isStart   = ds => ds === (focusField === 'from' ? previewStart : dateFrom);
+  const isEnd     = ds => ds === previewEnd && previewEnd !== previewStart;
+  const isInRange = ds => {
+    if (!previewStart || !previewEnd) return false;
+    const [f, t] = previewStart <= previewEnd ? [previewStart, previewEnd] : [previewEnd, previewStart];
+    return ds > f && ds < t;
+  };
+
   return (
-    <div
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      <button
-        onClick={() => ref.current?.click()}
-        className="rb-btn rb-btn-secondary rb-btn-sm"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="17 8 12 3 7 8"/>
-          <line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        Загрузить Excel
-      </button>
-      <input
-        ref={ref}
-        type="file"
-        accept=".xlsx,.xls"
-        style={{ display: 'none' }}
-        onChange={e => { onSelect(e.target.files[0]); e.target.value = ''; }}
-      />
+    <div style={{ position: 'fixed', zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,.14)', padding: '12px 10px', width: 252, top: 'var(--cal-top)', left: 'var(--cal-left)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <button onClick={prevMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>‹</button>
+        <span style={{ fontWeight: 600, fontSize: 13 }}>{MONTHS_RU[viewMonth]} {viewYear}</span>
+        <button onClick={nextMonth} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>›</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 4 }}>
+        {DAYS_RU.map(d => <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: 'var(--rb-text-secondary)', padding: '2px 0' }}>{d}</div>)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1 }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} />;
+          const ds       = fmt(viewYear, viewMonth, day);
+          const start    = isStart(ds);
+          const end      = isEnd(ds);
+          const inRange  = isInRange(ds);
+          const isToday  = ds === today;
+          return (
+            <button
+              key={i}
+              onClick={() => onSelect(ds)}
+              onMouseEnter={() => setHover(ds)}
+              onMouseLeave={() => setHover(null)}
+              style={{
+                padding: '5px 0', border: 'none', cursor: 'pointer', fontSize: 12,
+                borderRadius: (start || end) ? 6 : inRange ? 0 : 6,
+                background: (start || end) ? 'var(--rb-primary)' : inRange ? '#dbeafe' : 'transparent',
+                color: (start || end) ? 'white' : isToday ? 'var(--rb-primary)' : 'var(--rb-text)',
+                fontWeight: isToday ? 700 : 400,
+                outline: isToday && !start && !end ? '1.5px solid var(--rb-primary)' : 'none',
+                outlineOffset: -2,
+              }}
+            >{day}</button>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-// ─── Toolbar: period + clinic filter + file + action button ───────────────────
-function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, uploadedFile, onFileSelect, onFileClear, actionDisabled, actionLabel, onAction, actionSpinner }) {
-  const [isDragging, setIsDragging] = useState(false);
+const fmtDisplay = str => { if (!str) return ''; const [y,m,d] = str.split('-'); return `${d}.${m}.${y}`; };
+const parseManual = str => {
+  if (!str || str.length !== 10) return null;
+  const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (!m) return null;
+  const iso = `${m[3]}-${m[2]}-${m[1]}`;
+  return isNaN(new Date(iso + 'T00:00:00').getTime()) ? null : iso;
+};
 
-  const handleFileSelect = (file) => {
-    if (!file) return;
-    if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error('Выберите файл Excel (.xlsx или .xls)'); return; }
-    onFileSelect(file);
+function DateField({ value, onChange, onAutoAdvance, isOpen, onToggleCalendar, inputRef, anchorRef }) {
+  const [raw, setRaw] = useState(fmtDisplay(value));
+
+  useEffect(() => { setRaw(fmtDisplay(value)); }, [value]);
+
+  const handleChange = e => {
+    const v = e.target.value;
+    setRaw(v);
+    if (v === '') { onChange(''); return; }
+    const iso = parseManual(v);
+    if (iso) { onChange(iso); onAutoAdvance?.(); }
   };
 
-  const inputBorder = (val) => val ? '1px solid var(--rb-border-dark)' : '1.5px solid #f59e0b';
+  const handleKeyDown = e => {
+    if (e.key === 'Enter') { const iso = parseManual(raw); if (iso) { onChange(iso); onAutoAdvance?.(); } }
+  };
+
+  const handleBlur = () => {
+    const iso = parseManual(raw);
+    if (iso) { onChange(iso); setRaw(fmtDisplay(iso)); }
+    else if (raw && raw !== fmtDisplay(value)) setRaw(fmtDisplay(value));
+  };
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      padding: '10px 16px',
-      borderBottom: '1px solid var(--rb-border)',
-      background: '#f8fafc',
-      flexWrap: 'wrap',
-    }}>
-      {/* Period */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-          Период с <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
-        </span>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={e => setDateFrom(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateFrom), borderRadius: 6, outline: 'none', height: 32 }}
-        />
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-          по <span style={{ color: '#ef4444', fontWeight: 600 }}>*</span>
-        </span>
-        <input
-          type="date"
-          value={dateTo}
-          onChange={e => setDateTo(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 7px', border: inputBorder(dateTo), borderRadius: 6, outline: 'none', height: 32 }}
-        />
-      </div>
+    <div ref={anchorRef} style={{ display: 'flex', alignItems: 'center', border: isOpen ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border-dark)', borderRadius: 7, background: isOpen ? '#f0f7ff' : '#fff', height: 32, overflow: 'hidden', boxShadow: isOpen ? '0 0 0 3px rgba(0,122,255,.12)' : 'none', transition: 'box-shadow .15s, border-color .15s' }}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={raw}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        placeholder="дд.мм.гггг"
+        maxLength={10}
+        style={{ width: 86, padding: '0 8px', border: 'none', outline: 'none', background: 'transparent', fontSize: 12, color: 'var(--rb-text)', height: '100%' }}
+      />
+      <button
+        type="button"
+        onClick={onToggleCalendar}
+        style={{ padding: '0 7px', height: '100%', border: 'none', borderLeft: '1px solid var(--rb-border)', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: isOpen ? 'var(--rb-primary)' : 'var(--rb-text-secondary)' }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
 
-      {/* Clinic filter */}
+function DateRangePicker({ dateFrom, setDateFrom, dateTo, setDateTo }) {
+  const [open, setOpen]       = useState(null);
+  const [calPos, setCalPos]   = useState({ top: 0, left: 0 });
+  const toRef      = useRef(null);
+  const wrapRef    = useRef(null);
+  const fromAnchor = useRef(null);
+  const toAnchor   = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(null); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  const openCalendar = (field) => {
+    const anchor = field === 'from' ? fromAnchor.current : toAnchor.current;
+    if (anchor) {
+      const r = anchor.getBoundingClientRect();
+      setCalPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(o => o === field ? null : field);
+  };
+
+  const handleSelect = ds => {
+    if (open === 'from') {
+      setDateFrom(ds);
+      if (dateTo && ds > dateTo) setDateTo('');
+      const anchor = toAnchor.current;
+      if (anchor) { const r = anchor.getBoundingClientRect(); setCalPos({ top: r.bottom + 4, left: r.left }); }
+      setOpen('to');
+      setTimeout(() => toRef.current?.focus(), 0);
+    } else {
+      if (dateFrom && ds < dateFrom) { setDateTo(dateFrom); setDateFrom(ds); }
+      else setDateTo(ds);
+      setOpen(null);
+    }
+  };
+
+  return (
+    <div ref={wrapRef} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>с <span style={{ color: '#ef4444' }}>*</span></span>
+      <DateField
+        anchorRef={fromAnchor}
+        value={dateFrom}
+        onChange={v => { setDateFrom(v); if (v && dateTo && v > dateTo) setDateTo(''); }}
+        onAutoAdvance={() => { openCalendar('to'); setTimeout(() => toRef.current?.focus(), 0); }}
+        isOpen={open === 'from'}
+        onToggleCalendar={() => openCalendar('from')}
+      />
+      {open === 'from' && (
+        <div style={{ '--cal-top': calPos.top + 'px', '--cal-left': calPos.left + 'px' }}>
+          <CalendarPopover dateFrom={dateFrom} dateTo={dateTo} focusField="from" onSelect={handleSelect} />
+        </div>
+      )}
+      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>по <span style={{ color: '#ef4444' }}>*</span></span>
+      <DateField
+        anchorRef={toAnchor}
+        inputRef={toRef}
+        value={dateTo}
+        onChange={setDateTo}
+        isOpen={open === 'to'}
+        onToggleCalendar={() => openCalendar('to')}
+      />
+      {open === 'to' && (
+        <div style={{ '--cal-top': calPos.top + 'px', '--cal-left': calPos.left + 'px' }}>
+          <CalendarPopover dateFrom={dateFrom} dateTo={dateTo} focusField="to" onSelect={handleSelect} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Drop zone ────────────────────────────────────────────────────────────────
+function DropZone({ uploadedFile, onSelect, onClear, compact }) {
+  const ref = useRef();
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleFile = file => {
+    if (!file) return;
+    if (!file.name.match(/\.(xlsx|xls)$/i)) { toast.error('Выберите файл Excel (.xlsx или .xls)'); return; }
+    onSelect(file);
+  };
+
+  const dragProps = {
+    onDragOver:  e => { e.preventDefault(); setIsDragging(true); },
+    onDragLeave: () => setIsDragging(false),
+    onDrop:      e => { e.preventDefault(); setIsDragging(false); handleFile(e.dataTransfer.files[0]); },
+  };
+
+  const input = <input ref={ref} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { handleFile(e.target.files[0]); e.target.value = ''; }} />;
+
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 16px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 12 }} {...dragProps}>
+        {uploadedFile ? (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="13" height="13" style={{ flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#16a34a', fontWeight: 500 }}>{uploadedFile.name}</span>
+            <button onClick={() => ref.current?.click()} style={{ background: 'none', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', padding: '2px 8px', fontSize: 11, color: 'var(--rb-text-secondary)' }}>Заменить</button>
+            <button onClick={onClear} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 15, lineHeight: 1, padding: '0 2px' }} title="Убрать файл">×</button>
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" style={{ color: 'var(--rb-text-secondary)', flexShrink: 0 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span style={{ color: 'var(--rb-text-secondary)' }}>Файл Excel не загружен</span>
+            <button onClick={() => ref.current?.click()} style={{ background: 'none', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', padding: '2px 8px', fontSize: 11, color: 'var(--rb-text-secondary)' }}>Выбрать файл</button>
+            {isDragging && <span style={{ fontSize: 11, color: 'var(--rb-primary)', marginLeft: 4 }}>Отпустите...</span>}
+          </>
+        )}
+        {input}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      {...dragProps}
+      onClick={() => !uploadedFile && ref.current?.click()}
+      style={{
+        margin: '16px 20px 0',
+        border: `2px dashed ${isDragging ? 'var(--rb-primary)' : uploadedFile ? '#16a34a' : '#cbd5e1'}`,
+        borderRadius: 10,
+        padding: '24px 20px',
+        textAlign: 'center',
+        background: isDragging ? '#f0f7ff' : uploadedFile ? '#f0fdf4' : '#f8fafc',
+        cursor: uploadedFile ? 'default' : 'pointer',
+        transition: 'all .15s',
+      }}
+    >
+      {uploadedFile ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="28" height="28"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 12 12 15 16 10"/></svg>
+          <div style={{ fontWeight: 600, fontSize: 13, color: '#16a34a' }}>{uploadedFile.name}</div>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+            <button onClick={e => { e.stopPropagation(); ref.current?.click(); }} style={{ fontSize: 12, padding: '4px 12px', border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', transition: 'filter .15s' }} onMouseEnter={e => e.currentTarget.style.filter='brightness(0.88)'} onMouseLeave={e => e.currentTarget.style.filter=''}>Заменить</button>
+            <button onClick={e => { e.stopPropagation(); onClear(); }} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', color: 'var(--rb-text-secondary)', cursor: 'pointer' }}>Удалить</button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke={isDragging ? 'var(--rb-primary)' : '#94a3b8'} strokeWidth="1.5" width="32" height="32"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <div style={{ fontSize: 13, fontWeight: 500, color: isDragging ? 'var(--rb-primary)' : 'var(--rb-text-secondary)' }}>
+            {isDragging ? 'Отпустите файл' : 'Перетащите Excel-файл или нажмите для выбора'}
+          </div>
+          <div style={{ fontSize: 11, color: '#94a3b8' }}>.xlsx / .xls</div>
+        </div>
+      )}
+      {input}
+    </div>
+  );
+}
+
+// ─── Toolbar: period + clinic filter + action button ──────────────────────────
+function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, actionDisabled, actionLabel, onAction, actionSpinner, onExport, exporting, onSave, saving, readOnly, hasReport }) {
+  const [hovExport, setHovExport] = useState(false);
+  const [hovSave, setHovSave]     = useState(false);
+  const btnBlue = { fontSize: 12, fontWeight: 600, padding: '0 12px', height: 30, width: 90, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'filter .15s' };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', flexWrap: 'wrap' }}>
+      <DateRangePicker dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
+
       {clinics?.length > 0 && (
         <select
           value={filterClinic}
           onChange={e => setFilterClinic(e.target.value)}
-          style={{ fontSize: 12, padding: '5px 7px', border: filterClinic ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border-dark)', borderRadius: 6, height: 32, background: filterClinic ? '#eff6ff' : '#fff', color: filterClinic ? 'var(--rb-primary)' : 'inherit', cursor: 'pointer' }}
-          title="Фильтр по клинике — если выбрана, в отчёт попадёт только эта клиника"
+          style={{ fontSize: 12, padding: '5px 7px', border: filterClinic ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border-dark)', borderRadius: 6, height: 32, background: filterClinic ? '#f0f7ff' : '#fff', color: filterClinic ? 'var(--rb-primary)' : 'inherit', cursor: 'pointer' }}
+          title="Фильтр по клинике"
         >
           <option value="">Все клиники</option>
           {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
       )}
 
-      {/* File */}
-      <FilePicker
-        uploadedFile={uploadedFile}
-        onSelect={handleFileSelect}
-        onClear={onFileClear}
-        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={e => {
-          e.preventDefault();
-          setIsDragging(false);
-          handleFileSelect(e.dataTransfer.files[0]);
-        }}
-      />
-      {isDragging && <span style={{ fontSize: 11, color: 'var(--rb-primary)' }}>Отпустите файл...</span>}
-
-      {/* Action */}
-      <button
-        className="rb-btn rb-btn-primary rb-btn-sm"
-        disabled={actionDisabled}
-        onClick={onAction}
-        style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }}
-      >
-        {actionSpinner
-          ? <><span className="rb-spinner" style={{ marginRight: 5 }} />{actionLabel}</>
-          : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> {actionLabel}</>
-        }
-      </button>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
+        {hasReport && onExport && (
+          <button
+            style={{ ...btnBlue, filter: hovExport && !exporting ? 'brightness(0.88)' : exporting ? 'opacity(0.7)' : '', opacity: exporting ? 0.7 : 1 }}
+            onClick={onExport} disabled={exporting}
+            onMouseEnter={() => setHovExport(true)} onMouseLeave={() => setHovExport(false)}
+          >
+            {exporting ? 'Скачать...' : 'Скачать'}
+          </button>
+        )}
+        {hasReport && onSave && !readOnly && (
+          <button
+            style={{ ...btnBlue, filter: hovSave && !saving ? 'brightness(0.88)' : '', opacity: saving ? 0.7 : 1 }}
+            onClick={onSave} disabled={saving}
+            onMouseEnter={() => setHovSave(true)} onMouseLeave={() => setHovSave(false)}
+          >
+            {saving ? 'Сохранить...' : 'Сохранить'}
+          </button>
+        )}
+        <button
+          className="rb-btn rb-btn-primary rb-btn-sm"
+          disabled={actionDisabled}
+          onClick={onAction}
+          style={{ width: 90, justifyContent: 'center' }}
+        >
+          {actionLabel}
+        </button>
+      </div>
     </div>
   );
 }
@@ -357,7 +562,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
                   if (confirm.isBulk) confirm.onConfirmBulk();
                   else doSaveIndividual(confirm.existingId);
                 }}
-                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#007AFF', color: '#fff', cursor: 'pointer' }}
               >
                 Перезаписать
               </button>
@@ -370,46 +575,29 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
         clinics={clinics} filterClinic={filterClinic} setFilterClinic={setFilterClinic}
-        uploadedFile={uploadedFile}
-        onFileSelect={f => { setUploadedFile(f); setReportData(null); setError(''); }}
-        onFileClear={() => { setUploadedFile(null); setReportData(null); }}
         actionDisabled={!selectedDoctor || generating}
-        actionLabel={generating ? 'Формирование...' : 'Сформировать'}
+        actionLabel={generating ? 'Расчёт...' : 'Расчёт'}
         actionSpinner={generating}
         onAction={handleGenerate}
+        hasReport={!!reportData}
+        onExport={handleExport} exporting={exporting}
+        onSave={handleSaveToHistory} saving={saving}
+        readOnly={readOnly}
+      />
+
+      <DropZone
+        uploadedFile={uploadedFile}
+        onSelect={f => { setUploadedFile(f); setReportData(null); setError(''); }}
+        onClear={() => { setUploadedFile(null); setReportData(null); }}
+        compact={!!reportData}
       />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-        {!selectedDoctor && (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-            Выберите врача из списка слева
-          </div>
-        )}
-        {selectedDoctor && !reportData && !error && !generating && (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-            Укажите период и нажмите «Сформировать»<br />
-            <span style={{ fontSize: 12 }}>(для нормированного типа оплаты Excel-файл не нужен)</span>
-          </div>
-        )}
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
         {reportData && (
           <div className="rb-report">
             {/* Action buttons */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-              <button className="rb-btn rb-btn-success rb-btn-sm" onClick={handleExport} disabled={exporting}>
-                {exporting
-                  ? <><span className="rb-spinner" style={{ marginRight: 5 }} />Экспорт...</>
-                  : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="15" x2="12" y2="9"/><polyline points="9 12 12 9 15 12"/></svg> Скачать Excel</>
-                }
-              </button>
-              {!readOnly && (
-                <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveToHistory} disabled={saving}>
-                  {saving
-                    ? <><span className="rb-spinner" style={{ marginRight: 5 }} />Сохранение...</>
-                    : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>
-                  }
-                </button>
-              )}
               {corpRecalcState && (
                 <button
                   className="rb-btn rb-btn-secondary rb-btn-sm"
@@ -681,7 +869,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
               </button>
               <button
                 onClick={() => { const c = dupConfirm; setDupConfirm(null); c.onConfirmBulk(); }}
-                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#2563eb', color: '#fff', cursor: 'pointer' }}
+                style={{ padding: '7px 18px', border: 'none', borderRadius: 7, fontSize: 13, fontWeight: 600, background: '#007AFF', color: '#fff', cursor: 'pointer' }}
               >
                 Перезаписать
               </button>
@@ -694,13 +882,21 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         dateFrom={dateFrom} setDateFrom={setDateFrom}
         dateTo={dateTo} setDateTo={setDateTo}
         clinics={clinics} filterClinic={filterClinic} setFilterClinic={setFilterClinic}
-        uploadedFile={uploadedFile}
-        onFileSelect={f => { setUploadedFile(f); setBulkResults([]); }}
-        onFileClear={() => { setUploadedFile(null); setBulkResults([]); }}
         actionDisabled={generating || bulkSelectedIds.size === 0}
-        actionLabel={generating ? `${progress.current}/${progress.total}...` : `Сформировать (${bulkSelectedIds.size})`}
+        actionLabel={generating ? `${progress.current}/${progress.total}...` : `Расчёт (${bulkSelectedIds.size})`}
         actionSpinner={generating}
         onAction={handleBulkGenerate}
+        hasReport={bulkResults.length > 0}
+        onExport={handleExportAll} exporting={exporting}
+        onSave={handleSaveAll} saving={savingAll}
+        readOnly={readOnly}
+      />
+
+      <DropZone
+        uploadedFile={uploadedFile}
+        onSelect={f => { setUploadedFile(f); setBulkResults([]); }}
+        onClear={() => { setUploadedFile(null); setBulkResults([]); }}
+        compact={bulkResults.length > 0}
       />
 
       {/* Progress bar */}
@@ -714,14 +910,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       )}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
-        {!generating && bulkResults.length === 0 && (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-            {bulkSelectedIds.size === 0
-              ? 'Отметьте врачей в списке слева (галочками), загрузите файл Excel и нажмите «Сформировать»'
-              : `Выбрано ${bulkSelectedIds.size} врачей. Загрузите файл Excel и нажмите «Сформировать»`
-            }
-          </div>
-        )}
+        {!generating && bulkResults.length === 0 && null}
 
         {bulkResults.length > 0 && (
           <>
@@ -736,16 +925,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                   )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className="rb-btn rb-btn-success rb-btn-sm" onClick={handleExportAll} disabled={exporting || !successResults.length}>
-                  {exporting ? <><span className="rb-spinner" style={{ marginRight: 4 }} />Экспорт...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="15" x2="12" y2="9"/><polyline points="9 12 12 9 15 12"/></svg> Скачать Excel</>}
-                </button>
-                {!readOnly && (
-                  <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={handleSaveAll} disabled={savingAll || !successResults.length}>
-                    {savingAll ? <><span className="rb-spinner" style={{ marginRight: 4 }} />Сохранение...</> : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Сохранить в историю</>}
-                  </button>
-                )}
-              </div>
+              <div style={{ display: 'flex', gap: 8 }} />
             </div>
 
             {/* Per-doctor collapsible cards */}
@@ -832,34 +1012,22 @@ const REPORT_MODES = [
 export default function StepReport({ selectedDoctor, doctors, clinics, reportMode, setReportMode, bulkSelectedIds, readOnly }) {
   const isBulk    = reportMode === 'bulk' || reportMode === 'bulk_interim';
   const isInterim = reportMode === 'individual_interim' || reportMode === 'bulk_interim';
+  const { wrapRef: reportTabRef, sliderEl: reportSlider } = useTabSlider(reportMode);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Mode tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid var(--rb-border)', padding: '0 16px', background: '#fff', flexShrink: 0, flexWrap: 'wrap' }}>
-        {REPORT_MODES.map(([key, label]) => {
-          const isInterimTab = key.includes('interim');
-          return (
-            <button
-              key={key}
-              onClick={() => setReportMode(key)}
-              style={{
-                padding: '10px 16px',
-                background: 'none',
-                border: 'none',
-                borderBottom: reportMode === key ? `2px solid ${isInterimTab ? '#d97706' : 'var(--rb-primary)'}` : '2px solid transparent',
-                marginBottom: -2,
-                cursor: 'pointer',
-                fontWeight: reportMode === key ? 700 : 400,
-                color: reportMode === key ? (isInterimTab ? '#d97706' : 'var(--rb-primary)') : 'var(--rb-text-secondary)',
-                fontSize: 13,
-                transition: 'all 0.15s',
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+      <div className="rb-clinic-tab-wrap" style={{ margin: '8px 12px', flexShrink: 0 }} ref={reportTabRef}>
+        {reportSlider}
+        {REPORT_MODES.map(([key, label]) => (
+          <button
+            key={key}
+            className={`rb-clinic-tab${reportMode === key ? ' active' : ''}`}
+            onClick={() => setReportMode(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>

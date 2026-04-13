@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { executorSettings, performedServiceBonuses, referralBonuses } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
+import { useTabSlider } from '../utils/useTabSlider';
 
 const DEFAULT_SUGGESTS = {
   deductions:   ['НДФЛ', 'Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'],
   materials:    ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'],
   extras:       ['Дежурство', 'Обучение', 'Сверхурочные', 'Премия', 'Командировка'],
   extrasNormed: ['Отпускные', 'Увольнение'],
+  normServices: ['Консультация', 'Приём', 'Процедура', 'Операция', 'Диагностика'],
 };
 
 function execClinicDefault() {
@@ -49,7 +51,7 @@ function LockBtn({ locked, onClick }) {
       className="rb-btn rb-btn-xs"
       onClick={onClick}
       title={locked ? 'Снять фиксацию (будет сброшен)' : 'Зафиксировать (не сбрасывать)'}
-      style={{ color: locked ? '#2563eb' : '#cbd5e1', background: 'transparent', border: 'none', padding: '0 2px', lineHeight: 1 }}
+      style={{ color: locked ? '#007AFF' : '#cbd5e1', background: 'transparent', border: 'none', padding: '0 2px', lineHeight: 1 }}
     >
       <svg viewBox="0 0 24 24" fill={locked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" width="13" height="13">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -306,7 +308,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
             <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
               <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.name}</span>
               <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                {item.lockedRate && <span style={{ color: '#2563eb', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: '#2563eb', marginRight: 2 }}>🔒</span>}{item.hours} ч.
+                {item.lockedRate && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.hours} ч.
               </span>
               <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--rb-success)', fontWeight: 600 }}>= {((parseFloat(item.rate) || 0) * (parseFloat(item.hours) || 0)).toFixed(2)} ₽</span>
             </div>
@@ -329,38 +331,43 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
 
 // ─── Norm service add form ─────────────────────────────────────────────────────
 
-function NormServiceAddForm({ form, setForm, onAdd, readOnly }) {
-  const [visible, setVisible] = useState(false);
-  if (readOnly) return null;
+function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests, onEditSuggests }) {
+  if (readOnly || !visible) return null;
   return (
-    <div>
-      {visible && (
-        <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
-          <div className="rb-exec-add-row">
-            <div className="rb-exec-add-field flex-grow">
-              <label>Вид деятельности</label>
-              <input type="text" placeholder="Название..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-            </div>
-            <div className="rb-exec-add-field">
-              <label>Ставка, ₽/ч</label>
-              <input type="number" placeholder="0" min="0" step="any" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} style={{ width: 90 }} />
-            </div>
-            <div className="rb-exec-add-field">
-              <label>Часов</label>
-              <input type="number" placeholder="0" min="0" step="0.5" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} style={{ width: 70 }} />
-            </div>
-            <div style={{ paddingBottom: 1 }}>
-              <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={onAdd}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg>
-                Добавить
-              </button>
-            </div>
+    <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
+      {suggests && suggests.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+          <div className="rb-exec-suggests" style={{ flex: 1, marginBottom: 0 }}>
+            {suggests.map(s => (
+              <span key={s} className="rb-exec-suggest" onClick={() => setForm(f => ({ ...f, name: s }))}>{s}</span>
+            ))}
           </div>
+          {onEditSuggests && (
+            <button onClick={onEditSuggests} title="Редактировать подсказки" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3, color: 'var(--rb-text-secondary)', flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          )}
         </div>
       )}
-      <button className="rb-btn rb-btn-secondary rb-btn-sm" onClick={() => setVisible(v => !v)}>
-        {visible ? 'Скрыть' : 'Добавить запись'}
-      </button>
+      <div className="rb-exec-add-row">
+        <div className="rb-exec-add-field flex-grow">
+          <label>Вид деятельности</label>
+          <input type="text" placeholder="Название..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div className="rb-exec-add-field">
+          <label>Ставка, ₽/ч</label>
+          <input type="number" placeholder="0" min="0" step="any" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} style={{ width: 90 }} />
+        </div>
+        <div className="rb-exec-add-field">
+          <label>Часов</label>
+          <input type="number" placeholder="0" min="0" step="0.5" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} style={{ width: 70 }} />
+        </div>
+        <div style={{ paddingBottom: 1 }}>
+          <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={onAdd}>
+            Сохранить
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -656,6 +663,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
+  const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const serviceSpecialties = React.useMemo(() => {
@@ -671,6 +679,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const [cabinetInput, setCabinetInput] = useState('');
   const [showCabinetForm, setShowCabinetForm] = useState(false);
   const [showExtraForm, setShowExtraForm] = useState(false);
+  const [showNormServiceForm, setShowNormServiceForm] = useState(false);
   const [showDeductionForm, setShowDeductionForm] = useState(false);
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [showAnesthForm, setShowAnesthForm] = useState(false);
@@ -689,6 +698,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         materials:    data.materials    || DEFAULT_SUGGESTS.materials,
         extras:       data.extras       || DEFAULT_SUGGESTS.extras,
         extrasNormed: data.extrasNormed || DEFAULT_SUGGESTS.extrasNormed,
+        normServices: data.normServices || DEFAULT_SUGGESTS.normServices,
       });
     }).catch(() => {});
   }, []);
@@ -1217,17 +1227,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Clinic tabs */}
       {clinicTabs.length > 1 && (
-        <div className="rb-clinic-tab-wrap">
+        <div className="rb-clinic-tab-wrap" ref={clinicTabRef}>
+          {clinicSlider}
           {clinicTabs.map(tab => (
             <button
               key={tab.id}
               className={`rb-clinic-tab${activeClinic === tab.id ? ' active' : ''}`}
-              style={activeClinic === tab.id ? { borderBottomColor: tab.color } : {}}
               onClick={() => handleSwitchClinic(tab.id)}
             >
-              {tab.id !== 'global' && (
-                <span className="rb-clinic-tab-dot" style={{ background: tab.color }} />
-              )}
               {tab.label}
             </button>
           ))}
@@ -1482,12 +1489,21 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         {/* ── Norm services (normed pay type only) ── */}
         {pt === 'normed' && (
           <div className="rb-exec-flat-section">
-            <div className="rb-exec-flat-label">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
-              Выполненные услуги
+            <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+                Выполненные услуги
+              </span>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowNormServiceForm(v => !v)}
+                  style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                  title="Добавить запись"
+                >+</button>
+              )}
             </div>
             <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} />
-            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} />
+            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} />
           </div>
         )}
 
@@ -1527,7 +1543,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           <div className="rb-exec-flat-section">
             <div className="rb-exec-flat-label">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/></svg>
-              Чистый расход на материалы
+              Материалы-расходники
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Общие</span>
@@ -1672,9 +1688,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                       return (
                       <div key={i} className="rb-exec-item" style={isLocked ? { background: '#eff6ff' } : {}}>
                         <div className="rb-exec-item-name" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0 }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#007AFF" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0 }}>
                             <rect x="4" y="2" width="16" height="20" rx="1"/>
-                            <circle cx="15.5" cy="12" r="1" fill="#2563eb" stroke="none"/>
+                            <circle cx="15.5" cy="12" r="1" fill="#007AFF" stroke="none"/>
                             <line x1="4" y1="22" x2="20" y2="22"/>
                           </svg>
                           {cab}

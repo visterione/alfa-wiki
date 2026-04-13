@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { salaryRecords, executorSettings as execSettingsApi, cashPayments as cashPaymentsApi } from '../../../services/api';
@@ -74,6 +74,142 @@ const fmtDate = s => {
   if (isNaN(d)) return s;
   return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 };
+
+// ── MultiSelect dropdown with checkboxes ──────────────────────────────────────
+function MultiSelect({ options, value, onChange, placeholder, renderLabel, renderOption }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef(null);
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const toggle = v => onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 160) });
+    }
+    setOpen(v => !v);
+  };
+  const displayLabel = renderLabel
+    ? renderLabel(value)
+    : value.length === 0 ? placeholder : value.length === 1 ? (renderOption ? renderOption(value[0]) : value[0]) : `${value.length} выбрано`;
+  return (
+    <div ref={ref} style={{ width: '100%' }}>
+      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
+        <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+      </button>
+      {open && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+          {value.length > 0 && (
+            <div onClick={() => onChange([])} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
+          )}
+          {options.map(opt => (
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: value.includes(opt) ? '#eff6ff' : undefined }}>
+              <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: 'var(--rb-primary)', flexShrink: 0 }} />
+              {renderOption ? renderOption(opt) : opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Date filter: text input (мм.гггг) + dropdown picker ───────────────────────
+function DateFilter({ year, month, onYear, onMonth, allYears }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [text, setText] = useState('');
+  const ref = useRef(null);
+  const btnRef = useRef(null);
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  // Sync text when external values change
+  useEffect(() => {
+    if (!month && !year) { setText(''); return; }
+    const m = month ? String(month).padStart(2, '0') : '';
+    const y = year ? String(year) : '';
+    setText(m && y ? `${m}.${y}` : m || y);
+  }, [month, year]);
+
+  const handleText = e => {
+    const v = e.target.value;
+    setText(v);
+    // Parse мм.гггг or гггг or мм
+    const full = v.match(/^(\d{1,2})\.(\d{4})$/);
+    if (full) { onMonth(parseInt(full[1], 10)); onYear(parseInt(full[2], 10)); return; }
+    const justYear = v.match(/^(\d{4})$/);
+    if (justYear) { onYear(parseInt(justYear[1], 10)); onMonth(''); return; }
+    if (!v) { onMonth(''); onYear(''); }
+  };
+
+  const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+  const active = !!(year || month);
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ display: 'flex', gap: 2 }}>
+        <input
+          value={text}
+          onChange={handleText}
+          placeholder="мм.гггг"
+          style={{ flex: 1, minWidth: 0, padding: '4px 6px', border: `1px solid ${active ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: active ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
+        />
+        <button ref={btnRef} onClick={() => {
+          if (!open && btnRef.current) {
+            const r = btnRef.current.getBoundingClientRect();
+            setPos({ top: r.bottom + 2, left: r.right - 200 });
+          }
+          setOpen(v => !v);
+        }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: '#6b7280', fontSize: 10, lineHeight: 1 }}>▾</button>
+      </div>
+      {open && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 200, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999, padding: 8 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <select value={year} onChange={e => { onYear(e.target.value); }} style={{ flex: 1, padding: '3px 4px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
+              <option value="">Год</option>
+              {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+            {(year || month) && <button onClick={() => { onYear(''); onMonth(''); setText(''); setOpen(false); }} style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-primary)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Сбросить</button>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
+            {months.map((m, i) => {
+              const idx = i + 1;
+              const sel = String(month) === String(idx);
+              return (
+                <button key={idx} onClick={() => { onMonth(idx); setOpen(false); }} style={{ padding: '4px 2px', fontSize: 11, border: `1px solid ${sel ? 'var(--rb-primary)' : '#e5e7eb'}`, borderRadius: 4, background: sel ? 'var(--rb-primary)' : '#fff', color: sel ? '#fff' : '#374151', cursor: 'pointer', fontWeight: sel ? 600 : 400 }}>{m}</button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryBtn({ onClick, disabled, loading, label }) {
+  const [hov, setHov] = React.useState(false);
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
+      style={{ width: 90, height: 32, border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: disabled ? 'default' : 'pointer', background: 'var(--rb-primary)', color: '#fff', opacity: disabled ? 0.55 : 1, filter: hov && !disabled ? 'brightness(0.88)' : '', transition: 'filter .15s' }}
+    >
+      {loading ? '...' : label}
+    </button>
+  );
+}
 
 // ═══════════════════════════════════════
 // MAIN COMPONENT
@@ -220,12 +356,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
-  const [searchName, setSearchName]         = useState('');
-  const [filterClinic, setFilterClinic]     = useState('');
-  const [filterSpecialty, setFilterSpecialty] = useState('');
-  const [filterYear, setFilterYear]         = useState('');
-  const [filterMonth, setFilterMonth]       = useState('');
-  const [sortBy, setSortBy]                 = useState('date_desc');
+  const [searchName, setSearchName]           = useState('');
+  const [filterClinics, setFilterClinics]     = useState([]);
+  const [filterSpecialties, setFilterSpecialties] = useState([]);
+  const [filterYear, setFilterYear]           = useState('');
+  const [filterMonth, setFilterMonth]         = useState('');
+  const [sortBy, setSortBy]                   = useState('date_desc');
 
   useEffect(() => {
     setLoading(true);
@@ -313,17 +449,19 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
   // ── Filter & sort ────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
-    const targetClinic = filterClinic ? clinics.find(c => String(c.id) === String(filterClinic)) : null;
     const yr  = filterYear  ? parseInt(filterYear,  10) : null;
     const mon = filterMonth ? parseInt(filterMonth, 10) : null;
+    const clinicNames = filterClinics.length > 0
+      ? new Set(filterClinics.map(id => { const c = clinics.find(c => String(c.id) === String(id)); return c?.name; }).filter(Boolean))
+      : null;
 
     return allRows
       .filter(row => {
         if (searchName && !row.rec.doctorName?.toLowerCase().includes(searchName.toLowerCase())) return false;
-        if (targetClinic && row.clinicName !== targetClinic.name) return false;
-        if (filterSpecialty) {
-          const sp = getDoctorSpecialty(row.rec.misUserId);
-          if (!sp.split(', ').map(s => s.trim()).includes(filterSpecialty)) return false;
+        if (clinicNames && !clinicNames.has(row.clinicName)) return false;
+        if (filterSpecialties.length > 0) {
+          const sp = getDoctorSpecialty(row.rec.misUserId).split(', ').map(s => s.trim());
+          if (!filterSpecialties.some(fs => sp.includes(fs))) return false;
         }
         if ((yr !== null || mon !== null) && row.rec.dateFrom) {
           const d = new Date(row.rec.dateFrom);
@@ -333,13 +471,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         return true;
       })
       .sort((a, b) => {
-        if (sortBy === 'date_asc')    return new Date(a.rec.dateFrom || 0) - new Date(b.rec.dateFrom || 0);
-        if (sortBy === 'name')        return (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru');
-        if (sortBy === 'salary_desc') return parseFloat(b.cr?.salary?.finalSalary || 0) - parseFloat(a.cr?.salary?.finalSalary || 0);
-        if (sortBy === 'salary_asc')  return parseFloat(a.cr?.salary?.finalSalary || 0) - parseFloat(b.cr?.salary?.finalSalary || 0);
+        if (sortBy === 'date_asc')     return new Date(a.rec.dateFrom || 0) - new Date(b.rec.dateFrom || 0);
+        if (sortBy === 'name_asc')     return (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru');
+        if (sortBy === 'name_desc')    return (b.rec.doctorName || '').localeCompare(a.rec.doctorName || '', 'ru');
+        if (sortBy === 'salary_desc')  return parseFloat(b.cr?.salary?.finalSalary || 0) - parseFloat(a.cr?.salary?.finalSalary || 0);
+        if (sortBy === 'salary_asc')   return parseFloat(a.cr?.salary?.finalSalary || 0) - parseFloat(b.cr?.salary?.finalSalary || 0);
         return new Date(b.rec.dateFrom || 0) - new Date(a.rec.dateFrom || 0); // date_desc
       });
-  }, [allRows, searchName, filterClinic, filterSpecialty, filterYear, filterMonth, clinics, sortBy]);
+  }, [allRows, searchName, filterClinics, filterSpecialties, filterYear, filterMonth, clinics, sortBy]);
 
   // Вспомогательная функция: получить карту кассовых выплат (свежий запрос)
   const fetchCashMap = async () => {
@@ -602,91 +741,6 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
       {/* ── Toolbar ── */}
-      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input
-          style={{ flex: 1, minWidth: 160, padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          placeholder="Поиск по ФИО..."
-          value={searchName}
-          onChange={e => setSearchName(e.target.value)}
-        />
-        <select
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          value={filterClinic}
-          onChange={e => setFilterClinic(e.target.value)}
-        >
-          <option value="">Все медцентры</option>
-          {clinics.filter(c => String(c.id) !== '8').map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-        <select
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          value={filterSpecialty}
-          onChange={e => setFilterSpecialty(e.target.value)}
-        >
-          <option value="">Все специальности</option>
-          {allSpecialties.map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        <select
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          value={filterYear}
-          onChange={e => setFilterYear(e.target.value)}
-        >
-          <option value="">Все годы</option>
-          {allYears.map(y => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
-        <select
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          value={filterMonth}
-          onChange={e => setFilterMonth(e.target.value)}
-        >
-          <option value="">Все месяцы</option>
-          {['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m, i) => (
-            <option key={i+1} value={i+1}>{m}</option>
-          ))}
-        </select>
-        <select
-          style={{ padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13, background: '#fff' }}
-          value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
-        >
-          <option value="date_desc">По дате ↓</option>
-          <option value="date_asc">По дате ↑</option>
-          <option value="name">По имени</option>
-          <option value="salary_desc">По зарплате ↓</option>
-          <option value="salary_asc">По зарплате ↑</option>
-        </select>
-        <button
-          onClick={handleExport}
-          disabled={exporting || filtered.length === 0}
-          style={{ padding: '6px 14px', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: (exporting || filtered.length === 0) ? 0.55 : 1 }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="12" y1="15" x2="12" y2="9"/>
-            <polyline points="9 12 12 15 15 12"/>
-          </svg>
-          {exporting ? 'Экспорт...' : 'Excel'}
-        </button>
-        <button
-          onClick={handlePayoutExport}
-          disabled={exportingPayout || filtered.length === 0}
-          style={{ padding: '6px 14px', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: filtered.length === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6, opacity: (exportingPayout || filtered.length === 0) ? 0.55 : 1 }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="12" y1="15" x2="12" y2="9"/>
-            <polyline points="9 12 12 15 15 12"/>
-          </svg>
-          {exportingPayout ? 'Экспорт...' : 'Выплата'}
-        </button>
-      </div>
 
       {/* ── Table ── */}
       {filtered.length === 0 ? (
@@ -716,12 +770,57 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           <table className="rb-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr>
-                {['ФИО врача', 'Медцентр', 'Специальность', 'Дата', 'НДФЛ', 'Зарплата', 'Комментарий'].map(h => (
-                  <th key={h} style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'center', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0', whiteSpace: 'nowrap' }}>
-                    {h}
-                  </th>
-                ))}
-                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 28, borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+                {[
+                  { label: 'ФИО врача',      key: 'name' },
+                  { label: 'Медцентр',        key: null },
+                  { label: 'Специальность',   key: null },
+                  { label: 'Дата',            key: 'date' },
+                  { label: 'НДФЛ',            key: null },
+                  { label: 'Зарплата',        key: 'salary' },
+                  { label: 'Комментарий',     key: null },
+                ].map(({ label, key: col }) => {
+                  const isAsc  = sortBy === `${col}_asc`;
+                  const isDesc = sortBy === `${col}_desc`;
+                  const active = isAsc || isDesc;
+                  const handleSort = col ? () => {
+                    if (isDesc) setSortBy(`${col}_asc`);
+                    else setSortBy(`${col}_desc`);
+                  } : undefined;
+                  return (
+                    <th key={label}
+                      onClick={handleSort}
+                      style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', textAlign: 'center', padding: '10px 12px', fontSize: 11, fontWeight: 700, color: 'var(--rb-text)', textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: '1px solid var(--rb-border)', borderRight: '1px solid #c8d3e0', whiteSpace: 'nowrap', cursor: col ? 'pointer' : 'default', userSelect: 'none' }}>
+                      {label}{col && <span style={{ marginLeft: 4, opacity: active ? 1 : 0.3 }}>{isAsc ? '↑' : '↓'}</span>}
+                    </th>
+                  );
+                })}
+                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 28, borderBottom: '1px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+              </tr>
+              <tr onClick={e => e.stopPropagation()} style={{ background: '#fff' }}>
+                {/* ФИО */}
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                  <input value={searchName} onChange={e => setSearchName(e.target.value)} placeholder="Поиск..." style={{ width: '100%', padding: '4px 7px', border: '1px solid #d1d5db', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', background: searchName ? '#eff6ff' : '#fff', borderColor: searchName ? 'var(--rb-primary)' : '#d1d5db', outline: 'none', boxSizing: 'border-box' }} />
+                </th>
+                {/* Медцентр */}
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                  <MultiSelect options={clinics.filter(c => String(c.id) !== '8').map(c => c.id)} value={filterClinics} onChange={setFilterClinics} placeholder="Все"
+                    renderLabel={v => v.length === 0 ? 'Все' : v.length === 1 ? (clinics.find(c => String(c.id) === String(v[0]))?.name || v[0]) : `${v.length} выбрано`}
+                    renderOption={id => clinics.find(c => String(c.id) === String(id))?.name || id}
+                  />
+                </th>
+                {/* Специальность */}
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                  <MultiSelect options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} placeholder="Все" />
+                </th>
+                {/* Дата */}
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
+                  <DateFilter year={filterYear} month={filterMonth} onYear={setFilterYear} onMonth={setFilterMonth} allYears={allYears} />
+                </th>
+                {/* НДФЛ, Зарплата, Комментарий, кнопка — пусто */}
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+                <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)' }} />
               </tr>
             </thead>
             <tbody>
@@ -854,7 +953,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                               <button
                                 disabled={!!commentSaving[rec.id]}
                                 onClick={async () => { await handleSaveComment(rec, editingCommentValue); setEditingCommentId(null); }}
-                                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: '#2563eb', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: commentSaving[rec.id] ? 0.5 : 1 }}
+                                style={{ padding: '3px 10px', fontSize: 11, fontWeight: 600, background: '#007AFF', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', opacity: commentSaving[rec.id] ? 0.5 : 1 }}
                               >{commentSaving[rec.id] ? '...' : 'Сохранить'}</button>
                             </div>
                           </div>
@@ -934,7 +1033,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
             Итого ({filtered.length} строк)
           </span>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', flex: 1 }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма зарплат</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#1e40af' }}>{fmtRub(totalSalary)}</div>
@@ -957,6 +1056,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rb-text-secondary)' }}>−{fmtRub(totalCashPaid)}</div>
               </div>
             )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <SummaryBtn onClick={handleExport} disabled={exporting || filtered.length === 0} loading={exporting} label="Excel" />
+            <SummaryBtn onClick={handlePayoutExport} disabled={exportingPayout || filtered.length === 0} loading={exportingPayout} label="Выплата" />
           </div>
         </div>
         </>

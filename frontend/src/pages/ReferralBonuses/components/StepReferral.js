@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { referralBonuses as rbApi, mis } from '../../../services/api';
+import { useTabSlider } from '../utils/useTabSlider';
 
 // ═══════════════════════════════════════
 // CATEGORY DROPDOWN component
@@ -109,6 +110,8 @@ export default function StepReferral({
       getClinicName={getClinicName}
       setBonusCounts={setBonusCounts}
       readOnly={readOnly}
+      panelCollapsed={panelCollapsed}
+      onTogglePanel={onTogglePanel}
     />
   );
 }
@@ -116,8 +119,9 @@ export default function StepReferral({
 // ═══════════════════════════════════════
 // DOCTOR REFERRAL PANEL
 // ═══════════════════════════════════════
-function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly }) {
+function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicColor, getClinicName, setBonusCounts, readOnly, panelCollapsed, onTogglePanel }) {
   const [activeClinic, setActiveClinic] = useState('global');
+  const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
   const [bonuses, setBonuses] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -352,10 +356,11 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
 
   return (
     <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
-    <>
-      {/* Doctor card header */}
-      <div className="rb-doctor-card">
-        <div className="rb-doctor-card-header">
+      {/* Main section */}
+      <div className="rb-add-service-section">
+
+        {/* Doctor card header */}
+        <div className="rb-doctor-card-header" style={{ marginBottom: 0, borderRadius: 'var(--rb-radius) var(--rb-radius) 0 0' }}>
           <div className="rb-doctor-card-info">
             <h2>{doctor.name}</h2>
           </div>
@@ -369,43 +374,32 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             </button>
           )}
         </div>
-      </div>
 
-      {/* Clinic tabs */}
-      <div className="rb-clinic-tab-wrap">
-        <button
-          className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`}
-          style={{ borderColor: 'var(--rb-primary)' }}
-          onClick={() => { setActiveClinic('global'); setRefPage(1); }}
-        >
-          Общие
-        </button>
-        {clinics.filter(c => String(c.id) !== '8').map(c => (
+        <div style={{ padding: '12px 16px 16px' }}>
+
+        {/* Clinic tabs */}
+        <div className="rb-clinic-tab-wrap" style={{ marginBottom: 12 }} ref={clinicTabRef}>
+          {clinicSlider}
           <button
-            key={c.id}
-            className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
-            style={{ borderColor: c.color || 'var(--rb-primary)' }}
-            onClick={() => { setActiveClinic(String(c.id)); setRefPage(1); }}
+            className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`}
+            onClick={() => { setActiveClinic('global'); setRefPage(1); }}
           >
-            <span className="rb-clinic-tab-dot" style={{ background: c.color }} />
-            {c.name}
+            Общие
           </button>
-        ))}
-      </div>
-
-      {/* Add service section */}
-      <div className="rb-add-service-section">
-        <div className="rb-add-service-header">
-          <h3>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            Добавить услугу с бонусом
-          </h3>
+          {clinics.filter(c => String(c.id) !== '8').map(c => (
+            <button
+              key={c.id}
+              className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
+              onClick={() => { setActiveClinic(String(c.id)); setRefPage(1); }}
+            >
+              {c.name}
+            </button>
+          ))}
         </div>
-        <div className="rb-add-service-body">
+
+        <div style={{ marginTop: 12 }}>
           {/* Tabs */}
-          <div className="rb-tabs">
+          <div className="rb-tabs" style={{ marginTop: 0 }}>
             <button
               className={`rb-tab-btn${addTab === 'search' ? ' active' : ''}`}
               onClick={() => setAddTab('search')}
@@ -436,7 +430,17 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                   onChange={handleSearchInput}
                   onKeyDown={e => { if (e.key === 'Escape') handleClearService(); }}
                 />
-                <button className="rb-btn rb-btn-secondary" onClick={handleClearService}>Очистить</button>
+                <button
+                  onClick={() => setRefShowAll(v => !v)}
+                  title={refShowAll ? 'Включить пагинацию' : 'Показать все записи'}
+                  style={{ padding: '4px 10px', fontSize: 12, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                    <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                  {refShowAll ? 'По страницам' : 'Все'}
+                </button>
               </div>
               {searchLoading && (
                 <div className="rb-loading"><span className="rb-spinner" /> Поиск...</div>
@@ -585,30 +589,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             </div>
           )}
         </div>
-      </div>
 
-      {/* Bonuses table */}
-      <div className="rb-bonuses-section">
-        <div className="rb-bonuses-header">
-          <h3>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="12" y1="1" x2="12" y2="23"/>
-              <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-            Список услуг с бонусами
-          </h3>
-          <button
-            onClick={() => setRefShowAll(v => !v)}
-            title={refShowAll ? 'Включить пагинацию' : 'Показать все записи'}
-            style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: refShowAll ? '#eff6ff' : '#fff', color: refShowAll ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', gap: 5 }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-            </svg>
-            {refShowAll ? 'По страницам' : 'Все'}
-          </button>
-        </div>
+        {/* Bonuses table */}
         <div className="rb-bonuses-table-wrap">
           {loading ? (
             <div className="rb-loading"><span className="rb-spinner" /> Загрузка...</div>
@@ -617,10 +599,10 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             <table className="rb-table">
               <thead>
                 <tr>
-                  <th>Код услуги</th>
-                  <th>Название услуги</th>
-                  <th>Бонус, %</th>
-                  <th>Бонус, руб</th>
+                  <th style={{ textAlign: 'center' }}>Код услуги</th>
+                  <th style={{ textAlign: 'center' }}>Название услуги</th>
+                  <th style={{ textAlign: 'center' }}>Бонус, %</th>
+                  <th style={{ textAlign: 'center' }}>Бонус, руб</th>
                   <th></th>
                 </tr>
               </thead>
@@ -646,7 +628,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button
-                          className="rb-btn rb-btn-secondary rb-btn-xs"
+                          className="rb-btn rb-btn-primary rb-btn-xs"
                           style={{ marginRight: 4 }}
                           onClick={() => handleEditBonus(b)}
                           title="Редактировать"
@@ -677,8 +659,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             </>
           )}
         </div>
+        </div>
       </div>
-    </>
     </fieldset>
   );
 }

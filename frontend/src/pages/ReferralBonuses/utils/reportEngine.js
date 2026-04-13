@@ -815,7 +815,7 @@ export async function buildReport({
       basePayLabel = `Почасовой оклад (${rate} ₽ × ${hours} ч)`;
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
-      basePayLabel = 'Бонусы за выполненные услуги (по тарифам)';
+      basePayLabel = 'Выполненные услуги';
     } else if (pt === 'normed') {
       const fixedSalary = parseFloat(clinicSettings.fixedSalary) || 0;
       const normServices = clinicSettings.normServices || [];
