@@ -57,6 +57,7 @@ export function rbMapNewColumns(rows) {
     legalCompanyName: ['Юр. компания', 'Плательщик', 'Наименование плательщика', 'Организация', 'Контрагент'],
     assistant:         ['Ассистент'],
     anesthesiologist:  ['Анестезиолог'],
+    nurse:             ['Медицинская сестра', 'Медсестра'],
   };
   Object.entries(exactMap).forEach(([field, candidates]) => {
     for (const c of candidates) {
@@ -87,6 +88,7 @@ export function rbMapNewColumns(rows) {
     if (!colMap.legalCompanyName && (kl.includes('плательщик') || kl === 'организация' || kl === 'контрагент')) colMap.legalCompanyName = k;
     if (!colMap.assistant        && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
     if (!colMap.anesthesiologist && (kl === 'анестезиолог' || kl.includes('анестезиолог'))) colMap.anesthesiologist = k;
+    if (!colMap.nurse            && (kl === 'медсестра' || kl === 'медицинская сестра' || kl.includes('медсестр'))) colMap.nurse = k;
   });
   // Fallbacks
   if (!colMap.date) colMap.date = keys[0];

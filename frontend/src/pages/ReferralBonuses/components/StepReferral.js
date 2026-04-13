@@ -206,8 +206,9 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
     if (!q || q.trim().length < 2) { setSearchResults([]); return; }
     setSearchLoading(true);
     try {
-      const res = await mis.getServices({ q: q.trim(), limit: 20 });
-      setSearchResults(Array.isArray(res.data) ? res.data : (res.data?.items || []));
+      const res = await mis.searchServices(q.trim());
+      const raw = res.data;
+      setSearchResults(raw?.success && Array.isArray(raw?.data) ? raw.data : []);
     } catch {
       setSearchResults([]);
     } finally {

@@ -3,6 +3,390 @@ import toast from 'react-hot-toast';
 import { performedServiceBonuses, executorSettings, mis } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 
+// ─── Role labels ─────────────────────────────────────────────────────────────
+const ROLES = [
+  { key: 'doctor',          label: 'Врач' },
+  { key: 'assistant',       label: 'Ассистент' },
+  { key: 'nurse',           label: 'Медсестра' },
+  { key: 'anesthesiologist',label: 'Анестезиолог' },
+];
+
+// ─── Category dropdown (shared) ──────────────────────────────────────────────
+function CategoryDropdown({ onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [categories, setCategories] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState('');
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef();
+  const dropRef = useRef();
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (btnRef.current && !btnRef.current.contains(e.target) &&
+          dropRef.current && !dropRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const loadCategories = useCallback(async () => {
+    if (categories !== null) return;
+    setLoading(true);
+    try {
+      const res = await mis.getServiceCategories();
+      const data = res.data?.data || res.data || [];
+      setCategories(Array.isArray(data) ? data : []);
+    } catch {
+      setCategories([]);
+      toast.error('Ошибка загрузки категорий');
+    } finally {
+      setLoading(false);
+    }
+  }, [categories]);
+
+  const handleToggle = () => {
+    const next = !open;
+    if (next && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setOpen(next);
+    if (next) loadCategories();
+  };
+
+  const handleSelect = (cat) => { setSelectedLabel(cat.title); setOpen(false); onSelect(cat); };
+
+  function renderCats(cats, level = 0) {
+    return cats.map(cat => (
+      <React.Fragment key={cat.id}>
+        <div className="rb-cat-dropdown-item" data-level={level} style={{ paddingLeft: 12 + level * 12 }} onClick={() => handleSelect(cat)}>
+          {cat.title} {cat.services_count != null ? `(${cat.services_count})` : ''}
+        </div>
+        {cat.children?.length > 0 && renderCats(cat.children, level + 1)}
+      </React.Fragment>
+    ));
+  }
+
+  return (
+    <div style={{ position: 'relative', marginBottom: 10 }}>
+      <button ref={btnRef} type="button" className={`rb-cat-dropdown-btn${selectedLabel ? ' has-value' : ''}`} onClick={handleToggle}
+        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+      >
+        <span>{selectedLabel || 'Выберите категорию...'}</span>
+        <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }}>
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
+        </svg>
+      </button>
+      {open && (
+        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, maxHeight: 280, overflowY: 'auto', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+          {loading && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Загрузка...</div>}
+          {!loading && categories?.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Категории не найдены</div>}
+          {!loading && categories?.length > 0 && renderCats(categories)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Role service panel (Ассистент / Медсестра / Анестезиолог) ───────────────
+
+function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinicTabRef, clinicSlider, misUserId, doctorName, execData, onExecDataChange, readOnly }) {
+  const dbClinicId = activeClinic === 'global' ? '' : String(activeClinic);
+  const services = execData?.roleServices?.[role]?.[dbClinicId] || [];
+
+  const [addTab, setAddTab]               = useState('search');
+  const [searchQuery, setSearchQuery]     = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedSvc, setSelectedSvc]     = useState(null);
+  const [valueType, setValueType]         = useState('percent');
+  const [value, setValue]                 = useState('');
+  const [saving, setSaving]               = useState(false);
+  // Category
+  const [catServices, setCatServices]     = useState([]);
+  const [catLoading, setCatLoading]       = useState(false);
+  const [catBulkType, setCatBulkType]     = useState('percent');
+  const [catBulkValue, setCatBulkValue]   = useState('');
+  const [catSaving, setCatSaving]         = useState(false);
+  const searchTimerRef = useRef(null);
+
+  // Reset form when clinic or role changes
+  useEffect(() => {
+    setSelectedSvc(null); setSearchQuery(''); setSearchResults([]); setValue('');
+    setCatServices([]); setCatBulkValue('');
+  }, [activeClinic, role]);
+
+  const handleSearchInput = (q) => {
+    setSearchQuery(q);
+    clearTimeout(searchTimerRef.current);
+    if (!q.trim()) { setSearchResults([]); return; }
+    searchTimerRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const res = await mis.searchServices(q.trim());
+        const raw = res.data;
+        setSearchResults(raw?.success && Array.isArray(raw?.data) ? raw.data : []);
+      } catch { setSearchResults([]); }
+      finally { setSearchLoading(false); }
+    }, 400);
+  };
+
+  const svcCode = (svc) => (svc.code || svc.sub_code || String(svc.service_id || svc.id || '')).trim();
+
+  const handleSelectSvc = (svc) => {
+    setSelectedSvc(svc); setSearchQuery(''); setSearchResults([]);
+    const existing = services.find(s => s.serviceCode === svcCode(svc));
+    if (existing) { setValue(String(existing.value)); setValueType(existing.valueType === 'rub' ? 'rub' : 'percent'); }
+    else { setValue(''); setValueType('percent'); }
+  };
+
+  const saveEntries = async (entries, successMsg) => {
+    const cur = execData?.roleServices?.[role]?.[dbClinicId] || [];
+    const merged = [...cur];
+    for (const e of entries) {
+      const idx = merged.findIndex(s => s.serviceCode === e.serviceCode);
+      if (idx >= 0) merged[idx] = e; else merged.push(e);
+    }
+    const newRoleServices = {
+      ...(execData?.roleServices || {}),
+      [role]: { ...((execData?.roleServices || {})[role] || {}), [dbClinicId]: merged },
+    };
+    const newExecData = { ...execData, roleServices: newRoleServices };
+    await executorSettings.save({ misUserId, doctorName, settings: newExecData });
+    onExecDataChange(newExecData);
+    toast.success(successMsg);
+  };
+
+  const handleSave = async () => {
+    if (!selectedSvc || !value) return;
+    const val = parseFloat(value);
+    if (isNaN(val) || val <= 0) { toast.error('Введите корректное значение'); return; }
+    const newEntry = { serviceCode: svcCode(selectedSvc), serviceName: selectedSvc.title || '', value: val, valueType };
+    setSaving(true);
+    try {
+      await saveEntries([newEntry], 'Сохранено');
+      setSelectedSvc(null); setValue('');
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setSaving(false); }
+  };
+
+  const handleCatSelect = useCallback(async (cat) => {
+    setCatServices([]); setCatBulkValue('');
+    setCatLoading(true);
+    try {
+      const res = await mis.getServicesByCategory(cat.id);
+      const data = res.data?.data || res.data || [];
+      setCatServices(Array.isArray(data) ? data : []);
+    } catch {
+      setCatServices([]); toast.error('Ошибка загрузки услуг категории');
+    } finally { setCatLoading(false); }
+  }, []);
+
+  const handleApplyCategoryBonus = async () => {
+    if (!catServices.length) { toast.error('Нет услуг в категории'); return; }
+    const val = parseFloat(catBulkValue);
+    if (isNaN(val) || val <= 0) { toast.error('Укажите ставку'); return; }
+    setCatSaving(true);
+    try {
+      const entries = catServices.map(s => ({
+        serviceCode: s.code || String(s.service_id || ''),
+        serviceName: s.title || '',
+        value: val,
+        valueType: catBulkType,
+      }));
+      await saveEntries(entries, `Применено к ${entries.length} услуг${entries.length === 1 ? 'е' : 'ам'}`);
+      setCatBulkValue('');
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setCatSaving(false); }
+  };
+
+  const handleDelete = async (code) => {
+    if (!window.confirm('Удалить услугу?')) return;
+    const newRoleServices = {
+      ...(execData?.roleServices || {}),
+      [role]: {
+        ...((execData?.roleServices || {})[role] || {}),
+        [dbClinicId]: (execData?.roleServices?.[role]?.[dbClinicId] || []).filter(s => s.serviceCode !== code),
+      },
+    };
+    const newExecData = { ...execData, roleServices: newRoleServices };
+    try {
+      await executorSettings.save({ misUserId, doctorName, settings: newExecData });
+      onExecDataChange(newExecData);
+      toast.success('Удалено');
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
+  const fmtVal = (s) => s.valueType === 'rub' ? `${s.value} ₽` : `${s.value}%`;
+
+  return (
+    <>
+      {/* Clinic tabs */}
+      <div className="rb-clinic-tab-wrap" style={{ marginBottom: 12 }} ref={clinicTabRef}>
+        {clinicSlider}
+        <button className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`} onClick={() => setActiveClinic('global')}>Общие</button>
+        {(clinics || []).map(c => (
+          <button key={c.id} className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`} onClick={() => setActiveClinic(String(c.id))}>{c.name}</button>
+        ))}
+      </div>
+
+      {/* Add form */}
+      {!readOnly && (
+        <div style={{ marginBottom: 14 }}>
+          {/* Mode tabs */}
+          <div className="rb-tabs" style={{ marginTop: 0, marginBottom: 10 }}>
+            <button className={`rb-tab-btn${addTab === 'search' ? ' active' : ''}`} onClick={() => { setAddTab('search'); setSelectedSvc(null); }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              Поиск
+            </button>
+            <button className={`rb-tab-btn${addTab === 'category' ? ' active' : ''}`} onClick={() => { setAddTab('category'); setSelectedSvc(null); }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              По категории
+            </button>
+          </div>
+
+          {/* Search pane */}
+          {addTab === 'search' && !selectedSvc && (
+            <div>
+              <div className="rb-search-row">
+                <input
+                  value={searchQuery}
+                  onChange={e => handleSearchInput(e.target.value)}
+                  placeholder="Введите название или код услуги..."
+                  onKeyDown={e => { if (e.key === 'Escape') { setSearchQuery(''); setSearchResults([]); } }}
+                />
+              </div>
+              {searchLoading && <div className="rb-loading"><span className="rb-spinner" /> Поиск...</div>}
+              {!searchLoading && searchResults.length > 0 && (
+                <div className="rb-search-results" style={{ display: 'block' }}>
+                  {searchResults.map((svc, i) => (
+                    <div key={i} className="rb-search-result-item" onClick={() => handleSelectSvc(svc)}>
+                      <div className="rb-result-name">{svc.title}</div>
+                      <div className="rb-result-code">Код: {svcCode(svc)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Category pane */}
+          {addTab === 'category' && !selectedSvc && (
+            <div>
+              <CategoryDropdown onSelect={handleCatSelect} />
+              {catLoading && <div className="rb-loading"><span className="rb-spinner" /> Загрузка услуг...</div>}
+              {!catLoading && catServices.length > 0 && (
+                <>
+                  <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--rb-border)', borderRadius: 7, marginBottom: 10 }}>
+                    {catServices.map((svc, i) => (
+                      <div key={svc.code || i} className="rb-search-result-item" onClick={() => { handleSelectSvc(svc); setAddTab('search'); }}>
+                        <div>
+                          <div className="rb-result-name">{svc.title}</div>
+                          <div className="rb-result-code">Код: {svc.code || svc.service_id}</div>
+                        </div>
+                        {svc.price != null && <div className="rb-result-price">{parseFloat(svc.price).toFixed(2)} ₽</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      Назначить ставку всем услугам категории
+                      <span style={{ background: '#dbeafe', color: '#1e40af', fontSize: 11, padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>{catServices.length}</span>
+                    </div>
+                    <div className="rb-inline-toggle-wrap" style={{ marginBottom: 10 }}>
+                      <div className="rb-exec-type-toggle">
+                        <button className={`rb-exec-type-btn${catBulkType === 'percent' ? ' active' : ''}`} onClick={() => { setCatBulkType('percent'); setCatBulkValue(''); }}>%</button>
+                        <button className={`rb-exec-type-btn${catBulkType === 'rub' ? ' active' : ''}`} onClick={() => { setCatBulkType('rub'); setCatBulkValue(''); }}>₽</button>
+                      </div>
+                      <input
+                        type="number" value={catBulkValue} onChange={e => setCatBulkValue(e.target.value)}
+                        placeholder={catBulkType === 'percent' ? 'Например: 10' : 'Например: 150'}
+                        min="0" step="any"
+                        style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none' }}
+                      />
+                    </div>
+                    <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleApplyCategoryBonus} disabled={catSaving}>
+                      {catSaving
+                        ? <><span className="rb-spinner" style={{ marginRight: 5 }} />Сохранение...</>
+                        : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg> Применить ко всем</>
+                      }
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Selected service form */}
+          {selectedSvc && (
+            <div style={{ border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '10px 12px', background: '#f8fafc' }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{selectedSvc.title}</div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 10 }}>Код: {svcCode(selectedSvc)}</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <div className="rb-exec-type-toggle">
+                  <button className={`rb-exec-type-btn${valueType === 'percent' ? ' active' : ''}`} onClick={() => setValueType('percent')}>%</button>
+                  <button className={`rb-exec-type-btn${valueType === 'rub' ? ' active' : ''}`} onClick={() => setValueType('rub')}>₽</button>
+                </div>
+                <input
+                  type="number" min="0" step="any"
+                  placeholder={valueType === 'percent' ? '%' : '₽'}
+                  value={value} onChange={e => setValue(e.target.value)}
+                  style={{ width: 90, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
+                />
+                <button onClick={handleSave} disabled={saving}
+                  style={{ padding: '5px 14px', background: 'var(--rb-primary)', border: 'none', borderRadius: 6, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >{saving ? '...' : 'Сохранить'}</button>
+                <button onClick={() => { setSelectedSvc(null); setValue(''); setSearchQuery(''); }}
+                  style={{ padding: '5px 10px', background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 12, cursor: 'pointer', color: 'var(--rb-text-secondary)' }}
+                >Отмена</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Saved services list */}
+      {services.length === 0 ? (
+        <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+          Нет услуг для этой клиники. {readOnly ? '' : 'Добавьте через поиск выше.'}
+        </div>
+      ) : (
+        <table className="rb-table">
+          <thead>
+            <tr>
+              <th>Код</th>
+              <th>Услуга</th>
+              <th style={{ width: 100, textAlign: 'center' }}>Ставка</th>
+              {!readOnly && <th style={{ width: 40 }} />}
+            </tr>
+          </thead>
+          <tbody>
+            {services.map(s => (
+              <tr key={s.serviceCode} style={{ borderBottom: '1px solid var(--rb-border)' }}>
+                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>{s.serviceCode}</td>
+                <td style={{ padding: '6px 10px', fontSize: 13 }}>{s.serviceName}</td>
+                <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--rb-success)' }}>{fmtVal(s)}</td>
+                {!readOnly && (
+                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
+                    <button onClick={() => handleDelete(s.serviceCode)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 3 }} title="Удалить"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  );
+}
+
 // ─── Service row with bonus editing ──────────────────────────────────────────
 
 function ServiceRow({ svc, idx, activeClinic, bonuses, globalCabinets, onReload }) {
@@ -345,6 +729,9 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
   const [services, setServices] = useState([]);
   const [globalCabinets, setGlobalCabinets] = useState([]);
   const [activeClinic, setActiveClinic] = useState('global');
+  const [activeRole, setActiveRole] = useState('doctor');
+  const [execData, setExecData] = useState(null);
+  const { wrapRef: roleTabRef, sliderEl: roleSlider } = useTabSlider(activeRole);
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -367,6 +754,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
     if (!selectedDoctor) return;
     setLoading(true);
     setActiveClinic('global');
+    setActiveRole('doctor');
     setRowValues({});
     setPerfPage(1);
 
@@ -378,9 +766,10 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
       setBonuses(Array.isArray(bonusRes.data) ? bonusRes.data : []);
 
       // Cabinets from executor settings
-      const execData = execRes.data;
-      if (execData && execData.clinicSettings && execData.clinicSettings.global) {
-        setGlobalCabinets(execData.clinicSettings.global.cabinets || []);
+      const ed = execRes.data;
+      setExecData(ed || {});
+      if (ed && ed.clinicSettings && ed.clinicSettings.global) {
+        setGlobalCabinets(ed.clinicSettings.global.cabinets || []);
       } else {
         setGlobalCabinets([]);
       }
@@ -552,7 +941,37 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
 
       <fieldset disabled={readOnly} style={{ border: 0, margin: 0, padding: 0 }}>
       <div className="rb-add-service-section" style={{ margin: '12px 0 0', padding: '0 16px 16px', border: 'none' }}>
-          {/* Clinic tabs */}
+
+          {/* Role tabs */}
+          <div className="rb-clinic-tab-wrap" style={{ marginBottom: 8 }} ref={roleTabRef}>
+            {roleSlider}
+            {ROLES.map(r => (
+              <button
+                key={r.key}
+                className={`rb-clinic-tab${activeRole === r.key ? ' active' : ''}`}
+                onClick={() => { setActiveRole(r.key); setActiveClinic('global'); setPerfPage(1); }}
+              >{r.label}</button>
+            ))}
+          </div>
+
+          {/* Non-doctor roles */}
+          {activeRole !== 'doctor' ? (
+            <RoleServicePanel
+              role={activeRole}
+              clinics={clinics}
+              activeClinic={activeClinic}
+              setActiveClinic={setActiveClinic}
+              clinicTabRef={clinicTabRef}
+              clinicSlider={clinicSlider}
+              misUserId={selectedDoctor.id}
+              doctorName={selectedDoctor.name}
+              execData={execData}
+              onExecDataChange={setExecData}
+              readOnly={readOnly}
+            />
+          ) : (<>
+
+          {/* Clinic tabs (Врач role) */}
           <div className="rb-clinic-tab-wrap" style={{ marginBottom: 12 }} ref={clinicTabRef}>
             {clinicSlider}
             <button
@@ -629,6 +1048,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
               <PerfPagination />
             </>
           )}
+          </>)}
       </div>
       </fieldset>
     </div>

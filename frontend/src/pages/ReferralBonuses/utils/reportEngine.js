@@ -487,6 +487,7 @@ export async function buildReport({
         cabinet,
         assistant: colMap.assistant ? String(r[colMap.assistant] || '').trim() : '',
         anesthesiologist: colMap.anesthesiologist ? String(r[colMap.anesthesiologist] || '').trim() : '',
+        nurse: colMap.nurse ? String(r[colMap.nurse] || '').trim() : '',
         serviceSpec: colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '',
       });
     });
@@ -531,6 +532,7 @@ export async function buildReport({
     let performedBonusTotal = 0;
     const assistancePayments = {};
     const anesthesiologistPayments = {};
+    const nursePayments = {};
 
     // Pre-load own settings for each unique anesthesiologist name in rows
     const anestSettingsCache = {};
@@ -542,6 +544,34 @@ export async function buildReport({
         const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
         if (doc) {
           try { anestSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+        }
+      }
+    }
+
+    // Pre-load settings for each unique assistant name
+    const asstSettingsCache = {};
+    if (colMap.assistant) {
+      const asstNames = [...new Set(
+        rows.filter(rbRowInDateRange).map(r => String(r[colMap.assistant] || '').trim()).filter(Boolean)
+      )];
+      for (const name of asstNames) {
+        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
+        if (doc) {
+          try { asstSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+        }
+      }
+    }
+
+    // Pre-load settings for each unique nurse name
+    const nurseSettingsCache = {};
+    if (colMap.nurse) {
+      const nurseNames = [...new Set(
+        rows.filter(rbRowInDateRange).map(r => String(r[colMap.nurse] || '').trim()).filter(Boolean)
+      )];
+      for (const name of nurseNames) {
+        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
+        if (doc) {
+          try { nurseSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
         }
       }
     }
@@ -590,44 +620,82 @@ export async function buildReport({
             const effectiveCost = interim ? row.cost : row.cost * (1 - deductionFactor) - matForRow;
             const grossBonus = effectiveCost * parseFloat(bonus.bonusPercent) / 100;
 
+            // ── Вспомогательная функция: поиск услуги в roleServices по коду ──
+            const findRoleService = (roleServicesMap, role, code) => {
+              const clinicArr = (roleServicesMap?.[role] || {})[_psvcClinicId] || [];
+              const globalArr = (roleServicesMap?.[role] || {})[''] || [];
+              return clinicArr.find(rs => rs.serviceCode && code && rbNormalizeName(rs.serviceCode) === rbNormalizeName(code))
+                || globalArr.find(rs => rs.serviceCode && code && rbNormalizeName(rs.serviceCode) === rbNormalizeName(code))
+                || null;
+            };
+
             // ── Assistant deduction ──
             let asstBonus = 0;
+            let asstMatchedEntry = null;
             const assistantName = row.assistant || '';
             if (!interim && assistantName) {
-              const _indivAsst = (execSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName));
-              if (_indivAsst != null) {
-                const vt = _indivAsst.valueType || 'percent';
-                const val = parseFloat(_indivAsst.value ?? _indivAsst.percent) || 0;
-                asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+              const asstOwnData = asstSettingsCache[assistantName];
+              // Новая система: roleServices.assistant (точный код услуги)
+              const roleMatch = asstOwnData ? findRoleService(asstOwnData.roleServices, 'assistant', s.code) : null;
+              if (roleMatch) {
+                const val = parseFloat(roleMatch.value) || 0;
+                if (val > 0) {
+                  asstBonus = roleMatch.valueType === 'rub' ? val : effectiveCost * val / 100;
+                  asstMatchedEntry = roleMatch;
+                }
               } else {
-                const vt = clinicSettings.assistanceValueType || 'percent';
-                const val = parseFloat(clinicSettings.assistancePercent) || 0;
-                asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+                // Старая система: assistants[] у основного врача или глобальный процент
+                const _indivAsst = (execSettings.assistants || []).find(a => rbNamesMatch(a.name, assistantName));
+                if (_indivAsst != null) {
+                  const vt = _indivAsst.valueType || 'percent';
+                  const val = parseFloat(_indivAsst.value ?? _indivAsst.percent) || 0;
+                  asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+                } else {
+                  const vt = clinicSettings.assistanceValueType || 'percent';
+                  const val = parseFloat(clinicSettings.assistancePercent) || 0;
+                  asstBonus = vt === 'rub' ? val : effectiveCost * val / 100;
+                }
               }
             }
 
-            // ── Anesthesiologist deduction (rule-based) — только положительные правила трогают основного врача ──
+            // ── Anesthesiologist deduction: сначала roleServices (точный код), затем правила (текст) ──
             let anestBonus = 0;
             let anestMatchedRule = null;
             const anesthesiologistName = row.anesthesiologist || '';
             if (!interim && anesthesiologistName) {
               const anestOwnData = anestSettingsCache[anesthesiologistName];
-              if (anestOwnData && (anestOwnData.anesthesiologistRules || []).length) {
-                const svcName = s.name || '';
-                const svcSpec = row.serviceSpec || '';
-                anestMatchedRule = (anestOwnData.anesthesiologistRules || []).find(r => anestRuleMatches(r, svcName, svcSpec)) || null;
-                if (anestMatchedRule) {
-                  const val = parseFloat(anestMatchedRule.value) || 0;
-                  if (val > 0) {
-                    // только положительные правила вычитаются из бонуса основного врача
-                    anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
+              if (anestOwnData) {
+                const roleMatch = findRoleService(anestOwnData.roleServices, 'anesthesiologist', s.code);
+                if (roleMatch) {
+                  const val = parseFloat(roleMatch.value) || 0;
+                  if (val > 0) anestBonus = roleMatch.valueType === 'rub' ? val : effectiveCost * val / 100;
+                } else if ((anestOwnData.anesthesiologistRules || []).length) {
+                  // Fallback на старую систему (текстовый поиск)
+                  const svcSpec = row.serviceSpec || '';
+                  anestMatchedRule = anestOwnData.anesthesiologistRules.find(r => anestRuleMatches(r, s.name || '', svcSpec)) || null;
+                  if (anestMatchedRule) {
+                    const val = parseFloat(anestMatchedRule.value) || 0;
+                    if (val > 0) anestBonus = anestMatchedRule.valueType === 'rub' ? val : effectiveCost * val / 100;
                   }
-                  // отрицательные правила — только у анестезиолога, основной врач не затрагивается
                 }
               }
             }
 
-            bonusAmount += Math.max(0, grossBonus - asstBonus - anestBonus);
+            // ── Nurse deduction (новая система: roleServices.nurse) ──
+            let nurseBonus = 0;
+            const nurseName = row.nurse || '';
+            if (!interim && nurseName) {
+              const nurseOwnData = nurseSettingsCache[nurseName];
+              if (nurseOwnData) {
+                const roleMatch = findRoleService(nurseOwnData.roleServices, 'nurse', s.code);
+                if (roleMatch) {
+                  const val = parseFloat(roleMatch.value) || 0;
+                  if (val > 0) nurseBonus = roleMatch.valueType === 'rub' ? val : effectiveCost * val / 100;
+                }
+              }
+            }
+
+            bonusAmount += Math.max(0, grossBonus - asstBonus - anestBonus - nurseBonus);
             bonusLabels.add(`${parseFloat(bonus.bonusPercent)}%`);
 
             if (asstBonus > 0 && assistantName) {
@@ -635,7 +703,7 @@ export async function buildReport({
               assistancePayments[assistantName].total += asstBonus;
               const svcKey = s.code || s.name;
               if (!assistancePayments[assistantName].services[svcKey])
-                assistancePayments[assistantName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0 };
+                assistancePayments[assistantName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0, aValue: asstMatchedEntry?.value, aValueType: asstMatchedEntry?.valueType };
               assistancePayments[assistantName].services[svcKey].income += asstBonus;
               assistancePayments[assistantName].services[svcKey].count++;
             }
@@ -650,6 +718,15 @@ export async function buildReport({
                 };
               anesthesiologistPayments[anesthesiologistName].services[svcKey].income += anestBonus;
               anesthesiologistPayments[anesthesiologistName].services[svcKey].count++;
+            }
+            if (nurseBonus > 0 && nurseName) {
+              if (!nursePayments[nurseName]) nursePayments[nurseName] = { total: 0, services: {} };
+              nursePayments[nurseName].total += nurseBonus;
+              const svcKey = s.code || s.name;
+              if (!nursePayments[nurseName].services[svcKey])
+                nursePayments[nurseName].services[svcKey] = { code: s.code, name: s.name, income: 0, count: 0 };
+              nursePayments[nurseName].services[svcKey].income += nurseBonus;
+              nursePayments[nurseName].services[svcKey].count++;
             }
           } else if (bonus.bonusRub != null) {
             bonusAmount += parseFloat(bonus.bonusRub);
@@ -673,6 +750,21 @@ export async function buildReport({
       name, total: data.total, services: Object.values(data.services),
     }));
 
+    const nursePaidTotal = Object.values(nursePayments).reduce((s, x) => s + x.total, 0);
+    const nurseSections  = Object.entries(nursePayments).map(([name, data]) => ({
+      name, total: data.total, services: Object.values(data.services),
+    }));
+
+    // ── Вспомогательная функция: поиск услуги в roleServices по коду, с учётом clinicId ──
+    const findMyRoleService = (role, svcCode, cId) => {
+      const rs = execSettings.roleServices?.[role] || {};
+      const clinicArr = rs[cId !== 'unknown' ? cId : ''] || [];
+      const globalArr = rs[''] || [];
+      return clinicArr.find(e => e.serviceCode && svcCode && rbNormalizeName(e.serviceCode) === rbNormalizeName(svcCode))
+        || globalArr.find(e => e.serviceCode && svcCode && rbNormalizeName(e.serviceCode) === rbNormalizeName(svcCode))
+        || null;
+    };
+
     // ── Assistance income (rows where THIS doctor is listed as assistant) ──
     let assistanceIncomeTotal = 0;
     const assistanceIncomeSections = [];
@@ -681,6 +773,9 @@ export async function buildReport({
         rbNamesMatch(doctorName, String(r[colMap.assistant] || '').trim()) && rbRowInDateRange(r)
       );
       if (asstIncRows.length) {
+        const myAsstRoleServices = execSettings.roleServices?.assistant || {};
+        const hasAsstRoleServices = Object.values(myAsstRoleServices).some(arr => arr.length > 0);
+
         const byExec = {};
         asstIncRows.forEach(r => {
           const execName   = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
@@ -696,36 +791,60 @@ export async function buildReport({
         });
 
         for (const [execName, byClinicMap2] of Object.entries(byExec)) {
-          const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-          if (!execDoc) continue;
-          let execData2;
-          try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
           let secTotal = 0;
           const svcBreakdown2 = {};
-          for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
-            const eCS = rbGetClinicSettings(execData2, cId3);
-            const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
-            let aValueType, aValue;
-            if (_indivEntry != null) {
-              aValueType = _indivEntry.valueType || 'percent';
-              aValue = parseFloat(_indivEntry.value ?? _indivEntry.percent) || 0;
-            } else {
-              aValueType = eCS.assistanceValueType || 'percent';
-              aValue = parseFloat(eCS.assistancePercent) || 0;
+
+          if (hasAsstRoleServices) {
+            // Новая система: roleServices.assistant THIS врача
+            for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
+              cRows3.forEach(row2 => {
+                const match = findMyRoleService('assistant', row2.svcCode, cId3);
+                if (!match) return;
+                const val = parseFloat(match.value) || 0;
+                const inc = match.valueType === 'rub' ? val : row2.cost * val / 100;
+                if (inc === 0) return;
+                secTotal += inc;
+                assistanceIncomeTotal += inc;
+                const k2 = row2.svcCode || row2.svcName;
+                if (!svcBreakdown2[k2])
+                  svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValue: match.value, aValueType: match.valueType };
+                svcBreakdown2[k2].cost   += row2.cost;
+                svcBreakdown2[k2].count++;
+                svcBreakdown2[k2].income += inc;
+              });
             }
-            if (!aValue) continue;
-            cRows3.forEach(row2 => {
-              const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
-              secTotal += inc;
-              assistanceIncomeTotal += inc;
-              const k2 = row2.svcCode || row2.svcName;
-              if (!svcBreakdown2[k2])
-                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
-              svcBreakdown2[k2].cost   += row2.cost;
-              svcBreakdown2[k2].count++;
-              svcBreakdown2[k2].income += inc;
-            });
+          } else {
+            // Старая система: настройки основного врача
+            const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+            if (!execDoc) continue;
+            let execData2;
+            try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
+            for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
+              const eCS = rbGetClinicSettings(execData2, cId3);
+              const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
+              let aValueType, aValue;
+              if (_indivEntry != null) {
+                aValueType = _indivEntry.valueType || 'percent';
+                aValue = parseFloat(_indivEntry.value ?? _indivEntry.percent) || 0;
+              } else {
+                aValueType = eCS.assistanceValueType || 'percent';
+                aValue = parseFloat(eCS.assistancePercent) || 0;
+              }
+              if (!aValue) continue;
+              cRows3.forEach(row2 => {
+                const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
+                secTotal += inc;
+                assistanceIncomeTotal += inc;
+                const k2 = row2.svcCode || row2.svcName;
+                if (!svcBreakdown2[k2])
+                  svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
+                svcBreakdown2[k2].cost   += row2.cost;
+                svcBreakdown2[k2].count++;
+                svcBreakdown2[k2].income += inc;
+              });
+            }
           }
+
           if (secTotal > 0) {
             assistanceIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
           }
@@ -757,7 +876,9 @@ export async function buildReport({
     let anesthesiologistIncomeTotal = 0;
     const anesthesiologistIncomeSections = [];
     const myAnestRules = execSettings.anesthesiologistRules || [];
-    if (colMap.anesthesiologist && myAnestRules.length) {
+    const myAnestRoleServices = execSettings.roleServices?.anesthesiologist || {};
+    const hasAnestRoleServices = Object.values(myAnestRoleServices).some(arr => arr.length > 0);
+    if (colMap.anesthesiologist && (myAnestRules.length || hasAnestRoleServices)) {
       const anestIncRows = rows.filter(r =>
         rbNamesMatch(doctorName, String(r[colMap.anesthesiologist] || '').trim()) && rbRowInDateRange(r)
       );
@@ -769,33 +890,93 @@ export async function buildReport({
           const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
           const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
           const svcSpec2 = colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '';
+          const clinicRaw2 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
+          const cId2 = rbMatchClinicId(clinicRaw2) || 'unknown';
           if (!execName) return;
           if (!byExec[execName]) byExec[execName] = [];
-          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2 });
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2, cId: cId2 });
         });
 
         for (const [execName, svcRows] of Object.entries(byExec)) {
           let secTotal = 0;
           const svcBreakdown2 = {};
           svcRows.forEach(row2 => {
-            const svcName = row2.svcName || '';
-            const svcSpec = row2.svcSpec || '';
-            const matchedRule = myAnestRules.find(r => anestRuleMatches(r, svcName, svcSpec));
-            if (!matchedRule) return;
-            const val = parseFloat(matchedRule.value) || 0;
-            const inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
+            let inc = 0, aValue, aValueType, ruleContains;
+            if (hasAnestRoleServices) {
+              // Новая система: точный код услуги
+              const match = findMyRoleService('anesthesiologist', row2.svcCode, row2.cId);
+              if (!match) return;
+              const val = parseFloat(match.value) || 0;
+              inc = match.valueType === 'rub' ? val : row2.cost * val / 100;
+              aValue = match.value; aValueType = match.valueType;
+            } else {
+              // Старая система: правила (текстовый поиск)
+              const matchedRule = myAnestRules.find(r => anestRuleMatches(r, row2.svcName || '', row2.svcSpec || ''));
+              if (!matchedRule) return;
+              const val = parseFloat(matchedRule.value) || 0;
+              inc = matchedRule.valueType === 'rub' ? val : row2.cost * val / 100;
+              aValue = matchedRule.value; aValueType = matchedRule.valueType; ruleContains = matchedRule.contains;
+            }
             if (inc === 0) return;
             secTotal += inc;
             anesthesiologistIncomeTotal += inc;
             const k2 = row2.svcCode || row2.svcName;
             if (!svcBreakdown2[k2])
-              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains: matchedRule.contains, aValue: matchedRule.value, aValueType: matchedRule.valueType };
+              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, ruleContains, aValue, aValueType };
             svcBreakdown2[k2].cost   += row2.cost;
             svcBreakdown2[k2].count++;
             svcBreakdown2[k2].income += inc;
           });
           if (secTotal !== 0) {
             anesthesiologistIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
+          }
+        }
+      }
+    }
+
+    // ── Nurse income (rows where THIS doctor is listed as nurse) ──
+    let nurseIncomeTotal = 0;
+    const nurseIncomeSections = [];
+    const myNurseRoleServices = execSettings.roleServices?.nurse || {};
+    const hasNurseRoleServices = Object.values(myNurseRoleServices).some(arr => arr.length > 0);
+    if (colMap.nurse && hasNurseRoleServices) {
+      const nurseIncRows = rows.filter(r =>
+        rbNamesMatch(doctorName, String(r[colMap.nurse] || '').trim()) && rbRowInDateRange(r)
+      );
+      if (nurseIncRows.length) {
+        const byExec = {};
+        nurseIncRows.forEach(r => {
+          const execName = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
+          const cost2    = rbParseCost(r);
+          const svcCode2 = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+          const svcName2 = colMap.serviceName ? String(r[colMap.serviceName] || '').trim() : '';
+          const clinicRaw2 = colMap.clinic ? String(r[colMap.clinic] || '').trim() : '';
+          const cId2 = rbMatchClinicId(clinicRaw2) || 'unknown';
+          if (!execName) return;
+          if (!byExec[execName]) byExec[execName] = [];
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, cId: cId2 });
+        });
+
+        for (const [execName, svcRows] of Object.entries(byExec)) {
+          let secTotal = 0;
+          const svcBreakdown2 = {};
+          svcRows.forEach(row2 => {
+            const match = findMyRoleService('nurse', row2.svcCode, row2.cId);
+            if (!match) return;
+            const val = parseFloat(match.value) || 0;
+            const inc = match.valueType === 'rub' ? val : row2.cost * val / 100;
+            if (inc === 0) return;
+            secTotal += inc;
+            nurseIncomeTotal += inc;
+            const k2 = row2.svcCode || row2.svcName;
+            if (!svcBreakdown2[k2])
+              svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValue: match.value, aValueType: match.valueType };
+            svcBreakdown2[k2].cost   += row2.cost;
+            svcBreakdown2[k2].count++;
+            svcBreakdown2[k2].income += inc;
+          });
+          if (secTotal > 0) {
+            nurseIncomeSections.push({ execName, total: secTotal, services: Object.values(svcBreakdown2) });
           }
         }
       }
@@ -835,7 +1016,7 @@ export async function buildReport({
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
-    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal - effectiveReferralCostTotal;
+    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal + nurseIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
@@ -916,6 +1097,8 @@ export async function buildReport({
       assistanceIncomeTotal, assistanceIncomeSections,
       anesthesiologistPaidTotal, anesthesiologistSections,
       anesthesiologistIncomeTotal, anesthesiologistIncomeSections,
+      nursePaidTotal, nurseSections,
+      nurseIncomeTotal, nurseIncomeSections,
       finalSalary,
       advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
@@ -949,6 +1132,10 @@ export async function buildReport({
       salary.anesthesiologistSections = [];
       salary.anesthesiologistIncomeTotal = 0;
       salary.anesthesiologistIncomeSections = [];
+      salary.nursePaidTotal = 0;
+      salary.nurseSections = [];
+      salary.nurseIncomeTotal = 0;
+      salary.nurseIncomeSections = [];
       salary.advance = 0;
       salary.mainPayment = 0;
       salary.finalSalary = salary.basePay
