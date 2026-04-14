@@ -164,8 +164,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   };
   const finalSalary = getRecordFinalSalary(record);
 
-  const handleDownloadExcel = async (e) => {
-    e.stopPropagation();
+  const handleDownloadExcel = async () => {
     setDownloading(true);
     try {
       const period = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'no-period');
