@@ -62,8 +62,8 @@ function Toggle({ checked, indeterminate, onToggle }) {
   const bg = isPartial ? '#94a3b8' : checked ? '#3b82f6' : '#cbd5e1';
   const knobLeft = isPartial ? 7 : checked ? 14 : 2;
   return (
-    <div onClick={onToggle} style={{ width: 30, height: 17, borderRadius: 9, background: bg, position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', display: 'inline-block', verticalAlign: 'middle' }}>
-      <div style={{ position: 'absolute', top: 2, left: knobLeft, width: 13, height: 13, borderRadius: '50%', background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+    <div onClick={onToggle} style={{ width: 30, height: 17, borderRadius: 9, background: bg, position: 'relative', cursor: 'pointer', flexShrink: 0, display: 'inline-block', verticalAlign: 'middle' }}>
+      <div style={{ position: 'absolute', top: 2, left: knobLeft, width: 13, height: 13, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
     </div>
   );
 }
