@@ -265,7 +265,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     return (
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <thead>
-          <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+          <tr>
             <th style={{ ...thStyle, width: 36, textAlign: 'center' }} />
             <th style={thStyle}>Дата создания <FilterBtn field="date" /></th>
             {showPayDate      && <th style={thStyle}>Дата оплаты <FilterBtn field="payDate" /></th>}
@@ -412,8 +412,8 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             {/* Select all */}
             <div style={{ padding: '5px 10px', borderBottom: '1px solid #f1f5f9' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: '#475569', userSelect: 'none' }}
-                onClick={() => { if (f.selected !== null) setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: null } })); }}>
-                <Toggle checked={f.selected === null} onToggle={() => { if (f.selected !== null) setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: null } })); }} />
+                onClick={() => setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: prev[openFilter].selected === null ? new Set() : null } }))}>
+                <Toggle checked={f.selected === null} onToggle={e => { e.stopPropagation(); setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: prev[openFilter].selected === null ? new Set() : null } })); }} />
                 <span style={{ fontStyle: 'italic' }}>(Выбрать все)</span>
               </div>
             </div>
@@ -526,7 +526,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
-                  <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
+                  <tr>
                     <th style={{ ...thStyle, width: 40 }}>
                       <Toggle checked={allChecked} indeterminate={!noneChecked && !allChecked} onToggle={toggleAll} />
                     </th>
