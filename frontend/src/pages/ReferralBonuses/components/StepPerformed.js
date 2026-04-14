@@ -444,16 +444,16 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
           <tbody>
             {services.map(s => (
               <tr key={s.serviceCode} style={{ borderBottom: '1px solid var(--rb-border)' }}>
-                <td style={{ padding: '6px 10px', fontFamily: 'monospace', fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>{s.serviceCode}</td>
+                <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'center' }}>{s.serviceCode}</td>
                 <td style={{ padding: '6px 10px', fontSize: 13 }}>{s.serviceName}</td>
                 <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--rb-success)' }}>{fmtVal(s)}</td>
                 {!readOnly && (
                   <td style={{ padding: '4px 6px', textAlign: 'center' }}>
                     <button onClick={() => handleDelete(s.serviceCode)}
-                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 3 }} title="Удалить"
+                      style={{ background: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Удалить"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
                       </svg>
                     </button>
                   </td>
