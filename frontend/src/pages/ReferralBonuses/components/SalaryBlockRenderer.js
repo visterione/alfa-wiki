@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
 function fmtMethod(m) { return m === 'cash' ? 'наличные' : 'карта'; }
 
-function SalaryRow({ icon, label, value, color = 'var(--rb-text)', children, expandable }) {
+function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandable }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div>
@@ -12,18 +12,15 @@ function SalaryRow({ icon, label, value, color = 'var(--rb-text)', children, exp
         onClick={expandable ? () => setExpanded(e => !e) : undefined}
         style={{ cursor: expandable ? 'pointer' : 'default' }}
       >
-        <div className="rb-salary-row-icon">{icon}</div>
         <div className="rb-salary-row-body">
-          <div className="rb-salary-row-label">
-            {expandable && (
-              <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            )}
-            {label}
-          </div>
+          <div className="rb-salary-row-label" style={{ color: 'var(--rb-text)', fontWeight: 500 }}>{label}</div>
         </div>
         <div className="rb-salary-row-value" style={{ color }}>{value}</div>
+        {expandable && (
+          <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0, marginLeft: 4, transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        )}
       </div>
       {expanded && children && <div className="rb-salary-row-detail" style={{ display: 'block' }}>{children}</div>}
     </div>
@@ -64,18 +61,15 @@ function SubSection({ label, value, color, type, children, indent = 24 }) {
         style={{ paddingLeft: indent, cursor: hasChildren ? 'pointer' : 'default' }}
         onClick={hasChildren ? (e) => { e.stopPropagation(); setExpanded(s => !s); } : (e) => e.stopPropagation()}
       >
-        <div className="rb-salary-row-icon" style={{ fontSize: 11 }}>▸</div>
         <div className="rb-salary-row-body">
-          <div className="rb-salary-row-label">
-            {hasChildren && (
-              <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
-            )}
-            {label}
-          </div>
+          <div className="rb-salary-row-label">{label}</div>
         </div>
         <div className="rb-salary-row-value" style={{ fontSize: 12, color }}>{value}</div>
+        {hasChildren && (
+          <svg className="rb-report-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0, marginLeft: 4, transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        )}
       </div>
       {expanded && <div className="rb-salary-row-detail" style={{ display: 'block' }}>{children}</div>}
     </div>
@@ -113,6 +107,8 @@ export default function SalaryBlock({ salary }) {
     normTotalHours = 0,
     normPremiumAmount = 0,
     normHoursForPeriod = null,
+    hourlyRate = 0,
+    hoursWorked = 0,
   } = salary;
 
   const basePayLabel = rawBasePayLabel === 'Бонусы за выполненные услуги (по тарифам)' || rawBasePayLabel === 'Бонусы за выполненные услуги'
@@ -148,14 +144,23 @@ export default function SalaryBlock({ salary }) {
   return (
     <div className="rb-salary-block">
       <div className="rb-salary-block-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
-        </svg>
         Расчётный лист
       </div>
 
       {hasWage && (
-        <SalaryRow icon="≡" label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0)}>
+        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
+          {payType === 'hourly' && (
+            <table className="rb-report-table rb-report-table--bordered">
+              <thead><tr><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов отработано</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'center' }}>{hourlyRate.toFixed(2)} ₽</td>
+                  <td style={{ textAlign: 'center' }}>{hoursWorked}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(hourlyRate * hoursWorked).toFixed(2)} ₽</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
           {basePerformedSections.length > 0 && (
             <ServiceTable sections={basePerformedSections} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Итого, руб']} />
           )}
@@ -198,7 +203,7 @@ export default function SalaryBlock({ salary }) {
       )}
 
       {hasReferral && (
-        <SalaryRow icon="+" label="Бонусы за направления" value={`+${fmtRub(referralBonuses)}`} color="var(--rb-success)" expandable={referralSections.length > 0}>
+        <SalaryRow label="Бонусы за направления" value={`+${fmtRub(referralBonuses)}`} color="var(--rb-success)" expandable={referralSections.length > 0}>
           {referralSections.map(({ executor, services }, i) => {
             const execTotal = services.reduce((s, x) => s + x.bonusAmount, 0);
             return (
@@ -325,7 +330,7 @@ export default function SalaryBlock({ salary }) {
       })()}
 
       {hasExtras && (
-        <SalaryRow icon="+" label="Дополнительно" value={`+${fmtRub(extrasTotal)}`} color="var(--rb-success)" expandable={extras.length > 0}>
+        <SalaryRow label="Дополнительно" value={`+${fmtRub(extrasTotal)}`} color="var(--rb-success)" expandable={extras.length > 0}>
           <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Описание</th><th style={{ textAlign: 'right' }}>Сумма</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
@@ -349,14 +354,13 @@ export default function SalaryBlock({ salary }) {
 
       {hasDeductions && (
         <SalaryRow
-          icon="−"
           label="Взыскания"
           value={`−${fmtRub(finalDeductionsTotal)}`}
           color="var(--rb-danger)"
           expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
         >
           <table className="rb-report-table rb-report-table--bordered">
-            <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
+            <thead><tr><th style={{ textAlign: 'center' }}>Название</th><th style={{ textAlign: 'center' }}>Тип</th><th style={{ textAlign: 'center' }}>Значение</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
             <tbody>
               {[...turnoverDeductionItems, ...finalDeductionItems].map((d, i) => {
                 const _v = parseFloat(d.value) || 0;
@@ -365,12 +369,12 @@ export default function SalaryBlock({ salary }) {
                 return (
                   <tr key={i} style={{ opacity: isTurnover ? 0.7 : 1 }}>
                     <td>{d.name}{isTurnover ? '*' : ''}</td>
-                    <td>
+                    <td style={{ textAlign: 'center' }}>
                       {isTurnover
                         ? <span style={{ fontSize: 10, background: '#e0f2fe', color: '#0369a1', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от оборота</span>
                         : <span style={{ fontSize: 10, background: '#fff7ed', color: '#c2410c', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span>}
                     </td>
-                    <td style={{ textAlign: 'right' }}>{d.valueType === 'percent' ? `${_v}%` : `${_v.toFixed(2)} ₽`}</td>
+                    <td style={{ textAlign: 'center' }}>{d.valueType === 'percent' ? `${_v}%` : `${_v.toFixed(2)} ₽`}</td>
                     <td style={{ fontWeight: 600, color: isTurnover ? 'var(--rb-text-secondary)' : 'var(--rb-danger)', textAlign: 'right' }}>−{_rub.toFixed(2)} ₽</td>
                   </tr>
                 );
@@ -447,7 +451,6 @@ export default function SalaryBlock({ salary }) {
 
       {hasMaterials && (
         <SalaryRow
-          icon="−"
           label="Материалы-расходники"
           value={`−${fmtRub(finalMaterialsTotal + svcMatFinalTotal)}`}
           color="var(--rb-danger)"
@@ -504,7 +507,7 @@ export default function SalaryBlock({ salary }) {
       )}
 
       {hasReferralCost && (
-        <SalaryRow icon="−" label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={executorSections.length > 0}>
+        <SalaryRow label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={executorSections.length > 0}>
           {executorSections.map(({ referrer, services, total }, i) => (
             <SubSection key={i} label={referrer} value={`−${fmtRub(total)}`} color="var(--rb-danger)" type="minus">
               <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'К выплате']} negative />
@@ -526,7 +529,6 @@ export default function SalaryBlock({ salary }) {
         <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
           {(advance || 0) > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
               <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>
               <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{paymentMethod ? fmtMethod(paymentMethod) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
@@ -534,7 +536,6 @@ export default function SalaryBlock({ salary }) {
           )}
           {(mainPayment || 0) > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
               <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
               <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
@@ -542,7 +543,6 @@ export default function SalaryBlock({ salary }) {
           )}
           {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
             <div key={i} className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)', marginTop: 0 }}>▸</div>
               <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}</div></div>
               <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{ep.method ? fmtMethod(ep.method) : ''}</div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
@@ -550,11 +550,8 @@ export default function SalaryBlock({ salary }) {
           ))}
           {normPremiumAmount > 0 && (
             <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-              <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
               <div className="rb-salary-row-body">
-                <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>
-                  Премия
-                </div>
+                <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Премия</div>
               </div>
               <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(normPremiumAmount)}</div>
             </div>
@@ -564,7 +561,6 @@ export default function SalaryBlock({ salary }) {
             const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
             return (
               <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-                <div className="rb-salary-row-icon" style={{ color: 'var(--rb-text-secondary)' }}>▸</div>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{_remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div></div>
                 <div className="rb-salary-row-value" style={{ color: _remainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)' }}>{_remainder < 0 ? '−' : ''}{fmtRub(Math.abs(_remainder))}</div>
               </div>

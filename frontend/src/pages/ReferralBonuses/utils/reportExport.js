@@ -16,7 +16,8 @@ function _makeStyles() {
 function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments, totalRemainder) {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
-  ws.properties.outlineLevelRow = 2;
+  ws.properties.outlineLevelRow = 3;
+  ws.properties.outlineProperties = { summaryBelow: false, summaryRight: false };
 
   const autoWidth = (row, numCols) => {
     for (let c = 1; c <= numCols; c++) {
@@ -26,14 +27,13 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     }
   };
 
-  const addSalRow = (label, value, sign) => {
+  const addSalRow = (label, value, sign, _collapsed = false) => {
     const colorMap = { '+': 'FF166534', '-': 'FFCC0000', '=': 'FF166534', '≡': 'FF1D4ED8' };
-    const row = ws.addRow([sign, label, '', '', '', parseFloat((value || 0).toFixed(2))]);
-    row.getCell(1).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
-    row.getCell(2).font = fontNormal;
+    const row = ws.addRow([label, '', '', '', '', parseFloat((value || 0).toFixed(2))]);
+    row.getCell(1).font = fontBold;
     row.getCell(6).font = { ...fontBold, color: { argb: colorMap[sign] || 'FF000000' } };
     row.getCell(6).numFmt = '#,##0.00';
-    ws.mergeCells(`B${row.number}:E${row.number}`);
+    ws.mergeCells(`A${row.number}:E${row.number}`);
     autoWidth(row, 6);
     return row;
   };
@@ -56,18 +56,20 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     autoWidth(row, 6);
     row.outlineLevel = lvl;
     row.hidden = true;
+    return row;
   };
 
-  const addSubHdr = (name, value, clr, lvl) => {
-    const row = ws.addRow(['', name, '', '', '', parseFloat((value || 0).toFixed(2))]);
-    row.getCell(2).font = { ...fontBold, color: { argb: clr } };
+  const addSubHdr = (name, value, clr, lvl, hasChildren = true) => {
+    const row = ws.addRow([name, '', '', '', '', parseFloat((value || 0).toFixed(2))]);
+    row.getCell(1).font = { ...fontBold, color: { argb: clr } };
     row.getCell(6).font = { ...fontBold, color: { argb: clr } };
     row.getCell(6).numFmt = '#,##0.00';
     row.getCell(6).border = allBorders;
-    ws.mergeCells(`B${row.number}:E${row.number}`);
+    ws.mergeCells(`A${row.number}:E${row.number}`);
     autoWidth(row, 6);
     row.outlineLevel = lvl;
     row.hidden = true;
+    return row;
   };
 
   // Заголовок
@@ -87,12 +89,18 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
 
     // Оклад / выработка
     if ((sal.basePay || 0) > 0 || sal.basePayLabel) {
-      addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡');
+      const _hasWageChildren = (sal.basePerformedSections || []).length > 0 || (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) || (sal.payType === 'normed' && (sal.normServices || []).length > 0);
+      addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡', _hasWageChildren);
       if ((sal.basePerformedSections || []).length) {
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
         (sal.basePerformedSections || []).forEach(s =>
           addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1)
         );
+      }
+      // Почасовой тип: детализация
+      if (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) {
+        addTblHdr(['Ставка, ₽/ч', '', '', 'Часов', '', 'Итого, руб'], 1);
+        addTblRow([parseFloat((sal.hourlyRate || 0).toFixed(2)), '', '', sal.hoursWorked || 0, '', parseFloat(((sal.hourlyRate || 0) * (sal.hoursWorked || 0)).toFixed(2))], 1);
       }
       // Нормированный тип: детализация по видам деятельности
       if (sal.payType === 'normed' && (sal.normServices || []).length > 0) {
@@ -113,7 +121,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
 
     // Бонусы за направления
     if ((sal.referralBonuses || 0) > 0) {
-      addSalRow('Бонусы за направления', sal.referralBonuses, '+');
+      addSalRow('Бонусы за направления', sal.referralBonuses, '+', (sal.referralSections || []).length > 0);
       (sal.referralSections || []).forEach(({ executor, services }) => {
         const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
         addSubHdr(executor, execTotal, 'FF166534', 1);
@@ -122,28 +130,101 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       });
     }
 
-    // Бонусы за выполненные услуги
-    if ((sal.performedBonusTotal || 0) > 0) {
-      addSalRow('Выполненные услуги', sal.performedBonusTotal, '+');
-      if ((sal.performedSections || []).length) {
-        addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-        (sal.performedSections || []).forEach(s => {
-          const bonusAmt = parseFloat((s.bonusAmount || 0).toFixed(2));
-          const row = ws.addRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', bonusAmt]);
-          row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
-          row.getCell(3).numFmt = '#,##0.00';
-          row.getCell(6).numFmt = '#,##0.00';
-          if (bonusAmt < 0) row.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
-          autoWidth(row, 6);
-          row.outlineLevel = 1;
-          row.hidden = true;
-        });
+    // Выполненные услуги (все роли: Врач, Ассистент, Медсестра, Анестезиолог)
+    {
+      const _perfDoctor   = sal.performedBonusTotal || 0;
+      const _perfAsst     = sal.assistanceIncomeTotal || 0;
+      const _perfNurse    = sal.nurseIncomeTotal || 0;
+      const _perfAnest    = sal.anesthesiologistIncomeTotal || 0;
+      const _perfCombined = _perfDoctor + _perfAsst + _perfNurse + _perfAnest;
+      if (_perfCombined !== 0 || (sal.performedSections || []).length > 0) {
+        addSalRow('Выполненные услуги', _perfCombined, _perfCombined >= 0 ? '+' : '-', true);
+
+        // Врач
+        if (_perfDoctor !== 0 || (sal.performedSections || []).length > 0) {
+          addSubHdr('Врач', _perfDoctor, 'FF166534', 1);
+          if ((sal.performedSections || []).length) {
+            addSubHdr(doctorName, _perfDoctor, 'FF166534', 2);
+            addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 3);
+            (sal.performedSections || []).forEach(s => {
+              const bonusAmt = parseFloat((s.bonusAmount || 0).toFixed(2));
+              const row = ws.addRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', bonusAmt]);
+              row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
+              row.getCell(3).numFmt = '#,##0.00';
+              row.getCell(4).numFmt = '#,##0';
+              row.getCell(6).numFmt = '#,##0.00';
+              if (bonusAmt < 0) row.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
+              autoWidth(row, 6);
+              row.outlineLevel = 3; row.hidden = true;
+            });
+          }
+        }
+
+        // Ассистент
+        if (_perfAsst !== 0 || (sal.assistanceIncomeSections || []).length > 0) {
+          addSubHdr('Ассистент', _perfAsst, 'FF166534', 1);
+          (sal.assistanceIncomeSections || []).forEach(({ execName, total, services }) => {
+            addSubHdr(execName, total, 'FF166534', 2);
+            if ((services || []).length > 0) {
+              addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', 'Ставка', 'Итого, руб'], 3);
+              services.forEach(s => {
+                const r = addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1,
+                  s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—'),
+                  parseFloat((s.income || 0).toFixed(2))], 3);
+                r.getCell(4).numFmt = '#,##0';
+              });
+            }
+          });
+        }
+
+        // Медсестра
+        if (_perfNurse !== 0 || (sal.nurseIncomeSections || []).length > 0) {
+          addSubHdr('Медсестра', _perfNurse, 'FF166534', 1);
+          (sal.nurseIncomeSections || []).forEach(({ execName, total, services }) => {
+            addSubHdr(execName, total, 'FF166534', 2);
+            if ((services || []).length > 0) {
+              addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', 'Ставка', 'Итого, руб'], 3);
+              services.forEach(s => {
+                const r = addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1,
+                  s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—',
+                  parseFloat((s.income || 0).toFixed(2))], 3);
+                r.getCell(4).numFmt = '#,##0';
+              });
+            }
+          });
+        }
+
+        // Анестезиолог
+        if (_perfAnest !== 0 || (sal.anesthesiologistIncomeSections || []).length > 0) {
+          const _anestPos = _perfAnest >= 0;
+          addSubHdr('Анестезиолог', _perfAnest, _anestPos ? 'FF166534' : 'FFCC0000', 1);
+          (sal.anesthesiologistIncomeSections || []).forEach(({ execName, total, services }) => {
+            const _secPos = total >= 0;
+            addSubHdr(execName, total, _secPos ? 'FF166534' : 'FFCC0000', 2);
+            if ((services || []).length > 0) {
+              addTblHdr(['Код', 'Услуга', 'К-во', 'Правило', 'Ставка', 'Итого, руб'], 3);
+              services.forEach(s => {
+                const inc = parseFloat((s.income || 0).toFixed(2));
+                const r = ws.addRow([s.code || '—', s.name || '—', s.count || 1,
+                  s.ruleContains ? `содержит «${s.ruleContains}»` : '—',
+                  s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—',
+                  inc]);
+                r.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
+                r.getCell(3).numFmt = '#,##0';
+                r.getCell(6).numFmt = '#,##0.00';
+                if (inc < 0) r.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
+                autoWidth(r, 6);
+                r.outlineLevel = 3; r.hidden = true;
+              });
+            }
+          });
+        }
       }
     }
 
     // Дополнительно
     if ((sal.extrasTotal || 0) > 0) {
-      addSalRow('Дополнительно', sal.extrasTotal, '+');
+      addSalRow('Дополнительно', sal.extrasTotal, '+', (sal.extras || []).length > 0);
       if ((sal.extras || []).length) {
         addTblHdr(['Наименование', '', '', 'Кол-во ч', 'Ставка, руб', 'Итого, руб'], 1);
         (sal.extras || []).forEach(e => {
@@ -166,7 +247,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       const xlsDedsTotal = (sal.finalDeductionsTotal || 0) + xlsHarmfulness;
       if (xlsDedsTotal > 0 || xlsTurnoverDeds.length > 0 || (sal.assistancePaidTotal || 0) > 0) {
         const xlsPreFinal = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Взыскания', xlsDedsTotal, '-');
+        addSalRow('Взыскания', xlsDedsTotal, '-', !!(xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0));
         if (xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllDeds.forEach(d => {
@@ -237,7 +318,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       const xlsTurnoverMats = xlsAllMats.filter(m => m.deductionType !== 'final');
       if ((sal.finalMaterialsTotal || 0) > 0 || xlsTurnoverMats.length > 0) {
         const xlsPreFinal2 = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Материалы-расходники', sal.finalMaterialsTotal, '-');
+        addSalRow('Материалы-расходники', sal.finalMaterialsTotal, '-', xlsAllMats.length > 0);
         if (xlsAllMats.length) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllMats.forEach(m => {
@@ -265,7 +346,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
 
     // Бонусы направителям
     if ((sal.referralCostTotal || 0) > 0) {
-      addSalRow('Бонусы направителям', sal.referralCostTotal, '-');
+      addSalRow('Бонусы направителям', sal.referralCostTotal, '-', (executorSections || sal.executorSections || []).length > 0);
       (executorSections || sal.executorSections || []).forEach(({ referrer, services, total }) => {
         addSubHdr(referrer, total, 'FFCC0000', 1);
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
@@ -273,84 +354,40 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       });
     }
 
-    // Ассистирование (доход врача-ассистента) — с детализацией по врачам
-    if ((sal.assistanceIncomeTotal || 0) > 0) {
-      addSalRow('Ассистирование', sal.assistanceIncomeTotal, '+');
-      (sal.assistanceIncomeSections || []).forEach(({ execName, total, services }) => {
-        addSubHdr(execName, total, 'FF166534', 1);
-        if ((services || []).length > 0) {
-          addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', 'Ставка', 'Итого, руб'], 2);
-          services.forEach(s => addTblRow([
-            s.code || '—', s.name || '—',
-            parseFloat((s.cost || 0).toFixed(2)),
-            s.count || 1,
-            s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—'),
-            parseFloat((s.income || 0).toFixed(2)),
-          ], 2));
-        }
-      });
-    }
-
-    // Анестезиология (доход врача-анестезиолога) — с детализацией по врачам
-    if ((sal.anesthesiologistIncomeTotal || 0) > 0) {
-      addSalRow('Анестезиология', sal.anesthesiologistIncomeTotal, '+');
-      (sal.anesthesiologistIncomeSections || []).forEach(({ execName, total, services }) => {
-        addSubHdr(execName, total, 'FF166534', 1);
-        if ((services || []).length > 0) {
-          addTblHdr(['Код', 'Услуга', 'К-во', 'Правило', 'Ставка', 'Итого, руб'], 2);
-          services.forEach(s => addTblRow([
-            s.code || '—', s.name || '—',
-            s.count || 1,
-            s.ruleContains ? `содержит «${s.ruleContains}»` : '—',
-            s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—',
-            parseFloat((s.income || 0).toFixed(2)),
-          ], 2));
-        }
-      });
-    }
-
-    // Медсестринское ассистирование (доход медсестры) — с детализацией по врачам
-    if ((sal.nurseIncomeTotal || 0) > 0) {
-      addSalRow('Медсестринское ассистирование', sal.nurseIncomeTotal, '+');
-      (sal.nurseIncomeSections || []).forEach(({ execName, total, services }) => {
-        addSubHdr(execName, total, 'FF166534', 1);
-        if ((services || []).length > 0) {
-          addTblHdr(['Код', 'Услуга', 'Стоимость, руб', 'К-во', 'Ставка', 'Итого, руб'], 2);
-          services.forEach(s => addTblRow([
-            s.code || '—', s.name || '—',
-            parseFloat((s.cost || 0).toFixed(2)),
-            s.count || 1,
-            s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—',
-            parseFloat((s.income || 0).toFixed(2)),
-          ], 2));
-        }
-      });
-    }
 
     // Итого
     ws.addRow([]);
-    const totalRow = ws.addRow(['=', 'К выплате', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
+    const totalRow = ws.addRow(['К выплате', '', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
     const totalColor = (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000';
     totalRow.getCell(1).font = { ...fontBold, size: 13, color: { argb: totalColor } };
-    totalRow.getCell(2).font = { ...fontBold, size: 13, color: { argb: totalColor } };
     totalRow.getCell(6).font = { ...fontBold, size: 13, color: { argb: totalColor } };
     totalRow.getCell(6).numFmt = '#,##0.00';
     totalRow.getCell(6).border = allBorders;
     totalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (sal.finalSalary || 0) >= 0 ? 'FFD1FAE5' : 'FFFEE2E2' } };
-    ws.mergeCells(`B${totalRow.number}:E${totalRow.number}`);
+    ws.mergeCells(`A${totalRow.number}:E${totalRow.number}`);
     autoWidth(totalRow, 6);
 
     // Аванс / тело з/п / доп. выплаты
     const _extraPayments = sal.extraPayments || [];
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+    const addPayRow = (label, method, value) => {
+      const row = ws.addRow([label, '', '', method ? (method === 'cash' ? 'наличные' : 'карта') : '', '', parseFloat((value || 0).toFixed(2))]);
+      row.getCell(1).font = fontNormal;
+      row.getCell(4).font = { ...fontNormal, color: { argb: 'FF64748B' } };
+      row.getCell(6).font = { ...fontBold, color: { argb: 'FFCC0000' } };
+      row.getCell(6).numFmt = '#,##0.00';
+      ws.mergeCells(`A${row.number}:C${row.number}`);
+      autoWidth(row, 6);
+      return row;
+    };
     if ((sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || _extraTotal > 0) {
       if ((sal.advance || 0) > 0)
-        addSalRow(`Аванс (${sal.paymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.advance, '-');
+        addPayRow('Аванс', sal.paymentMethod, sal.advance);
       if ((sal.mainPayment || 0) > 0)
-        addSalRow(`Основная ЗП (${sal.mainPaymentMethod === 'cash' ? 'наличные' : 'карта'})`, sal.mainPayment, '-');
+        addPayRow('Основная ЗП', sal.mainPaymentMethod, sal.mainPayment);
       _extraPayments.forEach(ep => {
         if ((ep.amount || 0) > 0)
-          addSalRow(`${ep.label || 'Доп. выплата'} (${ep.method === 'cash' ? 'наличные' : 'карта'})`, ep.amount, '-');
+          addPayRow(ep.label || 'Доп. выплата', ep.method, ep.amount);
       });
       addSalRow('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - _extraTotal, '=');
     }

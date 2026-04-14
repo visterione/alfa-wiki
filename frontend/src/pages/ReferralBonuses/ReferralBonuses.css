@@ -198,6 +198,7 @@
 .rb-report-patient-header:hover { background: #f0f7ff; }
 .rb-report-toggle-icon { width: 14px; height: 14px; flex-shrink: 0; color: var(--rb-text-secondary); transition: transform 0.2s; }
 .rb-report-patient.expanded .rb-report-toggle-icon { transform: rotate(90deg); }
+.rb-salary-row.expanded .rb-report-toggle-icon { transform: rotate(90deg); }
 .rb-report-patient-title { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rb-report-patient-summary { font-size: 12px; color: var(--rb-text-secondary); white-space: nowrap; flex-shrink: 0; }
 .rb-report-patient-summary.has-bonus { color: var(--rb-danger); font-weight: 600; }
@@ -338,9 +339,9 @@
 .rb-salary-block-title svg { width: 18px; height: 18px; flex-shrink: 0; }
 .rb-salary-row { display: flex; align-items: flex-start; padding: 9px 16px; border-bottom: 1px solid #f1f5f9; font-size: 13px; gap: 8px; }
 .rb-salary-row:last-child { border-bottom: none; }
-.rb-salary-row-icon { width: 22px; flex-shrink: 0; font-size: 15px; font-weight: 700; margin-top: 1px; }
-.rb-salary-row-body { flex: 1; min-width: 0; }
-.rb-salary-row-label { font-size: 13px; color: var(--rb-text-secondary); }
+.rb-salary-row-body { flex: 1; min-width: 0; display: flex; align-items: baseline; }
+.rb-salary-row-body::after { content: ''; flex: 1; min-width: 12px; border-bottom: 1.5px dotted #c8d1dc; margin: 0 8px 2px; }
+.rb-salary-row-label { font-size: 13px; color: var(--rb-text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rb-salary-row-subitems { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
 .rb-salary-row.expandable { cursor: pointer; user-select: none; }
 .rb-salary-row.expandable:hover { background: #f8fafc; }

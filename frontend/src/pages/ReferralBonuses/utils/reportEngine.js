@@ -1002,7 +1002,7 @@ export async function buildReport({
       const rate  = parseFloat(clinicSettings.hourlyRate) || 0;
       const hours = parseFloat(clinicSettings.hoursWorked) || 0;
       basePay = rate * hours;
-      basePayLabel = `Почасовой оклад (${rate} ₽ × ${hours} ч)`;
+      basePayLabel = 'Почасовой оклад';
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Выполненные услуги';
@@ -1081,6 +1081,8 @@ export async function buildReport({
 
     const salary = {
       basePay, basePayLabel, payType: pt,
+      hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
+      hoursWorked: pt === 'hourly' ? (parseFloat(clinicSettings.hoursWorked) || 0) : 0,
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,

@@ -216,7 +216,7 @@ function DateRangePicker({ dateFrom, setDateFrom, dateTo, setDateTo }) {
 }
 
 // ─── Drop zone ────────────────────────────────────────────────────────────────
-function DropZone({ uploadedFile, onSelect, onClear, compact }) {
+function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
   const ref = useRef();
   const [isDragging, setIsDragging] = useState(false);
 
@@ -234,22 +234,24 @@ function DropZone({ uploadedFile, onSelect, onClear, compact }) {
 
   const input = <input ref={ref} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={e => { handleFile(e.target.files[0]); e.target.value = ''; }} />;
 
+  const compactBtn = { height: 30, padding: '0 14px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' };
+
   if (compact) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 16px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 12 }} {...dragProps}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 13 }} {...dragProps}>
         {uploadedFile ? (
           <>
-            <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="13" height="13" style={{ flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#16a34a', fontWeight: 500 }}>{uploadedFile.name}</span>
-            <button onClick={() => ref.current?.click()} style={{ background: 'none', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', padding: '2px 8px', fontSize: 11, color: 'var(--rb-text-secondary)' }}>Заменить</button>
-            <button onClick={onClear} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 15, lineHeight: 1, padding: '0 2px' }} title="Убрать файл">×</button>
+            {onDms && <button onClick={onDms} style={{ ...compactBtn, width: 90 }}>Юр. комп.</button>}
+            <button onClick={onClear} style={{ ...compactBtn, width: 90 }}>Удалить</button>
           </>
         ) : (
           <>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" style={{ color: 'var(--rb-text-secondary)', flexShrink: 0 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ color: 'var(--rb-text-secondary)', flexShrink: 0 }}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span style={{ color: 'var(--rb-text-secondary)' }}>Файл Excel не загружен</span>
-            <button onClick={() => ref.current?.click()} style={{ background: 'none', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', padding: '2px 8px', fontSize: 11, color: 'var(--rb-text-secondary)' }}>Выбрать файл</button>
-            {isDragging && <span style={{ fontSize: 11, color: 'var(--rb-primary)', marginLeft: 4 }}>Отпустите...</span>}
+            <button onClick={() => ref.current?.click()} style={{ ...compactBtn, background: 'none', border: '1px solid var(--rb-border-dark)', color: 'var(--rb-text-secondary)' }}>Выбрать файл</button>
+            {isDragging && <span style={{ fontSize: 12, color: 'var(--rb-primary)', marginLeft: 4 }}>Отпустите...</span>}
           </>
         )}
         {input}
@@ -277,8 +279,9 @@ function DropZone({ uploadedFile, onSelect, onClear, compact }) {
           <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="28" height="28"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 12 12 15 16 10"/></svg>
           <div style={{ fontWeight: 600, fontSize: 13, color: '#16a34a' }}>{uploadedFile.name}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button onClick={e => { e.stopPropagation(); ref.current?.click(); }} style={{ fontSize: 12, padding: '4px 12px', border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', transition: 'filter .15s' }} onMouseEnter={e => e.currentTarget.style.filter='brightness(0.88)'} onMouseLeave={e => e.currentTarget.style.filter=''}>Заменить</button>
-            <button onClick={e => { e.stopPropagation(); onClear(); }} style={{ fontSize: 12, padding: '4px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', color: 'var(--rb-text-secondary)', cursor: 'pointer' }}>Удалить</button>
+            {onDms && <button onClick={e => { e.stopPropagation(); onDms(); }} style={{ width: 90, padding: '4px 0', fontSize: 12, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Юр. комп.</button>}
+            <button onClick={e => { e.stopPropagation(); ref.current?.click(); }} style={{ width: 90, padding: '4px 0', fontSize: 12, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Заменить</button>
+            <button onClick={e => { e.stopPropagation(); onClear(); }} style={{ width: 90, padding: '4px 0', fontSize: 12, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>Удалить</button>
           </div>
         </div>
       ) : (
@@ -595,29 +598,13 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         onSelect={f => { setUploadedFile(f); setReportData(null); setError(''); }}
         onClear={() => { setUploadedFile(null); setReportData(null); }}
         compact={!!reportData}
+        onDms={corpRecalcState ? () => setCorpModalState({ corpRows: corpRecalcState.corpRows, colMap: corpRecalcState.colMap, pendingData: corpRecalcState.pendingData, isRecalc: true }) : null}
       />
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
         {reportData && (
           <div className="rb-report">
-            {/* Action buttons */}
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
-              {corpRecalcState && (
-                <button
-                  className="rb-btn rb-btn-secondary rb-btn-sm"
-                  onClick={() => setCorpModalState({ corpRows: corpRecalcState.corpRows, colMap: corpRecalcState.colMap, pendingData: corpRecalcState.pendingData, isRecalc: true })}
-                  title="Изменить учёт оплат юридическими компаниями и пересчитать"
-                  style={{ marginLeft: 'auto' }}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                  </svg>
-                  Юр. компании
-                </button>
-              )}
-            </div>
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
@@ -629,7 +616,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
                       <div className="rb-report-title" style={{ color: clinicColor }}>{clinicLabel}</div>
                       {isMulti && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>Расчётный лист {idx + 1} из {reportData.clinicReports.length}</div>}
                     </div>
-                    {reportData.periodLabel && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{reportData.periodLabel}</div>}
+                    {reportData.periodLabel && <div style={{ fontSize: 15, color: 'var(--rb-text)' }}>{reportData.periodLabel}</div>}
                   </div>
                   <SalaryBlock salary={salary} />
                 </div>
