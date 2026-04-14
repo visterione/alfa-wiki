@@ -22,7 +22,7 @@ function parseFilterDate(s) {
 }
 
 const FILTER_LABELS = {
-  date: 'Дата выставления',
+  date: 'Дата создания',
   payDate: 'Дата оплаты',
   clinic: 'Клиника',
   legalCompany: 'Юр. компания',
@@ -57,6 +57,17 @@ const EMPTY_FILTERS = {
  *   onConfirm    — (includedKeys: Set<string>) => void
  *   onCancel     — () => void
  */
+function Toggle({ checked, indeterminate, onToggle }) {
+  const isPartial = indeterminate && !checked;
+  const bg = isPartial ? '#94a3b8' : checked ? '#3b82f6' : '#cbd5e1';
+  const knobLeft = isPartial ? 7 : checked ? 14 : 2;
+  return (
+    <div onClick={onToggle} style={{ width: 30, height: 17, borderRadius: 9, background: bg, position: 'relative', cursor: 'pointer', flexShrink: 0, transition: 'background 0.15s', display: 'inline-block', verticalAlign: 'middle' }}>
+      <div style={{ position: 'absolute', top: 2, left: knobLeft, width: 13, height: 13, borderRadius: '50%', background: '#fff', transition: 'left 0.15s', boxShadow: '0 1px 2px rgba(0,0,0,0.25)' }} />
+    </div>
+  );
+}
+
 export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk, initialSelected, onConfirm, onCancel }) {
   const [selected, setSelected] = useState(() =>
     initialSelected instanceof Set ? new Set(initialSelected) : new Set(corpRows.map(r => r.key))
@@ -219,10 +230,11 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
 
   const fmt = n => n.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const thStyle  = { padding: '9px 8px', textAlign: 'left',  fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', background: '#f8fafc' };
+  const thStyle  = { padding: '9px 8px', textAlign: 'center', fontWeight: 600, color: '#475569', whiteSpace: 'nowrap', background: '#f8fafc', border: '1px solid #e2e8f0' };
   const thRStyle = { ...thStyle, textAlign: 'right' };
-  const tdStyle  = { padding: '7px 8px', color: '#334155', fontSize: 13 };
-  const tdNowrap = { ...tdStyle, whiteSpace: 'nowrap' };
+  const tdStyle   = { padding: '7px 8px', color: '#334155', fontSize: 13, border: '1px solid #e2e8f0' };
+  const tdNowrap  = { ...tdStyle, whiteSpace: 'nowrap' };
+  const tdCenter  = { ...tdNowrap, textAlign: 'center' };
 
   // ── Filter button in column header ──
   const FilterBtn = ({ field }) => (
@@ -255,7 +267,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
         <thead>
           <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
             <th style={{ ...thStyle, width: 36, textAlign: 'center' }} />
-            <th style={thStyle}>Дата выставления <FilterBtn field="date" /></th>
+            <th style={thStyle}>Дата создания <FilterBtn field="date" /></th>
             {showPayDate      && <th style={thStyle}>Дата оплаты <FilterBtn field="payDate" /></th>}
             {showClinic       && <th style={thStyle}>Клиника <FilterBtn field="clinic" /></th>}
             {showPatientCard  && <th style={thStyle}>№ карты</th>}
@@ -276,17 +288,16 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             return (
               <tr key={r.key} onClick={() => toggle(r.key)}
                 style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
-                <td style={{ padding: '7px 8px', textAlign: 'center' }}>
-                  <input type="checkbox" checked={isChecked} onChange={() => toggle(r.key)} onClick={e => e.stopPropagation()}
-                    style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }} />
+                <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                  <Toggle checked={isChecked} onToggle={e => { e.stopPropagation(); toggle(r.key); }} />
                 </td>
-                <td style={tdNowrap}>{r.date || '—'}</td>
-                {showPayDate           && <td style={tdNowrap}>{r.payDate || '—'}</td>}
-                {showClinic            && <td style={tdNowrap}>{r.clinic || '—'}</td>}
-                {showPatientCard       && <td style={tdNowrap}>{r.patientCard || '—'}</td>}
+                <td style={tdCenter}>{r.date || '—'}</td>
+                {showPayDate           && <td style={tdCenter}>{r.payDate || '—'}</td>}
+                {showClinic            && <td style={tdCenter}>{r.clinic || '—'}</td>}
+                {showPatientCard       && <td style={tdCenter}>{r.patientCard || '—'}</td>}
                 {showPatientName       && <td style={{ ...tdStyle, minWidth: 130 }}>{r.patientName || '—'}</td>}
                 {showLegalCompany      && <td style={{ ...tdStyle, minWidth: 110 }}>{r.legalCompany || '—'}</td>}
-                {showCode              && <td style={tdNowrap}>{r.code || '—'}</td>}
+                {showCode              && <td style={tdCenter}>{r.code || '—'}</td>}
                 <td style={{ ...tdStyle, minWidth: 150 }}>{r.serviceName || '—'}</td>
                 {showExecutor          && <td style={tdStyle}>{r.executor || '—'}</td>}
                 {showAssistant         && <td style={tdStyle}>{r.assistant || '—'}</td>}
@@ -321,11 +332,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
       <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 8, overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f8fafc', cursor: 'pointer', userSelect: 'none' }}
           onClick={() => toggleDoctor(doctor.name)}>
-          <input type="checkbox" checked={allIn}
-            ref={el => { if (el) el.indeterminate = someIn && !allIn; }}
-            onChange={() => toggleGroup(rows)} onClick={e => e.stopPropagation()}
-            style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14, flexShrink: 0 }}
-            title={allIn ? 'Снять все по врачу' : 'Выбрать все по врачу'} />
+          <Toggle checked={allIn} indeterminate={someIn && !allIn} onToggle={e => { e.stopPropagation(); toggleGroup(rows); }} />
           <span style={{ flex: 1, fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{doctor.name}</span>
           <span style={{ fontSize: 12, color: '#64748b' }}>
             {countIn} / {rows.length} выбрано
@@ -404,46 +411,40 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             </div>
             {/* Select all */}
             <div style={{ padding: '5px 10px', borderBottom: '1px solid #f1f5f9' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, color: '#475569', userSelect: 'none' }}>
-                <input type="checkbox" checked={f.selected === null}
-                  onChange={() => {
-                    if (f.selected !== null)
-                      setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: null } }));
-                  }}
-                  style={{ accentColor: 'var(--rb-primary)', width: 13, height: 13 }}
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: '#475569', userSelect: 'none' }}
+                onClick={() => { if (f.selected !== null) setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: null } })); }}>
+                <Toggle checked={f.selected === null} onToggle={() => { if (f.selected !== null) setColFilters(prev => ({ ...prev, [openFilter]: { ...prev[openFilter], selected: null } })); }} />
                 <span style={{ fontStyle: 'italic' }}>(Выбрать все)</span>
-              </label>
+              </div>
             </div>
             {/* Options */}
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {filteredVals.map(v => {
                 const isChecked = f.selected === null || f.selected.has(v);
+                const handleToggle = () => {
+                  setColFilters(prev => {
+                    const cur = prev[openFilter];
+                    let newSel;
+                    if (cur.selected === null) {
+                      newSel = new Set(vals.filter(x => x !== v));
+                    } else {
+                      newSel = new Set(cur.selected);
+                      if (newSel.has(v)) newSel.delete(v); else newSel.add(v);
+                      if (newSel.size === vals.length) newSel = null;
+                    }
+                    return { ...prev, [openFilter]: { ...cur, selected: newSel } };
+                  });
+                };
                 return (
-                  <label key={v}
-                    style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: '#334155', userSelect: 'none' }}
+                  <div key={v}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 12, color: '#334155', userSelect: 'none' }}
+                    onClick={handleToggle}
                     onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                     onMouseLeave={e => e.currentTarget.style.background = ''}
                   >
-                    <input type="checkbox" checked={isChecked}
-                      onChange={() => {
-                        setColFilters(prev => {
-                          const cur = prev[openFilter];
-                          let newSel;
-                          if (cur.selected === null) {
-                            newSel = new Set(vals.filter(x => x !== v));
-                          } else {
-                            newSel = new Set(cur.selected);
-                            if (newSel.has(v)) newSel.delete(v); else newSel.add(v);
-                            if (newSel.size === vals.length) newSel = null;
-                          }
-                          return { ...prev, [openFilter]: { ...cur, selected: newSel } };
-                        });
-                      }}
-                      style={{ accentColor: 'var(--rb-primary)', width: 13, height: 13, flexShrink: 0 }}
-                    />
+                    <Toggle checked={isChecked} onToggle={e => { e.stopPropagation(); handleToggle(); }} />
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v || '(пусто)'}</span>
-                  </label>
+                  </div>
                 );
               })}
             </div>
@@ -473,21 +474,15 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
               <div style={{ fontWeight: 700, fontSize: 16, color: '#1e293b' }}>
                 Оплаты юридическими компаниями
               </div>
-              <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
-                {isBulk
-                  ? `Найдено ${corpRows.length} транзакций по ${(corpByDoctor || []).length} врачам. Выберите какие учитывать в зарплате.`
-                  : `Найдено ${corpRows.length} транзакций за период. Отметьте те, которые нужно учесть в зарплате.`
-                }
-              </div>
+              {isBulk && (
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 3 }}>
+                  {`Найдено ${corpRows.length} транзакций по ${(corpByDoctor || []).length} врачам. Выберите какие учитывать в зарплате.`}
+                </div>
+              )}
             </div>
             {isBulk && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#475569', flexShrink: 0 }}>
-                <input type="checkbox" checked={allChecked}
-                  ref={el => { if (el) el.indeterminate = !noneChecked && !allChecked; }}
-                  onChange={toggleAll}
-                  style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
-                  title="Выбрать / снять все"
-                />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#475569', flexShrink: 0 }}>
+                <Toggle checked={allChecked} indeterminate={!noneChecked && !allChecked} onToggle={toggleAll} />
                 <span>Все врачи</span>
               </div>
             )}
@@ -532,14 +527,10 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 1 }}>
                   <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                    <th style={{ ...thStyle, width: 36, textAlign: 'center' }}>
-                      <input type="checkbox" checked={allChecked}
-                        ref={el => { if (el) el.indeterminate = !noneChecked && !allChecked; }}
-                        onChange={toggleAll}
-                        style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }}
-                        title="Выбрать / снять все" />
+                    <th style={{ ...thStyle, width: 40 }}>
+                      <Toggle checked={allChecked} indeterminate={!noneChecked && !allChecked} onToggle={toggleAll} />
                     </th>
-                    <th style={thStyle}>Дата выставления <FilterBtn field="date" /></th>
+                    <th style={thStyle}>Дата создания <FilterBtn field="date" /></th>
                     {showPayDate      && <th style={thStyle}>Дата оплаты <FilterBtn field="payDate" /></th>}
                     {showClinic       && <th style={thStyle}>Клиника <FilterBtn field="clinic" /></th>}
                     {showPatientCard  && <th style={thStyle}>№ карты</th>}
@@ -548,9 +539,9 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                     {showCode              && <th style={thStyle}>Код <FilterBtn field="code" /></th>}
                     <th style={thStyle}>Услуга</th>
                     {showExecutor          && <th style={thStyle}>ФИО врача <FilterBtn field="executor" /></th>}
-                    {showAssistant         && <th style={thStyle}>Ассистент</th>}
-                    {showNurse             && <th style={thStyle}>Медсестра</th>}
-                    {showAnesthesiologist  && <th style={thStyle}>Анестезиолог</th>}
+                    {showAssistant         && <th style={thStyle}>Ассистент <FilterBtn field="assistant" /></th>}
+                    {showNurse             && <th style={thStyle}>Медсестра <FilterBtn field="nurse" /></th>}
+                    {showAnesthesiologist  && <th style={thStyle}>Анестезиолог <FilterBtn field="anesthesiologist" /></th>}
                     <th style={thRStyle}>Сумма, ₽</th>
                   </tr>
                 </thead>
@@ -560,9 +551,8 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                     return (
                       <tr key={r.key} onClick={() => toggle(r.key)}
                         style={{ cursor: 'pointer', borderBottom: '1px solid #f1f5f9', background: isChecked ? '#f0f9ff' : '#fff', transition: 'background 0.1s' }}>
-                        <td style={{ padding: '7px 8px', textAlign: 'center' }}>
-                          <input type="checkbox" checked={isChecked} onChange={() => toggle(r.key)} onClick={e => e.stopPropagation()}
-                            style={{ cursor: 'pointer', accentColor: 'var(--rb-primary)', width: 14, height: 14 }} />
+                        <td style={{ padding: '7px 8px', textAlign: 'center', border: '1px solid #e2e8f0' }}>
+                          <Toggle checked={isChecked} onToggle={e => { e.stopPropagation(); toggle(r.key); }} />
                         </td>
                         <td style={tdNowrap}>{r.date || '—'}</td>
                         {showPayDate           && <td style={tdNowrap}>{r.payDate || '—'}</td>}
@@ -570,7 +560,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
                         {showPatientCard       && <td style={tdNowrap}>{r.patientCard || '—'}</td>}
                         {showPatientName       && <td style={{ ...tdStyle, minWidth: 130 }}>{r.patientName || '—'}</td>}
                         {showLegalCompany      && <td style={{ ...tdStyle, minWidth: 110 }}>{r.legalCompany || '—'}</td>}
-                        {showCode              && <td style={tdNowrap}>{r.code || '—'}</td>}
+                        {showCode              && <td style={tdCenter}>{r.code || '—'}</td>}
                         <td style={{ ...tdStyle, minWidth: 150 }}>{r.serviceName || '—'}</td>
                         {showExecutor          && <td style={tdStyle}>{r.executor || '—'}</td>}
                         {showAssistant         && <td style={tdStyle}>{r.assistant || '—'}</td>}
@@ -597,11 +587,11 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             )}
           </div>
           <button onClick={onCancel}
-            style={{ padding: '8px 16px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer' }}>
+            style={{ padding: '8px 0', width: 120, fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer' }}>
             Отмена
           </button>
           <button onClick={() => onConfirm(selected)}
-            style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer' }}>
+            style={{ padding: '8px 0', width: 120, fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer' }}>
             Сохранить
           </button>
         </div>
