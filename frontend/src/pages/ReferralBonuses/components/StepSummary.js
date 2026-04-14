@@ -75,7 +75,16 @@ const fmtDate = s => {
   return d.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
 };
 
-// ── MultiSelect dropdown with checkboxes ──────────────────────────────────────
+// ── Toggle ────────────────────────────────────────────────────────────────────
+function Toggle({ checked, onChange }) {
+  return (
+    <div onClick={onChange} style={{ width: 28, height: 16, borderRadius: 8, background: checked ? 'var(--rb-primary)' : '#d1d5db', cursor: 'pointer', flexShrink: 0, position: 'relative' }}>
+      <div style={{ position: 'absolute', top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+    </div>
+  );
+}
+
+// ── MultiSelect dropdown with toggles ─────────────────────────────────────────
 function MultiSelect({ options, value, onChange, placeholder, renderLabel, renderOption }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
@@ -109,9 +118,78 @@ function MultiSelect({ options, value, onChange, placeholder, renderLabel, rende
             <div onClick={() => onChange([])} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
           )}
           {options.map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer', background: value.includes(opt) ? '#eff6ff' : undefined }}>
-              <input type="checkbox" checked={value.includes(opt)} onChange={() => toggle(opt)} style={{ accentColor: 'var(--rb-primary)', flexShrink: 0 }} />
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={e => e.preventDefault()}>
+              <Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} />
               {renderOption ? renderOption(opt) : opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SpecialtyFilter: text input + dropdown with toggles ───────────────────────
+function SpecialtyFilter({ options, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const ref = useRef(null);
+  const btnRef = useRef(null);
+
+  useEffect(() => {
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  // Sync text when external values change
+  useEffect(() => {
+    if (value.length === 0) setText('');
+    else if (value.length === 1) setText(value[0]);
+    else setText('');
+  }, [value]);
+
+  const handleText = e => {
+    const v = e.target.value;
+    setText(v);
+    if (!v) { onChange([]); return; }
+    const exact = options.find(o => o.toLowerCase() === v.toLowerCase());
+    if (exact) onChange([exact]);
+  };
+
+  const toggle = v => onChange(value.includes(v) ? value.filter(x => x !== v) : [...value, v]);
+
+  const displayText = value.length > 1 ? `${value.length} выбрано` : text;
+  const active = value.length > 0;
+  const filtered = text && value.length <= 1 ? options.filter(o => o.toLowerCase().includes(text.toLowerCase())) : options;
+
+  return (
+    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ display: 'flex', gap: 2 }}>
+        <input
+          value={displayText}
+          onChange={handleText}
+          placeholder="Все"
+          style={{ flex: 1, minWidth: 0, padding: '4px 6px', border: `1px solid ${active ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: active ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', color: active ? 'var(--rb-primary)' : '#374151' }}
+        />
+        <button ref={btnRef} onClick={() => {
+          if (!open && btnRef.current) {
+            const r = btnRef.current.getBoundingClientRect();
+            setPos({ top: r.bottom + 2, left: r.right - Math.max(r.width * 4, 180), width: Math.max(r.width * 4, 180) });
+          }
+          setOpen(v => !v);
+        }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: '#6b7280', fontSize: 10, lineHeight: 1 }}>▾</button>
+      </div>
+      {open && (
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+          {value.length > 0 && (
+            <div onClick={() => { onChange([]); setText(''); }} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
+          )}
+          {filtered.map(opt => (
+            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={e => e.preventDefault()}>
+              <Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} />
+              {opt}
             </label>
           ))}
         </div>
@@ -808,7 +886,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 </th>
                 {/* Специальность */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
-                  <MultiSelect options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} placeholder="Все" />
+                  <SpecialtyFilter options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} />
                 </th>
                 {/* Дата */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>

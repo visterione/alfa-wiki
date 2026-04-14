@@ -20,7 +20,7 @@ import SalaryBlock from './SalaryBlockRenderer';
 
 const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 const COLOR_A = '#007AFF';
-const COLOR_B = '#ea580c';
+const COLOR_B = '#dc2626';
 
 function histShortLabel(rec) {
   if (rec.dateFrom) {
@@ -370,11 +370,14 @@ function ChartTooltip({ active, payload, label }) {
   return (
     <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, boxShadow: '0 2px 8px rgba(0,0,0,.1)' }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
-      {payload.map((p, i) => p.value != null && (
-        <div key={i} style={{ color: p.color, marginBottom: 2 }}>
-          {p.name}: {p.value.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽
-        </div>
-      ))}
+      {payload.filter((p, i, arr) => p.value != null && arr.findIndex(x => x.name === p.name) === i).map((p, i) => {
+        const isSingle = p.name === 'value';
+        return (
+          <div key={i} style={{ color: p.stroke || p.color, marginBottom: 2 }}>
+            {isSingle ? '' : `${p.name}: `}{p.value.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -451,8 +454,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
     <>
       {/* Compare header */}
       <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--rb-border)', background: 'linear-gradient(135deg, #eff6ff, #fff7ed)' }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>Режим сравнения</div>
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-evenly' }}>
           {[{ doc: docA, id: pinnedForCompare[0], letter: 'А', color: COLOR_A }, { doc: docB, id: pinnedForCompare[1], letter: 'Б', color: COLOR_B }].map(({ doc, id, letter, color }) => (
             <div key={id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <Dot letter={letter} color={color} />
@@ -491,13 +493,13 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
       )}
 
       {/* Stats comparison table */}
-      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+      <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--rb-border)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, border: '1px solid var(--rb-border)' }}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', fontWeight: 600, color: 'var(--rb-text-secondary)', fontSize: 11, padding: '4px 8px 8px 0', textTransform: 'uppercase', letterSpacing: '.03em' }}>Метрика</th>
+              <th style={{ textAlign: 'left', fontWeight: 600, color: 'var(--rb-text)', fontSize: 12, padding: '7px 10px', border: '1px solid var(--rb-border)', background: '#f1f5f9' }}>Метрика</th>
               {[{ letter: 'А', color: COLOR_A, name: nameA }, { letter: 'Б', color: COLOR_B, name: nameB }].map(({ letter, color, name }) => (
-                <th key={letter} style={{ textAlign: 'right', padding: '4px 0 8px', width: '36%' }}>
+                <th key={letter} style={{ textAlign: 'center', padding: '7px 10px', width: '36%', border: '1px solid var(--rb-border)', background: '#f1f5f9' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 600, color }}>
                     <Dot letter={letter} color={color} />
                     {name.split(' ')[0]}
@@ -508,19 +510,19 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
           </thead>
           <tbody>
             {[
-              { label: `Средняя (А: ${salA.length} / Б: ${salB.length} мес.)`, a: avg(salA), b: avg(salB) },
+              { label: 'Среднее', a: avg(salA), b: avg(salB) },
               { label: 'Максимум', a: max(salA), b: max(salB) },
               { label: 'Минимум',  a: min(salA), b: min(salB) },
             ].map((row, i) => {
               const aWins = row.a > 0 && row.a > row.b;
               const bWins = row.b > 0 && row.b > row.a;
               return (
-                <tr key={i} style={{ borderTop: '1px solid var(--rb-border)' }}>
-                  <td style={{ padding: '7px 8px 7px 0', fontSize: 12, color: 'var(--rb-text-secondary)', fontWeight: 500 }}>{row.label}</td>
-                  <td style={{ textAlign: 'right', padding: '7px 0', fontSize: 13, fontWeight: 700, color: aWins ? COLOR_A : 'var(--rb-text)' }}>
+                <tr key={i} style={{ background: '#fff' }}>
+                  <td style={{ padding: '7px 10px', fontSize: 12, color: 'var(--rb-text)', fontWeight: 500, border: '1px solid var(--rb-border)' }}>{row.label}</td>
+                  <td style={{ textAlign: 'center', padding: '7px 10px', fontSize: 13, fontWeight: 700, color: aWins ? COLOR_A : 'var(--rb-text)', border: '1px solid var(--rb-border)' }}>
                     {fmtRub(row.a)}{aWins ? ' ▲' : ''}
                   </td>
-                  <td style={{ textAlign: 'right', padding: '7px 0', fontSize: 13, fontWeight: 700, color: bWins ? COLOR_B : 'var(--rb-text)' }}>
+                  <td style={{ textAlign: 'center', padding: '7px 10px', fontSize: 13, fontWeight: 700, color: bWins ? COLOR_B : 'var(--rb-text)', border: '1px solid var(--rb-border)' }}>
                     {fmtRub(row.b)}{bWins ? ' ▲' : ''}
                   </td>
                 </tr>
@@ -533,15 +535,17 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
       {/* Comparison chart */}
       {chartData.length >= 1 && (
         <div className="rb-hist-chart-wrap">
-          <div className="rb-hist-chart-title">Динамика заработной платы</div>
-          <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0' }}>
+          <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0', position: 'relative' }}>
+            <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#000', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
             <ResponsiveContainer width="100%" height={260}>
-              <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => v.toLocaleString('ru-RU')} width={70} />
+              <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }} barCategoryGap="40%" barGap={2}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#000' }} axisLine={{ stroke: '#000' }} tickLine={{ stroke: '#000' }} />
+                <YAxis tick={{ fontSize: 11, fill: '#000' }} axisLine={{ stroke: '#000' }} tickLine={{ stroke: '#000' }} tickFormatter={v => v.toLocaleString('ru-RU')} width={70} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+                <Bar dataKey={nameA} fill={COLOR_A} fillOpacity={0.25} radius={[4, 4, 0, 0]} legendType="none" />
+                <Bar dataKey={nameB} fill={COLOR_B} fillOpacity={0.25} radius={[4, 4, 0, 0]} legendType="none" />
                 <Line type="monotone" dataKey={nameA} stroke={COLOR_A} strokeWidth={2.5} dot={{ r: 4, fill: COLOR_A, strokeWidth: 2, stroke: '#fff' }} connectNulls={false} />
                 <Line type="monotone" dataKey={nameB} stroke={COLOR_B} strokeWidth={2.5} dot={{ r: 4, fill: COLOR_B, strokeWidth: 2, stroke: '#fff' }} connectNulls={false} />
               </ComposedChart>
@@ -564,7 +568,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
               </div>
               {recs.length === 0
                 ? <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', padding: '10px 0' }}>Нет записей за период</div>
-                : recs.map(rec => <HistCard key={rec.id} record={rec} clinics={clinics} onDelete={null} />)
+                : <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>{recs.map(rec => <HistCard key={rec.id} record={rec} clinics={clinics} onDelete={null} />)}</div>
               }
             </div>
           ))}
@@ -785,7 +789,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     <div className="rb-clinic-tab-wrap" style={{ margin: '6px 12px', flexShrink: 0 }} ref={salaryTabRef}>
       {salarySlider}
       {[
-        { key: 'history', label: 'История зарплат' },
+        { key: 'history', label: 'Архив' },
         { key: 'kassa', label: 'Касса' },
       ].map(({ key, label }) => (
         <button key={key}
@@ -1078,8 +1082,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         <div className="rb-hist-doctor-name">{selectedDoctor.name}</div>
       </div>
 
-      {(multiYear || showQuarterTabs) && (
-        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)' }}>
+      {years.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', padding: '4px 20px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', gap: 8 }}>
           {multiYear && (
             <div style={{ display: 'flex', flex: 1 }}>
               {years.map(y => (
@@ -1090,18 +1094,16 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
               ))}
             </div>
           )}
-          {showQuarterTabs && (
-            <div className="rb-quarter-roll" key={displayYear}>
-              {multiYear && <span style={{ width: 1, height: 20, background: 'var(--rb-border)', margin: '0 10px', flexShrink: 0 }} />}
-              <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>Квартал:</span>
-              {[1, 2, 3, 4].map(q => (
-                <button key={q} onClick={() => setActiveQuarter(activeQuarter === q ? null : q)} disabled={!activeQuarters.has(q)}
-                  style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.35, transition: 'all .15s' }}>
-                  {['I', 'II', 'III', 'IV'][q - 1]}
-                </button>
-              ))}
-            </div>
-          )}
+          {multiYear && <span style={{ width: 1, height: 20, background: 'var(--rb-border)', flexShrink: 0 }} />}
+          <div className="rb-quarter-roll" key={displayYear}>
+            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 4, fontWeight: 500, whiteSpace: 'nowrap' }}>Квартал:</span>
+            {[1, 2, 3, 4].map(q => (
+              <button key={q} onClick={() => activeQuarters.has(q) && setActiveQuarter(activeQuarter === q ? null : q)}
+                style={{ padding: '3px 10px', fontSize: 12, fontWeight: 600, background: activeQuarter === q ? '#eff6ff' : 'none', border: activeQuarter === q ? '1px solid var(--rb-primary)' : '1px solid transparent', borderRadius: 4, cursor: activeQuarters.has(q) ? 'pointer' : 'default', color: activeQuarter === q ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', opacity: activeQuarters.has(q) ? 1 : 0.3, transition: 'all .15s' }}>
+                {['I', 'II', 'III', 'IV'][q - 1]}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1119,13 +1121,13 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
           {filteredRecords.length >= 2 && (
             <div className="rb-hist-chart-wrap">
-              <div className="rb-hist-chart-title">Динамика заработной платы</div>
               <div style={{ background: '#fff', borderRadius: 8, border: '1px solid var(--rb-border)', padding: '8px 0' }}>
+                <div style={{ textAlign: 'center', fontSize: 13, fontWeight: 600, color: '#000', paddingTop: 6, paddingBottom: 2 }}>Динамика заработной платы</div>
                 <ResponsiveContainer width="100%" height={240}>
                   <ComposedChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={v => v.toLocaleString('ru-RU')} width={70} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#000' }} axisLine={{ stroke: '#000' }} tickLine={{ stroke: '#000' }} />
+                    <YAxis tick={{ fontSize: 11, fill: '#000' }} axisLine={{ stroke: '#000' }} tickLine={{ stroke: '#000' }} tickFormatter={v => v.toLocaleString('ru-RU')} width={70} />
                     <Tooltip content={<ChartTooltip />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#3b82f6" fillOpacity={0.85} maxBarSize={48} />
                     <Line type="monotone" dataKey="value" stroke="#007AFF" strokeWidth={2} dot={{ r: 4, fill: '#007AFF', strokeWidth: 2, stroke: '#fff' }} />

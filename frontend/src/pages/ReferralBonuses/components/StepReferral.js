@@ -651,28 +651,24 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                 <tr>
                   <th style={{ textAlign: 'center' }}>Код услуги</th>
                   <th style={{ textAlign: 'center' }}>Название услуги</th>
-                  <th style={{ textAlign: 'center' }}>Бонус, %</th>
-                  <th style={{ textAlign: 'center' }}>Бонус, руб</th>
+                  <th style={{ textAlign: 'center' }}>Бонус</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBonuses.length === 0 ? (
                   <tr className="rb-empty-row">
-                    <td colSpan="5">Нет услуг. Добавьте услуги выше.</td>
+                    <td colSpan="4">Нет услуг. Добавьте услуги выше.</td>
                   </tr>
                 ) : (
                   refPageData.map(b => (
                     <tr key={b.id}>
                       <td className="rb-service-code-cell">{b.serviceCode}</td>
                       <td>{b.serviceName}</td>
-                      <td>
+                      <td style={{ textAlign: 'center' }}>
                         {b.bonusPercent != null ? (
                           <span className="rb-bonus-value rb-bonus-percent">{parseFloat(b.bonusPercent)}%</span>
-                        ) : '—'}
-                      </td>
-                      <td>
-                        {b.bonusRub != null ? (
+                        ) : b.bonusRub != null ? (
                           <span className="rb-bonus-value rb-bonus-rub">{parseFloat(b.bonusRub).toFixed(2)} ₽</span>
                         ) : '—'}
                       </td>

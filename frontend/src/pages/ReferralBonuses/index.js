@@ -855,7 +855,7 @@ export default function ReferralBonusesPage() {
 // ═══════════════════════════════════════
 // DOCTORS LIST (left panel — steps 1-3)
 // ═══════════════════════════════════════
-const PIN_COLORS = ['#007AFF', '#ea580c'];
+const PIN_COLORS = ['#007AFF', '#dc2626'];
 const PIN_LABELS = ['А', 'Б'];
 
 function DoctorsList({
@@ -900,10 +900,8 @@ function DoctorsList({
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
           {bulkMode && bulkSelectedIds.size > 0
             ? <span style={{ color: 'var(--rb-primary)', fontWeight: 600 }}>✓ {bulkSelectedIds.size} выбрано</span>
-            : compareMode && pinCount > 0
-              ? <span style={{ fontWeight: 600, color: pinCount === 2 ? '#ea580c' : 'var(--rb-primary)' }}>
-                  {pinCount === 2 ? 'Сравниваем А и Б' : 'Выберите врача Б'}
-                </span>
+            : compareMode && pinCount === 1
+              ? <span style={{ fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
               : <>{doctors.length} из {allDoctors.length}</>
           }
         </span>

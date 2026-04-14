@@ -156,7 +156,7 @@
 .rb-summary-table { border: 1px solid #c8d3e0; border-collapse: collapse; }
 .rb-summary-table th, .rb-summary-table td { border-right: 1px solid #c8d3e0 !important; }
 .rb-summary-table tbody { background: #fff; }
-.rb-bonus-value { font-weight: 600; }
+.rb-bonus-value { font-weight: 600; color: var(--rb-success); display: block; text-align: center; }
 .rb-bonus-percent { color: var(--rb-success); }
 .rb-bonus-rub { color: var(--rb-success); }
 .rb-empty-row td { text-align: center; color: var(--rb-text-secondary); padding: 24px; }
