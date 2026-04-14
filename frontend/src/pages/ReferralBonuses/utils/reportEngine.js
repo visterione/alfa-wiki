@@ -773,9 +773,6 @@ export async function buildReport({
         rbNamesMatch(doctorName, String(r[colMap.assistant] || '').trim()) && rbRowInDateRange(r)
       );
       if (asstIncRows.length) {
-        const myAsstRoleServices = execSettings.roleServices?.assistant || {};
-        const hasAsstRoleServices = Object.values(myAsstRoleServices).some(arr => arr.length > 0);
-
         const byExec = {};
         asstIncRows.forEach(r => {
           const execName   = colMap.executor ? String(r[colMap.executor] || '').trim() : '';
@@ -794,55 +791,34 @@ export async function buildReport({
           let secTotal = 0;
           const svcBreakdown2 = {};
 
-          if (hasAsstRoleServices) {
-            // Новая система: roleServices.assistant THIS врача
-            for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
-              cRows3.forEach(row2 => {
-                const match = findMyRoleService('assistant', row2.svcCode, cId3);
-                if (!match) return;
-                const val = parseFloat(match.value) || 0;
-                const inc = match.valueType === 'rub' ? val : row2.cost * val / 100;
-                if (inc === 0) return;
-                secTotal += inc;
-                assistanceIncomeTotal += inc;
-                const k2 = row2.svcCode || row2.svcName;
-                if (!svcBreakdown2[k2])
-                  svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValue: match.value, aValueType: match.valueType };
-                svcBreakdown2[k2].cost   += row2.cost;
-                svcBreakdown2[k2].count++;
-                svcBreakdown2[k2].income += inc;
-              });
+          // Настройки основного врача (исполнителя)
+          const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          if (!execDoc) continue;
+          let execData2;
+          try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
+          for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
+            const eCS = rbGetClinicSettings(execData2, cId3);
+            const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
+            let aValueType, aValue;
+            if (_indivEntry != null) {
+              aValueType = _indivEntry.valueType || 'percent';
+              aValue = parseFloat(_indivEntry.value ?? _indivEntry.percent) || 0;
+            } else {
+              aValueType = eCS.assistanceValueType || 'percent';
+              aValue = parseFloat(eCS.assistancePercent) || 0;
             }
-          } else {
-            // Старая система: настройки основного врача
-            const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-            if (!execDoc) continue;
-            let execData2;
-            try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
-            for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
-              const eCS = rbGetClinicSettings(execData2, cId3);
-              const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
-              let aValueType, aValue;
-              if (_indivEntry != null) {
-                aValueType = _indivEntry.valueType || 'percent';
-                aValue = parseFloat(_indivEntry.value ?? _indivEntry.percent) || 0;
-              } else {
-                aValueType = eCS.assistanceValueType || 'percent';
-                aValue = parseFloat(eCS.assistancePercent) || 0;
-              }
-              if (!aValue) continue;
-              cRows3.forEach(row2 => {
-                const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
-                secTotal += inc;
-                assistanceIncomeTotal += inc;
-                const k2 = row2.svcCode || row2.svcName;
-                if (!svcBreakdown2[k2])
-                  svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
-                svcBreakdown2[k2].cost   += row2.cost;
-                svcBreakdown2[k2].count++;
-                svcBreakdown2[k2].income += inc;
-              });
-            }
+            if (!aValue) continue;
+            cRows3.forEach(row2 => {
+              const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
+              secTotal += inc;
+              assistanceIncomeTotal += inc;
+              const k2 = row2.svcCode || row2.svcName;
+              if (!svcBreakdown2[k2])
+                svcBreakdown2[k2] = { code: row2.svcCode, name: row2.svcName, cost: 0, count: 0, income: 0, aValueType, aValue };
+              svcBreakdown2[k2].cost   += row2.cost;
+              svcBreakdown2[k2].count++;
+              svcBreakdown2[k2].income += inc;
+            });
           }
 
           if (secTotal > 0) {

@@ -6,7 +6,6 @@ import { useTabSlider } from '../utils/useTabSlider';
 // ─── Role labels ─────────────────────────────────────────────────────────────
 const ROLES = [
   { key: 'doctor',          label: 'Врач' },
-  { key: 'assistant',       label: 'Ассистент' },
   { key: 'nurse',           label: 'Медсестра' },
   { key: 'anesthesiologist',label: 'Анестезиолог' },
 ];
