@@ -188,6 +188,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     }
     for (const field of ['clinic', 'legalCompany', 'code', 'executor', 'assistant', 'nurse', 'anesthesiologist']) {
       const f = colFilters[field];
+      if (!f) continue;
       if (f.selected !== null && !f.selected.has(r[field])) return false;
     }
     return true;
