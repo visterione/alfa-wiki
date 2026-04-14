@@ -776,7 +776,11 @@ export async function buildReport({
         const invoiceDate = rbParseDate(r[colMap.invoiceCreatedDate]);
         if (invoiceDate && invoiceDate < new Date(2026, 1, 1)) return true;
       }
-      // Use executor's includeCorpInvoices setting
+      // Per-transaction selection from modal takes priority
+      if (corpIncludedKeys !== null) {
+        return !corpIncludedKeys.has(rowKeyMap.get(r));
+      }
+      // Fallback: executor's clinic setting
       return !execClinicSettings?.includeCorpInvoices;
     };
 
