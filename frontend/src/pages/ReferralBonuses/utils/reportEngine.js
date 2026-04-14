@@ -765,6 +765,21 @@ export async function buildReport({
         || null;
     };
 
+    // ── Corp filter helper for role-income sections ──
+    // Returns true if the row is a corp row that should be excluded based on executor's clinic settings.
+    const _roleCorpExclude = (r, execClinicSettings) => {
+      if (!colMap.invoiceType) return false;
+      const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
+      if (t !== 'юр. компания' && t !== 'юр.компания') return false;
+      // Hard rule: corp before Feb 2026 always excluded
+      if (colMap.invoiceCreatedDate) {
+        const invoiceDate = rbParseDate(r[colMap.invoiceCreatedDate]);
+        if (invoiceDate && invoiceDate < new Date(2026, 1, 1)) return true;
+      }
+      // Use executor's includeCorpInvoices setting
+      return !execClinicSettings?.includeCorpInvoices;
+    };
+
     // ── Assistance income (rows where THIS doctor is listed as assistant) ──
     let assistanceIncomeTotal = 0;
     const assistanceIncomeSections = [];
@@ -784,7 +799,7 @@ export async function buildReport({
           if (!execName) return;
           if (!byExec[execName]) byExec[execName] = {};
           if (!byExec[execName][cId2]) byExec[execName][cId2] = [];
-          byExec[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2 });
+          byExec[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, _raw: r });
         });
 
         for (const [execName, byClinicMap2] of Object.entries(byExec)) {
@@ -798,6 +813,8 @@ export async function buildReport({
           try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
           for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
             const eCS = rbGetClinicSettings(execData2, cId3);
+            const filteredRows3 = cRows3.filter(r2 => !_roleCorpExclude(r2._raw, eCS));
+            if (!filteredRows3.length) continue;
             const _indivEntry = (execData2.assistants || []).find(a => rbNamesMatch(a.name, doctorName));
             let aValueType, aValue;
             if (_indivEntry != null) {
@@ -808,7 +825,7 @@ export async function buildReport({
               aValue = parseFloat(eCS.assistancePercent) || 0;
             }
             if (!aValue) continue;
-            cRows3.forEach(row2 => {
+            filteredRows3.forEach(row2 => {
               const inc = aValueType === 'rub' ? aValue : row2.cost * aValue / 100;
               secTotal += inc;
               assistanceIncomeTotal += inc;
@@ -870,13 +887,19 @@ export async function buildReport({
           const cId2 = rbMatchClinicId(clinicRaw2) || 'unknown';
           if (!execName) return;
           if (!byExec[execName]) byExec[execName] = [];
-          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2, cId: cId2 });
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2, cId: cId2, _raw: r });
         });
 
         for (const [execName, svcRows] of Object.entries(byExec)) {
+          const execDoc2 = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          let execData2Anest = null;
+          try { if (execDoc2) execData2Anest = await loadExecSettings(execDoc2.id); } catch {}
+
           let secTotal = 0;
           const svcBreakdown2 = {};
           svcRows.forEach(row2 => {
+            const eCS2 = execData2Anest ? rbGetClinicSettings(execData2Anest, row2.cId) : null;
+            if (_roleCorpExclude(row2._raw, eCS2)) return;
             let inc = 0, aValue, aValueType, ruleContains;
             if (hasAnestRoleServices) {
               // Новая система: точный код услуги
@@ -930,13 +953,19 @@ export async function buildReport({
           const cId2 = rbMatchClinicId(clinicRaw2) || 'unknown';
           if (!execName) return;
           if (!byExec[execName]) byExec[execName] = [];
-          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, cId: cId2 });
+          byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, cId: cId2, _raw: r });
         });
 
         for (const [execName, svcRows] of Object.entries(byExec)) {
+          const execDoc2 = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          let execData2Nurse = null;
+          try { if (execDoc2) execData2Nurse = await loadExecSettings(execDoc2.id); } catch {}
+
           let secTotal = 0;
           const svcBreakdown2 = {};
           svcRows.forEach(row2 => {
+            const eCS2 = execData2Nurse ? rbGetClinicSettings(execData2Nurse, row2.cId) : null;
+            if (_roleCorpExclude(row2._raw, eCS2)) return;
             const match = findMyRoleService('nurse', row2.svcCode, row2.cId);
             if (!match) return;
             const val = parseFloat(match.value) || 0;
