@@ -32,18 +32,18 @@ function SalaryRow({ icon, label, value, color = 'var(--rb-text)', children, exp
 
 function ServiceTable({ sections, columns, negative }) {
   return (
-    <table className="rb-report-table">
+    <table className="rb-report-table rb-report-table--bordered">
       <thead>
         <tr>{columns.map(c => <th key={c}>{c}</th>)}</tr>
       </thead>
       <tbody>
         {sections.map((s, i) => (
           <tr key={i}>
-            <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
+            <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
             <td>{s.name || '—'}</td>
             <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
             <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-            <td>{s.bonusLabel || '—'}</td>
+            <td style={{ textAlign: 'center' }}>{s.bonusLabel || '—'}</td>
             <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
               {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
             </td>
@@ -160,7 +160,7 @@ export default function SalaryBlock({ salary }) {
             <ServiceTable sections={basePerformedSections} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Итого, руб']} />
           )}
           {payType === 'normed' && normServicesList.length > 0 && (
-            <table className="rb-report-table">
+            <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th>Деятельность</th><th style={{ textAlign: 'right' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
               <tbody>
                 {normFixedSalary > 0 && (
@@ -234,16 +234,16 @@ export default function SalaryBlock({ salary }) {
                 {assistanceIncomeSections.map(({ execName, total, services }, i) => (
                   <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
                     {services.length > 0 && (
-                      <table className="rb-report-table">
+                      <table className="rb-report-table rb-report-table--bordered">
                         <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
                         <tbody>
                           {services.map((s, j) => (
                             <tr key={j}>
-                              <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
+                              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
                               <td>{s.name || '—'}</td>
                               <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
                               <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                              <td>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}</td>
+                              <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}</td>
                               <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
                             </tr>
                           ))}
@@ -261,16 +261,16 @@ export default function SalaryBlock({ salary }) {
                 {nurseIncomeSections.map(({ execName, total, services }, i) => (
                   <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
                     {services.length > 0 && (
-                      <table className="rb-report-table">
+                      <table className="rb-report-table rb-report-table--bordered">
                         <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
                         <tbody>
                           {services.map((s, j) => (
                             <tr key={j}>
-                              <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
+                              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
                               <td>{s.name || '—'}</td>
                               <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
                               <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                              <td>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                              <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
                               <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
                             </tr>
                           ))}
@@ -293,7 +293,7 @@ export default function SalaryBlock({ salary }) {
                     return (
                       <SubSection key={i} indent={40} label={execName} value={(secPos ? '+' : '−') + fmtRub(Math.abs(total))} color={secPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={secPos ? 'plus' : 'minus'}>
                         {services.length > 0 && (
-                          <table className="rb-report-table">
+                          <table className="rb-report-table rb-report-table--bordered">
                             <thead><tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
                             <tbody>
                               {services.map((s, j) => {
@@ -301,10 +301,10 @@ export default function SalaryBlock({ salary }) {
                                 const incPos = inc >= 0;
                                 return (
                                   <tr key={j}>
-                                    <td style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.code || '—'}</td>
+                                    <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
                                     <td>{s.name || '—'}</td>
                                     <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                                    <td>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                                    <td style={{ textAlign: 'center' }}>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
                                     <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
                                       {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
                                     </td>
@@ -326,7 +326,7 @@ export default function SalaryBlock({ salary }) {
 
       {hasExtras && (
         <SalaryRow icon="+" label="Дополнительно" value={`+${fmtRub(extrasTotal)}`} color="var(--rb-success)" expandable={extras.length > 0}>
-          <table className="rb-report-table">
+          <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Описание</th><th style={{ textAlign: 'right' }}>Сумма</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
               {extras.map((e, i) => {
@@ -355,7 +355,7 @@ export default function SalaryBlock({ salary }) {
           color="var(--rb-danger)"
           expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
         >
-          <table className="rb-report-table">
+          <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
               {[...turnoverDeductionItems, ...finalDeductionItems].map((d, i) => {
@@ -453,7 +453,7 @@ export default function SalaryBlock({ salary }) {
           color="var(--rb-danger)"
           expandable={[...turnoverMaterialItems, ...finalMaterialItems].length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0}
         >
-          <table className="rb-report-table">
+          <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th>Название</th><th>Тип</th><th style={{ textAlign: 'right' }}>Значение</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
             <tbody>
               {[...turnoverMaterialItems, ...finalMaterialItems].map((m, i) => {
