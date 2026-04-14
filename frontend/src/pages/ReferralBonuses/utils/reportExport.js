@@ -97,10 +97,17 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
           addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1)
         );
       }
-      // Почасовой тип: детализация
-      if (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) {
-        addTblHdr(['Ставка, ₽/ч', '', '', 'Часов', '', 'Итого, руб'], 1);
-        addTblRow([parseFloat((sal.hourlyRate || 0).toFixed(2)), '', '', sal.hoursWorked || 0, '', parseFloat(((sal.hourlyRate || 0) * (sal.hoursWorked || 0)).toFixed(2))], 1);
+      // Почасовой тип: детализация (с fallback для старых записей)
+      if (sal.payType === 'hourly') {
+        let _xRate = sal.hourlyRate || 0, _xHours = sal.hoursWorked || 0;
+        if ((!_xRate || !_xHours) && sal.basePayLabel) {
+          const _m = sal.basePayLabel.match(/\((\d+(?:[.,]\d+)?)\s*[₽р][^×x*]*[×x*]\s*(\d+(?:[.,]\d+)?)\s*ч\)/);
+          if (_m) { _xRate = parseFloat(_m[1].replace(',', '.')) || 0; _xHours = parseFloat(_m[2].replace(',', '.')) || 0; }
+        }
+        if (_xRate > 0) {
+          addTblHdr(['Ставка, ₽/ч', '', '', 'Часов', '', 'Итого, руб'], 1);
+          addTblRow([parseFloat(_xRate.toFixed(2)), '', '', _xHours, '', parseFloat((_xRate * _xHours).toFixed(2))], 1);
+        }
       }
       // Нормированный тип: детализация по видам деятельности
       if (sal.payType === 'normed' && (sal.normServices || []).length > 0) {

@@ -111,8 +111,19 @@ export default function SalaryBlock({ salary }) {
     hoursWorked = 0,
   } = salary;
 
+  // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
+  let _hourlyRate = hourlyRate, _hoursWorked = hoursWorked;
+  if (payType === 'hourly' && (!_hourlyRate || !_hoursWorked) && rawBasePayLabel) {
+    const m = rawBasePayLabel.match(/\((\d+(?:[.,]\d+)?)\s*[₽р][^×x*]*[×x*]\s*(\d+(?:[.,]\d+)?)\s*ч\)/);
+    if (m) {
+      _hourlyRate = parseFloat(m[1].replace(',', '.')) || 0;
+      _hoursWorked = parseFloat(m[2].replace(',', '.')) || 0;
+    }
+  }
+
   const basePayLabel = rawBasePayLabel === 'Бонусы за выполненные услуги (по тарифам)' || rawBasePayLabel === 'Бонусы за выполненные услуги'
     ? 'Выполненные услуги'
+    : payType === 'hourly' ? 'Почасовой оклад'
     : rawBasePayLabel;
 
   const preFinalSalary = (basePay || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) + (nurseIncomeTotal || 0) - (referralCostTotal || 0);
@@ -149,14 +160,14 @@ export default function SalaryBlock({ salary }) {
 
       {hasWage && (
         <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
-          {payType === 'hourly' && (
+          {payType === 'hourly' && _hourlyRate > 0 && (
             <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов отработано</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
               <tbody>
                 <tr>
-                  <td style={{ textAlign: 'center' }}>{hourlyRate.toFixed(2)} ₽</td>
-                  <td style={{ textAlign: 'center' }}>{hoursWorked}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(hourlyRate * hoursWorked).toFixed(2)} ₽</td>
+                  <td style={{ textAlign: 'center' }}>{_hourlyRate.toFixed(2)} ₽</td>
+                  <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
                 </tr>
               </tbody>
             </table>
