@@ -6,12 +6,19 @@ import { useTabSlider } from '../utils/useTabSlider';
 // ═══════════════════════════════════════
 // CATEGORY DROPDOWN component
 // ═══════════════════════════════════════
+function flattenCats(cats, acc = []) {
+  for (const c of cats) { acc.push(c); if (c.children?.length) flattenCats(c.children, acc); }
+  return acc;
+}
+
 function CategoryDropdown({ onSelect }) {
   const [open, setOpen] = useState(false);
-  const [categories, setCategories] = useState(null); // null = not loaded
+  const [categories, setCategories] = useState(null);
   const [loading, setLoading] = useState(false);
   const [selectedLabel, setSelectedLabel] = useState('');
+  const [query, setQuery] = useState('');
   const ref = useRef();
+  const inputRef = useRef();
 
   useEffect(() => {
     const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
@@ -20,7 +27,7 @@ function CategoryDropdown({ onSelect }) {
   }, []);
 
   const loadCategories = useCallback(async () => {
-    if (categories !== null) return; // already loaded
+    if (categories !== null) return;
     setLoading(true);
     try {
       const res = await mis.getServiceCategories();
@@ -37,30 +44,24 @@ function CategoryDropdown({ onSelect }) {
   const handleToggle = () => {
     const next = !open;
     setOpen(next);
-    if (next) loadCategories();
+    if (next) { setQuery(''); loadCategories(); setTimeout(() => inputRef.current?.focus(), 50); }
   };
 
-  const handleSelect = (cat) => {
-    setSelectedLabel(cat.title);
-    setOpen(false);
-    onSelect(cat);
-  };
+  const handleSelect = (cat) => { setSelectedLabel(cat.title); setOpen(false); setQuery(''); onSelect(cat); };
 
   function renderCats(cats, level = 0) {
     return cats.map(cat => (
       <React.Fragment key={cat.id}>
-        <div
-          className="rb-cat-dropdown-item"
-          data-level={level}
-          style={{ paddingLeft: 12 + level * 12 }}
-          onClick={() => handleSelect(cat)}
-        >
+        <div className="rb-cat-dropdown-item" data-level={level} style={{ paddingLeft: 12 + level * 12 }} onClick={() => handleSelect(cat)}>
           {cat.title} {cat.services_count != null ? `(${cat.services_count})` : ''}
         </div>
         {cat.children?.length > 0 && renderCats(cat.children, level + 1)}
       </React.Fragment>
     ));
   }
+
+  const q = query.trim().toLowerCase();
+  const flatMatches = q && categories ? flattenCats(categories).filter(c => c.title.toLowerCase().includes(q)) : null;
 
   return (
     <div className={`rb-cat-dropdown${open ? ' open' : ''}`} ref={ref} style={{ position: 'relative', marginBottom: 10 }}>
@@ -76,10 +77,27 @@ function CategoryDropdown({ onSelect }) {
         </svg>
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: 280, overflowY: 'auto', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200 }}>
-          {loading && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Загрузка...</div>}
-          {!loading && categories?.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Категории не найдены</div>}
-          {!loading && categories?.length > 0 && renderCats(categories)}
+        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 200, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--rb-border)' }}>
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Поиск категории..."
+              style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+            {loading && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Загрузка...</div>}
+            {!loading && categories?.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Категории не найдены</div>}
+            {!loading && flatMatches && flatMatches.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>}
+            {!loading && flatMatches && flatMatches.map(cat => (
+              <div key={cat.id} className="rb-cat-dropdown-item" style={{ paddingLeft: 12 }} onClick={() => handleSelect(cat)}>
+                {cat.title} {cat.services_count != null ? `(${cat.services_count})` : ''}
+              </div>
+            ))}
+            {!loading && !flatMatches && categories?.length > 0 && renderCats(categories)}
+          </div>
         </div>
       )}
     </div>
@@ -145,6 +163,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   const [catBulkValue, setCatBulkValue] = useState('');
   const [catSaving, setCatSaving] = useState(false);
   const [catSelectedService, setCatSelectedService] = useState(null);
+  const [catExcluded, setCatExcluded] = useState(new Set());
+  const [catFilter, setCatFilter] = useState('');
 
   const searchTimerRef = useRef(null);
 
@@ -296,10 +316,21 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   };
 
   // ── Category handlers ──
+  const toggleCatExclude = (code) => {
+    setCatExcluded(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
   const handleCatSelect = useCallback(async (cat) => {
     setCatServices([]);
     setCatSelectedService(null);
     setCatBulkValue('');
+    setCatExcluded(new Set());
+    setCatFilter('');
     setCatLoading(true);
     try {
       const res = await mis.getServicesByCategory(cat.id);
@@ -320,7 +351,8 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   };
 
   const handleApplyCategoryBonus = async () => {
-    if (!catServices.length) { toast.error('Нет услуг в категории'); return; }
+    const activeServices = catServices.filter(s => !catExcluded.has(s.code || String(s.service_id || '')));
+    if (!activeServices.length) { toast.error('Нет выбранных услуг'); return; }
     const val = parseFloat(catBulkValue);
     if (isNaN(val) || val < 0) { toast.error('Укажите размер бонуса'); return; }
     const bonusPercent = catBulkType === 'pct' ? val : null;
@@ -328,7 +360,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
 
     setCatSaving(true);
     try {
-      const services = catServices.map(s => ({
+      const services = activeServices.map(s => ({
         serviceCode: s.code || String(s.service_id || ''),
         serviceName: s.title,
         bonusPercent,
@@ -469,78 +501,95 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
             <div>
               <CategoryDropdown onSelect={handleCatSelect} />
               {catLoading && <div className="rb-loading"><span className="rb-spinner" /> Загрузка услуг...</div>}
-              {!catLoading && catServices.length > 0 && (
-                <>
-                  {/* Services list */}
-                  <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--rb-border)', borderRadius: 7, marginBottom: 10 }}>
-                    {catServices.map((svc, i) => (
-                      <div
-                        key={svc.code || i}
-                        className="rb-search-result-item"
-                        onClick={() => handleCatServiceSelect(svc)}
-                      >
-                        <div>
-                          <div className="rb-result-name">{svc.title}</div>
-                          <div className="rb-result-code">Код: {svc.code || svc.service_id}</div>
+              {!catLoading && catServices.length > 0 && (() => {
+                const q = catFilter.trim().toLowerCase();
+                const visibleServices = q
+                  ? catServices.filter(s => s.title?.toLowerCase().includes(q) || (s.code || String(s.service_id || '')).toLowerCase().includes(q))
+                  : catServices;
+                const allCodes = catServices.map(s => s.code || String(s.service_id || ''));
+                const selectedCount = catServices.length - catExcluded.size;
+                return (
+                  <>
+                    {/* Bulk bonus form — ABOVE list */}
+                    <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+                      <div className="rb-inline-toggle-wrap">
+                        <div className="rb-exec-type-toggle">
+                          <button className={`rb-exec-type-btn${catBulkType === 'pct' ? ' active' : ''}`} onClick={() => { setCatBulkType('pct'); setCatBulkValue(''); }}>%</button>
+                          <button className={`rb-exec-type-btn${catBulkType === 'rub' ? ' active' : ''}`} onClick={() => { setCatBulkType('rub'); setCatBulkValue(''); }}>₽</button>
                         </div>
-                        {svc.price != null && (
-                          <div className="rb-result-price">{parseFloat(svc.price).toFixed(2)} ₽</div>
-                        )}
+                        <input
+                          type="number"
+                          value={catBulkValue}
+                          onChange={e => setCatBulkValue(e.target.value)}
+                          placeholder={catBulkType === 'pct' ? 'Например: 10' : 'Например: 150'}
+                          min="0" step="any"
+                          style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none' }}
+                        />
+                        <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleApplyCategoryBonus} disabled={catSaving} style={{ whiteSpace: 'nowrap' }}>
+                          {catSaving ? <><span className="rb-spinner" style={{ marginRight: 5 }}></span>Сохранение...</> : 'Сохранить'}
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    </div>
 
-                  {/* Bulk bonus form */}
-                  <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '12px 14px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                        <circle cx="9" cy="7" r="4"/>
-                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                      </svg>
-                      Назначить бонус всем услугам категории
-                      <span style={{ background: '#dbeafe', color: '#1e40af', fontSize: 11, padding: '1px 6px', borderRadius: 10, fontWeight: 600 }}>{catServices.length}</span>
-                    </div>
-                    <div className="rb-inline-toggle-wrap" style={{ marginBottom: 10 }}>
-                      <div className="rb-exec-type-toggle">
-                        <button
-                          className={`rb-exec-type-btn${catBulkType === 'pct' ? ' active' : ''}`}
-                          onClick={() => { setCatBulkType('pct'); setCatBulkValue(''); }}
-                        >%</button>
-                        <button
-                          className={`rb-exec-type-btn${catBulkType === 'rub' ? ' active' : ''}`}
-                          onClick={() => { setCatBulkType('rub'); setCatBulkValue(''); }}
-                        >₽</button>
+                    {/* Services list */}
+                    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 7 }}>
+                      {/* Header: search + select-all */}
+                      <div style={{ padding: '6px 10px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', borderRadius: '7px 7px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <input
+                          value={catFilter}
+                          onChange={e => setCatFilter(e.target.value)}
+                          placeholder="Найти услугу..."
+                          style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+                            Выбрано: <b>{selectedCount}</b> из {catServices.length}
+                            {q ? ` (показано ${visibleServices.length})` : ''}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => catExcluded.size === catServices.length
+                              ? setCatExcluded(new Set())
+                              : setCatExcluded(new Set(allCodes))}
+                            style={{ fontSize: 11, color: 'var(--rb-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          >
+                            {catExcluded.size === catServices.length ? 'Выбрать все' : 'Снять все'}
+                          </button>
+                        </div>
                       </div>
-                      <input
-                        type="number"
-                        value={catBulkValue}
-                        onChange={e => setCatBulkValue(e.target.value)}
-                        placeholder={catBulkType === 'pct' ? 'Например: 10' : 'Например: 150'}
-                        min="0"
-                        step="any"
-                        style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none' }}
-                      />
+                      <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+                        {visibleServices.length === 0 && (
+                          <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>
+                        )}
+                        {visibleServices.map((svc, i) => {
+                          const code = svc.code || String(svc.service_id || '');
+                          const excluded = catExcluded.has(code);
+                          return (
+                            <div
+                              key={code || i}
+                              className="rb-search-result-item"
+                              style={{ opacity: excluded ? 0.45 : 1, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                              onClick={() => toggleCatExclude(code)}
+                            >
+                              {/* Blue toggle switch */}
+                              <div style={{ width: 32, height: 18, borderRadius: 9, background: excluded ? '#cbd5e1' : 'var(--rb-primary)', position: 'relative', transition: 'background 0.18s', flexShrink: 0 }}>
+                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 11, color: '#000', flexShrink: 0 }}>{code}</span>
+                                <span className="rb-result-name">{svc.title}</span>
+                              </div>
+                              {svc.price != null && (
+                                <div className="rb-result-price">{parseFloat(svc.price).toFixed(2)} ₽</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <button
-                      className="rb-btn rb-btn-primary rb-btn-sm"
-                      onClick={handleApplyCategoryBonus}
-                      disabled={catSaving}
-                    >
-                      {catSaving
-                        ? <><span className="rb-spinner" style={{ marginRight: 5 }}></span>Сохранение...</>
-                        : <>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            Применить ко всем
-                          </>
-                      }
-                    </button>
-                  </div>
-                </>
-              )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
