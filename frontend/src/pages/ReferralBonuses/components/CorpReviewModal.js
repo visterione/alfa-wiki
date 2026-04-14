@@ -28,15 +28,21 @@ const FILTER_LABELS = {
   legalCompany: 'Юр. компания',
   code: 'Код',
   executor: 'ФИО врача',
+  assistant: 'Ассистент',
+  nurse: 'Медсестра',
+  anesthesiologist: 'Анестезиолог',
 };
 
 const EMPTY_FILTERS = {
-  date:         { type: 'dateRange',   from: '', to: '' },
-  payDate:      { type: 'dateRange',   from: '', to: '' },
-  clinic:       { type: 'multiSelect', selected: null },
-  legalCompany: { type: 'multiSelect', selected: null },
-  code:         { type: 'multiSelect', selected: null },
-  executor:     { type: 'multiSelect', selected: null },
+  date:             { type: 'dateRange',   from: '', to: '' },
+  payDate:          { type: 'dateRange',   from: '', to: '' },
+  clinic:           { type: 'multiSelect', selected: null },
+  legalCompany:     { type: 'multiSelect', selected: null },
+  code:             { type: 'multiSelect', selected: null },
+  executor:         { type: 'multiSelect', selected: null },
+  assistant:        { type: 'multiSelect', selected: null },
+  nurse:            { type: 'multiSelect', selected: null },
+  anesthesiologist: { type: 'multiSelect', selected: null },
 };
 
 /**
@@ -136,10 +142,13 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
 
   // ── Unique values for multi-select dropdowns (from all rows) ──
   const uniqueValues = useMemo(() => ({
-    clinic:       [...new Set(allDisplayRows.map(r => r.clinic).filter(Boolean))].sort(),
-    legalCompany: [...new Set(allDisplayRows.map(r => r.legalCompany).filter(Boolean))].sort(),
-    code:         [...new Set(allDisplayRows.map(r => r.code).filter(Boolean))].sort(),
-    executor:     [...new Set(allDisplayRows.map(r => r.executor).filter(Boolean))].sort(),
+    clinic:           [...new Set(allDisplayRows.map(r => r.clinic).filter(Boolean))].sort(),
+    legalCompany:     [...new Set(allDisplayRows.map(r => r.legalCompany).filter(Boolean))].sort(),
+    code:             [...new Set(allDisplayRows.map(r => r.code).filter(Boolean))].sort(),
+    executor:         [...new Set(allDisplayRows.map(r => r.executor).filter(Boolean))].sort(),
+    assistant:        [...new Set(allDisplayRows.map(r => r.assistant).filter(Boolean))].sort(),
+    nurse:            [...new Set(allDisplayRows.map(r => r.nurse).filter(Boolean))].sort(),
+    anesthesiologist: [...new Set(allDisplayRows.map(r => r.anesthesiologist).filter(Boolean))].sort(),
   }), [allDisplayRows]);
 
   // ── Filter logic ──
@@ -177,7 +186,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
         }
       }
     }
-    for (const field of ['clinic', 'legalCompany', 'code', 'executor']) {
+    for (const field of ['clinic', 'legalCompany', 'code', 'executor', 'assistant', 'nurse', 'anesthesiologist']) {
       const f = colFilters[field];
       if (f.selected !== null && !f.selected.has(r[field])) return false;
     }
@@ -187,7 +196,7 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
   const filterRow = r => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return [r.patientCard, r.patientName, r.legalCompany, r.code, r.serviceName, r.executor, r.date, r.payDate, r.clinic]
+    return [r.patientCard, r.patientName, r.legalCompany, r.code, r.serviceName, r.executor, r.assistant, r.nurse, r.anesthesiologist, r.date, r.payDate, r.clinic]
       .some(v => v && v.toLowerCase().includes(q));
   };
 
@@ -254,9 +263,9 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             {showCode              && <th style={thStyle}>Код <FilterBtn field="code" /></th>}
             <th style={thStyle}>Услуга</th>
             {showExecutor          && <th style={thStyle}>ФИО врача <FilterBtn field="executor" /></th>}
-            {showAssistant         && <th style={thStyle}>Ассистент</th>}
-            {showNurse             && <th style={thStyle}>Медсестра</th>}
-            {showAnesthesiologist  && <th style={thStyle}>Анестезиолог</th>}
+            {showAssistant         && <th style={thStyle}>Ассистент <FilterBtn field="assistant" /></th>}
+            {showNurse             && <th style={thStyle}>Медсестра <FilterBtn field="nurse" /></th>}
+            {showAnesthesiologist  && <th style={thStyle}>Анестезиолог <FilterBtn field="anesthesiologist" /></th>}
             <th style={thRStyle}>Сумма, ₽</th>
           </tr>
         </thead>
@@ -590,14 +599,9 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
             style={{ padding: '8px 16px', fontSize: 13, border: '1px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', cursor: 'pointer' }}>
             Отмена
           </button>
-          <button onClick={() => onConfirm(new Set())}
-            style={{ padding: '8px 16px', fontSize: 13, border: '1px solid #fca5a5', borderRadius: 8, background: '#fef2f2', color: '#dc2626', cursor: 'pointer' }}
-            title="Исключить все юр.компании из расчёта">
-            Исключить все
-          </button>
           <button onClick={() => onConfirm(selected)}
             style={{ padding: '8px 20px', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 8, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer' }}>
-            Учесть выбранные ({selected.size})
+            Сохранить
           </button>
         </div>
       </div>
