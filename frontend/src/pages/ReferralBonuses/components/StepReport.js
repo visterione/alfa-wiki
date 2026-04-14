@@ -426,10 +426,15 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       }
 
       const allCorpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
-      // For individual report — only show rows where this doctor is executor
-      const corpRows = colMap.executor
-        ? allCorpRows.filter(({ row }) => rbNamesMatch(selectedDoctor.name, String(row[colMap.executor] || '').trim()))
-        : allCorpRows;
+      // For individual report — show rows where this doctor appears in any role column
+      const corpRows = allCorpRows.filter(({ row }) => {
+        const name = selectedDoctor.name;
+        if (colMap.executor        && rbNamesMatch(name, String(row[colMap.executor]         || '').trim())) return true;
+        if (colMap.assistant       && rbNamesMatch(name, String(row[colMap.assistant]        || '').trim())) return true;
+        if (colMap.nurse           && rbNamesMatch(name, String(row[colMap.nurse]            || '').trim())) return true;
+        if (colMap.anesthesiologist && rbNamesMatch(name, String(row[colMap.anesthesiologist] || '').trim())) return true;
+        return false;
+      });
       if (corpRows.length > 0) {
         // Pause generation, show modal
         setGenerating(false);
