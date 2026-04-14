@@ -225,19 +225,6 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
             {savedDate && <span style={{ marginLeft: 6 }}>от {savedDate}</span>}
           </div>
           <div className="rb-hist-card-total" style={{ marginRight: 6 }}>{fmtRub(finalSalary)}</div>
-          {record.hasExcel && (
-            <button className="rb-hist-del" onClick={e => { e.stopPropagation(); handleDownloadExcel(); }} disabled={downloading} title="Скачать Excel" style={{ color: '#16a34a', marginRight: 2 }}>
-              {downloading
-                ? <span className="rb-spinner" style={{ width: 14, height: 14 }} />
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                    <polyline points="14 2 14 8 20 8"/>
-                    <line x1="12" y1="15" x2="12" y2="9"/>
-                    <polyline points="9 12 12 15 15 12"/>
-                  </svg>
-              }
-            </button>
-          )}
           <svg className={`rb-hist-card-chevron${open ? ' open' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
             <polyline points="6 9 12 15 18 9"/>
           </svg>
@@ -269,6 +256,12 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
               <button onClick={() => onCashPay(record, netRemainder)}
                 style={{ width: btnW, fontSize: 11, fontWeight: 600, padding: '6px 0', border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff' }}>
                 Касса
+              </button>
+            )}
+            {record.hasExcel && (
+              <button onClick={handleDownloadExcel} disabled={downloading}
+                style={{ width: btnW, fontSize: 11, fontWeight: 600, padding: '6px 0', border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff' }}>
+                {downloading ? '...' : 'Скачать'}
               </button>
             )}
             {onDelete && (
