@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, mis } from '../../../services/api';
 import { rbProfessionTitle } from '../utils/clinicUtils';
+import { useTabSlider } from '../utils/useTabSlider';
+import StepWorkTime from './StepWorkTime';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -10,7 +12,9 @@ const MONTH_NAMES = [
 
 const currentDate = new Date();
 
-export default function StepHourNorms({ readOnly }) {
+export default function StepHourNorms({ readOnly, doctors = [] }) {
+  const [activeTab, setActiveTab] = useState('work_time'); // 'work_time' | 'hour_norms'
+  const { wrapRef, sliderEl } = useTabSlider(activeTab);
   const [mode, setMode] = useState('professions'); // 'professions' | 'roles'
 
   const [year, setYear]   = useState(currentDate.getFullYear());
@@ -121,6 +125,27 @@ export default function StepHourNorms({ readOnly }) {
 
   return (
     <div className="rb-panel" style={{ flex: 1 }}>
+      <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 0, borderBottom: 'none', borderRadius: 'var(--rb-radius) var(--rb-radius) 0 0' }}>
+        {sliderEl}
+        <button
+          className={`rb-clinic-tab${activeTab === 'work_time' ? ' active' : ''}`}
+          onClick={() => setActiveTab('work_time')}
+        >
+          Учёт рабочего времени
+        </button>
+        <button
+          className={`rb-clinic-tab${activeTab === 'hour_norms' ? ' active' : ''}`}
+          onClick={() => setActiveTab('hour_norms')}
+        >
+          Норма часов
+        </button>
+      </div>
+
+      {activeTab === 'work_time' && (
+        <StepWorkTime doctors={doctors} readOnly={readOnly} />
+      )}
+
+      {activeTab === 'hour_norms' && (<>
       <div className="rb-panel-header">
         <div className="rb-panel-title">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
@@ -221,6 +246,7 @@ export default function StepHourNorms({ readOnly }) {
           </button>
         </div>
       )}
+      </>)}
     </div>
   );
 }

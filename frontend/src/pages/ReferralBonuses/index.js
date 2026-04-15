@@ -38,7 +38,7 @@ const STEP_ICONS = [
 
 const STEP_LABELS = [
   'Сотрудники',
-  'Норма часов',
+  'Учёт времени',
   'Услуги',
   'Направления',
   'Отчёт',
@@ -563,7 +563,7 @@ export default function ReferralBonusesPage() {
       case 1:
         return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
       case 2:
-        return <StepHourNorms readOnly={isStepReadOnly(2)} />;
+        return <StepHourNorms readOnly={isStepReadOnly(2)} doctors={doctors} />;
       case 3:
         return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(3)} />;
       case 4:
