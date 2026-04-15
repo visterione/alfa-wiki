@@ -2408,6 +2408,65 @@ EmailFavoriteTemplate.belongsTo(EmailTemplate, { foreignKey: 'templateId', as: '
 User.hasMany(EmailFavoriteTemplate, { foreignKey: 'userId', as: 'favoriteTemplates' });
 EmailTemplate.hasMany(EmailFavoriteTemplate, { foreignKey: 'templateId', as: 'favorites' });
 
+// === DOCTOR SCHEDULE MODEL ===
+const DoctorSchedule = sequelize.define('DoctorSchedule', {
+  id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId:  { type: DataTypes.STRING(100), allowNull: false },
+  clinicId:   { type: DataTypes.STRING(50),  allowNull: false },
+  dateFrom:   { type: DataTypes.DATEONLY,    allowNull: false },
+  dateTo:     { type: DataTypes.DATEONLY,    allowNull: false },
+  pattern:    { type: DataTypes.JSONB,       allowNull: false, defaultValue: {} },
+  timeFrom:   { type: DataTypes.STRING(5),   allowNull: false, defaultValue: '09:00' },
+  timeTo:     { type: DataTypes.STRING(5),   allowNull: false, defaultValue: '18:00' },
+  exceptions: { type: DataTypes.JSONB,       allowNull: false, defaultValue: [] },
+  createdBy:  { type: DataTypes.UUID },
+}, {
+  tableName: 'doctor_schedules',
+  timestamps: true,
+  indexes: [
+    { fields: ['misUserId'], name: 'idx_doctor_schedules_mis_user' },
+    { fields: ['dateFrom', 'dateTo'], name: 'idx_doctor_schedules_dates' },
+  ],
+});
+
+// === TABEL RECORD MODELS (табели учёта рабочего времени) ===
+const TabelRecord = sequelize.define('TabelRecord', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  month:       { type: DataTypes.SMALLINT, allowNull: false },
+  year:        { type: DataTypes.SMALLINT, allowNull: false },
+  orgName:     { type: DataTypes.STRING(255), field: 'org_name' },
+  subdivision: { type: DataTypes.STRING(255) },
+  docNumber:   { type: DataTypes.STRING(50),  field: 'doc_number' },
+  createdBy:   { type: DataTypes.UUID, field: 'created_by' },
+}, {
+  tableName: 'tabel_records',
+  timestamps: true,
+  underscored: true,
+  indexes: [
+    { fields: ['year', 'month'], name: 'idx_tabel_records_year_month' },
+  ],
+});
+
+const TabelRecordDoctor = sequelize.define('TabelRecordDoctor', {
+  id:            { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  tabelRecordId: { type: DataTypes.UUID, allowNull: false, field: 'tabel_record_id' },
+  misUserId:     { type: DataTypes.STRING(100), allowNull: false, field: 'mis_user_id' },
+  doctorName:    { type: DataTypes.STRING(255), field: 'doctor_name' },
+  entries:       { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  payData:       { type: DataTypes.JSONB, allowNull: false, defaultValue: {}, field: 'pay_data' },
+}, {
+  tableName: 'tabel_record_doctors',
+  timestamps: true,
+  underscored: true,
+  indexes: [
+    { fields: ['tabel_record_id'], name: 'idx_tabel_record_doctors_rec' },
+    { fields: ['mis_user_id'],     name: 'idx_tabel_record_doctors_user' },
+  ],
+});
+
+TabelRecord.hasMany(TabelRecordDoctor, { foreignKey: 'tabelRecordId', as: 'doctors' });
+TabelRecordDoctor.belongsTo(TabelRecord, { foreignKey: 'tabelRecordId', as: 'tabelRecord' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2485,5 +2544,10 @@ module.exports = {
   // Promotions module
   Promotion,
   // Partner services cache
-  PartnerServiceCache
+  PartnerServiceCache,
+  // Doctor schedules
+  DoctorSchedule,
+  // Tabel records
+  TabelRecord,
+  TabelRecordDoctor,
 };

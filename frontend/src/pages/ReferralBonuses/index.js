@@ -122,6 +122,7 @@ export default function ReferralBonusesPage() {
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState(1);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [archiveTabelEdit, setArchiveTabelEdit] = useState(false);
   const wizardNavRef = React.useRef(null);
   const [wizardSlider, setWizardSlider] = React.useState({ left: 0, width: 0, duration: 0 });
   React.useLayoutEffect(() => {
@@ -185,7 +186,7 @@ export default function ReferralBonusesPage() {
         if (res.data?.success && Array.isArray(res.data?.data)) {
           const list = res.data.data;
           if (!list.find(c => String(c.id) === '8')) {
-            list.push({ id: 8, name: 'Направители', color: '#0EA5E9' });
+            list.push({ id: 8, name: 'Направители', color: '#00bfff' });
           }
           setClinics(list);
         }
@@ -513,6 +514,7 @@ export default function ReferralBonusesPage() {
   const goToStep = useCallback((step) => {
     setCurrentStep(step);
     if (step !== 5) setPreselectedReportDoctorId(null);
+    if (step !== 6) setArchiveTabelEdit(false);
   }, []);
 
   // ── Rendered step ──
@@ -537,6 +539,7 @@ export default function ReferralBonusesPage() {
     pinnedForCompare,
     panelCollapsed,
     onTogglePanel: () => setPanelCollapsed(v => !v),
+    onArchiveTabelEdit: setArchiveTabelEdit,
   };
 
   const TAB_KEYS = ['tab1', 'tabHourNorms', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
@@ -563,7 +566,7 @@ export default function ReferralBonusesPage() {
       case 1:
         return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
       case 2:
-        return <StepHourNorms readOnly={isStepReadOnly(2)} doctors={doctors} />;
+        return <StepHourNorms readOnly={isStepReadOnly(2)} doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} getClinicName={getClinicName} />;
       case 3:
         return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(3)} />;
       case 4:
@@ -807,9 +810,9 @@ export default function ReferralBonusesPage() {
       )}
 
       {/* Step Content */}
-      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 || panelCollapsed ? { gridTemplateColumns: '1fr' } : undefined}>
+      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 || panelCollapsed || (currentStep === 6 && archiveTabelEdit) ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
-        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && <DoctorsList
+        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && !(currentStep === 6 && archiveTabelEdit) && <DoctorsList
           doctors={filteredDoctors}
           allDoctors={visibleDoctors}
           clinics={clinics}

@@ -93,7 +93,7 @@ function UserMultiSelect({ users, selectedIds, onChange, placeholder }) {
 // Предустановленные цвета (отсортированы по радуге)
 const PRESET_COLORS = [
   '#ef4444', '#f43f5e', '#ec4899', '#d946ef', '#a855f7',
-  '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4',
+  '#8b5cf6', '#6366f1', '#3b82f6', '#00bfff', '#06b6d4',
   '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#eab308',
   '#facc15', '#f59e0b', '#f97316', '#64748b', '#4a90e2'
 ];
@@ -466,7 +466,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
         </div>
 
         {isRecurringInstance && !editingSeries && (
-          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #0ea5e9', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="alert alert-info" style={{ margin: '1rem', padding: '0.75rem', backgroundColor: '#e0f2fe', border: '1px solid #00bfff', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <AlertCircle size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
               Это экземпляр повторяющегося события. Редактирование отдельных экземпляров не поддерживается.
@@ -477,7 +477,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
                 onClick={handleEditSeries}
                 style={{
                   padding: '6px 12px',
-                  background: '#0ea5e9',
+                  background: '#00bfff',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -490,7 +490,7 @@ export default function EventModal({ event, selectedDate, currentUser, onSave, o
                   transition: 'all 0.2s'
                 }}
                 onMouseEnter={(e) => e.target.style.background = '#0284c7'}
-                onMouseLeave={(e) => e.target.style.background = '#0ea5e9'}
+                onMouseLeave={(e) => e.target.style.background = '#00bfff'}
               >
                 <Edit size={14} />
                 Редактировать всю серию

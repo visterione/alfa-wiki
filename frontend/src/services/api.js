@@ -635,4 +635,20 @@ export const bots = {
   regenerateToken: (id)       => api.post(`/bots/${id}/regenerate-token`),
 };
 
+export const doctorSchedules = {
+  list:   (misUserId)       => api.get('/doctor-schedules', { params: { misUserId } }),
+  create: (data)            => api.post('/doctor-schedules', data),
+  update: (id, data)        => api.put(`/doctor-schedules/${id}`, data),
+  delete: (id)              => api.delete(`/doctor-schedules/${id}`),
+};
+
+export const tabelRecords = {
+  list:      ()           => api.get('/tabel-records'),
+  get:       (id)         => api.get(`/tabel-records/${id}`),
+  byDoctor:  (misUserId)  => api.get('/tabel-records/by-doctor', { params: { misUserId } }),
+  create:    (data)       => api.post('/tabel-records', data),
+  update:    (id, data)   => api.put(`/tabel-records/${id}`, data),
+  delete:    (id)         => api.delete(`/tabel-records/${id}`),
+};
+
 export default api;

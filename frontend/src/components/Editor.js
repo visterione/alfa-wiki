@@ -369,7 +369,7 @@ const highlightColors = [
   { name: 'Голубой', color: '#81D4FA' },
   { name: 'Синий светлый', color: '#90CAF9' },
   { name: 'Розовый', color: '#F48FB1' },
-  { name: 'Розовый яркий', color: '#FF80AB' },
+  { name: 'Розовый яркий', color: '#de64a1' },
   { name: 'Оранжевый', color: '#FFCC80' },
   { name: 'Оранжевый яркий', color: '#FF9800' },
   { name: 'Персиковый', color: '#FFCCBC' },

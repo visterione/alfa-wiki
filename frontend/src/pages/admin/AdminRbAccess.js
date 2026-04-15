@@ -30,13 +30,13 @@ function ClinicToggle({ checked, color }) {
 }
 
 const CLINICS = [
-  { id: '2', name: 'Альфа',      color: '#FF80AB' },
-  { id: '3', name: 'Кидс',       color: '#FFA726' },
-  { id: '1', name: 'Проф',       color: '#7E57C2' },
-  { id: '6', name: 'Линия',      color: '#C5E1A5' },
-  { id: '4', name: '3К',         color: '#BA68C8' },
-  { id: '7', name: 'Смайл',      color: '#555555' },
-  { id: '8', name: 'Направители',color: '#0EA5E9' },
+  { id: '2', name: 'Альфа',      color: '#de64a1' },
+  { id: '3', name: 'Кидс',       color: '#ed9121' },
+  { id: '1', name: 'Проф',       color: '#9999ff' },
+  { id: '6', name: 'Линия',      color: '#e2d1bb' },
+  { id: '4', name: '3К',         color: '#800080' },
+  { id: '7', name: 'Смайл',      color: '#999999' },
+  { id: '8', name: 'Направители',color: '#00bfff' },
 ];
 
 const TAB_DEFS = [

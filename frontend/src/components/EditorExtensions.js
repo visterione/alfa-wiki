@@ -607,7 +607,7 @@ const CELL_BG_COLORS = [
   { name: 'Фиолет. 600',    color: '#8E24AA' },
   { name: 'Фиолет. 500',    color: '#9C27B0' },
   { name: 'Фиолет. 400',    color: '#AB47BC' },
-  { name: 'Фиолет. 300',    color: '#BA68C8' },
+  { name: 'Фиолет. 300',    color: '#800080' },
   { name: 'Фиолет. 200',    color: '#CE93D8' },
   { name: 'Фиолет. 100',    color: '#E1BEE7' },
   { name: 'Фиолет. 50',     color: '#F3E5F5' },

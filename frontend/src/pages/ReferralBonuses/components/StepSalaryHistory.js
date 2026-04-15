@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTabSlider } from '../utils/useTabSlider';
 import toast from 'react-hot-toast';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
-import { salaryRecords, cashPayments as cashPaymentsApi } from '../../../services/api';
+import { salaryRecords, cashPayments as cashPaymentsApi, tabelRecords as tabelApi } from '../../../services/api';
 import { buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
+import { downloadTabelExcel } from '../utils/tabelExport';
+import TabelTable, { pad2, SigBlock } from './TabelTable';
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -582,7 +584,7 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly }) {
+export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly, onArchiveTabelEdit }) {
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);
@@ -591,7 +593,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cmpLoading, setCmpLoading]       = useState({});
 
   // Cash payments
-  const [viewMode, setViewMode]           = useState('history'); // 'history' | 'kassa'
+  const [viewMode, setViewMode]           = useState('history'); // 'history' | 'kassa' | 'tabel'
   const { wrapRef: salaryTabRef, sliderEl: salarySlider } = useTabSlider(viewMode);
   const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
   const [kassaData, setKassaData]         = useState([]);
@@ -608,6 +610,17 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [kassaEditNote, setKassaEditNote] = useState('');
   const [kassaEditFinancistName, setKassaEditFinancistName] = useState('');
   const [kassaEditSaving, setKassaEditSaving] = useState(false);
+
+  // Tabel archive
+  const [tabelList,     setTabelList]     = useState([]);
+  const [tabelLoading,  setTabelLoading]  = useState(false);
+  const [tabelOpenId,   setTabelOpenId]   = useState(null);
+  const [tabelDetail,   setTabelDetail]   = useState(null);
+  const [tabelDetLoading, setTabelDetLoading] = useState(false);
+  const [tabelSearch,   setTabelSearch]   = useState('');
+  const [tabelEditKey,  setTabelEditKey]  = useState(0);
+  const [tabelSaving,   setTabelSaving]   = useState(false);
+  const tabelEditRef = useRef(null);
 
   const isCompareMode = pinnedForCompare.length === 2;
 
@@ -645,6 +658,54 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     } catch { setKassaData([]); }
     finally { setKassaLoading(false); }
   }, []);
+
+  const loadTabelList = useCallback(async () => {
+    setTabelLoading(true);
+    try {
+      const res = await tabelApi.list();
+      setTabelList(Array.isArray(res.data) ? res.data : []);
+    } catch { setTabelList([]); }
+    finally { setTabelLoading(false); }
+  }, []);
+
+  const openTabelBatch = async (id) => {
+    setTabelOpenId(id);
+    setTabelDetail(null);
+    setTabelEditKey(k => k + 1);
+    setTabelDetLoading(true);
+    onArchiveTabelEdit?.(true);
+    try {
+      const res = await tabelApi.get(id);
+      setTabelDetail(res.data);
+    } catch { toast.error('Не удалось загрузить запись'); }
+    finally { setTabelDetLoading(false); }
+  };
+
+  const closeTabelBatch = () => {
+    setTabelOpenId(null);
+    setTabelDetail(null);
+    onArchiveTabelEdit?.(false);
+  };
+
+  const handleDeleteTabel = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Удалить этот табель из архива?')) return;
+    try {
+      await tabelApi.delete(id);
+      setTabelList(prev => prev.filter(r => r.id !== id));
+      if (tabelOpenId === id) { closeTabelBatch(); }
+      toast.success('Удалено');
+    } catch { toast.error('Ошибка при удалении'); }
+  };
+
+  const handleTabelExcel = async (record, doctorFilter) => {
+    try {
+      const fname = doctorFilter
+        ? `Табель_${record.year}_${String(record.month).padStart(2,'0')}_${doctorFilter.doctorName || doctorFilter.misUserId}.xlsx`
+        : `Табель_${record.year}_${String(record.month).padStart(2,'0')}.xlsx`;
+      await downloadTabelExcel(record, doctorFilter ? [doctorFilter.misUserId] : null, fname);
+    } catch { toast.error('Ошибка при генерации Excel'); }
+  };
 
   const handleOpenCashModal = useCallback((record, netRemainder) => {
     setCashModal({ record });
@@ -790,11 +851,16 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       {salarySlider}
       {[
         { key: 'history', label: 'Архив' },
-        { key: 'kassa', label: 'Касса' },
+        { key: 'kassa',   label: 'Касса' },
+        { key: 'tabel',   label: 'Табели' },
       ].map(({ key, label }) => (
         <button key={key}
           className={`rb-clinic-tab${viewMode === key ? ' active' : ''}`}
-          onClick={() => { setViewMode(key); if (key === 'kassa') loadKassa(); }}
+          onClick={() => {
+            setViewMode(key);
+            if (key === 'kassa') loadKassa();
+            if (key === 'tabel') loadTabelList();
+          }}
         >
           {label}
         </button>
@@ -811,6 +877,281 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       setKassaEditId(null);
     } catch { /* error already toasted */ } finally { setKassaEditSaving(false); }
   };
+
+  // ── Табели view ───────────────────────────────────────────────────────────
+  if (viewMode === 'tabel') {
+    const MONTH_NAMES_T = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+    // ── Full document edit view (when a batch is open) ──────────────────────
+    if (tabelOpenId) {
+      const doc = tabelDetail;
+      const isLoading = tabelDetLoading || !doc;
+
+      const archiveDoctors = doc ? (doc.doctors || []).map(d => ({
+        id: d.misUserId,
+        name: d.doctorName || d.misUserId,
+        roles: [],
+        professions: [],
+      })) : [];
+
+      const archiveEntries = {};
+      const archivePayData = {};
+      if (doc) {
+        (doc.doctors || []).forEach(d => {
+          archiveEntries[d.misUserId] = d.entries || {};
+          archivePayData[d.misUserId] = d.payData || {};
+        });
+      }
+
+      const lastDay    = doc ? new Date(doc.year, doc.month, 0).getDate() : 31;
+      const periodFrom = doc ? `01.${pad2(doc.month)}.${doc.year}` : '';
+      const periodTo   = doc ? `${pad2(lastDay)}.${pad2(doc.month)}.${doc.year}` : '';
+      const docDate    = doc && doc.createdAt
+        ? new Date(doc.createdAt).toLocaleDateString('ru-RU')
+        : '';
+
+      const handleSaveArchive = async () => {
+        if (!tabelEditRef.current || !doc) return;
+        const { entries, payData } = tabelEditRef.current.getSnapshot();
+        setTabelSaving(true);
+        try {
+          const doctorsPayload = archiveDoctors.map(d => ({
+            misUserId:  d.id,
+            doctorName: d.name,
+            entries:    entries[d.id]  || {},
+            payData:    payData[d.id]  || {},
+          }));
+          const res = await tabelApi.update(tabelOpenId, { doctors: doctorsPayload });
+          setTabelDetail(res.data);
+          toast.success('Табель обновлён');
+        } catch {
+          toast.error('Ошибка при сохранении');
+        } finally {
+          setTabelSaving(false);
+        }
+      };
+
+      const handleDownloadArchiveExcel = async () => {
+        if (!doc) return;
+        const snapshot = tabelEditRef.current ? tabelEditRef.current.getSnapshot() : { entries: archiveEntries, payData: archivePayData };
+        const record = {
+          ...doc,
+          doctors: archiveDoctors.map(d => ({
+            misUserId:  d.id,
+            doctorName: d.name,
+            entries:    snapshot.entries[d.id] || {},
+            payData:    snapshot.payData[d.id] || {},
+          })),
+        };
+        try {
+          await downloadTabelExcel(record, null, `Табель_${doc.year}_${pad2(doc.month)}_${doc.subdivision || 'таб'}.xlsx`);
+        } catch {
+          toast.error('Ошибка при генерации Excel');
+        }
+      };
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+          {/* Toolbar */}
+          <div style={{
+            padding: '10px 16px', borderBottom: '1px solid var(--rb-border)',
+            display: 'flex', alignItems: 'center', gap: 10, background: '#fafafa', flexShrink: 0,
+          }}>
+            <button
+              onClick={closeTabelBatch}
+              className="rb-btn rb-btn-secondary"
+              style={{ height: 32, width: 96, justifyContent: 'center' }}>
+              Назад
+            </button>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {doc ? `${MONTH_NAMES_T[(doc.month || 1) - 1]} ${doc.year} — ${doc.subdivision || doc.orgName || ''}` : 'Загрузка...'}
+            </span>
+            {!readOnly && (
+              <button className="rb-btn rb-btn-primary" onClick={handleSaveArchive}
+                disabled={tabelSaving || isLoading}
+                style={{ height: 32, width: 96, justifyContent: 'center', opacity: (tabelSaving || isLoading) ? 0.6 : 1 }}>
+                {tabelSaving ? 'Сохр...' : 'Сохранить'}
+              </button>
+            )}
+            <button className="rb-btn rb-btn-primary" onClick={handleDownloadArchiveExcel}
+              disabled={isLoading}
+              style={{ height: 32, width: 96, justifyContent: 'center', opacity: isLoading ? 0.6 : 1 }}>
+              Скачать
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text-secondary)' }}>
+              Загрузка...
+            </div>
+          ) : (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: '#f1f5f9' }}>
+              <div className="tabel-doc">
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: 8, fontFamily: 'Times New Roman, serif', lineHeight: 1.5 }}>
+                      Унифицированная форма № Т-13<br />
+                      Утверждена Постановлением Госкомстата<br />
+                      России от 05.01.2004 № 1
+                    </div>
+                    <table style={{ borderCollapse: 'collapse', marginTop: 6, marginLeft: 'auto', fontSize: 8, fontFamily: 'Times New Roman, serif' }}>
+                      <tbody>
+                        <tr>
+                          <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}></td>
+                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>Код</td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>Форма по ОКУД</td>
+                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
+                        </tr>
+                        <tr>
+                          <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>по ОКПО</td>
+                          <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
+                    <div style={{ borderBottom: '1px solid #000', width: '100%', minHeight: 22, paddingBottom: 2, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif' }}>
+                      {doc.orgName}
+                    </div>
+                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>(наименование организации)</span>
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', marginTop: 10, marginBottom: 12 }}>
+                  <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
+                    <div style={{ borderBottom: '1px solid #000', width: '100%', minHeight: 22, textAlign: 'center', fontSize: 13, fontFamily: 'Times New Roman, serif', paddingBottom: 2 }}>
+                      {doc.subdivision}
+                    </div>
+                    <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>(структурное подразделение)</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '8px 0 12px' }}>
+                  <table className="tabel-meta-table">
+                    <thead>
+                      <tr>
+                        <th>Номер документа</th>
+                        <th>Дата составления</th>
+                        <th colSpan={2}>Отчётный период</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>{doc.docNumber}</td>
+                        <td>{docDate}</td>
+                        <td>с {periodFrom}</td>
+                        <td>по {periodTo}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="tabel-title">ТАБЕЛЬ УЧЁТА РАБОЧЕГО ВРЕМЕНИ</div>
+
+                <TabelTable
+                  key={tabelEditKey}
+                  ref={tabelEditRef}
+                  selectedDoctors={archiveDoctors}
+                  year={doc.year}
+                  month={doc.month}
+                  readOnly={readOnly}
+                  initialEntries={archiveEntries}
+                  initialPayData={archivePayData}
+                />
+
+                <div style={{ marginTop: 36 }}>
+                  <SigBlock name="" />
+                </div>
+
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Batch list view ──────────────────────────────────────────────────────
+    const tabelFiltered = tabelList.filter(r =>
+      !tabelSearch ||
+      (r.subdivision || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
+      (r.orgName     || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
+      (r.doctors     || []).some(d => (d.doctorName || '').toLowerCase().includes(tabelSearch.toLowerCase()))
+    );
+
+    return (
+      <>
+        {viewToggle}
+
+        <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa' }}>
+          <input
+            type="text"
+            placeholder="Поиск по подразделению, организации или ФИО врача..."
+            value={tabelSearch}
+            onChange={e => setTabelSearch(e.target.value)}
+            style={{
+              width: '100%', height: 34, padding: '0 12px', borderRadius: 8,
+              border: '1px solid var(--rb-border-dark)', fontSize: 13,
+              background: '#fff', color: 'var(--rb-text)', boxSizing: 'border-box', outline: 'none',
+            }}
+          />
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+          {tabelLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--rb-text-secondary)' }}>Загрузка...</div>
+          ) : tabelFiltered.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+              {tabelSearch ? 'Ничего не найдено' : 'Архив табелей пуст'}
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {tabelFiltered.map(rec => {
+                const btnStyle = { fontSize: 11, fontWeight: 600, width: 76, height: 26, padding: 0, border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', flexShrink: 0 };
+                return (
+                  <div key={rec.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--rb-border)', overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--rb-text)', minWidth: 120 }}>
+                        {MONTH_NAMES_T[(rec.month || 1) - 1]} {rec.year}
+                      </span>
+                      {rec.docNumber && (
+                        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                          № {rec.docNumber}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {rec.subdivision || rec.orgName || ''}
+                      </span>
+                      <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                        {new Date(rec.createdAt).toLocaleDateString('ru-RU')}
+                      </span>
+                      <button onClick={() => handleTabelExcel({ ...rec, doctors: rec.doctors || [] }, null)} style={btnStyle}>
+                        Скачать
+                      </button>
+                      {!readOnly && (
+                        <button onClick={e => handleDeleteTabel(rec.id, e)} style={btnStyle}>
+                          Удалить
+                        </button>
+                      )}
+                      <button onClick={() => openTabelBatch(rec.id)} style={btnStyle}>
+                        Открыть
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
 
   // ── Касса view ────────────────────────────────────────────────────────────
   if (viewMode === 'kassa') {

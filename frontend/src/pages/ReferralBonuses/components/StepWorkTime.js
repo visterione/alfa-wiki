@@ -1,33 +1,26 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../context/AuthContext';
+import { doctorSchedules as schedulesApi, tabelRecords as tabelApi } from '../../../services/api';
+import { downloadTabelExcel } from '../utils/tabelExport';
+import TabelTable, { pad2, SigBlock } from './TabelTable';
 
 const MONTH_NAMES = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
 ];
 const ORGS = [
-  'ООО "Альфа Престиж"',
-  'ООО "Альфа Проф"',
-  'ООО "ЛАБ ГРУПП"',
+  'Общество с ограниченной ответственностью «Альфа Престиж»',
+  'Общество с ограниченной ответственностью «Альфа Проф»',
+  'Общество с ограниченной ответственностью «ЛАБ ГРУПП»',
 ];
-const STATUS_CODES = [
-  { code: '',  label: '— (не задано)' },
-  { code: 'Я', label: 'Я — Явился' },
-  { code: 'В', label: 'В — Выходной' },
-  { code: 'Б', label: 'Б — Больничный' },
-  { code: 'О', label: 'О — Отпуск' },
-  { code: 'К', label: 'К — Командировка' },
-];
-const WORKING_CODES = new Set(['Я', 'К']);
-
-function pad2(n) { return String(n).padStart(2, '0'); }
-
 // ── Employee multi-select dropdown ────────────────────────────────────────────
-function EmpSelect({ doctors, selectedIds, onChange }) {
-  const [open, setOpen]     = useState(false);
-  const [search, setSearch] = useState('');
-  const wrapRef             = useRef(null);
+function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName }) {
+  const [open,          setOpen]         = useState(false);
+  const [search,        setSearch]       = useState('');
+  const [filterRole,    setFilterRole]   = useState('');
+  const [filterClinic,  setFilterClinic] = useState('');
+  const wrapRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
@@ -36,10 +29,18 @@ function EmpSelect({ doctors, selectedIds, onChange }) {
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
-  const filtered = useMemo(
-    () => doctors.filter(d => d.name.toLowerCase().includes(search.toLowerCase())),
-    [doctors, search]
-  );
+  const allRoles = useMemo(() => {
+    const set = new Set();
+    doctors.forEach(d => (d.roles || []).forEach(r => set.add(r)));
+    return [...set].sort();
+  }, [doctors]);
+
+  const filtered = useMemo(() => doctors.filter(d => {
+    if (search      && !d.name.toLowerCase().includes(search.toLowerCase())) return false;
+    if (filterRole  && !(d.roles || []).includes(filterRole))  return false;
+    if (filterClinic && !(d.clinics || []).includes(String(filterClinic))) return false;
+    return true;
+  }), [doctors, search, filterRole, filterClinic]);
 
   const toggle = id => {
     const next = new Set(selectedIds);
@@ -51,12 +52,18 @@ function EmpSelect({ doctors, selectedIds, onChange }) {
     ? 'Выберите сотрудников'
     : selectedIds.size === doctors.length ? 'Все сотрудники' : `Выбрано: ${selectedIds.size}`;
 
+  const selStyle = {
+    boxSizing: 'border-box', width: '100%', padding: '4px 8px', fontSize: 12,
+    border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none',
+    background: '#fff', color: 'var(--rb-text)', height: 28,
+  };
+
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
       <button type="button" onClick={() => setOpen(v => !v)} style={{
         display: 'flex', alignItems: 'center', gap: 6, height: 34,
-        padding: '0 10px 0 12px', borderRadius: 8, border: '1px solid var(--rb-border)',
-        background: 'var(--rb-bg)', cursor: 'pointer', fontSize: 13,
+        padding: '0 10px 0 12px', borderRadius: 8, border: '1px solid var(--rb-border-dark)',
+        background: '#fff', cursor: 'pointer', fontSize: 13,
         color: selectedIds.size === 0 ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
         minWidth: 200, whiteSpace: 'nowrap',
       }}>
@@ -71,27 +78,46 @@ function EmpSelect({ doctors, selectedIds, onChange }) {
         <div style={{
           position: 'absolute', top: '100%', left: 0, zIndex: 200,
           background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
-          boxShadow: '0 8px 28px rgba(0,0,0,.13)', minWidth: 260, maxWidth: 340,
+          boxShadow: '0 8px 28px rgba(0,0,0,.13)', minWidth: 300, maxWidth: 380,
           marginTop: 4, overflow: 'hidden',
         }}>
+          {/* Search */}
           <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--rb-border)' }}>
-            <input autoFocus type="text" placeholder="Поиск..." value={search}
+            <input autoFocus type="text" placeholder="Поиск по ФИО..." value={search}
               onChange={e => setSearch(e.target.value)}
-              style={{
-                width: '100%', boxSizing: 'border-box', padding: '5px 10px',
-                border: '1px solid var(--rb-border)', borderRadius: 6, fontSize: 13,
-                outline: 'none', background: 'var(--rb-bg)', color: 'var(--rb-text)',
-              }} />
+              style={{ ...selStyle, height: 30, padding: '5px 10px' }} />
           </div>
-          <div style={{ display: 'flex', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--rb-border)' }}>
-            {[['Все', () => onChange(new Set(doctors.map(d => d.id)))],
-              ['Сбросить', () => onChange(new Set())]].map(([lbl, fn]) => (
+
+          {/* Filters: role + clinic */}
+          {(allRoles.length > 0 || clinics.length > 0) && (
+            <div style={{ display: 'flex', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--rb-border)' }}>
+              {allRoles.length > 0 && (
+                <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ ...selStyle, flex: 1 }}>
+                  <option value="">Все роли</option>
+                  {allRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
+              {clinics.length > 0 && (
+                <select value={filterClinic} onChange={e => setFilterClinic(e.target.value)} style={{ ...selStyle, flex: 1 }}>
+                  <option value="">Все медцентры</option>
+                  {clinics.map(c => <option key={c.id} value={String(c.id)}>{getClinicName ? getClinicName(String(c.id)) : c.name}</option>)}
+                </select>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: '1px solid var(--rb-border)' }}>
+            {[['Выбрать всех', () => onChange(new Set(filtered.map(d => d.id)))],
+              ['Сбросить',     () => onChange(new Set())]].map(([lbl, fn]) => (
               <button key={lbl} type="button" onClick={fn} style={{
                 fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border)',
                 borderRadius: 5, background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)',
               }}>{lbl}</button>
             ))}
           </div>
+
+          {/* List */}
           <div style={{ maxHeight: 240, overflowY: 'auto' }}>
             {filtered.length === 0
               ? <div style={{ padding: '12px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Не найдено</div>
@@ -114,288 +140,131 @@ function EmpSelect({ doctors, selectedIds, onChange }) {
   );
 }
 
-// ── Signature / underline field ───────────────────────────────────────────────
-function UnderlineField({ label, value, minWidth = 140 }) {
-  return (
-    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth }}>
-      <div style={{
-        borderBottom: '1px solid #000', width: '100%',
-        minHeight: 22, paddingBottom: 2, textAlign: 'center',
-        fontSize: 13, fontFamily: 'Times New Roman, serif',
-      }}>
-        {value}
-      </div>
-      <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#555', marginTop: 2 }}>
-        ({label})
-      </span>
-    </div>
-  );
+// ── Schedule preset helpers ───────────────────────────────────────────────────
+function parseDate(str) { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); }
+
+function isDayScheduled(entry, year, month, day) {
+  const d    = new Date(year, month - 1, day);
+  const from = parseDate(entry.dateFrom);
+  const to   = parseDate(entry.dateTo);
+  if (d < from || d > to) return false;
+  const { pattern } = entry;
+  const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  switch (pattern.type) {
+    case 'daily':    return true;
+    case 'workdays': return dow <= 4;
+    case 'two_two': {
+      const diff = Math.round((d - from) / 86400000);
+      return diff % 4 < 2;
+    }
+    case 'weekdays': return (pattern.weekdays || []).includes(dow);
+    case 'even_odd': return pattern.evenOdd === 'even' ? d.getDate() % 2 === 0 : d.getDate() % 2 === 1;
+    case 'custom': {
+      const diff  = Math.round((d - from) / 86400000);
+      const cycle = (pattern.workDays || 1) + (pattern.restDays || 1);
+      return diff % cycle < (pattern.workDays || 1);
+    }
+    default: return false;
+  }
 }
 
-function SigLine({ role, name }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 20, marginBottom: 24, flexWrap: 'wrap' }}>
-      <span style={{ fontSize: 13, fontFamily: 'Times New Roman, serif', whiteSpace: 'nowrap' }}>{role}</span>
-      <UnderlineField label="должность" minWidth={130} />
-      <UnderlineField label="подпись" minWidth={90} />
-      <UnderlineField label="расшифровка подписи" value={name} minWidth={150} />
-    </div>
-  );
+function calcHoursFromTimes(timeFrom, timeTo) {
+  const [fh, fm] = (timeFrom || '09:00').split(':').map(Number);
+  const [th, tm] = (timeTo   || '18:00').split(':').map(Number);
+  const mins = (th * 60 + tm) - (fh * 60 + fm);
+  if (mins <= 0) return '';
+  const h = Math.round(mins / 60 * 2) / 2; // round to nearest 0.5
+  return String(h);
 }
 
-// ── Attendance table ──────────────────────────────────────────────────────────
-// Structure: 16 shared day-columns.
-// Column i (0-14) → top header = day i+1, bottom header = day i+16
-// Column 15       → top header = "Х",     bottom header = last day of month (if > 30)
-function TabelTable({ selectedDoctors, year, month, readOnly }) {
-  const lastDay = new Date(year, month, 0).getDate();
-
-  // Top half days: 1-15 for columns 0-14; column 15 is the "Х" separator
-  const firstHalf = Array.from({ length: 15 }, (_, i) => i + 1); // [1..15]
-
-  // Bottom half days: 16..lastDay mapped to columns 0-15
-  // column i → day 16+i; null if month is too short
-  const secondHalf = Array.from({ length: 16 }, (_, i) => {
-    const d = 16 + i;
-    return d <= lastDay ? d : null;
+// Build { [docId]: { [day]: { code: 'Я', hours: '8' } } } from loaded schedules
+// Fill absence reasons into payData rows/cols sequentially.
+// Cols 6+7 handle up to 4 reasons (rows 0-3), then overflow to cols 8+9.
+function fillAbsencesIntoPayData(absenceList) {
+  // absenceList: [{ code, hours }, ...]  — only non-'В' reasons
+  const pay = {};
+  absenceList.forEach(({ code, hours }, i) => {
+    if (i < 4) {
+      pay[`${i}_6`] = code;
+      pay[`${i}_7`] = hours;
+    } else if (i < 8) {
+      pay[`${i - 4}_8`] = code;
+      pay[`${i - 4}_9`] = hours;
+    }
+    // more than 8 distinct absence reasons is not expected
   });
+  return pay;
+}
 
-  const [entries, setEntries] = useState({});
-  const [picker,  setPicker]  = useState(null); // { docId, day, top, left }
+function computePreset(doctors, schedulesMap, year, month) {
+  const lastDay  = new Date(year, month, 0).getDate();
+  const entries  = {};
+  const payData  = {};
 
-  const getEntry = useCallback(
-    (docId, day) => entries[docId]?.[day] || { code: '', hours: '' },
-    [entries]
-  );
+  for (const doc of doctors) {
+    const docEntries = schedulesMap[doc.id] || [];
+    entries[doc.id]  = {};
 
-  const setCode = (docId, day, code) =>
-    setEntries(prev => ({
-      ...prev,
-      [docId]: { ...prev[docId], [day]: { ...(prev[docId]?.[day] || {}), code } },
-    }));
+    // Track absence codes → { days, hours } (preserving insertion order)
+    const absenceTotals = {}; // { code: { days, hours } }
 
-  const setHours = (docId, day, val) =>
-    setEntries(prev => ({
-      ...prev,
-      [docId]: { ...prev[docId], [day]: { ...(prev[docId]?.[day] || {}), hours: val } },
-    }));
+    for (let day = 1; day <= lastDay; day++) {
+      const dateStr  = `${year}-${pad2(month)}-${pad2(day)}`;
+      const covering = docEntries.find(e => isDayScheduled(e, year, month, day));
 
-  const calcTotals = useCallback((docId) => {
-    const allFirstHalf  = firstHalf; // days 1-15
-    const allSecondHalf = secondHalf.filter(Boolean); // days 16-lastDay
+      if (!covering) {
+        // No schedule → выходной (not recorded in Неявки)
+        entries[doc.id][day] = { code: 'В', hours: '' };
+      } else if ((covering.exceptions || []).includes(dateStr)) {
+        // Cancelled → отпуск; count days + hours for Неявки
+        entries[doc.id][day] = { code: 'ОТ', hours: '' };
+        const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
+        if (!absenceTotals['ОТ']) absenceTotals['ОТ'] = { days: 0, hours: 0 };
+        absenceTotals['ОТ'].days  += 1;
+        absenceTotals['ОТ'].hours += h;
+      } else {
+        // Normal working day
+        entries[doc.id][day] = {
+          code:  'Я',
+          hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
+        };
+      }
+    }
 
-    const daysI   = allFirstHalf.filter(d => WORKING_CODES.has(getEntry(docId, d).code)).length;
-    const hoursI  = allFirstHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
-    const daysII  = allSecondHalf.filter(d => WORKING_CODES.has(getEntry(docId, d).code)).length;
-    const hoursII = allSecondHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
+    // Build Неявки list (skip 'В' — it's just a normal day-off)
+    const absenceList = Object.entries(absenceTotals)
+      .filter(([code]) => code !== 'В')
+      .map(([code, { days, hours }]) => ({
+        code,
+        hours: `${days} (${hours})`,
+      }));
 
-    return {
-      daysI, hoursI, daysII, hoursII,
-      totalDays: daysI + daysII,
-      totalHours: hoursI + hoursII,
-    };
-  }, [getEntry, firstHalf, secondHalf]);
+    if (absenceList.length) {
+      payData[doc.id] = fillAbsencesIntoPayData(absenceList);
+    }
+  }
 
-  const openPicker = (docId, day, e) => {
-    e.stopPropagation();
-    const rect = e.currentTarget.getBoundingClientRect();
-    setPicker({ docId, day, top: rect.bottom + 3, left: rect.left });
-  };
-
-  useEffect(() => {
-    if (!picker) return;
-    const close = e => { if (!e.target.closest('.tabel-picker')) setPicker(null); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [picker]);
-
-  return (
-    <div style={{ overflowX: 'auto', position: 'relative', borderRight: '1px solid #000' }}>
-
-      {picker && (
-        <div className="tabel-picker" style={{ top: picker.top, left: picker.left }}>
-          {STATUS_CODES.map(s => (
-            <button key={s.code || '__empty__'} className="tabel-picker-item"
-              onClick={() => { setCode(picker.docId, picker.day, s.code); setPicker(null); }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <table className="tabel-table">
-        <thead>
-          {/* ── Row 1: group headers ── */}
-          <tr>
-            <th className="tt-th" rowSpan={3} style={{ width: 24 }}>№</th>
-            <th className="tt-th" rowSpan={3} style={{ minWidth: 200 }}>
-              Фамилия, инициалы, должность (специальность, профессия)
-            </th>
-            <th className="tt-th tt-th-rot" rowSpan={3}>
-              <div className="tt-th-rot-inner">Табельный номер</div>
-            </th>
-            {/* 16 shared day-columns */}
-            <th className="tt-th" colSpan={16}>
-              Отметки о явках и неявках на работу по числам месяца
-            </th>
-            <th className="tt-th" colSpan={2}>
-              Отработано за
-            </th>
-          </tr>
-
-          {/* ── Row 2: top day labels (1-15 + Х) and section labels ── */}
-          <tr>
-            {firstHalf.map(d => (
-              <th key={d} className="tt-th tt-th-day">{d}</th>
-            ))}
-            <th className="tt-th tt-th-day tt-th-x">Х</th>
-            <th className="tt-th tt-th-section" rowSpan={2} style={{ width: 44 }}>
-              половину<br />месяца<br />(I, II)
-            </th>
-            <th className="tt-th tt-th-section" rowSpan={2} style={{ width: 44 }}>
-              месяц
-            </th>
-          </tr>
-
-          {/* ── Row 3: bottom day labels (16-31) ── */}
-          <tr>
-            {secondHalf.map((d, i) => (
-              <th key={i} className={`tt-th tt-th-day${d === null ? ' tt-th-inactive' : ''}`}>
-                {d ?? ''}
-              </th>
-            ))}
-          </tr>
-
-          {/* ── Row 4: column numbers ── */}
-          <tr className="tt-col-numbers">
-            <td className="tt-th tt-col-num">1</td>
-            <td className="tt-th tt-col-num">2</td>
-            <td className="tt-th tt-col-num">3</td>
-            <td className="tt-th tt-col-num" colSpan={16}>4</td>
-            <td className="tt-th tt-col-num">5</td>
-            <td className="tt-th tt-col-num">6</td>
-          </tr>
-        </thead>
-
-        <tbody>
-          {selectedDoctors.length === 0 && (
-            <tr>
-              <td colSpan={21} className="tt-td"
-                style={{ textAlign: 'center', padding: 24, color: '#94a3b8', fontSize: 13 }}>
-                Сотрудники не выбраны
-              </td>
-            </tr>
-          )}
-
-          {selectedDoctors.map((doc, idx) => {
-            const t    = calcTotals(doc.id);
-            const role = (Array.isArray(doc.roles) && doc.roles.length > 0)
-              ? doc.roles.join(', ')
-              : (Array.isArray(doc.professions) && doc.professions.length > 0)
-                ? doc.professions.join(', ')
-                : '';
-
-            return (
-              <React.Fragment key={doc.id}>
-
-                {/* ── Row A: codes for first half (days 1-15) + Х ── */}
-                <tr className="tt-row-a">
-                  <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>
-                  <td className="tt-td tt-name" rowSpan={4}>
-                    <div style={{ lineHeight: 1.3 }}>{doc.name}</div>
-                    {role && <div style={{ fontSize: 10, color: '#555', marginTop: 2, lineHeight: 1.2 }}>{role}</div>}
-                  </td>
-                  <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>
-
-                  {firstHalf.map(d => (
-                    <td key={d}
-                      className={`tt-td tt-code${!readOnly ? ' tt-clickable' : ''}`}
-                      onClick={!readOnly ? e => openPicker(doc.id, d, e) : undefined}>
-                      {getEntry(doc.id, d).code}
-                    </td>
-                  ))}
-                  {/* Х column row A — status fixed */}
-                  <td className="tt-td tt-x-cell">Х</td>
-
-                  {/* Summary: days in first half | total days (rowspan 2) */}
-                  <td className="tt-td tt-sum">{t.daysI || ''}</td>
-                  <td className="tt-td tt-total" rowSpan={2}>{t.totalDays || ''}</td>
-                </tr>
-
-                {/* ── Row B: hours for first half (days 1-15) ── */}
-                <tr className="tt-row-b">
-                  {firstHalf.map(d => (
-                    <td key={d} className="tt-td tt-hours">
-                      <input
-                        type="number" min="0" step="0.5"
-                        className="tt-hours-input"
-                        value={getEntry(doc.id, d).hours}
-                        onChange={e => setHours(doc.id, d, e.target.value)}
-                        disabled={readOnly}
-                      />
-                    </td>
-                  ))}
-                  {/* Х column row B — hours fixed */}
-                  <td className="tt-td tt-x-cell">Х</td>
-                  <td className="tt-td tt-sum">{t.hoursI || ''}</td>
-                  {/* totalDays cell merged from row A */}
-                </tr>
-
-                {/* ── Row C: codes for second half (days 16-31) ── */}
-                <tr className="tt-row-c">
-                  {secondHalf.map((d, i) => (
-                    d !== null
-                      ? <td key={i}
-                          className={`tt-td tt-code${!readOnly ? ' tt-clickable' : ''}`}
-                          onClick={!readOnly ? e => openPicker(doc.id, d, e) : undefined}>
-                          {getEntry(doc.id, d).code}
-                        </td>
-                      : <td key={i} className="tt-td tt-inactive" />
-                  ))}
-                  <td className="tt-td tt-sum">{t.daysII || ''}</td>
-                  <td className="tt-td tt-total" rowSpan={2}>{t.totalHours || ''}</td>
-                </tr>
-
-                {/* ── Row D: hours for second half (days 16-31) ── */}
-                <tr className="tt-row-d">
-                  {secondHalf.map((d, i) => (
-                    d !== null
-                      ? <td key={i} className="tt-td tt-hours">
-                          <input
-                            type="number" min="0" step="0.5"
-                            className="tt-hours-input"
-                            value={getEntry(doc.id, d).hours}
-                            onChange={e => setHours(doc.id, d, e.target.value)}
-                            disabled={readOnly}
-                          />
-                        </td>
-                      : <td key={i} className="tt-td tt-inactive" />
-                  ))}
-                  <td className="tt-td tt-sum">{t.hoursII || ''}</td>
-                  {/* totalHours merged from row C */}
-                </tr>
-
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
+  return { entries, payData };
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function StepWorkTime({ doctors = [], readOnly }) {
+export default function StepWorkTime({ doctors = [], readOnly, clinics = [], getClinicName }) {
   const { user } = useAuth();
   const now = new Date();
 
-  const [subdivision, setSubdivision] = useState('');
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [year,      setYear]      = useState(now.getFullYear());
-  const [month,     setMonth]     = useState(now.getMonth() + 1);
-  const [orgName,   setOrgName]   = useState('');
-  const [docNumber, setDocNumber] = useState('1');
-  const [showDoc,   setShowDoc]   = useState(false);
+  const [subdivision,   setSubdivision]   = useState('');
+  const [selectedIds,   setSelectedIds]   = useState(new Set());
+  const [year,          setYear]          = useState(now.getFullYear());
+  const [month,         setMonth]         = useState(now.getMonth() + 1);
+  const [orgName,       setOrgName]       = useState('');
+  const [docNumber,     setDocNumber]     = useState('1');
+  const [showDoc,       setShowDoc]       = useState(false);
+  const [presetEntries, setPresetEntries] = useState({});
+  const [presetPayData, setPresetPayData] = useState({});
+  const [tableKey,      setTableKey]      = useState(0);
+  const [generating,    setGenerating]    = useState(false);
+  const [saving,    setSaving]    = useState(false);
+  const tabelRef = useRef(null);
 
   const years = [];
   for (let y = now.getFullYear() + 1; y >= 2024; y--) years.push(y);
@@ -420,15 +289,83 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
     return full || user?.username || '';
   })();
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!subdivision.trim())    { toast.error('Укажите структурное подразделение'); return; }
     if (selectedIds.size === 0) { toast.error('Выберите сотрудников'); return; }
     if (!orgName)               { toast.error('Выберите наименование организации'); return; }
-    setShowDoc(true);
+
+    setGenerating(true);
+    try {
+      // Load schedules for all selected doctors in parallel
+      const selected = doctors.filter(d => selectedIds.has(d.id));
+      const results  = await Promise.all(
+        selected.map(doc =>
+          schedulesApi.list(doc.id)
+            .then(res => ({ docId: doc.id, entries: res.data }))
+            .catch(() => ({ docId: doc.id, entries: [] }))
+        )
+      );
+
+      const schedulesMap = {};
+      for (const { docId, entries } of results) {
+        schedulesMap[docId] = entries;
+      }
+
+      const { entries: preset, payData: presetPay } = computePreset(selected, schedulesMap, year, month);
+      setPresetEntries(preset);
+      setPresetPayData(presetPay);
+      setTableKey(k => k + 1); // remount TabelTable with fresh state seeded from preset
+      setShowDoc(true);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!tabelRef.current) return;
+    const { entries, payData } = tabelRef.current.getSnapshot();
+    setSaving(true);
+    try {
+      const doctorsPayload = selectedDoctors.map(d => ({
+        misUserId:  d.id,
+        doctorName: d.name,
+        entries:    entries[d.id]  || {},
+        payData:    payData[d.id]  || {},
+      }));
+      await tabelApi.create({
+        month, year, orgName, subdivision, docNumber,
+        doctors: doctorsPayload,
+      });
+      toast.success('Табель сохранён в архив');
+    } catch {
+      toast.error('Ошибка при сохранении');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!tabelRef.current) return;
+    const { entries, payData } = tabelRef.current.getSnapshot();
+    const record = {
+      month, year, orgName, subdivision, docNumber, userName,
+      doctors: selectedDoctors.map(d => ({
+        misUserId:  d.id,
+        doctorName: d.name,
+        entries:    entries[d.id] || {},
+        payData:    payData[d.id] || {},
+      })),
+    };
+    try {
+      await downloadTabelExcel(record, null,
+        `Табель_${year}_${pad2(month)}_${subdivision || 'таб'}.xlsx`);
+    } catch {
+      toast.error('Ошибка при генерации Excel');
+    }
   };
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
       {/* ── Settings toolbar ── */}
       <div style={{
@@ -439,7 +376,7 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Организация</label>
           <select className="rb-select" value={orgName} onChange={e => setOrgName(e.target.value)}
-            disabled={readOnly} style={{ height: 34, padding: '0 10px', minWidth: 200 }}>
+            disabled={readOnly} style={{ height: 34, padding: '0 10px', minWidth: 380 }}>
             <option value="">Выберите организацию</option>
             {ORGS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
@@ -451,14 +388,14 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
             placeholder="Например: Регистратура" disabled={readOnly}
             style={{
               height: 34, padding: '0 12px', borderRadius: 8,
-              border: '1px solid var(--rb-border)', fontSize: 13,
-              background: 'var(--rb-bg)', color: 'var(--rb-text)', minWidth: 220,
+              border: '1px solid var(--rb-border-dark)', fontSize: 13,
+              background: '#fff', color: 'var(--rb-text)', minWidth: 220,
             }} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Сотрудники</label>
-          <EmpSelect doctors={doctors} selectedIds={selectedIds} onChange={setSelectedIds} />
+          <EmpSelect doctors={doctors} selectedIds={selectedIds} onChange={setSelectedIds} clinics={clinics} getClinicName={getClinicName} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -481,17 +418,30 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
             disabled={readOnly}
             style={{
               height: 34, padding: '0 12px', borderRadius: 8, width: 70,
-              border: '1px solid var(--rb-border)', fontSize: 13,
-              background: 'var(--rb-bg)', color: 'var(--rb-text)', textAlign: 'center',
+              border: '1px solid var(--rb-border-dark)', fontSize: 13,
+              background: '#fff', color: 'var(--rb-text)', textAlign: 'center',
             }} />
         </div>
 
         {!readOnly && (
           <button className="rb-btn rb-btn-primary" onClick={handleGenerate}
-            style={{ height: 34, alignSelf: 'flex-end' }}>
-            Сформировать табель
+            disabled={generating}
+            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center', opacity: generating ? 0.6 : 1 }}>
+            {generating ? 'Загрузка...' : 'Расчёт'}
           </button>
         )}
+
+        {showDoc && !readOnly && (<>
+          <button className="rb-btn rb-btn-primary" onClick={handleSave}
+            disabled={saving}
+            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Сохранение...' : 'Сохранить'}
+          </button>
+          <button className="rb-btn rb-btn-primary" onClick={handleDownloadExcel}
+            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center' }}>
+            Скачать
+          </button>
+        </>)}
       </div>
 
       {/* ── Document view ── */}
@@ -499,13 +449,53 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', background: '#f1f5f9' }}>
           <div className="tabel-doc">
 
+            {/* 0. Шапка — форма Т-13, правый угол */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 8, fontFamily: 'Times New Roman, serif', lineHeight: 1.5 }}>
+                  Унифицированная форма № Т-13<br />
+                  Утверждена Постановлением Госкомстата<br />
+                  России от 05.01.2004 № 1
+                </div>
+                <table style={{ borderCollapse: 'collapse', marginTop: 6, marginLeft: 'auto', fontSize: 8, fontFamily: 'Times New Roman, serif' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}></td>
+                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>Код</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>Форма по ОКУД</td>
+                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}>0301008</td>
+                    </tr>
+                    <tr>
+                      <td style={{ border: 'none', padding: '1px 8px 1px 0', textAlign: 'right' }}>по ОКПО</td>
+                      <td style={{ border: '1px solid #000', padding: '2px 8px', textAlign: 'center' }}></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
             {/* 1. Наименование организации */}
-            <div className="tabel-org-name">{orgName}</div>
+            <div style={{ textAlign: 'center', marginBottom: 8 }}>
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460 }}>
+                <div style={{
+                  borderBottom: '1px solid #000', width: '100%',
+                  minHeight: 22, paddingBottom: 2, textAlign: 'center',
+                  fontSize: 13, fontFamily: 'Times New Roman, serif',
+                }}>
+                  {orgName}
+                </div>
+                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>
+                  (наименование организации)
+                </span>
+              </div>
+            </div>
 
             {/* 2. Структурное подразделение — по центру, как поле подписи */}
             <div style={{ textAlign: 'center', marginTop: 10, marginBottom: 12 }}>
               <div style={{
-                display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 280,
+                display: 'inline-flex', flexDirection: 'column', alignItems: 'center', minWidth: 460,
               }}>
                 <div style={{
                   borderBottom: '1px solid #000', width: '100%', minHeight: 22,
@@ -514,7 +504,7 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
                 }}>
                   {subdivision}
                 </div>
-                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#555', marginTop: 2 }}>
+                <span style={{ fontSize: 10, fontFamily: 'Times New Roman, serif', color: '#000', marginTop: 2 }}>
                   (структурное подразделение)
                 </span>
               </div>
@@ -546,23 +536,26 @@ export default function StepWorkTime({ doctors = [], readOnly }) {
 
             {/* 5. Таблица */}
             <TabelTable
+              key={tableKey}
+              ref={tabelRef}
               selectedDoctors={selectedDoctors}
               year={year}
               month={month}
               readOnly={readOnly}
+              initialEntries={presetEntries}
+              initialPayData={presetPayData}
             />
 
             {/* 6. Подписи */}
             <div style={{ marginTop: 36 }}>
-              <SigLine role="Ответственное лицо" name={userName} />
-              <SigLine role="Руководитель структурного подразделения" name={userName} />
+              <SigBlock name={userName} />
             </div>
 
           </div>
         </div>
       ) : (
-        <div className="rb-loading" style={{ color: 'var(--rb-text-secondary)', marginTop: 60 }}>
-          Заполните параметры и нажмите «Сформировать табель»
+        <div className="rb-loading" style={{ color: 'var(--rb-text-secondary)', marginTop: 60, minHeight: 320 }}>
+          Заполните параметры и нажмите «Расчёт»
         </div>
       )}
     </div>
