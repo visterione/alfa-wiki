@@ -8,6 +8,22 @@ const WORKING_CODES = new Set(['Я','Н','РВ','С','К','ПК','ЛЧ','НС','
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
+function abbreviateName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/);
+  if (parts.length < 2) return fullName || '';
+  const [last, ...rest] = parts;
+  return last + ' ' + rest.map(p => p[0] ? p[0].toUpperCase() + '.' : '').join(' ');
+}
+
+function resolveRole(doc) {
+  const resolveStr = p => typeof p === 'object' ? (p.title || p.name || '') : String(p || '');
+  if (Array.isArray(doc.roles) && doc.roles.length > 0)
+    return doc.roles.map(resolveStr).filter(Boolean).join(', ');
+  if (Array.isArray(doc.professions) && doc.professions.length > 0)
+    return doc.professions.map(resolveStr).filter(Boolean).join(', ');
+  return '';
+}
+
 // ─── Column letter helper ──────────────────────────────────────────────────────
 function col(n) {
   let s = '';
@@ -136,6 +152,9 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     { font: fnt(8), align: { horizontal: 'right', vertical: 'middle' }, border: false });
   R++;
 
+  ws.getRow(R).height = 8; // пустая строка-отступ
+  R++;
+
   // ОКУД / ОКПО small table (right-aligned, 2 columns: label | code)
   ws.getRow(R).height = 12;
   const okudLblCol = TOTAL_COLS - 1;
@@ -173,20 +192,21 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
   R++;
 
   // Meta table (right side): Номер документа | Дата составления | Отчётный период
-  // Placed in last 4 columns, 2 rows
+  // Each field occupies 2 columns (6 total), 2 rows
   ws.getRow(R).height = 13;
-  const M1 = TOTAL_COLS - 3;
-  setCell(ws, R, M1,     'Номер документа',   { font: fnt(8, true), align: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: allThin });
-  setCell(ws, R, M1 + 1, 'Дата составления',  { font: fnt(8, true), align: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: allThin });
-  mergeSet(ws, R, M1 + 2, R, M1 + 3, 'Отчётный период',
-    { font: fnt(8, true), align: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: allThin });
+  const M1 = TOTAL_COLS - 5;
+  const metaHdr = { font: fnt(8, true), align: { horizontal: 'center', vertical: 'middle', wrapText: true }, border: allThin };
+  const metaVal = { font: fnt(9), align: { horizontal: 'center', vertical: 'middle' }, border: allThin };
+  mergeSet(ws, R, M1,     R, M1 + 1, 'Номер документа',  metaHdr);
+  mergeSet(ws, R, M1 + 2, R, M1 + 3, 'Дата составления', metaHdr);
+  mergeSet(ws, R, M1 + 4, R, M1 + 5, 'Отчётный период',  metaHdr);
   R++;
 
   ws.getRow(R).height = 13;
-  setCell(ws, R, M1,     docNumber || '',  { font: fnt(9), align: { horizontal: 'center', vertical: 'middle' }, border: allThin });
-  setCell(ws, R, M1 + 1, docDate,          { font: fnt(9), align: { horizontal: 'center', vertical: 'middle' }, border: allThin });
-  setCell(ws, R, M1 + 2, `с ${periodFrom}`,{ font: fnt(9), align: { horizontal: 'center', vertical: 'middle' }, border: allThin });
-  setCell(ws, R, M1 + 3, `по ${periodTo}`, { font: fnt(9), align: { horizontal: 'center', vertical: 'middle' }, border: allThin });
+  mergeSet(ws, R, M1,     R, M1 + 1, docNumber || '', metaVal);
+  mergeSet(ws, R, M1 + 2, R, M1 + 3, docDate,         metaVal);
+  setCell(ws, R, M1 + 4, periodFrom, metaVal);
+  setCell(ws, R, M1 + 5, periodTo,   metaVal);
   R++;
 
   // Title
@@ -218,7 +238,7 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
   mergeSet(ws, ROW_H1, C1, ROW_H3, C1, '№', hdrOpts());
   mergeSet(ws, ROW_H1, C2, ROW_H3, C2,
     'Фамилия, инициалы, должность\n(специальность, профессия)', hdrOpts());
-  mergeSet(ws, ROW_H1, C3, ROW_H3, C3, 'Табельный\nномер', hdrOpts());
+  mergeSet(ws, ROW_H1, C3, ROW_H3, C3, 'Табельный номер', hdrOpts({ rot: 90 }));
 
   // ── Row H1: group headers ──
   // "Отметки о явках и неявках на работу по числам месяца" colSpan=dayColCount
@@ -246,10 +266,10 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
   mergeSet(ws, ROW_H2, C_MONTH, ROW_H3, C_MONTH, 'месяц', hdrOpts());
   // Pay cols — 6 cells, all rowSpan=2
   mergeSet(ws, ROW_H2, C_KOD1, ROW_H3, C_KOD1, 'Код вида\nоплаты', hdrOpts());
-  mergeSet(ws, ROW_H2, C_KOR1, ROW_H3, C_KOR1, 'Корр.\nсчёт',      hdrOpts());
+  mergeSet(ws, ROW_H2, C_KOR1, ROW_H3, C_KOR1, 'Корр. счёт',        hdrOpts({ rot: 90 }));
   mergeSet(ws, ROW_H2, C_HRS1, ROW_H3, C_HRS1, 'Часы',              hdrOpts());
   mergeSet(ws, ROW_H2, C_KOD2, ROW_H3, C_KOD2, 'Код вида\nоплаты', hdrOpts());
-  mergeSet(ws, ROW_H2, C_KOR2, ROW_H3, C_KOR2, 'Корр.\nсчёт',      hdrOpts());
+  mergeSet(ws, ROW_H2, C_KOR2, ROW_H3, C_KOR2, 'Корр. счёт',        hdrOpts({ rot: 90 }));
   mergeSet(ws, ROW_H2, C_HRS2, ROW_H3, C_HRS2, 'Часы',              hdrOpts());
   // Absence cols — 4 cells, all rowSpan=2
   mergeSet(ws, ROW_H2, C_AK1,  ROW_H3, C_AK1,  'Код',          hdrOpts());
@@ -303,8 +323,10 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
 
     // ── Fixed cols 1–3: rowSpan=4 ──
     mergeSet(ws, rowA, C1, rowD, C1, idx + 1,                 bodyOpts);
-    mergeSet(ws, rowA, C2, rowD, C2,
-      `${doc.doctorName || doc.misUserId}`, bodyLeft);
+    const docRole = resolveRole(doc);
+    const docDisplayName = abbreviateName(doc.doctorName || doc.misUserId)
+      + (docRole ? `\n${docRole}` : '');
+    mergeSet(ws, rowA, C2, rowD, C2, docDisplayName, bodyLeft);
     mergeSet(ws, rowA, C3, rowD, C3, idx + 1,                 bodyOpts);
 
     // ── Totals ──
@@ -381,12 +403,21 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
 
   R++; // spacer row
 
-  // Signature section spans 4 columns of content:
-  // col 1..sigW1, col sigW1+1..sigW2, col sigW2+1..sigW3, col sigW3+1..TOTAL_COLS
-  // Approximate the proportions: 36% / 22% / 14% / 28%
-  const sigW1 = Math.round(TOTAL_COLS * 0.36);
-  const sigW2 = Math.round(TOTAL_COLS * 0.58); // 36+22
-  const sigW3 = Math.round(TOTAL_COLS * 0.72); // 36+22+14
+  // Signature section: role | gap | должность | gap | подпись | gap | расшифровка
+  // Each gap = 1 empty column with no border, separating the underlined strips visually.
+  const sigW1  = Math.round(TOTAL_COLS * 0.35);  // role ends here
+  const sigG1  = sigW1 + 1;                        // gap col
+  const sigD1  = sigW1 + 2;                        // должность starts
+  const sigD2  = Math.round(TOTAL_COLS * 0.57);   // должность ends
+  const sigG2  = sigD2 + 1;                        // gap col
+  const sigS1  = sigD2 + 2;                        // подпись starts
+  const sigS2  = Math.round(TOTAL_COLS * 0.71);   // подпись ends
+  const sigG3  = sigS2 + 1;                        // gap col
+  const sigR1  = sigS2 + 2;                        // расшифровка starts
+
+  const noBorder = { border: false };
+  const underline = { font: fnt(9), align: { horizontal: 'center', vertical: 'bottom' }, border: { bottom: thin } };
+  const labelOpt  = { font: fnt(8, false, true), align: { horizontal: 'center', vertical: 'top' }, border: false };
 
   SIG_ROLES.forEach((role, ri) => {
     const rowSigVal = R;
@@ -395,35 +426,41 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     ws.getRow(rowSigVal).height = 20;
     ws.getRow(rowSigLbl).height = 11;
 
-    // Role title (bold, no border)
-    mergeSet(ws, rowSigVal, 1,        rowSigVal, sigW1,
-      role, { font: fnt(10, true), align: { horizontal: 'left', vertical: 'bottom' }, border: false });
-    mergeSet(ws, rowSigLbl, 1,        rowSigLbl, sigW1,
-      '',   { font: fnt(8), align: { horizontal: 'left', vertical: 'top' }, border: false });
+    // Role title
+    mergeSet(ws, rowSigVal, 1,     rowSigVal, sigW1, role,
+      { font: fnt(10, true), align: { horizontal: 'left', vertical: 'bottom' }, border: false });
+    mergeSet(ws, rowSigLbl, 1,     rowSigLbl, sigW1, '',
+      { font: fnt(8), align: { horizontal: 'left', vertical: 'top' }, border: false });
 
-    // "должность" underlined field
-    mergeSet(ws, rowSigVal, sigW1 + 1, rowSigVal, sigW2,
-      '', { font: fnt(9), align: { horizontal: 'center', vertical: 'bottom' },
-           border: { bottom: thin } });
-    mergeSet(ws, rowSigLbl, sigW1 + 1, rowSigLbl, sigW2,
-      '(должность)', { font: fnt(8, false, true), align: { horizontal: 'center', vertical: 'top' }, border: false });
+    // Gap 1
+    setCell(ws, rowSigVal, sigG1, null, noBorder);
+    setCell(ws, rowSigLbl, sigG1, null, noBorder);
 
-    // "подпись" underlined field
-    mergeSet(ws, rowSigVal, sigW2 + 1, rowSigVal, sigW3,
-      '', { font: fnt(9), align: { horizontal: 'center', vertical: 'bottom' },
-           border: { bottom: thin } });
-    mergeSet(ws, rowSigLbl, sigW2 + 1, rowSigLbl, sigW3,
-      '(подпись)', { font: fnt(8, false, true), align: { horizontal: 'center', vertical: 'top' }, border: false });
+    // "должность"
+    mergeSet(ws, rowSigVal, sigD1, rowSigVal, sigD2, '', underline);
+    mergeSet(ws, rowSigLbl, sigD1, rowSigLbl, sigD2, '(должность)', labelOpt);
 
-    // "расшифровка подписи" underlined field (first row has user name pre-filled by caller)
-    mergeSet(ws, rowSigVal, sigW3 + 1, rowSigVal, TOTAL_COLS,
-      ri === 0 ? (record.userName || '') : '',
-      { font: fnt(9), align: { horizontal: 'center', vertical: 'bottom' },
-        border: { bottom: thin } });
-    mergeSet(ws, rowSigLbl, sigW3 + 1, rowSigLbl, TOTAL_COLS,
-      '(расшифровка подписи)', { font: fnt(8, false, true), align: { horizontal: 'center', vertical: 'top' }, border: false });
+    // Gap 2
+    setCell(ws, rowSigVal, sigG2, null, noBorder);
+    setCell(ws, rowSigLbl, sigG2, null, noBorder);
+
+    // "подпись"
+    mergeSet(ws, rowSigVal, sigS1, rowSigVal, sigS2, '', underline);
+    mergeSet(ws, rowSigLbl, sigS1, rowSigLbl, sigS2, '(подпись)', labelOpt);
+
+    // Gap 3
+    setCell(ws, rowSigVal, sigG3, null, noBorder);
+    setCell(ws, rowSigLbl, sigG3, null, noBorder);
+
+    // "расшифровка подписи"
+    mergeSet(ws, rowSigVal, sigR1, rowSigVal, TOTAL_COLS, record.userName || '', underline);
+    mergeSet(ws, rowSigLbl, sigR1, rowSigLbl, TOTAL_COLS, '(расшифровка подписи)', labelOpt);
 
     R += 2;
+    if (ri < SIG_ROLES.length - 1) {
+      ws.getRow(R).height = 12; // visible gap between signature blocks
+      R++;
+    }
   });
 
   // Freeze panes: freeze first 3 columns and header rows

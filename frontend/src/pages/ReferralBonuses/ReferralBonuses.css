@@ -755,3 +755,14 @@
 .rb-schedule-entry-time { font-weight: 700; white-space: nowrap; color: #1e293b; }
 .rb-schedule-entry-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1e293b; font-weight: 400; }
 .rb-schedule-entry-clinic { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #1e293b; font-weight: 400; }
+.rb-schedule-entry-cancel-code { position: absolute; bottom: 2px; right: 3px; font-size: 9px; font-weight: 700; color: #dc2626; line-height: 1; }
+.rb-schedule-entry-work-code  { position: absolute; bottom: 2px; right: 3px; font-size: 9px; font-weight: 700; color: var(--rb-primary); line-height: 1; }
+
+/* ── Schedule month statistics bar ─────────────────────────────────────── */
+.rb-schedule-stats { display: flex; align-items: center; justify-content: space-around; gap: 0; padding: 10px 0; border-top: 1px solid var(--rb-border); background: var(--rb-bg-alt, #f8fafc); }
+.rb-schedule-stat { display: flex; flex-direction: column; align-items: center; flex: 1; padding: 0 8px; }
+.rb-schedule-stat-value { font-size: 22px; font-weight: 700; color: var(--rb-primary); line-height: 1.1; }
+.rb-schedule-stat-value.rb-schedule-stat-neutral { color: #64748b; }
+.rb-schedule-stat-value.rb-schedule-stat-absence { color: #dc2626; }
+.rb-schedule-stat-label { font-size: 11px; color: var(--rb-text-secondary); margin-top: 2px; white-space: nowrap; }
+.rb-schedule-stat-sep { width: 1px; height: 36px; background: var(--rb-border); flex-shrink: 0; }

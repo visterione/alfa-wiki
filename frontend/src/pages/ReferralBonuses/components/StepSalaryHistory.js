@@ -935,10 +935,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 : { misUserId: d.misUserId, doctorName: d.doctorName || d.misUserId, entries: d.entries || {}, payData: d.payData || {} }
               )
             : archiveDoctors.map(d => ({
-                misUserId:  d.id,
-                doctorName: d.name,
-                entries:    entries[d.id]  || {},
-                payData:    payData[d.id]  || {},
+                misUserId:   d.id,
+                doctorName:  d.name,
+                roles:       d.roles || [],
+                professions: d.professions || [],
+                entries:     entries[d.id]  || {},
+                payData:     payData[d.id]  || {},
               }));
           const res = await tabelApi.update(tabelOpenId, { doctors: doctorsPayload });
           setTabelDetail(res.data);
@@ -956,10 +958,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         const record = {
           ...doc,
           doctors: archiveDoctors.map(d => ({
-            misUserId:  d.id,
-            doctorName: d.name,
-            entries:    snapshot.entries[d.id] || {},
-            payData:    snapshot.payData[d.id] || {},
+            misUserId:   d.id,
+            doctorName:  d.name,
+            roles:       d.roles || [],
+            professions: d.professions || [],
+            entries:     snapshot.entries[d.id] || {},
+            payData:     snapshot.payData[d.id] || {},
           })),
         };
         const suffix = filterMisId ? (selectedDoctor?.name || filterMisId) : (doc.subdivision || 'таб');

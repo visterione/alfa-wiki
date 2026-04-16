@@ -6,6 +6,7 @@ import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, 
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
+import { calcScheduleHoursForPeriod } from './scheduleUtils';
 
 // ── Default executor clinic settings ──────────────────────────────────────────
 export function execClinicDefault() {
@@ -134,6 +135,7 @@ export async function buildReport({
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
   interim = false, normedOnly = false,
   corpIncludedKeys = null, // Set<string> of row indices; null = use legacy logic
+  scheduleEntries = null,  // Array of schedule entries from doctorSchedules.list API (optional)
 }) {
   const doctorName = doctor.name;
 
@@ -995,22 +997,37 @@ export async function buildReport({
     const pt = clinicSettings.payType || 'salary';
     let basePay = 0, basePayLabel = '';
     let normTotalHours = 0, normPremiumAmount = 0;
+    let effectiveHoursWorked = 0;
     if (pt === 'salary') {
       basePay = parseFloat(clinicSettings.fixedSalary) || 0;
       basePayLabel = 'Фиксированный оклад';
     } else if (pt === 'hourly') {
-      const rate  = parseFloat(clinicSettings.hourlyRate) || 0;
-      const hours = parseFloat(clinicSettings.hoursWorked) || 0;
-      basePay = rate * hours;
+      const rate = parseFloat(clinicSettings.hourlyRate) || 0;
+      if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
+        effectiveHoursWorked = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId);
+      } else {
+        effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
+      }
+      basePay = rate * effectiveHoursWorked;
       basePayLabel = 'Почасовой оклад';
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Выполненные услуги';
     } else if (pt === 'normed') {
-      const fixedSalary = parseFloat(clinicSettings.fixedSalary) || 0;
+      const fixedSalary  = parseFloat(clinicSettings.fixedSalary) || 0;
       const normServices = clinicSettings.normServices || [];
-      const normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
-      normTotalHours = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
+      let normServicesTotal;
+      if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
+        const schedHours = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId);
+        const manualTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
+        // Scale each normService's hours proportionally to schedHours
+        const ratio = manualTotal > 0 ? schedHours / manualTotal : 0;
+        normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0) * ratio, 0);
+        normTotalHours = schedHours;
+      } else {
+        normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
+        normTotalHours = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
+      }
       basePay = fixedSalary + normServicesTotal;
       basePayLabel = 'Нормированный оклад';
       // Если часов отработано х2 и больше от нормы — часть сверх этого считается Премией
@@ -1082,7 +1099,7 @@ export async function buildReport({
     const salary = {
       basePay, basePayLabel, payType: pt,
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
-      hoursWorked: pt === 'hourly' ? (parseFloat(clinicSettings.hoursWorked) || 0) : 0,
+      hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,

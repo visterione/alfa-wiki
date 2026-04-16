@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useImperativeHandle } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import { doctorSchedules as schedulesApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
@@ -739,6 +739,55 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const clinicColor = (cId) => getClinicColor ? getClinicColor(cId) : '#94a3b8';
   const clinicName  = (cId) => getClinicName  ? getClinicName(cId)  : cId;
 
+  // ── Month statistics ────────────────────────────────────────────────────────
+  const monthStats = useMemo(() => {
+    if (!selectedDoctor) return null;
+    const currentCells = getMonthGrid(year, month).flat().filter(c => c.isCurrentMonth);
+    const workedDaysSet = new Set();
+    let workedMinutes = 0;
+    let weekendCount  = 0;
+    const otherAbsences = {}; // code -> count
+
+    for (const cell of currentCells) {
+      const dateStr     = cellDate(cell);
+      const cellEntries = entries.filter(e => isDayScheduled(e, cell.year, cell.month, cell.day));
+
+      if (cellEntries.length === 0) {
+        weekendCount++;
+        continue;
+      }
+
+      let dayHasWork = false;
+      for (const e of cellEntries) {
+        const ex = (e.exceptions || []).find(ex2 =>
+          typeof ex2 === 'string' ? ex2 === dateStr : ex2.date === dateStr
+        );
+        if (!ex) {
+          dayHasWork = true;
+          const [fh, fm] = e.timeFrom.split(':').map(Number);
+          const [th, tm] = e.timeTo.split(':').map(Number);
+          const mins = (th * 60 + tm) - (fh * 60 + fm);
+          if (mins > 0) workedMinutes += mins;
+        } else {
+          const code = (typeof ex === 'object' ? ex.code : null) || 'ОТ';
+          if (code === 'В') weekendCount++;
+          else otherAbsences[code] = (otherAbsences[code] || 0) + 1;
+        }
+      }
+      if (dayHasWork) workedDaysSet.add(dateStr);
+    }
+
+    const totalOther = Object.values(otherAbsences).reduce((a, b) => a + b, 0);
+    return {
+      workedDays:  workedDaysSet.size,
+      workedHours: Math.floor(workedMinutes / 60),
+      workedMins:  workedMinutes % 60,
+      weekendCount,
+      otherAbsences,
+      totalOther,
+    };
+  }, [year, month, entries, selectedDoctor]);
+
   if (!selectedDoctor) {
     return <div className="rb-placeholder"><p>Выберите сотрудника из списка слева</p></div>;
   }
@@ -794,20 +843,25 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         <div className="rb-schedule-entries">
                           {cellEntries.map(e => {
                             const cancelled = isExcepted(e, cell);
+                            const entryCode = cancelled ? (getExceptionCode(e, cell) || 'ОТ') : 'Я';
                             return (
-                              <div
-                                key={e.id}
-                                className="rb-schedule-entry"
-                                style={{
-                                  background: clinicColor(e.clinicId) + '22',
-                                  borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
-                                  opacity: cancelled ? 0.4 : 1,
-                                }}
-                                title={cancelled ? 'Отменён' : `${e.timeFrom}–${e.timeTo} · ${clinicName(e.clinicId)}`}
-                              >
-                                <span className="rb-schedule-entry-time">{e.timeFrom} – {e.timeTo}</span>
-                                <span className="rb-schedule-entry-name">{abbreviateName(selectedDoctor.name)}</span>
-                                <span className="rb-schedule-entry-clinic">{clinicName(e.clinicId)}</span>
+                              <div key={e.id} style={{ position: 'relative' }}>
+                                <div
+                                  className="rb-schedule-entry"
+                                  style={{
+                                    background: clinicColor(e.clinicId) + '22',
+                                    borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
+                                    opacity: cancelled ? 0.4 : 1,
+                                  }}
+                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${clinicName(e.clinicId)}`}
+                                >
+                                  <span className="rb-schedule-entry-time">{e.timeFrom} – {e.timeTo}</span>
+                                  <span className="rb-schedule-entry-name">{abbreviateName(selectedDoctor.name)}</span>
+                                  <span className="rb-schedule-entry-clinic">{clinicName(e.clinicId)}</span>
+                                </div>
+                                <span className={cancelled ? 'rb-schedule-entry-cancel-code' : 'rb-schedule-entry-work-code'}>
+                                  {entryCode}
+                                </span>
                               </div>
                             );
                           })}
@@ -821,6 +875,36 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           </table>
         )}
       </div>
+
+      {/* ── Month statistics ── */}
+      {monthStats && (monthStats.workedDays > 0 || monthStats.weekendCount > 0 || monthStats.totalOther > 0) && (
+        <div className="rb-schedule-stats">
+          <div className="rb-schedule-stat">
+            <span className="rb-schedule-stat-value">{monthStats.workedDays}</span>
+            <span className="rb-schedule-stat-label">раб. дней</span>
+          </div>
+          <div className="rb-schedule-stat-sep" />
+          <div className="rb-schedule-stat">
+            <span className="rb-schedule-stat-value">
+              {monthStats.workedHours}
+              {monthStats.workedMins > 0 && (
+                <span style={{ fontSize: '0.78em', fontWeight: 500 }}>:{pad2(monthStats.workedMins)}</span>
+              )}
+            </span>
+            <span className="rb-schedule-stat-label">часов</span>
+          </div>
+          <div className="rb-schedule-stat-sep" />
+          <div className="rb-schedule-stat">
+            <span className="rb-schedule-stat-value rb-schedule-stat-neutral">{monthStats.weekendCount}</span>
+            <span className="rb-schedule-stat-label">выходных</span>
+          </div>
+          <div className="rb-schedule-stat-sep" />
+          <div className="rb-schedule-stat">
+            <span className="rb-schedule-stat-value rb-schedule-stat-absence">{monthStats.totalOther}</span>
+            <span className="rb-schedule-stat-label">неявок</span>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════ MODAL: day overview ══════════════ */}
       {modal?.type === 'day' && (

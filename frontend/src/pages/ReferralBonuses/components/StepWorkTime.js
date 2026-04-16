@@ -333,10 +333,12 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
     setSaving(true);
     try {
       const doctorsPayload = selectedDoctors.map(d => ({
-        misUserId:  d.id,
-        doctorName: d.name,
-        entries:    entries[d.id]  || {},
-        payData:    payData[d.id]  || {},
+        misUserId:   d.id,
+        doctorName:  d.name,
+        roles:       d.roles || [],
+        professions: d.professions || [],
+        entries:     entries[d.id]  || {},
+        payData:     payData[d.id]  || {},
       }));
       await tabelApi.create({
         month, year, orgName, subdivision, docNumber, userName,
@@ -356,10 +358,12 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
     const record = {
       month, year, orgName, subdivision, docNumber, userName,
       doctors: selectedDoctors.map(d => ({
-        misUserId:  d.id,
-        doctorName: d.name,
-        entries:    entries[d.id] || {},
-        payData:    payData[d.id] || {},
+        misUserId:   d.id,
+        doctorName:  d.name,
+        roles:       d.roles || [],
+        professions: d.professions || [],
+        entries:     entries[d.id] || {},
+        payData:     payData[d.id] || {},
       })),
     };
     try {
@@ -530,8 +534,8 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
                   <tr>
                     <td>{docNumber}</td>
                     <td>{docDate}</td>
-                    <td>с {periodFrom}</td>
-                    <td>по {periodTo}</td>
+                    <td>{periodFrom}</td>
+                    <td>{periodTo}</td>
                   </tr>
                 </tbody>
               </table>
