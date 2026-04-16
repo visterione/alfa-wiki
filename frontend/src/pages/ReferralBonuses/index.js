@@ -288,8 +288,10 @@ export default function ReferralBonusesPage() {
 
   // ── Select doctor ──
   const handleSelectDoctor = useCallback((misUserId) => {
-    const doctor = doctors.find(d => d.id === misUserId);
-    setSelectedDoctor(doctor || null);
+    setSelectedDoctor(prev => {
+      if (prev?.id === misUserId) return null; // toggle off
+      return doctors.find(d => d.id === misUserId) || null;
+    });
   }, [doctors]);
 
   // ── НДФЛ import ──

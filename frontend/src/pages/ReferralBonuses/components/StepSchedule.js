@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle } from 'react';
 import { doctorSchedules as schedulesApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
+import { STATUS_CODES } from './TabelTable';
 
 const MONTH_NAMES = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -510,6 +511,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(null);
   const [confirmDel,  setConfirmDel]  = useState(null); // entryId to confirm deletion
+  const [cancelModal, setCancelModal] = useState(null); // { entryId, cell } — reason picker
 
   // Tab slider for pattern selector inside the form modal
   const { wrapRef: patternWrapRef, sliderEl: patternSliderEl } = useTabSlider(form?.pattern?.type ?? 'daily');
@@ -560,7 +562,19 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     return entries.filter(e => isDayScheduled(e, cell.year, cell.month, cell.day));
   }, [entries, selectedDoctor]);
 
-  const isExcepted = (entry, cell) => (entry.exceptions || []).includes(cellDate(cell));
+  // Exceptions can be string (legacy) or { date, code } object
+  const getExceptionEntry = (entry, cell) => {
+    const dateStr = cellDate(cell);
+    return (entry.exceptions || []).find(ex =>
+      typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
+    );
+  };
+  const isExcepted = (entry, cell) => !!getExceptionEntry(entry, cell);
+  const getExceptionCode = (entry, cell) => {
+    const ex = getExceptionEntry(entry, cell);
+    if (!ex) return null;
+    return typeof ex === 'object' ? ex.code : 'ОТ';
+  };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const closeModal = () => { setModal(null); setForm(null); setConfirmDel(null); };
@@ -662,19 +676,46 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     }
   };
 
-  const handleToggleException = async (entryId, cell) => {
+  const handleToggleException = (entryId, cell) => {
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry) return;
+    if (isExcepted(entry, cell)) {
+      handleRestoreException(entryId, cell);
+    } else {
+      setCancelModal({ entryId, cell });
+    }
+  };
+
+  const handleRestoreException = async (entryId, cell) => {
     const dateStr = cellDate(cell);
     const entry = entries.find(e => e.id === entryId);
     if (!entry) return;
-    const exs = entry.exceptions || [];
-    const newExceptions = exs.includes(dateStr) ? exs.filter(d => d !== dateStr) : [...exs, dateStr];
-
+    const newExceptions = (entry.exceptions || []).filter(ex =>
+      typeof ex === 'string' ? ex !== dateStr : ex.date !== dateStr
+    );
     try {
       await schedulesApi.update(entryId, { exceptions: newExceptions });
       setEntries(prev => prev.map(e => e.id === entryId ? { ...e, exceptions: newExceptions } : e));
     } catch (err) {
-      console.error('Toggle exception error:', err);
+      console.error('Restore exception error:', err);
     }
+  };
+
+  const handleConfirmCancel = async (code) => {
+    if (!cancelModal) return;
+    const { entryId, cell } = cancelModal;
+    const dateStr = cellDate(cell);
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry) return;
+    const newException = { date: dateStr, code };
+    const newExceptions = [...(entry.exceptions || []), newException];
+    try {
+      await schedulesApi.update(entryId, { exceptions: newExceptions });
+      setEntries(prev => prev.map(e => e.id === entryId ? { ...e, exceptions: newExceptions } : e));
+    } catch (err) {
+      console.error('Cancel exception error:', err);
+    }
+    setCancelModal(null);
   };
 
   const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
@@ -814,7 +855,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                           {e.timeFrom} – {e.timeTo}
                           {cancelled && (
                             <span style={{ marginLeft: 8, fontSize: 11, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 6px', fontWeight: 500 }}>
-                              Отменён
+                              Отменён · {getExceptionCode(e, modal.cell) || 'ОТ'}
                             </span>
                           )}
                         </div>
@@ -1037,6 +1078,40 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ MODAL: cancel reason picker ══════════════ */}
+      {cancelModal && (
+        <div className="rb-modal-overlay" onClick={() => setCancelModal(null)}>
+          <div className="rb-modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Причина отмены</h3>
+              <button className="rb-modal-close" onClick={() => setCancelModal(null)}>×</button>
+            </div>
+            <div className="rb-modal-body" style={{ padding: '8px 16px 16px' }}>
+              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 12 }}>
+                Укажите код, который будет зафиксирован в табеле вместо рабочего дня:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
+                {STATUS_CODES.filter(s => s.code && s.code !== 'В' && s.code !== 'Я').map(s => (
+                  <button
+                    key={s.code}
+                    onClick={() => handleConfirmCancel(s.code)}
+                    style={{
+                      textAlign: 'left', padding: '7px 12px', border: '1px solid var(--rb-border)',
+                      borderRadius: 7, background: 'var(--rb-bg)', cursor: 'pointer',
+                      fontSize: 13, color: 'var(--rb-text)', fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'var(--rb-hover)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'var(--rb-bg)'; }}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -2437,6 +2437,7 @@ const TabelRecord = sequelize.define('TabelRecord', {
   orgName:     { type: DataTypes.STRING(255), field: 'org_name' },
   subdivision: { type: DataTypes.STRING(255) },
   docNumber:   { type: DataTypes.STRING(50),  field: 'doc_number' },
+  userName:    { type: DataTypes.STRING(255), field: 'user_name' },
   createdBy:   { type: DataTypes.UUID, field: 'created_by' },
 }, {
   tableName: 'tabel_records',

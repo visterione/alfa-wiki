@@ -61,7 +61,7 @@ router.get('/:id', authenticate, async (req, res) => {
 // body: { month, year, orgName, subdivision, docNumber, doctors: [{misUserId, doctorName, entries, payData}] }
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { month, year, orgName, subdivision, docNumber, doctors = [] } = req.body;
+    const { month, year, orgName, subdivision, docNumber, userName, doctors = [] } = req.body;
     if (!month || !year) return res.status(400).json({ error: 'month and year required' });
 
     const record = await TabelRecord.create({
@@ -70,6 +70,7 @@ router.post('/', authenticate, async (req, res) => {
       orgName:     orgName     || null,
       subdivision: subdivision || null,
       docNumber:   docNumber   || null,
+      userName:    userName    || null,
       createdBy:   req.user?.id || null,
     });
 

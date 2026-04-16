@@ -215,19 +215,25 @@ function computePreset(doctors, schedulesMap, year, month) {
       if (!covering) {
         // No schedule → выходной (not recorded in Неявки)
         entries[doc.id][day] = { code: 'В', hours: '' };
-      } else if ((covering.exceptions || []).includes(dateStr)) {
-        // Cancelled → отпуск; count days + hours for Неявки
-        entries[doc.id][day] = { code: 'ОТ', hours: '' };
-        const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
-        if (!absenceTotals['ОТ']) absenceTotals['ОТ'] = { days: 0, hours: 0 };
-        absenceTotals['ОТ'].days  += 1;
-        absenceTotals['ОТ'].hours += h;
       } else {
-        // Normal working day
-        entries[doc.id][day] = {
-          code:  'Я',
-          hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
-        };
+        const excEntry = (covering.exceptions || []).find(ex =>
+          typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
+        );
+        if (excEntry !== undefined) {
+          // Cancelled → use the specified code (legacy string exceptions default to ОТ)
+          const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
+          entries[doc.id][day] = { code, hours: '' };
+          const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
+          if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
+          absenceTotals[code].days  += 1;
+          absenceTotals[code].hours += h;
+        } else {
+          // Normal working day
+          entries[doc.id][day] = {
+            code:  'Я',
+            hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
+          };
+        }
       }
     }
 
@@ -333,7 +339,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
         payData:    payData[d.id]  || {},
       }));
       await tabelApi.create({
-        month, year, orgName, subdivision, docNumber,
+        month, year, orgName, subdivision, docNumber, userName,
         doctors: doctorsPayload,
       });
       toast.success('Табель сохранён в архив');

@@ -278,11 +278,18 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
 
           {selectedDoctors.map((doc, idx) => {
             const t    = calcTotals(doc.id);
+            const resolveStr = p => typeof p === 'object' ? (p.title || p.name || '') : String(p || '');
             const role = (Array.isArray(doc.roles) && doc.roles.length > 0)
-              ? doc.roles.join(', ')
+              ? doc.roles.map(resolveStr).filter(Boolean).join(', ')
               : (Array.isArray(doc.professions) && doc.professions.length > 0)
-                ? doc.professions.join(', ')
+                ? doc.professions.map(resolveStr).filter(Boolean).join(', ')
                 : '';
+            const displayName = (() => {
+              const parts = (doc.name || '').trim().split(/\s+/);
+              if (parts.length < 2) return doc.name || '';
+              const [last, ...rest] = parts;
+              return last + ' ' + rest.map(p => p[0] ? p[0].toUpperCase() + '.' : '').join(' ');
+            })();
 
             return (
               <React.Fragment key={doc.id}>
@@ -291,7 +298,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                 <tr className="tt-row-a">
                   <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>
                   <td className="tt-td tt-name" rowSpan={4}>
-                    <div style={{ lineHeight: 1.3 }}>{doc.name}</div>
+                    <div style={{ lineHeight: 1.3 }}>{displayName}</div>
                     {role && <div style={{ fontSize: 10, color: '#555', marginTop: 2, lineHeight: 1.2 }}>{role}</div>}
                   </td>
                   <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>

@@ -612,14 +612,18 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [kassaEditSaving, setKassaEditSaving] = useState(false);
 
   // Tabel archive
-  const [tabelList,     setTabelList]     = useState([]);
-  const [tabelLoading,  setTabelLoading]  = useState(false);
-  const [tabelOpenId,   setTabelOpenId]   = useState(null);
-  const [tabelDetail,   setTabelDetail]   = useState(null);
-  const [tabelDetLoading, setTabelDetLoading] = useState(false);
-  const [tabelSearch,   setTabelSearch]   = useState('');
-  const [tabelEditKey,  setTabelEditKey]  = useState(0);
-  const [tabelSaving,   setTabelSaving]   = useState(false);
+  const [tabelList,        setTabelList]        = useState([]);
+  const [tabelLoading,     setTabelLoading]     = useState(false);
+  const [tabelOpenId,      setTabelOpenId]      = useState(null);
+  const [tabelDetail,      setTabelDetail]      = useState(null);
+  const [tabelDetLoading,  setTabelDetLoading]  = useState(false);
+  const [tabelSearch,      setTabelSearch]      = useState('');
+  const [tabelEditKey,     setTabelEditKey]      = useState(0);
+  const [tabelSaving,      setTabelSaving]      = useState(false);
+  const [tabelPage,        setTabelPage]        = useState(1);
+  const [tabelFilterMonth, setTabelFilterMonth] = useState('');
+  const [tabelFilterYear,  setTabelFilterYear]  = useState('');
+  const [tabelFilterSub,   setTabelFilterSub]   = useState('');
   const tabelEditRef = useRef(null);
 
   const isCompareMode = pinnedForCompare.length === 2;
@@ -881,23 +885,32 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   // ── Табели view ───────────────────────────────────────────────────────────
   if (viewMode === 'tabel') {
     const MONTH_NAMES_T = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+    const filterMisId = selectedDoctor ? (selectedDoctor.misUserId || selectedDoctor.id) : null;
 
     // ── Full document edit view (when a batch is open) ──────────────────────
     if (tabelOpenId) {
       const doc = tabelDetail;
       const isLoading = tabelDetLoading || !doc;
 
-      const archiveDoctors = doc ? (doc.doctors || []).map(d => ({
-        id: d.misUserId,
-        name: d.doctorName || d.misUserId,
-        roles: [],
-        professions: [],
-      })) : [];
+      // If a doctor is selected in the panel, show only their row
+      const visibleDocRows = doc
+        ? (doc.doctors || []).filter(d => !filterMisId || d.misUserId === filterMisId)
+        : [];
+
+      const archiveDoctors = visibleDocRows.map(d => {
+        const matched = doctors.find(dr => (dr.misUserId || dr.id) === d.misUserId);
+        return {
+          id: d.misUserId,
+          name: d.doctorName || d.misUserId,
+          roles: matched?.roles || [],
+          professions: matched?.professions || [],
+        };
+      });
 
       const archiveEntries = {};
       const archivePayData = {};
       if (doc) {
-        (doc.doctors || []).forEach(d => {
+        visibleDocRows.forEach(d => {
           archiveEntries[d.misUserId] = d.entries || {};
           archivePayData[d.misUserId] = d.payData || {};
         });
@@ -915,12 +928,18 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         const { entries, payData } = tabelEditRef.current.getSnapshot();
         setTabelSaving(true);
         try {
-          const doctorsPayload = archiveDoctors.map(d => ({
-            misUserId:  d.id,
-            doctorName: d.name,
-            entries:    entries[d.id]  || {},
-            payData:    payData[d.id]  || {},
-          }));
+          // In filtered mode: merge edited rows back into the full doctor list
+          const doctorsPayload = filterMisId
+            ? (doc.doctors || []).map(d => d.misUserId === filterMisId
+                ? { misUserId: d.misUserId, doctorName: d.doctorName || d.misUserId, entries: entries[d.misUserId] || {}, payData: payData[d.misUserId] || {} }
+                : { misUserId: d.misUserId, doctorName: d.doctorName || d.misUserId, entries: d.entries || {}, payData: d.payData || {} }
+              )
+            : archiveDoctors.map(d => ({
+                misUserId:  d.id,
+                doctorName: d.name,
+                entries:    entries[d.id]  || {},
+                payData:    payData[d.id]  || {},
+              }));
           const res = await tabelApi.update(tabelOpenId, { doctors: doctorsPayload });
           setTabelDetail(res.data);
           toast.success('Табель обновлён');
@@ -943,8 +962,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             payData:    snapshot.payData[d.id] || {},
           })),
         };
+        const suffix = filterMisId ? (selectedDoctor?.name || filterMisId) : (doc.subdivision || 'таб');
         try {
-          await downloadTabelExcel(record, null, `Табель_${doc.year}_${pad2(doc.month)}_${doc.subdivision || 'таб'}.xlsx`);
+          await downloadTabelExcel(record, filterMisId ? [filterMisId] : null, `Табель_${doc.year}_${pad2(doc.month)}_${suffix}.xlsx`);
         } catch {
           toast.error('Ошибка при генерации Excel');
         }
@@ -959,12 +979,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
           }}>
             <button
               onClick={closeTabelBatch}
-              className="rb-btn rb-btn-secondary"
-              style={{ height: 32, width: 96, justifyContent: 'center' }}>
-              Назад
+              style={{ height: 34, width: 34, flexShrink: 0, border: 'none', borderRadius: 7, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+              title="Назад">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {doc ? `${MONTH_NAMES_T[(doc.month || 1) - 1]} ${doc.year} — ${doc.subdivision || doc.orgName || ''}` : 'Загрузка...'}
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {doc ? `${doc.docNumber ? `№ ${doc.docNumber} : ` : ''}${doc.subdivision || doc.orgName || ''} за ${MONTH_NAMES_T[(doc.month || 1) - 1].toLowerCase()} ${doc.year} г.` : 'Загрузка...'}
             </span>
             {!readOnly && (
               <button className="rb-btn rb-btn-primary" onClick={handleSaveArchive}
@@ -1066,7 +1086,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 />
 
                 <div style={{ marginTop: 36 }}>
-                  <SigBlock name="" />
+                  <SigBlock name={doc.userName || ''} />
                 </div>
 
               </div>
@@ -1077,28 +1097,63 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     }
 
     // ── Batch list view ──────────────────────────────────────────────────────
-    const tabelFiltered = tabelList.filter(r =>
-      !tabelSearch ||
-      (r.subdivision || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
-      (r.orgName     || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
-      (r.doctors     || []).some(d => (d.doctorName || '').toLowerCase().includes(tabelSearch.toLowerCase()))
-    );
+    const TABEL_PAGE_SIZE = 20;
+
+    // Unique years and subdivisions for filter dropdowns
+    const tabelYears = [...new Set(tabelList.map(r => r.year).filter(Boolean))].sort((a, b) => b - a);
+    const tabelSubs  = [...new Set(tabelList.map(r => r.subdivision || r.orgName || '').filter(Boolean))].sort();
+
+    const tabelFiltered = tabelList.filter(r => {
+      if (filterMisId && !(r.doctors || []).some(d => d.misUserId === filterMisId)) return false;
+      if (tabelFilterYear  && String(r.year)  !== tabelFilterYear)  return false;
+      if (tabelFilterMonth && String(r.month) !== tabelFilterMonth) return false;
+      if (tabelFilterSub   && (r.subdivision || r.orgName || '') !== tabelFilterSub) return false;
+      return !tabelSearch ||
+        (r.subdivision || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
+        (r.orgName     || '').toLowerCase().includes(tabelSearch.toLowerCase()) ||
+        (r.doctors     || []).some(d => (d.doctorName || '').toLowerCase().includes(tabelSearch.toLowerCase()));
+    });
+
+    const tabelTotalPages = Math.max(1, Math.ceil(tabelFiltered.length / TABEL_PAGE_SIZE));
+    const tabelPageSafe   = Math.min(tabelPage, tabelTotalPages);
+    const tabelPageData   = tabelFiltered.slice((tabelPageSafe - 1) * TABEL_PAGE_SIZE, tabelPageSafe * TABEL_PAGE_SIZE);
+
+    const resetTabelPage = () => setTabelPage(1);
+
+    const selectStyle = {
+      height: 34, padding: '0 8px', borderRadius: 7, border: '1px solid var(--rb-border-dark)',
+      fontSize: 12, background: '#fff', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none',
+    };
 
     return (
       <>
         {viewToggle}
 
-        <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa' }}>
+        <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* Month */}
+          <select value={tabelFilterMonth} onChange={e => { setTabelFilterMonth(e.target.value); resetTabelPage(); }} style={selectStyle}>
+            <option value="">Все месяцы</option>
+            {MONTH_NAMES_T.map((name, i) => (
+              <option key={i + 1} value={String(i + 1)}>{name}</option>
+            ))}
+          </select>
+          {/* Year */}
+          <select value={tabelFilterYear} onChange={e => { setTabelFilterYear(e.target.value); resetTabelPage(); }} style={selectStyle}>
+            <option value="">Все годы</option>
+            {tabelYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
+          </select>
+          {/* Subdivision */}
+          <select value={tabelFilterSub} onChange={e => { setTabelFilterSub(e.target.value); resetTabelPage(); }} style={{ ...selectStyle, flex: 1, minWidth: 120 }}>
+            <option value="">Все подразделения</option>
+            {tabelSubs.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          {/* Text search */}
           <input
             type="text"
-            placeholder="Поиск по подразделению, организации или ФИО врача..."
+            placeholder="Поиск по ФИО врача..."
             value={tabelSearch}
-            onChange={e => setTabelSearch(e.target.value)}
-            style={{
-              width: '100%', height: 34, padding: '0 12px', borderRadius: 8,
-              border: '1px solid var(--rb-border-dark)', fontSize: 13,
-              background: '#fff', color: 'var(--rb-text)', boxSizing: 'border-box', outline: 'none',
-            }}
+            onChange={e => { setTabelSearch(e.target.value); resetTabelPage(); }}
+            style={{ ...selectStyle, flex: '2 1 160px', padding: '0 10px' }}
           />
         </div>
 
@@ -1107,44 +1162,64 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--rb-text-secondary)' }}>Загрузка...</div>
           ) : tabelFiltered.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 40, color: 'var(--rb-text-secondary)', fontSize: 14 }}>
-              {tabelSearch ? 'Ничего не найдено' : 'Архив табелей пуст'}
+              {filterMisId && !tabelSearch
+                ? `Табели для «${selectedDoctor?.name || filterMisId}» не найдены`
+                : tabelSearch ? 'Ничего не найдено' : 'Архив табелей пуст'}
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {tabelFiltered.map(rec => {
+              {tabelPageData.map(rec => {
                 const btnStyle = { fontSize: 11, fontWeight: 600, width: 76, height: 26, padding: 0, border: 'none', borderRadius: 5, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', flexShrink: 0 };
+                const title = [rec.docNumber ? `№ ${rec.docNumber}` : null, rec.subdivision || rec.orgName || null].filter(Boolean).join(' : ');
                 return (
                   <div key={rec.id} style={{ background: '#fff', borderRadius: 10, border: '1px solid var(--rb-border)', overflow: 'hidden' }}>
-                    <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--rb-text)', minWidth: 120 }}>
-                        {MONTH_NAMES_T[(rec.month || 1) - 1]} {rec.year}
-                      </span>
-                      {rec.docNumber && (
-                        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-                          № {rec.docNumber}
-                        </span>
-                      )}
-                      <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {rec.subdivision || rec.orgName || ''}
-                      </span>
-                      <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-                        {new Date(rec.createdAt).toLocaleDateString('ru-RU')}
-                      </span>
-                      <button onClick={() => handleTabelExcel({ ...rec, doctors: rec.doctors || [] }, null)} style={btnStyle}>
-                        Скачать
-                      </button>
-                      {!readOnly && (
-                        <button onClick={e => handleDeleteTabel(rec.id, e)} style={btnStyle}>
-                          Удалить
+                    <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {title || '—'}
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
+                          за {MONTH_NAMES_T[(rec.month || 1) - 1].toLowerCase()} {rec.year}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => handleTabelExcel({ ...rec, doctors: rec.doctors || [] }, filterMisId ? (rec.doctors || []).find(d => d.misUserId === filterMisId) || null : null)} style={btnStyle}>
+                          Скачать
                         </button>
-                      )}
-                      <button onClick={() => openTabelBatch(rec.id)} style={btnStyle}>
-                        Открыть
-                      </button>
+                        {!readOnly && (
+                          <button onClick={e => handleDeleteTabel(rec.id, e)} style={btnStyle}>
+                            Удалить
+                          </button>
+                        )}
+                        <button onClick={() => openTabelBatch(rec.id)} style={btnStyle}>
+                          Открыть
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {tabelFiltered.length > TABEL_PAGE_SIZE && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '12px 0 4px' }}>
+              <button
+                onClick={() => setTabelPage(p => Math.max(1, p - 1))}
+                disabled={tabelPageSafe === 1}
+                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', cursor: tabelPageSafe === 1 ? 'default' : 'pointer', opacity: tabelPageSafe === 1 ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', minWidth: 80, textAlign: 'center' }}>
+                {tabelPageSafe} / {tabelTotalPages}
+              </span>
+              <button
+                onClick={() => setTabelPage(p => Math.min(tabelTotalPages, p + 1))}
+                disabled={tabelPageSafe === tabelTotalPages}
+                style={{ height: 28, width: 28, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', cursor: tabelPageSafe === tabelTotalPages ? 'default' : 'pointer', opacity: tabelPageSafe === tabelTotalPages ? 0.4 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
             </div>
           )}
         </div>
