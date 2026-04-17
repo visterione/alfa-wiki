@@ -2468,6 +2468,17 @@ const TabelRecordDoctor = sequelize.define('TabelRecordDoctor', {
 TabelRecord.hasMany(TabelRecordDoctor, { foreignKey: 'tabelRecordId', as: 'doctors' });
 TabelRecordDoctor.belongsTo(TabelRecord, { foreignKey: 'tabelRecordId', as: 'tabelRecord' });
 
+// === STRUCTURAL DIVISIONS ===
+const StructuralDivision = sequelize.define('StructuralDivision', {
+  id:        { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:      { type: DataTypes.STRING(255), allowNull: false },
+  doctorIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], field: 'doctor_ids' },
+}, {
+  tableName: 'structural_divisions',
+  timestamps: true,
+  underscored: true,
+});
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2551,4 +2562,6 @@ module.exports = {
   // Tabel records
   TabelRecord,
   TabelRecordDoctor,
+  // Structural divisions
+  StructuralDivision,
 };

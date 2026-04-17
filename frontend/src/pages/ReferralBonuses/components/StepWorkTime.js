@@ -1,14 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../context/AuthContext';
-import { doctorSchedules as schedulesApi, tabelRecords as tabelApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi } from '../../../services/api';
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
+import MonthYearPicker from './MonthYearPicker';
 
-const MONTH_NAMES = [
-  'Январь','Февраль','Март','Апрель','Май','Июнь',
-  'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
-];
 const ORGS = [
   'Общество с ограниченной ответственностью «Альфа Престиж»',
   'Общество с ограниченной ответственностью «Альфа Проф»',
@@ -258,6 +255,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
   const { user } = useAuth();
   const now = new Date();
 
+  const [divisions,     setDivisions]     = useState([]);
   const [subdivision,   setSubdivision]   = useState('');
   const [selectedIds,   setSelectedIds]   = useState(new Set());
   const [year,          setYear]          = useState(now.getFullYear());
@@ -272,8 +270,19 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
   const [saving,    setSaving]    = useState(false);
   const tabelRef = useRef(null);
 
-  const years = [];
-  for (let y = now.getFullYear() + 1; y >= 2024; y--) years.push(y);
+  useEffect(() => {
+    divisionsApi.list()
+      .then(res => setDivisions(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
+  }, []);
+
+  const applyDivision = useCallback((div) => {
+    const validIds = new Set(
+      (div.doctorIds || []).filter(id => doctors.some(d => d.id === id))
+    );
+    setSelectedIds(validIds);
+    setSubdivision(div.name);
+  }, [doctors]);
 
   const lastDay    = new Date(year, month, 0).getDate();
   const periodFrom = `01.${pad2(month)}.${year}`;
@@ -392,34 +401,33 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
           </select>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Структурное подразделение</label>
-          <input type="text" value={subdivision} onChange={e => setSubdivision(e.target.value)}
-            placeholder="Например: Регистратура" disabled={readOnly}
-            style={{
-              height: 34, padding: '0 12px', borderRadius: 8,
-              border: '1px solid var(--rb-border-dark)', fontSize: 13,
-              background: '#fff', color: 'var(--rb-text)', minWidth: 220,
-            }} />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Сотрудники</label>
-          <EmpSelect doctors={doctors} selectedIds={selectedIds} onChange={setSelectedIds} clinics={clinics} getClinicName={getClinicName} />
-        </div>
+        {divisions.length > 0 && !readOnly && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Структурное подразделение</label>
+            <select
+              className="rb-select"
+              style={{ height: 34, padding: '0 10px', minWidth: 200 }}
+              value=""
+              onChange={e => {
+                const div = divisions.find(d => d.id === e.target.value);
+                if (div) applyDivision(div);
+              }}
+            >
+              <option value="">Выбрать...</option>
+              {divisions.map(d => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Период</label>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <select className="rb-select" value={month} onChange={e => setMonth(parseInt(e.target.value))}
-              disabled={readOnly} style={{ height: 34, padding: '0 10px', width: 130 }}>
-              {MONTH_NAMES.map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
-            </select>
-            <select className="rb-select" value={year} onChange={e => setYear(parseInt(e.target.value))}
-              disabled={readOnly} style={{ height: 34, padding: '0 10px', width: 80 }}>
-              {years.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
+          <MonthYearPicker
+            year={year} month={month}
+            onChange={(y, m) => { setYear(y); setMonth(m); }}
+            disabled={readOnly}
+          />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

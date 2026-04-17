@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import { doctorSchedules as schedulesApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
@@ -156,9 +157,9 @@ function CalendarPopover({ dateFrom, dateTo, focusField, onSelect }) {
   return (
     <div style={{ position: 'fixed', zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, boxShadow: '0 8px 28px rgba(0,0,0,.14)', padding: '12px 10px', width: 252, top: 'var(--cal-top)', left: 'var(--cal-left)' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <button onClick={prevM} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>‹</button>
+        <button onClick={prevM} style={{ background: 'var(--rb-primary)', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: '#fff', lineHeight: 1 }}>‹</button>
         <span style={{ fontWeight: 600, fontSize: 13 }}>{MONTHS_RU[viewMonth]} {viewYear}</span>
-        <button onClick={nextM} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>›</button>
+        <button onClick={nextM} style={{ background: 'var(--rb-primary)', border: 'none', cursor: 'pointer', padding: '3px 8px', borderRadius: 5, fontSize: 16, color: '#fff', lineHeight: 1 }}>›</button>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 4 }}>
         {DAYS_RU.map(d => <div key={d} style={{ textAlign: 'center', fontSize: 10, fontWeight: 600, color: 'var(--rb-text-secondary)', padding: '2px 0' }}>{d}</div>)}
@@ -416,26 +417,78 @@ const ClockPicker = React.forwardRef(function ClockPicker({ value, onChange, onC
 // ── Clinic select dropdown ────────────────────────────────────────────────────
 function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName }) {
   const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef(null);
   const wrapRef = useRef(null);
+
+  const updatePos = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  }, []);
+
+  const handleOpen = useCallback(() => {
+    updatePos();
+    setOpen(v => !v);
+  }, [updatePos]);
 
   useEffect(() => {
     if (!open) return;
-    const close = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const close = e => {
+      if (
+        btnRef.current && btnRef.current.contains(e.target)
+      ) return;
+      if (
+        wrapRef.current && wrapRef.current.contains(e.target)
+      ) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    window.addEventListener('scroll', () => setOpen(false), true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', () => setOpen(false), true);
+    };
   }, [open]);
 
   const selected = clinics.find(c => String(c.id) === value);
   const color    = selected ? getClinicColor(String(selected.id)) : '#94a3b8';
 
+  const dropdown = open && ReactDOM.createPortal(
+    <div ref={wrapRef} style={{
+      position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width,
+      zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
+      borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
+    }}>
+      {clinics.length === 0
+        ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Нет медцентров</div>
+        : clinics.map(c => {
+            const cid = String(c.id), col = getClinicColor(cid), sel = cid === value;
+            return (
+              <button key={cid} type="button" onClick={() => { onChange(cid); setOpen(false); }} style={{
+                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
+                border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+                fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+              }}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', background: col, flexShrink: 0, boxShadow: `0 0 0 2px ${col}44` }} />
+                <span style={{ flex: 1 }}>{getClinicName(cid)}</span>
+                {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
+              </button>
+            );
+          })
+      }
+    </div>,
+    document.body
+  );
+
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <button type="button" onClick={() => setOpen(v => !v)} style={{
+    <div style={{ position: 'relative' }}>
+      <button ref={btnRef} type="button" onClick={handleOpen} style={{
         display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 10px 0 12px',
         borderRadius: 8, border: open ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border)',
         background: open ? '#f0f7ff' : 'var(--rb-bg)', cursor: 'pointer', fontSize: 13,
         color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)', minWidth: 200,
-        boxShadow: open ? '0 0 0 3px rgba(0,122,255,.12)' : 'none', transition: 'all .15s',
+        boxShadow: open ? '0 0 0 3px rgba(0,122,255,.12)' : 'none', transition: 'all .15s', fontFamily: 'inherit',
       }}>
         {selected && <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />}
         <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -446,28 +499,7 @@ function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName 
           <polyline points="6 9 12 15 18 9"/>
         </svg>
       </button>
-
-      {open && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', marginTop: 4, overflow: 'hidden' }}>
-          {clinics.length === 0
-            ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Нет медцентров</div>
-            : clinics.map(c => {
-                const cid = String(c.id), col = getClinicColor(cid), sel = cid === value;
-                return (
-                  <button key={cid} type="button" onClick={() => { onChange(cid); setOpen(false); }} style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
-                    border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
-                    fontSize: 13, color: 'var(--rb-text)', textAlign: 'left',
-                  }}>
-                    <span style={{ width: 12, height: 12, borderRadius: '50%', background: col, flexShrink: 0, boxShadow: `0 0 0 2px ${col}44` }} />
-                    <span style={{ flex: 1 }}>{getClinicName(cid)}</span>
-                    {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
-                  </button>
-                );
-              })
-          }
-        </div>
-      )}
+      {dropdown}
     </div>
   );
 }
@@ -501,6 +533,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
+  const [quickNav,          setQuickNav]          = useState(false);
+  const [quickNavStep,      setQuickNavStep]      = useState('year'); // 'year' | 'month'
+  const [quickNavYear,      setQuickNavYear]      = useState(now.getFullYear());
+  const [quickNavYearStart, setQuickNavYearStart] = useState(Math.floor(now.getFullYear() / 10) * 10);
+  const quickNavRef = useRef(null);
 
   // entries for currently selected doctor (loaded from API)
   const [entries,     setEntries]     = useState([]);
@@ -721,6 +758,23 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const prevMonth = () => { if (month === 1) { setYear(y => y - 1); setMonth(12); } else setMonth(m => m - 1); };
   const nextMonth = () => { if (month === 12) { setYear(y => y + 1); setMonth(1); } else setMonth(m => m + 1); };
 
+  const openQuickNav = () => {
+    setQuickNavStep('year');
+    setQuickNavYearStart(Math.floor(year / 10) * 10);
+    setQuickNav(true);
+  };
+  const pickYear  = (y) => { setQuickNavYear(y); setQuickNavStep('month'); };
+  const pickMonth = (m) => { setYear(quickNavYear); setMonth(m); setQuickNav(false); };
+
+  useEffect(() => {
+    if (!quickNav) return;
+    const handler = (e) => {
+      if (quickNavRef.current && !quickNavRef.current.contains(e.target)) setQuickNav(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [quickNav]);
+
   const updateForm = (key, val) => setForm(f => ({ ...f, [key]: val }));
   const updatePat  = (key, val) => setForm(f => ({ ...f, pattern: { ...f.pattern, [key]: val } }));
   const toggleWday = (i) => {
@@ -799,10 +853,78 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     <div className="rb-panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
       {/* ── Header ── */}
-      <div className="rb-panel-header">
-        <button onClick={prevMonth} style={{ background: 'none', border: '1px solid var(--rb-border)', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text)' }}>‹</button>
-        <span style={{ fontWeight: 700, fontSize: 15, flex: 1, textAlign: 'center' }}>{MONTH_NAMES[month - 1]} {year}</span>
-        <button onClick={nextMonth} style={{ background: 'none', border: '1px solid var(--rb-border)', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text)' }}>›</button>
+      <div className="rb-panel-header" style={{ position: 'relative' }}>
+        <button onClick={prevMonth} style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>‹</button>
+        <span
+          onClick={openQuickNav}
+          style={{ fontWeight: 700, fontSize: 15, flex: 1, textAlign: 'center', cursor: 'pointer', userSelect: 'none', padding: '4px 8px', borderRadius: 6, transition: 'background 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,122,255,0.08)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          title="Быстрый переход к месяцу"
+        >
+          {MONTH_NAMES[month - 1]} {year}
+        </span>
+        <button onClick={nextMonth} style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>›</button>
+
+        {/* ── Quick Nav Popup ── */}
+        {quickNav && (
+          <div ref={quickNavRef} style={{
+            position: 'absolute', top: '110%', left: '50%', transform: 'translateX(-50%)',
+            background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.14)', zIndex: 200, padding: '14px 16px', minWidth: 232,
+          }}>
+            {quickNavStep === 'year' ? (
+              <>
+                {/* Year range header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <button onClick={() => setQuickNavYearStart(s => s - 10)}
+                    style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', fontSize: 14, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                  <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                    {quickNavYearStart} – {quickNavYearStart + 9}
+                  </span>
+                  <button onClick={() => setQuickNavYearStart(s => s + 10)}
+                    style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', fontSize: 14, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                </div>
+                {/* Year grid 4×3 */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
+                  {Array.from({ length: 10 }, (_, i) => quickNavYearStart + i).map(y => {
+                    const isActive = y === year;
+                    return (
+                      <button key={y} onClick={() => pickYear(y)}
+                        style={{ padding: '6px 2px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: isActive ? 700 : 400, background: isActive ? 'var(--rb-primary)' : 'transparent', color: isActive ? '#fff' : 'var(--rb-text)', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(0,122,255,0.1)'; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                      >{y}</button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Month step header with back + selected year */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <button onClick={() => setQuickNavStep('year')}
+                    style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 26, height: 26, cursor: 'pointer', fontSize: 14, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                  <span style={{ fontWeight: 700, fontSize: 15 }}>{quickNavYear}</span>
+                  <div style={{ width: 26 }} />
+                </div>
+                {/* Month grid 4×3 */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
+                  {MONTH_NAMES.map((name, i) => {
+                    const isActive = quickNavYear === year && (i + 1) === month;
+                    return (
+                      <button key={i} onClick={() => pickMonth(i + 1)}
+                        style={{ padding: '6px 2px', borderRadius: 7, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: isActive ? 700 : 400, background: isActive ? 'var(--rb-primary)' : 'transparent', color: isActive ? '#fff' : 'var(--rb-text)', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(0,122,255,0.1)'; }}
+                        onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                      >{name.slice(0, 3)}</button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Calendar ── */}
@@ -909,7 +1031,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       {/* ══════════════ MODAL: day overview ══════════════ */}
       {modal?.type === 'day' && (
         <div className="rb-modal-overlay" onClick={closeModal}>
-          <div className="rb-modal" style={{ maxWidth: 780 }} onClick={e => e.stopPropagation()}>
+          <div className="rb-modal" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
             <div className="rb-modal-header">
               <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="17" height="17">
@@ -929,39 +1051,47 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 return (
                   <div key={e.id} style={{
                     ...sectionStyle,
-                    opacity: cancelled ? 0.6 : 1,
+                    background: cancelled ? col + '1a' : col + '33',
                     borderLeft: `4px solid ${col}`,
                   }}>
-                    {/* Entry info */}
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, marginBottom: 10 }}>
+                    {/* Entry info + actions */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)', marginBottom: 2 }}>
-                          {e.timeFrom} – {e.timeTo}
-                          {cancelled && (
-                            <span style={{ marginLeft: 8, fontSize: 11, background: '#fef2f2', color: '#dc2626', border: '1px solid #fca5a5', borderRadius: 4, padding: '1px 6px', fontWeight: 500 }}>
-                              Отменён · {getExceptionCode(e, modal.cell) || 'ОТ'}
-                            </span>
+                        <div style={{ opacity: cancelled ? 0.6 : 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)', marginBottom: 2 }}>
+                            {e.timeFrom} – {e.timeTo}
+                          </div>
+                          {selectedDoctor && (
+                            <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
+                              {abbreviateName(selectedDoctor.name)}
+                            </div>
                           )}
+                          <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
+                            {clinicName(e.clinicId)}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 1 }}>
-                          {clinicName(e.clinicId)}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-                          {patternSummary(e.pattern)} · {e.dateFrom} – {e.dateTo}
-                        </div>
+                        {cancelled && (() => {
+                          const code = getExceptionCode(e, modal.cell) || 'ОТ';
+                          const fullLabel = STATUS_CODES.find(s => s.code === code)?.label || code;
+                          const reasonOnly = fullLabel.includes('—') ? fullLabel.split('—').slice(1).join('—').trim() : fullLabel;
+                          return (
+                            <div style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
+                              Причина отмены: {reasonOnly}
+                            </div>
+                          );
+                        })()}
                       </div>
-                    </div>
 
-                    {/* Actions */}
-                    {!isConfirming ? (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button style={btnBlue} onClick={() => handleToggleException(e.id, modal.cell)}>
+                      {/* Actions */}
+                      {!isConfirming ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                        <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
                         </button>
-                        <button style={btnBlue} onClick={() => openEditForm(e)}>
+                        <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openEditForm(e)}>
                           Редактировать
                         </button>
-                        <button style={btnRed} onClick={() => setConfirmDel(e.id)}>
+                        <button style={{ ...btnRed, width: BTN_W }} onClick={() => setConfirmDel(e.id)}>
                           Удалить
                         </button>
                       </div>
@@ -985,6 +1115,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
                     )}
                   </div>
+                  </div>
                 );
               })}
             </div>
@@ -992,9 +1123,6 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
             <div className="rb-modal-footer">
               <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openNewForm(modal.cell)}>
                 Создать
-              </button>
-              <button style={{ ...btnBlue, width: BTN_W }} onClick={closeModal}>
-                Закрыть
               </button>
             </div>
           </div>
@@ -1143,16 +1271,6 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   Удалить
                 </button>
               )}
-              <button style={btnBlue} onClick={() => {
-                if (modal.editId) {
-                  setForm(null);
-                  setModal(prev => ({ ...prev, type: 'day' }));
-                } else {
-                  closeModal();
-                }
-              }}>
-                Назад
-              </button>
               <button
                 style={{ ...btnBlue, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'not-allowed' }}
                 onClick={handleSave}

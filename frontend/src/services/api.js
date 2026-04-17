@@ -651,4 +651,11 @@ export const tabelRecords = {
   delete:    (id)         => api.delete(`/tabel-records/${id}`),
 };
 
+export const structuralDivisions = {
+  list:   ()           => api.get('/structural-divisions'),
+  create: (data)       => api.post('/structural-divisions', data),
+  update: (id, data)   => api.put(`/structural-divisions/${id}`, data),
+  delete: (id)         => api.delete(`/structural-divisions/${id}`),
+};
+
 export default api;

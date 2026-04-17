@@ -5,6 +5,8 @@ import { rbProfessionTitle } from '../utils/clinicUtils';
 import { useTabSlider } from '../utils/useTabSlider';
 import StepWorkTime from './StepWorkTime';
 import StepSchedule from './StepSchedule';
+import ScheduleDivisionPanel from './ScheduleDivisionPanel';
+import MonthYearPicker from './MonthYearPicker';
 
 const MONTH_NAMES = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -127,9 +129,6 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
   const hasPeriod = periods.some(p => p.year === year && p.month === month);
   const currentList = mode === 'professions' ? professions : roles;
 
-  const years = [];
-  for (let y = currentDate.getFullYear() + 1; y >= 2024; y--) years.push(y);
-
   const visibleDoctors = doctors.filter(d => !d.roles?.includes('КабинетыИРабота'));
 
   const allScheduleRoles = [...new Set(visibleDoctors.flatMap(d => d.roles || []))].sort();
@@ -181,75 +180,15 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
         </div>
 
         <div className="rb-layout">
-          {/* Левая панель — список сотрудников */}
-          <div className="rb-panel">
-            <div className="rb-panel-header">
-              <div className="rb-panel-title">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-                  <circle cx="9" cy="7" r="4"/>
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-                Сотрудники
-              </div>
-              <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-                {filteredScheduleDoctors.length} из {visibleDoctors.length}
-              </span>
-            </div>
-
-            <div className="rb-filters">
-              <input
-                className="rb-search-input"
-                placeholder="Поиск по ФИО..."
-                value={scheduleSearch}
-                onChange={e => setScheduleSearch(e.target.value)}
-              />
-              <select className="rb-select" value={scheduleFilterClinic} onChange={e => setScheduleFilterClinic(e.target.value)}>
-                <option value="">Все медцентры</option>
-                {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-              <select className="rb-select" value={scheduleFilterRole} onChange={e => setScheduleFilterRole(e.target.value)}>
-                <option value="">Все должности</option>
-                {allScheduleRoles.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <select className="rb-select" value={scheduleFilterProf} onChange={e => setScheduleFilterProf(e.target.value)}>
-                <option value="">Все специальности</option>
-                {allScheduleProfs.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-            </div>
-
-            <div className="rb-doctors-list">
-              {filteredScheduleDoctors.length === 0 ? (
-                <div className="rb-loading">Нет врачей по фильтру</div>
-              ) : (
-                filteredScheduleDoctors.map(d => {
-                  const specialty = (d.professions || [])
-                    .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
-                    .filter(Boolean).join(', ');
-                  return (
-                    <div
-                      key={d.id}
-                      className={`rb-doctor-item${selectedScheduleDoctor === d.id ? ' active' : ''}`}
-                      onClick={() => setSelectedScheduleDoctor(d.id === selectedScheduleDoctor ? null : d.id)}
-                    >
-                      <div className="rb-doctor-info">
-                        <div className="rb-doctor-name">{d.name}</div>
-                        {specialty && <div className="rb-doctor-specialty">{specialty}</div>}
-                        <div className="rb-doctor-badges">
-                          {(d.clinics || []).slice(0, 4).map(cId => (
-                            <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor ? getClinicColor(cId) : '#94a3b8' }}>
-                              {getClinicName ? getClinicName(cId) : cId}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+          {/* Левая панель — подразделения */}
+          <ScheduleDivisionPanel
+            doctors={visibleDoctors}
+            selectedDoctorId={selectedScheduleDoctor}
+            onSelectDoctor={setSelectedScheduleDoctor}
+            readOnly={readOnly}
+            getClinicColor={getClinicColor}
+            getClinicName={getClinicName}
+          />
 
           {/* Правая панель — календарь расписания */}
           <StepSchedule
@@ -286,12 +225,10 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
           Норма часов
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
-          <select className="rb-select" style={{ width: 130, height: 32, padding: '0 10px' }} value={month} onChange={e => setMonth(parseInt(e.target.value))}>
-            {MONTH_NAMES.map((name, i) => <option key={i + 1} value={i + 1}>{name}</option>)}
-          </select>
-          <select className="rb-select" style={{ width: 80, height: 32, padding: '0 10px' }} value={year} onChange={e => setYear(parseInt(e.target.value))}>
-            {years.map(y => <option key={y} value={y}>{y}</option>)}
-          </select>
+          <MonthYearPicker
+            year={year} month={month}
+            onChange={(y, m) => { setYear(y); setMonth(m); }}
+          />
           {hasPeriod && <span style={{ fontSize: 12, color: 'var(--rb-success, #16a34a)', fontWeight: 500 }}>✓</span>}
           <div style={{ display: 'flex', height: 32, background: 'var(--rb-border)', borderRadius: 8, padding: 2, gap: 2, boxSizing: 'border-box' }}>
             {[

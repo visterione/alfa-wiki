@@ -5,10 +5,133 @@ import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
-import { salaryRecords, cashPayments as cashPaymentsApi, tabelRecords as tabelApi } from '../../../services/api';
+import { salaryRecords, cashPayments as cashPaymentsApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi } from '../../../services/api';
 import { buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
+
+const PICKER_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+function TabelPeriodPicker({ year, month, onYearChange, onMonthChange, onReset }) {
+  const [open,      setOpen]      = useState(false);
+  const [step,      setStep]      = useState('year');
+  const [navYear,   setNavYear]   = useState(year ? parseInt(year) : new Date().getFullYear());
+  const [yearStart, setYearStart] = useState(Math.floor((year ? parseInt(year) : new Date().getFullYear()) / 10) * 10);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const openPicker = () => {
+    const y = year ? parseInt(year) : new Date().getFullYear();
+    setStep('year');
+    setNavYear(y);
+    setYearStart(Math.floor(y / 10) * 10);
+    setOpen(true);
+  };
+
+  const pickYear = (y) => { setNavYear(y); onYearChange(String(y)); setStep('month'); };
+  const pickMonth = (m) => { onMonthChange(String(m)); setOpen(false); };
+  const handleReset = () => { onReset(); setOpen(false); };
+
+  const label = !year && !month
+    ? 'Все периоды'
+    : !month
+      ? String(year)
+      : `${PICKER_MONTHS[parseInt(month) - 1]} ${year || ''}`.trim();
+
+  const btnBase = {
+    border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontFamily: 'inherit',
+  };
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" onClick={openPicker} style={{
+        ...btnBase, height: 34, padding: '0 10px', gap: 6,
+        border: '1px solid var(--rb-border-dark)',
+        background: '#fff', color: year || month ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+        minWidth: 150,
+      }}>
+        <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
+        {(year || month) && (
+          <span
+            onClick={e => { e.stopPropagation(); handleReset(); }}
+            title="Сбросить"
+            style={{ color: 'var(--rb-text-secondary)', lineHeight: 1, fontSize: 14, cursor: 'pointer' }}
+          >×</span>
+        )}
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 300,
+          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.14)', padding: '14px 16px', minWidth: 232,
+        }}>
+          {step === 'year' ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <button onClick={() => setYearStart(s => s - 10)}
+                  style={{ ...btnBase, background: 'var(--rb-primary)', width: 26, height: 26, fontSize: 14, color: '#fff' }}>‹</button>
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                  {yearStart} – {yearStart + 9}
+                </span>
+                <button onClick={() => setYearStart(s => s + 10)}
+                  style={{ ...btnBase, background: 'var(--rb-primary)', width: 26, height: 26, fontSize: 14, color: '#fff' }}>›</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
+                {Array.from({ length: 10 }, (_, i) => yearStart + i).map(y => {
+                  const isActive = String(y) === year;
+                  return (
+                    <button key={y} onClick={() => pickYear(y)}
+                      style={{ ...btnBase, padding: '6px 2px', borderRadius: 7, fontWeight: isActive ? 700 : 400, background: isActive ? 'var(--rb-primary)' : 'transparent', color: isActive ? '#fff' : 'var(--rb-text)' }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(0,122,255,0.1)'; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                    >{y}</button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <button onClick={() => setStep('year')}
+                  style={{ ...btnBase, background: 'var(--rb-primary)', width: 26, height: 26, fontSize: 14, color: '#fff' }}>‹</button>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{navYear}</span>
+                <button onClick={() => { onMonthChange(''); setOpen(false); }}
+                  style={{ ...btnBase, background: '#f1f5f9', color: 'var(--rb-text-secondary)', height: 26, padding: '0 8px', fontSize: 11, borderRadius: 6 }}>
+                  Все мес.
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 5 }}>
+                {PICKER_MONTHS.map((name, i) => {
+                  const isActive = String(navYear) === year && String(i + 1) === month;
+                  return (
+                    <button key={i} onClick={() => pickMonth(i + 1)}
+                      style={{ ...btnBase, padding: '6px 4px', borderRadius: 7, fontSize: 12, fontWeight: isActive ? 700 : 400, background: isActive ? 'var(--rb-primary)' : 'transparent', color: isActive ? '#fff' : 'var(--rb-text)' }}
+                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(0,122,255,0.1)'; }}
+                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+                    >{name.slice(0, 3)}</button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -614,6 +737,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   // Tabel archive
   const [tabelList,        setTabelList]        = useState([]);
   const [tabelLoading,     setTabelLoading]     = useState(false);
+  const [divisions,        setDivisions]        = useState([]);
   const [tabelOpenId,      setTabelOpenId]      = useState(null);
   const [tabelDetail,      setTabelDetail]      = useState(null);
   const [tabelDetLoading,  setTabelDetLoading]  = useState(false);
@@ -666,8 +790,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const loadTabelList = useCallback(async () => {
     setTabelLoading(true);
     try {
-      const res = await tabelApi.list();
-      setTabelList(Array.isArray(res.data) ? res.data : []);
+      const [tabelRes, divRes] = await Promise.all([tabelApi.list(), divisionsApi.list()]);
+      setTabelList(Array.isArray(tabelRes.data) ? tabelRes.data : []);
+      setDivisions(Array.isArray(divRes.data) ? divRes.data : []);
     } catch { setTabelList([]); }
     finally { setTabelLoading(false); }
   }, []);
@@ -1105,7 +1230,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
 
     // Unique years and subdivisions for filter dropdowns
     const tabelYears = [...new Set(tabelList.map(r => r.year).filter(Boolean))].sort((a, b) => b - a);
-    const tabelSubs  = [...new Set(tabelList.map(r => r.subdivision || r.orgName || '').filter(Boolean))].sort();
+    const tabelSubs  = divisions.length > 0
+      ? divisions.map(d => d.name).sort((a, b) => a.localeCompare(b, 'ru'))
+      : [...new Set(tabelList.map(r => r.subdivision || r.orgName || '').filter(Boolean))].sort();
 
     const tabelFiltered = tabelList.filter(r => {
       if (filterMisId && !(r.doctors || []).some(d => d.misUserId === filterMisId)) return false;
@@ -1134,18 +1261,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         {viewToggle}
 
         <div style={{ padding: '8px 16px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* Month */}
-          <select value={tabelFilterMonth} onChange={e => { setTabelFilterMonth(e.target.value); resetTabelPage(); }} style={selectStyle}>
-            <option value="">Все месяцы</option>
-            {MONTH_NAMES_T.map((name, i) => (
-              <option key={i + 1} value={String(i + 1)}>{name}</option>
-            ))}
-          </select>
-          {/* Year */}
-          <select value={tabelFilterYear} onChange={e => { setTabelFilterYear(e.target.value); resetTabelPage(); }} style={selectStyle}>
-            <option value="">Все годы</option>
-            {tabelYears.map(y => <option key={y} value={String(y)}>{y}</option>)}
-          </select>
+          {/* Period picker */}
+          <TabelPeriodPicker
+            year={tabelFilterYear}
+            month={tabelFilterMonth}
+            onYearChange={v => { setTabelFilterYear(v); setTabelFilterMonth(''); resetTabelPage(); }}
+            onMonthChange={v => { setTabelFilterMonth(v); resetTabelPage(); }}
+            onReset={() => { setTabelFilterYear(''); setTabelFilterMonth(''); resetTabelPage(); }}
+          />
           {/* Subdivision */}
           <select value={tabelFilterSub} onChange={e => { setTabelFilterSub(e.target.value); resetTabelPage(); }} style={{ ...selectStyle, flex: 1, minWidth: 120 }}>
             <option value="">Все подразделения</option>
