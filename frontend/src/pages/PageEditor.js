@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock, Grid } from 'lucide-react';
+import { Save, ArrowLeft, Eye, Code, FileText, Settings, Clock, Grid, File, Download } from 'lucide-react';
+import { BASE_URL } from '../services/api';
 import { pages, roles } from '../services/api';
 import Editor from '../components/Editor';
 import CodeEditor from '../components/CodeEditor';
@@ -93,7 +94,10 @@ export default function PageEditor() {
       console.log('contentType:', form.contentType);
       console.log('form.content length:', form.content?.length);
 
-      if (form.contentType === 'spreadsheet' && spreadsheetRef.current) {
+      if (form.contentType === 'file') {
+        // файловые страницы не имеют редактируемого контента
+        finalContent = null;
+      } else if (form.contentType === 'spreadsheet' && spreadsheetRef.current) {
         console.log('Spreadsheet detected, calling forceSave...');
         try {
           // Сначала вызываем forceSave для сохранения через onChange
@@ -251,10 +255,34 @@ export default function PageEditor() {
                 {form.contentType === 'spreadsheet' && <><Grid size={14} /> Таблица</>}
                 {form.contentType === 'html' && <><Code size={14} /> HTML-страница</>}
                 {form.contentType === 'wysiwyg' && <><FileText size={14} /> Документ</>}
+                {form.contentType === 'file' && <><File size={14} /> Файл</>}
               </div>
             )}
 
-            {form.contentType === 'wysiwyg' ? (
+            {form.contentType === 'file' ? (
+              <div className="file-page-info">
+                <div className="file-page-info-icon"><File size={40} /></div>
+                <div className="file-page-info-text">
+                  <p>Это файловый узел. Содержимое файла нельзя редактировать здесь.</p>
+                  <p>Вы можете изменить название, описание, права доступа и статус публикации в настройках.</p>
+                  {form.metadata?.originalName && (
+                    <div className="file-page-info-meta">
+                      <span><strong>Файл:</strong> {form.metadata.originalName}</span>
+                      {form.metadata.size && (
+                        <span><strong>Размер:</strong> {
+                          form.metadata.size >= 1024 * 1024
+                            ? `${(form.metadata.size / 1024 / 1024).toFixed(2)} МБ`
+                            : `${(form.metadata.size / 1024).toFixed(1)} КБ`
+                        }</span>
+                      )}
+                      {form.metadata.mimeType && (
+                        <span><strong>Тип:</strong> {form.metadata.mimeType}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : form.contentType === 'wysiwyg' ? (
               <Editor
                 content={form.content}
                 onChange={(content) => setForm({ ...form, content })}

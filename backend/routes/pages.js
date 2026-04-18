@@ -6,7 +6,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx-js-style');
-const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory } = require('../models');
+const { Page, User, SearchIndex, Folder, SidebarItem, PageHistory, Media } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 const { convertXlsxToUniver, convertUniverToXlsx } = require('../utils/xlsxConverter');
 const { generatePageHistoryPdf } = require('../services/pdfService');
@@ -198,7 +198,9 @@ router.get('/:identifier', authenticate, async (req, res) => {
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
         { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
-        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
+        { model: Folder, as: 'folder', attributes: ['id', 'title'],
+          include: [{ model: Folder, as: 'parent', attributes: ['id', 'title'] }] },
+        { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'] }
       ]
     });
 
@@ -233,7 +235,7 @@ router.get('/:identifier', authenticate, async (req, res) => {
 // Create page
 router.post('/', authenticate, requirePermission('pages', 'write'), [
   body('title').trim().notEmpty().withMessage('Title is required'),
-  body('contentType').optional().isIn(['wysiwyg', 'html']).withMessage('Invalid content type')
+  body('contentType').optional().isIn(['wysiwyg', 'html', 'file']).withMessage('Invalid content type')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -241,20 +243,24 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, content, contentType = 'wysiwyg', description, keywords, icon, 
-            isPublished, allowedRoles, customCss, customJs, metadata, folderId } = req.body;
+    const { title, content, contentType = 'wysiwyg', description, keywords, icon,
+            isPublished, allowedRoles, customCss, customJs, metadata, folderId, mediaId } = req.body;
 
     let slug = req.body.slug || generateSlug(title);
-    
+
     const existing = await Page.findOne({ where: { slug } });
     if (existing) {
       slug = `${slug}-${Date.now()}`;
     }
 
-    const sanitizedContent = contentType === 'html' 
-      ? content 
-      : sanitizeHtml(content || '', sanitizeConfig);
-    const searchContent = extractTextContent(sanitizedContent);
+    let sanitizedContent = '';
+    let searchContent = '';
+    if (contentType !== 'file') {
+      sanitizedContent = contentType === 'html'
+        ? content
+        : sanitizeHtml(content || '', sanitizeConfig);
+      searchContent = extractTextContent(sanitizedContent);
+    }
 
     // Получаем maxSortOrder для папки
     const maxOrder = await Page.max('sortOrder', { 
@@ -277,6 +283,7 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       customCss,
       customJs,
       metadata: metadata || {},
+      mediaId: mediaId || null,
       createdBy: req.user.id,
       updatedBy: req.user.id
     });
@@ -305,7 +312,8 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
     const created = await Page.findByPk(page.id, {
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
-        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] },
+        { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'] }
       ]
     });
 
@@ -325,7 +333,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     }
 
     const { title, content, contentType, description, keywords, icon,
-            isPublished, allowedRoles, customCss, customJs, metadata, slug, folderId, sortOrder } = req.body;
+            isPublished, allowedRoles, customCss, customJs, metadata, slug, folderId, sortOrder, mediaId } = req.body;
 
     if (slug && slug !== page.slug) {
       const existing = await Page.findOne({ where: { slug } });
@@ -348,18 +356,20 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       ...(metadata && { metadata }),
       ...(folderId !== undefined && { folderId: folderId || null }),
       ...(sortOrder !== undefined && { sortOrder }),
+      ...(mediaId !== undefined && { mediaId: mediaId || null }),
       updatedBy: req.user.id
     };
 
     if (content !== undefined) {
       const type = contentType || page.contentType;
-      const sanitizedContent = type === 'html' 
-        ? content 
-        : sanitizeHtml(content || '', sanitizeConfig);
-      const searchContent = extractTextContent(sanitizedContent);
-      
-      updateData.content = sanitizedContent;
-      updateData.searchContent = searchContent;
+      if (type !== 'file') {
+        const sanitizedContent = type === 'html'
+          ? content
+          : sanitizeHtml(content || '', sanitizeConfig);
+        const searchContent = extractTextContent(sanitizedContent);
+        updateData.content = sanitizedContent;
+        updateData.searchContent = searchContent;
+      }
     }
 
     // Сохраняем старые значения ДО обновления
@@ -469,7 +479,8 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
         { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
-        { model: Folder, as: 'folder', attributes: ['id', 'title'] }
+        { model: Folder, as: 'folder', attributes: ['id', 'title'] },
+        { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'] }
       ]
     });
 

@@ -83,6 +83,31 @@ export const pages = {
   list: (params) => api.get('/pages', { params }),
   get: (identifier) => api.get(`/pages/${identifier}`),
   create: (data) => api.post('/pages', data),
+  createFile: async ({ file, title, description, isPublished, allowedRoles, folderId, onProgress }) => {
+    // 1. Upload the file to /media/upload
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data: mediaData } = await api.post('/media/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: e => onProgress?.(Math.round((e.loaded * 100) / e.total))
+    });
+    // 2. Create a page with contentType='file' referencing the uploaded media
+    return api.post('/pages', {
+      title: title || mediaData.originalName,
+      contentType: 'file',
+      mediaId: mediaData.id,
+      description,
+      isPublished: isPublished || false,
+      allowedRoles: allowedRoles || [],
+      folderId: folderId || null,
+      metadata: {
+        mimeType: mediaData.mimeType,
+        size: mediaData.size,
+        originalName: mediaData.originalName,
+        path: mediaData.path
+      }
+    });
+  },
   update: (id, data) => api.put(`/pages/${id}`, data),
   delete: (id) => api.delete(`/pages/${id}`),
   toggleFavorite: (id) => api.post(`/pages/${id}/favorite`),
@@ -140,6 +165,7 @@ export const sidebar = {
 // Media
 export const media = {
   list: (params) => api.get('/media', { params }),
+  asUniver: (id) => api.get(`/media/${id}/as-univer`),
   upload: (file, onProgress) => {
     const formData = new FormData();
     formData.append('file', file);

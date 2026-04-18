@@ -1,13 +1,233 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Edit, ArrowLeft, Star, StarOff } from 'lucide-react';
-import { pages, favorites } from '../services/api';
+import { Edit, ArrowLeft, Star, StarOff, Download, FileText, Image, Film, Music, Archive, Package, File, Table, Scroll, BookOpen, Home, Folder, ChevronRight, FileCode } from 'lucide-react';
+import mammoth from 'mammoth';
+import { pages, favorites, media as mediaApi, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import PrintButton from '../components/PrintButton';
 import ContentRenderer from '../components/ContentRenderer';
 import SpreadsheetEditor from '../components/SpreadsheetEditor';
 import './PageView.css';
+
+const getPageIcon = (contentType, metadata) => {
+  if (contentType === 'spreadsheet') return Table;
+  if (contentType === 'html') return FileCode;
+  if (contentType === 'file') {
+    const mime = metadata?.mimeType || '';
+    if (mime.startsWith('image/')) return Image;
+    if (mime.startsWith('video/')) return Film;
+    if (mime.startsWith('audio/')) return Music;
+    if (mime === 'application/pdf') return Scroll;
+    if (mime.includes('spreadsheet') || mime.includes('excel')) return Table;
+    if (mime.includes('word') || mime.includes('msword')) return BookOpen;
+    if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+         'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return Archive;
+    if (['application/x-msdownload','application/x-msi'].includes(mime)) return Package;
+    return File;
+  }
+  return FileText;
+};
+
+const XLSX_MIMES = new Set([
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+]);
+
+const DOCX_MIMES = new Set([
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+]);
+
+function FileViewer({ mediaFile }) {
+  const [pdfBlobUrl, setPdfBlobUrl] = useState(null);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const blobUrlRef = useRef(null);
+
+  const [xlsxData, setXlsxData] = useState(null);
+  const [xlsxLoading, setXlsxLoading] = useState(false);
+  const [xlsxError, setXlsxError] = useState(false);
+
+  const [docxHtml, setDocxHtml] = useState(null);
+  const [docxLoading, setDocxLoading] = useState(false);
+  const [docxError, setDocxError] = useState(false);
+
+  // Загрузка XLSX → Univer
+  useEffect(() => {
+    if (!mediaFile || !XLSX_MIMES.has(mediaFile.mimeType)) return;
+    setXlsxLoading(true);
+    setXlsxError(false);
+    mediaApi.asUniver(mediaFile.id)
+      .then(({ data }) => setXlsxData(JSON.stringify(data)))
+      .catch(() => setXlsxError(true))
+      .finally(() => setXlsxLoading(false));
+  }, [mediaFile?.id]);
+
+  // Загрузка DOCX → HTML через Mammoth (client-side)
+  useEffect(() => {
+    if (!mediaFile || !DOCX_MIMES.has(mediaFile.mimeType)) return;
+    setDocxLoading(true);
+    setDocxError(false);
+    fetch(`${BASE_URL}/${mediaFile.path}`)
+      .then(r => r.arrayBuffer())
+      .then(buf => mammoth.convertToHtml({ arrayBuffer: buf }))
+      .then(({ value }) => setDocxHtml(value))
+      .catch(() => setDocxError(true))
+      .finally(() => setDocxLoading(false));
+  }, [mediaFile?.id]);
+
+  useEffect(() => {
+    if (!mediaFile || mediaFile.mimeType !== 'application/pdf') return;
+    setPdfLoading(true);
+    const url = `${BASE_URL}/${mediaFile.path}`;
+    fetch(url)
+      .then(r => r.blob())
+      .then(blob => {
+        const objUrl = URL.createObjectURL(blob);
+        blobUrlRef.current = objUrl;
+        setPdfBlobUrl(objUrl);
+      })
+      .catch(() => {})
+      .finally(() => setPdfLoading(false));
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, [mediaFile?.path]);
+
+  if (!mediaFile) return (
+    <div className="file-viewer-empty">Файл не найден или был удалён.</div>
+  );
+
+  const fileUrl = `${BASE_URL}/${mediaFile.path}`;
+  const { mimeType, originalName, size } = mediaFile;
+  const isVideo = mimeType && (mimeType.startsWith('video/') ||
+    ['video/x-msvideo','video/avi','video/msvideo','video/quicktime','video/x-matroska','video/x-ms-wmv'].includes(mimeType));
+
+  const sizeLabel = size
+    ? size >= 1024 * 1024
+      ? `${(size / 1024 / 1024).toFixed(2)} МБ`
+      : `${(size / 1024).toFixed(1)} КБ`
+    : '';
+
+  const getFileIcon = () => {
+    if (!mimeType) return <File size={48} />;
+    if (mimeType.startsWith('image/')) return <Image size={48} />;
+    if (mimeType.startsWith('video/')) return <Film size={48} />;
+    if (mimeType.startsWith('audio/')) return <Music size={48} />;
+    if (mimeType === 'application/pdf') return <Scroll size={48} />;
+    if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+         'application/vnd.rar','application/x-7z-compressed','application/x-tar','application/gzip']
+        .includes(mimeType)) return <Archive size={48} />;
+    if (['application/x-msdownload','application/x-msi','application/octet-stream'].includes(mimeType))
+      return <Package size={48} />;
+    return <FileText size={48} />;
+  };
+
+  const DownloadBtn = () => (
+    <a
+      className="btn btn-primary"
+      href={fileUrl}
+      download={originalName}
+      target="_blank"
+      rel="noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}
+    >
+      <Download size={16} />
+      Скачать
+    </a>
+  );
+
+  // DOCX — конвертируем в HTML через Mammoth (client-side)
+  if (DOCX_MIMES.has(mimeType)) {
+    return (
+      <div className="file-viewer">
+        {docxLoading && <div className="file-viewer-pdf-loading">Загрузка документа...</div>}
+        {docxError && <div className="file-viewer-pdf-loading">Не удалось открыть файл — скачайте его.</div>}
+        {docxHtml && !docxLoading && (
+          <div
+            className="file-viewer-docx"
+            dangerouslySetInnerHTML={{ __html: docxHtml }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // XLSX — конвертируем на сервере и показываем в Univer (read-only)
+  if (XLSX_MIMES.has(mimeType)) {
+    return (
+      <div className="file-viewer">
+        {xlsxLoading && <div className="file-viewer-pdf-loading">Загрузка таблицы...</div>}
+        {xlsxError && <div className="file-viewer-pdf-loading">Не удалось открыть файл — скачайте его.</div>}
+        {xlsxData && !xlsxLoading && (
+          <SpreadsheetEditor
+            content={xlsxData}
+            pageId={mediaFile.id}
+            readOnly={true}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // PDF — загружаем через blob URL чтобы обойти X-Frame-Options
+  if (mimeType === 'application/pdf') {
+    return (
+      <div className="file-viewer">
+        {pdfLoading && <div className="file-viewer-pdf-loading">Загрузка PDF...</div>}
+        {pdfBlobUrl && (
+          <iframe src={pdfBlobUrl} title={originalName} className="file-viewer-pdf" />
+        )}
+      </div>
+    );
+  }
+
+  // Изображения
+  if (mimeType && mimeType.startsWith('image/')) {
+    return (
+      <div className="file-viewer">
+        <div className="file-viewer-image-wrap">
+          <img src={fileUrl} alt={originalName} className="file-viewer-image" />
+        </div>
+      </div>
+    );
+  }
+
+  // Видео (включая AVI, MOV, MKV)
+  if (isVideo) {
+    return (
+      <div className="file-viewer">
+        <video src={fileUrl} controls className="file-viewer-video">
+          Ваш браузер не поддерживает воспроизведение видео.
+        </video>
+      </div>
+    );
+  }
+
+  // Аудио
+  if (mimeType && mimeType.startsWith('audio/')) {
+    return (
+      <div className="file-viewer">
+        <audio src={fileUrl} controls className="file-viewer-audio">
+          Ваш браузер не поддерживает воспроизведение аудио.
+        </audio>
+      </div>
+    );
+  }
+
+  // Всё остальное — карточка скачивания (Word, Excel, архивы, EXE, LibreOffice и т.д.)
+  return (
+    <div className="file-viewer">
+      <div className="file-viewer-download-card">
+        <div className="file-viewer-download-icon">{getFileIcon()}</div>
+        <div className="file-viewer-download-info">
+          <div className="file-viewer-download-name">{originalName}</div>
+          {sizeLabel && <div className="file-viewer-download-size">{sizeLabel}</div>}
+        </div>
+        <DownloadBtn />
+      </div>
+    </div>
+  );
+}
 
 export default function PageView() {
   const { slug } = useParams();
@@ -264,8 +484,35 @@ export default function PageView() {
 
   const canEdit = isAdmin || hasPermission('pages', 'write');
 
+  const folderBreadcrumbs = [];
+  if (page.folder?.parent) folderBreadcrumbs.push(page.folder.parent);
+  if (page.folder) folderBreadcrumbs.push(page.folder);
+
   return (
     <div className="page-view">
+      <nav className="page-explorer-breadcrumbs">
+        <Link to="/explorer" className="page-breadcrumb-item">
+          <Home size={13} />
+          <span>Проводник</span>
+        </Link>
+        {folderBreadcrumbs.map((folder) => (
+          <React.Fragment key={folder.id}>
+            <ChevronRight size={12} className="page-breadcrumb-sep" />
+            <Link
+              to={`/explorer?folderId=${folder.id}`}
+              className="page-breadcrumb-item"
+            >
+              <Folder size={13} />
+              <span>{folder.title}</span>
+            </Link>
+          </React.Fragment>
+        ))}
+        <ChevronRight size={12} className="page-breadcrumb-sep" />
+        <span className="page-breadcrumb-current">
+          {React.createElement(getPageIcon(page.contentType, page.metadata), { size: 13 })}
+          {page.title}
+        </span>
+      </nav>
       <div className="page-header">
         <div className="page-header-content">
           <h1>{page.title}</h1>
@@ -287,7 +534,15 @@ export default function PageView() {
               <StarOff size={20} />
             )}
           </button>
-          {canEdit && (
+          {page.contentType === 'file' ? (
+            <a
+              href={`${BASE_URL}/api/media/${page.mediaFile?.id}/download`}
+              className="btn btn-primary"
+              style={{ textDecoration: 'none' }}
+            >
+              Скачать
+            </a>
+          ) : canEdit && (
             <Link to={`/page/${slug}/edit`} className="btn btn-primary">
               <Edit size={18} />
               Редактировать
@@ -304,6 +559,13 @@ export default function PageView() {
           )}
         </div>
 
+        {page.contentType === 'file' ? (
+          <div className="card">
+            <div className="file-viewer-wrap">
+              <FileViewer mediaFile={page.mediaFile} />
+            </div>
+          </div>
+        ) : (
         <div className="card">
           <div ref={contentRefCallback} className="page-content">
             {page.contentType === 'wysiwyg' ? (
@@ -319,6 +581,7 @@ export default function PageView() {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {page.keywords && page.keywords.length > 0 && (

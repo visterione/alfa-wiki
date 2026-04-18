@@ -1,14 +1,55 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Folder, FileText,
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
   ArrowLeft, Check, LayoutGrid, List, Search, X,
   ChevronDown, ArrowUp, ArrowDown,
-  FileCode, Table, FolderPlus
+  FileCode, Table, FolderPlus,
+  Upload, Image, Film, Music, Archive, Package, File, Download,
+  Scroll, BookOpen
 } from 'lucide-react';
 
-const getPageIconInfo = (contentType) => {
+const getFileIconInfo = (mimeType) => {
+  if (!mimeType) return { Icon: File, className: 'explorer-icon-file', title: 'Файл' };
+  if (mimeType.startsWith('image/'))
+    return { Icon: Image,   className: 'explorer-icon-file-image', title: 'Изображение' };
+  if (mimeType.startsWith('video/'))
+    return { Icon: Film,    className: 'explorer-icon-file-video', title: 'Видео' };
+  if (mimeType.startsWith('audio/'))
+    return { Icon: Music,   className: 'explorer-icon-file-audio', title: 'Аудио' };
+  if (mimeType === 'application/pdf')
+    return { Icon: Scroll, className: 'explorer-icon-file-pdf', title: 'PDF' };
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel'))
+    return { Icon: Table,   className: 'explorer-icon-spreadsheet', title: 'Excel' };
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint'))
+    return { Icon: File,    className: 'explorer-icon-file-ppt', title: 'PowerPoint' };
+  if (mimeType.includes('word') || mimeType.includes('msword'))
+    return { Icon: BookOpen, className: 'explorer-icon-file-doc', title: 'Word' };
+  if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+       'application/vnd.rar','application/x-7z-compressed','application/x-tar','application/gzip']
+      .includes(mimeType))
+    return { Icon: Archive, className: 'explorer-icon-file-archive', title: 'Архив' };
+  if (['application/x-msdownload','application/x-msi','application/octet-stream'].includes(mimeType))
+    return { Icon: Package, className: 'explorer-icon-file-exe', title: 'Исполняемый файл' };
+  if (mimeType.startsWith('text/') || mimeType === 'application/json')
+    return { Icon: FileText, className: 'explorer-icon-file-text', title: 'Текст' };
+  return { Icon: File, className: 'explorer-icon-file', title: 'Файл' };
+};
+
+const hasFilePreview = (mimeType) => {
+  if (!mimeType) return false;
+  if (mimeType.startsWith('image/')) return true;
+  if (mimeType.startsWith('video/')) return true;
+  if (mimeType.startsWith('audio/')) return true;
+  if (mimeType === 'application/pdf') return true;
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return true;
+  if (mimeType.includes('word') || mimeType.includes('msword')) return true;
+  return false;
+};
+
+const getPageIconInfo = (contentType, metadata) => {
+  if (contentType === 'file') return getFileIconInfo(metadata?.mimeType);
   switch (contentType) {
     case 'spreadsheet':
       return { Icon: Table,    className: 'explorer-icon-spreadsheet', title: 'Таблица' };
@@ -22,22 +63,25 @@ const getPageIconInfo = (contentType) => {
 
 // Элементы единого дропдауна «Создать»
 const CREATE_ITEMS = [
-  { kind: 'folder',      Icon: FolderPlus, label: 'Папка',        iconColor: '#f59e0b' },
-  { kind: 'wysiwyg',     Icon: FileText,   label: 'Документ',     iconColor: 'var(--primary, #2563eb)' },
-  { kind: 'spreadsheet', Icon: Table,      label: 'Таблица',      iconColor: '#22c55e' },
-  { kind: 'html',        Icon: FileCode,   label: 'HTML-страница', iconColor: '#f97316' },
+  { kind: 'folder',      Icon: FolderPlus, label: 'Папка',            iconColor: '#f59e0b' },
+  { kind: 'wysiwyg',     Icon: FileText,   label: 'Документ',         iconColor: 'var(--primary, #2563eb)' },
+  { kind: 'spreadsheet', Icon: Table,      label: 'Таблица',          iconColor: '#22c55e' },
+  { kind: 'html',        Icon: FileCode,   label: 'HTML-страница',    iconColor: '#f97316' },
+  { kind: 'file',        Icon: Upload,     label: 'Загрузить файл',   iconColor: '#8b5cf6' },
 ];
 
 import { folders, pages, roles } from '../../services/api';
+import { BASE_URL } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
 export default function AdminPages() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAdmin, hasPermission, hasAdminAccess } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [currentFolderId, setCurrentFolderId] = useState(null);
+  const [currentFolderId, setCurrentFolderId] = useState(() => searchParams.get('folderId') || null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
@@ -67,12 +111,24 @@ export default function AdminPages() {
   // Modals
   const [folderModal, setFolderModal] = useState({ open: false, folder: null });
   const [deleteModal, setDeleteModal] = useState({ open: false, type: null, item: null });
+  const [fileUploadModal, setFileUploadModal] = useState({ open: false });
+  const [fileUploadForm, setFileUploadForm] = useState({ title: '', description: '', isPublished: false, allowedRoles: [] });
+  const [fileUploadFile, setFileUploadFile] = useState(null);
+  const [fileUploadProgress, setFileUploadProgress] = useState(0);
+  const [fileUploadLoading, setFileUploadLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Form
   const [folderForm, setFolderForm] = useState({ title: '', icon: 'folder', description: '', allowedRoles: [] });
 
   const canEdit   = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'write');
   const canDelete = isAdmin || hasAdminAccess('pages') || hasPermission('pages', 'delete');
+
+  const downloadFile = (page) => {
+    const mediaId = page.mediaId || page.mediaFile?.id;
+    if (!mediaId) { toast.error('Файл не найден'); return; }
+    window.location.href = `${BASE_URL}/api/media/${mediaId}/download`;
+  };
 
   useEffect(() => {
     loadRoles();
@@ -138,8 +194,44 @@ export default function AdminPages() {
     if (kind === 'folder') {
       setFolderForm({ title: '', icon: 'folder', description: '', allowedRoles: [] });
       setFolderModal({ open: true, folder: null });
+    } else if (kind === 'file') {
+      setFileUploadForm({ title: '', description: '', isPublished: false, allowedRoles: [] });
+      setFileUploadFile(null);
+      setFileUploadProgress(0);
+      setFileUploadModal({ open: true });
     } else {
       navigate(`/page/new/edit?type=${kind}&folderId=${currentFolderId || ''}`);
+    }
+  };
+
+  const handleFileSelect = (file) => {
+    if (!file) return;
+    setFileUploadFile(file);
+    setFileUploadForm(prev => ({ ...prev, title: prev.title || file.name.replace(/\.[^.]+$/, '') }));
+  };
+
+  const handleFileUploadSave = async () => {
+    if (!fileUploadFile) { toast.error('Выберите файл'); return; }
+    if (!fileUploadForm.title.trim()) { toast.error('Введите название'); return; }
+    setFileUploadLoading(true);
+    setFileUploadProgress(0);
+    try {
+      await pages.createFile({
+        file: fileUploadFile,
+        title: fileUploadForm.title.trim(),
+        description: fileUploadForm.description,
+        isPublished: fileUploadForm.isPublished,
+        allowedRoles: fileUploadForm.allowedRoles,
+        folderId: currentFolderId,
+        onProgress: setFileUploadProgress,
+      });
+      toast.success('Файл загружен');
+      setFileUploadModal({ open: false });
+      loadContent();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Ошибка загрузки');
+    } finally {
+      setFileUploadLoading(false);
     }
   };
 
@@ -472,7 +564,7 @@ export default function AdminPages() {
             ))}
 
             {displayedPages.map(page => {
-              const iconInfo = getPageIconInfo(page.contentType);
+              const iconInfo = getPageIconInfo(page.contentType, page.metadata);
               const IconComponent = iconInfo.Icon;
               return (
                 <div
@@ -485,7 +577,13 @@ export default function AdminPages() {
                     draggedItem?.id === page.id ? 'dragging' : '',
                   ].filter(Boolean).join(' ')}
                   onClick={() => setSelectedId(`page-${page.id}`)}
-                  onDoubleClick={() => navigate(`/page/${page.slug}`)}
+                  onDoubleClick={() => {
+                    if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
+                      downloadFile(page);
+                    } else {
+                      navigate(`/page/${page.slug}`);
+                    }
+                  }}
                   onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
                   onDragOver={(e) => handleDragOver(e, page.id, false)}
                   onDragLeave={() => setDragOverId(null)}
@@ -499,12 +597,23 @@ export default function AdminPages() {
                     {page.isPublished ? 'Опубликовано' : 'Черновик'}
                   </span>
                   <div className="explorer-list-actions">
-                    <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
-                      <Eye size={14} />
-                    </button>
-                    {canEdit && (
+                    {page.contentType === 'file' ? (
+                      <button title="Скачать" onClick={(e) => { e.stopPropagation(); downloadFile(page); }}>
+                        <Download size={14} />
+                      </button>
+                    ) : (
+                      <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                        <Eye size={14} />
+                      </button>
+                    )}
+                    {page.contentType !== 'file' && canEdit && (
                       <button title="Редактировать" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}/edit`); }}>
                         <Edit size={14} />
+                      </button>
+                    )}
+                    {canEdit && page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
+                      <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                        <Eye size={14} />
                       </button>
                     )}
                     {canDelete && (
@@ -584,7 +693,7 @@ export default function AdminPages() {
             ))}
 
             {displayedPages.map(page => {
-              const iconInfo = getPageIconInfo(page.contentType);
+              const iconInfo = getPageIconInfo(page.contentType, page.metadata);
               const IconComponent = iconInfo.Icon;
               return (
                 <div
@@ -596,7 +705,13 @@ export default function AdminPages() {
                     draggedItem?.id === page.id ? 'dragging' : '',
                   ].filter(Boolean).join(' ')}
                   onClick={() => setSelectedId(`page-${page.id}`)}
-                  onDoubleClick={() => navigate(`/page/${page.slug}`)}
+                  onDoubleClick={() => {
+                    if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
+                      downloadFile(page);
+                    } else {
+                      navigate(`/page/${page.slug}`);
+                    }
+                  }}
                   onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
                   onDragOver={(e) => handleDragOver(e, page.id, false)}
                   onDragLeave={() => setDragOverId(null)}
@@ -617,10 +732,22 @@ export default function AdminPages() {
                     </button>
                     {openMenuId === `page-${page.id}` && (
                       <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
-                          <Eye size={16} /> Просмотр
-                        </button>
-                        {canEdit && (
+                        {page.contentType !== 'file' && (
+                          <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                            <Eye size={16} /> Просмотр
+                          </button>
+                        )}
+                        {page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
+                          <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                            <Eye size={16} /> Просмотр
+                          </button>
+                        )}
+                        {page.contentType === 'file' && (
+                          <button onClick={() => { downloadFile(page); setOpenMenuId(null); }}>
+                            <Download size={16} /> Скачать
+                          </button>
+                        )}
+                        {canEdit && page.contentType !== 'file' && (
                           <button onClick={() => { navigate(`/page/${page.slug}/edit`); setOpenMenuId(null); }}>
                             <Edit size={16} /> Редактировать
                           </button>
@@ -710,6 +837,122 @@ export default function AdminPages() {
               </button>
               <button className="btn btn-primary" onClick={handleSaveFolder}>
                 <Check size={18} /> Сохранить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* File Upload Modal */}
+      {fileUploadModal.open && (
+        <div className="modal-overlay" onClick={() => !fileUploadLoading && setFileUploadModal({ open: false })}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Загрузить файл</h3>
+            </div>
+            <div className="modal-body">
+              {/* Drop zone */}
+              <div
+                className={`file-upload-dropzone${fileUploadFile ? ' has-file' : ''}`}
+                onClick={() => fileInputRef.current?.click()}
+                onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+                onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
+                onDrop={e => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('drag-over');
+                  const f = e.dataTransfer.files[0];
+                  if (f) handleFileSelect(f);
+                }}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  style={{ display: 'none' }}
+                  onChange={e => { if (e.target.files[0]) handleFileSelect(e.target.files[0]); }}
+                />
+                {fileUploadFile ? (
+                  <div className="file-upload-selected">
+                    <Upload size={24} />
+                    <span className="file-upload-name">{fileUploadFile.name}</span>
+                    <span className="file-upload-size">{(fileUploadFile.size / 1024 / 1024).toFixed(2)} МБ</span>
+                  </div>
+                ) : (
+                  <div className="file-upload-placeholder">
+                    <Upload size={32} />
+                    <span>Перетащите файл или нажмите для выбора</span>
+                  </div>
+                )}
+              </div>
+
+              {fileUploadLoading && (
+                <div className="file-upload-progress">
+                  <div className="file-upload-progress-bar" style={{ width: `${fileUploadProgress}%` }} />
+                  <span>{fileUploadProgress}%</span>
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginTop: '1rem' }}>
+                <label className="form-label">Название</label>
+                <input
+                  className="input"
+                  value={fileUploadForm.title}
+                  onChange={e => setFileUploadForm({ ...fileUploadForm, title: e.target.value })}
+                  placeholder="Название файла в проводнике"
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Описание</label>
+                <textarea
+                  className="textarea"
+                  value={fileUploadForm.description}
+                  onChange={e => setFileUploadForm({ ...fileUploadForm, description: e.target.value })}
+                  placeholder="Необязательное описание"
+                  rows={2}
+                />
+              </div>
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={fileUploadForm.isPublished}
+                    onChange={e => setFileUploadForm({ ...fileUploadForm, isPublished: e.target.checked })}
+                    style={{ margin: 0, width: 'auto', height: 'auto', flex: 'none' }}
+                  />
+                  <span>Опубликовать сразу</span>
+                </label>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Доступ по ролям</label>
+                <div style={{ maxHeight: '160px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: '6px', padding: '0.5rem' }}>
+                  {allRoles.map(role => {
+                    const isChecked = fileUploadForm.allowedRoles?.includes(role.id) || false;
+                    return (
+                      <label key={role.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0', cursor: 'pointer', margin: 0 }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={e => {
+                            const newRoles = e.target.checked
+                              ? [...(fileUploadForm.allowedRoles || []), role.id]
+                              : (fileUploadForm.allowedRoles || []).filter(id => id !== role.id);
+                            setFileUploadForm({ ...fileUploadForm, allowedRoles: newRoles });
+                          }}
+                          style={{ margin: 0, width: 'auto', height: 'auto', flex: 'none' }}
+                        />
+                        <span>{role.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setFileUploadModal({ open: false })} disabled={fileUploadLoading}>
+                Отмена
+              </button>
+              <button className="btn btn-primary" onClick={handleFileUploadSave} disabled={fileUploadLoading}>
+                {fileUploadLoading ? <div className="loading-spinner" style={{ width: 16, height: 16 }} /> : <Upload size={16} />}
+                {fileUploadLoading ? 'Загрузка...' : 'Загрузить'}
               </button>
             </div>
           </div>

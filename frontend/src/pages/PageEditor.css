@@ -146,3 +146,35 @@
     width: 100%;
   }
 }
+/* ── File Page Info Block ──────────────────────────────────── */
+.file-page-info {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  margin-top: 1rem;
+}
+.file-page-info-icon {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.file-page-info-text {
+  flex: 1;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+.file-page-info-text p {
+  margin: 0 0 0.5rem;
+}
+.file-page-info-meta {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}

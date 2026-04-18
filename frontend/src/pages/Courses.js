@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Clock, CheckCircle, PlayCircle, RotateCcw } from 'lucide-react';
+import { BookOpen, Medal } from 'lucide-react';
 import { courses } from '../services/api';
 import toast from 'react-hot-toast';
 import './Courses.css';
@@ -36,13 +36,9 @@ export default function Courses() {
   };
 
   const getCourseStatus = (course) => {
-    if (course.userProgress.completedAt) {
-      return { text: 'Завершен', icon: CheckCircle, color: 'success' };
-    }
-    if (course.userProgress.completedLessons > 0) {
-      return { text: 'В процессе', icon: PlayCircle, color: 'info' };
-    }
-    return { text: 'Не начат', icon: BookOpen, color: 'default' };
+    if (course.userProgress.completedAt) return 'completed';
+    if (course.userProgress.completedLessons > 0) return 'in_progress';
+    return 'not_started';
   };
 
   if (loading) {
@@ -58,9 +54,6 @@ export default function Courses() {
       <div className="page-header">
         <div>
           <h1>Курсы и обучение</h1>
-          <p className="page-description">
-            Учебные материалы для сотрудников медицинского центра
-          </p>
         </div>
       </div>
 
@@ -74,7 +67,6 @@ export default function Courses() {
         <div className="courses-grid">
           {coursesList.map((course) => {
             const status = getCourseStatus(course);
-            const StatusIcon = status.icon;
             const progress = getProgressPercent(course);
 
             return (
@@ -84,83 +76,34 @@ export default function Courses() {
                 onClick={() => handleCourseClick(course.id)}
               >
                 <div className="course-card-header">
-                  <div className="course-icon">
-                    <BookOpen size={26} />
-                  </div>
-                  <div className={`course-status status-${status.color}`}>
-                    <StatusIcon size={15} />
-                    {status.text}
-                  </div>
+                  <h3 className="course-title">{course.title}</h3>
                 </div>
 
                 <div className="course-card-body">
-                  <h3 className="course-title">{course.title}</h3>
                   {course.description && (
                     <p className="course-description">{course.description}</p>
                   )}
+                </div>
 
-                  <div className="course-meta">
-                    <div className="course-meta-item">
-                      <BookOpen size={16} />
-                      <span>{course.lessonsCount} {course.lessonsCount === 1 ? 'урок' : course.lessonsCount < 5 ? 'урока' : 'уроков'}</span>
-                    </div>
-                    {course.estimatedDuration && (
-                      <div className="course-meta-item">
-                        <Clock size={16} />
-                        <span>~{course.estimatedDuration} мин</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {course.userProgress.completedLessons > 0 && (
-                    <div className="course-progress-section">
-                      <div className="course-progress-header">
-                        <span className="course-progress-label">Прогресс</span>
+                {status !== 'not_started' && (
+                  <div className="course-card-footer">
+                    {course.userProgress.completedLessons > 0 && (
+                      <>
+                        <div className="course-progress-bar">
+                          <div
+                            className="course-progress-fill"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
                         <span className="course-progress-value">{progress}%</span>
-                      </div>
-                      <div className="course-progress-bar">
-                        <div
-                          className="course-progress-fill"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="course-card-footer">
-                  <div className="course-footer-left">
-                    {course.userProgress.completedAt ? (
-                      <div className="course-completed-badge">
-                        <CheckCircle size={16} />
-                        Пройден {new Date(course.userProgress.completedAt).toLocaleDateString()}
-                      </div>
-                    ) : null}
-
-                    {course.userProgress.testScore !== null && (
-                      <div className="course-test-result">
-                        <span>Тест:</span>
-                        <strong className={course.userProgress.testScore >= 80 ? 'text-success' : 'text-danger'}>
-                          {course.userProgress.testScore}%
-                        </strong>
-                      </div>
+                      </>
                     )}
+                    <Medal
+                      size={22}
+                      className={`course-medal course-medal--${status}`}
+                    />
                   </div>
-
-                  <div className="course-footer-right">
-                    {!course.userProgress.completedAt && (
-                      course.userProgress.completedLessons > 0 ? (
-                        <button className="btn btn-primary btn-sm">
-                          Продолжить
-                        </button>
-                      ) : (
-                        <button className="btn btn-outline btn-sm">
-                          Начать курс
-                        </button>
-                      )
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
             );
           })}

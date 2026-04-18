@@ -181,6 +181,12 @@ const serveStatic = express.static(path.join(__dirname, 'uploads'), {
       res.setHeader('Content-Type', 'video/webm');
     } else if (ext === '.ogg') {
       res.setHeader('Content-Type', 'video/ogg');
+    } else if (ext === '.avi') {
+      res.setHeader('Content-Type', 'video/x-msvideo');
+    } else if (ext === '.mov') {
+      res.setHeader('Content-Type', 'video/quicktime');
+    } else if (ext === '.mkv') {
+      res.setHeader('Content-Type', 'video/x-matroska');
     }
     // Разрешаем частичную загрузку (Range requests) для видео
     res.setHeader('Accept-Ranges', 'bytes');

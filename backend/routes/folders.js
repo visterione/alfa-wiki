@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Folder, Page, User } = require('../models');
+const { Folder, Page, User, Media } = require('../models');
 const { authenticate, requirePermission } = require('../middleware/auth');
 
 const router = express.Router();
@@ -53,7 +53,10 @@ router.get('/browse', authenticate, async (req, res) => {
     // Получаем страницы в этой папке - сортировка только по алфавиту
     const allPages = await Page.findAll({
       where: { folderId: parentId || null },
-      include: [{ model: User, as: 'author', attributes: ['id', 'username', 'displayName'] }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'username', 'displayName'] },
+        { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'], required: false }
+      ],
       order: [['title', 'ASC']]
     });
 

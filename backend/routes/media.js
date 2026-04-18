@@ -3,9 +3,12 @@ const multer = require('multer');
 const sharp = require('sharp');
 const path = require('path');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const XLSX = require('xlsx-js-style');
 const { Media } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { convertXlsxToUniver } = require('../utils/xlsxConverter');
 
 const router = express.Router();
 
@@ -36,22 +39,72 @@ const storage = multer.diskStorage({
   }
 });
 
+const ALLOWED_MIME_TYPES = new Set([
+  // Images
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml', 'image/bmp', 'image/tiff',
+  // Video
+  'video/mp4', 'video/webm', 'video/ogg',
+  'video/x-msvideo', 'video/avi', 'video/msvideo',   // AVI
+  'video/quicktime',                                   // MOV
+  'video/x-matroska',                                  // MKV
+  'video/x-ms-wmv',                                    // WMV
+  // Audio
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/aac', 'audio/flac', 'audio/x-flac',
+  // Documents
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  // LibreOffice / OpenDocument
+  'application/vnd.oasis.opendocument.text',           // ODT
+  'application/vnd.oasis.opendocument.spreadsheet',    // ODS
+  'application/vnd.oasis.opendocument.presentation',   // ODP
+  'application/vnd.oasis.opendocument.graphics',       // ODG
+  // Text
+  'text/plain', 'text/csv', 'text/html', 'application/json', 'text/xml', 'application/xml',
+  // Archives — все известные варианты (браузеры разных ОС могут слать разные MIME)
+  'application/zip',
+  'application/x-zip',
+  'application/x-zip-compressed',
+  'application/x-compressed',
+  'multipart/x-zip',
+  'application/x-rar-compressed',
+  'application/vnd.rar',
+  'application/x-7z-compressed',
+  'application/x-tar',
+  'application/gzip',
+  'application/x-gzip',
+  'application/x-bzip',
+  'application/x-bzip2',
+  'application/x-xz',
+  // Executables / binaries
+  'application/x-msdownload',
+  'application/x-msi',
+  'application/octet-stream',
+]);
+
+// Разрешённые расширения — запасной вариант, если браузер отдаёт нестандартный MIME
+const ALLOWED_EXTENSIONS = new Set([
+  '.jpg','.jpeg','.png','.gif','.webp','.svg','.bmp','.tiff',
+  '.mp4','.webm','.ogg','.avi','.mov','.mkv','.wmv',
+  '.mp3','.wav','.aac','.flac','.m4a',
+  '.pdf',
+  '.doc','.docx','.xls','.xlsx','.ppt','.pptx',
+  '.odt','.ods','.odp','.odg',
+  '.txt','.csv','.json','.xml',
+  '.zip','.rar','.7z','.tar','.gz','.bz2','.xz','.tgz',
+  '.exe','.msi',
+]);
+
 const fileFilter = (req, file, cb) => {
-  const allowed = [
-    'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-    'video/mp4', 'video/webm', 'video/ogg',
-    'audio/mpeg', 'audio/ogg', 'audio/wav',
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-  ];
-  
-  if (allowed.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (ALLOWED_MIME_TYPES.has(file.mimetype) || ALLOWED_EXTENSIONS.has(ext)) {
     cb(null, true);
   } else {
-    cb(new Error('File type not allowed'), false);
+    cb(new Error(`File type not allowed: ${file.mimetype} (${ext})`), false);
   }
 };
 
@@ -307,6 +360,45 @@ router.put('/:id', authenticate, async (req, res) => {
     res.json(media);
   } catch (error) {
     res.status(500).json({ error: 'Failed to update media' });
+  }
+});
+
+// Convert XLSX media file to Univer JSON for inline preview
+router.get('/:id/as-univer', authenticate, async (req, res) => {
+  try {
+    const media = await Media.findByPk(req.params.id);
+    if (!media) return res.status(404).json({ error: 'Media not found' });
+
+    const XLSX_MIMES = new Set([
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ]);
+    if (!XLSX_MIMES.has(media.mimeType)) {
+      return res.status(400).json({ error: 'Not an Excel file' });
+    }
+
+    const absPath = path.join(__dirname, '..', media.path);
+    const workbook = XLSX.readFile(absPath);
+    const univerData = convertXlsxToUniver(workbook);
+
+    res.json(univerData);
+  } catch (error) {
+    console.error('as-univer error:', error);
+    res.status(500).json({ error: 'Failed to convert file' });
+  }
+});
+
+// Download media with original filename
+router.get('/:id/download', async (req, res) => {
+  try {
+    const media = await Media.findByPk(req.params.id);
+    if (!media) return res.status(404).json({ error: 'Media not found' });
+
+    const absPath = path.join(__dirname, '..', media.path);
+    res.download(absPath, media.originalName);
+  } catch (error) {
+    console.error('Download error:', error);
+    res.status(500).json({ error: 'Download failed' });
   }
 });
 
