@@ -171,41 +171,36 @@ export default function PageEditor() {
     <div className="page-editor">
       <form onSubmit={handleSubmit}>
         <div className="editor-header">
-          <button type="button" className="btn btn-ghost" onClick={() => navigate(-1)}>
-            <ArrowLeft size={18} />
+          <button type="button" className="btn btn-primary editor-header-btn" onClick={() => navigate(-1)}>
             Назад
           </button>
           <div className="editor-header-actions">
             <button
               type="button"
-              className={`btn btn-ghost ${showSettings ? 'active' : ''}`}
+              className="btn btn-primary editor-header-btn"
               onClick={() => setShowSettings(!showSettings)}
             >
-              <Settings size={18} />
               Настройки
             </button>
             {!isNew && (
               <>
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="btn btn-primary editor-header-btn"
                   onClick={() => setShowHistory(true)}
                 >
-                  <Clock size={18} />
-                  Журнал изменений
+                  Журнал
                 </button>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className="btn btn-primary editor-header-btn"
                   onClick={() => window.open(`/page/${form.slug}`, '_blank')}
                 >
-                  <Eye size={18} />
                   Просмотр
                 </button>
               </>
             )}
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? <div className="loading-spinner" style={{width:18,height:18}} /> : <Save size={18} />}
+            <button type="submit" className="btn btn-primary editor-header-btn" disabled={saving}>
               {isNew ? 'Создать' : 'Сохранить'}
             </button>
           </div>
@@ -223,7 +218,7 @@ export default function PageEditor() {
               />
             </div>
 
-            {isNew ? (
+            {isNew && (
               <div className="editor-type-tabs">
                 <button
                   type="button"
@@ -249,13 +244,6 @@ export default function PageEditor() {
                   <Grid size={16} />
                   Таблица (Excel)
                 </button>
-              </div>
-            ) : (
-              <div className="editor-type-badge">
-                {form.contentType === 'spreadsheet' && <><Grid size={14} /> Таблица</>}
-                {form.contentType === 'html' && <><Code size={14} /> HTML-страница</>}
-                {form.contentType === 'wysiwyg' && <><FileText size={14} /> Документ</>}
-                {form.contentType === 'file' && <><File size={14} /> Файл</>}
               </div>
             )}
 
@@ -382,6 +370,7 @@ export default function PageEditor() {
                               setForm({ ...form, allowedRoles: newRoles });
                             }}
                           />
+                          <span className={`toggle-track${form.allowedRoles.includes(role.id) ? ' on' : ''}`} />
                           {role.name}
                         </label>
                       ))}
@@ -396,6 +385,7 @@ export default function PageEditor() {
                         checked={form.isPublished}
                         onChange={(e) => setForm({ ...form, isPublished: e.target.checked })}
                       />
+                      <span className={`toggle-track${form.isPublished ? ' on' : ''}`} />
                       Опубликовать
                     </label>
                   </div>

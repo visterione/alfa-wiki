@@ -544,7 +544,6 @@ export default function PageView() {
             </a>
           ) : canEdit && (
             <Link to={`/page/${slug}/edit`} className="btn btn-primary">
-              <Edit size={18} />
               Редактировать
             </Link>
           )}

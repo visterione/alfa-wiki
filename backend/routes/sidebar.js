@@ -11,7 +11,7 @@ router.get('/', authenticate, async (req, res) => {
     const items = await SidebarItem.findAll({
       where: { parentId: null },
       include: [
-        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles'] },
+        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles', 'contentType', 'metadata'] },
         {
           model: Folder,
           as: 'folder',
@@ -19,7 +19,7 @@ router.get('/', authenticate, async (req, res) => {
           include: [{
             model: Page,
             as: 'pages',
-            attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'sortOrder', 'createdBy', 'allowedRoles'],
+            attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'sortOrder', 'createdBy', 'allowedRoles', 'contentType', 'metadata'],
             order: [['sortOrder', 'ASC']]
           }]
         },
@@ -27,7 +27,7 @@ router.get('/', authenticate, async (req, res) => {
           model: SidebarItem,
           as: 'children',
           include: [
-            { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles'] }
+            { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'isPublished', 'createdBy', 'allowedRoles', 'contentType', 'metadata'] }
           ],
           separate: true,
           order: [['sortOrder', 'ASC']]

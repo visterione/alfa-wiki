@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Home, File, FileText, Folder, FolderOpen, Users, Settings, Star, Heart, Bell, Calendar, Mail, Phone, MapPin, Clock, Tag, Bookmark, Award,
   Database, Image, Shield, Layout, Key, Layers, List, Grid, Hash, Filter,
   RefreshCw, Archive, Printer, Plus,
+  Music, Film, Table, Scroll,
   Type, Info, HelpCircle,
   Trophy, Medal, Target, Lightbulb, Zap, Sparkles, Flame, Gift, Package, Box, ShoppingCart,
   Coffee, ThumbsUp, Smile, Gauge, Compass, Map, Flag, Power,
@@ -492,6 +493,21 @@ const saveExpandedState = (state) => {
   }
 };
 
+// Иконка по mimeType файла (та же логика что в PageView)
+function getFileIcon(metadata) {
+  const mime = metadata?.mimeType || '';
+  if (mime.startsWith('image/')) return Image;
+  if (mime.startsWith('video/')) return Film;
+  if (mime.startsWith('audio/')) return Music;
+  if (mime === 'application/pdf') return Scroll;
+  if (mime.includes('spreadsheet') || mime.includes('excel')) return Table;
+  if (mime.includes('word') || mime.includes('msword')) return BookOpen;
+  if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+       'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return Archive;
+  if (['application/x-msdownload','application/x-msi'].includes(mime)) return Package;
+  return File;
+}
+
 // Вспомогательная функция для рендеринга иконки (эмодзи или Lucide)
 function renderIcon(iconValue, fallbackIconComponent, size = 18) {
   // Если иконка это эмодзи (1-4 символа и не в iconMap)
@@ -584,7 +600,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
                   style={{ paddingLeft: `${14 + (level + 1) * 16}px` }}
                   onClick={handleMobileClick}
                 >
-                  {renderIcon(page.icon, FileText, 18)}
+                  {renderIcon(page.icon, page.contentType === 'file' ? getFileIcon(page.metadata) : FileText, 18)}
                   <span>{page.title}</span>
                 </NavLink>
               );
@@ -635,7 +651,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >
-        {renderIcon(pageIcon, FileText, 18)}
+        {renderIcon(pageIcon, item.page?.contentType === 'file' ? getFileIcon(item.page?.metadata) : FileText, 18)}
         <span>{pageTitle}</span>
       </NavLink>
     );

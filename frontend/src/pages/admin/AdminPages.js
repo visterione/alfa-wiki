@@ -426,9 +426,7 @@ export default function AdminPages() {
                 className="btn btn-primary"
                 onClick={(e) => { e.stopPropagation(); setShowCreateDropdown(v => !v); }}
               >
-                <Plus size={16} />
                 Создать
-                <ChevronDown size={13} style={{ marginLeft: 2, opacity: 0.8 }} />
               </button>
               {showCreateDropdown && (
                 <div className="explorer-type-dropdown">
@@ -510,7 +508,6 @@ export default function AdminPages() {
               <button className={`explorer-list-col-btn explorer-list-status-col ${sortConfig.key === 'status' ? 'active' : ''}`} onClick={() => handleSort('status')}>
                 Статус <SortIcon colKey="status" />
               </button>
-              <span className="explorer-list-actions-col" />
             </div>
 
             {currentFolderId && (
@@ -547,18 +544,19 @@ export default function AdminPages() {
                 <Folder size={16} className="explorer-list-icon folder" />
                 <span className="explorer-list-name">{folder.title}</span>
                 <span className="explorer-list-type">Папка</span>
-                <span className="explorer-list-status-placeholder" />
-                <div className="explorer-list-actions">
-                  {canEdit && (
-                    <button title="Редактировать" onClick={(e) => { e.stopPropagation(); setFolderForm(folder); setFolderModal({ open: true, folder }); }}>
-                      <Edit size={14} />
-                    </button>
-                  )}
-                  {canDelete && (
-                    <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('folder', folder); }}>
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                <div className="explorer-list-status-cell">
+                  <div className="explorer-list-actions">
+                    {canEdit && (
+                      <button title="Редактировать" onClick={(e) => { e.stopPropagation(); setFolderForm(folder); setFolderModal({ open: true, folder }); }}>
+                        <Edit size={14} />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('folder', folder); }}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -593,34 +591,36 @@ export default function AdminPages() {
                   <IconComponent size={16} className={`explorer-list-icon ${iconInfo.className}`} />
                   <span className="explorer-list-name">{page.title}</span>
                   <span className="explorer-list-type">{iconInfo.title}</span>
-                  <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
-                    {page.isPublished ? 'Опубликовано' : 'Черновик'}
-                  </span>
-                  <div className="explorer-list-actions">
-                    {page.contentType === 'file' ? (
-                      <button title="Скачать" onClick={(e) => { e.stopPropagation(); downloadFile(page); }}>
-                        <Download size={14} />
-                      </button>
-                    ) : (
-                      <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
-                        <Eye size={14} />
-                      </button>
-                    )}
-                    {page.contentType !== 'file' && canEdit && (
-                      <button title="Редактировать" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}/edit`); }}>
-                        <Edit size={14} />
-                      </button>
-                    )}
-                    {canEdit && page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
-                      <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
-                        <Eye size={14} />
-                      </button>
-                    )}
-                    {canDelete && (
-                      <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('page', page); }}>
-                        <Trash2 size={14} />
-                      </button>
-                    )}
+                  <div className="explorer-list-status-cell">
+                    <span className={`explorer-item-status ${page.isPublished ? 'published' : 'draft'}`}>
+                      {page.isPublished ? 'Опубликовано' : 'Черновик'}
+                    </span>
+                    <div className="explorer-list-actions">
+                      {page.contentType === 'file' ? (
+                        <button title="Скачать" onClick={(e) => { e.stopPropagation(); downloadFile(page); }}>
+                          <Download size={14} />
+                        </button>
+                      ) : (
+                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                          <Eye size={14} />
+                        </button>
+                      )}
+                      {page.contentType !== 'file' && canEdit && (
+                        <button title="Редактировать" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}/edit`); }}>
+                          <Edit size={14} />
+                        </button>
+                      )}
+                      {canEdit && page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
+                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                          <Eye size={14} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button title="Удалить" className="danger" onClick={(e) => { e.stopPropagation(); openDeleteModal('page', page); }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

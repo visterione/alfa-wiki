@@ -926,12 +926,12 @@
 
 /* List view */
 .explorer-list {
-  padding: 8px 0;
+  padding: 0;
 }
 
 .explorer-list-item {
   display: grid;
-  grid-template-columns: 16px 1fr 110px 90px 96px;
+  grid-template-columns: 16px 1fr 110px 140px;
   column-gap: 10px;
   align-items: center;
   padding: 9px 16px;
@@ -996,6 +996,8 @@
   font-size: 12px;
   color: var(--text-tertiary);
   white-space: nowrap;
+  text-align: center;
+  justify-self: center;
 }
 
 .explorer-list-status-placeholder {
@@ -1008,15 +1010,16 @@
   white-space: nowrap;
 }
 
+.explorer-list-status-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
 .explorer-list-actions {
   display: flex;
   gap: 4px;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.explorer-list-item:hover .explorer-list-actions {
-  opacity: 1;
 }
 
 .explorer-list-actions button {
@@ -1025,24 +1028,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-light);
+  background: var(--primary);
+  border: none;
   border-radius: var(--radius-sm);
-  color: var(--text-secondary);
+  color: #fff;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: opacity var(--transition-fast);
 }
 
 .explorer-list-actions button:hover {
-  background: var(--primary-light);
-  color: var(--primary);
-  border-color: var(--primary);
+  opacity: 0.85;
 }
 
-.explorer-list-actions button.danger:hover {
-  background: rgba(255, 59, 48, 0.1);
-  color: var(--error);
-  border-color: var(--error);
+.explorer-list-actions button.danger {
+  background: var(--error);
 }
 
 /* Page type selector (create modal) */
@@ -1113,7 +1112,7 @@
   z-index: 200;
   overflow: hidden;
   animation: dropdown-appear 0.12s ease;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+  font-family: inherit;
 }
 
 @keyframes dropdown-appear {
@@ -1135,6 +1134,7 @@
   transition: background var(--transition-fast);
   color: var(--text-primary);
   font-family: inherit;
+  font-weight: normal;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1237,7 +1237,7 @@
 /* Список: заголовок столбцов */
 .explorer-list-header {
   display: grid;
-  grid-template-columns: 16px 1fr 110px 90px 96px;
+  grid-template-columns: 16px 1fr 110px 140px;
   column-gap: 10px;
   align-items: center;
   padding: 6px 16px;
@@ -1276,7 +1276,9 @@
 
 .explorer-list-type-col,
 .explorer-list-status-col {
-  /* column widths set by grid — no flex overrides needed */
+  width: 100%;
+  justify-content: center;
+  text-align: center;
 }
 
 .explorer-list-actions-col {

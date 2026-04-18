@@ -168,18 +168,17 @@ export default function CourseView() {
     <div className="course-view-container">
       {/* Header с прогрессом */}
       <div className="course-view-header">
-        <button className="btn-back" onClick={() => navigate('/courses')}>
-          <ArrowLeft size={20} />
-        </button>
         <div className="course-view-info">
-          <h1>{course.title}</h1>
+          <div className="course-view-title-row">
+            <button className="btn-back" onClick={() => navigate('/courses')}>
+              <ArrowLeft size={20} />
+            </button>
+            <h1>{course.title}</h1>
+          </div>
           <div className="course-view-progress">
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${getProgressPercent()}%` }} />
             </div>
-            <span className="progress-text">
-              {course.userProgress.completedLessons.length} из {course.lessons.length} уроков пройдено
-            </span>
           </div>
         </div>
       </div>
@@ -209,7 +208,7 @@ export default function CourseView() {
                     {!isAccessible ? (
                       <Lock size={18} />
                     ) : completed ? (
-                      <CheckCircle size={18} />
+                      <CheckCircle size={18} style={{ color: 'var(--primary)' }} />
                     ) : isCurrent ? (
                       <PlayCircle size={18} />
                     ) : (
@@ -247,12 +246,6 @@ export default function CourseView() {
           <div className="lesson-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h2>{currentLesson?.title}</h2>
-              {isCurrentCompleted && (
-                <div className="lesson-completed-badge">
-                  <CheckCircle size={16} />
-                  Завершено
-                </div>
-              )}
             </div>
             <PrintButton title={`${course.title} - ${currentLesson?.title}`} />
           </div>
@@ -270,8 +263,7 @@ export default function CourseView() {
               onClick={handlePrevLesson}
               disabled={isFirstLesson}
             >
-              <ChevronLeft size={18} />
-              Предыдущий урок
+              Назад
             </button>
 
             <div className="lesson-navigation-center">
@@ -280,8 +272,7 @@ export default function CourseView() {
                   className="btn btn-secondary"
                   onClick={handleCompleteLesson}
                 >
-                  <CheckCircle size={18} />
-                  Отметить как завершенный
+                  Завершено
                 </button>
               )}
             </div>
@@ -306,8 +297,7 @@ export default function CourseView() {
                 )
               ) : (
                 <>
-                  Следующий урок
-                  <ChevronRight size={18} />
+                  Дальше
                 </>
               )}
             </button>
@@ -500,12 +490,27 @@ function CourseTest({ course, onBack, onComplete }) {
   return (
     <div className="course-test-container">
       <div className="test-header">
-        <button className="btn-back" onClick={onBack}>
-          <ArrowLeft size={20} />
-          Вернуться к урокам
-        </button>
-        <h2>Финальный тест</h2>
-        <p>Ответьте на все вопросы. Минимальный проходной балл: 80%</p>
+        <div className="test-header-title-row">
+          <button className="btn-back" onClick={onBack}>
+            <ArrowLeft size={20} />
+          </button>
+          <h2>Финальный тест</h2>
+          <button
+            className="btn btn-primary"
+            onClick={handleSubmit}
+            disabled={submitting || Object.keys(answers).length < questions.length}
+            style={{ marginLeft: 'auto' }}
+          >
+            {submitting ? (
+              <>
+                <div className="loading-spinner-small" />
+                Отправка...
+              </>
+            ) : (
+              'Завершить'
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="test-questions">
@@ -531,23 +536,6 @@ function CourseTest({ course, onBack, onComplete }) {
             </div>
           </div>
         ))}
-      </div>
-
-      <div className="test-footer">
-        <button
-          className="btn btn-primary btn-lg"
-          onClick={handleSubmit}
-          disabled={submitting || Object.keys(answers).length < questions.length}
-        >
-          {submitting ? (
-            <>
-              <div className="loading-spinner-small" />
-              Отправка...
-            </>
-          ) : (
-            'Завершить тест'
-          )}
-        </button>
       </div>
     </div>
   );

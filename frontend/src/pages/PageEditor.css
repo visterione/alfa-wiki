@@ -16,6 +16,11 @@
   gap: 12px;
 }
 
+.editor-header-btn {
+  min-width: 120px;
+  justify-content: center;
+}
+
 .editor-body {
   display: flex;
   gap: 24px;
@@ -31,12 +36,17 @@
   flex-shrink: 0;
 }
 
+.editor-sidebar .input,
+.editor-sidebar .textarea {
+  background: var(--bg-secondary);
+}
+
 .title-input {
   font-size: 24px;
   font-weight: 600;
   padding: 16px 20px;
   border: none;
-  background: var(--bg-primary);
+  background: #ffffff !important;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
 }
@@ -76,18 +86,6 @@
   color: var(--primary);
 }
 
-.editor-type-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  color: var(--text-secondary);
-  margin-bottom: 16px;
-}
 
 .html-editor {
   background: var(--bg-primary);
@@ -125,17 +123,47 @@
 .checkbox-item {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
   font-size: 14px;
   cursor: pointer;
 }
 
 .checkbox-item input[type="checkbox"] {
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: var(--primary);
-  margin-right: 8px;
+  display: none;
+}
+
+.toggle-track {
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background: #aeaeb2;
+  border-radius: 10px;
+  position: relative;
+  flex-shrink: 0;
+  margin-right: 10px;
+  transition: background var(--transition-fast);
+  vertical-align: middle;
+}
+
+.toggle-track.on {
+  background: var(--primary);
+}
+
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform var(--transition-fast);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.toggle-track.on::after {
+  transform: translateX(16px);
 }
 
 @media (max-width: 1200px) {
