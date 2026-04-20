@@ -17,6 +17,7 @@ const {
 const reviewSyncService = require('../services/reviewSync');
 const { authenticate } = require('../middleware/auth');
 const { Op, Sequelize } = require('sequelize');
+const { sequelize } = require('../models');
 const {
   REVIEW_STATUSES,
   DECISION_CATEGORIES,
@@ -1279,22 +1280,34 @@ router.post('/', authenticate, async (req, res) => {
     // Получаем максимальный sortOrder
     const maxSortOrder = await Review.max('sortOrder', { where: { boardId, status: 'new' } }) || 0;
 
-    const review = await Review.create({
-      boardId,
-      patientName: patientName.trim(),
-      reviewDate,
-      platformId,
-      doctorName: doctorName?.trim() || null,
-      rating,
-      reviewText: reviewText.trim(),
-      additionalInfo: additionalInfo?.trim() || null,
-      status: 'new',
-      createdBy: req.user.id,
-      sortOrder: maxSortOrder + 1
-    });
+    // Транзакция: создание отзыва + запись в историю атомарно
+    const review = await sequelize.transaction(async (t) => {
+      const created = await Review.create({
+        boardId,
+        patientName: patientName.trim(),
+        reviewDate,
+        platformId,
+        doctorName: doctorName?.trim() || null,
+        rating,
+        reviewText: reviewText.trim(),
+        additionalInfo: additionalInfo?.trim() || null,
+        status: 'new',
+        createdBy: req.user.id,
+        sortOrder: maxSortOrder + 1
+      }, { transaction: t });
 
-    // Добавляем запись в историю
-    await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.CREATED);
+      await ReviewHistory.create({
+        reviewId: created.id,
+        userId: req.user.id,
+        action: HISTORY_ACTIONS.CREATED,
+        oldValue: null,
+        newValue: null,
+        comment: null,
+        attachments: []
+      }, { transaction: t });
+
+      return created;
+    });
 
     // Получаем полные данные отзыва
     const result = await Review.findByPk(review.id, {
@@ -1515,20 +1528,31 @@ router.post('/:id/move', authenticate, async (req, res) => {
       }
     }
 
-    await review.update({
-      status,
-      sortOrder: sortOrder !== undefined ? sortOrder : review.sortOrder
+    // Транзакция: смена статуса + запись в историю атомарно
+    let oldStatusLabel, newStatusLabel;
+    await sequelize.transaction(async (t) => {
+      await review.update({
+        status,
+        sortOrder: sortOrder !== undefined ? sortOrder : review.sortOrder
+      }, { transaction: t });
+
+      if (oldStatus !== status) {
+        oldStatusLabel = getStatusById(oldStatus)?.label || oldStatus;
+        newStatusLabel = validStatus.label;
+        await ReviewHistory.create({
+          reviewId: review.id,
+          userId: req.user.id,
+          action: HISTORY_ACTIONS.STATUS_CHANGE,
+          oldValue: oldStatusLabel,
+          newValue: newStatusLabel,
+          comment: null,
+          attachments: []
+        }, { transaction: t });
+      }
     });
 
-    // Добавляем запись в историю
+    // Уведомления и workflow — вне транзакции (внешние эффекты)
     if (oldStatus !== status) {
-      const oldStatusLabel = getStatusById(oldStatus)?.label || oldStatus;
-      const newStatusLabel = validStatus.label;
-
-      await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.STATUS_CHANGE, {
-        oldValue: oldStatusLabel,
-        newValue: newStatusLabel
-      });
 
       // Отправляем уведомления
       try {

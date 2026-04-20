@@ -671,9 +671,7 @@ export default function AdminUsers() {
                           readOnly
                           style={{
                             flex: 1,
-                            background: 'var(--bg-secondary)',
-                            fontFamily: 'monospace',
-                            fontSize: 14
+                            background: 'var(--bg-secondary)'
                           }}
                         />
                         <button
@@ -734,9 +732,7 @@ export default function AdminUsers() {
                         onChange={e => setForm({...form, password: e.target.value})}
                         placeholder="Оставьте пустым, чтобы не менять"
                         style={{
-                          flex: 1,
-                          fontFamily: form.password ? 'monospace' : 'inherit',
-                          fontSize: form.password ? 14 : 'inherit'
+                          flex: 1
                         }}
                       />
                       <button

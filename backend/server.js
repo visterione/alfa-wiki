@@ -140,9 +140,9 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "blob:", "*"],
-      fontSrc: ["'self'", "data:"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
       connectSrc: ["'self'", "*"],
       frameSrc: ["'self'", "blob:"], // Разрешаем iframe для blob URLs (PDF preview)
       mediaSrc: ["'self'", "blob:", "*"],
@@ -258,12 +258,15 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Error handling
+// Global error handler — catches errors passed via next(err) in any route
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
+  const status = err.status || err.statusCode || 500;
+  console.error(`[ERROR] ${req.method} ${req.originalUrl} → ${status}:`, err.message);
+  if (status === 500) console.error(err.stack);
+  if (res.headersSent) return next(err);
+  res.status(status).json({
+    error: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
       : err.message
   });
 });
@@ -348,5 +351,18 @@ async function startServer() {
 }
 
 startServer();
+
+// Catch unhandled promise rejections (async errors not caught by try/catch)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION]', reason);
+  // Log but don't exit — PM2 will restart if things get truly broken
+});
+
+// Catch synchronous uncaught exceptions (should not happen in normal flow)
+process.on('uncaughtException', (err) => {
+  console.error('[UNCAUGHT EXCEPTION]', err.message, err.stack);
+  // Give server 1s to finish in-flight requests, then exit so PM2 can restart
+  setTimeout(() => process.exit(1), 1000);
+});
 
 module.exports = app;

@@ -455,35 +455,50 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  .code-digit-input {
-    background: rgba(44, 44, 46, 0.8);
-    color: #F5F5F7;
-    border-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .code-digit-input:focus {
-    background: rgba(44, 44, 46, 1);
-    border-color: var(--primary);
-  }
-
-  .login-form .input {
-    background: rgba(44, 44, 46, 0.8);
-    color: #F5F5F7;
-    border-color: rgba(255, 255, 255, 0.15);
-  }
-
-  .login-form .input:focus {
-    background: rgba(44, 44, 46, 1);
-    border-color: var(--primary);
-  }
-
   .login-header h1 {
     background: linear-gradient(135deg, #F5F5F7 0%, #007AFF 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+
+  /* Тёмный фон инпутов — включая состояние autofill */
+  .login-form .input {
+    color-scheme: dark;
+    background: #2C2C2E !important;
+    color: #F5F5F7;
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .login-form .input:focus {
+    background: #3A3A3C !important;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
+  }
+
+  /* Перебиваем браузерный autofill (Chrome/Edge окрашивает поля своим цветом) */
+  .login-form .input:-webkit-autofill,
+  .login-form .input:-webkit-autofill:hover,
+  .login-form .input:-webkit-autofill:focus {
+    -webkit-box-shadow: 0 0 0 1000px #2C2C2E inset !important;
+    -webkit-text-fill-color: #F5F5F7 !important;
+    caret-color: #F5F5F7;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+  }
+
+  .code-digit-input {
+    color-scheme: dark;
+    background: #2C2C2E;
+    color: #F5F5F7;
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .code-digit-input:focus {
+    background: #3A3A3C;
+    border-color: var(--primary);
+  }
 }
+
 
 /* Responsive */
 @media (max-width: 480px) {

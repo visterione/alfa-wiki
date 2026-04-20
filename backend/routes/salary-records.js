@@ -1,8 +1,15 @@
 const express = require('express');
 const router = express.Router();
+const { body, validationResult } = require('express-validator');
 const { SalaryRecord } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
+
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  next();
+};
 
 // GET /api/salary-records/find?misUserId=X&dateFrom=Y — найти запись за тот же год-месяц
 router.get('/find', authenticate, async (req, res) => {
@@ -71,12 +78,17 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // POST /api/salary-records
-router.post('/', authenticate, async (req, res) => {
+router.post('/',
+  authenticate,
+  body('misUserId').notEmpty().withMessage('misUserId обязателен').isString().trim(),
+  body('doctorName').notEmpty().withMessage('doctorName обязателен').isString().trim().isLength({ max: 255 }),
+  body('dateFrom').optional({ nullable: true }).isISO8601().withMessage('dateFrom должен быть датой ISO8601'),
+  body('dateTo').optional({ nullable: true }).isISO8601().withMessage('dateTo должен быть датой ISO8601'),
+  body('periodLabel').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  validate,
+  async (req, res) => {
   try {
     const { misUserId, doctorName, dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
-    if (!misUserId || !doctorName) {
-      return res.status(400).json({ error: 'misUserId and doctorName required' });
-    }
 
     const record = await SalaryRecord.create({
       misUserId,
@@ -94,7 +106,7 @@ router.post('/', authenticate, async (req, res) => {
     console.error('POST /api/salary-records error:', err);
     res.status(500).json({ error: err.message });
   }
-});
+});  // end POST /api/salary-records
 
 // GET /api/salary-records/:id/excel — скачать сохранённый Excel-файл
 router.get('/:id/excel', authenticate, async (req, res) => {

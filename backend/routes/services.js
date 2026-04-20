@@ -92,6 +92,9 @@ const indexService = async (service) => {
 // ═══════════════════════════════════════════════════════════════
 
 // GET /api/services - Получить все услуги с фильтрацией и сортировкой
+// GET /api/services - Получить услуги с фильтрацией, сортировкой и опциональной серверной пагинацией
+// Без page/limit → возвращает массив (backward compat)
+// С page/limit → возвращает { data, total, page, totalPages, limit }
 router.get('/', authenticate, async (req, res) => {
   try {
     const {
@@ -100,7 +103,9 @@ router.get('/', authenticate, async (req, res) => {
       isStopped = '',
       pageSlug = '',
       sortBy = 'serviceName',
-      sortOrder = 'ASC'
+      sortOrder = 'ASC',
+      page,
+      limit
     } = req.query;
 
     const where = {};
@@ -131,23 +136,40 @@ router.get('/', authenticate, async (req, res) => {
     const finalSortBy = validSortFields.includes(sortBy) ? sortBy : 'serviceName';
     const finalSortOrder = validSortOrders.includes(sortOrder) ? sortOrder : 'ASC';
 
+    const attributes = [
+      'id', 'pageSlug', 'medCenter', 'serviceCode', 'serviceName',
+      'price', 'isStopped', 'preparationLink', 'comment', 'misServiceId',
+      'lastPriceUpdate', 'createdAt'
+    ];
+
+    // Если переданы page и limit — серверная пагинация
+    if (page !== undefined && limit !== undefined) {
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.min(500, Math.max(1, parseInt(limit) || 50));
+      const offset = (pageNum - 1) * limitNum;
+
+      const { count, rows } = await Service.findAndCountAll({
+        where,
+        order: [[finalSortBy, finalSortOrder]],
+        attributes,
+        limit: limitNum,
+        offset
+      });
+
+      return res.json({
+        data: rows,
+        total: count,
+        page: pageNum,
+        totalPages: Math.ceil(count / limitNum),
+        limit: limitNum
+      });
+    }
+
+    // Без параметров — возвращаем всё (backward compat)
     const services = await Service.findAll({
       where,
       order: [[finalSortBy, finalSortOrder]],
-      attributes: [
-        'id',
-        'pageSlug',
-        'medCenter',
-        'serviceCode',
-        'serviceName',
-        'price',
-        'isStopped',
-        'preparationLink',
-        'comment',
-        'misServiceId',
-        'lastPriceUpdate',
-        'createdAt'
-      ]
+      attributes
     });
 
     res.json(services);

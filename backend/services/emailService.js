@@ -278,7 +278,7 @@ const sendCredentials = async (email, username, password, displayName, isPasswor
           .credential-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e5e5e7; }
           .credential-row:last-child { border-bottom: none; }
           .credential-label { font-size: 13px; color: #86868B; font-weight: 500; }
-          .credential-value { font-size: 16px; color: #1D1D1F; font-weight: 600; font-family: monospace; }
+          .credential-value { font-size: 16px; color: #1D1D1F; font-weight: 600; }
           .info { color: #86868B; font-size: 14px; line-height: 1.6; margin-top: 20px; }
           .footer { background: #f5f5f7; padding: 20px 30px; text-align: center; color: #86868B; font-size: 12px; }
           .warning { background: #FFF4E5; border-left: 4px solid #FF9500; padding: 16px; border-radius: 8px; margin-top: 20px; }

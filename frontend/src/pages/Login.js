@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { auth as authApi } from '../services/api';
-import { LogIn, Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Shield, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import './Login.css';
 
@@ -299,10 +299,7 @@ export default function Login() {
                 {loading ? (
                   <div className="loading-spinner" style={{ width: 20, height: 20 }} />
                 ) : (
-                  <>
-                    <LogIn size={18} />
-                    Войти
-                  </>
+                  'Войти'
                 )}
               </button>
             </form>

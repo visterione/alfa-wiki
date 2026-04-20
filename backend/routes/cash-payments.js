@@ -1,7 +1,14 @@
 const express = require('express');
 const router = express.Router();
+const { body, param, validationResult } = require('express-validator');
 const { CashPayment, SalaryRecord } = require('../models');
 const { authenticate } = require('../middleware/auth');
+
+const validate = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  next();
+};
 
 function formatFinancistName(name) {
   if (!name) return '';
@@ -13,10 +20,15 @@ function formatFinancistName(name) {
 }
 
 // POST /api/cash-payments — зафиксировать выдачу из кассы
-router.post('/', authenticate, async (req, res) => {
+router.post('/',
+  authenticate,
+  body('salaryRecordId').notEmpty().withMessage('salaryRecordId обязателен').isUUID().withMessage('salaryRecordId должен быть UUID'),
+  body('amount').notEmpty().withMessage('amount обязателен').isFloat({ min: 0.01 }).withMessage('amount должен быть положительным числом'),
+  body('note').optional({ nullable: true }).isString().isLength({ max: 1000 }),
+  validate,
+  async (req, res) => {
   try {
     const { salaryRecordId, amount, note } = req.body;
-    if (!salaryRecordId || amount == null) return res.status(400).json({ error: 'salaryRecordId and amount required' });
 
     const record = await SalaryRecord.findByPk(salaryRecordId);
     if (!record) return res.status(404).json({ error: 'Salary record not found' });
@@ -40,7 +52,7 @@ router.post('/', authenticate, async (req, res) => {
     console.error('POST /api/cash-payments error:', err);
     res.status(500).json({ error: err.message });
   }
-});
+});  // end POST /api/cash-payments
 
 // GET /api/cash-payments?misUserId=X — все выдачи по сотруднику
 // GET /api/cash-payments?salaryRecordId=X — выдачи по конкретной записи
@@ -63,7 +75,14 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // PUT /api/cash-payments/:id — редактировать выдачу
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id',
+  authenticate,
+  param('id').isUUID().withMessage('id должен быть UUID'),
+  body('amount').optional({ nullable: true }).isFloat({ min: 0.01 }).withMessage('amount должен быть положительным числом'),
+  body('note').optional({ nullable: true }).isString().isLength({ max: 1000 }),
+  body('financistName').optional({ nullable: true }).isString().isLength({ max: 100 }),
+  validate,
+  async (req, res) => {
   try {
     const payment = await CashPayment.findByPk(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Not found' });
@@ -102,7 +121,7 @@ router.put('/:id', authenticate, async (req, res) => {
     console.error('PUT /api/cash-payments/:id error:', err);
     res.status(500).json({ error: err.message });
   }
-});
+});  // end PUT /api/cash-payments/:id
 
 // DELETE /api/cash-payments/:id
 router.delete('/:id', authenticate, async (req, res) => {
