@@ -707,7 +707,11 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly, onArchiveTabelEdit }) {
+export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly, permissions = {}, onArchiveTabelEdit }) {
+  const permHistory = permissions.tabArchiveHistory ?? 'edit';
+  const permKassa   = permissions.tabArchiveKassa   ?? 'edit';
+  const permTabel   = permissions.tabArchiveTabel   ?? 'edit';
+  const ARCHIVE_VIEW_PERM = { history: permHistory, kassa: permKassa, tabel: permTabel };
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);
@@ -716,7 +720,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cmpLoading, setCmpLoading]       = useState({});
 
   // Cash payments
-  const [viewMode, setViewMode]           = useState('history'); // 'history' | 'kassa' | 'tabel'
+  const [viewMode, setViewMode]           = useState(() => {
+    if (permHistory !== 'block') return 'history';
+    if (permKassa   !== 'block') return 'kassa';
+    if (permTabel   !== 'block') return 'tabel';
+    return 'history';
+  }); // 'history' | 'kassa' | 'tabel'
   const { wrapRef: salaryTabRef, sliderEl: salarySlider } = useTabSlider(viewMode);
   const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
   const [kassaData, setKassaData]         = useState([]);
@@ -975,6 +984,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     value: parseFloat((salaries[i] || 0).toFixed(2)),
   }));
 
+  const viewReadOnly = readOnly || ARCHIVE_VIEW_PERM[viewMode] === 'read';
+
   const viewToggle = (
     <div className="rb-clinic-tab-wrap" style={{ margin: '6px 12px', flexShrink: 0 }} ref={salaryTabRef}>
       {salarySlider}
@@ -982,7 +993,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         { key: 'history', label: 'Архив' },
         { key: 'kassa',   label: 'Касса' },
         { key: 'tabel',   label: 'Табели' },
-      ].map(({ key, label }) => (
+      ].filter(({ key }) => ARCHIVE_VIEW_PERM[key] !== 'block').map(({ key, label }) => (
         <button key={key}
           className={`rb-clinic-tab${viewMode === key ? ' active' : ''}`}
           onClick={() => {
@@ -1115,7 +1126,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: 'var(--rb-text)', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {doc ? `${doc.docNumber ? `№ ${doc.docNumber} : ` : ''}${doc.subdivision || doc.orgName || ''} за ${MONTH_NAMES_T[(doc.month || 1) - 1].toLowerCase()} ${doc.year} г.` : 'Загрузка...'}
             </span>
-            {!readOnly && (
+            {!viewReadOnly && (
               <button className="rb-btn rb-btn-primary" onClick={handleSaveArchive}
                 disabled={tabelSaving || isLoading}
                 style={{ height: 32, width: 96, justifyContent: 'center', opacity: (tabelSaving || isLoading) ? 0.6 : 1 }}>
@@ -1209,7 +1220,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   selectedDoctors={archiveDoctors}
                   year={doc.year}
                   month={doc.month}
-                  readOnly={readOnly}
+                  readOnly={viewReadOnly}
                   initialEntries={archiveEntries}
                   initialPayData={archivePayData}
                 />
@@ -1313,7 +1324,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                         <button onClick={() => handleTabelExcel({ ...rec, doctors: rec.doctors || [] }, filterMisId ? (rec.doctors || []).find(d => d.misUserId === filterMisId) || null : null)} style={btnStyle}>
                           Скачать
                         </button>
-                        {!readOnly && (
+                        {!viewReadOnly && (
                           <button onClick={e => handleDeleteTabel(rec.id, e)} style={btnStyle}>
                             Удалить
                           </button>
@@ -1431,7 +1442,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <th style={{ textAlign: 'right' }}>Сумма</th>
                   <th>Выдал</th>
                   <th>Примечание</th>
-                  {!readOnly && <th style={{ width: 52 }} />}
+                  {!viewReadOnly && <th style={{ width: 52 }} />}
                 </tr>
               </thead>
               <tbody>
@@ -1482,7 +1493,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                         </td>
                         <td>{p.financistName || '—'}</td>
                         <td style={{ fontStyle: 'italic', fontSize: 12 }}>{p.note || ''}</td>
-                        {!readOnly && (
+                        {!viewReadOnly && (
                           <td>
                             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                               <button onClick={() => startKassaEdit(p)} title="Редактировать"
@@ -1514,7 +1525,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   <td style={{ textAlign: 'right', fontWeight: 700, color: 'var(--rb-success)', paddingTop: 8, border: 'none' }}>
                     {kassaTotal.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₽
                   </td>
-                  <td colSpan={!readOnly ? 3 : 2} style={{ border: 'none' }} />
+                  <td colSpan={!viewReadOnly ? 3 : 2} style={{ border: 'none' }} />
                 </tr>
               </tfoot>
             </table>
@@ -1686,11 +1697,11 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                 key={rec.id}
                 record={rec}
                 clinics={clinics}
-                onDelete={readOnly ? undefined : handleDelete}
+                onDelete={viewReadOnly ? undefined : handleDelete}
                 cashPayments={cashPaymentsMap[rec.id] || []}
-                onCashPay={readOnly ? undefined : handleOpenCashModal}
-                onCashDelete={readOnly ? undefined : handleCashDelete}
-                onCashEdit={readOnly ? undefined : handleCashEdit}
+                onCashPay={viewReadOnly ? undefined : handleOpenCashModal}
+                onCashDelete={viewReadOnly ? undefined : handleCashDelete}
+                onCashEdit={viewReadOnly ? undefined : handleCashEdit}
               />
             ))}
           </div>

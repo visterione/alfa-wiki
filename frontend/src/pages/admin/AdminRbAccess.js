@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, Save, ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { User, Users, ChevronDown, ChevronUp, Check } from 'lucide-react';
 import { referralBonusAccess, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -40,14 +40,20 @@ const CLINICS = [
 ];
 
 const TAB_DEFS = [
-  { key: 'tab1',         label: 'Врачи' },
-  { key: 'tabHourNorms', label: 'Норма часов' },
-  { key: 'tab2',         label: 'Выполненные услуги' },
-  { key: 'tab3',         label: 'Бонусы за направления' },
-  { key: 'tab4',         label: 'Отчёт' },
-  { key: 'tabArchive',   label: 'История зарплат' },
-  { key: 'tabSummary',   label: 'Сводка' },
+  { key: 'tab1',               label: 'Сотрудники' },
+  { key: 'tabWorkTime',        label: 'Учёт рабочего времени', group: 'Учёт времени' },
+  { key: 'tabHourNorms',       label: 'Норма часов',            group: 'Учёт времени' },
+  { key: 'tabSchedule',        label: 'Расписание',             group: 'Учёт времени' },
+  { key: 'tab2',               label: 'Услуги' },
+  { key: 'tab3',               label: 'Направления' },
+  { key: 'tab4',               label: 'Отчёт' },
+  { key: 'tabArchiveHistory',  label: 'Архив',                  group: 'Архив' },
+  { key: 'tabArchiveKassa',    label: 'Касса',                  group: 'Архив' },
+  { key: 'tabArchiveTabel',    label: 'Табели',                 group: 'Архив' },
+  { key: 'tabSummary',         label: 'Сводка' },
 ];
+
+const SUMMARY_TAB_DEFS = TAB_DEFS;
 
 const PERM_OPTIONS = [
   { value: 'edit',  label: 'Редактирование', color: '#16a34a' },
@@ -55,20 +61,48 @@ const PERM_OPTIONS = [
   { value: 'block', label: 'Заблокировать',  color: '#dc2626' },
 ];
 
-function permSummary(perm) {
-  const restricted = TAB_DEFS.filter(t => perm[t.key] !== 'edit').map(t => {
-    return `${t.label}: ${perm[t.key] === 'read' ? 'чтение' : 'блок'}`;
-  });
-  const clinicCount = perm.clinics?.length || 0;
-  const parts = [];
-  if (clinicCount > 0) parts.push(`МЦ: ${clinicCount}`);
-  parts.push(...restricted);
-  return parts.length ? parts.join(' · ') : 'Полный доступ';
+const PERM_DOT_COLOR = { edit: '#16a34a', read: '#d97706', block: '#dc2626' };
+
+
+function PermSummary({ perm }) {
+  const clinics = (perm.clinics || [])
+    .map(id => CLINICS.find(c => c.id === id))
+    .filter(Boolean);
+
+  const restricted = SUMMARY_TAB_DEFS.filter(t => perm[t.key] && perm[t.key] !== 'edit');
+
+  if (!clinics.length && !restricted.length) {
+    return <span>Полный доступ</span>;
+  }
+
+  const parts = [
+    ...clinics.map((c, i) => <span key={`cl-${i}`} style={{ color: c.color }}>{c.name}</span>),
+    ...restricted.map(t => (
+      <span key={t.key} style={{ color: PERM_DOT_COLOR[perm[t.key]] || '#94a3b8' }}>
+        {t.label}
+      </span>
+    )),
+  ];
+
+  return (
+    <>
+      {parts.map((el, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && <span style={{ color: '#cbd5e1', margin: '0 4px' }}>|</span>}
+          {el}
+        </React.Fragment>
+      ))}
+    </>
+  );
 }
 
 function UserRow({ user, onSaved }) {
   const [open, setOpen] = useState(false);
-  const [perm, setPerm] = useState({ ...user.perm });
+  const [perm, setPerm] = useState({
+    tabWorkTime: 'edit', tabSchedule: 'edit',
+    tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit',
+    ...user.perm,
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -100,9 +134,6 @@ function UserRow({ user, onSaved }) {
     }
   };
 
-  const initials = (user.displayName || user.username || '?')
-    .split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
-
   return (
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 10, overflow: 'hidden' }}>
       {/* Header row */}
@@ -113,13 +144,15 @@ function UserRow({ user, onSaved }) {
         {user.avatar ? (
           <img src={user.avatar.startsWith('http') ? user.avatar : `${BASE_URL}/${user.avatar}`} alt={user.displayName} style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
         ) : (
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#dbeafe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13, color: '#2563eb', flexShrink: 0 }}>
-            {initials}
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9ca3af', flexShrink: 0 }}>
+            <User size={18} />
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>{user.displayName || user.username}</div>
-          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{permSummary(perm)}</div>
+          <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0 }}>
+            <PermSummary perm={perm} />
+          </div>
         </div>
         {open ? <ChevronUp size={16} color="#94a3b8" /> : <ChevronDown size={16} color="#94a3b8" />}
       </div>
@@ -131,9 +164,6 @@ function UserRow({ user, onSaved }) {
           <div style={{ marginBottom: 18 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>
               Медцентры
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 10 }}>
-              Если ничего не включено — пользователь видит все медцентры
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {CLINICS.map(c => {
@@ -153,7 +183,6 @@ function UserRow({ user, onSaved }) {
                     }}
                   >
                     <ClinicToggle checked={checked} color={c.color} />
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, display: 'inline-block', flexShrink: 0 }} />
                     <span style={{ fontSize: 12, fontWeight: checked ? 600 : 500, color: checked ? '#1e293b' : '#64748b', fontFamily: FONT }}>
                       {c.name}
                     </span>
@@ -165,31 +194,46 @@ function UserRow({ user, onSaved }) {
 
           {/* Tab permissions */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {TAB_DEFS.map(tab => (
-              <div key={tab.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <div style={{ minWidth: 220, fontSize: 13, color: '#475569' }}>{tab.label}</div>
-                <div style={{ display: 'flex', border: '1px solid #94a3b8', borderRadius: 7, overflow: 'hidden' }}>
-                  {PERM_OPTIONS.map(opt => {
-                    const active = perm[tab.key] === opt.value;
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() => setTab(tab.key, opt.value)}
-                        style={{
-                          padding: '5px 14px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
-                          fontFamily: FONT,
-                          background: active ? opt.color : 'white',
-                          color: active ? 'white' : '#64748b',
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+            {(() => {
+              const rows = [];
+              TAB_DEFS.forEach((tab, idx) => {
+                const isGroupStart = tab.group && (idx === 0 || TAB_DEFS[idx - 1]?.group !== tab.group);
+                if (isGroupStart) {
+                  rows.push(
+                    <div key={`group-${tab.group}`} style={{ fontSize: 13, color: '#475569', marginTop: 4, marginBottom: -2 }}>
+                      {tab.group}
+                    </div>
+                  );
+                }
+                rows.push(
+                  <div key={tab.key} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 220, fontSize: tab.group ? 11 : 13, color: tab.group ? '#94a3b8' : '#475569' }}>{tab.label}</div>
+                    <div style={{ display: 'flex', border: '1px solid #94a3b8', borderRadius: 7, overflow: 'hidden' }}>
+                      {PERM_OPTIONS.map(opt => {
+                        const active = perm[tab.key] === opt.value;
+                        return (
+                          <button
+                            key={opt.value}
+                            onClick={() => setTab(tab.key, opt.value)}
+                            style={{
+                              flex: 1, width: 105, padding: '5px 0', textAlign: 'center',
+                              fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                              fontFamily: FONT,
+                              background: active ? opt.color : 'white',
+                              color: active ? 'white' : '#64748b',
+                              transition: 'all 0.15s',
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              });
+              return rows;
+            })()}
           </div>
 
           {/* Save */}
@@ -197,9 +241,8 @@ function UserRow({ user, onSaved }) {
             <button
               onClick={handleSave}
               disabled={saving}
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
+              style={{ padding: '7px 16px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, fontFamily: FONT, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}
             >
-              <Save size={14} />
               {saving ? 'Сохранение...' : 'Сохранить'}
             </button>
             {saved && (

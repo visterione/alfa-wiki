@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, mis } from '../../../services/api';
 import { rbProfessionTitle } from '../utils/clinicUtils';
@@ -15,8 +15,18 @@ const MONTH_NAMES = [
 
 const currentDate = new Date();
 
-export default function StepHourNorms({ readOnly, doctors = [], clinics = [], getClinicColor, getClinicName }) {
-  const [activeTab, setActiveTab] = useState('work_time'); // 'work_time' | 'hour_norms' | 'schedule'
+export default function StepHourNorms({ doctors = [], clinics = [], getClinicColor, getClinicName, permissions = {} }) {
+  const permWorkTime  = permissions.tabWorkTime  ?? 'edit';
+  const permHourNorms = permissions.tabHourNorms ?? 'edit';
+  const permSchedule  = permissions.tabSchedule  ?? 'edit';
+
+  const getInitialTab = () => {
+    if (permWorkTime  !== 'block') return 'work_time';
+    if (permHourNorms !== 'block') return 'hour_norms';
+    if (permSchedule  !== 'block') return 'schedule';
+    return 'work_time';
+  };
+  const [activeTab, setActiveTab] = useState(getInitialTab); // 'work_time' | 'hour_norms' | 'schedule'
   const { wrapRef, sliderEl } = useTabSlider(activeTab);
   const [mode, setMode] = useState('professions'); // 'professions' | 'roles'
 
@@ -33,6 +43,24 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
   const [periods, setPeriods] = useState([]);
 
   const [selectedScheduleDoctor, setSelectedScheduleDoctor] = useState(null);
+  const [managingDivision,       setManagingDivision]       = useState(null); // { id, name } | null
+  const divisionPanelRef = useRef(null);
+
+  const handleSelectDoctor = (id) => {
+    setSelectedScheduleDoctor(id);
+    if (id) setManagingDivision(null);
+  };
+
+  const handleManageAccess = (div) => {
+    setManagingDivision(div); // { id, name } or null
+    if (div) setSelectedScheduleDoctor(null);
+  };
+
+  const handleDivisionRenamed = (id, newName) => {
+    setManagingDivision(prev => prev?.id === id ? { ...prev, name: newName } : prev);
+    divisionPanelRef.current?.updateName(id, newName);
+  };
+  const [managingDivisionId, setManagingDivisionId] = useState(null);
   const [scheduleSearch,      setScheduleSearch]      = useState('');
   const [scheduleFilterClinic,setScheduleFilterClinic] = useState('');
   const [scheduleFilterRole,  setScheduleFilterRole]   = useState('');
@@ -149,24 +177,30 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
 
   const tabButtons = (
     <>
-      <button
-        className={`rb-clinic-tab${activeTab === 'work_time' ? ' active' : ''}`}
-        onClick={() => setActiveTab('work_time')}
-      >
-        Учёт рабочего времени
-      </button>
-      <button
-        className={`rb-clinic-tab${activeTab === 'hour_norms' ? ' active' : ''}`}
-        onClick={() => setActiveTab('hour_norms')}
-      >
-        Норма часов
-      </button>
-      <button
-        className={`rb-clinic-tab${activeTab === 'schedule' ? ' active' : ''}`}
-        onClick={() => setActiveTab('schedule')}
-      >
-        Расписание
-      </button>
+      {permWorkTime !== 'block' && (
+        <button
+          className={`rb-clinic-tab${activeTab === 'work_time' ? ' active' : ''}`}
+          onClick={() => setActiveTab('work_time')}
+        >
+          Учёт рабочего времени
+        </button>
+      )}
+      {permHourNorms !== 'block' && (
+        <button
+          className={`rb-clinic-tab${activeTab === 'hour_norms' ? ' active' : ''}`}
+          onClick={() => setActiveTab('hour_norms')}
+        >
+          Норма часов
+        </button>
+      )}
+      {permSchedule !== 'block' && (
+        <button
+          className={`rb-clinic-tab${activeTab === 'schedule' ? ' active' : ''}`}
+          onClick={() => setActiveTab('schedule')}
+        >
+          Расписание
+        </button>
+      )}
     </>
   );
 
@@ -182,12 +216,16 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
         <div className="rb-layout">
           {/* Левая панель — подразделения */}
           <ScheduleDivisionPanel
+            ref={divisionPanelRef}
             doctors={visibleDoctors}
             selectedDoctorId={selectedScheduleDoctor}
-            onSelectDoctor={setSelectedScheduleDoctor}
-            readOnly={readOnly}
+            onSelectDoctor={handleSelectDoctor}
+            readOnly={permSchedule === 'read'}
             getClinicColor={getClinicColor}
             getClinicName={getClinicName}
+            onManageAccess={handleManageAccess}
+            managingDivisionId={managingDivision?.id ?? null}
+            onDivisionRenamed={handleDivisionRenamed}
           />
 
           {/* Правая панель — календарь расписания */}
@@ -197,6 +235,9 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
             clinics={clinics}
             getClinicColor={getClinicColor}
             getClinicName={getClinicName}
+            readOnly={permSchedule === 'read'}
+            managingDivision={managingDivision}
+            onDivisionRenamed={handleDivisionRenamed}
           />
         </div>
       </>
@@ -212,7 +253,7 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
       </div>
 
       {activeTab === 'work_time' && (
-        <StepWorkTime doctors={doctors} readOnly={readOnly} clinics={clinics} getClinicName={getClinicName} />
+        <StepWorkTime doctors={doctors} readOnly={permWorkTime === 'read'} clinics={clinics} getClinicName={getClinicName} />
       )}
 
       {activeTab === 'hour_norms' && (<>
@@ -277,7 +318,7 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
                             type="number"
                             min="0"
                             step="0.5"
-                            disabled={readOnly}
+                            disabled={permHourNorms === 'read'}
                             value={values[title] ?? ''}
                             onChange={e => handleChange(title, e.target.value)}
                             placeholder="—"
@@ -288,7 +329,7 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
                               border: '1px solid var(--rb-border)',
                               borderRadius: 6,
                               fontSize: 13,
-                              background: readOnly ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
+                              background: permHourNorms === 'read' ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
                               color: 'var(--rb-text)',
                             }}
                           />
@@ -303,7 +344,7 @@ export default function StepHourNorms({ readOnly, doctors = [], clinics = [], ge
         )}
       </div>
 
-      {!readOnly && currentList.length > 0 && !loading && !listLoading && (
+      {permHourNorms !== 'read' && currentList.length > 0 && !loading && !listLoading && (
         <div style={{ padding: '12px 16px', borderTop: '1px solid var(--rb-border)', display: 'flex', justifyContent: 'flex-end' }}>
           <button
             className="rb-btn rb-btn-primary"

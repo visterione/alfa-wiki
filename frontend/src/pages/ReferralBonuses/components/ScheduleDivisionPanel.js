@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
 import toast from 'react-hot-toast';
 import { structuralDivisions as divisionsApi } from '../../../services/api';
+import { useAuth } from '../../../context/AuthContext';
 
-export default function ScheduleDivisionPanel({
+const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   doctors = [], selectedDoctorId, onSelectDoctor, readOnly,
   getClinicColor, getClinicName,
-}) {
+  onManageAccess, managingDivisionId, onDivisionRenamed,
+}, ref) {
+  const { user } = useAuth();
   const [divisions,    setDivisions]    = useState([]);
   const [openId,       setOpenId]       = useState(null);
   const [editingId,    setEditingId]    = useState(null);
@@ -20,6 +23,15 @@ export default function ScheduleDivisionPanel({
   const [showCreate,   setShowCreate]   = useState(false);
   const editInputRef = useRef(null);
   const newInputRef  = useRef(null);
+
+  useImperativeHandle(ref, () => ({
+    updateName: (id, newName) => {
+      setDivisions(prev =>
+        prev.map(d => d.id === id ? { ...d, name: newName } : d)
+          .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+      );
+    },
+  }));
 
   useEffect(() => {
     divisionsApi.list()
@@ -113,6 +125,7 @@ export default function ScheduleDivisionPanel({
         prev.map(d => d.id === id ? res.data : d)
           .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
       );
+      onDivisionRenamed?.(id, editName.trim());
     } catch {
       toast.error('Ошибка сохранения');
     } finally {
@@ -216,8 +229,13 @@ export default function ScheduleDivisionPanel({
           const isOpen    = openId === div.id;
           const isEditing = editingId === div.id;
           const isAdding  = addingTo === div.id;
+          const isManaging = managingDivisionId === div.id;
           const members   = getDivDoctors(div);
           const memberIds = new Set(div.doctorIds || []);
+          const myPerm    = div.myPermission; // 'owner' | 'edit' | 'read' | 'public' | null
+          const isOwner   = myPerm === 'owner';
+          const canEdit   = isOwner || myPerm === 'edit' || user?.isAdmin;
+          const canAdmin  = isOwner || user?.isAdmin;
 
           const filtered = isAdding
             ? doctors.filter(d => {
@@ -275,28 +293,36 @@ export default function ScheduleDivisionPanel({
                   </span>
                 )}
 
-                {!readOnly && !isEditing && (
+                {!isEditing && (
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    <button
-                      onClick={e => { e.stopPropagation(); if (isAdding) { closeAddPanel(); } else { openAddPanel(div.id); if (!isOpen) setOpenId(div.id); } }}
-                      title="Добавить сотрудника"
-                      style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isAdding ? '#1d4ed8' : 'var(--rb-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    </button>
-                    <button onClick={e => startEdit(div, e)} title="Переименовать"
-                      style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#64748b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                    <button onClick={e => handleDelete(div.id, e)} title="Удалить"
-                      style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                        <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                      </svg>
-                    </button>
+                    {canEdit && !readOnly && (
+                      <button
+                        onClick={e => { e.stopPropagation(); if (isAdding) { closeAddPanel(); } else { openAddPanel(div.id); if (!isOpen) setOpenId(div.id); } }}
+                        title="Добавить сотрудника"
+                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isAdding ? '#1d4ed8' : 'var(--rb-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      </button>
+                    )}
+                    {canAdmin && onManageAccess && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name }); }}
+                        title="Настройки доступа"
+                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isManaging ? '#1d4ed8' : '#64748b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                          <circle cx="12" cy="12" r="3"/>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                      </button>
+                    )}
+                    {canAdmin && !readOnly && (
+                      <button onClick={e => handleDelete(div.id, e)} title="Удалить"
+                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                          <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -306,7 +332,7 @@ export default function ScheduleDivisionPanel({
                 <div style={{ background: 'var(--rb-bg-alt, #f8fafc)' }}>
 
                   {/* Add members panel — вверху */}
-                  {!readOnly && isAdding && (
+                  {canEdit && !readOnly && isAdding && (
                     <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f0f6ff' }}>
                       {/* Search + close */}
                       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
@@ -411,7 +437,7 @@ export default function ScheduleDivisionPanel({
                         <div className="rb-doctor-info">
                           <div className="rb-doctor-name" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span>{d.name}</span>
-                            {!readOnly && (
+                            {canEdit && !readOnly && (
                               <button
                                 onClick={e => { e.stopPropagation(); toggleMember(div.id, d.id); }}
                                 title="Убрать из подразделения"
@@ -445,4 +471,6 @@ export default function ScheduleDivisionPanel({
 
     </div>
   );
-}
+});
+
+export default ScheduleDivisionPanel;

@@ -678,10 +678,13 @@ export const tabelRecords = {
 };
 
 export const structuralDivisions = {
-  list:   ()           => api.get('/structural-divisions'),
-  create: (data)       => api.post('/structural-divisions', data),
-  update: (id, data)   => api.put(`/structural-divisions/${id}`, data),
-  delete: (id)         => api.delete(`/structural-divisions/${id}`),
+  list:         ()                 => api.get('/structural-divisions'),
+  create:       (data)             => api.post('/structural-divisions', data),
+  update:       (id, data)         => api.put(`/structural-divisions/${id}`, data),
+  delete:       (id)               => api.delete(`/structural-divisions/${id}`),
+  getAccess:    (id)               => api.get(`/structural-divisions/${id}/access`),
+  addAccess:    (id, userId, perm) => api.post(`/structural-divisions/${id}/access`, { userId, permission: perm }),
+  removeAccess: (id, userId)       => api.delete(`/structural-divisions/${id}/access/${userId}`),
 };
 
 export default api;

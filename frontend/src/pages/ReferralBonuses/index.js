@@ -173,7 +173,10 @@ export default function ReferralBonusesPage() {
 
   // ── Permissions ──
   const [permissions, setPermissions] = useState({
-    tab1: 'edit', tabHourNorms: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchive: 'edit', clinics: []
+    tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit',
+    tab2: 'edit', tab3: 'edit', tab4: 'edit',
+    tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit',
+    tabSummary: 'edit', clinics: []
   });
 
   // ── Step 4: for jumping from step 3 to step 4 with a pre-selected doctor ──
@@ -544,21 +547,45 @@ export default function ReferralBonusesPage() {
     onArchiveTabelEdit: setArchiveTabelEdit,
   };
 
-  const TAB_KEYS = ['tab1', 'tabHourNorms', 'tab2', 'tab3', 'tab4', 'tabArchive', 'tabSummary'];
+  // Steps 2 and 6 use 3 sub-keys instead of a single key
+  const STEP2_KEYS = ['tabWorkTime', 'tabHourNorms', 'tabSchedule'];
+  const STEP6_KEYS = ['tabArchiveHistory', 'tabArchiveKassa', 'tabArchiveTabel'];
+  const TAB_KEYS   = ['tab1', null, 'tab2', 'tab3', 'tab4', null, 'tabSummary'];
 
   const canViewStep = (step) => {
+    if (step === 2) return STEP2_KEYS.some(k => permissions[k] !== 'block');
+    if (step === 6) return STEP6_KEYS.some(k => permissions[k] !== 'block');
     const perm = permissions[TAB_KEYS[step - 1]];
     return perm === 'edit' || perm === 'read';
   };
 
-  const isStepReadOnly = (step) => permissions[TAB_KEYS[step - 1]] === 'read';
+  const isStepReadOnly = (step) => {
+    if (step === 2) return STEP2_KEYS.every(k => permissions[k] !== 'edit') && STEP2_KEYS.some(k => permissions[k] !== 'block');
+    if (step === 6) return STEP6_KEYS.every(k => permissions[k] !== 'edit') && STEP6_KEYS.some(k => permissions[k] !== 'block');
+    return permissions[TAB_KEYS[step - 1]] === 'read';
+  };
 
   // Auto-navigate away from blocked step after permissions load
   useEffect(() => {
     if (permissions.tab1 === 'edit' && permissions.tab2 === 'edit') return; // default state, skip
+    if (currentStep === 2 || currentStep === 6) {
+      if (!canViewStep(currentStep)) {
+        const first = TAB_KEYS.findIndex((k, i) => {
+          if (i === 1) return canViewStep(2);
+          if (i === 5) return canViewStep(6);
+          return k && permissions[k] !== 'block';
+        });
+        if (first !== -1) setCurrentStep(first + 1);
+      }
+      return;
+    }
     const currentPerm = permissions[TAB_KEYS[currentStep - 1]];
     if (currentPerm === 'block') {
-      const first = TAB_KEYS.findIndex(k => permissions[k] !== 'block');
+      const first = TAB_KEYS.findIndex((k, i) => {
+        if (i === 1) return canViewStep(2);
+        if (i === 5) return canViewStep(6);
+        return k && permissions[k] !== 'block';
+      });
       if (first !== -1) setCurrentStep(first + 1);
     }
   }, [permissions]); // eslint-disable-line
@@ -568,7 +595,7 @@ export default function ReferralBonusesPage() {
       case 1:
         return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
       case 2:
-        return <StepHourNorms readOnly={isStepReadOnly(2)} doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} getClinicName={getClinicName} />;
+        return <StepHourNorms doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} getClinicName={getClinicName} permissions={permissions} />;
       case 3:
         return <StepPerformed {...sharedProps} readOnly={isStepReadOnly(3)} />;
       case 4:

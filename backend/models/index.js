@@ -1409,12 +1409,17 @@ const RbUserPermission = sequelize.define('RbUserPermission', {
     comment: 'Список ID медцентров (пусто = все)'
   },
   tab1:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabWorkTime:  { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tabHourNorms: { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabSchedule:  { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tab2:         { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tab3:          { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tab4:          { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tabArchive:    { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
-  tabSummary:    { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tab4:             { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchive:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchiveHistory:{ type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchiveKassa:  { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabArchiveTabel:  { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
+  tabSummary:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
 }, { tableName: 'rb_user_permissions', timestamps: true });
 
 // === EMAIL TEMPLATE MODEL ===
@@ -2478,11 +2483,29 @@ const StructuralDivision = sequelize.define('StructuralDivision', {
   id:        { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name:      { type: DataTypes.STRING(255), allowNull: false },
   doctorIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], field: 'doctor_ids' },
+  createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by', references: { model: 'users', key: 'id' } },
 }, {
   tableName: 'structural_divisions',
   timestamps: true,
   underscored: true,
 });
+
+const DivisionAccess = sequelize.define('DivisionAccess', {
+  id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  divisionId: { type: DataTypes.UUID, allowNull: false, field: 'division_id' },
+  userId:     { type: DataTypes.UUID, allowNull: false, field: 'user_id' },
+  permission: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'read' },
+}, {
+  tableName: 'division_access',
+  timestamps: true,
+  underscored: true,
+});
+
+// StructuralDivision & DivisionAccess associations
+StructuralDivision.hasMany(DivisionAccess, { foreignKey: 'divisionId', as: 'accesses' });
+DivisionAccess.belongsTo(StructuralDivision, { foreignKey: 'divisionId' });
+DivisionAccess.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+User.hasMany(DivisionAccess, { foreignKey: 'userId' });
 
 module.exports = {
   sequelize,
@@ -2569,4 +2592,5 @@ module.exports = {
   TabelRecordDoctor,
   // Structural divisions
   StructuralDivision,
+  DivisionAccess,
 };
