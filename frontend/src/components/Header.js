@@ -19,61 +19,60 @@ import {
 } from './SearchResultComponents';
 import './Header.css';
 
-// Маппинг иконок для разных типов результатов
+const GROUP_ORDER = ['doctor', 'analysis', 'service', 'accreditation', 'vehicle', 'page', 'spreadsheet'];
+const GROUP_LABELS = {
+  doctor: 'Врачи',
+  analysis: 'Анализы',
+  service: 'Услуги',
+  accreditation: 'Аккредитации',
+  vehicle: 'Транспорт',
+  page: 'Страницы Wiki',
+  spreadsheet: 'Таблицы',
+};
+
+function groupResults(results) {
+  const byType = {};
+  results.forEach(r => {
+    if (!byType[r.type]) byType[r.type] = [];
+    byType[r.type].push(r);
+  });
+  const ordered = [];
+  GROUP_ORDER.forEach(type => {
+    if (byType[type]?.length) {
+      ordered.push({ type, label: GROUP_LABELS[type] || type, items: byType[type] });
+      delete byType[type];
+    }
+  });
+  Object.keys(byType).forEach(type => {
+    if (byType[type].length) ordered.push({ type, label: type, items: byType[type] });
+  });
+  return ordered;
+}
+
 const getResultIcon = (type) => {
   switch (type) {
-    case 'page':
-      return FileText;
-    case 'spreadsheet':
-      return Table2;
-    case 'accreditation':
-      return Award;
-    case 'vehicle':
-      return Car;
-    case 'doctor':
-      return UserCircle;
-    case 'service':
-      return Briefcase;
-    case 'analysis':
-      return TestTube;
-    default:
-      return File;
+    case 'page': return FileText;
+    case 'spreadsheet': return Table2;
+    case 'accreditation': return Award;
+    case 'vehicle': return Car;
+    case 'doctor': return UserCircle;
+    case 'service': return Briefcase;
+    case 'analysis': return TestTube;
+    default: return File;
   }
 };
 
-// Функция для рендеринга иконки/эмодзи в результатах поиска
 const renderSearchIcon = (iconValue, type, size = 16) => {
-  // Если есть эмодзи (содержит не-ASCII символы — настоящий эмодзи/Unicode)
   if (iconValue && /[^\x00-\x7F]/.test(iconValue)) {
     return <span className="search-result-emoji" style={{ fontSize: `${size + 2}px` }}>{iconValue}</span>;
   }
-
-  // Fallback на иконку по типу
   const IconComponent = getResultIcon(type);
   return <IconComponent size={size} />;
 };
 
-// Маппинг названий типов
 const getTypeName = (type, displayType) => {
   if (displayType) return displayType;
-  switch (type) {
-    case 'page':
-      return 'Страница';
-    case 'spreadsheet':
-      return 'Таблица';
-    case 'accreditation':
-      return 'Аккредитация';
-    case 'vehicle':
-      return 'Транспорт';
-    case 'doctor':
-      return 'Врач';
-    case 'service':
-      return 'Услуга';
-    case 'analysis':
-      return 'Анализ';
-    default:
-      return type;
-  }
+  return GROUP_LABELS[type] || type;
 };
 
 function abbreviateName(name) {
@@ -87,15 +86,42 @@ function abbreviateName(name) {
   return result;
 }
 
+const highlightText = (text, query) => {
+  if (!text) return [{ text: '', highlight: false }];
+  if (!query) return [{ text, highlight: false }];
+
+  const parts = [];
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  let lastIndex = 0;
+  let index = lowerText.indexOf(lowerQuery);
+
+  if (index === -1) return [{ text, highlight: false }];
+
+  while (index !== -1) {
+    if (index > lastIndex) parts.push({ text: text.substring(lastIndex, index), highlight: false });
+    parts.push({ text: text.substring(index, index + query.length), highlight: true });
+    lastIndex = index + query.length;
+    index = lowerText.indexOf(lowerQuery, lastIndex);
+  }
+  if (lastIndex < text.length) parts.push({ text: text.substring(lastIndex), highlight: false });
+  return parts;
+};
+
 export default function Header({ sidebarOpen, onToggleSidebar }) {
   const { user, logout, isAdmin } = useAuth();
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [totalResults, setTotalResults] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [showDropdown, setShowDropdown] = useState(false);
+
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -103,6 +129,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     const handleClickOutside = (e) => {
       if (searchRef.current && !searchRef.current.contains(e.target)) {
         setShowResults(false);
+        setActiveIndex(-1);
       }
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setShowDropdown(false);
@@ -112,29 +139,68 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Debounced search — 400ms
   useEffect(() => {
+    if (searchQuery.length < 2) return;
     const timer = setTimeout(async () => {
-      if (searchQuery.length >= 2) {
-        try {
-          const { data } = await searchApi.query(searchQuery);
-          setSearchResults(data.results || []);
-          setShowResults(true);
-        } catch (error) {
-          console.error('Search error:', error);
-        }
-      } else {
+      try {
+        const { data } = await searchApi.query(searchQuery);
+        setSearchResults(data.results || []);
+        setTotalResults(data.total || 0);
+      } catch (error) {
+        console.error('Search error:', error);
         setSearchResults([]);
-        setShowResults(false);
+        setTotalResults(0);
+      } finally {
+        setIsLoading(false);
       }
-    }, 300);
+    }, 400);
     return () => clearTimeout(timer);
   }, [searchQuery]);
+
+  const handleSearchChange = (e) => {
+    const val = e.target.value;
+    setSearchQuery(val);
+    setActiveIndex(-1);
+    if (val.length >= 2) {
+      setIsLoading(true);
+      setShowResults(true);
+    } else {
+      setIsLoading(false);
+      setSearchResults([]);
+      setTotalResults(0);
+      setShowResults(false);
+    }
+  };
+
+  // Keyboard navigation
+  const groups = groupResults(searchResults);
+  const flatResults = groups.flatMap(g => g.items);
+
+  const handleKeyDown = (e) => {
+    if (!showResults) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(prev => Math.min(prev + 1, flatResults.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && flatResults[activeIndex]) {
+        handleResultClick(flatResults[activeIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setShowResults(false);
+      setActiveIndex(-1);
+    }
+  };
 
   const handleResultClick = (result) => {
     setShowResults(false);
     setSearchQuery('');
-    
-    // Для внешних ссылок или специальных URL
+    setSearchResults([]);
+    setActiveIndex(-1);
     if (result.url.startsWith('http')) {
       window.open(result.url, '_blank');
     } else {
@@ -167,53 +233,20 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     return `${BASE_URL}/${theme.logo}`;
   };
 
-  // Получение роли пользователя
   const getUserRole = () => {
     if (user?.isAdmin) return 'Администратор';
     return user?.role?.name || 'Пользователь';
   };
 
-  // Функция для подсветки поискового запроса в тексте
-  const highlightText = (text, query) => {
-    if (!text) return [{ text: '', highlight: false }];
-    if (!query) return [{ text, highlight: false }];
-    
-    const parts = [];
-    const lowerText = text.toLowerCase();
-    const lowerQuery = query.toLowerCase();
-    let lastIndex = 0;
-    let index = lowerText.indexOf(lowerQuery);
-    
-    if (index === -1) {
-      return [{ text, highlight: false }];
-    }
-    
-    while (index !== -1) {
-      if (index > lastIndex) {
-        parts.push({
-          text: text.substring(lastIndex, index),
-          highlight: false
-        });
-      }
-      
-      parts.push({
-        text: text.substring(index, index + query.length),
-        highlight: true
-      });
-      
-      lastIndex = index + query.length;
-      index = lowerText.indexOf(lowerQuery, lastIndex);
-    }
-    
-    if (lastIndex < text.length) {
-      parts.push({
-        text: text.substring(lastIndex),
-        highlight: false
-      });
-    }
-    
-    return parts;
-  };
+  // Pre-compute flat offset for each group so we can map to activeIndex
+  let flatOffset = 0;
+  const groupsWithOffset = groups.map(group => {
+    const start = flatOffset;
+    flatOffset += group.items.length;
+    return { ...group, flatStart: start };
+  });
+
+  const hiddenCount = totalResults > flatResults.length ? totalResults - flatResults.length : 0;
 
   return (
     <header className="header">
@@ -237,67 +270,80 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
             type="text"
             placeholder="Поиск..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={handleSearchChange}
+            onKeyDown={handleKeyDown}
           />
           {showResults && (
             <div className="search-dropdown">
-              {searchResults.length > 0 ? (
-                searchResults.map((result, idx) => {
-                  const typeName = getTypeName(result.type, result.displayType);
-
-                  // Определяем какой компонент использовать для отображения контента
-                  const renderResultContent = () => {
-                    switch (result.type) {
-                      case 'spreadsheet':
-                        return <SpreadsheetSearchResult result={result} searchQuery={searchQuery} />;
-                      case 'vehicle':
-                        return <VehicleSearchResult result={result} searchQuery={searchQuery} />;
-                      case 'accreditation':
-                        return <AccreditationSearchResult result={result} searchQuery={searchQuery} />;
-                      case 'analysis':
-                        return <AnalysisSearchResult result={result} searchQuery={searchQuery} />;
-                      case 'service':
-                        return <ServiceSearchResult result={result} searchQuery={searchQuery} />;
-                      case 'doctor':
-                        return <DoctorSearchResult result={result} searchQuery={searchQuery} />;
-                      default:
-                        return <DefaultSearchResult result={result} searchQuery={searchQuery} />;
-                    }
-                  };
-
-                  return (
-                    <div
-                      key={`${result.type}-${result.id}-${idx}`}
-                      className="search-result"
-                      onClick={() => handleResultClick(result)}
-                    >
-                      <div className="search-result-icon">
-                        {renderSearchIcon(result.icon, result.type, 16)}
-                      </div>
-                      <div className="search-result-content">
-                        <div className="search-result-header">
-                          <div className="search-result-title">
-                            {highlightText(result.title, searchQuery).map((part, i) => (
-                              part.highlight ? (
-                                <mark key={i}>{part.text}</mark>
-                              ) : (
-                                <span key={i}>{part.text}</span>
-                              )
-                            ))}
-                          </div>
-                          <span className={`search-result-type search-result-type--${result.type}`}>
-                            {typeName}
-                          </span>
-                        </div>
-                        {renderResultContent()}
-                      </div>
+              {isLoading ? (
+                // Skeleton loading
+                [1, 2, 3].map(i => (
+                  <div key={i} className="search-skeleton-item">
+                    <div className="search-skeleton-icon skeleton-pulse" />
+                    <div className="search-skeleton-content">
+                      <div className="search-skeleton-title skeleton-pulse" />
+                      <div className="search-skeleton-excerpt skeleton-pulse" />
                     </div>
-                  );
-                })
+                  </div>
+                ))
+              ) : groupsWithOffset.length > 0 ? (
+                <>
+                  {groupsWithOffset.map(group => (
+                    <div key={group.type} className="search-group">
+                      <div className="search-group-header">
+                        <span className="search-group-label">{group.label}</span>
+                        <span className="search-group-count">{group.items.length}</span>
+                      </div>
+                      {group.items.map((result, itemIdx) => {
+                        const currentFlatIndex = group.flatStart + itemIdx;
+                        const isActive = currentFlatIndex === activeIndex;
+
+                        const renderResultContent = () => {
+                          switch (result.type) {
+                            case 'spreadsheet': return <SpreadsheetSearchResult result={result} searchQuery={searchQuery} />;
+                            case 'vehicle': return <VehicleSearchResult result={result} searchQuery={searchQuery} />;
+                            case 'accreditation': return <AccreditationSearchResult result={result} searchQuery={searchQuery} />;
+                            case 'analysis': return <AnalysisSearchResult result={result} searchQuery={searchQuery} />;
+                            case 'service': return <ServiceSearchResult result={result} searchQuery={searchQuery} />;
+                            case 'doctor': return <DoctorSearchResult result={result} searchQuery={searchQuery} />;
+                            default: return <DefaultSearchResult result={result} searchQuery={searchQuery} />;
+                          }
+                        };
+
+                        return (
+                          <div
+                            key={`${result.type}-${result.id}-${currentFlatIndex}`}
+                            className={`search-result${isActive ? ' search-result--active' : ''}`}
+                            ref={isActive ? el => el?.scrollIntoView({ block: 'nearest' }) : undefined}
+                            onClick={() => handleResultClick(result)}
+                            onMouseEnter={() => setActiveIndex(currentFlatIndex)}
+                          >
+                            <div className="search-result-icon">
+                              {renderSearchIcon(result.icon, result.type, 16)}
+                            </div>
+                            <div className="search-result-content">
+                              <div className="search-result-title">
+                                {highlightText(result.title, searchQuery).map((part, i) => (
+                                  part.highlight
+                                    ? <mark key={i}>{part.text}</mark>
+                                    : <span key={i}>{part.text}</span>
+                                ))}
+                              </div>
+                              {renderResultContent()}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                  {hiddenCount > 0 && (
+                    <div className="search-more-results">
+                      Ещё {hiddenCount} результатов — уточните запрос
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="search-no-results">
-                  Ничего не найдено
-                </div>
+                <div className="search-no-results">Ничего не найдено</div>
               )}
             </div>
           )}
@@ -321,10 +367,9 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
               <span className="header-username">{abbreviateName(user.displayName) || user.username}</span>
               <ChevronDown size={16} className="header-chevron" />
             </button>
-            
+
             {showDropdown && (
               <div className="header-dropdown">
-                {/* Блок-миниатюра пользователя */}
                 <div className="header-dropdown-user">
                   <div className="header-dropdown-avatar">
                     {getAvatarUrl() ? (
@@ -340,13 +385,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     <div className="header-dropdown-user-role">{getUserRole()}</div>
                   </div>
                 </div>
-                
+
                 <Link to="/profile" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                   <Settings size={16} />
                   Настройки
                 </Link>
 
-                {/* Админ-разделы - показываем только те, к которым есть доступ */}
                 {(isAdmin || user?.adminAccess?.sidebar) && (
                   <Link to="/admin/sidebar" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Layout size={16} />
