@@ -792,6 +792,64 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     }
   };
 
+  const handleDeleteDayOnly = async (entryId, cell) => {
+    const targetDate = cellDate(cell);
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry) return;
+
+    if (entry.dateFrom === targetDate && entry.dateTo === targetDate) {
+      await handleDeleteEntry(entryId);
+      return;
+    }
+
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    const filterEx = (exceptions, pred) =>
+      (exceptions || []).filter(ex => pred(typeof ex === 'string' ? ex : ex.date));
+    const mkEntry = e => ({
+      id: e.id, doctorId: selectedDoctor.id, misUserId: e.misUserId,
+      clinicId: e.clinicId, dateFrom: e.dateFrom, dateTo: e.dateTo,
+      pattern: e.pattern, timeFrom: e.timeFrom, timeTo: e.timeTo,
+      exceptions: e.exceptions || [],
+    });
+    const beforeEx = filterEx(entry.exceptions, d => d < targetDate);
+    const afterEx  = filterEx(entry.exceptions, d => d > targetDate);
+
+    try {
+      if (entry.dateFrom === targetDate) {
+        await schedulesApi.update(entryId, {
+          clinicId: entry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
+          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: afterEx,
+        });
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateFrom: addDays(targetDate, 1), exceptions: afterEx } : e));
+      } else if (entry.dateTo === targetDate) {
+        await schedulesApi.update(entryId, {
+          clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
+          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: beforeEx,
+        });
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e));
+      } else {
+        await schedulesApi.update(entryId, {
+          clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
+          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: beforeEx,
+        });
+        const res = await schedulesApi.create({
+          misUserId, clinicId: entry.clinicId,
+          dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
+          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo,
+          exceptions: afterEx,
+        });
+        setEntries(prev => [
+          ...prev.map(e => e.id === entryId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e),
+          mkEntry(res.data),
+        ]);
+      }
+      setConfirmDel(null);
+      setModal(prev => prev ? { ...prev, type: 'day' } : null);
+    } catch (err) {
+      console.error('Delete day error:', err);
+    }
+  };
+
   const handleDeleteEntry = async (entryId) => {
     if (!selectedDoctor) return;
     try {
@@ -1196,22 +1254,33 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         </button>
                       </div>
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fff7f7', border: '1px solid #fca5a5', borderRadius: 8, padding: '8px 12px' }}>
-                        <span style={{ fontSize: 13, color: '#dc2626', flex: 1 }}>Удалить всё расписание этой записи?</span>
-                        <button
-                          className="rb-btn"
-                          style={{ fontSize: 12, padding: '4px 12px', background: '#dc2626', color: '#fff', border: 'none' }}
-                          onClick={() => handleDeleteEntry(e.id)}
-                        >
-                          Да, удалить
-                        </button>
-                        <button
-                          className="rb-btn rb-btn-secondary"
-                          style={{ fontSize: 12, padding: '4px 10px' }}
-                          onClick={() => setConfirmDel(null)}
-                        >
-                          Отмена
-                        </button>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: '#fff7f7', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 12px' }}>
+                        <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 600 }}>Что удалить?</span>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          <button
+                            className="rb-btn"
+                            style={{ fontSize: 12, padding: '4px 12px', background: '#dc2626', color: '#fff', border: 'none' }}
+                            onClick={() => handleDeleteDayOnly(e.id, modal.cell)}
+                          >
+                            Только этот день
+                          </button>
+                          {e.dateFrom !== e.dateTo && (
+                            <button
+                              className="rb-btn"
+                              style={{ fontSize: 12, padding: '4px 12px', background: '#7f1d1d', color: '#fff', border: 'none' }}
+                              onClick={() => handleDeleteEntry(e.id)}
+                            >
+                              Всё расписание
+                            </button>
+                          )}
+                          <button
+                            className="rb-btn rb-btn-secondary"
+                            style={{ fontSize: 12, padding: '4px 10px' }}
+                            onClick={() => setConfirmDel(null)}
+                          >
+                            Отмена
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
