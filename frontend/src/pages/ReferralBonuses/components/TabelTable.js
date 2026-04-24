@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useImperativeHandle } from 'react';
+import { useAuth } from '../../../context/AuthContext';
 
 export const STATUS_CODES = [
   { code: '',    label: '— (не задано)' },
@@ -89,7 +90,17 @@ export function SigBlock({ name }) {
 // Column i (0-14) → top header = day i+1, bottom header = day i+16
 // Column 15       → top header = "Х",     bottom header = last day of month (if > 30)
 const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year, month, readOnly, initialEntries = {}, initialPayData = {} }, ref) {
+  const { isAdmin } = useAuth();
   const lastDay = new Date(year, month, 0).getDate();
+
+  // Half-period edit locks (non-admins only)
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const firstHalfLocked  = !isAdmin && today >= new Date(year, month - 1, 16);
+  const secondHalfLocked = !isAdmin && today >= new Date(year, month, 1);
+
+  // Effective per-half readOnly flags
+  const readOnly1 = readOnly || firstHalfLocked;
+  const readOnly2 = readOnly || secondHalfLocked;
 
   // Odd number of days → add Х column to balance both halves equally
   const showX      = lastDay % 2 === 1;
@@ -305,8 +316,8 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
 
                   {firstHalf.map(d => (
                     <td key={d}
-                      className={`tt-td tt-code${!readOnly ? ' tt-clickable' : ''}`}
-                      onClick={!readOnly ? e => openPicker(doc.id, d, e) : undefined}>
+                      className={`tt-td tt-code${!readOnly1 ? ' tt-clickable' : ''}`}
+                      onClick={!readOnly1 ? e => openPicker(doc.id, d, e) : undefined}>
                       {getEntry(doc.id, d).code}
                     </td>
                   ))}
@@ -321,7 +332,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                       <input type="text" className="tt-hours-input"
                         value={getPayCell(doc.id, 0, c)}
                         onChange={e => setPayCell(doc.id, 0, c, e.target.value)}
-                        disabled={readOnly} />
+                        disabled={readOnly1} />
                     </td>
                   ))}
                 </tr>
@@ -335,7 +346,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                         className="tt-hours-input"
                         value={getEntry(doc.id, d).hours}
                         onChange={e => setHours(doc.id, d, e.target.value)}
-                        disabled={readOnly}
+                        disabled={readOnly1}
                       />
                     </td>
                   ))}
@@ -348,7 +359,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                       <input type="text" className="tt-hours-input"
                         value={getPayCell(doc.id, 1, c)}
                         onChange={e => setPayCell(doc.id, 1, c, e.target.value)}
-                        disabled={readOnly} />
+                        disabled={readOnly1} />
                     </td>
                   ))}
                 </tr>
@@ -357,8 +368,8 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                 <tr className="tt-row-c">
                   {secondHalf.map((d, i) => (
                     <td key={i}
-                      className={`tt-td tt-code${!readOnly ? ' tt-clickable' : ''}`}
-                      onClick={!readOnly ? e => openPicker(doc.id, d, e) : undefined}>
+                      className={`tt-td tt-code${!readOnly2 ? ' tt-clickable' : ''}`}
+                      onClick={!readOnly2 ? e => openPicker(doc.id, d, e) : undefined}>
                       {getEntry(doc.id, d).code}
                     </td>
                   ))}
@@ -370,7 +381,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                       <input type="text" className="tt-hours-input"
                         value={getPayCell(doc.id, 2, c)}
                         onChange={e => setPayCell(doc.id, 2, c, e.target.value)}
-                        disabled={readOnly} />
+                        disabled={readOnly2} />
                     </td>
                   ))}
                 </tr>
@@ -384,7 +395,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                         className="tt-hours-input"
                         value={getEntry(doc.id, d).hours}
                         onChange={e => setHours(doc.id, d, e.target.value)}
-                        disabled={readOnly}
+                        disabled={readOnly2}
                       />
                     </td>
                   ))}
@@ -396,7 +407,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                       <input type="text" className="tt-hours-input"
                         value={getPayCell(doc.id, 3, c)}
                         onChange={e => setPayCell(doc.id, 3, c, e.target.value)}
-                        disabled={readOnly} />
+                        disabled={readOnly2} />
                     </td>
                   ))}
                 </tr>
