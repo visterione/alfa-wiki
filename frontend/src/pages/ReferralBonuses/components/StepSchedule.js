@@ -27,6 +27,7 @@ const PATTERN_LABELS = {
 function pad2(n) { return String(n).padStart(2, '0'); }
 function formatDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
 function parseDate(str) { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); }
+function addDays(dateStr, n) { const d = parseDate(dateStr); d.setDate(d.getDate() + n); return formatDate(d); }
 function cellDate(cell) { return formatDate(new Date(cell.year, cell.month - 1, cell.day)); }
 function displayDate(cell) { return `${cell.day} ${MONTH_NAMES_GEN[cell.month - 1]} ${cell.year}`; }
 
@@ -635,10 +636,103 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     setConfirmDel(null);
   };
 
-  const openEditForm = (entry) => {
-    setForm(entryToForm(entry));
+  const openEditForm = (entry, cell) => {
+    const f = entryToForm(entry);
+    if (cell) {
+      f.dateFrom = cellDate(cell);
+      f.dateTo   = cellDate(cell);
+    }
+    setForm(f);
     setModal(prev => ({ ...prev, type: 'form', editId: entry.id }));
     setConfirmDel(null);
+  };
+
+  const handleSaveDayOnly = async (misUserId) => {
+    const targetDate = cellDate(modal.cell);
+    const origEntry  = entries.find(e => e.id === modal.editId);
+    if (!origEntry) return;
+
+    const filterEx = (exceptions, pred) =>
+      (exceptions || []).filter(ex => pred(typeof ex === 'string' ? ex : ex.date));
+
+    const mkEntry = e => ({
+      id: e.id, doctorId: selectedDoctor.id, misUserId: e.misUserId,
+      clinicId: e.clinicId, dateFrom: e.dateFrom, dateTo: e.dateTo,
+      pattern: e.pattern, timeFrom: e.timeFrom, timeTo: e.timeTo,
+      exceptions: e.exceptions || [],
+    });
+
+    const newDayPayload = {
+      misUserId,
+      clinicId:   form.clinicId,
+      dateFrom:   targetDate,
+      dateTo:     targetDate,
+      pattern:    { type: 'daily', weekdays: [], evenOdd: 'even', workDays: 1, restDays: 1 },
+      timeFrom:   form.timeFrom,
+      timeTo:     form.timeTo,
+      exceptions: [],
+    };
+
+    if (origEntry.dateFrom === targetDate && origEntry.dateTo === targetDate) {
+      // Single-day entry — just update in place
+      const res = await schedulesApi.update(modal.editId, {
+        clinicId: form.clinicId, dateFrom: targetDate, dateTo: targetDate,
+        pattern: form.pattern, timeFrom: form.timeFrom, timeTo: form.timeTo,
+      });
+      setEntries(prev => prev.map(e => e.id === modal.editId ? { ...e, ...mkEntry(res.data) } : e));
+      return;
+    }
+
+    const beforeEx = filterEx(origEntry.exceptions, d => d < targetDate);
+    const afterEx  = filterEx(origEntry.exceptions, d => d > targetDate);
+
+    if (origEntry.dateFrom === targetDate) {
+      // Target is first day — shrink original forward
+      await schedulesApi.update(modal.editId, {
+        clinicId: origEntry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: origEntry.dateTo,
+        pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: afterEx,
+      });
+      const res = await schedulesApi.create(newDayPayload);
+      setEntries(prev => [
+        ...prev.map(e => e.id === modal.editId ? { ...e, dateFrom: addDays(targetDate, 1), exceptions: afterEx } : e),
+        mkEntry(res.data),
+      ]);
+    } else if (origEntry.dateTo === targetDate) {
+      // Target is last day — shrink original backward
+      await schedulesApi.update(modal.editId, {
+        clinicId: origEntry.clinicId, dateFrom: origEntry.dateFrom, dateTo: addDays(targetDate, -1),
+        pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: beforeEx,
+      });
+      const res = await schedulesApi.create(newDayPayload);
+      setEntries(prev => [
+        ...prev.map(e => e.id === modal.editId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e),
+        mkEntry(res.data),
+      ]);
+    } else {
+      // Target is in the middle — shrink original, create day entry, create "after" entry
+      await schedulesApi.update(modal.editId, {
+        clinicId: origEntry.clinicId, dateFrom: origEntry.dateFrom, dateTo: addDays(targetDate, -1),
+        pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: beforeEx,
+      });
+      const [dayRes, afterRes] = await Promise.all([
+        schedulesApi.create(newDayPayload),
+        schedulesApi.create({
+          misUserId,
+          clinicId:   origEntry.clinicId,
+          dateFrom:   addDays(targetDate, 1),
+          dateTo:     origEntry.dateTo,
+          pattern:    origEntry.pattern,
+          timeFrom:   origEntry.timeFrom,
+          timeTo:     origEntry.timeTo,
+          exceptions: afterEx,
+        }),
+      ]);
+      setEntries(prev => [
+        ...prev.map(e => e.id === modal.editId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e),
+        mkEntry(dayRes.data),
+        mkEntry(afterRes.data),
+      ]);
+    }
   };
 
   const handleSave = async () => {
@@ -649,7 +743,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
     setSaving(true);
     try {
-      if (modal.editId) {
+      if (modal.editId && modal.cell) {
+        await handleSaveDayOnly(misUserId);
+      } else if (modal.editId) {
         const res = await schedulesApi.update(modal.editId, {
           clinicId: form.clinicId,
           dateFrom: form.dateFrom,
@@ -1092,7 +1188,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
                         </button>
-                        <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openEditForm(e)}>
+                        <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openEditForm(e, modal.cell)}>
                           Редактировать
                         </button>
                         <button style={{ ...btnRed, width: BTN_W }} onClick={() => setConfirmDel(e.id)}>
@@ -1169,12 +1265,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 {/* 2. Период */}
                 <div style={{ flex: '0 0 auto' }}>
                   <label style={labelStyle}>Период</label>
-                  <DateRangePicker
-                    dateFrom={form.dateFrom}
-                    setDateFrom={v => updateForm('dateFrom', v)}
-                    dateTo={form.dateTo}
-                    setDateTo={v => updateForm('dateTo', v)}
-                  />
+                  {modal.editId && modal.cell ? (
+                    <div style={{ height: 34, display: 'flex', alignItems: 'center', padding: '0 12px', background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                      {fmtDisplay(form.dateFrom)}
+                    </div>
+                  ) : (
+                    <DateRangePicker
+                      dateFrom={form.dateFrom}
+                      setDateFrom={v => updateForm('dateFrom', v)}
+                      dateTo={form.dateTo}
+                      setDateTo={v => updateForm('dateTo', v)}
+                    />
+                  )}
                 </div>
 
                 {/* 4. Рабочее время */}
@@ -1197,7 +1299,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
               </div>
 
-              {/* ── Row 2: Шаблон расписания ── */}
+              {/* ── Row 2: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
+              {!(modal.editId && modal.cell) && (
               <div>
                 <label style={labelStyle}>Шаблон расписания</label>
 
@@ -1263,6 +1366,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   </div>
                 )}
               </div>
+              )}
 
             </div>
 

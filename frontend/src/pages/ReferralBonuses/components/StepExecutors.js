@@ -688,6 +688,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   const [suggests, setSuggests] = useState(DEFAULT_SUGGESTS);
   const [suggestsModal, setSuggestsModal] = useState(null); // { key, title }
+  const [pendingPayType, setPendingPayType] = useState(null); // { from, to } — ожидает подтверждения смены типа оплаты
 
   useEffect(() => {
     referralBonuses.getSuggests().then(res => {
@@ -840,8 +841,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const pt = data.payType || 'salary';
 
   const handlePayTypeChange = (type) => {
-    updateClinicData({ payType: type, ...(type === 'percent' ? { plusPercent: false } : {}) });
+    if (type === pt) return;
+    setPendingPayType({ from: pt, to: type });
+  };
+
+  const confirmPayTypeChange = () => {
+    if (!pendingPayType) return;
+    updateClinicData({ payType: pendingPayType.to, ...(pendingPayType.to === 'percent' ? { plusPercent: false } : {}) });
     scheduleAutoSave();
+    setPendingPayType(null);
   };
 
   const handlePaymentFieldChange = (field, val) => {
@@ -1173,6 +1181,48 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           onClose={() => setSuggestsModal(null)}
         />
       )}
+
+      {/* Подтверждение смены типа оплаты */}
+      {pendingPayType && (() => {
+        const PAY_TYPE_LABELS = { salary: 'Фиксированный оклад', hourly: 'Почасовой оклад', percent: '% от услуг', normed: 'Нормированный' };
+        return (
+          <div className="rb-modal-overlay" onClick={() => setPendingPayType(null)}>
+            <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+              <div className="rb-modal-header">
+                <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  Изменить тип оплаты?
+                </h3>
+                <button className="rb-modal-close" onClick={() => setPendingPayType(null)}>×</button>
+              </div>
+              <div className="rb-modal-body">
+                <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: 0 }}>
+                  Тип оплаты врача <strong>{selectedDoctor?.name}</strong> будет изменён:
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                  <span style={{ background: '#fee2e2', color: '#dc2626', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.from]}</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0, color: '#94a3b8' }}><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+                  <span style={{ background: '#dcfce7', color: '#16a34a', borderRadius: 6, padding: '4px 10px', fontSize: 13, fontWeight: 600 }}>{PAY_TYPE_LABELS[pendingPayType.to]}</span>
+                </div>
+              </div>
+              <div className="rb-modal-footer">
+                <button className="rb-btn rb-btn-secondary" style={{ width: 110, justifyContent: 'center' }} onClick={() => setPendingPayType(null)}>Отмена</button>
+                <button
+                  className="rb-btn"
+                  style={{ background: 'var(--rb-primary)', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13, width: 110, justifyContent: 'center' }}
+                  onClick={confirmPayTypeChange}
+                >
+                  Изменить
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div className="rb-doctor-card-header">
         <div className="rb-doctor-card-info">
