@@ -65,6 +65,7 @@ router.put('/:id', authenticate, async (req, res) => {
       ...(categoryId  !== undefined && { categoryId: categoryId || null }),
       ...(cabinetId   !== undefined && { cabinetId:  cabinetId  || null }),
     });
+    await row.reload();
     res.json(row);
   } catch (err) {
     console.error('PUT doctor-schedules error:', err);

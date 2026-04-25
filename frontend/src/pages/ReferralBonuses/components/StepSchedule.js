@@ -880,7 +880,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         });
         const updated = res.data;
         setEntries(prev => prev.map(e => e.id === modal.editId
-          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo, categoryId: updated.categoryId || null, cabinetId: updated.cabinetId || null }
+          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo, categoryId: form.categoryId, cabinetId: form.cabinetId }
           : e
         ));
       } else {
