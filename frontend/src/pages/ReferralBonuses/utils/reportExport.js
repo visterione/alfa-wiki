@@ -502,24 +502,29 @@ export function buildBulkWorkbook(bulkResults) {
 
   // Summary sheet
   const summaryWs = wb.addWorksheet('Сводка');
-  summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }];
-  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'К выплате, руб', 'Период']);
+  summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }];
+  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'К выплате, руб', 'Остаток к доплате, руб', 'Период']);
   hdr.eachCell({ includeEmpty: true }, (cell, c) => {
-    if (c <= 4) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+    if (c <= 5) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
   });
 
   for (const r of bulkResults) {
     if (r.error || !r.clinicReports?.length) {
-      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), '', r.periodLabel || '']);
+      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), '', '', r.periodLabel || '']);
       eRow.getCell(2).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
       continue;
     }
     const doctorName = r.doctor?.name || 'Врач';
     r.clinicReports.forEach(cr => {
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', parseFloat((cr.salary?.finalSalary || 0).toFixed(2)), r.periodLabel || '']);
-      row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 4) { cell.font = fontNormal; cell.border = allBorders; } });
+      const sal = cr.salary || {};
+      const extraTot = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+      const remainder = (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - extraTot;
+      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', parseFloat((sal.finalSalary || 0).toFixed(2)), parseFloat(remainder.toFixed(2)), r.periodLabel || '']);
+      row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 5) { cell.font = fontNormal; cell.border = allBorders; } });
       row.getCell(3).numFmt = '#,##0.00';
-      row.getCell(3).font = { ...fontNormal, color: { argb: (cr.salary?.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(3).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(4).numFmt = '#,##0.00';
+      row.getCell(4).font = { ...fontNormal, color: { argb: remainder >= 0 ? 'FF166534' : 'FFCC0000' } };
     });
   }
 

@@ -169,6 +169,13 @@ export default function SalaryBlock({ salary }) {
                   <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
                 </tr>
+                {normPremiumAmount > 0 && normHoursForPeriod != null && (
+                  <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                    <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
+                      * Из них премия за переработку ({_hoursWorked} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -203,7 +210,7 @@ export default function SalaryBlock({ salary }) {
                 {normPremiumAmount > 0 && normHoursForPeriod != null && (
                   <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                      * Из них премия за переработку сверх 2×нормы ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽ — выделена отдельной строкой ниже
+                      * Из них премия за переработку ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 )}

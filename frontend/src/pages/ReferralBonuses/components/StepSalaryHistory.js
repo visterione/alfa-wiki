@@ -488,6 +488,171 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   );
 }
 
+// ─── Standalone cash payments section ────────────────────────────────────────
+function StandalonePaymentsSection({ payments, fmtRub, readOnly, onCashDelete, onCashEdit }) {
+  const [editingId, setEditingId]     = useState(null);
+  const [editAmount, setEditAmount]   = useState('');
+  const [editNote, setEditNote]       = useState('');
+  const [editName, setEditName]       = useState('');
+  const [editSaving, setEditSaving]   = useState(false);
+
+  const startEdit = p => { setEditingId(p.id); setEditAmount(parseFloat(p.amount).toFixed(2)); setEditNote(p.note || ''); setEditName(p.financistName || ''); };
+  const cancelEdit = () => setEditingId(null);
+  const saveEdit = async p => {
+    setEditSaving(true);
+    try { await onCashEdit(p.id, { amount: parseFloat(editAmount), note: editNote.trim() || null, financistName: editName.trim() || null }); setEditingId(null); }
+    finally { setEditSaving(false); }
+  };
+
+  const total = payments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+
+  return (
+    <div style={{ margin: '0 0 12px', padding: '12px 16px', background: '#fff9f0', border: '1.5px dashed #fb923c', borderRadius: 10 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>
+        Выплаты без зарплатного листа
+      </div>
+      {payments.map(p => (
+        <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '4px 0', borderBottom: '1px solid #fed7aa', flexWrap: 'wrap' }}>
+          <span style={{ width: 16, flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
+            <EditHistoryBadge editHistory={p.editHistory} />
+          </span>
+          <span style={{ color: 'var(--rb-text-secondary)', minWidth: 120, flexShrink: 0 }}>
+            {new Date(p.issuedAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </span>
+          {p.periodLabel && <span style={{ fontSize: 11, background: '#ffedd5', borderRadius: 4, padding: '1px 6px', color: '#9a3412', flexShrink: 0 }}>{p.periodLabel}</span>}
+          {editingId === p.id ? (
+            <>
+              <input type="number" min="0" step="0.01" value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                style={{ width: 90, padding: '2px 6px', fontSize: 12, border: '1px solid #fb923c', borderRadius: 4, boxSizing: 'border-box' }} />
+              <input type="text" value={editName} onChange={e => setEditName(e.target.value)} placeholder="Выдал..."
+                style={{ width: 110, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
+              <input type="text" value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Примечание..."
+                style={{ flex: 1, minWidth: 80, padding: '2px 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 4, boxSizing: 'border-box' }} />
+              <button onClick={() => saveEdit(p)} disabled={editSaving || !editAmount}
+                style={{ padding: '2px 8px', fontSize: 11, fontWeight: 600, border: 'none', borderRadius: 4, cursor: 'pointer', background: '#fb923c', color: '#fff', opacity: editSaving ? 0.6 : 1 }}>
+                {editSaving ? '...' : 'Сохр.'}
+              </button>
+              <button onClick={cancelEdit}
+                style={{ padding: '2px 6px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                Отмена
+              </button>
+            </>
+          ) : (
+            <>
+              <span style={{ fontWeight: 600, color: '#c2410c', flex: 1 }}>−{fmtRub(p.amount)}</span>
+              <span style={{ color: 'var(--rb-text-secondary)' }}>{p.financistName || '—'}</span>
+              {p.note && <span style={{ fontStyle: 'italic', color: 'var(--rb-text-secondary)', fontSize: 11 }}>{p.note}</span>}
+              {!readOnly && onCashEdit && (
+                <button onClick={() => startEdit(p)} title="Редактировать"
+                  style={{ padding: '1px 5px', fontSize: 11, border: '1px solid var(--rb-border)', borderRadius: 4, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+              )}
+              {!readOnly && onCashDelete && (
+                <button onClick={() => onCashDelete(p.id)} title="Удалить"
+                  style={{ padding: '1px 5px', fontSize: 11, border: '1px solid #fca5a5', borderRadius: 4, cursor: 'pointer', background: 'none', color: '#ef4444', display: 'flex', alignItems: 'center' }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      ))}
+      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: '#c2410c' }}>
+        Итого: −{fmtRub(total)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Cash payment modal ───────────────────────────────────────────────────────
+const MODAL_MONTHS = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+function CashPaymentModal({ cashModal, cashAmount, setCashAmount, cashNote, setCashNote, cashStandalonePeriod, setCashStandalonePeriod, cashStandaloneDoctor, setCashStandaloneDoctor, doctors = [], onSubmit, onClose, submitting }) {
+  const [doctorSearch, setDoctorSearch] = useState('');
+  const [dropOpen, setDropOpen] = useState(false);
+
+  const subtitle = cashModal.isStandalone
+    ? 'Выплата без зарплатного листа'
+    : `${cashModal.record.doctorName} · ${cashModal.record.periodLabel || cashModal.record.dateFrom?.slice(0, 7) || ''}`;
+
+  const filteredDocs = doctors
+    .filter(d => !doctorSearch || d.name.toLowerCase().includes(doctorSearch.toLowerCase()))
+    .slice(0, 40);
+
+  const canSubmit = cashAmount && (!cashModal.isStandalone || cashStandaloneDoctor);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: '#fff', borderRadius: 12, width: 420, padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Выдача из кассы</div>
+        <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>{subtitle}</div>
+
+        {cashModal.isStandalone && (
+          <>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Сотрудник <span style={{ color: 'var(--rb-danger)' }}>*</span></label>
+            <div style={{ position: 'relative', marginBottom: 14 }}>
+              <input type="text" value={cashStandaloneDoctor ? cashStandaloneDoctor.name : doctorSearch}
+                onChange={e => { setCashStandaloneDoctor(null); setDoctorSearch(e.target.value); setDropOpen(true); }}
+                onFocus={() => setDropOpen(true)}
+                placeholder="Введите ФИО..."
+                style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: `1.5px solid ${cashStandaloneDoctor ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 6, boxSizing: 'border-box' }} />
+              {cashStandaloneDoctor && (
+                <span onClick={() => { setCashStandaloneDoctor(null); setDoctorSearch(''); }}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 16, lineHeight: 1 }}>×</span>
+              )}
+              {dropOpen && !cashStandaloneDoctor && filteredDocs.length > 0 && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,.1)', maxHeight: 200, overflowY: 'auto', marginTop: 2 }}>
+                  {filteredDocs.map(d => (
+                    <div key={d.id} onMouseDown={() => { setCashStandaloneDoctor({ id: d.id, name: d.name }); setDropOpen(false); setDoctorSearch(''); }}
+                      style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #f1f5f9' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = ''}>
+                      {d.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Период (необязательно)</label>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+              <select value={cashStandalonePeriod.month} onChange={e => setCashStandalonePeriod(p => ({ ...p, month: e.target.value }))}
+                style={{ flex: 2, padding: '7px 8px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, background: '#fff' }}>
+                <option value="">— месяц —</option>
+                {MODAL_MONTHS.map((m, i) => <option key={i} value={String(i + 1)}>{m}</option>)}
+              </select>
+              <input type="number" value={cashStandalonePeriod.year} onChange={e => setCashStandalonePeriod(p => ({ ...p, year: e.target.value }))}
+                style={{ flex: 1, padding: '7px 10px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6 }}
+                placeholder="Год" min="2020" max="2099" />
+            </div>
+          </>
+        )}
+
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Сумма, ₽</label>
+        <input type="number" min="0" step="0.01" value={cashAmount} onChange={e => setCashAmount(e.target.value)} autoFocus={!cashModal.isStandalone}
+          style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 12, boxSizing: 'border-box' }}
+          placeholder="0.00" />
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Примечание (необязательно)</label>
+        <input type="text" value={cashNote} onChange={e => setCashNote(e.target.value)}
+          style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 20, boxSizing: 'border-box' }}
+          placeholder="Комментарий..." />
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose}
+            style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
+            Отмена
+          </button>
+          <button onClick={onSubmit} disabled={submitting || !canSubmit}
+            style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: canSubmit ? 'pointer' : 'default', background: canSubmit ? 'var(--rb-primary)' : '#bfdbfe', color: '#fff', opacity: submitting ? 0.7 : 1, transition: 'all .15s' }}>
+            {submitting ? 'Сохранение...' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Tooltips ─────────────────────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }) {
@@ -730,9 +895,11 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
   const [kassaData, setKassaData]         = useState([]);
   const [kassaLoading, setKassaLoading]   = useState(false);
-  const [cashModal, setCashModal]         = useState(null); // { record, defaultAmount }
+  const [cashModal, setCashModal]         = useState(null); // { record } | { isStandalone: true }
   const [cashAmount, setCashAmount]       = useState('');
   const [cashNote, setCashNote]           = useState('');
+  const [cashStandalonePeriod, setCashStandalonePeriod] = useState({ year: '', month: '' });
+  const [cashStandaloneDoctor, setCashStandaloneDoctor] = useState(null); // { id, name }
   const [cashSubmitting, setCashSubmitting] = useState(false);
   const [kassaSearch, setKassaSearch]     = useState('');
   const [kassaSortDir, setKassaSortDir]   = useState('desc'); // 'asc' | 'desc'
@@ -780,8 +947,9 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       const res = await cashPaymentsApi.getByMisUser(misUserId);
       const map = {};
       (Array.isArray(res.data) ? res.data : []).forEach(p => {
-        if (!map[p.salaryRecordId]) map[p.salaryRecordId] = [];
-        map[p.salaryRecordId].push(p);
+        const key = p.salaryRecordId || '__standalone__';
+        if (!map[key]) map[key] = [];
+        map[key].push(p);
       });
       setCashPaymentsMap(map);
     } catch { /* ignore */ }
@@ -851,20 +1019,47 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
     setCashNote('');
   }, []);
 
+  const handleOpenStandaloneModal = useCallback(() => {
+    const now = new Date();
+    setCashModal({ isStandalone: true });
+    setCashAmount('');
+    setCashNote('');
+    setCashStandalonePeriod({ year: String(now.getFullYear()), month: String(now.getMonth() + 1) });
+    setCashStandaloneDoctor(null);
+  }, []);
+
   const handleCashSubmit = async () => {
     if (!cashModal || !cashAmount) return;
     setCashSubmitting(true);
     try {
-      const res = await cashPaymentsApi.create({
-        salaryRecordId: cashModal.record.id,
-        amount: parseFloat(cashAmount),
-        note: cashNote.trim() || undefined,
-      });
-      const payment = res.data;
-      setCashPaymentsMap(prev => ({
-        ...prev,
-        [cashModal.record.id]: [payment, ...(prev[cashModal.record.id] || [])],
-      }));
+      let payment;
+      if (cashModal.isStandalone) {
+        const doc = cashStandaloneDoctor;
+        if (!doc) { toast.error('Выберите сотрудника'); setCashSubmitting(false); return; }
+        const periodLabel = cashStandalonePeriod.year && cashStandalonePeriod.month
+          ? `${cashStandalonePeriod.year}-${String(cashStandalonePeriod.month).padStart(2, '0')}`
+          : cashStandalonePeriod.year || null;
+        const res = await cashPaymentsApi.create({
+          misUserId: doc.id,
+          doctorName: doc.name,
+          periodLabel,
+          amount: parseFloat(cashAmount),
+          note: cashNote.trim() || undefined,
+        });
+        payment = res.data;
+        setKassaData(prev => [payment, ...prev]);
+      } else {
+        const res = await cashPaymentsApi.create({
+          salaryRecordId: cashModal.record.id,
+          amount: parseFloat(cashAmount),
+          note: cashNote.trim() || undefined,
+        });
+        payment = res.data;
+        setCashPaymentsMap(prev => ({
+          ...prev,
+          [cashModal.record.id]: [payment, ...(prev[cashModal.record.id] || [])],
+        }));
+      }
       toast.success('Выдача зафиксирована');
       setCashModal(null);
     } catch {
@@ -1385,6 +1580,14 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         {viewToggle}
         <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            {/* New standalone payment button */}
+            {!viewReadOnly && (
+              <button onClick={handleOpenStandaloneModal}
+                style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer', background: 'var(--rb-primary)', color: '#fff', flexShrink: 0 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Выплатить
+              </button>
+            )}
             {/* Search */}
             <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"
@@ -1565,6 +1768,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
             )}
           </div>
         )}
+        {cashModal?.isStandalone && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} cashStandaloneDoctor={cashStandaloneDoctor} setCashStandaloneDoctor={setCashStandaloneDoctor} doctors={doctors} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} />}
       </>
     );
   }
@@ -1708,47 +1912,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         </>
       )}
 
-      {/* Cash payment modal */}
-      {cashModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onClick={e => { if (e.target === e.currentTarget) setCashModal(null); }}>
-          <div style={{ background: '#fff', borderRadius: 12, width: 380, padding: '24px', boxShadow: '0 8px 32px rgba(0,0,0,.18)' }}>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Выдача из кассы</div>
-            <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>
-              {cashModal.record.doctorName} · {cashModal.record.periodLabel || cashModal.record.dateFrom?.slice(0, 7) || ''}
-            </div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Сумма, ₽</label>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={cashAmount}
-              onChange={e => setCashAmount(e.target.value)}
-              autoFocus
-              style={{ width: '100%', padding: '8px 10px', fontSize: 15, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 12, boxSizing: 'border-box' }}
-              placeholder="0.00"
-            />
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 4 }}>Примечание (необязательно)</label>
-            <input
-              type="text"
-              value={cashNote}
-              onChange={e => setCashNote(e.target.value)}
-              style={{ width: '100%', padding: '7px 10px', fontSize: 13, border: '1.5px solid var(--rb-border)', borderRadius: 6, marginBottom: 20, boxSizing: 'border-box' }}
-              placeholder="Комментарий..."
-            />
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button onClick={() => setCashModal(null)}
-                style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 500, border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', background: 'none', color: 'var(--rb-text-secondary)' }}>
-                Отмена
-              </button>
-              <button onClick={handleCashSubmit} disabled={cashSubmitting || !cashAmount}
-                style={{ width: 100, padding: '8px 0', fontSize: 13, fontWeight: 600, border: 'none', borderRadius: 6, cursor: cashAmount ? 'pointer' : 'default', background: cashAmount ? 'var(--rb-primary)' : '#bfdbfe', color: '#fff', opacity: cashSubmitting ? 0.7 : 1, transition: 'all .15s' }}>
-                {cashSubmitting ? 'Сохранение...' : 'Сохранить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {cashModal && <CashPaymentModal cashModal={cashModal} cashAmount={cashAmount} setCashAmount={setCashAmount} cashNote={cashNote} setCashNote={setCashNote} cashStandalonePeriod={cashStandalonePeriod} setCashStandalonePeriod={setCashStandalonePeriod} onSubmit={handleCashSubmit} onClose={() => setCashModal(null)} submitting={cashSubmitting} doctorName={selectedDoctor?.name} />}
     </>
   );
 }

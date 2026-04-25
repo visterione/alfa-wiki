@@ -306,8 +306,8 @@ export async function buildReport({
   // ── Load hour norms for normed pay type ──
   let _normHoursForPeriod = null;
   {
-    const hasNormed = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed');
-    if (hasNormed && dateFrom) {
+    const hasNormedOrHourly = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed' || cs.payType === 'hourly');
+    if (hasNormedOrHourly && dateFrom) {
       try {
         const periodDate = new Date(dateFrom);
         const year = periodDate.getFullYear();
@@ -1010,6 +1010,10 @@ export async function buildReport({
       }
       basePay = rate * effectiveHoursWorked;
       basePayLabel = 'Почасовой оклад';
+      if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
+        const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
+        normPremiumAmount = rate * premiumHours;
+      }
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Выполненные услуги';

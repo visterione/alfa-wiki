@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const { SalaryRecord } = require('../models');
+const { SalaryRecord, CashPayment } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 
@@ -100,6 +100,15 @@ router.post('/',
       excelData: excelBase64 || null,
       createdBy: req.user?.id || null,
     });
+
+    // Привязываем свободные выплаты из кассы за тот же период к созданному листу
+    const recPeriod = periodLabel || (dateFrom ? dateFrom.slice(0, 7) : null);
+    if (recPeriod) {
+      await CashPayment.update(
+        { salaryRecordId: record.id },
+        { where: { misUserId, salaryRecordId: null, periodLabel: recPeriod } }
+      );
+    }
 
     res.status(201).json(record);
   } catch (err) {

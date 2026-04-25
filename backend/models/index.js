@@ -2280,7 +2280,7 @@ const BotUpdate = sequelize.define('BotUpdate', {
 // === CASH PAYMENT MODEL (выдача из кассы) ===
 const CashPayment = sequelize.define('CashPayment', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
-  salaryRecordId: { type: DataTypes.UUID, allowNull: false },
+  salaryRecordId: { type: DataTypes.UUID, allowNull: true },
   misUserId: { type: DataTypes.STRING(50), allowNull: false },
   doctorName: { type: DataTypes.STRING(255), allowNull: false },
   periodLabel: { type: DataTypes.STRING(100), allowNull: true },

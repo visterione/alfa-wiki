@@ -20,26 +20,49 @@ function formatFinancistName(name) {
 }
 
 // POST /api/cash-payments — зафиксировать выдачу из кассы
+// Два режима:
+//   Привязанный:    { salaryRecordId, amount, note? }
+//   Свободный:      { misUserId, doctorName, periodLabel?, amount, note? }
 router.post('/',
   authenticate,
-  body('salaryRecordId').notEmpty().withMessage('salaryRecordId обязателен').isUUID().withMessage('salaryRecordId должен быть UUID'),
+  body('salaryRecordId').optional({ nullable: true }).isUUID().withMessage('salaryRecordId должен быть UUID'),
+  body('misUserId').optional({ nullable: true }).isString().trim(),
+  body('doctorName').optional({ nullable: true }).isString().trim().isLength({ max: 255 }),
+  body('periodLabel').optional({ nullable: true }).isString().isLength({ max: 100 }),
   body('amount').notEmpty().withMessage('amount обязателен').isFloat({ min: 0.01 }).withMessage('amount должен быть положительным числом'),
   body('note').optional({ nullable: true }).isString().isLength({ max: 1000 }),
   validate,
   async (req, res) => {
   try {
-    const { salaryRecordId, amount, note } = req.body;
+    const { salaryRecordId, misUserId, doctorName, periodLabel, amount, note } = req.body;
 
-    const record = await SalaryRecord.findByPk(salaryRecordId);
-    if (!record) return res.status(404).json({ error: 'Salary record not found' });
+    if (!salaryRecordId && !misUserId) {
+      return res.status(400).json({ error: 'Необходим salaryRecordId или misUserId' });
+    }
 
     const financistName = formatFinancistName(req.user.displayName || req.user.username || '');
 
+    let paymentData;
+    if (salaryRecordId) {
+      const record = await SalaryRecord.findByPk(salaryRecordId);
+      if (!record) return res.status(404).json({ error: 'Salary record not found' });
+      paymentData = {
+        salaryRecordId,
+        misUserId: record.misUserId,
+        doctorName: record.doctorName,
+        periodLabel: record.periodLabel || (record.dateFrom ? record.dateFrom.toString().slice(0, 7) : null),
+      };
+    } else {
+      paymentData = {
+        salaryRecordId: null,
+        misUserId: misUserId.trim(),
+        doctorName: (doctorName || '').trim(),
+        periodLabel: periodLabel || null,
+      };
+    }
+
     const payment = await CashPayment.create({
-      salaryRecordId,
-      misUserId: record.misUserId,
-      doctorName: record.doctorName,
-      periodLabel: record.periodLabel || (record.dateFrom ? record.dateFrom.toString().slice(0, 7) : null),
+      ...paymentData,
       amount: parseFloat(amount),
       issuedAt: new Date(),
       issuedByUserId: req.user.id,
