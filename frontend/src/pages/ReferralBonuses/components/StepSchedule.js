@@ -520,7 +520,17 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
   const updatePos = useCallback(() => {
     if (!btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
-    setDropPos({ top: r.bottom + 4, left: r.left, width: r.width });
+    const maxH = 240;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openAbove = spaceBelow < maxH && spaceAbove > spaceBelow;
+    setDropPos({
+      top: openAbove ? undefined : r.bottom + 4,
+      bottom: openAbove ? window.innerHeight - r.top + 4 : undefined,
+      left: r.left,
+      width: r.width,
+      maxH: openAbove ? Math.min(spaceAbove, maxH) : Math.min(spaceBelow, maxH),
+    });
   }, []);
 
   const handleOpen = useCallback(() => { updatePos(); setOpen(v => !v); }, [updatePos]);
@@ -531,11 +541,15 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
       if (btnRef.current?.contains(e.target) || wrapRef.current?.contains(e.target)) return;
       setOpen(false);
     };
+    const onScroll = e => {
+      if (wrapRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', close);
-    window.addEventListener('scroll', () => setOpen(false), true);
+    window.addEventListener('scroll', onScroll, true);
     return () => {
       document.removeEventListener('mousedown', close);
-      window.removeEventListener('scroll', () => setOpen(false), true);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
 
@@ -543,7 +557,9 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
 
   const dropdown = open && ReactDOM.createPortal(
     <div ref={wrapRef} style={{
-      position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 180),
+      position: 'fixed', top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left,
+      width: Math.max(dropPos.width, 180),
+      maxHeight: dropPos.maxH || 240, overflowY: 'auto',
       zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
       borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
     }}>
