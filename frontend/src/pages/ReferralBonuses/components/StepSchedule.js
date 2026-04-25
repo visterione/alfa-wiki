@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { doctorSchedules as schedulesApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
@@ -105,23 +105,27 @@ function isDayScheduled(entry, year, month, day) {
 
 function makeBlankForm(cell, doctorClinics) {
   return {
-    clinicId: doctorClinics[0] ? String(doctorClinics[0].id) : '',
-    dateFrom: formatDate(new Date(cell.year, cell.month - 1, cell.day)),
-    dateTo:   formatDate(new Date(cell.year, cell.month, 0)),
-    pattern:  { type: 'daily', weekdays: [], evenOdd: 'even', workDays: 5, restDays: 2 },
-    timeFrom: '09:00',
-    timeTo:   '18:00',
+    clinicId:   doctorClinics[0] ? String(doctorClinics[0].id) : '',
+    dateFrom:   formatDate(new Date(cell.year, cell.month - 1, cell.day)),
+    dateTo:     formatDate(new Date(cell.year, cell.month, 0)),
+    pattern:    { type: 'daily', weekdays: [], evenOdd: 'even', workDays: 5, restDays: 2 },
+    timeFrom:   '09:00',
+    timeTo:     '18:00',
+    categoryId: null,
+    cabinetId:  null,
   };
 }
 
 function entryToForm(entry) {
   return {
-    clinicId: entry.clinicId,
-    dateFrom: entry.dateFrom,
-    dateTo:   entry.dateTo,
-    pattern:  { ...entry.pattern, weekdays: [...(entry.pattern.weekdays || [])] },
-    timeFrom: entry.timeFrom,
-    timeTo:   entry.timeTo,
+    clinicId:   entry.clinicId,
+    dateFrom:   entry.dateFrom,
+    dateTo:     entry.dateTo,
+    pattern:    { ...entry.pattern, weekdays: [...(entry.pattern.weekdays || [])] },
+    timeFrom:   entry.timeFrom,
+    timeTo:     entry.timeTo,
+    categoryId: entry.categoryId || null,
+    cabinetId:  entry.cabinetId  || null,
   };
 }
 
@@ -506,6 +510,92 @@ function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName 
   );
 }
 
+// Generic popover select reused for category and cabinet
+function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderLabel }) {
+  const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
+  const btnRef = useRef(null);
+  const wrapRef = useRef(null);
+
+  const updatePos = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 4, left: r.left, width: r.width });
+  }, []);
+
+  const handleOpen = useCallback(() => { updatePos(); setOpen(v => !v); }, [updatePos]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = e => {
+      if (btnRef.current?.contains(e.target) || wrapRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    window.addEventListener('scroll', () => setOpen(false), true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', () => setOpen(false), true);
+    };
+  }, [open]);
+
+  const selected = items.find(it => it.id === value);
+
+  const dropdown = open && ReactDOM.createPortal(
+    <div ref={wrapRef} style={{
+      position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 180),
+      zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
+      borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
+    }}>
+      {/* clear option */}
+      <button type="button" onClick={() => { onChange(null); setOpen(false); }} style={{
+        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
+        border: 'none', background: !value ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+        fontSize: 13, color: 'var(--rb-text-secondary)', textAlign: 'left', fontFamily: 'inherit',
+      }}>
+        {placeholder}
+      </button>
+      {items.map(it => {
+        const sel = it.id === value;
+        return (
+          <button key={it.id} type="button" onClick={() => { onChange(it.id); setOpen(false); }} style={{
+            display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
+            border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+            fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+          }}>
+            {renderDot && renderDot(it)}
+            <span style={{ flex: 1 }}>{renderLabel(it)}</span>
+            {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
+          </button>
+        );
+      })}
+    </div>,
+    document.body
+  );
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button ref={btnRef} type="button" onClick={handleOpen} style={{
+        display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 10px 0 12px',
+        borderRadius: 8, border: open ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border)',
+        background: open ? '#f0f7ff' : 'var(--rb-bg)', cursor: 'pointer', fontSize: 13,
+        color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)', minWidth: 180,
+        boxShadow: open ? '0 0 0 3px rgba(0,122,255,.12)' : 'none', transition: 'all .15s', fontFamily: 'inherit',
+      }}>
+        {selected && renderDot && renderDot(selected)}
+        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {selected ? renderLabel(selected) : placeholder}
+        </span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0, color: 'var(--rb-text-secondary)' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {dropdown}
+    </div>
+  );
+}
+
 // ── Styles ────────────────────────────────────────────────────────────────────
 const inputStyle = {
   padding: '6px 10px', border: '1px solid var(--rb-border)', borderRadius: 8,
@@ -546,6 +636,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [loading,     setLoading]     = useState(false);
   const [saving,      setSaving]      = useState(false);
 
+  // dictionaries (categories + cabinets)
+  const [categories,  setCategories]  = useState([]);
+  const [cabinets,    setCabinets]    = useState([]);
+
   // modal: null | { type: 'day', cell } | { type: 'form', cell, editId: null|string }
   const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(null);
@@ -562,6 +656,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const doctorClinics  = selectedDoctor
     ? clinics.filter(c => (selectedDoctor.clinics || []).includes(String(c.id)))
     : [];
+
+  // ── Load dictionaries once ───────────────────────────────────────────────
+  useEffect(() => {
+    dictsApi.listCategories().then(r => setCategories(r.data)).catch(() => {});
+    dictsApi.listCabinets().then(r => setCabinets(r.data)).catch(() => {});
+  }, []);
 
   // ── Load entries when selected doctor changes ─────────────────────────────
   const loadedForRef = useRef(null);
@@ -589,6 +689,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           timeFrom:   r.timeFrom,
           timeTo:     r.timeTo,
           exceptions: r.exceptions || [],
+          categoryId: r.categoryId || null,
+          cabinetId:  r.cabinetId  || null,
         })));
       })
       .catch(err => console.error('Load schedules error:', err))
@@ -660,6 +762,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       clinicId: e.clinicId, dateFrom: e.dateFrom, dateTo: e.dateTo,
       pattern: e.pattern, timeFrom: e.timeFrom, timeTo: e.timeTo,
       exceptions: e.exceptions || [],
+      categoryId: e.categoryId || null,
+      cabinetId:  e.cabinetId  || null,
     });
 
     const newDayPayload = {
@@ -671,6 +775,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       timeFrom:   form.timeFrom,
       timeTo:     form.timeTo,
       exceptions: [],
+      categoryId: form.categoryId || null,
+      cabinetId:  form.cabinetId  || null,
     };
 
     if (origEntry.dateFrom === targetDate && origEntry.dateTo === targetDate) {
@@ -747,16 +853,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         await handleSaveDayOnly(misUserId);
       } else if (modal.editId) {
         const res = await schedulesApi.update(modal.editId, {
-          clinicId: form.clinicId,
-          dateFrom: form.dateFrom,
-          dateTo:   form.dateTo,
-          pattern:  form.pattern,
-          timeFrom: form.timeFrom,
-          timeTo:   form.timeTo,
+          clinicId:   form.clinicId,
+          dateFrom:   form.dateFrom,
+          dateTo:     form.dateTo,
+          pattern:    form.pattern,
+          timeFrom:   form.timeFrom,
+          timeTo:     form.timeTo,
+          categoryId: form.categoryId || null,
+          cabinetId:  form.cabinetId  || null,
         });
         const updated = res.data;
         setEntries(prev => prev.map(e => e.id === modal.editId
-          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo }
+          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo, categoryId: updated.categoryId || null, cabinetId: updated.cabinetId || null }
           : e
         ));
       } else {
@@ -769,6 +877,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           timeFrom:   form.timeFrom,
           timeTo:     form.timeTo,
           exceptions: [],
+          categoryId: form.categoryId || null,
+          cabinetId:  form.cabinetId  || null,
         });
         const created = res.data;
         setEntries(prev => [...prev, {
@@ -782,6 +892,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           timeFrom:   created.timeFrom,
           timeTo:     created.timeTo,
           exceptions: created.exceptions || [],
+          categoryId: created.categoryId || null,
+          cabinetId:  created.cabinetId  || null,
         }]);
       }
       closeModal();
@@ -930,7 +1042,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     return () => document.removeEventListener('mousedown', handler);
   }, [quickNav]);
 
-  const updateForm = (key, val) => setForm(f => ({ ...f, [key]: val }));
+  const updateForm = (key, val) => {
+    if (key === 'clinicId') setForm(f => ({ ...f, clinicId: val, cabinetId: null }));
+    else setForm(f => ({ ...f, [key]: val }));
+  };
   const updatePat  = (key, val) => setForm(f => ({ ...f, pattern: { ...f.pattern, [key]: val } }));
   const toggleWday = (i) => {
     const arr = form.pattern.weekdays || [];
@@ -1124,6 +1239,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                           {cellEntries.map(e => {
                             const cancelled = isExcepted(e, cell);
                             const entryCode = cancelled ? (getExceptionCode(e, cell) || 'ОТ') : 'Я';
+                            const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
+                            const cab = e.cabinetId  ? cabinets.find(c => c.id === e.cabinetId)   : null;
                             return (
                               <div key={e.id} style={{ position: 'relative' }}>
                                 <div
@@ -1133,11 +1250,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                                     borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
                                     opacity: cancelled ? 0.4 : 1,
                                   }}
-                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${clinicName(e.clinicId)}`}
+                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}`}
                                 >
+                                  {cat && (
+                                    <span style={{
+                                      position: 'absolute', top: 3, right: 3,
+                                      width: 8, height: 8, borderRadius: '50%',
+                                      background: cat.color, flexShrink: 0,
+                                    }} />
+                                  )}
                                   <span className="rb-schedule-entry-time">{e.timeFrom} – {e.timeTo}</span>
                                   <span className="rb-schedule-entry-name">{abbreviateName(selectedDoctor.name)}</span>
-                                  <span className="rb-schedule-entry-clinic">{clinicName(e.clinicId)}</span>
+                                  <span className="rb-schedule-entry-clinic">{cab ? cab.name : clinicName(e.clinicId)}</span>
                                 </div>
                                 <span className={cancelled ? 'rb-schedule-entry-cancel-code' : 'rb-schedule-entry-work-code'}>
                                   {entryCode}
@@ -1206,6 +1330,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 const cancelled = isExcepted(e, modal.cell);
                 const col = clinicColor(e.clinicId);
                 const isConfirming = confirmDel === e.id;
+                const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
+                const cab = e.cabinetId  ? cabinets.find(c => c.id === e.cabinetId)   : null;
                 return (
                   <div key={e.id} style={{
                     ...sectionStyle,
@@ -1225,8 +1351,14 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                             </div>
                           )}
                           <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
-                            {clinicName(e.clinicId)}
+                            {cab ? cab.name : clinicName(e.clinicId)}
                           </div>
+                          {cat && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
+                              <span style={{ width: 9, height: 9, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
+                              {cat.name}
+                            </div>
+                          )}
                         </div>
                         {cancelled && (() => {
                           const code = getExceptionCode(e, modal.cell) || 'ОТ';
@@ -1368,7 +1500,33 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
               </div>
 
-              {/* ── Row 2: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
+              {/* ── Row 2: Категория · Кабинет ── */}
+              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                  <label style={labelStyle}>Категория расписания</label>
+                  <PopoverSelect
+                    value={form.categoryId}
+                    onChange={v => updateForm('categoryId', v)}
+                    items={categories}
+                    placeholder="Без категории"
+                    renderDot={it => <span style={{ width: 10, height: 10, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+                    renderLabel={it => it.name}
+                  />
+                </div>
+                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                  <label style={labelStyle}>Кабинет</label>
+                  <PopoverSelect
+                    value={form.cabinetId}
+                    onChange={v => updateForm('cabinetId', v)}
+                    items={cabinets.filter(c => c.clinicId === form.clinicId)}
+                    placeholder="Не указан"
+                    renderDot={null}
+                    renderLabel={it => it.name}
+                  />
+                </div>
+              </div>
+
+              {/* ── Row 3: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
               {!(modal.editId && modal.cell) && (
               <div>
                 <label style={labelStyle}>Шаблон расписания</label>
@@ -1494,6 +1652,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           </div>
         </div>
       )}
+
     </div>
   );
 }
+

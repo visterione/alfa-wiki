@@ -2418,6 +2418,25 @@ EmailFavoriteTemplate.belongsTo(EmailTemplate, { foreignKey: 'templateId', as: '
 User.hasMany(EmailFavoriteTemplate, { foreignKey: 'userId', as: 'favoriteTemplates' });
 EmailTemplate.hasMany(EmailFavoriteTemplate, { foreignKey: 'templateId', as: 'favorites' });
 
+// === RB SCHEDULE DICTIONARIES ===
+const RbScheduleCategory = sequelize.define('RbScheduleCategory', {
+  id:    { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:  { type: DataTypes.STRING(100), allowNull: false },
+  color: { type: DataTypes.STRING(20),  allowNull: false, defaultValue: '#94a3b8' },
+}, {
+  tableName: 'rb_schedule_categories',
+  timestamps: true,
+});
+
+const RbScheduleCabinet = sequelize.define('RbScheduleCabinet', {
+  id:       { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name:     { type: DataTypes.STRING(100), allowNull: false },
+  clinicId: { type: DataTypes.STRING(50),  allowNull: false, field: 'clinic_id' },
+}, {
+  tableName: 'rb_schedule_cabinets',
+  timestamps: true,
+});
+
 // === DOCTOR SCHEDULE MODEL ===
 const DoctorSchedule = sequelize.define('DoctorSchedule', {
   id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2429,6 +2448,8 @@ const DoctorSchedule = sequelize.define('DoctorSchedule', {
   timeFrom:   { type: DataTypes.STRING(5),   allowNull: false, defaultValue: '09:00' },
   timeTo:     { type: DataTypes.STRING(5),   allowNull: false, defaultValue: '18:00' },
   exceptions: { type: DataTypes.JSONB,       allowNull: false, defaultValue: [] },
+  categoryId: { type: DataTypes.UUID,        allowNull: true, field: 'category_id' },
+  cabinetId:  { type: DataTypes.UUID,        allowNull: true, field: 'cabinet_id' },
   createdBy:  { type: DataTypes.UUID },
 }, {
   tableName: 'doctor_schedules',
@@ -2585,6 +2606,9 @@ module.exports = {
   Promotion,
   // Partner services cache
   PartnerServiceCache,
+  // Schedule dictionaries
+  RbScheduleCategory,
+  RbScheduleCabinet,
   // Doctor schedules
   DoctorSchedule,
   // Tabel records

@@ -668,6 +668,17 @@ export const doctorSchedules = {
   delete: (id)              => api.delete(`/doctor-schedules/${id}`),
 };
 
+export const rbScheduleDicts = {
+  listCategories:   ()          => api.get('/rb-schedule-dicts/categories'),
+  createCategory:   (data)      => api.post('/rb-schedule-dicts/categories', data),
+  updateCategory:   (id, data)  => api.put(`/rb-schedule-dicts/categories/${id}`, data),
+  deleteCategory:   (id)        => api.delete(`/rb-schedule-dicts/categories/${id}`),
+  listCabinets:     ()          => api.get('/rb-schedule-dicts/cabinets'),
+  createCabinet:    (data)      => api.post('/rb-schedule-dicts/cabinets', data),
+  updateCabinet:    (id, data)  => api.put(`/rb-schedule-dicts/cabinets/${id}`, data),
+  deleteCabinet:    (id)        => api.delete(`/rb-schedule-dicts/cabinets/${id}`),
+};
+
 export const tabelRecords = {
   list:      ()           => api.get('/tabel-records'),
   get:       (id)         => api.get(`/tabel-records/${id}`),
