@@ -1398,6 +1398,40 @@ const RoleNorm = sequelize.define('RoleNorm', {
   ]
 });
 
+// === CATEGORY NORM MODEL ===
+const CategoryNorm = sequelize.define('CategoryNorm', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  categoryId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    comment: 'ID категории расписания'
+  },
+  year: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  },
+  month: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: '1-12'
+  },
+  normHours: {
+    type: DataTypes.DECIMAL(10, 2),
+    allowNull: true,
+    comment: 'Норма часов за период'
+  },
+  createdBy: {
+    type: DataTypes.UUID,
+    allowNull: true
+  }
+}, {
+  tableName: 'category_norms',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['categoryId', 'year', 'month'] }
+  ]
+});
+
 // === RB USER PERMISSION MODEL ===
 const RbUserPermission = sequelize.define('RbUserPermission', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2437,6 +2471,9 @@ const RbScheduleCabinet = sequelize.define('RbScheduleCabinet', {
   timestamps: true,
 });
 
+RbScheduleCategory.hasMany(CategoryNorm, { foreignKey: 'categoryId', as: 'norms' });
+CategoryNorm.belongsTo(RbScheduleCategory, { foreignKey: 'categoryId', as: 'category' });
+
 // === DOCTOR SCHEDULE MODEL ===
 const DoctorSchedule = sequelize.define('DoctorSchedule', {
   id:         { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2588,6 +2625,7 @@ module.exports = {
   // Referral bonuses module
   HourNorm,
   RoleNorm,
+  CategoryNorm,
   ReferralBonus,
   ReferralReport,
   RbUserPermission,

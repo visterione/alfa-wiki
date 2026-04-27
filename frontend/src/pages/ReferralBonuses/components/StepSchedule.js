@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
@@ -422,12 +422,40 @@ const ClockPicker = React.forwardRef(function ClockPicker({ value, onChange, onC
   );
 });
 
+// ── Shared search box rendered at top of any popover dropdown ─────────────────
+function DropdownSearch({ value, onChange, inputRef }) {
+  return (
+    <div style={{ padding: '7px 10px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-text-secondary)" strokeWidth="2" width="13" height="13" style={{ flexShrink: 0 }}>
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder="Поиск..."
+        onMouseDown={e => e.stopPropagation()}
+        style={{
+          flex: 1, border: 'none', outline: 'none', fontSize: 13,
+          background: 'transparent', color: 'var(--rb-text)', fontFamily: 'inherit',
+        }}
+      />
+      {value && (
+        <button type="button" onClick={() => onChange('')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--rb-text-secondary)', fontSize: 15 }}>×</button>
+      )}
+    </div>
+  );
+}
+
 // ── Clinic select dropdown ────────────────────────────────────────────────────
 function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
   const btnRef = useRef(null);
   const wrapRef = useRef(null);
+  const searchRef = useRef(null);
 
   const updatePos = useCallback(() => {
     if (!btnRef.current) return;
@@ -438,7 +466,12 @@ function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName 
   const handleOpen = useCallback(() => {
     updatePos();
     setOpen(v => !v);
+    setSearch('');
   }, [updatePos]);
+
+  useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -462,29 +495,37 @@ function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName 
   const selected = clinics.find(c => String(c.id) === value);
   const color    = selected ? getClinicColor(String(selected.id)) : '#94a3b8';
 
+  const filtered = search
+    ? clinics.filter(c => getClinicName(String(c.id)).toLowerCase().includes(search.toLowerCase()))
+    : clinics;
+
   const dropdown = open && ReactDOM.createPortal(
     <div ref={wrapRef} style={{
-      position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width,
+      position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 200),
       zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
       borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
+      maxHeight: 280, display: 'flex', flexDirection: 'column',
     }}>
-      {clinics.length === 0
-        ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Нет медцентров</div>
-        : clinics.map(c => {
-            const cid = String(c.id), col = getClinicColor(cid), sel = cid === value;
-            return (
-              <button key={cid} type="button" onClick={() => { onChange(cid); setOpen(false); }} style={{
-                display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
-                border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
-                fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
-              }}>
-                <span style={{ width: 12, height: 12, borderRadius: '50%', background: col, flexShrink: 0, boxShadow: `0 0 0 2px ${col}44` }} />
-                <span style={{ flex: 1 }}>{getClinicName(cid)}</span>
-                {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
-              </button>
-            );
-          })
-      }
+      <DropdownSearch value={search} onChange={setSearch} inputRef={searchRef} />
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {filtered.length === 0
+          ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>
+          : filtered.map(c => {
+              const cid = String(c.id), col = getClinicColor(cid), sel = cid === value;
+              return (
+                <button key={cid} type="button" onClick={() => { onChange(cid); setOpen(false); }} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
+                  border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+                  fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+                }}>
+                  <span style={{ width: 12, height: 12, borderRadius: '50%', background: col, flexShrink: 0, boxShadow: `0 0 0 2px ${col}44` }} />
+                  <span style={{ flex: 1 }}>{getClinicName(cid)}</span>
+                  {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              );
+            })
+        }
+      </div>
     </div>,
     document.body
   );
@@ -512,17 +553,19 @@ function ClinicSelect({ value, onChange, clinics, getClinicColor, getClinicName 
   );
 }
 
-// Generic popover select reused for category and cabinet
-function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderLabel }) {
+// Generic popover select reused for category, cabinet, role, profession
+function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderLabel, searchable = true }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [dropPos, setDropPos] = useState({ top: 0, left: 0, width: 0 });
   const btnRef = useRef(null);
   const wrapRef = useRef(null);
+  const searchRef = useRef(null);
 
   const updatePos = useCallback(() => {
     if (!btnRef.current) return;
     const r = btnRef.current.getBoundingClientRect();
-    const maxH = 240;
+    const maxH = 280;
     const spaceBelow = window.innerHeight - r.bottom - 8;
     const spaceAbove = r.top - 8;
     const openAbove = spaceBelow < maxH && spaceAbove > spaceBelow;
@@ -535,7 +578,11 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
     });
   }, []);
 
-  const handleOpen = useCallback(() => { updatePos(); setOpen(v => !v); }, [updatePos]);
+  const handleOpen = useCallback(() => { updatePos(); setOpen(v => !v); setSearch(''); }, [updatePos]);
+
+  useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -557,36 +604,49 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
 
   const selected = items.find(it => it.id === value);
 
+  const filtered = search
+    ? items.filter(it => renderLabel(it).toLowerCase().includes(search.toLowerCase()))
+    : items;
+
   const dropdown = open && ReactDOM.createPortal(
     <div ref={wrapRef} style={{
       position: 'fixed', top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left,
       width: Math.max(dropPos.width, 180),
-      maxHeight: dropPos.maxH || 240, overflowY: 'auto',
+      maxHeight: dropPos.maxH || 280,
       zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
       borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
+      display: 'flex', flexDirection: 'column',
     }}>
-      {/* clear option */}
-      <button type="button" onClick={() => { onChange(null); setOpen(false); }} style={{
-        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
-        border: 'none', background: !value ? '#EFF6FF' : 'transparent', cursor: 'pointer',
-        fontSize: 13, color: 'var(--rb-text-secondary)', textAlign: 'left', fontFamily: 'inherit',
-      }}>
-        {placeholder}
-      </button>
-      {items.map(it => {
-        const sel = it.id === value;
-        return (
-          <button key={it.id} type="button" onClick={() => { onChange(it.id); setOpen(false); }} style={{
+      {searchable && <DropdownSearch value={search} onChange={setSearch} inputRef={searchRef} />}
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {/* clear option */}
+        {!search && (
+          <button type="button" onClick={() => { onChange(null); setOpen(false); }} style={{
             display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
-            border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
-            fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+            border: 'none', background: !value ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+            fontSize: 13, color: 'var(--rb-text-secondary)', textAlign: 'left', fontFamily: 'inherit',
           }}>
-            {renderDot && renderDot(it)}
-            <span style={{ flex: 1 }}>{renderLabel(it)}</span>
-            {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
+            {placeholder}
           </button>
-        );
-      })}
+        )}
+        {filtered.length === 0
+          ? <div style={{ padding: '10px 14px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>
+          : filtered.map(it => {
+              const sel = it.id === value;
+              return (
+                <button key={it.id} type="button" onClick={() => { onChange(it.id); setOpen(false); }} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 14px',
+                  border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+                  fontSize: 13, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+                }}>
+                  {renderDot && renderDot(it)}
+                  <span style={{ flex: 1 }}>{renderLabel(it)}</span>
+                  {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="13" height="13"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              );
+            })
+        }
+      </div>
     </div>,
     document.body
   );
@@ -658,9 +718,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [categories,  setCategories]  = useState([]);
   const [cabinets,    setCabinets]    = useState([]);
 
-  // norms for current month (roles + professions)
-  const [roleNorms,   setRoleNorms]   = useState([]);
-  const [hourNorms,   setHourNorms]   = useState([]);
+  // norms for current month (roles + professions + categories)
+  const [roleNorms,     setRoleNorms]     = useState([]);
+  const [hourNorms,     setHourNorms]     = useState([]);
+  const [categoryNorms, setCategoryNorms] = useState([]); // [{ categoryId, normHours }]
 
   // modal: null | { type: 'day', cell } | { type: 'form', cell, editId: null|string }
   const [modal,       setModal]       = useState(null);
@@ -698,14 +759,16 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     dictsApi.listCabinets().then(r => setCabinets(r.data)).catch(() => {});
   }, []);
 
-  // ── Load role + profession norms when month/year changes ─────────────────
+  // ── Load role + profession + category norms when month/year changes ──────
   useEffect(() => {
     Promise.all([
       roleNormsApi.get(year, month).catch(() => ({ data: [] })),
       hourNormsApi.get(year, month).catch(() => ({ data: [] })),
-    ]).then(([roleRes, hourRes]) => {
+      categoryNormsApi.get(year, month).catch(() => ({ data: [] })),
+    ]).then(([roleRes, hourRes, catRes]) => {
       setRoleNorms(roleRes.data || []);
       setHourNorms(hourRes.data || []);
+      setCategoryNorms(catRes.data || []);
     });
   }, [year, month]);
 
@@ -1130,8 +1193,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const workedDaysSet = new Set();
     let workedMinutes = 0;
     let weekendCount  = 0;
-    const otherAbsences  = {}; // code -> count
-    const byRoleMinutes  = {}; // roleTitle -> minutes
+    const otherAbsences      = {}; // code -> count
+    const byRoleMinutes      = {}; // roleTitle -> minutes
+    const byCategoryMinutes  = {}; // categoryId -> minutes (entries with categoryId, no roleTitle)
 
     for (const cell of currentCells) {
       const dateStr     = cellDate(cell);
@@ -1154,8 +1218,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           const mins = (th * 60 + tm) - (fh * 60 + fm);
           if (mins > 0) {
             workedMinutes += mins;
-            const role = e.roleTitle || '';
-            byRoleMinutes[role] = (byRoleMinutes[role] || 0) + mins;
+            if (e.roleTitle) {
+              byRoleMinutes[e.roleTitle] = (byRoleMinutes[e.roleTitle] || 0) + mins;
+            } else if (e.categoryId) {
+              byCategoryMinutes[e.categoryId] = (byCategoryMinutes[e.categoryId] || 0) + mins;
+            } else {
+              byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
+            }
           }
         } else {
           const code = (typeof ex === 'object' ? ex.code : null) || 'ОТ';
@@ -1167,9 +1236,34 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     }
 
     const totalOther = Object.values(otherAbsences).reduce((a, b) => a + b, 0);
-    const byRole = Object.entries(byRoleMinutes)
+
+    // Classify entries: roles vs professions using the doctor's own lists
+    const drRolesSet = new Set((selectedDoctor.roles || []).filter(Boolean));
+    const drProfsSet = new Set(
+      (selectedDoctor.professions || [])
+        .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+        .filter(Boolean)
+    );
+
+    const byRoles = Object.entries(byRoleMinutes)
+      .filter(([r]) => r && drRolesSet.has(r))
       .map(([role, mins]) => ({ role, hours: mins / 60 }))
       .sort((a, b) => b.hours - a.hours);
+
+    const byProfessions = Object.entries(byRoleMinutes)
+      .filter(([r]) => r && drProfsSet.has(r) && !drRolesSet.has(r))
+      .map(([role, mins]) => ({ role, hours: mins / 60 }))
+      .sort((a, b) => b.hours - a.hours);
+
+    const byCategories = Object.entries(byCategoryMinutes)
+      .map(([categoryId, mins]) => ({ categoryId, hours: mins / 60 }))
+      .sort((a, b) => b.hours - a.hours);
+
+    // Untagged: no role, no profession, no category
+    const untaggedMins = Object.entries(byRoleMinutes)
+      .filter(([r]) => !r || (!drRolesSet.has(r) && !drProfsSet.has(r)))
+      .reduce((s, [, m]) => s + m, 0);
+    const untaggedHours = untaggedMins / 60;
 
     return {
       workedDays:  workedDaysSet.size,
@@ -1178,7 +1272,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       weekendCount,
       otherAbsences,
       totalOther,
-      byRole,
+      byRoles,
+      byProfessions,
+      byCategories,
+      untaggedHours,
     };
   }, [year, month, entries, selectedDoctor]);
 
@@ -1380,49 +1477,165 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
             </div>
           </div>
 
-          {monthStats.byRole.length > 0 && (
-            <div className="rb-schedule-role-stats">
-              {monthStats.byRole.map(({ role, hours }) => {
-                const norm  = role
-                  ? (roleNorms.find(n => n.roleTitle === role) || hourNorms.find(n => n.professionTitle === role))
-                  : null;
-                const normH    = norm?.normHours != null ? parseFloat(norm.normHours) : null;
-                const overCap  = normH !== null && hours > normH * 2;
-                const whole    = Math.floor(hours);
-                const mins     = Math.round((hours - whole) * 60);
-                const label    = role || 'Без специальности';
-                // Шкала: 3 равных сегмента по 33.3% — [0..norm] [norm..2×norm] [2×norm..3×norm]
-                const SEG = 100 / 3;
-                const pctBase  = normH ? Math.min(hours / normH, 1) * SEG : null;
-                const pctBonus = normH ? Math.min(Math.max(hours - normH,     0) / normH, 1) * SEG : null;
-                const pctExtra = normH ? Math.min(Math.max(hours - normH * 2, 0) / normH, 1) * SEG : null;
-                const hoursColor = overCap ? 'var(--rb-danger)' : 'var(--rb-text)';
-                return (
-                  <div key={role} className="rb-schedule-role-row">
-                    <div className="rb-schedule-role-header">
-                      <span className="rb-schedule-role-name">{label}</span>
-                      <span className="rb-schedule-role-hours" style={{ color: hoursColor }}>
-                        {whole}{mins > 0 ? `:${pad2(mins)}` : ''} ч
-                        {normH !== null && (
-                          <span className="rb-schedule-role-norm"> / {normH} ч</span>
-                        )}
-                      </span>
-                    </div>
-                    {normH !== null && (
-                      <div className="rb-schedule-role-bar-track rb-schedule-role-bar-split">
-                        <div className="rb-schedule-role-bar-fill"
-                          style={{ left: '0%', width: `${pctBase.toFixed(1)}%`, background: 'var(--rb-success)' }} />
-                        <div className="rb-schedule-role-bar-fill"
-                          style={{ left: `${SEG.toFixed(1)}%`, width: `${pctBonus.toFixed(1)}%`, background: 'var(--rb-warning)' }} />
-                        <div className="rb-schedule-role-bar-fill"
-                          style={{ left: `${(SEG * 2).toFixed(1)}%`, width: `${pctExtra.toFixed(1)}%`, background: 'var(--rb-danger)' }} />
-                      </div>
-                    )}
+          {(monthStats.byRoles.length > 0 || monthStats.byProfessions.length > 0 || monthStats.byCategories.length > 0 || monthStats.untaggedHours > 0) && (() => {
+            // ── Build segments ──────────────────────────────────────────────
+            const PALETTE = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16','#ec4899','#14b8a6'];
+            let pi = 0;
+
+            const segments = [
+              ...monthStats.byRoles.map(({ role, hours }) => {
+                const n = roleNorms.find(r => r.roleTitle === role);
+                const normH = n?.normHours != null ? parseFloat(n.normHours) : null;
+                return { label: role, hours, normH, color: PALETTE[pi++ % PALETTE.length], tag: 'Роль' };
+              }),
+              ...monthStats.byProfessions.map(({ role, hours }) => {
+                const n = hourNorms.find(r => r.professionTitle === role);
+                const normH = n?.normHours != null ? parseFloat(n.normHours) : null;
+                return { label: role, hours, normH, color: PALETTE[pi++ % PALETTE.length], tag: 'Специальность' };
+              }),
+              ...monthStats.byCategories.map(({ categoryId, hours }) => {
+                const cat = categories.find(c => c.id === categoryId);
+                const cn = categoryNorms.find(r => r.categoryId === categoryId);
+                const normH = cn?.normHours != null ? parseFloat(cn.normHours) : null;
+                return { label: cat?.name || 'Категория', hours, normH, color: PALETTE[pi++ % PALETTE.length], tag: 'Категория' };
+              }),
+              ...(monthStats.untaggedHours > 0 ? [{ label: 'Без указания', hours: monthStats.untaggedHours, normH: null, color: '#cbd5e1', tag: null }] : []),
+            ];
+
+            const totalH = segments.reduce((s, sg) => s + sg.hours, 0);
+            if (totalH === 0) return null;
+
+            // ── SVG donut ───────────────────────────────────────────────────
+            const SZ = 150, cx = SZ / 2, cy = SZ / 2, R = 66, ri = 38;
+            const GAP_DEG = segments.length > 1 ? 2 : 0;
+            const toRad = deg => (deg - 90) * Math.PI / 180;
+            const pt = (r, deg) => [cx + r * Math.cos(toRad(deg)), cy + r * Math.sin(toRad(deg))];
+            const f = n => n.toFixed(3);
+
+            const arcPath = (startDeg, endDeg) => {
+              const span = endDeg - startDeg;
+              if (span >= 359.9) {
+                // full circle: two 180° arcs
+                const [x1, y1] = pt(R, startDeg), [x2, y2] = pt(R, startDeg + 180);
+                const [x3, y3] = pt(ri, startDeg + 180), [x4, y4] = pt(ri, startDeg);
+                return `M${f(x1)},${f(y1)} A${R},${R},0,0,1,${f(x2)},${f(y2)} A${R},${R},0,0,1,${f(x1)},${f(y1)} L${f(x4)},${f(y4)} A${ri},${ri},0,0,0,${f(x3)},${f(y3)} A${ri},${ri},0,0,0,${f(x4)},${f(y4)} Z`;
+              }
+              const lg = span > 180 ? 1 : 0;
+              const [ax, ay] = pt(R, startDeg), [bx, by] = pt(R, endDeg);
+              const [cx2, cy2] = pt(ri, endDeg), [dx, dy] = pt(ri, startDeg);
+              return `M${f(ax)},${f(ay)} A${R},${R},0,${lg},1,${f(bx)},${f(by)} L${f(cx2)},${f(cy2)} A${ri},${ri},0,${lg},0,${f(dx)},${f(dy)} Z`;
+            };
+
+            const rmid = (ri + R) / 2; // radius for label placement
+            let cur = 0;
+            const arcs = segments.map(sg => {
+              const deg = (sg.hours / totalH) * 360;
+              const s = cur + GAP_DEG / 2;
+              const e = cur + deg - GAP_DEG / 2;
+              const mid = cur + deg / 2;
+              cur += deg;
+              const [lx, ly] = pt(rmid, mid);
+              const pct = Math.round((sg.hours / totalH) * 100);
+              return { ...sg, path: arcPath(s, e), lx, ly, pct, deg };
+            });
+
+            const tw = Math.floor(totalH);
+            const tm = Math.round((totalH - tw) * 60);
+
+            const SEG = 100 / 3;
+            const legendRow = (arc, i) => {
+              const wh = Math.floor(arc.hours), mn = Math.round((arc.hours - wh) * 60);
+              const nh = arc.normH;
+              const pctBase  = nh ? Math.min(arc.hours / nh, 1) * SEG : null;
+              const pctBonus = nh ? Math.min(Math.max(arc.hours - nh, 0) / nh, 1) * SEG : null;
+              const pctExtra = nh ? Math.min(Math.max(arc.hours - nh * 2, 0) / nh, 1) * SEG : null;
+              return (
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: arc.color, flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 11, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={arc.label}>
+                      {arc.label}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {wh}{mn > 0 ? `:${pad2(mn)}` : ''} ч{nh != null ? ` при норме ${nh} ч` : ''}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  {nh != null && (
+                    <div className="rb-schedule-role-bar-track rb-schedule-role-bar-split" style={{ marginLeft: 14 }}>
+                      <div className="rb-schedule-role-bar-fill" style={{ left: '0%',               width: `${pctBase.toFixed(1)}%`,  background: '#22c55e' }} />
+                      <div className="rb-schedule-role-bar-fill" style={{ left: `${SEG.toFixed(1)}%`,     width: `${pctBonus.toFixed(1)}%`, background: '#f59e0b' }} />
+                      <div className="rb-schedule-role-bar-fill" style={{ left: `${(SEG*2).toFixed(1)}%`, width: `${pctExtra.toFixed(1)}%`, background: '#ef4444' }} />
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
+            const sectionLabel = text => (
+              <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--rb-text-secondary)', marginBottom: 1 }}>{text}</div>
+            );
+
+            const rolesArcs       = arcs.filter(a => a.tag === 'Роль');
+            const profsArcs       = arcs.filter(a => a.tag === 'Специальность');
+            const catsArcs        = arcs.filter(a => a.tag === 'Категория');
+            const untaggedArcs    = arcs.filter(a => a.tag === null);
+            const multiSection    = [rolesArcs, profsArcs, catsArcs].filter(g => g.length > 0).length > 1;
+
+            return (
+              <div className="rb-schedule-role-stats">
+
+                {/* ── Left: donut ── */}
+                <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ display: 'block' }}>
+                  {arcs.map((arc, i) => <path key={i} d={arc.path} fill={arc.color} />)}
+                  {arcs.map((arc, i) => arc.deg >= 25 && (
+                    <text key={`l${i}`} x={f(arc.lx)} y={f(arc.ly)} textAnchor="middle" dominantBaseline="middle"
+                      style={{ fontSize: 9, fontWeight: 700, fill: '#fff', pointerEvents: 'none' }}>
+                      {arc.pct}%
+                    </text>
+                  ))}
+                  <text x={cx} y={cy - 6} textAnchor="middle" style={{ fontSize: 14, fontWeight: 700, fill: 'var(--rb-text, #1e293b)' }}>
+                    {tw}{tm > 0 ? `:${pad2(tm)}` : ''}
+                  </text>
+                  <text x={cx} y={cy + 9} textAnchor="middle" style={{ fontSize: 10, fill: 'var(--rb-text-secondary, #64748b)' }}>часов</text>
+                </svg>
+
+                {/* ── Right: legend ── */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+
+                  {rolesArcs.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {multiSection && sectionLabel('Роли')}
+                      {rolesArcs.map(legendRow)}
+                    </div>
+                  )}
+
+                  {profsArcs.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: rolesArcs.length > 0 ? 4 : 0 }}>
+                      {multiSection && sectionLabel('Специальности')}
+                      {profsArcs.map(legendRow)}
+                    </div>
+                  )}
+
+                  {catsArcs.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: (rolesArcs.length > 0 || profsArcs.length > 0) ? 4 : 0 }}>
+                      {multiSection && sectionLabel('Категории')}
+                      {catsArcs.map(legendRow)}
+                    </div>
+                  )}
+
+                  {untaggedArcs.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                      {sectionLabel('Прочее')}
+                      {untaggedArcs.map(legendRow)}
+                    </div>
+                  )}
+
+
+                </div>
+
+              </div>
+            );
+          })()}
         </>
       )}
 
@@ -1653,27 +1866,27 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   {doctorRoles.length > 0 && (
                     <div>
                       <label style={labelStyle}>Роль</label>
-                      <select
-                        value={doctorRoles.includes(form.roleTitle) ? form.roleTitle : ''}
-                        onChange={e => updateForm('roleTitle', e.target.value || null)}
-                        style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
-                      >
-                        <option value="">—</option>
-                        {doctorRoles.map(r => <option key={r} value={r}>{r}</option>)}
-                      </select>
+                      <PopoverSelect
+                        value={doctorRoles.includes(form.roleTitle) ? form.roleTitle : null}
+                        onChange={v => updateForm('roleTitle', v)}
+                        items={doctorRoles.map(r => ({ id: r, name: r }))}
+                        placeholder="—"
+                        renderDot={null}
+                        renderLabel={it => it.name}
+                      />
                     </div>
                   )}
                   {doctorProfessions.length > 0 && (
                     <div>
                       <label style={labelStyle}>Специальность</label>
-                      <select
-                        value={doctorProfessions.includes(form.roleTitle) ? form.roleTitle : ''}
-                        onChange={e => updateForm('roleTitle', e.target.value || null)}
-                        style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
-                      >
-                        <option value="">—</option>
-                        {doctorProfessions.map(p => <option key={p} value={p}>{p}</option>)}
-                      </select>
+                      <PopoverSelect
+                        value={doctorProfessions.includes(form.roleTitle) ? form.roleTitle : null}
+                        onChange={v => updateForm('roleTitle', v)}
+                        items={doctorProfessions.map(p => ({ id: p, name: p }))}
+                        placeholder="—"
+                        renderDot={null}
+                        renderLabel={it => it.name}
+                      />
                     </div>
                   )}
                 </div>

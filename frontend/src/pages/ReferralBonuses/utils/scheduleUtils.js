@@ -62,16 +62,18 @@ export function isEntryCancelled(entry, dateStr) {
  * @param {string} dateFrom  - "YYYY-MM-DD"
  * @param {string} dateTo    - "YYYY-MM-DD"
  * @param {string|number|null} clinicId - filter by clinic; null/undefined = all clinics
- * @returns {{ total: number, byRole: Object.<string, number> }}
- *   total    — total hours across all roles
- *   byRole   — hours per roleTitle; key '' covers entries without a roleTitle
+ * @returns {{ total: number, byRole: Object.<string, number>, byCategory: Object.<string, number> }}
+ *   total      — total hours
+ *   byRole     — hours per roleTitle; key '' covers entries with neither roleTitle nor categoryId
+ *   byCategory — hours per categoryId (only entries that have categoryId and no roleTitle)
  */
 export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) {
-  if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {} };
+  if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {}, byCategory: {} };
 
   const cidStr = clinicId != null ? String(clinicId) : null;
 
-  const byRoleMinutes = {};
+  const byRoleMinutes     = {};
+  const byCategoryMinutes = {};
   let totalMinutes = 0;
 
   const from = new Date(dateFrom + 'T00:00:00');
@@ -94,8 +96,13 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       const mins = (th * 60 + tm) - (fh * 60 + fm);
       if (mins > 0) {
         totalMinutes += mins;
-        const role = entry.roleTitle || '';
-        byRoleMinutes[role] = (byRoleMinutes[role] || 0) + mins;
+        if (entry.roleTitle) {
+          byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
+        } else if (entry.categoryId) {
+          byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
+        } else {
+          byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
+        }
       }
     }
 
@@ -103,9 +110,10 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
   }
 
   const byRole = {};
-  for (const [role, mins] of Object.entries(byRoleMinutes)) {
-    byRole[role] = mins / 60;
-  }
+  for (const [role, mins] of Object.entries(byRoleMinutes)) byRole[role] = mins / 60;
 
-  return { total: totalMinutes / 60, byRole };
+  const byCategory = {};
+  for (const [cat, mins] of Object.entries(byCategoryMinutes)) byCategory[cat] = mins / 60;
+
+  return { total: totalMinutes / 60, byRole, byCategory };
 }

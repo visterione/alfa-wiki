@@ -646,6 +646,12 @@ export const roleNorms = {
   saveBulk: (year, month, norms) => api.post('/role-norms/bulk', { year, month, norms }),
 };
 
+export const categoryNorms = {
+  get: (year, month) => api.get('/category-norms', { params: { year, month } }),
+  getPeriods: () => api.get('/category-norms/periods'),
+  saveBulk: (year, month, norms) => api.post('/category-norms/bulk', { year, month, norms }),
+};
+
 export const referralReports = {
   list: (params) => api.get('/referral-reports', { params }),
   get: (id) => api.get(`/referral-reports/${id}`),

@@ -173,7 +173,7 @@ export default function SalaryBlock({ salary }) {
                 {normPremiumAmount > 0 && normPremiumByRole.length > 1 && normPremiumByRole.map((item, i) => (
                   <tr key={i} style={{ borderTop: i === 0 ? '1px dashed #e2e8f0' : undefined }}>
                     <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                      * Премия ({item.roleTitle || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
+                      * Премия ({item.roleTitle || item.label || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 ))}
@@ -218,7 +218,7 @@ export default function SalaryBlock({ salary }) {
                 {normPremiumAmount > 0 && normPremiumByRole.length > 1 && normPremiumByRole.map((item, i) => (
                   <tr key={i} style={{ borderTop: i === 0 ? '1px dashed #e2e8f0' : undefined }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                      * Премия ({item.roleTitle || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
+                      * Премия ({item.roleTitle || item.label || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 ))}

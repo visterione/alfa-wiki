@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, mis } from '../../../services/api';
+import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi, rbScheduleDicts, mis } from '../../../services/api';
 import { rbProfessionTitle } from '../utils/clinicUtils';
 import { useTabSlider } from '../utils/useTabSlider';
 import StepWorkTime from './StepWorkTime';
@@ -28,13 +28,14 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   };
   const [activeTab, setActiveTab] = useState(getInitialTab); // 'work_time' | 'hour_norms' | 'schedule'
   const { wrapRef, sliderEl } = useTabSlider(activeTab);
-  const [mode, setMode] = useState('professions'); // 'professions' | 'roles'
+  const [mode, setMode] = useState('professions'); // 'professions' | 'roles' | 'categories'
 
   const [year, setYear]   = useState(currentDate.getFullYear());
   const [month, setMonth] = useState(currentDate.getMonth() + 1);
 
   const [professions, setProfessions] = useState([]);
   const [roles, setRoles]             = useState([]);
+  const [categories, setCategories]   = useState([]); // { id, name, color }[]
   const [listLoading, setListLoading] = useState(true);
 
   const [values, setValues]   = useState({});
@@ -66,13 +67,14 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   const [scheduleFilterRole,  setScheduleFilterRole]   = useState('');
   const [scheduleFilterProf,  setScheduleFilterProf]   = useState('');
 
-  // Загрузить специальности и роли из МИС
+  // Загрузить специальности, роли из МИС и категории расписания
   useEffect(() => {
-    mis.getDoctors({ show_all: true })
-      .then(res => {
-        const data = res.data;
-        if (data?.error !== 0 || !Array.isArray(data?.data)) return;
-
+    Promise.all([
+      mis.getDoctors({ show_all: true }),
+      rbScheduleDicts.listCategories(),
+    ]).then(([misRes, catsRes]) => {
+      const data = misRes.data;
+      if (data?.error === 0 && Array.isArray(data?.data)) {
         const profTitles = [...new Set(
           data.data.flatMap(d => {
             if (d.profession_titles)
@@ -96,14 +98,14 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
           }).filter(r => r && r !== 'КабинетыИРабота')
         )].sort();
         setRoles(roleTitles);
-      })
-      .catch(() => {})
-      .finally(() => setListLoading(false));
+      }
+      setCategories((catsRes.data || []).sort((a, b) => a.name.localeCompare(b.name)));
+    }).catch(() => {}).finally(() => setListLoading(false));
   }, []);
 
   // Загрузить список периодов при смене режима
   useEffect(() => {
-    const api = mode === 'professions' ? hourNormsApi : roleNormsApi;
+    const api = mode === 'professions' ? hourNormsApi : mode === 'roles' ? roleNormsApi : categoryNormsApi;
     api.getPeriods()
       .then(res => setPeriods(res.data || []))
       .catch(() => {});
@@ -113,6 +115,19 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   useEffect(() => {
     setLoading(true);
     setValues({});
+    if (mode === 'categories') {
+      categoryNormsApi.get(year, month)
+        .then(res => {
+          const map = {};
+          (res.data || []).forEach(n => {
+            if (n.categoryId) map[n.categoryId] = n.normHours != null ? String(parseFloat(n.normHours)) : '';
+          });
+          setValues(map);
+        })
+        .catch(() => toast.error('Не удалось загрузить нормы по категориям'))
+        .finally(() => setLoading(false));
+      return;
+    }
     const api = mode === 'professions' ? hourNormsApi : roleNormsApi;
     const key = mode === 'professions' ? 'professionTitle' : 'roleTitle';
     api.get(year, month)
@@ -134,6 +149,18 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   const handleSave = async () => {
     setSaving(true);
     try {
+      if (mode === 'categories') {
+        const norms = categories.map(cat => ({
+          categoryId: cat.id,
+          normHours: values[cat.id] !== '' && values[cat.id] != null
+            ? parseFloat(values[cat.id])
+            : null
+        }));
+        await categoryNormsApi.saveBulk(year, month, norms);
+        toast.success(`Нормы по категориям за ${MONTH_NAMES[month - 1]} ${year} сохранены`);
+        categoryNormsApi.getPeriods().then(res => setPeriods(res.data || [])).catch(() => {});
+        return;
+      }
       const api  = mode === 'professions' ? hourNormsApi : roleNormsApi;
       const key  = mode === 'professions' ? 'professionTitle' : 'roleTitle';
       const list = mode === 'professions' ? professions : roles;
@@ -155,7 +182,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   };
 
   const hasPeriod = periods.some(p => p.year === year && p.month === month);
-  const currentList = mode === 'professions' ? professions : roles;
+  const currentList = mode === 'professions' ? professions : mode === 'roles' ? roles : categories;
 
   const visibleDoctors = doctors.filter(d => !d.roles?.includes('КабинетыИРабота'));
 
@@ -275,6 +302,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             {[
               { value: 'professions', label: 'По специальностям' },
               { value: 'roles',       label: 'По ролям' },
+              { value: 'categories',  label: 'По категориям' },
             ].map(opt => (
               <button key={opt.value} onClick={() => setMode(opt.value)} style={{ height: '100%', padding: '0 12px', fontSize: 12, fontWeight: 600, border: 'none', borderRadius: 6, cursor: 'pointer', background: mode === opt.value ? 'var(--rb-bg)' : 'transparent', color: mode === opt.value ? 'var(--rb-text)' : 'var(--rb-text-secondary)', boxShadow: mode === opt.value ? '0 1px 3px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
                 {opt.label}
@@ -290,8 +318,52 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
           <div className="rb-loading"><span className="rb-spinner" />Загрузка...</div>
         ) : currentList.length === 0 ? (
           <div className="rb-loading" style={{ color: 'var(--rb-text-secondary)' }}>
-            {mode === 'professions' ? 'Нет данных о специальностях' : 'Нет данных о ролях'}
+            {mode === 'professions' ? 'Нет данных о специальностях' : mode === 'roles' ? 'Нет данных о ролях' : 'Нет категорий расписания'}
           </div>
+        ) : mode === 'categories' ? (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+              <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px 8px 16px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                  Категория расписания
+                </th>
+                <th style={{ textAlign: 'right', padding: '8px 16px 8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 140 }}>
+                  Норма часов
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {categories.map(cat => (
+                <tr key={cat.id} style={{ borderBottom: '1px solid var(--rb-border)' }}>
+                  <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: cat.color, flexShrink: 0, display: 'inline-block' }} />
+                    {cat.name}
+                  </td>
+                  <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      disabled={permHourNorms === 'read'}
+                      value={values[cat.id] ?? ''}
+                      onChange={e => handleChange(cat.id, e.target.value)}
+                      placeholder="—"
+                      style={{
+                        width: 90,
+                        textAlign: 'right',
+                        padding: '4px 8px',
+                        border: '1px solid var(--rb-border)',
+                        borderRadius: 6,
+                        fontSize: 13,
+                        background: permHourNorms === 'read' ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
+                        color: 'var(--rb-text)',
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
             {[0, 1, 2].map(col => {

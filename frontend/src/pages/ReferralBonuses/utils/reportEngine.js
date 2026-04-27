@@ -2,7 +2,7 @@
  * Report calculation engine — ported from backend/bot/referral-bonuses.html
  * All logic preserved verbatim, adapted to ES module + async/await with axios API calls.
  */
-import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, roleNorms as roleNormsApi } from '../../../services/api';
+import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi } from '../../../services/api';
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
@@ -304,10 +304,13 @@ export async function buildReport({
   }
 
   // ── Load hour norms for normed/hourly pay types ──
-  // _normsByRole: map of roleTitle → normHours (covers all doctor roles + specialties)
+  // _normsByRole:     roleTitle     → normHours (roles + specialties)
+  // _normsByCategory: categoryId   → normHours
   // _normHoursForPeriod: backward-compat single value (first found)
   let _normHoursForPeriod = null;
-  const _normsByRole = {};
+  const _normsByRole      = {};
+  const _normsByCategory  = {}; // categoryId → normHours
+  const _categoryLabels   = {}; // categoryId → name
   {
     const hasNormedOrHourly = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed' || cs.payType === 'hourly');
     if (hasNormedOrHourly && dateFrom) {
@@ -336,6 +339,15 @@ export async function buildReport({
           if (profTitle && !_normsByRole[profTitle]) {
             const norm = norms.find(n => n.professionTitle === profTitle);
             if (norm && norm.normHours != null) _normsByRole[profTitle] = parseFloat(norm.normHours);
+          }
+        }
+
+        // Load norms by schedule category
+        const catNormRes = await categoryNormsApi.get(year, month);
+        for (const n of (catNormRes.data || [])) {
+          if (n.categoryId && n.normHours != null) {
+            _normsByCategory[n.categoryId] = parseFloat(n.normHours);
+            if (n.category?.name) _categoryLabels[n.categoryId] = n.category.name;
           }
         }
 
@@ -1001,7 +1013,7 @@ export async function buildReport({
     let basePay = 0, basePayLabel = '';
     let normTotalHours = 0, normPremiumAmount = 0;
     let effectiveHoursWorked = 0;
-    const normPremiumByRole = []; // [{ roleTitle, premiumAmount, workedHours, norm }]
+    const normPremiumByRole = []; // [{ roleTitle, categoryId, premiumAmount, workedHours, norm }]
     const _schedClinicId = (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId;
 
     if (pt === 'salary') {
@@ -1013,7 +1025,7 @@ export async function buildReport({
       basePayLabel = 'Почасовой оклад';
 
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const { total: schedTotal, byRole: schedByRole } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        const { total: schedTotal, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
         effectiveHoursWorked = schedTotal;
 
         for (const [roleTitle, hours] of Object.entries(schedByRole)) {
@@ -1025,7 +1037,18 @@ export async function buildReport({
             const premiumHours = hours - 2 * norm;
             const premiumAmt = rate * premiumHours;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: hours, norm });
+            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: hours, norm });
+          }
+        }
+
+        for (const [categoryId, hours] of Object.entries(schedByCategory)) {
+          basePay += baseRate * hours;
+          const norm = _normsByCategory[categoryId] ?? null;
+          if (norm != null && hours > 0 && hours >= 2 * norm) {
+            const premiumHours = hours - 2 * norm;
+            const premiumAmt = baseRate * premiumHours;
+            normPremiumAmount += premiumAmt;
+            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm });
           }
         }
       } else {
@@ -1047,7 +1070,7 @@ export async function buildReport({
       basePayLabel = 'Нормированный оклад';
 
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const { total: schedTotal, byRole: schedByRole } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        const { total: schedTotal, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
 
         // Group normServices by roleTitle; '' = untagged
         const roleGroups = {};
@@ -1074,7 +1097,22 @@ export async function buildReport({
             const premiumHours = schedRoleHours - 2 * norm;
             const premiumAmt = groupPay > 0 ? groupPay * (premiumHours / schedRoleHours) : 0;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: schedRoleHours, norm });
+            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: schedRoleHours, norm });
+          }
+        }
+
+        // Category-based schedule hours: use fixedSalary rate per hour (fixedSalary / normHours)
+        for (const [categoryId, hours] of Object.entries(schedByCategory)) {
+          const norm = _normsByCategory[categoryId] ?? null;
+          normTotalHours += hours;
+          const catRate = norm && norm > 0 ? parseFloat(clinicSettings.fixedSalary || 0) / norm : 0;
+          const catPay = catRate * hours;
+          normServicesTotal += catPay;
+          if (norm != null && hours > 0 && hours >= 2 * norm) {
+            const premiumHours = hours - 2 * norm;
+            const premiumAmt = catPay > 0 ? catPay * (premiumHours / hours) : 0;
+            normPremiumAmount += premiumAmt;
+            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm });
           }
         }
       } else {
