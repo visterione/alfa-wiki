@@ -1028,11 +1028,14 @@ export async function buildReport({
         const { total: schedTotal, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
         effectiveHoursWorked = schedTotal;
 
+        const roleNormOverrides = clinicSettings.roleNormOverrides || [];
+
         for (const [roleTitle, hours] of Object.entries(schedByRole)) {
           const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
           basePay += rate * hours;
-          const norm = roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod;
+          const normOverride = roleTitle ? roleNormOverrides.find(n => n.roleTitle === roleTitle) : null;
+          const norm = normOverride ? parseFloat(normOverride.normHours) : (roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
             const premiumHours = hours - 2 * norm;
             const premiumAmt = rate * premiumHours;
@@ -1042,11 +1045,14 @@ export async function buildReport({
         }
 
         for (const [categoryId, hours] of Object.entries(schedByCategory)) {
-          basePay += baseRate * hours;
-          const norm = _normsByCategory[categoryId] ?? null;
+          const rr = roleRates.find(r => r.roleTitle === categoryId);
+          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          basePay += rate * hours;
+          const normOverride = roleNormOverrides.find(n => n.roleTitle === categoryId);
+          const norm = normOverride ? parseFloat(normOverride.normHours) : (_normsByCategory[categoryId] ?? null);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
             const premiumHours = hours - 2 * norm;
-            const premiumAmt = baseRate * premiumHours;
+            const premiumAmt = rate * premiumHours;
             normPremiumAmount += premiumAmt;
             normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm });
           }

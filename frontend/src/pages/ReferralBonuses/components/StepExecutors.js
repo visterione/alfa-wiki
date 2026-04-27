@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
-import { executorSettings, performedServiceBonuses, referralBonuses } from '../../../services/api';
+import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleDicts } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 import { useTabSlider } from '../utils/useTabSlider';
 
@@ -266,12 +267,139 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
 
 // ─── Norm services list ────────────────────────────────────────────────────────
 
-function NormServicesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
+// ─── SmallPopoverSelect — compact searchable dropdown ─────────────────────────
+function SmallPopoverSelect({ value, onChange, items, placeholder, renderDot, renderLabel }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [dropPos, setDropPos] = useState({});
+  const btnRef = useRef(null);
+  const wrapRef = useRef(null);
+  const searchRef = useRef(null);
+
+  const updatePos = useCallback(() => {
+    if (!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    const maxH = 220;
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openAbove = spaceBelow < maxH && spaceAbove > spaceBelow;
+    setDropPos({
+      top: openAbove ? undefined : r.bottom + 2,
+      bottom: openAbove ? window.innerHeight - r.top + 2 : undefined,
+      left: r.left,
+      width: Math.max(r.width, 160),
+      maxH: openAbove ? Math.min(spaceAbove, maxH) : Math.min(spaceBelow, maxH),
+    });
+  }, []);
+
+  const handleOpen = useCallback(() => { updatePos(); setOpen(v => !v); setSearch(''); }, [updatePos]);
+
+  useEffect(() => {
+    if (open && searchRef.current) searchRef.current.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = e => {
+      if (btnRef.current?.contains(e.target) || wrapRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onScroll = e => {
+      if (wrapRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  const selected = items.find(it => it.id === value);
+  const filtered = search
+    ? items.filter(it => renderLabel(it).toLowerCase().includes(search.toLowerCase()))
+    : items;
+
+  const dropdown = open && ReactDOM.createPortal(
+    <div ref={wrapRef} style={{
+      position: 'fixed', top: dropPos.top, bottom: dropPos.bottom, left: dropPos.left,
+      width: dropPos.width, maxHeight: dropPos.maxH || 220,
+      zIndex: 9999, background: '#fff', border: '1px solid var(--rb-border)',
+      borderRadius: 8, boxShadow: '0 8px 20px rgba(0,0,0,.12)', fontFamily: 'Inter, sans-serif',
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{ padding: '5px 8px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 5 }}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-text-secondary)" strokeWidth="2" width="12" height="12" style={{ flexShrink: 0 }}>
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input ref={searchRef} type="text" value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Поиск..." onMouseDown={e => e.stopPropagation()}
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: 12, background: 'transparent', color: 'var(--rb-text)', fontFamily: 'inherit' }}
+        />
+        {search && <button type="button" onClick={() => setSearch('')} style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--rb-text-secondary)', fontSize: 14 }}>×</button>}
+      </div>
+      <div style={{ overflowY: 'auto', flex: 1 }}>
+        {!search && (
+          <button type="button" onClick={() => { onChange(null); setOpen(false); }} style={{
+            display: 'flex', alignItems: 'center', width: '100%', padding: '6px 10px',
+            border: 'none', background: !value ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+            fontSize: 12, color: 'var(--rb-text-secondary)', textAlign: 'left', fontFamily: 'inherit',
+          }}>
+            {placeholder}
+          </button>
+        )}
+        {filtered.length === 0
+          ? <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>
+          : filtered.map(it => {
+              const sel = it.id === value;
+              return (
+                <button key={it.id} type="button" onClick={() => { onChange(it.id); setOpen(false); }} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 10px',
+                  border: 'none', background: sel ? '#EFF6FF' : 'transparent', cursor: 'pointer',
+                  fontSize: 12, color: 'var(--rb-text)', textAlign: 'left', fontFamily: 'inherit',
+                }}>
+                  {renderDot && renderDot(it)}
+                  <span style={{ flex: 1 }}>{renderLabel(it)}</span>
+                  {sel && <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>}
+                </button>
+              );
+            })
+        }
+      </div>
+    </div>,
+    document.body
+  );
+
+  return (
+    <button ref={btnRef} type="button" onClick={handleOpen} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5, height: 28, padding: '0 8px',
+      borderRadius: 6, border: open ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border)',
+      background: open ? '#f0f7ff' : 'var(--rb-bg)', cursor: 'pointer', fontSize: 12,
+      color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+      boxShadow: open ? '0 0 0 2px rgba(0,122,255,.12)' : 'none', transition: 'all .15s',
+      fontFamily: 'inherit', whiteSpace: 'nowrap', minWidth: 90, maxWidth: 160, position: 'relative',
+    }}>
+      {selected && renderDot && renderDot(selected)}
+      <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {selected ? renderLabel(selected) : placeholder}
+      </span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"
+        style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s', flexShrink: 0, color: 'var(--rb-text-secondary)' }}>
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+      {dropdown}
+    </button>
+  );
+}
+
+function NormServicesList({ items, onDelete, onUpdate, readOnly, roles, professions, categories }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRate, setEditRate] = useState('');
   const [editHours, setEditHours] = useState('');
-  const [editRole, setEditRole] = useState('');
+  const [editRole, setEditRole] = useState(null);       // roleTitle (role or profession)
+  const [editCatId, setEditCatId] = useState(null);    // categoryId
 
   if (!items || !items.length) return null;
 
@@ -280,32 +408,54 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roleOptions }) 
     setEditName(items[i].name);
     setEditRate(String(items[i].rate ?? ''));
     setEditHours(String(items[i].hours ?? ''));
-    setEditRole(items[i].roleTitle || '');
+    setEditRole(items[i].roleTitle || null);
+    setEditCatId(items[i].categoryId || null);
   };
   const commitEdit = (i) => {
     const name = editName.trim();
     const rate = items[i].lockedRate ? items[i].rate : (parseFloat(editRate) || 0);
     const hours = items[i].lockedHours ? items[i].hours : (parseFloat(editHours) || 0);
     if (!name || rate < 0 || hours < 0) { setEditIdx(null); return; }
-    onUpdate(i, { ...items[i], name, rate, hours, roleTitle: editRole || null });
+    onUpdate(i, { ...items[i], name, rate, hours, roleTitle: editRole || null, categoryId: editCatId || null });
     setEditIdx(null);
   };
 
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = (categories || []);
+
   return (
     <div className="rb-exec-items">
-      {items.map((item, i) => (
+      {items.map((item, i) => {
+        const itemCat = item.categoryId ? (categories || []).find(c => c.id === item.categoryId) : null;
+        return (
         <div key={i} className="rb-exec-item" style={item.locked ? { background: '#eff6ff' } : {}}>
           {editIdx === i ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
               <input autoFocus value={editName} onChange={ev => setEditName(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="Деятельность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
               <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="₽/ч" disabled={!!item.lockedRate} style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right', opacity: item.lockedRate ? 0.6 : 1 }} />
               <input type="number" min="0" step="0.5" value={editHours} onChange={ev => setEditHours(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="ч" disabled={!!item.lockedHours} style={{ width: 50, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right', opacity: item.lockedHours ? 0.6 : 1 }} />
-              {roleOptions && roleOptions.length > 0 && (
-                <select value={editRole} onChange={ev => setEditRole(ev.target.value)} style={{ padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', maxWidth: 130 }}>
-                  <option value="">Без роли</option>
-                  {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
+              {roleItems.length > 0 && (
+                <SmallPopoverSelect
+                  value={roleItems.some(r => r.id === editRole) ? editRole : null}
+                  onChange={v => { setEditRole(v); if (v) setEditCatId(null); }}
+                  items={roleItems} placeholder="Роль" renderDot={null} renderLabel={it => it.name}
+                />
               )}
+              {profItems.length > 0 && (
+                <SmallPopoverSelect
+                  value={profItems.some(p => p.id === editRole) ? editRole : null}
+                  onChange={v => { setEditRole(v); if (v) setEditCatId(null); }}
+                  items={profItems} placeholder="Специальность" renderDot={null} renderLabel={it => it.name}
+                />
+              )}
+              <SmallPopoverSelect
+                value={editCatId}
+                onChange={v => { setEditCatId(v); if (v) setEditRole(null); }}
+                items={catItems} placeholder="Категория"
+                renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+                renderLabel={it => it.name}
+              />
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
@@ -318,6 +468,11 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roleOptions }) 
               <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.name}</span>
               {item.roleTitle && (
                 <span style={{ marginLeft: 5, fontSize: 10, background: '#eff6ff', color: 'var(--rb-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>{item.roleTitle}</span>
+              )}
+              {itemCat && (
+                <span style={{ marginLeft: 5, fontSize: 10, display: 'inline-flex', alignItems: 'center', gap: 3, background: itemCat.color + '22', color: itemCat.color, padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: itemCat.color, flexShrink: 0 }} />{itemCat.name}
+                </span>
               )}
               <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
                 {item.lockedRate && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.hours} ч.
@@ -336,15 +491,19 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly, roleOptions }) 
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
 // ─── Norm service add form ─────────────────────────────────────────────────────
 
-function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests, onEditSuggests, roleOptions }) {
+function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests, onEditSuggests, roles, professions, categories }) {
   if (readOnly || !visible) return null;
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = categories || [];
   return (
     <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
       {suggests && suggests.length > 0 && (
@@ -361,7 +520,7 @@ function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests,
           )}
         </div>
       )}
-      <div className="rb-exec-add-row">
+      <div className="rb-exec-add-row" style={{ flexWrap: 'wrap' }}>
         <div className="rb-exec-add-field flex-grow">
           <label>Вид деятельности</label>
           <input type="text" placeholder="Название..." value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -374,15 +533,36 @@ function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests,
           <label>Часов</label>
           <input type="number" placeholder="0" min="0" step="0.5" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} style={{ width: 70 }} />
         </div>
-        {roleOptions && roleOptions.length > 0 && (
+        {roleItems.length > 0 && (
           <div className="rb-exec-add-field">
             <label>Роль</label>
-            <select value={form.roleTitle || ''} onChange={e => setForm(f => ({ ...f, roleTitle: e.target.value || null }))} style={{ minWidth: 120 }}>
-              <option value="">Без роли</option>
-              {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
+            <SmallPopoverSelect
+              value={roleItems.some(r => r.id === form.roleTitle) ? form.roleTitle : null}
+              onChange={v => setForm(f => ({ ...f, roleTitle: v, categoryId: v ? null : f.categoryId }))}
+              items={roleItems} placeholder="Без роли" renderDot={null} renderLabel={it => it.name}
+            />
           </div>
         )}
+        {profItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Специальность</label>
+            <SmallPopoverSelect
+              value={profItems.some(p => p.id === form.roleTitle) ? form.roleTitle : null}
+              onChange={v => setForm(f => ({ ...f, roleTitle: v, categoryId: v ? null : f.categoryId }))}
+              items={profItems} placeholder="Без специальности" renderDot={null} renderLabel={it => it.name}
+            />
+          </div>
+        )}
+        <div className="rb-exec-add-field">
+          <label>Категория</label>
+          <SmallPopoverSelect
+            value={form.categoryId || null}
+            onChange={v => setForm(f => ({ ...f, categoryId: v, roleTitle: v ? null : f.roleTitle }))}
+            items={catItems} placeholder="Без категории"
+            renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+            renderLabel={it => it.name}
+          />
+        </div>
         <div style={{ paddingBottom: 1 }}>
           <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={onAdd}>
             Сохранить
@@ -395,16 +575,24 @@ function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests,
 
 // ─── Role rates list (hourly multi-role) ─────────────────────────────────────
 
-function RoleRatesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
+function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions, categories }) {
   const [editIdx, setEditIdx] = useState(null);
-  const [editRole, setEditRole] = useState('');
+  const [editRole, setEditRole] = useState(null);
   const [editRate, setEditRate] = useState('');
 
   if (!items || !items.length) return null;
 
-  const startEdit = (i) => { setEditIdx(i); setEditRole(items[i].roleTitle || ''); setEditRate(String(items[i].rate ?? '')); };
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = categories || [];
+
+  const startEdit = (i) => {
+    setEditIdx(i);
+    setEditRole(items[i].roleTitle || null);
+    setEditRate(String(items[i].rate ?? ''));
+  };
   const commitEdit = (i) => {
-    const role = editRole.trim();
+    const role = editRole;
     const rate = parseFloat(editRate);
     if (!role || isNaN(rate) || rate < 0) { setEditIdx(null); return; }
     onUpdate(i, { ...items[i], roleTitle: role, rate });
@@ -417,13 +605,33 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
         <div key={i} className="rb-exec-item">
           {editIdx === i ? (
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
-              {roleOptions && roleOptions.length > 0 ? (
-                <select autoFocus value={editRole} onChange={ev => setEditRole(ev.target.value)} style={{ flex: 1, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12 }}>
-                  <option value="">Выберите роль...</option>
-                  {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              ) : (
-                <input autoFocus value={editRole} onChange={ev => setEditRole(ev.target.value)} placeholder="Роль/специальность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
+              {roleItems.length > 0 && (
+                <SmallPopoverSelect
+                  value={roleItems.some(r => r.id === editRole) ? editRole : null}
+                  onChange={v => setEditRole(v)}
+                  items={roleItems} placeholder="Роль" renderDot={null} renderLabel={it => it.name}
+                />
+              )}
+              {profItems.length > 0 && (
+                <SmallPopoverSelect
+                  value={profItems.some(p => p.id === editRole) ? editRole : null}
+                  onChange={v => setEditRole(v)}
+                  items={profItems} placeholder="Специальность" renderDot={null} renderLabel={it => it.name}
+                />
+              )}
+              {catItems.length > 0 && (
+                <SmallPopoverSelect
+                  value={catItems.some(c => c.id === editRole) ? editRole : null}
+                  onChange={v => setEditRole(v)}
+                  items={catItems} placeholder="Категория"
+                  renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+                  renderLabel={it => it.name}
+                />
+              )}
+              {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
+                <input autoFocus value={editRole || ''} onChange={ev => setEditRole(ev.target.value || null)}
+                  placeholder="Роль/специальность"
+                  style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
               )}
               <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} placeholder="₽/ч" style={{ width: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
@@ -435,14 +643,24 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
             </div>
           ) : (
             <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
-              <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>
+              {(() => {
+                const cat = catItems.find(c => c.id === item.roleTitle);
+                return cat
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: readOnly ? 'default' : 'pointer' }} onClick={() => !readOnly && startEdit(i)}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />{cat.name}
+                    </span>
+                  : <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>;
+              })()}
               <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{item.rate} ₽/ч</span>
             </div>
           )}
           {!readOnly && editIdx !== i && (
-            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
           )}
         </div>
       ))}
@@ -450,34 +668,205 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
   );
 }
 
-function RoleRateAddForm({ onAdd, readOnly, visible, roleOptions }) {
-  const [role, setRole] = useState('');
+function RoleRateAddForm({ onAdd, readOnly, visible, roles, professions, categories }) {
+  const [role, setRole] = useState(null);
   const [rate, setRate] = useState('');
   if (readOnly || !visible) return null;
+
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = categories || [];
+
   const handleAdd = () => {
-    if (!role.trim()) return;
+    if (!role) return;
     const r = parseFloat(rate);
     if (isNaN(r) || r < 0) return;
-    onAdd({ roleTitle: role.trim(), rate: r });
-    setRole(''); setRate('');
+    onAdd({ roleTitle: role, rate: r });
+    setRole(null); setRate('');
   };
   return (
     <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
-      <div className="rb-exec-add-row">
-        <div className="rb-exec-add-field flex-grow">
-          <label>Роль / специальность</label>
-          {roleOptions && roleOptions.length > 0 ? (
-            <select value={role} onChange={e => setRole(e.target.value)}>
-              <option value="">Выберите роль...</option>
-              {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          ) : (
-            <input type="text" placeholder="Роль..." value={role} onChange={e => setRole(e.target.value)} />
-          )}
-        </div>
+      <div className="rb-exec-add-row" style={{ flexWrap: 'wrap' }}>
+        {roleItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Роль</label>
+            <SmallPopoverSelect
+              value={roleItems.some(r => r.id === role) ? role : null}
+              onChange={v => setRole(v)}
+              items={roleItems} placeholder="Без роли" renderDot={null} renderLabel={it => it.name}
+            />
+          </div>
+        )}
+        {profItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Специальность</label>
+            <SmallPopoverSelect
+              value={profItems.some(p => p.id === role) ? role : null}
+              onChange={v => setRole(v)}
+              items={profItems} placeholder="Без специальности" renderDot={null} renderLabel={it => it.name}
+            />
+          </div>
+        )}
+        {catItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Категория</label>
+            <SmallPopoverSelect
+              value={catItems.some(c => c.id === role) ? role : null}
+              onChange={v => setRole(v)}
+              items={catItems} placeholder="Без категории"
+              renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+              renderLabel={it => it.name}
+            />
+          </div>
+        )}
+        {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
+          <div className="rb-exec-add-field flex-grow">
+            <label>Роль / специальность</label>
+            <input type="text" placeholder="Роль..." value={role || ''} onChange={e => setRole(e.target.value || null)} />
+          </div>
+        )}
         <div className="rb-exec-add-field">
           <label>Ставка, ₽/ч</label>
           <input type="number" placeholder="0" min="0" step="any" value={rate} onChange={e => setRate(e.target.value)} style={{ width: 90 }} />
+        </div>
+        <div style={{ paddingBottom: 1 }}>
+          <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Role norm overrides list ─────────────────────────────────────────────────
+function RoleNormsList({ items, onDelete, onUpdate, readOnly, roles, professions, categories }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editRole, setEditRole] = useState(null);
+  const [editNorm, setEditNorm] = useState('');
+
+  if (!items || !items.length) return null;
+
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = categories || [];
+
+  const startEdit = (i) => { setEditIdx(i); setEditRole(items[i].roleTitle || null); setEditNorm(String(items[i].normHours ?? '')); };
+  const commitEdit = (i) => {
+    const norm = parseFloat(editNorm);
+    if (!editRole || isNaN(norm) || norm < 0) { setEditIdx(null); return; }
+    onUpdate(i, { ...items[i], roleTitle: editRole, normHours: norm });
+    setEditIdx(null);
+  };
+
+  return (
+    <div className="rb-exec-items">
+      {items.map((item, i) => (
+        <div key={i} className="rb-exec-item">
+          {editIdx === i ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+              {roleItems.length > 0 && (
+                <SmallPopoverSelect value={roleItems.some(r => r.id === editRole) ? editRole : null} onChange={setEditRole}
+                  items={roleItems} placeholder="Роль" renderDot={null} renderLabel={it => it.name} />
+              )}
+              {profItems.length > 0 && (
+                <SmallPopoverSelect value={profItems.some(p => p.id === editRole) ? editRole : null} onChange={setEditRole}
+                  items={profItems} placeholder="Специальность" renderDot={null} renderLabel={it => it.name} />
+              )}
+              {catItems.length > 0 && (
+                <SmallPopoverSelect value={catItems.some(c => c.id === editRole) ? editRole : null} onChange={setEditRole}
+                  items={catItems} placeholder="Категория"
+                  renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+                  renderLabel={it => it.name} />
+              )}
+              {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
+                <input autoFocus value={editRole || ''} onChange={ev => setEditRole(ev.target.value || null)}
+                  placeholder="Роль/специальность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
+              )}
+              <input type="number" min="0" step="0.5" value={editNorm} onChange={ev => setEditNorm(ev.target.value)} placeholder="ч" style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+              {(() => {
+                const cat = catItems.find(c => c.id === item.roleTitle);
+                return cat
+                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: readOnly ? 'default' : 'pointer' }} onClick={() => !readOnly && startEdit(i)}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />{cat.name}
+                    </span>
+                  : <span onClick={() => !readOnly && startEdit(i)} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>;
+              })()}
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{item.normHours} ч</span>
+            </div>
+          )}
+          {!readOnly && editIdx !== i && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
+              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RoleNormAddForm({ onAdd, readOnly, visible, roles, professions, categories }) {
+  const [role, setRole] = useState(null);
+  const [norm, setNorm] = useState('');
+  if (readOnly || !visible) return null;
+
+  const roleItems = (roles || []).map(r => ({ id: r, name: r }));
+  const profItems = (professions || []).map(p => ({ id: p, name: p }));
+  const catItems  = categories || [];
+
+  const handleAdd = () => {
+    if (!role) return;
+    const n = parseFloat(norm);
+    if (isNaN(n) || n <= 0) return;
+    onAdd({ roleTitle: role, normHours: n });
+    setRole(null); setNorm('');
+  };
+  return (
+    <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
+      <div className="rb-exec-add-row" style={{ flexWrap: 'wrap' }}>
+        {roleItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Роль</label>
+            <SmallPopoverSelect value={roleItems.some(r => r.id === role) ? role : null} onChange={setRole}
+              items={roleItems} placeholder="Без роли" renderDot={null} renderLabel={it => it.name} />
+          </div>
+        )}
+        {profItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Специальность</label>
+            <SmallPopoverSelect value={profItems.some(p => p.id === role) ? role : null} onChange={setRole}
+              items={profItems} placeholder="Без специальности" renderDot={null} renderLabel={it => it.name} />
+          </div>
+        )}
+        {catItems.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Категория</label>
+            <SmallPopoverSelect value={catItems.some(c => c.id === role) ? role : null} onChange={setRole}
+              items={catItems} placeholder="Без категории"
+              renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+              renderLabel={it => it.name} />
+          </div>
+        )}
+        {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
+          <div className="rb-exec-add-field flex-grow">
+            <label>Роль / специальность</label>
+            <input type="text" placeholder="Роль..." value={role || ''} onChange={e => setRole(e.target.value || null)} />
+          </div>
+        )}
+        <div className="rb-exec-add-field">
+          <label>Норма, часов</label>
+          <input type="number" placeholder="0" min="0" step="0.5" value={norm} onChange={e => setNorm(e.target.value)} style={{ width: 80 }} />
         </div>
         <div style={{ paddingBottom: 1 }}>
           <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd}>Сохранить</button>
@@ -792,14 +1181,31 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     return [...set].sort();
   }, [doctors]);
 
-  const roleOptions = React.useMemo(() => {
+  const doctorRoles = React.useMemo(() => {
     if (!selectedDoctor) return [];
-    const roles = selectedDoctor.roles || [];
-    const profs = (selectedDoctor.professions || []).map(p =>
-      typeof p === 'object' ? (p.title || '') : String(p || '')
-    ).filter(Boolean);
-    return [...new Set([...roles, ...profs])];
+    return [...new Set((selectedDoctor.roles || []).filter(Boolean))];
   }, [selectedDoctor]);
+
+  const doctorProfessions = React.useMemo(() => {
+    if (!selectedDoctor) return [];
+    return [...new Set(
+      (selectedDoctor.professions || [])
+        .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+        .filter(Boolean)
+    )];
+  }, [selectedDoctor]);
+
+  const roleOptions = React.useMemo(
+    () => [...new Set([...doctorRoles, ...doctorProfessions])],
+    [doctorRoles, doctorProfessions]
+  );
+
+  const [scheduleCategories, setScheduleCategories] = React.useState([]);
+  useEffect(() => {
+    rbScheduleDicts.listCategories()
+      .then(res => setScheduleCategories(Array.isArray(res.data) ? res.data : []))
+      .catch(err => console.error('[StepExecutors] failed to load schedule categories:', err));
+  }, []);
   const [cabinetInput, setCabinetInput] = useState('');
   const [showCabinetForm, setShowCabinetForm] = useState(false);
   const [showExtraForm, setShowExtraForm] = useState(false);
@@ -1109,7 +1515,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handleResetAll = async () => {
-    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Основная ЗП, Аванс)?')) return;
+    if (!window.confirm('Сбросить все незафиксированные записи по всем разделам (Расходники, Материалы, Выполненные услуги, Дополнительно, Кабинеты, Ставки по ролям, Нормы часов, Основная ЗП, Аванс)?')) return;
     const current = getClinicData();
     const newDeductions     = (current.deductions     || []).filter(it => it.locked === true);
     const newMaterials      = (current.materials      || []).filter(it => it.locked === true);
@@ -1120,19 +1526,21 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       rate:  it.lockedRate  ? it.rate  : 0,
       hours: it.lockedHours ? it.hours : 0,
     }));
+    const newRoleRates       = (current.roleRates        || []).filter(it => it.locked === true);
+    const newRoleNormOverrides = (current.roleNormOverrides || []).filter(it => it.locked === true);
     const lockedCabs        = execData.clinicSettings?.global?.lockedCabinets || [];
     const newCabinets       = (execData.clinicSettings?.global?.cabinets || []).filter(c => lockedCabs.includes(c));
     const newGlobal = { ...(execData.clinicSettings?.global || execClinicDefault()), cabinets: newCabinets };
     const resetMain    = current.lockedMainPayment ? {} : { mainPayment: 0 };
     const resetAdvance = current.lockedAdvance     ? {} : { advance: 0 };
     const newExtraPayments = (current.extraPayments || []).filter(ep => ep.locked === true);
-    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance });
+    updateClinicData({ deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, roleRates: newRoleRates, roleNormOverrides: newRoleNormOverrides, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance });
     const newData = {
       ...execData,
       clinicSettings: {
         ...execData.clinicSettings,
         global: newGlobal,
-        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance },
+        [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), deductions: newDeductions, materials: newMaterials, serviceMaterials: newSvcMaterials, extras: newExtras, normServices: newNormServices, roleRates: newRoleRates, roleNormOverrides: newRoleNormOverrides, extraPayments: newExtraPayments, ...resetMain, ...resetAdvance },
       },
     };
     await saveToServer(newData);
@@ -1176,7 +1584,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   // ── Norm services ──────────────────────────────────────────────────────────
-  const [normServiceForm, setNormServiceForm] = useState({ name: '', rate: '', hours: '', roleTitle: null });
+  const [normServiceForm, setNormServiceForm] = useState({ name: '', rate: '', hours: '', roleTitle: null, categoryId: null });
   const [showRoleRateForm, setShowRoleRateForm] = useState(false);
 
   const handleAddNormService = async () => {
@@ -1189,11 +1597,12 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const current = getClinicData();
     const newItem = { name, rate, hours };
     if (normServiceForm.roleTitle) newItem.roleTitle = normServiceForm.roleTitle;
+    if (normServiceForm.categoryId) newItem.categoryId = normServiceForm.categoryId;
     const arr = [...(current.normServices || []), newItem];
     updateClinicData({ normServices: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
     await saveToServer(newData);
-    setNormServiceForm({ name: '', rate: '', hours: '', roleTitle: null });
+    setNormServiceForm({ name: '', rate: '', hours: '', roleTitle: null, categoryId: null });
     toast.success('Добавлено');
   };
 
@@ -1238,6 +1647,34 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const arr = (current.roleRates || []).map((it, i) => i === idx ? newItem : it);
     updateClinicData({ roleRates: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleRates: arr } } };
+    await saveToServer(newData);
+  };
+
+  const [showRoleNormForm, setShowRoleNormForm] = useState(false);
+
+  const handleAddRoleNorm = async (newItem) => {
+    const current = getClinicData();
+    const arr = [...(current.roleNormOverrides || []), newItem];
+    updateClinicData({ roleNormOverrides: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleNormOverrides: arr } } };
+    await saveToServer(newData);
+    setShowRoleNormForm(false);
+    toast.success('Добавлено');
+  };
+
+  const handleDeleteRoleNorm = async (idx) => {
+    const current = getClinicData();
+    const arr = (current.roleNormOverrides || []).filter((_, i) => i !== idx);
+    updateClinicData({ roleNormOverrides: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleNormOverrides: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleUpdateRoleNorm = async (idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current.roleNormOverrides || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ roleNormOverrides: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleNormOverrides: arr } } };
     await saveToServer(newData);
   };
 
@@ -1513,30 +1950,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             )}
 
-
-            {pt === 'hourly' && data.hoursFromSchedule && (
-              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
-                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    Ставки по ролям
-                  </span>
-                  {!readOnly && (
-                    <button
-                      onClick={() => setShowRoleRateForm(v => !v)}
-                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
-                      title="Добавить ставку по роли"
-                    >+</button>
-                  )}
-                </div>
-                <div style={{ padding: '0 0 4px', fontSize: 11, color: 'var(--rb-text-secondary)', marginLeft: 12, marginBottom: 4 }}>
-                  Переопределяет базовую ставку для конкретной роли из расписания
-                </div>
-                <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roleOptions={roleOptions} />
-                <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roleOptions={roleOptions} />
-              </div>
-            )}
-
             {pt === 'normed' && (
               <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#eff6ff', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1693,6 +2106,46 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               ))}
             </div>
 
+            {pt === 'hourly' && data.hoursFromSchedule && (
+              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Ставки по ролям
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => setShowRoleRateForm(v => !v)}
+                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                      title="Добавить ставку по роли"
+                    >+</button>
+                  )}
+                </div>
+                <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+                <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+              </div>
+            )}
+
+            {pt === 'hourly' && data.hoursFromSchedule && (
+              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
+                    Нормы часов
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => setShowRoleNormForm(v => !v)}
+                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                      title="Добавить норму часов"
+                    >+</button>
+                  )}
+                </div>
+                <RoleNormsList items={data.roleNormOverrides || []} onDelete={handleDeleteRoleNorm} onUpdate={handleUpdateRoleNorm} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+                <RoleNormAddForm onAdd={handleAddRoleNorm} readOnly={readOnly} visible={showRoleNormForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+              </div>
+            )}
+
             <div className="rb-exec-save-row" style={{ justifyContent: 'flex-end' }}>
               <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSavePayment} disabled={saving}>
                 Сохранить
@@ -1737,8 +2190,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 Часы будут рассчитаны по расписанию за период отчёта. Значения ниже используются как веса при распределении.
               </div>
             )}
-            <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} roleOptions={roleOptions} />
-            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} roleOptions={roleOptions} />
+            <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
           </div>
         )}
 

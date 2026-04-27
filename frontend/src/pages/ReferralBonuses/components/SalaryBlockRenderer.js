@@ -170,14 +170,14 @@ export default function SalaryBlock({ salary }) {
                   <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
                   <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
                 </tr>
-                {normPremiumAmount > 0 && normPremiumByRole.length > 1 && normPremiumByRole.map((item, i) => (
+                {normPremiumAmount > 0 && normPremiumByRole.length > 0 && normPremiumByRole.map((item, i) => (
                   <tr key={i} style={{ borderTop: i === 0 ? '1px dashed #e2e8f0' : undefined }}>
                     <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                      * Премия ({item.roleTitle || item.label || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
+                      * Премия ({item.roleTitle || item.label || 'без указания'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 ))}
-                {normPremiumAmount > 0 && normPremiumByRole.length <= 1 && normHoursForPeriod != null && (
+                {normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
                   <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
                     <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Из них премия за переработку ({_hoursWorked} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
@@ -215,14 +215,14 @@ export default function SalaryBlock({ salary }) {
                     </tr>
                   );
                 })}
-                {normPremiumAmount > 0 && normPremiumByRole.length > 1 && normPremiumByRole.map((item, i) => (
+                {normPremiumAmount > 0 && normPremiumByRole.length > 0 && normPremiumByRole.map((item, i) => (
                   <tr key={i} style={{ borderTop: i === 0 ? '1px dashed #e2e8f0' : undefined }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
-                      * Премия ({item.roleTitle || item.label || 'без роли'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
+                      * Премия ({item.roleTitle || item.label || 'без указания'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 ))}
-                {normPremiumAmount > 0 && normPremiumByRole.length <= 1 && normHoursForPeriod != null && (
+                {normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
                   <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
                     <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Из них премия за переработку ({normTotalHours} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
