@@ -766,3 +766,74 @@
 .rb-schedule-stat-value.rb-schedule-stat-absence { color: #dc2626; }
 .rb-schedule-stat-label { font-size: 11px; color: var(--rb-text-secondary); margin-top: 2px; white-space: nowrap; }
 .rb-schedule-stat-sep { width: 1px; height: 36px; background: var(--rb-border); flex-shrink: 0; }
+
+/* ── Schedule role breakdown ────────────────────────────────────────────── */
+.rb-schedule-role-stats {
+  border-top: 1px solid var(--rb-border);
+  background: var(--rb-bg-alt, #f8fafc);
+  padding: 10px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rb-schedule-role-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rb-schedule-role-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.rb-schedule-role-name {
+  font-size: 12px;
+  color: var(--rb-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.rb-schedule-role-hours {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--rb-text);
+}
+.rb-schedule-role-norm {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--rb-text-secondary);
+}
+.rb-schedule-role-bar-track {
+  position: relative;
+  height: 5px;
+  border-radius: 99px;
+  background: var(--rb-border);
+  overflow: visible;
+}
+/* Разделители между сегментами нормы / ×2 / ×3 */
+.rb-schedule-role-bar-split::before,
+.rb-schedule-role-bar-split::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  width: 2px;
+  height: 7px;
+  background: var(--rb-card-bg, #fff);
+  border-radius: 1px;
+  z-index: 2;
+}
+.rb-schedule-role-bar-split::before { left: calc(100% / 3 - 1px); }
+.rb-schedule-role-bar-split::after  { left: calc(200% / 3 - 1px); }
+.rb-schedule-role-bar-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.3s ease;
+  overflow: hidden;
+  max-width: calc(100% / 3);
+}

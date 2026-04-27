@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
@@ -592,12 +592,12 @@ function PopoverSelect({ value, onChange, items, placeholder, renderDot, renderL
   );
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', width: '100%' }}>
       <button ref={btnRef} type="button" onClick={handleOpen} style={{
         display: 'flex', alignItems: 'center', gap: 8, height: 34, padding: '0 10px 0 12px',
         borderRadius: 8, border: open ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border)',
         background: open ? '#f0f7ff' : 'var(--rb-bg)', cursor: 'pointer', fontSize: 13,
-        color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)', minWidth: 180,
+        color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)', width: '100%',
         boxShadow: open ? '0 0 0 3px rgba(0,122,255,.12)' : 'none', transition: 'all .15s', fontFamily: 'inherit',
       }}>
         {selected && renderDot && renderDot(selected)}
@@ -658,6 +658,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [categories,  setCategories]  = useState([]);
   const [cabinets,    setCabinets]    = useState([]);
 
+  // norms for current month (roles + professions)
+  const [roleNorms,   setRoleNorms]   = useState([]);
+  const [hourNorms,   setHourNorms]   = useState([]);
+
   // modal: null | { type: 'day', cell } | { type: 'form', cell, editId: null|string }
   const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(null);
@@ -671,13 +675,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const timeToClockRef = useRef(null);
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId) || null;
-  const doctorRoleOptions = React.useMemo(() => {
+  const doctorRoles = React.useMemo(() => {
     if (!selectedDoctor) return [];
-    const roles = selectedDoctor.roles || [];
-    const profs = (selectedDoctor.professions || []).map(p =>
-      typeof p === 'object' ? (p.title || '') : String(p || '')
-    ).filter(Boolean);
-    return [...new Set([...roles, ...profs])];
+    return [...new Set((selectedDoctor.roles || []).filter(Boolean))];
+  }, [selectedDoctor]);
+
+  const doctorProfessions = React.useMemo(() => {
+    if (!selectedDoctor) return [];
+    return [...new Set(
+      (selectedDoctor.professions || [])
+        .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+        .filter(Boolean)
+    )];
   }, [selectedDoctor]);
   const doctorClinics  = selectedDoctor
     ? clinics.filter(c => (selectedDoctor.clinics || []).includes(String(c.id)))
@@ -688,6 +697,17 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     dictsApi.listCategories().then(r => setCategories(r.data)).catch(() => {});
     dictsApi.listCabinets().then(r => setCabinets(r.data)).catch(() => {});
   }, []);
+
+  // ── Load role + profession norms when month/year changes ─────────────────
+  useEffect(() => {
+    Promise.all([
+      roleNormsApi.get(year, month).catch(() => ({ data: [] })),
+      hourNormsApi.get(year, month).catch(() => ({ data: [] })),
+    ]).then(([roleRes, hourRes]) => {
+      setRoleNorms(roleRes.data || []);
+      setHourNorms(hourRes.data || []);
+    });
+  }, [year, month]);
 
   // ── Load entries when selected doctor changes ─────────────────────────────
   const loadedForRef = useRef(null);
@@ -717,6 +737,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           exceptions: r.exceptions || [],
           categoryId: r.categoryId || null,
           cabinetId:  r.cabinetId  || null,
+          roleTitle:  r.roleTitle  || null,
         })));
       })
       .catch(err => console.error('Load schedules error:', err))
@@ -726,7 +747,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   // Entries for a specific cell
   const getCellEntries = useCallback((cell) => {
     if (!selectedDoctor) return [];
-    return entries.filter(e => isDayScheduled(e, cell.year, cell.month, cell.day));
+    return entries
+      .filter(e => isDayScheduled(e, cell.year, cell.month, cell.day))
+      .sort((a, b) => a.timeFrom.localeCompare(b.timeFrom));
   }, [entries, selectedDoctor]);
 
   // Exceptions can be string (legacy) or { date, code } object
@@ -790,6 +813,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       exceptions: e.exceptions || [],
       categoryId: e.categoryId || null,
       cabinetId:  e.cabinetId  || null,
+      roleTitle:  e.roleTitle  || null,
     });
 
     const newDayPayload = {
@@ -803,6 +827,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       exceptions: [],
       categoryId: form.categoryId || null,
       cabinetId:  form.cabinetId  || null,
+      roleTitle:  form.roleTitle  || null,
     };
 
     if (origEntry.dateFrom === targetDate && origEntry.dateTo === targetDate) {
@@ -810,6 +835,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       const res = await schedulesApi.update(modal.editId, {
         clinicId: form.clinicId, dateFrom: targetDate, dateTo: targetDate,
         pattern: form.pattern, timeFrom: form.timeFrom, timeTo: form.timeTo,
+        categoryId: form.categoryId || null,
+        cabinetId:  form.cabinetId  || null,
+        roleTitle:  form.roleTitle  || null,
       });
       setEntries(prev => prev.map(e => e.id === modal.editId ? { ...e, ...mkEntry(res.data) } : e));
       return;
@@ -951,6 +979,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       clinicId: e.clinicId, dateFrom: e.dateFrom, dateTo: e.dateTo,
       pattern: e.pattern, timeFrom: e.timeFrom, timeTo: e.timeTo,
       exceptions: e.exceptions || [],
+      categoryId: e.categoryId || null,
+      cabinetId:  e.cabinetId  || null,
+      roleTitle:  e.roleTitle  || null,
     });
     const beforeEx = filterEx(entry.exceptions, d => d < targetDate);
     const afterEx  = filterEx(entry.exceptions, d => d > targetDate);
@@ -1099,7 +1130,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const workedDaysSet = new Set();
     let workedMinutes = 0;
     let weekendCount  = 0;
-    const otherAbsences = {}; // code -> count
+    const otherAbsences  = {}; // code -> count
+    const byRoleMinutes  = {}; // roleTitle -> minutes
 
     for (const cell of currentCells) {
       const dateStr     = cellDate(cell);
@@ -1120,7 +1152,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           const [fh, fm] = e.timeFrom.split(':').map(Number);
           const [th, tm] = e.timeTo.split(':').map(Number);
           const mins = (th * 60 + tm) - (fh * 60 + fm);
-          if (mins > 0) workedMinutes += mins;
+          if (mins > 0) {
+            workedMinutes += mins;
+            const role = e.roleTitle || '';
+            byRoleMinutes[role] = (byRoleMinutes[role] || 0) + mins;
+          }
         } else {
           const code = (typeof ex === 'object' ? ex.code : null) || 'ОТ';
           if (code === 'В') weekendCount++;
@@ -1131,6 +1167,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     }
 
     const totalOther = Object.values(otherAbsences).reduce((a, b) => a + b, 0);
+    const byRole = Object.entries(byRoleMinutes)
+      .map(([role, mins]) => ({ role, hours: mins / 60 }))
+      .sort((a, b) => b.hours - a.hours);
+
     return {
       workedDays:  workedDaysSet.size,
       workedHours: Math.floor(workedMinutes / 60),
@@ -1138,6 +1178,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       weekendCount,
       otherAbsences,
       totalOther,
+      byRole,
     };
   }, [year, month, entries, selectedDoctor]);
 
@@ -1311,32 +1352,78 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
       {/* ── Month statistics ── */}
       {monthStats && (monthStats.workedDays > 0 || monthStats.weekendCount > 0 || monthStats.totalOther > 0) && (
-        <div className="rb-schedule-stats">
-          <div className="rb-schedule-stat">
-            <span className="rb-schedule-stat-value">{monthStats.workedDays}</span>
-            <span className="rb-schedule-stat-label">раб. дней</span>
+        <>
+          <div className="rb-schedule-stats">
+            <div className="rb-schedule-stat">
+              <span className="rb-schedule-stat-value">{monthStats.workedDays}</span>
+              <span className="rb-schedule-stat-label">раб. дней</span>
+            </div>
+            <div className="rb-schedule-stat-sep" />
+            <div className="rb-schedule-stat">
+              <span className="rb-schedule-stat-value">
+                {monthStats.workedHours}
+                {monthStats.workedMins > 0 && (
+                  <span style={{ fontSize: '0.78em', fontWeight: 500 }}>:{pad2(monthStats.workedMins)}</span>
+                )}
+              </span>
+              <span className="rb-schedule-stat-label">часов</span>
+            </div>
+            <div className="rb-schedule-stat-sep" />
+            <div className="rb-schedule-stat">
+              <span className="rb-schedule-stat-value rb-schedule-stat-neutral">{monthStats.weekendCount}</span>
+              <span className="rb-schedule-stat-label">выходных</span>
+            </div>
+            <div className="rb-schedule-stat-sep" />
+            <div className="rb-schedule-stat">
+              <span className="rb-schedule-stat-value rb-schedule-stat-absence">{monthStats.totalOther}</span>
+              <span className="rb-schedule-stat-label">неявок</span>
+            </div>
           </div>
-          <div className="rb-schedule-stat-sep" />
-          <div className="rb-schedule-stat">
-            <span className="rb-schedule-stat-value">
-              {monthStats.workedHours}
-              {monthStats.workedMins > 0 && (
-                <span style={{ fontSize: '0.78em', fontWeight: 500 }}>:{pad2(monthStats.workedMins)}</span>
-              )}
-            </span>
-            <span className="rb-schedule-stat-label">часов</span>
-          </div>
-          <div className="rb-schedule-stat-sep" />
-          <div className="rb-schedule-stat">
-            <span className="rb-schedule-stat-value rb-schedule-stat-neutral">{monthStats.weekendCount}</span>
-            <span className="rb-schedule-stat-label">выходных</span>
-          </div>
-          <div className="rb-schedule-stat-sep" />
-          <div className="rb-schedule-stat">
-            <span className="rb-schedule-stat-value rb-schedule-stat-absence">{monthStats.totalOther}</span>
-            <span className="rb-schedule-stat-label">неявок</span>
-          </div>
-        </div>
+
+          {monthStats.byRole.length > 0 && (
+            <div className="rb-schedule-role-stats">
+              {monthStats.byRole.map(({ role, hours }) => {
+                const norm  = role
+                  ? (roleNorms.find(n => n.roleTitle === role) || hourNorms.find(n => n.professionTitle === role))
+                  : null;
+                const normH    = norm?.normHours != null ? parseFloat(norm.normHours) : null;
+                const overCap  = normH !== null && hours > normH * 2;
+                const whole    = Math.floor(hours);
+                const mins     = Math.round((hours - whole) * 60);
+                const label    = role || 'Без специальности';
+                // Шкала: 3 равных сегмента по 33.3% — [0..norm] [norm..2×norm] [2×norm..3×norm]
+                const SEG = 100 / 3;
+                const pctBase  = normH ? Math.min(hours / normH, 1) * SEG : null;
+                const pctBonus = normH ? Math.min(Math.max(hours - normH,     0) / normH, 1) * SEG : null;
+                const pctExtra = normH ? Math.min(Math.max(hours - normH * 2, 0) / normH, 1) * SEG : null;
+                const hoursColor = overCap ? 'var(--rb-danger)' : 'var(--rb-text)';
+                return (
+                  <div key={role} className="rb-schedule-role-row">
+                    <div className="rb-schedule-role-header">
+                      <span className="rb-schedule-role-name">{label}</span>
+                      <span className="rb-schedule-role-hours" style={{ color: hoursColor }}>
+                        {whole}{mins > 0 ? `:${pad2(mins)}` : ''} ч
+                        {normH !== null && (
+                          <span className="rb-schedule-role-norm"> / {normH} ч</span>
+                        )}
+                      </span>
+                    </div>
+                    {normH !== null && (
+                      <div className="rb-schedule-role-bar-track rb-schedule-role-bar-split">
+                        <div className="rb-schedule-role-bar-fill"
+                          style={{ left: '0%', width: `${pctBase.toFixed(1)}%`, background: 'var(--rb-success)' }} />
+                        <div className="rb-schedule-role-bar-fill"
+                          style={{ left: `${SEG.toFixed(1)}%`, width: `${pctBonus.toFixed(1)}%`, background: 'var(--rb-warning)' }} />
+                        <div className="rb-schedule-role-bar-fill"
+                          style={{ left: `${(SEG * 2).toFixed(1)}%`, width: `${pctExtra.toFixed(1)}%`, background: 'var(--rb-danger)' }} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       {/* ══════════════ MODAL: day overview ══════════════ */}
@@ -1535,8 +1622,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               </div>
 
               {/* ── Row 2: Категория · Кабинет ── */}
-              <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
                   <label style={labelStyle}>Категория расписания</label>
                   <PopoverSelect
                     value={form.categoryId}
@@ -1547,12 +1634,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                     renderLabel={it => it.name}
                   />
                 </div>
-                <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                <div>
                   <label style={labelStyle}>Кабинет</label>
                   <PopoverSelect
                     value={form.cabinetId}
                     onChange={v => updateForm('cabinetId', v)}
-                    items={cabinets.filter(c => c.clinicId === form.clinicId)}
+                    items={cabinets.filter(c => c.clinicId === form.clinicId).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))}
                     placeholder="Не указан"
                     renderDot={null}
                     renderLabel={it => it.name}
@@ -1560,18 +1647,35 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 </div>
               </div>
 
-              {/* ── Row 2b: Роль / специальность ── */}
-              {doctorRoleOptions.length > 0 && (
-                <div>
-                  <label style={labelStyle}>Роль / специальность</label>
-                  <select
-                    value={form.roleTitle || ''}
-                    onChange={e => updateForm('roleTitle', e.target.value || null)}
-                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
-                  >
-                    <option value="">Не указана</option>
-                    {doctorRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
+              {/* ── Row 2b: Роль + Специальность ── */}
+              {(doctorRoles.length > 0 || doctorProfessions.length > 0) && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  {doctorRoles.length > 0 && (
+                    <div>
+                      <label style={labelStyle}>Роль</label>
+                      <select
+                        value={doctorRoles.includes(form.roleTitle) ? form.roleTitle : ''}
+                        onChange={e => updateForm('roleTitle', e.target.value || null)}
+                        style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
+                      >
+                        <option value="">—</option>
+                        {doctorRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  {doctorProfessions.length > 0 && (
+                    <div>
+                      <label style={labelStyle}>Специальность</label>
+                      <select
+                        value={doctorProfessions.includes(form.roleTitle) ? form.roleTitle : ''}
+                        onChange={e => updateForm('roleTitle', e.target.value || null)}
+                        style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
+                      >
+                        <option value="">—</option>
+                        {doctorProfessions.map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
