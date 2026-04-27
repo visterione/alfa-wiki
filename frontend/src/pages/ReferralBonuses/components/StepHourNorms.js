@@ -321,49 +321,59 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             {mode === 'professions' ? 'Нет данных о специальностях' : mode === 'roles' ? 'Нет данных о ролях' : 'Нет категорий расписания'}
           </div>
         ) : mode === 'categories' ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-            <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
-              <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
-                <th style={{ textAlign: 'left', padding: '8px 12px 8px 16px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
-                  Категория расписания
-                </th>
-                <th style={{ textAlign: 'right', padding: '8px 16px 8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 140 }}>
-                  Норма часов
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {categories.map(cat => (
-                <tr key={cat.id} style={{ borderBottom: '1px solid var(--rb-border)' }}>
-                  <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: cat.color, flexShrink: 0, display: 'inline-block' }} />
-                    {cat.name}
-                  </td>
-                  <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      disabled={permHourNorms === 'read'}
-                      value={values[cat.id] ?? ''}
-                      onChange={e => handleChange(cat.id, e.target.value)}
-                      placeholder="—"
-                      style={{
-                        width: 90,
-                        textAlign: 'right',
-                        padding: '4px 8px',
-                        border: '1px solid var(--rb-border)',
-                        borderRadius: 6,
-                        fontSize: 13,
-                        background: permHourNorms === 'read' ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
-                        color: 'var(--rb-text)',
-                      }}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
+            {[0, 1, 2].map(col => {
+              const third = Math.ceil(categories.length / 3);
+              const slice = categories.slice(col * third, (col + 1) * third);
+              return (
+                <table key={col} style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, borderLeft: col > 0 ? '2px solid var(--rb-border)' : 'none' }}>
+                  <thead style={{ position: 'sticky', top: 0, background: '#f8fafc', zIndex: 1 }}>
+                    <tr style={{ borderBottom: '2px solid var(--rb-border)' }}>
+                      <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
+                        Категория
+                      </th>
+                      <th style={{ textAlign: 'center', padding: '8px 12px', color: 'var(--rb-text-secondary)', fontWeight: 600, width: 110 }}>
+                        Норма часов
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {slice.map(cat => (
+                      <tr key={cat.id} style={{ borderBottom: '1px solid var(--rb-border)' }}>
+                        <td style={{ padding: '7px 12px 7px 16px', color: 'var(--rb-text)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: cat.color, flexShrink: 0, display: 'inline-block' }} />
+                            {cat.name}
+                          </span>
+                        </td>
+                        <td style={{ padding: '5px 16px 5px 12px', textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            disabled={permHourNorms === 'read'}
+                            value={values[cat.id] ?? ''}
+                            onChange={e => handleChange(cat.id, e.target.value)}
+                            placeholder="—"
+                            style={{
+                              width: 90,
+                              textAlign: 'right',
+                              padding: '4px 8px',
+                              border: '1px solid var(--rb-border)',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              background: permHourNorms === 'read' ? 'var(--rb-bg-secondary)' : 'var(--rb-bg)',
+                              color: 'var(--rb-text)',
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })}
+          </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 0 }}>
             {[0, 1, 2].map(col => {
