@@ -35,6 +35,7 @@ function execClinicDefault() {
     serviceMaterials: [],
     extras: [],
     normServices: [],
+    roleRates: [],
     harmfulness: false,
   };
 }
@@ -265,11 +266,12 @@ function ExtrasList({ extras, onDelete, onUpdate, readOnly }) {
 
 // ─── Norm services list ────────────────────────────────────────────────────────
 
-function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
+function NormServicesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editName, setEditName] = useState('');
   const [editRate, setEditRate] = useState('');
   const [editHours, setEditHours] = useState('');
+  const [editRole, setEditRole] = useState('');
 
   if (!items || !items.length) return null;
 
@@ -278,13 +280,14 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
     setEditName(items[i].name);
     setEditRate(String(items[i].rate ?? ''));
     setEditHours(String(items[i].hours ?? ''));
+    setEditRole(items[i].roleTitle || '');
   };
   const commitEdit = (i) => {
     const name = editName.trim();
     const rate = items[i].lockedRate ? items[i].rate : (parseFloat(editRate) || 0);
     const hours = items[i].lockedHours ? items[i].hours : (parseFloat(editHours) || 0);
     if (!name || rate < 0 || hours < 0) { setEditIdx(null); return; }
-    onUpdate(i, { ...items[i], name, rate, hours });
+    onUpdate(i, { ...items[i], name, rate, hours, roleTitle: editRole || null });
     setEditIdx(null);
   };
 
@@ -297,6 +300,12 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
               <input autoFocus value={editName} onChange={ev => setEditName(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="Деятельность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
               <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="₽/ч" disabled={!!item.lockedRate} style={{ width: 70, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right', opacity: item.lockedRate ? 0.6 : 1 }} />
               <input type="number" min="0" step="0.5" value={editHours} onChange={ev => setEditHours(ev.target.value)} onKeyDown={ev => { if (ev.key === 'Enter') commitEdit(i); if (ev.key === 'Escape') setEditIdx(null); }} placeholder="ч" disabled={!!item.lockedHours} style={{ width: 50, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right', opacity: item.lockedHours ? 0.6 : 1 }} />
+              {roleOptions && roleOptions.length > 0 && (
+                <select value={editRole} onChange={ev => setEditRole(ev.target.value)} style={{ padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', maxWidth: 130 }}>
+                  <option value="">Без роли</option>
+                  {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              )}
               <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
               </button>
@@ -307,6 +316,9 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
           ) : (
             <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
               <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.name}</span>
+              {item.roleTitle && (
+                <span style={{ marginLeft: 5, fontSize: 10, background: '#eff6ff', color: 'var(--rb-primary)', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>{item.roleTitle}</span>
+              )}
               <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>
                 {item.lockedRate && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.rate} ₽/ч × {item.lockedHours && <span style={{ color: '#007AFF', marginRight: 2 }}>🔒</span>}{item.hours} ч.
               </span>
@@ -331,7 +343,7 @@ function NormServicesList({ items, onDelete, onUpdate, readOnly }) {
 
 // ─── Norm service add form ─────────────────────────────────────────────────────
 
-function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests, onEditSuggests }) {
+function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests, onEditSuggests, roleOptions }) {
   if (readOnly || !visible) return null;
   return (
     <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
@@ -362,10 +374,113 @@ function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests,
           <label>Часов</label>
           <input type="number" placeholder="0" min="0" step="0.5" value={form.hours} onChange={e => setForm(f => ({ ...f, hours: e.target.value }))} style={{ width: 70 }} />
         </div>
+        {roleOptions && roleOptions.length > 0 && (
+          <div className="rb-exec-add-field">
+            <label>Роль</label>
+            <select value={form.roleTitle || ''} onChange={e => setForm(f => ({ ...f, roleTitle: e.target.value || null }))} style={{ minWidth: 120 }}>
+              <option value="">Без роли</option>
+              {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ paddingBottom: 1 }}>
           <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={onAdd}>
             Сохранить
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Role rates list (hourly multi-role) ─────────────────────────────────────
+
+function RoleRatesList({ items, onDelete, onUpdate, readOnly, roleOptions }) {
+  const [editIdx, setEditIdx] = useState(null);
+  const [editRole, setEditRole] = useState('');
+  const [editRate, setEditRate] = useState('');
+
+  if (!items || !items.length) return null;
+
+  const startEdit = (i) => { setEditIdx(i); setEditRole(items[i].roleTitle || ''); setEditRate(String(items[i].rate ?? '')); };
+  const commitEdit = (i) => {
+    const role = editRole.trim();
+    const rate = parseFloat(editRate);
+    if (!role || isNaN(rate) || rate < 0) { setEditIdx(null); return; }
+    onUpdate(i, { ...items[i], roleTitle: role, rate });
+    setEditIdx(null);
+  };
+
+  return (
+    <div className="rb-exec-items">
+      {items.map((item, i) => (
+        <div key={i} className="rb-exec-item">
+          {editIdx === i ? (
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+              {roleOptions && roleOptions.length > 0 ? (
+                <select autoFocus value={editRole} onChange={ev => setEditRole(ev.target.value)} style={{ flex: 1, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12 }}>
+                  <option value="">Выберите роль...</option>
+                  {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              ) : (
+                <input autoFocus value={editRole} onChange={ev => setEditRole(ev.target.value)} placeholder="Роль/специальность" style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
+              )}
+              <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} placeholder="₽/ч" style={{ width: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          ) : (
+            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
+              <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>
+              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{item.rate} ₽/ч</span>
+            </div>
+          )}
+          {!readOnly && editIdx !== i && (
+            <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RoleRateAddForm({ onAdd, readOnly, visible, roleOptions }) {
+  const [role, setRole] = useState('');
+  const [rate, setRate] = useState('');
+  if (readOnly || !visible) return null;
+  const handleAdd = () => {
+    if (!role.trim()) return;
+    const r = parseFloat(rate);
+    if (isNaN(r) || r < 0) return;
+    onAdd({ roleTitle: role.trim(), rate: r });
+    setRole(''); setRate('');
+  };
+  return (
+    <div className="rb-exec-add-form visible" style={{ marginBottom: 8 }}>
+      <div className="rb-exec-add-row">
+        <div className="rb-exec-add-field flex-grow">
+          <label>Роль / специальность</label>
+          {roleOptions && roleOptions.length > 0 ? (
+            <select value={role} onChange={e => setRole(e.target.value)}>
+              <option value="">Выберите роль...</option>
+              {roleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+          ) : (
+            <input type="text" placeholder="Роль..." value={role} onChange={e => setRole(e.target.value)} />
+          )}
+        </div>
+        <div className="rb-exec-add-field">
+          <label>Ставка, ₽/ч</label>
+          <input type="number" placeholder="0" min="0" step="any" value={rate} onChange={e => setRate(e.target.value)} style={{ width: 90 }} />
+        </div>
+        <div style={{ paddingBottom: 1 }}>
+          <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleAdd}>Сохранить</button>
         </div>
       </div>
     </div>
@@ -676,6 +791,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     });
     return [...set].sort();
   }, [doctors]);
+
+  const roleOptions = React.useMemo(() => {
+    if (!selectedDoctor) return [];
+    const roles = selectedDoctor.roles || [];
+    const profs = (selectedDoctor.professions || []).map(p =>
+      typeof p === 'object' ? (p.title || '') : String(p || '')
+    ).filter(Boolean);
+    return [...new Set([...roles, ...profs])];
+  }, [selectedDoctor]);
   const [cabinetInput, setCabinetInput] = useState('');
   const [showCabinetForm, setShowCabinetForm] = useState(false);
   const [showExtraForm, setShowExtraForm] = useState(false);
@@ -1052,7 +1176,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   // ── Norm services ──────────────────────────────────────────────────────────
-  const [normServiceForm, setNormServiceForm] = useState({ name: '', rate: '', hours: '' });
+  const [normServiceForm, setNormServiceForm] = useState({ name: '', rate: '', hours: '', roleTitle: null });
+  const [showRoleRateForm, setShowRoleRateForm] = useState(false);
 
   const handleAddNormService = async () => {
     const name = normServiceForm.name.trim();
@@ -1062,11 +1187,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     if (isNaN(rate) || rate < 0) { toast.error('Укажите часовую ставку'); return; }
     if (isNaN(hours) || hours < 0) { toast.error('Укажите количество часов'); return; }
     const current = getClinicData();
-    const arr = [...(current.normServices || []), { name, rate, hours }];
+    const newItem = { name, rate, hours };
+    if (normServiceForm.roleTitle) newItem.roleTitle = normServiceForm.roleTitle;
+    const arr = [...(current.normServices || []), newItem];
     updateClinicData({ normServices: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
     await saveToServer(newData);
-    setNormServiceForm({ name: '', rate: '', hours: '' });
+    setNormServiceForm({ name: '', rate: '', hours: '', roleTitle: null });
     toast.success('Добавлено');
   };
 
@@ -1083,6 +1210,34 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const arr = (current.normServices || []).map((it, i) => i === idx ? newItem : it);
     updateClinicData({ normServices: arr });
     const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), normServices: arr } } };
+    await saveToServer(newData);
+  };
+
+  // ── Role rates (hourly multi-role) ────────────────────────────────────────
+
+  const handleAddRoleRate = async (newItem) => {
+    const current = getClinicData();
+    const arr = [...(current.roleRates || []), newItem];
+    updateClinicData({ roleRates: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleRates: arr } } };
+    await saveToServer(newData);
+    setShowRoleRateForm(false);
+    toast.success('Добавлено');
+  };
+
+  const handleDeleteRoleRate = async (idx) => {
+    const current = getClinicData();
+    const arr = (current.roleRates || []).filter((_, i) => i !== idx);
+    updateClinicData({ roleRates: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleRates: arr } } };
+    await saveToServer(newData);
+  };
+
+  const handleUpdateRoleRate = async (idx, newItem) => {
+    const current = getClinicData();
+    const arr = (current.roleRates || []).map((it, i) => i === idx ? newItem : it);
+    updateClinicData({ roleRates: arr });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), roleRates: arr } } };
     await saveToServer(newData);
   };
 
@@ -1359,6 +1514,29 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             )}
 
 
+            {pt === 'hourly' && data.hoursFromSchedule && (
+              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    Ставки по ролям
+                  </span>
+                  {!readOnly && (
+                    <button
+                      onClick={() => setShowRoleRateForm(v => !v)}
+                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                      title="Добавить ставку по роли"
+                    >+</button>
+                  )}
+                </div>
+                <div style={{ padding: '0 0 4px', fontSize: 11, color: 'var(--rb-text-secondary)', marginLeft: 12, marginBottom: 4 }}>
+                  Переопределяет базовую ставку для конкретной роли из расписания
+                </div>
+                <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roleOptions={roleOptions} />
+                <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roleOptions={roleOptions} />
+              </div>
+            )}
+
             {pt === 'normed' && (
               <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#eff6ff', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1559,8 +1737,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 Часы будут рассчитаны по расписанию за период отчёта. Значения ниже используются как веса при распределении.
               </div>
             )}
-            <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} />
-            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} />
+            <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} roleOptions={roleOptions} />
+            <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} roleOptions={roleOptions} />
           </div>
         )}
 

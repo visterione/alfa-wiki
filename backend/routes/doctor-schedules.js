@@ -23,7 +23,7 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/doctor-schedules
 router.post('/', authenticate, async (req, res) => {
   try {
-    const { misUserId, clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId } = req.body;
+    const { misUserId, clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId, roleTitle } = req.body;
     if (!misUserId || !clinicId || !dateFrom || !dateTo || !pattern) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -38,6 +38,7 @@ router.post('/', authenticate, async (req, res) => {
       exceptions: exceptions || [],
       categoryId: categoryId || null,
       cabinetId:  cabinetId  || null,
+      roleTitle:  roleTitle  || null,
       createdBy:  req.user?.id || null,
     });
     res.status(201).json(row);
@@ -53,7 +54,7 @@ router.put('/:id', authenticate, async (req, res) => {
     const row = await DoctorSchedule.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
-    const { clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId } = req.body;
+    const { clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId, roleTitle } = req.body;
     await row.update({
       ...(clinicId    !== undefined && { clinicId }),
       ...(dateFrom    !== undefined && { dateFrom }),
@@ -64,6 +65,7 @@ router.put('/:id', authenticate, async (req, res) => {
       ...(exceptions  !== undefined && { exceptions }),
       ...(categoryId  !== undefined && { categoryId: categoryId || null }),
       ...(cabinetId   !== undefined && { cabinetId:  cabinetId  || null }),
+      ...(roleTitle   !== undefined && { roleTitle:  roleTitle  || null }),
     });
     await row.reload();
     res.json(row);

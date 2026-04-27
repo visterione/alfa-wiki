@@ -2450,6 +2450,7 @@ const DoctorSchedule = sequelize.define('DoctorSchedule', {
   exceptions: { type: DataTypes.JSONB,       allowNull: false, defaultValue: [] },
   categoryId: { type: DataTypes.UUID,        allowNull: true, field: 'category_id' },
   cabinetId:  { type: DataTypes.UUID,        allowNull: true, field: 'cabinet_id' },
+  roleTitle:  { type: DataTypes.STRING(200), allowNull: true, field: 'role_title' },
   createdBy:  { type: DataTypes.UUID },
 }, {
   tableName: 'doctor_schedules',

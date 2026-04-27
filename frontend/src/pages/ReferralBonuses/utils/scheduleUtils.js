@@ -56,19 +56,22 @@ export function isEntryCancelled(entry, dateStr) {
 }
 
 /**
- * Calculates total worked hours from schedule entries for a given period and optional clinic.
+ * Calculates worked hours from schedule entries for a given period and optional clinic.
  *
  * @param {Array}  entries   - Schedule entries (from doctorSchedules.list API)
  * @param {string} dateFrom  - "YYYY-MM-DD"
  * @param {string} dateTo    - "YYYY-MM-DD"
  * @param {string|number|null} clinicId - filter by clinic; null/undefined = all clinics
- * @returns {number} Total hours (float)
+ * @returns {{ total: number, byRole: Object.<string, number> }}
+ *   total    — total hours across all roles
+ *   byRole   — hours per roleTitle; key '' covers entries without a roleTitle
  */
 export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) {
-  if (!entries || !entries.length || !dateFrom || !dateTo) return 0;
+  if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {} };
 
   const cidStr = clinicId != null ? String(clinicId) : null;
 
+  const byRoleMinutes = {};
   let totalMinutes = 0;
 
   const from = new Date(dateFrom + 'T00:00:00');
@@ -89,11 +92,20 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       const [fh, fm] = entry.timeFrom.split(':').map(Number);
       const [th, tm] = entry.timeTo.split(':').map(Number);
       const mins = (th * 60 + tm) - (fh * 60 + fm);
-      if (mins > 0) totalMinutes += mins;
+      if (mins > 0) {
+        totalMinutes += mins;
+        const role = entry.roleTitle || '';
+        byRoleMinutes[role] = (byRoleMinutes[role] || 0) + mins;
+      }
     }
 
     d.setDate(d.getDate() + 1);
   }
 
-  return totalMinutes / 60;
+  const byRole = {};
+  for (const [role, mins] of Object.entries(byRoleMinutes)) {
+    byRole[role] = mins / 60;
+  }
+
+  return { total: totalMinutes / 60, byRole };
 }

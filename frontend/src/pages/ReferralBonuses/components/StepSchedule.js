@@ -113,6 +113,7 @@ function makeBlankForm(cell, doctorClinics) {
     timeTo:     '18:00',
     categoryId: null,
     cabinetId:  null,
+    roleTitle:  null,
   };
 }
 
@@ -126,6 +127,7 @@ function entryToForm(entry) {
     timeTo:     entry.timeTo,
     categoryId: entry.categoryId || null,
     cabinetId:  entry.cabinetId  || null,
+    roleTitle:  entry.roleTitle  || null,
   };
 }
 
@@ -669,6 +671,14 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const timeToClockRef = useRef(null);
 
   const selectedDoctor = doctors.find(d => d.id === selectedDoctorId) || null;
+  const doctorRoleOptions = React.useMemo(() => {
+    if (!selectedDoctor) return [];
+    const roles = selectedDoctor.roles || [];
+    const profs = (selectedDoctor.professions || []).map(p =>
+      typeof p === 'object' ? (p.title || '') : String(p || '')
+    ).filter(Boolean);
+    return [...new Set([...roles, ...profs])];
+  }, [selectedDoctor]);
   const doctorClinics  = selectedDoctor
     ? clinics.filter(c => (selectedDoctor.clinics || []).includes(String(c.id)))
     : [];
@@ -877,10 +887,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           timeTo:     form.timeTo,
           categoryId: form.categoryId || null,
           cabinetId:  form.cabinetId  || null,
+          roleTitle:  form.roleTitle  || null,
         });
         const updated = res.data;
         setEntries(prev => prev.map(e => e.id === modal.editId
-          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo, categoryId: form.categoryId, cabinetId: form.cabinetId }
+          ? { ...e, clinicId: updated.clinicId, dateFrom: updated.dateFrom, dateTo: updated.dateTo, pattern: updated.pattern, timeFrom: updated.timeFrom, timeTo: updated.timeTo, categoryId: form.categoryId, cabinetId: form.cabinetId, roleTitle: form.roleTitle || null }
           : e
         ));
       } else {
@@ -895,6 +906,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           exceptions: [],
           categoryId: form.categoryId || null,
           cabinetId:  form.cabinetId  || null,
+          roleTitle:  form.roleTitle  || null,
         });
         const created = res.data;
         setEntries(prev => [...prev, {
@@ -910,6 +922,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           exceptions: created.exceptions || [],
           categoryId: created.categoryId || null,
           cabinetId:  created.cabinetId  || null,
+          roleTitle:  created.roleTitle  || null,
         }]);
       }
       closeModal();
@@ -1266,7 +1279,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                                     borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
                                     opacity: cancelled ? 0.4 : 1,
                                   }}
-                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}`}
+                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}${e.roleTitle ? ' · ' + e.roleTitle : ''}`}
                                 >
                                   {cat && (
                                     <span style={{
@@ -1373,6 +1386,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                             <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
                               <span style={{ width: 9, height: 9, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />
                               {cat.name}
+                            </div>
+                          )}
+                          {e.roleTitle && (
+                            <div style={{ fontSize: 12, color: 'var(--rb-primary)', marginTop: 2, fontWeight: 500 }}>
+                              {e.roleTitle}
                             </div>
                           )}
                         </div>
@@ -1541,6 +1559,21 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   />
                 </div>
               </div>
+
+              {/* ── Row 2b: Роль / специальность ── */}
+              {doctorRoleOptions.length > 0 && (
+                <div>
+                  <label style={labelStyle}>Роль / специальность</label>
+                  <select
+                    value={form.roleTitle || ''}
+                    onChange={e => updateForm('roleTitle', e.target.value || null)}
+                    style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--rb-border)', borderRadius: 8, fontSize: 13, background: 'var(--rb-bg)', color: 'var(--rb-text)', cursor: 'pointer' }}
+                  >
+                    <option value="">Не указана</option>
+                    {doctorRoleOptions.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              )}
 
               {/* ── Row 3: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
               {!(modal.editId && modal.cell) && (

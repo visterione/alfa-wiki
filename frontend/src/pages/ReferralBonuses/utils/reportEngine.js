@@ -303,8 +303,11 @@ export async function buildReport({
     }));
   }
 
-  // ── Load hour norms for normed pay type ──
+  // ── Load hour norms for normed/hourly pay types ──
+  // _normsByRole: map of roleTitle → normHours (covers all doctor roles + specialties)
+  // _normHoursForPeriod: backward-compat single value (first found)
   let _normHoursForPeriod = null;
+  const _normsByRole = {};
   {
     const hasNormedOrHourly = Object.values(execSettings?.clinicSettings || {}).some(cs => cs.payType === 'normed' || cs.payType === 'hourly');
     if (hasNormedOrHourly && dateFrom) {
@@ -312,33 +315,33 @@ export async function buildReport({
         const periodDate = new Date(dateFrom);
         const year = periodDate.getFullYear();
         const month = periodDate.getMonth() + 1;
-        // Try by role first
-        const roleRes = await roleNormsApi.get(year, month);
-        const roleNormsData = roleRes.data || [];
         const doctorRoles = Array.isArray(doctor.roles) ? doctor.roles
           : doctor.role_titles ? String(doctor.role_titles).split(',').map(s => s.trim()).filter(Boolean)
           : Array.isArray(doctor.role_names) ? doctor.role_names
           : doctor.role ? [doctor.role] : [];
+
+        // Load norms by role
+        const roleRes = await roleNormsApi.get(year, month);
+        const roleNormsData = roleRes.data || [];
         for (const roleTitle of doctorRoles) {
           const norm = roleNormsData.find(n => n.roleTitle === roleTitle);
-          if (norm && norm.normHours != null) {
-            _normHoursForPeriod = parseFloat(norm.normHours);
-            break;
-          }
+          if (norm && norm.normHours != null) _normsByRole[roleTitle] = parseFloat(norm.normHours);
         }
-        // Fallback: try by profession/specialty if not found by role
-        if (_normHoursForPeriod == null) {
-          const res = await hourNormsApi.get(year, month);
-          const norms = res.data || [];
-          for (const p of (doctor.professions || [])) {
-            const profTitle = rbProfessionTitle(p);
+
+        // Load norms by profession/specialty
+        const res = await hourNormsApi.get(year, month);
+        const norms = res.data || [];
+        for (const p of (doctor.professions || [])) {
+          const profTitle = rbProfessionTitle(p);
+          if (profTitle && !_normsByRole[profTitle]) {
             const norm = norms.find(n => n.professionTitle === profTitle);
-            if (norm && norm.normHours != null) {
-              _normHoursForPeriod = parseFloat(norm.normHours);
-              break;
-            }
+            if (norm && norm.normHours != null) _normsByRole[profTitle] = parseFloat(norm.normHours);
           }
         }
+
+        // Backward compat: first found norm
+        const firstNorm = Object.values(_normsByRole)[0];
+        if (firstNorm != null) _normHoursForPeriod = firstNorm;
       } catch { /* continue without norm hours */ }
     }
   }
@@ -998,21 +1001,41 @@ export async function buildReport({
     let basePay = 0, basePayLabel = '';
     let normTotalHours = 0, normPremiumAmount = 0;
     let effectiveHoursWorked = 0;
+    const normPremiumByRole = []; // [{ roleTitle, premiumAmount, workedHours, norm }]
+    const _schedClinicId = (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId;
+
     if (pt === 'salary') {
       basePay = parseFloat(clinicSettings.fixedSalary) || 0;
       basePayLabel = 'Фиксированный оклад';
     } else if (pt === 'hourly') {
-      const rate = parseFloat(clinicSettings.hourlyRate) || 0;
+      const baseRate = parseFloat(clinicSettings.hourlyRate) || 0;
+      const roleRates = clinicSettings.roleRates || [];
+      basePayLabel = 'Почасовой оклад';
+
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        effectiveHoursWorked = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId);
+        const { total: schedTotal, byRole: schedByRole } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        effectiveHoursWorked = schedTotal;
+
+        for (const [roleTitle, hours] of Object.entries(schedByRole)) {
+          const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
+          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          basePay += rate * hours;
+          const norm = roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod;
+          if (norm != null && hours > 0 && hours >= 2 * norm) {
+            const premiumHours = hours - 2 * norm;
+            const premiumAmt = rate * premiumHours;
+            normPremiumAmount += premiumAmt;
+            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: hours, norm });
+          }
+        }
       } else {
         effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
-      }
-      basePay = rate * effectiveHoursWorked;
-      basePayLabel = 'Почасовой оклад';
-      if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
-        const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
-        normPremiumAmount = rate * premiumHours;
+        basePay = baseRate * effectiveHoursWorked;
+        if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
+          const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
+          normPremiumAmount = baseRate * premiumHours;
+          normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod });
+        }
       }
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
@@ -1020,25 +1043,66 @@ export async function buildReport({
     } else if (pt === 'normed') {
       const fixedSalary  = parseFloat(clinicSettings.fixedSalary) || 0;
       const normServices = clinicSettings.normServices || [];
-      let normServicesTotal;
-      if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const schedHours = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId);
-        const manualTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
-        // Scale each normService's hours proportionally to schedHours
-        const ratio = manualTotal > 0 ? schedHours / manualTotal : 0;
-        normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0) * ratio, 0);
-        normTotalHours = schedHours;
-      } else {
-        normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
-        normTotalHours = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
-      }
-      basePay = fixedSalary + normServicesTotal;
+      let normServicesTotal = 0;
       basePayLabel = 'Нормированный оклад';
-      // Если часов отработано х2 и больше от нормы — часть сверх этого считается Премией
-      if (_normHoursForPeriod != null && normTotalHours > 0 && normTotalHours >= 2 * _normHoursForPeriod) {
-        const premiumHours = normTotalHours - 2 * _normHoursForPeriod;
-        normPremiumAmount = normServicesTotal * (premiumHours / normTotalHours);
+
+      if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
+        const { total: schedTotal, byRole: schedByRole } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+
+        // Group normServices by roleTitle; '' = untagged
+        const roleGroups = {};
+        normServices.forEach(ns => {
+          const role = ns.roleTitle || '';
+          if (!roleGroups[role]) roleGroups[role] = { items: [], manualHours: 0 };
+          roleGroups[role].items.push(ns);
+          roleGroups[role].manualHours += parseFloat(ns.hours) || 0;
+        });
+
+        for (const [roleTitle, group] of Object.entries(roleGroups)) {
+          // For tagged roles use schedule hours for that role; for untagged use total
+          const schedRoleHours = roleTitle ? (schedByRole[roleTitle] ?? 0) : schedTotal;
+          const ratio = group.manualHours > 0 ? schedRoleHours / group.manualHours : 0;
+          let groupPay = 0;
+          group.items.forEach(ns => {
+            groupPay += (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0) * ratio;
+          });
+          normServicesTotal += groupPay;
+          normTotalHours   += schedRoleHours;
+
+          const norm = roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod;
+          if (norm != null && schedRoleHours > 0 && schedRoleHours >= 2 * norm) {
+            const premiumHours = schedRoleHours - 2 * norm;
+            const premiumAmt = groupPay > 0 ? groupPay * (premiumHours / schedRoleHours) : 0;
+            normPremiumAmount += premiumAmt;
+            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: schedRoleHours, norm });
+          }
+        }
+      } else {
+        // Manual hours — group by roleTitle for per-role premium check
+        const roleGroups = {};
+        normServices.forEach(ns => {
+          const role = ns.roleTitle || '';
+          if (!roleGroups[role]) roleGroups[role] = { hours: 0, total: 0 };
+          const hours = parseFloat(ns.hours) || 0;
+          roleGroups[role].hours += hours;
+          roleGroups[role].total += (parseFloat(ns.rate) || 0) * hours;
+        });
+
+        normServicesTotal = normServices.reduce((s, ns) => s + (parseFloat(ns.rate) || 0) * (parseFloat(ns.hours) || 0), 0);
+        normTotalHours    = normServices.reduce((s, ns) => s + (parseFloat(ns.hours) || 0), 0);
+
+        for (const [roleTitle, group] of Object.entries(roleGroups)) {
+          const norm = roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod;
+          if (norm != null && group.hours > 0 && group.hours >= 2 * norm) {
+            const premiumHours = group.hours - 2 * norm;
+            const premiumAmt = group.total * (premiumHours / group.hours);
+            normPremiumAmount += premiumAmt;
+            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: group.hours, norm });
+          }
+        }
       }
+
+      basePay = fixedSalary + normServicesTotal;
     }
 
     const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
@@ -1109,6 +1173,7 @@ export async function buildReport({
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
       normTotalHours,
       normPremiumAmount,
+      normPremiumByRole,
       normHoursForPeriod: _normHoursForPeriod,
       referralBonuses: effectiveReferralBonusTotal,
       referralSections,
