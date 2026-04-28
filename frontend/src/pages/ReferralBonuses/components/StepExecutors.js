@@ -375,7 +375,7 @@ function SmallPopoverSelect({ value, onChange, items, placeholder, renderDot, re
     <button ref={btnRef} type="button" onClick={handleOpen} style={{
       display: 'inline-flex', alignItems: 'center', gap: 5, height: 28, padding: '0 8px',
       borderRadius: 6, border: open ? '1.5px solid var(--rb-primary)' : '1px solid var(--rb-border)',
-      background: open ? '#f0f7ff' : 'var(--rb-bg)', cursor: 'pointer', fontSize: 12,
+      background: open ? '#f0f7ff' : '#fff', cursor: 'pointer', fontSize: 12,
       color: selected ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
       boxShadow: open ? '0 0 0 2px rgba(0,122,255,.12)' : 'none', transition: 'all .15s',
       fontFamily: 'inherit', whiteSpace: 'nowrap', minWidth: 90, maxWidth: 160, position: 'relative',
@@ -2106,52 +2106,52 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               ))}
             </div>
 
-            {pt === 'hourly' && data.hoursFromSchedule && (
-              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
-                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    Ставки по ролям
-                  </span>
-                  {!readOnly && (
-                    <button
-                      onClick={() => setShowRoleRateForm(v => !v)}
-                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
-                      title="Добавить ставку по роли"
-                    >+</button>
-                  )}
-                </div>
-                <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
-                <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
-              </div>
-            )}
-
-            {pt === 'hourly' && data.hoursFromSchedule && (
-              <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
-                <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
-                    Нормы часов
-                  </span>
-                  {!readOnly && (
-                    <button
-                      onClick={() => setShowRoleNormForm(v => !v)}
-                      style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
-                      title="Добавить норму часов"
-                    >+</button>
-                  )}
-                </div>
-                <RoleNormsList items={data.roleNormOverrides || []} onDelete={handleDeleteRoleNorm} onUpdate={handleUpdateRoleNorm} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
-                <RoleNormAddForm onAdd={handleAddRoleNorm} readOnly={readOnly} visible={showRoleNormForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
-              </div>
-            )}
-
             <div className="rb-exec-save-row" style={{ justifyContent: 'flex-end' }}>
               <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSavePayment} disabled={saving}>
                 Сохранить
               </button>
             </div>
         </div>
+
+        {pt === 'hourly' && (
+          <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+            <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Ставки
+              </span>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowRoleRateForm(v => !v)}
+                  style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                  title="Добавить ставку по роли"
+                >+</button>
+              )}
+            </div>
+            <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+          </div>
+        )}
+
+        {pt === 'hourly' && (
+          <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+            <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
+                Нормы часов
+              </span>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowRoleNormForm(v => !v)}
+                  style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                  title="Добавить норму часов"
+                >+</button>
+              )}
+            </div>
+            <RoleNormsList items={data.roleNormOverrides || []} onDelete={handleDeleteRoleNorm} onUpdate={handleUpdateRoleNorm} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <RoleNormAddForm onAdd={handleAddRoleNorm} readOnly={readOnly} visible={showRoleNormForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+          </div>
+        )}
 
         {/* ── Norm services (normed pay type only) ── */}
         {pt === 'normed' && (
@@ -2163,19 +2163,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {!readOnly && (
-                  <label className="rb-toggle-item" style={{ marginBottom: 0, gap: 4 }} title="Считать часы по расписанию сотрудника">
-                    <span className="rb-toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={!!data.hoursFromSchedule}
-                        onChange={() => handlePaymentFieldChange('hoursFromSchedule', !data.hoursFromSchedule)}
-                      />
-                      <span className="rb-toggle-slider" />
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>часы из расписания</span>
-                  </label>
-                )}
-                {!readOnly && (
                   <button
                     onClick={() => setShowNormServiceForm(v => !v)}
                     style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
@@ -2184,14 +2171,29 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 )}
               </span>
             </div>
-            {data.hoursFromSchedule && (
-              <div style={{ margin: '0 12px 6px', padding: '6px 10px', background: '#eff6ff', borderRadius: 7, fontSize: 12, color: 'var(--rb-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" style={{ flexShrink: 0 }}><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Часы будут рассчитаны по расписанию за период отчёта. Значения ниже используются как веса при распределении.
-              </div>
-            )}
             <NormServicesList items={data.normServices || []} onDelete={handleDeleteNormService} onUpdate={handleUpdateNormService} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
             <NormServiceAddForm form={normServiceForm} setForm={setNormServiceForm} onAdd={handleAddNormService} readOnly={readOnly} visible={showNormServiceForm} suggests={suggests.normServices} onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'normServices', title: 'Выполненные услуги' }) : undefined} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+          </div>
+        )}
+
+        {/* ── Hour norm overrides (normed pay type) ── */}
+        {pt === 'normed' && (
+          <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+            <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 6v6l4 2"/></svg>
+                Нормы часов
+              </span>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowRoleNormForm(v => !v)}
+                  style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, width: 24, height: 24, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 16, lineHeight: 1, padding: 0, marginRight: 12 }}
+                  title="Добавить норму часов"
+                >+</button>
+              )}
+            </div>
+            <RoleNormsList items={data.roleNormOverrides || []} onDelete={handleDeleteRoleNorm} onUpdate={handleUpdateRoleNorm} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <RoleNormAddForm onAdd={handleAddRoleNorm} readOnly={readOnly} visible={showRoleNormForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
           </div>
         )}
 
