@@ -89,13 +89,15 @@ function isDayScheduled(entry, year, month, day) {
     case 'daily':    return true;
     case 'workdays': return dow <= 4; // Mon–Fri
     case 'two_two': {
-      const diff = Math.round((d - from) / 86400000);
+      const anchor = pattern.phaseAnchor ? parseDate(pattern.phaseAnchor) : from;
+      const diff = Math.round((d - anchor) / 86400000);
       return diff % 4 < 2;
     }
     case 'weekdays': return (pattern.weekdays || []).includes(dow);
     case 'even_odd': return pattern.evenOdd === 'even' ? d.getDate() % 2 === 0 : d.getDate() % 2 === 1;
     case 'custom': {
-      const diff  = Math.round((d - from) / 86400000);
+      const anchor = pattern.phaseAnchor ? parseDate(pattern.phaseAnchor) : from;
+      const diff  = Math.round((d - anchor) / 86400000);
       const cycle = (pattern.workDays || 1) + (pattern.restDays || 1);
       return diff % cycle < (pattern.workDays || 1);
     }
@@ -911,13 +913,16 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
     if (origEntry.dateFrom === targetDate) {
       // Target is first day — shrink original forward
+      const updPattern = ['two_two', 'custom'].includes(origEntry.pattern.type)
+        ? { ...origEntry.pattern, phaseAnchor: origEntry.pattern.phaseAnchor || origEntry.dateFrom }
+        : origEntry.pattern;
       await schedulesApi.update(modal.editId, {
         clinicId: origEntry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: origEntry.dateTo,
-        pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: afterEx,
+        pattern: updPattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: afterEx,
       });
       const res = await schedulesApi.create(newDayPayload);
       setEntries(prev => [
-        ...prev.map(e => e.id === modal.editId ? { ...e, dateFrom: addDays(targetDate, 1), exceptions: afterEx } : e),
+        ...prev.map(e => e.id === modal.editId ? { ...e, dateFrom: addDays(targetDate, 1), pattern: updPattern, exceptions: afterEx } : e),
         mkEntry(res.data),
       ]);
     } else if (origEntry.dateTo === targetDate) {
@@ -937,6 +942,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         clinicId: origEntry.clinicId, dateFrom: origEntry.dateFrom, dateTo: addDays(targetDate, -1),
         pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: beforeEx,
       });
+      const splitPattern = ['two_two', 'custom'].includes(origEntry.pattern.type)
+        ? { ...origEntry.pattern, phaseAnchor: origEntry.pattern.phaseAnchor || origEntry.dateFrom }
+        : origEntry.pattern;
       const [dayRes, afterRes] = await Promise.all([
         schedulesApi.create(newDayPayload),
         schedulesApi.create({
@@ -944,7 +952,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           clinicId:   origEntry.clinicId,
           dateFrom:   addDays(targetDate, 1),
           dateTo:     origEntry.dateTo,
-          pattern:    origEntry.pattern,
+          pattern:    splitPattern,
           timeFrom:   origEntry.timeFrom,
           timeTo:     origEntry.timeTo,
           exceptions: afterEx,
@@ -1051,11 +1059,14 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
     try {
       if (entry.dateFrom === targetDate) {
+        const updPattern = ['two_two', 'custom'].includes(entry.pattern.type)
+          ? { ...entry.pattern, phaseAnchor: entry.pattern.phaseAnchor || entry.dateFrom }
+          : entry.pattern;
         await schedulesApi.update(entryId, {
           clinicId: entry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
-          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: afterEx,
+          pattern: updPattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: afterEx,
         });
-        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateFrom: addDays(targetDate, 1), exceptions: afterEx } : e));
+        setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateFrom: addDays(targetDate, 1), pattern: updPattern, exceptions: afterEx } : e));
       } else if (entry.dateTo === targetDate) {
         await schedulesApi.update(entryId, {
           clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
@@ -1067,10 +1078,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
           pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: beforeEx,
         });
+        const splitPattern = ['two_two', 'custom'].includes(entry.pattern.type)
+          ? { ...entry.pattern, phaseAnchor: entry.pattern.phaseAnchor || entry.dateFrom }
+          : entry.pattern;
         const res = await schedulesApi.create({
           misUserId, clinicId: entry.clinicId,
           dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
-          pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo,
+          pattern: splitPattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo,
           exceptions: afterEx,
         });
         setEntries(prev => [

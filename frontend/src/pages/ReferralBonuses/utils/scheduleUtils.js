@@ -30,7 +30,8 @@ export function isDayScheduled(entry, year, month, day) {
     case 'daily':    return true;
     case 'workdays': return dow <= 4;
     case 'two_two': {
-      const diff = Math.round((d - from) / 86400000);
+      const anchor = pattern.phaseAnchor ? parseDate(pattern.phaseAnchor) : from;
+      const diff = Math.round((d - anchor) / 86400000);
       return diff % 4 < 2;
     }
     case 'weekdays': return (pattern.weekdays || []).includes(dow);
@@ -38,7 +39,8 @@ export function isDayScheduled(entry, year, month, day) {
       ? d.getDate() % 2 === 0
       : d.getDate() % 2 === 1;
     case 'custom': {
-      const diff  = Math.round((d - from) / 86400000);
+      const anchor = pattern.phaseAnchor ? parseDate(pattern.phaseAnchor) : from;
+      const diff  = Math.round((d - anchor) / 86400000);
       const cycle = (pattern.workDays || 1) + (pattern.restDays || 1);
       return diff % cycle < (pattern.workDays || 1);
     }
