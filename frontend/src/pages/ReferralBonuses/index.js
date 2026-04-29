@@ -131,12 +131,23 @@ export default function ReferralBonusesPage() {
   React.useLayoutEffect(() => {
     const nav = wizardNavRef.current;
     if (!nav) return;
-    const active = nav.querySelector('.rb-wizard-step.active');
-    if (!active) return;
-    const newLeft = active.offsetLeft;
-    const distance = Math.abs(newLeft - wizardSlider.left);
-    const duration = Math.min(0.65, 0.3 + distance / 2000);
-    setWizardSlider({ left: newLeft, width: active.offsetWidth, duration });
+
+    const recalc = (animate) => {
+      const active = nav.querySelector('.rb-wizard-step.active');
+      if (!active) return;
+      const newLeft = active.offsetLeft;
+      setWizardSlider(prev => ({
+        left: newLeft,
+        width: active.offsetWidth,
+        duration: animate ? Math.min(0.65, 0.3 + Math.abs(newLeft - prev.left) / 2000) : 0,
+      }));
+    };
+
+    recalc(true);
+
+    const ro = new ResizeObserver(() => recalc(false));
+    ro.observe(nav);
+    return () => ro.disconnect();
   }, [currentStep]);
 
   // ── Clinics ──
@@ -919,10 +930,19 @@ function DoctorsList({
     });
   };
 
-  const selectAllBulk = () => setBulkSelectedIds(new Set(doctors.map(d => d.id)));
+  const selectAllBulk = () => setBulkSelectedIds(new Set(displayDoctors.map(d => d.id)));
   const clearBulk     = () => setBulkSelectedIds(new Set());
 
   const pinCount = pinnedForCompare.length;
+
+  // Step 4 (Направления) shows all doctors; all other steps hide Направители clinic (ID 8)
+  const REFERRAL_CLINIC_ID = '8';
+  const displayDoctors = currentStep === 4
+    ? doctors
+    : doctors.filter(d => !d.clinics.includes(REFERRAL_CLINIC_ID));
+  const displayAllDoctors = currentStep === 4
+    ? allDoctors
+    : allDoctors.filter(d => !d.clinics.includes(REFERRAL_CLINIC_ID));
 
   return (
     <div className="rb-panel">
@@ -939,7 +959,7 @@ function DoctorsList({
             ? <span style={{ color: 'var(--rb-primary)', fontWeight: 600 }}>✓ {bulkSelectedIds.size} выбрано</span>
             : compareMode && pinCount === 1
               ? <span style={{ fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
-              : <>{doctors.length} из {allDoctors.length}</>
+              : <>{displayDoctors.length} из {displayAllDoctors.length}</>
           }
         </span>
       </div>
@@ -997,7 +1017,7 @@ function DoctorsList({
         {bulkMode && (
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ flex: 1 }} onClick={selectAllBulk}>
-              Выбрать все ({doctors.length})
+              Выбрать все ({displayDoctors.length})
             </button>
             <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={clearBulk}>Сбросить</button>
           </div>
@@ -1030,11 +1050,12 @@ function DoctorsList({
       <div className="rb-doctors-list">
         {loading && <div className="rb-loading"><span className="rb-spinner" />Загрузка врачей...</div>}
         {!loading && error && <div className="rb-loading" style={{ color: 'var(--rb-danger)' }}>{error}</div>}
-        {!loading && !error && doctors.length === 0 && <div className="rb-loading">Нет врачей по фильтру</div>}
-        {!loading && !error && doctors.map(d => {
+        {!loading && !error && displayDoctors.length === 0 && <div className="rb-loading">Нет врачей по фильтру</div>}
+        {!loading && !error && displayDoctors.map(d => {
           const specialty = d.professions.map(p =>
             typeof p === 'object' ? (p.title || '') : String(p || '')
           ).filter(Boolean).join(', ');
+          const displaySpecialty = specialty || d.roles.join(', ');
           const count     = bonusCounts[d.id];
           const isActive  = bulkMode ? bulkSelectedIds.has(d.id) : selectedDoctor?.id === d.id;
           const pinIdx    = pinnedForCompare.indexOf(d.id);
@@ -1058,8 +1079,6 @@ function DoctorsList({
                 />
               )}
               <div className="rb-doctor-info">
-                <div className="rb-doctor-name">{d.name}</div>
-                {specialty && <div className="rb-doctor-specialty">{specialty}</div>}
                 <div className="rb-doctor-badges">
                   {d.clinics.slice(0, 4).map(cId => (
                     <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId) }}>
@@ -1067,6 +1086,8 @@ function DoctorsList({
                     </span>
                   ))}
                 </div>
+                <div className="rb-doctor-name">{d.name}</div>
+                {displaySpecialty && <div className="rb-doctor-specialty">{displaySpecialty}</div>}
               </div>
               {compareMode ? (
                 <button

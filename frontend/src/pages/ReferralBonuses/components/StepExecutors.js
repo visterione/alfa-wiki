@@ -1862,7 +1862,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Clinic tabs */}
       {clinicTabs.length > 1 && (
-        <div className="rb-clinic-tab-wrap" ref={clinicTabRef}>
+        <div className="rb-clinic-tab-wrap" ref={clinicTabRef} style={{ marginTop: 12, marginLeft: 12, marginRight: 12 }}>
           {clinicSlider}
           {clinicTabs.map(tab => (
             <button

@@ -6,8 +6,46 @@ const { Op, Sequelize } = require('sequelize');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
 const notificationService = require('../services/notificationService');
+const axios = require('axios');
+const qs = require('qs');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = path.join(__dirname, '..', 'uploads', 'avatars');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `user-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+  }
+});
+const uploadAvatarMulter = multer({ storage: avatarStorage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 const router = express.Router();
+
+const MIS_API_KEY = process.env.MIS_API_KEY || 'c58544bba9e867e1adea5743c418c5fa';
+const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
+
+let _misCache = null;
+let _misCacheTime = 0;
+
+const misRequest = async (endpoint, params = {}) => {
+  try {
+    const response = await axios.post(
+      `${MIS_BASE_URL}/${endpoint}`,
+      qs.stringify({ api_key: MIS_API_KEY, ...params }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 15000 }
+    );
+    return response.data;
+  } catch (err) {
+    console.error(`MIS API error (${endpoint}):`, err.message);
+    return null;
+  }
+};
 
 // Get basic list of users (for assignee selection, etc.) - available to all authenticated users
 // Optional query param: ?access=reviews — returns only users with adminAccess.reviews=true (or isAdmin)
@@ -53,6 +91,60 @@ router.get('/', authenticate, requireAdminAccess('users'), async (req, res) => {
   }
 });
 
+// Upload user avatar
+router.post('/upload-avatar', authenticate, uploadAvatarMulter.single('avatar'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
+  res.json({ avatarPath: `uploads/avatars/${req.file.filename}` });
+});
+
+// Search MIS employees
+router.get('/mis-search', authenticate, async (req, res) => {
+  try {
+    const q = (req.query.q || '').toLowerCase().trim();
+    if (Date.now() - _misCacheTime > 5 * 60 * 1000 || !_misCache) {
+      const data = await misRequest('getUsers', { show_all: 1 });
+      if (!data || data.error !== 0 || !Array.isArray(data.data)) return res.status(502).json({ error: 'МИС недоступен' });
+      _misCache = data.data;
+      _misCacheTime = Date.now();
+    }
+    const results = _misCache
+      .filter(u => {
+        if (!q) return true;
+        const name = (u.name || '').toLowerCase();
+        const roles = [].concat(u.role_titles || []).join(' ').toLowerCase();
+        const profs = [].concat(u.profession_titles || []).join(' ').toLowerCase();
+        return name.includes(q) || roles.includes(q) || profs.includes(q);
+      })
+      .slice(0, 50)
+      .map(({ id, name, email, avatar_small, role_titles, profession_titles, clinic_titles }) => ({
+        id, name, email, avatar_small, role_titles, profession_titles, clinic_titles
+      }));
+    res.json(results);
+  } catch (err) {
+    console.error('MIS search error:', err);
+    res.status(500).json({ error: 'Ошибка поиска в МИС' });
+  }
+});
+
+// Download MIS avatar to local storage
+router.post('/mis-avatar', authenticate, async (req, res) => {
+  try {
+    const { avatarUrl } = req.body;
+    if (!avatarUrl) return res.status(400).json({ error: 'avatarUrl required' });
+    const response = await axios.get(avatarUrl, { responseType: 'arraybuffer', timeout: 10000 });
+    const contentType = response.headers['content-type'] || '';
+    const ext = contentType.includes('png') ? 'png' : 'jpg';
+    const filename = `mis-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const dir = path.join(__dirname, '..', 'uploads', 'avatars');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, filename), response.data);
+    res.json({ avatarPath: `uploads/avatars/${filename}` });
+  } catch (err) {
+    console.error('MIS avatar error:', err.message);
+    res.status(500).json({ error: 'Не удалось скачать аватар' });
+  }
+});
+
 // Get single user
 router.get('/:id', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
@@ -83,7 +175,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -138,6 +230,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       password: hashedPassword,
       displayName: displayName || username,
       email: email || null,
+      avatar: avatar || null,
       roleId: roleId,
       isAdmin: isAdmin || false,
       isActive: isActive !== false,

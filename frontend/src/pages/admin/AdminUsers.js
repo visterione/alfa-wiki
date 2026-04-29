@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -98,11 +98,15 @@ export default function AdminUsers() {
   const [filterRole, setFilterRole] = useState('');
   const [filterMedCenter, setFilterMedCenter] = useState('');
   const [modal, setModal] = useState({ open: false, user: null });
+  const [misDropdown, setMisDropdown] = useState({ open: false, results: [], searching: false });
+  const avatarInputRef = useRef(null);
+  const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
     username: '',
     password: '',
     displayName: '',
     email: '',
+    avatar: '',
     roleIds: [],
     medCenterIds: [],
     isAdmin: false,
@@ -128,6 +132,66 @@ export default function AdminUsers() {
   });
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (!misDropdown.open) return;
+    const handleClickOutside = (e) => {
+      if (misDropdownRef.current && !misDropdownRef.current.contains(e.target)) {
+        setMisDropdown(prev => ({ ...prev, open: false }));
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [misDropdown.open]);
+
+  const handleAvatarFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = '';
+    try {
+      const res = await users.uploadAvatar(file);
+      setForm(prev => ({ ...prev, avatar: res.data.avatarPath }));
+    } catch {
+      toast.error('Ошибка загрузки фото');
+    }
+  };
+
+  const searchRenovatio = async () => {
+    const q = form.displayName.trim();
+    setMisDropdown({ open: true, results: [], searching: true });
+    try {
+      const res = await users.misSearch(q);
+      setMisDropdown({ open: true, results: res.data, searching: false });
+    } catch {
+      toast.error('Ошибка поиска в Renovatio');
+      setMisDropdown({ open: false, results: [], searching: false });
+    }
+  };
+
+  const selectMisEmployee = async (emp) => {
+    setMisDropdown({ open: false, results: [], searching: true });
+    try {
+      let avatar = '';
+      if (emp.avatar_small) {
+        try {
+          const res = await users.misAvatar(emp.avatar_small);
+          avatar = res.data.avatarPath;
+        } catch { /* аватар не скачался — не блокируем */ }
+      }
+      const username = generateUniqueUsername(emp.name || '');
+      setForm(prev => ({
+        ...prev,
+        displayName: emp.name || '',
+        email: emp.email || '',
+        avatar,
+        username,
+      }));
+      setMisDropdown({ open: false, results: [], searching: false });
+    } catch {
+      toast.error('Ошибка импорта сотрудника');
+      setMisDropdown({ open: false, results: [], searching: false });
+    }
+  };
 
   const load = async () => {
     try {
@@ -262,6 +326,7 @@ export default function AdminUsers() {
         password: '',
         displayName: user.displayName || '',
         email: user.email || '',
+        avatar: user.avatar || '',
         roleIds: user.roles ? user.roles.map(r => r.id) : [],
         medCenterIds: user.medCenters ? user.medCenters.map(mc => mc.id) : [],
         isAdmin: user.isAdmin,
@@ -293,6 +358,7 @@ export default function AdminUsers() {
         password: newPassword,
         displayName: '',
         email: '',
+        avatar: '',
         roleIds: [],
         medCenterIds: [],
         isAdmin: false,
@@ -464,7 +530,7 @@ export default function AdminUsers() {
       <div className="admin-header">
         <h1>Пользователи</h1>
         <button className="btn btn-primary" onClick={() => openModal()}>
-          <Plus size={18} /> Добавить
+          Добавить
         </button>
       </div>
 
@@ -630,37 +696,146 @@ export default function AdminUsers() {
               <h3>{modal.user ? 'Редактировать пользователя' : 'Новый пользователь'}</h3>
             </div>
             <div className="modal-body">
+              {/* Верхний блок: аватар слева, имя и логин справа */}
+              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginBottom: 24 }}>
+                <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                  <div
+                    onClick={() => avatarInputRef.current?.click()}
+                    title="Нажмите для загрузки фото"
+                    style={{
+                      width: 90, height: 90, borderRadius: '50%',
+                      background: 'var(--bg-secondary)', overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: '2px solid var(--border)', cursor: 'pointer',
+                    }}
+                  >
+                    {form.avatar
+                      ? <img src={`${BASE_URL}/${form.avatar}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      : <User size={36} style={{ color: 'var(--text-tertiary)' }} />
+                    }
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => avatarInputRef.current?.click()}>
+                      Загрузить
+                    </button>
+                    {form.avatar && (
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm({ ...form, avatar: '' })}>
+                        <XIcon size={14} />
+                      </button>
+                    )}
+                  </div>
+                  <small style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>JPG, PNG до 5 МБ</small>
+                  <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
+                </div>
+
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {!modal.user ? (
+                    <>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">Отображаемое имя *</label>
+                        <div style={{ position: 'relative' }} ref={misDropdownRef}>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              className="input"
+                              value={form.displayName}
+                              onChange={e => handleDisplayNameChange(e.target.value)}
+                              placeholder="Иванов Иван Иванович"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={searchRenovatio}
+                              disabled={misDropdown.searching}
+                              style={{
+                                background: '#90bc38', color: '#fff', border: 'none',
+                                borderRadius: 'var(--radius-md)', padding: '0 14px',
+                                cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                                flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6
+                              }}
+                            >
+                              {misDropdown.searching
+                                ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                                : 'Renovatio'
+                              }
+                            </button>
+                          </div>
+
+                          {misDropdown.open && (
+                            <div style={{
+                              position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 1000,
+                              background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                              borderRadius: 'var(--radius-md)', boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                              maxHeight: 260, overflowY: 'auto'
+                            }}>
+                              {misDropdown.results.length === 0 && (
+                                <div style={{ padding: '12px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                                  Ничего не найдено
+                                </div>
+                              )}
+                              {misDropdown.results.map(emp => (
+                                <div
+                                  key={emp.id}
+                                  onClick={() => selectMisEmployee(emp)}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    padding: '8px 12px', cursor: 'pointer', transition: 'background 0.12s'
+                                  }}
+                                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                                  onMouseLeave={e => e.currentTarget.style.background = ''}
+                                >
+                                  <div style={{
+                                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                                    background: 'var(--bg-secondary)', overflow: 'hidden',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                  }}>
+                                    {emp.avatar_small
+                                      ? <img src={emp.avatar_small} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none'; }} />
+                                      : <User size={16} style={{ color: 'var(--text-tertiary)' }} />
+                                    }
+                                  </div>
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontWeight: 500, fontSize: 13 }}>{emp.name}</div>
+                                    {emp.profession_titles && [].concat(emp.profession_titles).length > 0 && (
+                                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 1 }}>
+                                        {[].concat(emp.profession_titles).join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">Логин (автоматически)</label>
+                        <input
+                          className="input"
+                          value={form.username}
+                          onChange={e => setForm({...form, username: e.target.value})}
+                          placeholder="ivanov_i_i"
+                          style={{ background: 'var(--bg-secondary)' }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">Отображаемое имя</label>
+                        <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
+                      </div>
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">Логин *</label>
+                        <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
               <div className="form-grid">
                 {!modal.user && (
                   <>
-                    <div className="form-group">
-                      <label className="form-label">Отображаемое имя *</label>
-                      <input
-                        className="input"
-                        value={form.displayName}
-                        onChange={e => handleDisplayNameChange(e.target.value)}
-                        placeholder="Иванов Иван Иванович"
-                        autoFocus
-                      />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        На основе имени будет автоматически сгенерирован уникальный логин
-                      </small>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">Логин (автоматически)</label>
-                      <input
-                        className="input"
-                        value={form.username}
-                        onChange={e => setForm({...form, username: e.target.value})}
-                        placeholder="ivanov_i_i"
-                        style={{ background: 'var(--bg-secondary)' }}
-                      />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        Сгенерирован автоматически, можно изменить вручную
-                      </small>
-                    </div>
-
                     <div className="form-group">
                       <label className="form-label">Пароль (автоматически)</label>
                       <div style={{ display: 'flex', gap: 8 }}>
@@ -669,25 +844,12 @@ export default function AdminUsers() {
                           type="text"
                           value={form.password}
                           readOnly
-                          style={{
-                            flex: 1,
-                            background: 'var(--bg-secondary)'
-                          }}
+                          style={{ flex: 1, background: 'var(--bg-secondary)' }}
                         />
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={copyPassword}
-                          title="Скопировать пароль"
-                        >
+                        <button type="button" className="btn btn-secondary" onClick={copyPassword} title="Скопировать пароль">
                           <Copy size={16} />
                         </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          onClick={regeneratePassword}
-                          title="Сгенерировать новый пароль"
-                        >
+                        <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль">
                           <RefreshCw size={16} />
                         </button>
                       </div>
@@ -705,23 +867,12 @@ export default function AdminUsers() {
                         onChange={e => setForm({...form, email: e.target.value})}
                         placeholder="user@example.com"
                       />
-                      <small style={{ color: 'var(--text-tertiary)', marginTop: 4, display: 'block' }}>
-                        Email обязателен для двухфакторной аутентификации
-                      </small>
                     </div>
                   </>
                 )}
 
                 {modal.user && (
                 <>
-                  <div className="form-group">
-                    <label className="form-label">Отображаемое имя</label>
-                    <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Логин *</label>
-                    <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
-                  </div>
                   <div className="form-group">
                     <label className="form-label">Новый пароль</label>
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -731,25 +882,12 @@ export default function AdminUsers() {
                         value={form.password}
                         onChange={e => setForm({...form, password: e.target.value})}
                         placeholder="Оставьте пустым, чтобы не менять"
-                        style={{
-                          flex: 1
-                        }}
+                        style={{ flex: 1 }}
                       />
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={copyPassword}
-                        title="Скопировать пароль"
-                        disabled={!form.password}
-                      >
+                      <button type="button" className="btn btn-secondary" onClick={copyPassword} title="Скопировать пароль" disabled={!form.password}>
                         <Copy size={16} />
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={regeneratePassword}
-                        title="Сгенерировать новый пароль"
-                      >
+                      <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль">
                         <RefreshCw size={16} />
                       </button>
                     </div>

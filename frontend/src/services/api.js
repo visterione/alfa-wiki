@@ -66,7 +66,14 @@ export const users = {
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
   delete: (id) => api.delete(`/users/${id}`),
-  getMedCenters: () => api.get('/users/medcenters/list')
+  getMedCenters: () => api.get('/users/medcenters/list'),
+  misSearch: (q) => api.get('/users/mis-search', { params: { q } }),
+  misAvatar: (avatarUrl) => api.post('/users/mis-avatar', { avatarUrl }),
+  uploadAvatar: (file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    return api.post('/users/upload-avatar', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+  }
 };
 
 // Roles

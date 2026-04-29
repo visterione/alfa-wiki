@@ -7,12 +7,23 @@ export function useTabSlider(activeKey) {
   useLayoutEffect(() => {
     const wrap = wrapRef.current;
     if (!wrap) return;
-    const active = wrap.querySelector('.rb-clinic-tab.active');
-    if (!active) return;
-    const newLeft = active.offsetLeft;
-    const distance = Math.abs(newLeft - slider.left);
-    const duration = Math.min(0.65, 0.3 + distance / 2000);
-    setSlider({ left: newLeft, width: active.offsetWidth, duration });
+
+    const recalc = (animate) => {
+      const active = wrap.querySelector('.rb-clinic-tab.active');
+      if (!active) return;
+      const newLeft = active.offsetLeft;
+      setSlider(prev => ({
+        left: newLeft,
+        width: active.offsetWidth,
+        duration: animate ? Math.min(0.65, 0.3 + Math.abs(newLeft - prev.left) / 2000) : 0,
+      }));
+    };
+
+    recalc(true);
+
+    const ro = new ResizeObserver(() => recalc(false));
+    ro.observe(wrap);
+    return () => ro.disconnect();
   }, [activeKey]);
 
   const sliderEl = (
