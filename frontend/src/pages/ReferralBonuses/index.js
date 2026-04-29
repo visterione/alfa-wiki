@@ -34,6 +34,8 @@ const STEP_ICONS = [
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
   // Step 7: Сводка — диаграмма-пирог / итоговый дашборд
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>,
+  // Step 8: KPI — трендовый график
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
 ];
 
 const STEP_LABELS = [
@@ -44,6 +46,7 @@ const STEP_LABELS = [
   'Отчёт',
   'Архив',
   'Сводка',
+  'KPI',
 ];
 
 // ── Clinic group mapping for payroll import ───────────────────────────────────
@@ -176,7 +179,7 @@ export default function ReferralBonusesPage() {
     tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit',
     tab2: 'edit', tab3: 'edit', tab4: 'edit',
     tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit',
-    tabSummary: 'edit', clinics: []
+    tabSummary: 'edit', tabKpi: 'edit', clinics: []
   });
 
   // ── Step 4: for jumping from step 3 to step 4 with a pre-selected doctor ──
@@ -550,7 +553,7 @@ export default function ReferralBonusesPage() {
   // Steps 2 and 6 use 3 sub-keys instead of a single key
   const STEP2_KEYS = ['tabWorkTime', 'tabHourNorms', 'tabSchedule'];
   const STEP6_KEYS = ['tabArchiveHistory', 'tabArchiveKassa', 'tabArchiveTabel'];
-  const TAB_KEYS   = ['tab1', null, 'tab2', 'tab3', 'tab4', null, 'tabSummary'];
+  const TAB_KEYS   = ['tab1', null, 'tab2', 'tab3', 'tab4', null, 'tabSummary', 'tabKpi'];
 
   const canViewStep = (step) => {
     if (step === 2) return STEP2_KEYS.some(k => permissions[k] !== 'block');
@@ -606,6 +609,8 @@ export default function ReferralBonusesPage() {
         return <StepSalaryHistory {...sharedProps} readOnly={isStepReadOnly(6)} />;
       case 7:
         return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} permissions={permissions} />;
+      case 8:
+        return null;
       default:
         return null;
     }

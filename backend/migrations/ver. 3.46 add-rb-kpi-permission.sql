@@ -1,0 +1,2 @@
+ALTER TABLE rb_user_permissions
+  ADD COLUMN IF NOT EXISTS "tabKpi" VARCHAR(10) NOT NULL DEFAULT 'edit';

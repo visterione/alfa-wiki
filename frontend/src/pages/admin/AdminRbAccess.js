@@ -125,6 +125,7 @@ const TAB_DEFS = [
   { key: 'tabArchiveKassa',   label: 'Касса',                  group: 'Архив' },
   { key: 'tabArchiveTabel',   label: 'Табели',                 group: 'Архив' },
   { key: 'tabSummary',        label: 'Сводка' },
+  { key: 'tabKpi',            label: 'KPI' },
 ];
 
 const PERM_OPTIONS = [
@@ -177,6 +178,7 @@ function UserRow({ user, onSaved }) {
   const [perm, setPerm] = useState({
     tabWorkTime: 'edit', tabSchedule: 'edit',
     tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit',
+    tabKpi: 'edit',
     ...user.perm,
   });
   const [saving, setSaving] = useState(false);

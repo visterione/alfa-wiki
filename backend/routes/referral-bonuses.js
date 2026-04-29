@@ -229,14 +229,14 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.get('/permissions/my', authenticate, async (req, res) => {
   try {
     if (req.user.isAdmin) {
-      return res.json({ tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit', tabSummary: 'edit', clinics: [] });
+      return res.json({ tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit', tabSummary: 'edit', tabKpi: 'edit', clinics: [] });
     }
     const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
     if (!perm) {
-      return res.json({ tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', clinics: [] });
+      return res.json({ tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', clinics: [] });
     }
     const archiveFallback = perm.tabArchive || 'edit';
-    res.json({ tab1: perm.tab1, tabWorkTime: perm.tabWorkTime || 'edit', tabHourNorms: perm.tabHourNorms || 'edit', tabSchedule: perm.tabSchedule || 'edit', tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchiveHistory: perm.tabArchiveHistory || archiveFallback, tabArchiveKassa: perm.tabArchiveKassa || archiveFallback, tabArchiveTabel: perm.tabArchiveTabel || archiveFallback, tabSummary: perm.tabSummary, clinics: perm.clinics });
+    res.json({ tab1: perm.tab1, tabWorkTime: perm.tabWorkTime || 'edit', tabHourNorms: perm.tabHourNorms || 'edit', tabSchedule: perm.tabSchedule || 'edit', tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchiveHistory: perm.tabArchiveHistory || archiveFallback, tabArchiveKassa: perm.tabArchiveKassa || archiveFallback, tabArchiveTabel: perm.tabArchiveTabel || archiveFallback, tabSummary: perm.tabSummary, tabKpi: perm.tabKpi || 'edit', clinics: perm.clinics });
   } catch (err) {
     console.error('Get rb permissions error:', err);
     res.status(500).json({ error: 'Ошибка получения прав' });
@@ -264,8 +264,8 @@ router.get('/permissions/users', authenticate, async (req, res) => {
       displayName: u.displayName || u.username,
       avatar: u.avatar,
       perm: u.rbPermission
-        ? (() => { const af = u.rbPermission.tabArchive || 'edit'; return { tab1: u.rbPermission.tab1, tabWorkTime: u.rbPermission.tabWorkTime || 'edit', tabHourNorms: u.rbPermission.tabHourNorms || 'edit', tabSchedule: u.rbPermission.tabSchedule || 'edit', tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchiveHistory: u.rbPermission.tabArchiveHistory || af, tabArchiveKassa: u.rbPermission.tabArchiveKassa || af, tabArchiveTabel: u.rbPermission.tabArchiveTabel || af, tabSummary: u.rbPermission.tabSummary, clinics: u.rbPermission.clinics }; })()
-        : { tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', clinics: [] }
+        ? (() => { const af = u.rbPermission.tabArchive || 'edit'; return { tab1: u.rbPermission.tab1, tabWorkTime: u.rbPermission.tabWorkTime || 'edit', tabHourNorms: u.rbPermission.tabHourNorms || 'edit', tabSchedule: u.rbPermission.tabSchedule || 'edit', tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchiveHistory: u.rbPermission.tabArchiveHistory || af, tabArchiveKassa: u.rbPermission.tabArchiveKassa || af, tabArchiveTabel: u.rbPermission.tabArchiveTabel || af, tabSummary: u.rbPermission.tabSummary, tabKpi: u.rbPermission.tabKpi || 'edit', clinics: u.rbPermission.clinics }; })()
+        : { tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', clinics: [] }
     })));
   } catch (err) {
     console.error('Get rb permissions users error:', err);
@@ -278,9 +278,9 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
   try {
     const { userId } = req.params;
-    const { tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, clinics } = req.body;
+    const { tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi, clinics } = req.body;
     const valid = ['edit', 'read', 'block'];
-    for (const v of [tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary]) {
+    for (const v of [tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi]) {
       if (v && !valid.includes(v)) return res.status(400).json({ error: `Недопустимое значение: ${v}` });
     }
     const data = {
@@ -296,6 +296,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
       tabArchiveKassa: tabArchiveKassa || 'edit',
       tabArchiveTabel: tabArchiveTabel || 'edit',
       tabSummary: tabSummary || 'edit',
+      tabKpi: tabKpi || 'edit',
       clinics: Array.isArray(clinics) ? clinics : [],
     };
     const [perm, created] = await RbUserPermission.findOrCreate({ where: { userId }, defaults: data });
