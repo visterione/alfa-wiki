@@ -30,6 +30,46 @@ function parseDate(str) { const [y, m, d] = str.split('-').map(Number); return n
 function addDays(dateStr, n) { const d = parseDate(dateStr); d.setDate(d.getDate() + n); return formatDate(d); }
 function cellDate(cell) { return formatDate(new Date(cell.year, cell.month - 1, cell.day)); }
 function displayDate(cell) { return `${cell.day} ${MONTH_NAMES_GEN[cell.month - 1]} ${cell.year}`; }
+function fmtDateShort(dateStr) {
+  const [, m, d] = dateStr.split('-');
+  return `${parseInt(d)} ${MONTH_NAMES_GEN[parseInt(m) - 1]}`;
+}
+
+function toMins(timeStr) {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+function timesOverlap(from1, to1, from2, to2) {
+  let s1 = toMins(from1), e1 = toMins(to1);
+  let s2 = toMins(from2), e2 = toMins(to2);
+  if (e1 <= s1) e1 += 1440;
+  if (e2 <= s2) e2 += 1440;
+  return s1 < e2 && s2 < e1;
+}
+function findTimeConflicts(form, entries, editId) {
+  const conflicts = [];
+  const end = parseDate(form.dateTo);
+  const cur = parseDate(form.dateFrom);
+  let dayCount = 0;
+  while (cur <= end && dayCount < 366 && conflicts.length < 5) {
+    const year = cur.getFullYear(), month = cur.getMonth() + 1, day = cur.getDate();
+    const dateStr = formatDate(cur);
+    dayCount++;
+    if (isDayScheduled(form, year, month, day)) {
+      for (const entry of entries) {
+        if (entry.id === editId) continue;
+        if (String(entry.clinicId) !== String(form.clinicId)) continue;
+        if (!isDayScheduled(entry, year, month, day)) continue;
+        if (!timesOverlap(form.timeFrom, form.timeTo, entry.timeFrom, entry.timeTo)) continue;
+        let rec = conflicts.find(c => c.entry.id === entry.id);
+        if (!rec) { rec = { entry, dates: [] }; conflicts.push(rec); }
+        if (rec.dates.length < 3) rec.dates.push(dateStr);
+      }
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return conflicts;
+}
 
 function abbreviateName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/);
@@ -116,6 +156,7 @@ function makeBlankForm(cell, doctorClinics) {
     categoryId: null,
     cabinetId:  null,
     roleTitle:  null,
+    cancelCode: null,
   };
 }
 
@@ -699,6 +740,11 @@ const btnRed = {
   background: '#dc2626', color: '#fff',
   border: '1px solid #dc2626', borderRadius: 8, fontWeight: 500,
 };
+const btnGhost = {
+  width: BTN_W, fontSize: 12, padding: '6px 0', cursor: 'pointer',
+  background: 'var(--rb-bg)', color: 'var(--rb-text)',
+  border: '1px solid var(--rb-border)', borderRadius: 8, fontWeight: 500,
+};
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, managingDivision, onDivisionRenamed }) {
@@ -728,8 +774,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   // modal: null | { type: 'day', cell } | { type: 'form', cell, editId: null|string }
   const [modal,       setModal]       = useState(null);
   const [form,        setForm]        = useState(null);
-  const [confirmDel,  setConfirmDel]  = useState(null); // entryId to confirm deletion
-  const [cancelModal, setCancelModal] = useState(null); // { entryId, cell } — reason picker
+  const [confirmDel,     setConfirmDel]     = useState(null); // entryId to confirm deletion
+  const [cancelModal,    setCancelModal]    = useState(null); // { entryId, cell } — reason picker
+  const [conflictConfirm, setConflictConfirm] = useState(null); // [{ entry, dates }] — time overlap warning
+  const skipConflictCheck = useRef(false);
 
   // Tab slider for pattern selector inside the form modal
   const { wrapRef: patternWrapRef, sliderEl: patternSliderEl } = useTabSlider(form?.pattern?.type ?? 'daily');
@@ -832,7 +880,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   };
 
   // ── Handlers ──────────────────────────────────────────────────────────────
-  const closeModal = () => { setModal(null); setForm(null); setConfirmDel(null); };
+  const closeModal = () => { setModal(null); setForm(null); setConfirmDel(null); setConflictConfirm(null); skipConflictCheck.current = false; };
 
   const handleDayClick = (cell) => {
     if (!selectedDoctor) return;
@@ -971,6 +1019,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     if (!form.clinicId || !form.dateFrom || !form.dateTo) return;
     if (form.pattern.type === 'weekdays' && !form.pattern.weekdays?.length) return;
 
+    if (!skipConflictCheck.current && !(modal.editId && modal.cell)) {
+      const conflicts = findTimeConflicts(form, entries, modal.editId);
+      if (conflicts.length > 0) { setConflictConfirm(conflicts); return; }
+    }
+    skipConflictCheck.current = false;
+
     const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
     setSaving(true);
     try {
@@ -994,6 +1048,19 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           : e
         ));
       } else {
+        const initExceptions = (() => {
+          if (!form.cancelCode) return [];
+          const exs = [];
+          const end = parseDate(form.dateTo);
+          const cur = parseDate(form.dateFrom);
+          while (cur <= end) {
+            if (isDayScheduled(form, cur.getFullYear(), cur.getMonth() + 1, cur.getDate())) {
+              exs.push({ date: formatDate(cur), code: form.cancelCode });
+            }
+            cur.setDate(cur.getDate() + 1);
+          }
+          return exs;
+        })();
         const res = await schedulesApi.create({
           misUserId,
           clinicId:   form.clinicId,
@@ -1002,7 +1069,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           pattern:    form.pattern,
           timeFrom:   form.timeFrom,
           timeTo:     form.timeTo,
-          exceptions: [],
+          exceptions: initExceptions,
           categoryId: form.categoryId || null,
           cabinetId:  form.cabinetId  || null,
           roleTitle:  form.roleTitle  || null,
@@ -1229,7 +1296,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           dayHasWork = true;
           const [fh, fm] = e.timeFrom.split(':').map(Number);
           const [th, tm] = e.timeTo.split(':').map(Number);
-          const mins = (th * 60 + tm) - (fh * 60 + fm);
+          let mins = (th * 60 + tm) - (fh * 60 + fm);
+          if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
           if (mins > 0) {
             workedMinutes += mins;
             if (e.roleTitle) {
@@ -1906,7 +1974,43 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 </div>
               )}
 
-              {/* ── Row 3: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
+              {/* ── Row 3: Отмена расписания ── */}
+              {!modal.editId && (
+                <div>
+                  <label style={labelStyle}>Отмена расписания</label>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div
+                      onClick={() => updateForm('cancelCode', form.cancelCode !== null ? null : 'ОТ')}
+                      style={{
+                        width: 40, height: 22, borderRadius: 11, cursor: 'pointer', flexShrink: 0,
+                        background: form.cancelCode !== null ? 'var(--rb-primary)' : '#cbd5e1',
+                        position: 'relative', transition: 'background 0.18s',
+                      }}
+                    >
+                      <div style={{
+                        position: 'absolute', top: 3,
+                        left: form.cancelCode !== null ? 21 : 3,
+                        width: 16, height: 16, borderRadius: '50%', background: 'white',
+                        transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                      }} />
+                    </div>
+                    {form.cancelCode !== null && (
+                      <div style={{ flex: 1 }}>
+                        <PopoverSelect
+                          value={form.cancelCode}
+                          onChange={v => updateForm('cancelCode', v || 'ОТ')}
+                          items={STATUS_CODES.filter(s => s.code && s.code !== 'В' && s.code !== 'Я').map(s => ({ id: s.code, name: s.label.includes(' — ') ? s.label.split(' — ').slice(1).join(' — ') : s.label }))}
+                          placeholder="Выберите код"
+                          renderDot={null}
+                          renderLabel={it => it.name}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Row 4: Шаблон расписания (скрыт при редактировании конкретного дня) ── */}
               {!(modal.editId && modal.cell) && (
               <div>
                 <label style={labelStyle}>Шаблон расписания</label>
@@ -2028,6 +2132,53 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   </button>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════ MODAL: time conflict warning ══════════════ */}
+      {conflictConfirm && (
+        <div className="rb-modal-overlay" onClick={() => setConflictConfirm(null)}>
+          <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Конфликт расписания</h3>
+              <button className="rb-modal-close" onClick={() => setConflictConfirm(null)}>×</button>
+            </div>
+            <div className="rb-modal-body" style={{ padding: '8px 16px 16px' }}>
+              <p style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 12 }}>
+                Новое расписание пересекается по времени с существующими записями:
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {conflictConfirm.map(({ entry, dates }) => (
+                  <div key={entry.id} style={{
+                    padding: '8px 12px', borderRadius: 8,
+                    background: clinicColor(entry.clinicId) + '18',
+                    borderLeft: `3px solid ${clinicColor(entry.clinicId)}`,
+                  }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--rb-text)' }}>
+                      {entry.timeFrom} – {entry.timeTo} · {clinicName(entry.clinicId)}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 3 }}>
+                      {dates.map(fmtDateShort).join(', ')}{dates.length >= 3 ? ' и др.' : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rb-modal-footer">
+              <button
+                style={{ ...btnGhost }}
+                onClick={() => setConflictConfirm(null)}
+              >
+                Отмена
+              </button>
+              <button
+                style={{ ...btnBlue }}
+                onClick={() => { setConflictConfirm(null); skipConflictCheck.current = true; handleSave(); }}
+              >
+                Сохранить всё равно
+              </button>
             </div>
           </div>
         </div>

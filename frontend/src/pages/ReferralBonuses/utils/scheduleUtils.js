@@ -95,7 +95,8 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
 
       const [fh, fm] = entry.timeFrom.split(':').map(Number);
       const [th, tm] = entry.timeTo.split(':').map(Number);
-      const mins = (th * 60 + tm) - (fh * 60 + fm);
+      let mins = (th * 60 + tm) - (fh * 60 + fm);
+      if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
       if (mins > 0) {
         totalMinutes += mins;
         if (entry.roleTitle) {
