@@ -5,7 +5,7 @@ const MONTH_NAMES = [
   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
 ];
 
-export default function MonthYearPicker({ year, month, onChange, disabled }) {
+export default function MonthYearPicker({ year, month, onChange, disabled, compact = false }) {
   const [open,      setOpen]      = useState(false);
   const [step,      setStep]      = useState('year');
   const [navYear,   setNavYear]   = useState(year);
@@ -41,7 +41,12 @@ export default function MonthYearPicker({ year, month, onChange, disabled }) {
         type="button"
         disabled={disabled}
         onClick={openPicker}
-        style={{
+        style={compact ? {
+          ...btnBase, height: 24, padding: '0 7px', gap: 4,
+          border: '1px solid var(--rb-border)',
+          background: 'transparent', color: 'var(--rb-text-secondary)',
+          fontSize: 11, borderRadius: 5,
+        } : {
           ...btnBase, height: 34, padding: '0 12px', gap: 6,
           border: '1px solid var(--rb-border-dark)',
           background: '#fff', color: 'var(--rb-text)',
