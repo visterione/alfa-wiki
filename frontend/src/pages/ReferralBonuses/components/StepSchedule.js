@@ -1579,7 +1579,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 const cat = categories.find(c => c.id === categoryId);
                 const cn = categoryNorms.find(r => r.categoryId === categoryId);
                 const normH = cn?.normHours != null ? parseFloat(cn.normHours) : null;
-                return { label: cat?.name || 'Категория', hours, normH, color: PALETTE[pi++ % PALETTE.length], tag: 'Категория' };
+                const color = cat?.color || PALETTE[pi++ % PALETTE.length];
+                return { label: cat?.name || 'Категория', hours, normH, color, tag: 'Категория' };
               }),
               ...(monthStats.untaggedHours > 0 ? [{ label: 'Без указания', hours: monthStats.untaggedHours, normH: null, color: '#cbd5e1', tag: null }] : []),
             ];
