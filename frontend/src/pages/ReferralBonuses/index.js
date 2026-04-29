@@ -935,14 +935,11 @@ function DoctorsList({
 
   const pinCount = pinnedForCompare.length;
 
-  // Step 4 (Направления) shows all doctors; all other steps hide Направители clinic (ID 8)
+  // Step 4 (Направления) shows all doctors; all other steps hide Направители clinic (ID 8) and role "Направитель"
   const REFERRAL_CLINIC_ID = '8';
-  const displayDoctors = currentStep === 4
-    ? doctors
-    : doctors.filter(d => !d.clinics.includes(REFERRAL_CLINIC_ID));
-  const displayAllDoctors = currentStep === 4
-    ? allDoctors
-    : allDoctors.filter(d => !d.clinics.includes(REFERRAL_CLINIC_ID));
+  const isReferrer = d => d.clinics.includes(REFERRAL_CLINIC_ID) || d.roles.includes('Направитель');
+  const displayDoctors = currentStep === 4 ? doctors : doctors.filter(d => !isReferrer(d));
+  const displayAllDoctors = currentStep === 4 ? allDoctors : allDoctors.filter(d => !isReferrer(d));
 
   return (
     <div className="rb-panel">
