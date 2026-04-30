@@ -577,10 +577,11 @@ function NormServiceAddForm({ form, setForm, onAdd, readOnly, visible, suggests,
 
 // ─── Role rates list (hourly multi-role) ─────────────────────────────────────
 
-function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions, categories }) {
+function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions, categories, schedByRole, schedByCategory, schedLoading, hoursFromSchedule }) {
   const [editIdx, setEditIdx] = useState(null);
   const [editRole, setEditRole] = useState(null);
   const [editRate, setEditRate] = useState('');
+  const [editHours, setEditHours] = useState('');
 
   if (!items || !items.length) return null;
 
@@ -592,80 +593,117 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions
     setEditIdx(i);
     setEditRole(items[i].roleTitle || null);
     setEditRate(String(items[i].rate ?? ''));
+    setEditHours(String(items[i].hoursWorked ?? ''));
   };
   const commitEdit = (i) => {
     const role = editRole;
     const rate = parseFloat(editRate);
     if (!role || isNaN(rate) || rate < 0) { setEditIdx(null); return; }
-    onUpdate(i, { ...items[i], roleTitle: role, rate });
+    const hoursWorked = parseFloat(editHours) || 0;
+    onUpdate(i, { ...items[i], roleTitle: role, rate, hoursWorked });
     setEditIdx(null);
   };
 
+  const getItemHours = (item) => {
+    if (hoursFromSchedule) {
+      return (schedByRole || {})[item.roleTitle] ?? (schedByCategory || {})[item.roleTitle] ?? 0;
+    }
+    return item.hoursWorked || 0;
+  };
+
+  const fmtHours = (h) => Number.isInteger(h) ? String(h) : h.toFixed(1);
+
   return (
     <div className="rb-exec-items">
-      {items.map((item, i) => (
-        <div key={i} className="rb-exec-item">
-          {editIdx === i ? (
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
-              {roleItems.length > 0 && (
-                <SmallPopoverSelect
-                  value={roleItems.some(r => r.id === editRole) ? editRole : null}
-                  onChange={v => setEditRole(v)}
-                  items={roleItems} placeholder="Роль" renderDot={null} renderLabel={it => it.name}
-                />
-              )}
-              {profItems.length > 0 && (
-                <SmallPopoverSelect
-                  value={profItems.some(p => p.id === editRole) ? editRole : null}
-                  onChange={v => setEditRole(v)}
-                  items={profItems} placeholder="Специальность" renderDot={null} renderLabel={it => it.name}
-                />
-              )}
-              {catItems.length > 0 && (
-                <SmallPopoverSelect
-                  value={catItems.some(c => c.id === editRole) ? editRole : null}
-                  onChange={v => setEditRole(v)}
-                  items={catItems} placeholder="Категория"
-                  renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
-                  renderLabel={it => it.name}
-                />
-              )}
-              {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
-                <input autoFocus value={editRole || ''} onChange={ev => setEditRole(ev.target.value || null)}
-                  placeholder="Роль/специальность"
-                  style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
-              )}
-              <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} placeholder="₽/ч" style={{ width: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
-              <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
-              </button>
-              <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          ) : (
-            <div className="rb-exec-item-name" style={{ flex: 1, minWidth: 0 }}>
-              {(() => {
-                const cat = catItems.find(c => c.id === item.roleTitle);
-                return cat
-                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: readOnly ? 'default' : 'pointer' }} onClick={() => !readOnly && startEdit(i)}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />{cat.name}
-                    </span>
-                  : <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>;
-              })()}
-              <span style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600 }}>{item.rate} ₽/ч</span>
-            </div>
-          )}
-          {!readOnly && editIdx !== i && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
-              <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
-            </div>
-          )}
-        </div>
-      ))}
+      {items.map((item, i) => {
+        const hours = getItemHours(item);
+        const pay   = (item.rate || 0) * hours;
+        return (
+          <div key={i} className="rb-exec-item" style={{ flexWrap: 'wrap', gap: 4 }}>
+            {editIdx === i ? (
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+                {roleItems.length > 0 && (
+                  <SmallPopoverSelect
+                    value={roleItems.some(r => r.id === editRole) ? editRole : null}
+                    onChange={v => setEditRole(v)}
+                    items={roleItems} placeholder="Роль" renderDot={null} renderLabel={it => it.name}
+                  />
+                )}
+                {profItems.length > 0 && (
+                  <SmallPopoverSelect
+                    value={profItems.some(p => p.id === editRole) ? editRole : null}
+                    onChange={v => setEditRole(v)}
+                    items={profItems} placeholder="Специальность" renderDot={null} renderLabel={it => it.name}
+                  />
+                )}
+                {catItems.length > 0 && (
+                  <SmallPopoverSelect
+                    value={catItems.some(c => c.id === editRole) ? editRole : null}
+                    onChange={v => setEditRole(v)}
+                    items={catItems} placeholder="Категория"
+                    renderDot={it => <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />}
+                    renderLabel={it => it.name}
+                  />
+                )}
+                {roleItems.length === 0 && profItems.length === 0 && catItems.length === 0 && (
+                  <input autoFocus value={editRole || ''} onChange={ev => setEditRole(ev.target.value || null)}
+                    placeholder="Роль/специальность"
+                    style={{ flex: 1, minWidth: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit' }} />
+                )}
+                <input type="number" min="0" step="any" value={editRate} onChange={ev => setEditRate(ev.target.value)} placeholder="₽/ч" style={{ width: 80, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+                {!hoursFromSchedule && (
+                  <input type="number" min="0" step="0.5" value={editHours} onChange={ev => setEditHours(ev.target.value)} placeholder="ч" style={{ width: 60, padding: '2px 6px', border: '1px solid var(--rb-primary)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right' }} />
+                )}
+                <button className="rb-btn rb-btn-primary rb-btn-xs" onClick={() => commitEdit(i)} title="Сохранить">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <button className="rb-btn rb-btn-xs" onClick={() => setEditIdx(null)} title="Отмена" style={{ color: '#94a3b8' }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: 6, flexWrap: 'wrap' }}>
+                <div className="rb-exec-item-name" style={{ flex: '1 1 auto', minWidth: 0 }}>
+                  {(() => {
+                    const cat = catItems.find(c => c.id === item.roleTitle);
+                    return cat
+                      ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: readOnly ? 'default' : 'pointer' }} onClick={() => !readOnly && startEdit(i)}>
+                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: cat.color, flexShrink: 0 }} />{cat.name}
+                        </span>
+                      : <span onClick={() => !readOnly && startEdit(i)} title={readOnly ? undefined : 'Нажмите для редактирования'} style={{ cursor: readOnly ? 'default' : 'pointer' }}>{item.roleTitle}</span>;
+                  })()}
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>{item.rate} ₽/ч</span>
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>×</span>
+                {hoursFromSchedule ? (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                    {schedLoading ? '...' : `${fmtHours(hours)} ч`}
+                  </span>
+                ) : (
+                  <input
+                    type="number" min="0" step="0.5" placeholder="0 ч"
+                    value={item.hoursWorked || ''}
+                    onChange={e => onUpdate(i, { ...item, hoursWorked: parseFloat(e.target.value) || 0 })}
+                    style={{ width: 60, padding: '2px 6px', border: '1px solid var(--rb-border)', borderRadius: 4, fontSize: 12, fontFamily: 'inherit', textAlign: 'right', background: 'var(--rb-bg)', color: 'var(--rb-text)' }}
+                  />
+                )}
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>=</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--rb-primary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {pay.toFixed(2)} ₽
+                </span>
+              </div>
+            )}
+            {!readOnly && editIdx !== i && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                <LockBtn locked={!!item.locked} onClick={() => onUpdate(i, { ...item, locked: !item.locked })} />
+                <button className="rb-btn rb-btn-danger rb-btn-xs" onClick={() => onDelete(i)} title="Удалить">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1388,15 +1426,16 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const pt = data.payType || 'salary';
 
   // ── Schedule hours for period (must be before early returns) ─────────────
-  const scheduleHoursValue = React.useMemo(() => {
-    if (!schedEntries.length) return 0;
+  const scheduleHoursData = React.useMemo(() => {
+    if (!schedEntries.length) return { total: 0, byRole: {}, byCategory: {} };
     const { year, month } = schedPeriod;
     const pad2 = n => String(n).padStart(2, '0');
     const dateFrom = `${year}-${pad2(month)}-01`;
     const dateTo   = `${year}-${pad2(month)}-${pad2(new Date(year, month, 0).getDate())}`;
     const clinicId = activeClinic === 'global' ? null : activeClinic;
-    return calcScheduleHoursForPeriod(schedEntries, dateFrom, dateTo, clinicId).total;
+    return calcScheduleHoursForPeriod(schedEntries, dateFrom, dateTo, clinicId);
   }, [schedEntries, schedPeriod, activeClinic]);
+  const scheduleHoursValue = scheduleHoursData.total;
 
   const handlePayTypeChange = (type) => {
     if (type === pt) return;
@@ -1789,8 +1828,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     );
   }
 
+  const coveredByRoleRates = pt === 'hourly' && data.hoursFromSchedule
+    ? (data.roleRates || []).reduce((sum, rr) => {
+        return sum + ((scheduleHoursData.byRole[rr.roleTitle] || 0) + (scheduleHoursData.byCategory[rr.roleTitle] || 0));
+      }, 0)
+    : 0;
   const effectiveHoursWorked = data.hoursFromSchedule ? scheduleHoursValue : (data.hoursWorked || 0);
-  const hourlyTotal = pt === 'hourly' ? (data.hourlyRate || 0) * effectiveHoursWorked : 0;
+  const globalRateHours = data.hoursFromSchedule ? (scheduleHoursValue - coveredByRoleRates) : effectiveHoursWorked;
+  const hourlyTotal = pt === 'hourly' ? (data.hourlyRate || 0) * globalRateHours : 0;
 
   return (
     <div className="rb-doctor-card">
@@ -1921,68 +1966,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   value={data.fixedSalary || ''}
                   onChange={e => handlePaymentFieldChange('fixedSalary', parseFloat(e.target.value) || 0)}
                 />
-              </div>
-            )}
-
-            {pt === 'hourly' && (
-              <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                <div className="rb-exec-field" style={data.lockedHourlyRate ? { background: '#eff6ff', borderRadius: 6 } : {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <label style={{ marginBottom: 0 }}>Ставка, ₽/час</label>
-                    {!readOnly && <LockBtn locked={!!data.lockedHourlyRate} onClick={handleToggleHourlyRateLock} />}
-                  </div>
-                  <input
-                    type="number" min="0" step="any" placeholder="0"
-                    value={data.hourlyRate || ''}
-                    onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-                <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                    <label style={{ marginBottom: 0 }}>Часов за период</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {!readOnly && (
-                        <label className="rb-toggle-item" style={{ marginBottom: 0, gap: 4 }} title="Считать часы по расписанию сотрудника">
-                          <span className="rb-toggle-switch">
-                            <input
-                              type="checkbox"
-                              checked={!!data.hoursFromSchedule}
-                              onChange={() => handlePaymentFieldChange('hoursFromSchedule', !data.hoursFromSchedule)}
-                            />
-                            <span className="rb-toggle-slider" />
-                          </span>
-                          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>из расписания</span>
-                        </label>
-                      )}
-                      {!readOnly && <LockBtn locked={!!data.lockedHoursWorked} onClick={handleToggleHoursWorkedLock} />}
-                    </div>
-                  </div>
-                  {data.hoursFromSchedule ? (
-                    <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, #f8fafc)' }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>
-                        {schedLoading ? '...' : `${Number.isInteger(scheduleHoursValue) ? scheduleHoursValue : scheduleHoursValue.toFixed(1)} ч`}
-                      </span>
-                      <MonthYearPicker
-                        compact
-                        year={schedPeriod.year}
-                        month={schedPeriod.month}
-                        onChange={(y, m) => setSchedPeriod({ year: y, month: m })}
-                      />
-                    </div>
-                  ) : (
-                    <input
-                      type="number" min="0" step="0.5" placeholder="0"
-                      value={data.hoursWorked || ''}
-                      onChange={e => handlePaymentFieldChange('hoursWorked', parseFloat(e.target.value) || 0)}
-                    />
-                  )}
-                </div>
-                <div className="rb-exec-field">
-                  <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
-                    <label style={{ marginBottom: 0 }}>Итого</label>
-                  </div>
-                  <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {hourlyTotal.toFixed(2)} ₽</div>
-                </div>
               </div>
             )}
 
@@ -2164,7 +2147,66 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 >+</button>
               )}
             </div>
-            <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', padding: '0 12px 10px' }}>
+              <div className="rb-exec-field" style={data.lockedHourlyRate ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ marginBottom: 0 }}>Общая ставка, ₽/час</label>
+                  {!readOnly && <LockBtn locked={!!data.lockedHourlyRate} onClick={handleToggleHourlyRateLock} />}
+                </div>
+                <input
+                  type="number" min="0" step="any" placeholder="0"
+                  value={data.hourlyRate || ''}
+                  onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
+                />
+              </div>
+              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <label style={{ marginBottom: 0 }}>Часов за период</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {!readOnly && (
+                      <label className="rb-toggle-item" style={{ marginBottom: 0, gap: 4 }} title="Считать часы по расписанию сотрудника">
+                        <span className="rb-toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={!!data.hoursFromSchedule}
+                            onChange={() => handlePaymentFieldChange('hoursFromSchedule', !data.hoursFromSchedule)}
+                          />
+                          <span className="rb-toggle-slider" />
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>из расписания</span>
+                      </label>
+                    )}
+                    {!readOnly && <LockBtn locked={!!data.lockedHoursWorked} onClick={handleToggleHoursWorkedLock} />}
+                  </div>
+                </div>
+                {data.hoursFromSchedule ? (
+                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, #f8fafc)' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>
+                      {schedLoading ? '...' : `${Number.isInteger(globalRateHours) ? globalRateHours : globalRateHours.toFixed(1)} ч`}
+                    </span>
+                    <MonthYearPicker
+                      compact
+                      year={schedPeriod.year}
+                      month={schedPeriod.month}
+                      onChange={(y, m) => setSchedPeriod({ year: y, month: m })}
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="number" min="0" step="0.5" placeholder="0"
+                    value={data.hoursWorked || ''}
+                    onChange={e => handlePaymentFieldChange('hoursWorked', parseFloat(e.target.value) || 0)}
+                  />
+                )}
+              </div>
+              <div className="rb-exec-field">
+                <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
+                  <label style={{ marginBottom: 0 }}>Итого</label>
+                </div>
+                <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {hourlyTotal.toFixed(2)} ₽</div>
+              </div>
+            </div>
+            <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} schedByRole={scheduleHoursData.byRole} schedByCategory={scheduleHoursData.byCategory} schedLoading={schedLoading} hoursFromSchedule={!!data.hoursFromSchedule} />
             <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
           </div>
         )}

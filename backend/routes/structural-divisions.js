@@ -43,7 +43,7 @@ router.get('/', authenticate, async (req, res) => {
     const result = rows
       .map(div => {
         const myPermission = resolvePermission(div, userId, isAdmin, accessMap);
-        return { id: div.id, name: div.name, doctorIds: div.doctorIds, createdBy: div.createdBy, myPermission };
+        return { id: div.id, name: div.name, doctorIds: div.doctorIds, rates: div.rates || [], createdBy: div.createdBy, myPermission };
       })
       .filter(div => isAdmin || div.myPermission !== null);
 
@@ -82,18 +82,19 @@ router.put('/:id', authenticate, async (req, res) => {
     const myAccess = await DivisionAccess.findOne({ where: { divisionId: div.id, userId } });
     const perm = resolvePermission(div, userId, isAdmin, new Map(myAccess ? [[div.id, myAccess.permission]] : []));
 
-    // Only owner/admin can rename; owner/edit/admin can update doctorIds
-    const { name, doctorIds } = req.body;
+    // Only owner/admin can rename; owner/edit/admin can update doctorIds and rates
+    const { name, doctorIds, rates } = req.body;
     if (name !== undefined && perm !== 'owner' && !isAdmin) {
       return res.status(403).json({ error: 'Только владелец может переименовывать' });
     }
-    if (doctorIds !== undefined && perm === null) {
+    if ((doctorIds !== undefined || rates !== undefined) && perm === null) {
       return res.status(403).json({ error: 'Нет доступа' });
     }
 
     await div.update({
       ...(name      !== undefined && { name: name.trim() }),
       ...(doctorIds !== undefined && { doctorIds }),
+      ...(rates     !== undefined && { rates }),
     });
     res.json({ ...div.toJSON(), myPermission: perm });
   } catch (err) {

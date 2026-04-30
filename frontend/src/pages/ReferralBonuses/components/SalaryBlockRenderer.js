@@ -110,6 +110,7 @@ export default function SalaryBlock({ salary }) {
     normHoursForPeriod = null,
     hourlyRate = 0,
     hoursWorked = 0,
+    hourlyRatesBreakdown = [],
   } = salary;
 
   // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
@@ -161,25 +162,47 @@ export default function SalaryBlock({ salary }) {
 
       {hasWage && (
         <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
-          {payType === 'hourly' && _hourlyRate > 0 && (
+          {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0) && (
             <table className="rb-report-table rb-report-table--bordered">
-              <thead><tr><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов отработано</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
+              <thead><tr><th>Деятельность</th><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
               <tbody>
-                <tr>
-                  <td style={{ textAlign: 'center' }}>{_hourlyRate.toFixed(2)} ₽</td>
-                  <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
-                </tr>
-                {normPremiumAmount > 0 && normPremiumByRole.length > 0 && normPremiumByRole.map((item, i) => (
+                {hourlyRatesBreakdown.length > 0 ? hourlyRatesBreakdown.map((row, i) => {
+                  const premiumItem = normPremiumByRole.find(p => (p.roleTitle || p.label) === row.label || p.label === row.label);
+                  return (
+                    <React.Fragment key={i}>
+                      <tr>
+                        <td>{row.label}</td>
+                        <td style={{ textAlign: 'center' }}>{row.rate.toFixed(2)} ₽</td>
+                        <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
+                        <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{row.pay.toFixed(2)} ₽</td>
+                      </tr>
+                      {premiumItem && (
+                        <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                          <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
+                            * Премия ({row.label}): {premiumItem.workedHours} ч / {premiumItem.norm} ч → {premiumItem.premiumAmount.toFixed(2)} ₽
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                }) : (
+                  <tr>
+                    <td>—</td>
+                    <td style={{ textAlign: 'center' }}>{_hourlyRate.toFixed(2)} ₽</td>
+                    <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
+                  </tr>
+                )}
+                {hourlyRatesBreakdown.length === 0 && normPremiumAmount > 0 && normPremiumByRole.length > 0 && normPremiumByRole.map((item, i) => (
                   <tr key={i} style={{ borderTop: i === 0 ? '1px dashed #e2e8f0' : undefined }}>
-                    <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
+                    <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Премия ({item.roleTitle || item.label || 'без указания'}): {item.workedHours} ч / {item.norm} ч → {item.premiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>
                 ))}
-                {normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
+                {hourlyRatesBreakdown.length === 0 && normPremiumAmount > 0 && normPremiumByRole.length === 0 && normHoursForPeriod != null && (
                   <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
-                    <td colSpan={3} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
+                    <td colSpan={4} style={{ fontSize: 11, color: 'var(--rb-text-secondary)', fontStyle: 'italic', padding: '4px 8px' }}>
                       * Из них премия за переработку ({_hoursWorked} ч / {normHoursForPeriod} ч): {normPremiumAmount.toFixed(2)} ₽
                     </td>
                   </tr>

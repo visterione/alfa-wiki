@@ -265,6 +265,9 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             readOnly={permSchedule === 'read'}
             managingDivision={managingDivision}
             onDivisionRenamed={handleDivisionRenamed}
+            scheduleCategories={categories}
+            allRoles={allScheduleRoles}
+            allProfessions={allScheduleProfs}
           />
         </div>
       </>

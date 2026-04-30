@@ -747,7 +747,7 @@ const btnGhost = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, managingDivision, onDivisionRenamed }) {
+export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -1363,7 +1363,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
   if (!selectedDoctor) {
     if (managingDivision) {
-      return <DivisionAccessPanel divisionId={managingDivision.id} divisionName={managingDivision.name} onRenamed={onDivisionRenamed} />;
+      return <DivisionAccessPanel
+        divisionId={managingDivision.id}
+        divisionName={managingDivision.name}
+        divisionDoctorIds={managingDivision.doctorIds || []}
+        divisionRates={managingDivision.rates || []}
+        onRenamed={onDivisionRenamed}
+        doctors={doctors}
+        getClinicName={getClinicName}
+        scheduleCategories={scheduleCategories}
+        allRoles={allRoles}
+        allProfessions={allProfessions}
+      />;
     }
     return <div className="rb-placeholder"><p>Выберите сотрудника из списка слева</p></div>;
   }

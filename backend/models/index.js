@@ -2546,6 +2546,7 @@ const StructuralDivision = sequelize.define('StructuralDivision', {
   id:        { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name:      { type: DataTypes.STRING(255), allowNull: false },
   doctorIds: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], field: 'doctor_ids' },
+  rates:     { type: DataTypes.JSONB, allowNull: true,  defaultValue: [], field: 'rates' },
   createdBy: { type: DataTypes.UUID, allowNull: true, field: 'created_by', references: { model: 'users', key: 'id' } },
 }, {
   tableName: 'structural_divisions',

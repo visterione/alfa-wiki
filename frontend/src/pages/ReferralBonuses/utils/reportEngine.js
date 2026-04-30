@@ -1014,6 +1014,7 @@ export async function buildReport({
     let normTotalHours = 0, normPremiumAmount = 0;
     let effectiveHoursWorked = 0;
     const normPremiumByRole = []; // [{ roleTitle, categoryId, premiumAmount, workedHours, norm }]
+    const hourlyRatesBreakdown = []; // { label, rate, hours, pay } — populated only for pt==='hourly'
     const _schedClinicId = (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId;
 
     if (pt === 'salary') {
@@ -1034,6 +1035,7 @@ export async function buildReport({
           const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
           basePay += rate * hours;
+          hourlyRatesBreakdown.push({ label: roleTitle || 'Без роли', rate, hours, pay: rate * hours });
           const normOverride = roleTitle ? roleNormOverrides.find(n => n.roleTitle === roleTitle) : null;
           const norm = normOverride ? parseFloat(normOverride.normHours) : (roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
@@ -1048,6 +1050,7 @@ export async function buildReport({
           const rr = roleRates.find(r => r.roleTitle === categoryId);
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
           basePay += rate * hours;
+          hourlyRatesBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, rate, hours, pay: rate * hours });
           const normOverride = roleNormOverrides.find(n => n.roleTitle === categoryId);
           const norm = normOverride ? parseFloat(normOverride.normHours) : (_normsByCategory[categoryId] ?? null);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
@@ -1058,12 +1061,23 @@ export async function buildReport({
           }
         }
       } else {
-        effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
-        basePay = baseRate * effectiveHoursWorked;
-        if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
-          const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
-          normPremiumAmount = baseRate * premiumHours;
-          normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod });
+        const hasPerRoleHours = roleRates.some(rr => (parseFloat(rr.hoursWorked) || 0) > 0);
+        if (hasPerRoleHours) {
+          for (const rr of roleRates) {
+            const hours = parseFloat(rr.hoursWorked) || 0;
+            const rate  = parseFloat(rr.rate) || baseRate;
+            basePay += rate * hours;
+            effectiveHoursWorked += hours;
+            hourlyRatesBreakdown.push({ label: rr.roleTitle || 'Без роли', rate, hours, pay: rate * hours });
+          }
+        } else {
+          effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
+          basePay = baseRate * effectiveHoursWorked;
+          if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
+            const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
+            normPremiumAmount = baseRate * premiumHours;
+            normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod });
+          }
         }
       }
     } else if (pt === 'percent') {
@@ -1212,6 +1226,7 @@ export async function buildReport({
       basePay, basePayLabel, payType: pt,
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
       hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
+      hourlyRatesBreakdown,
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,

@@ -305,7 +305,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                     )}
                     {canAdmin && onManageAccess && (
                       <button
-                        onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name }); }}
+                        onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name, doctorIds: div.doctorIds || [], rates: div.rates || [] }); }}
                         title="Настройки доступа"
                         style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isManaging ? '#1d4ed8' : '#64748b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
