@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -604,12 +604,10 @@ export default function AdminUsers() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Пользователь</th>
+                <th style={{ width: '25%' }}>Пользователь</th>
                 <th>Email</th>
                 <th>Роли</th>
                 <th>Медцентры</th>
-                <th>2FA</th>
-                <th>Статус</th>
                 <th>Действия</th>
               </tr>
             </thead>
@@ -629,7 +627,29 @@ export default function AdminUsers() {
                         <div className="user-name">{user.displayName || user.username}</div>
                         <div className="user-login">@{user.username}</div>
                       </div>
-                      {user.isAdmin && <span className="badge badge-primary">Admin</span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                        <span title={user.isAdmin ? 'Администратор' : 'Не администратор'} style={{ display: 'flex', color: user.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', opacity: user.isAdmin ? 1 : 0.4 }}>
+                          <Crown size={15} />
+                        </span>
+                        {user.twoFactorEnabled ? (
+                          <span title="Двухфакторная аутентификация включена" style={{ display: 'flex', color: 'var(--success)' }}>
+                            <Shield size={15} />
+                          </span>
+                        ) : (
+                          <span title="2FA выключена" style={{ display: 'flex', color: 'var(--text-tertiary)' }}>
+                            <ShieldOff size={15} />
+                          </span>
+                        )}
+                        {user.isActive ? (
+                          <span title="Активен" style={{ display: 'flex', color: 'var(--success)' }}>
+                            <UserCheck size={15} />
+                          </span>
+                        ) : (
+                          <span title="Неактивен" style={{ display: 'flex', color: 'var(--error)' }}>
+                            <UserX size={15} />
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td>
@@ -668,24 +688,6 @@ export default function AdminUsers() {
                       </div>
                     ) : (
                       <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    {user.twoFactorEnabled ? (
-                      <span className="badge badge-success" title="Двухфакторная аутентификация включена">
-                        <Shield size={12} /> Включена
-                      </span>
-                    ) : (
-                      <span className="badge badge-secondary" title="Обычная авторизация">
-                        <ShieldOff size={12} /> Выключена
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    {user.isActive ? (
-                      <span className="badge badge-success"><UserCheck size={12} /> Активен</span>
-                    ) : (
-                      <span className="badge badge-error"><UserX size={12} /> Неактивен</span>
                     )}
                   </td>
                   <td style={{ textAlign: 'center' }}>
@@ -847,7 +849,7 @@ export default function AdminUsers() {
                         </div>
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
-                        <label className="form-label">Логин (автоматически)</label>
+                        <label className="form-label">Логин</label>
                         <input
                           className="input"
                           value={form.username}
@@ -876,7 +878,7 @@ export default function AdminUsers() {
                     {!modal.user ? (
                       <>
                         <div className="form-group">
-                          <label className="form-label">Пароль (автоматически)</label>
+                          <label className="form-label">Пароль</label>
                           <div style={{ display: 'flex', gap: 8 }}>
                             <input
                               className="input"
@@ -885,10 +887,10 @@ export default function AdminUsers() {
                               readOnly
                               style={{ flex: 1, background: 'var(--bg-secondary)' }}
                             />
-                            <button type="button" className="btn btn-secondary" onClick={copyPassword} title="Скопировать пароль">
+                            <button type="button" className="btn btn-primary" onClick={copyPassword} title="Скопировать пароль" style={{ width: 40, height: 40, padding: 0, flexShrink: 0 }}>
                               <Copy size={16} />
                             </button>
-                            <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль">
+                            <button type="button" className="btn btn-primary" onClick={regeneratePassword} title="Сгенерировать новый пароль" style={{ width: 40, height: 40, padding: 0, flexShrink: 0 }}>
                               <RefreshCw size={16} />
                             </button>
                           </div>
@@ -917,7 +919,7 @@ export default function AdminUsers() {
                               placeholder="Оставьте пустым, чтобы не менять"
                               style={{ flex: 1 }}
                             />
-                            <button type="button" className="btn btn-secondary" onClick={copyPassword} title="Скопировать пароль" disabled={!form.password}>
+                            <button type="button" className="btn btn-primary" onClick={copyPassword} title="Скопировать пароль" disabled={!form.password} style={{ width: 40, height: 40, padding: 0, flexShrink: 0 }}>
                               <Copy size={16} />
                             </button>
                             <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль">
