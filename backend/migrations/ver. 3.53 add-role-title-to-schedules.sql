@@ -1,0 +1,1 @@
+ALTER TABLE doctor_schedules ADD COLUMN IF NOT EXISTS role_title VARCHAR(200);

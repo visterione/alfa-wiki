@@ -2,7 +2,7 @@
  * Report calculation engine — ported from backend/bot/referral-bonuses.html
  * All logic preserved verbatim, adapted to ES module + async/await with axios API calls.
  */
-import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi } from '../../../services/api';
+import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi, rbScheduleDicts } from '../../../services/api';
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
@@ -340,6 +340,12 @@ export async function buildReport({
             const norm = norms.find(n => n.professionTitle === profTitle);
             if (norm && norm.normHours != null) _normsByRole[profTitle] = parseFloat(norm.normHours);
           }
+        }
+
+        // Load all category labels regardless of norms
+        const allCatsRes = await rbScheduleDicts.listCategories().catch(() => ({ data: [] }));
+        for (const c of (allCatsRes.data || [])) {
+          if (c.id && c.name) _categoryLabels[c.id] = c.name;
         }
 
         // Load norms by schedule category

@@ -126,6 +126,11 @@ export default function ReferralBonusesPage() {
   const [currentStep, setCurrentStep] = useState(1);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
   const [archiveTabelEdit, setArchiveTabelEdit] = useState(false);
+  const [step1Dirty, setStep1Dirty] = useState(false);
+  const step1DirtyRef = React.useRef(false);
+  // Keep ref in sync with state for use inside callbacks without stale closure
+  React.useEffect(() => { step1DirtyRef.current = step1Dirty; }, [step1Dirty]);
+  const [pendingNav, setPendingNav] = useState(null); // { action: fn, doctorName: string }
   const wizardNavRef = React.useRef(null);
   const [wizardSlider, setWizardSlider] = React.useState({ left: 0, width: 0, duration: 0 });
   React.useLayoutEffect(() => {
@@ -305,11 +310,16 @@ export default function ReferralBonusesPage() {
 
   // ── Select doctor ──
   const handleSelectDoctor = useCallback((misUserId) => {
-    setSelectedDoctor(prev => {
+    const doSelect = () => setSelectedDoctor(prev => {
       if (prev?.id === misUserId) return null; // toggle off
       return doctors.find(d => d.id === misUserId) || null;
     });
-  }, [doctors]);
+    if (step1DirtyRef.current && currentStep === 1 && selectedDoctor?.id !== misUserId && selectedDoctor !== null) {
+      setPendingNav({ action: doSelect, doctorName: selectedDoctor?.name });
+      return;
+    }
+    doSelect();
+  }, [doctors, currentStep, selectedDoctor]);
 
   // ── НДФЛ import ──
   const [ndflModal, setNdflModal] = useState(null);
@@ -531,10 +541,17 @@ export default function ReferralBonusesPage() {
 
   // ── Wizard navigation ──
   const goToStep = useCallback((step) => {
-    setCurrentStep(step);
-    if (step !== 5) setPreselectedReportDoctorId(null);
-    if (step !== 6) setArchiveTabelEdit(false);
-  }, []);
+    const doNav = () => {
+      setCurrentStep(step);
+      if (step !== 5) setPreselectedReportDoctorId(null);
+      if (step !== 6) setArchiveTabelEdit(false);
+    };
+    if (step1DirtyRef.current && currentStep === 1 && step !== 1) {
+      setPendingNav({ action: doNav, doctorName: selectedDoctor?.name });
+      return;
+    }
+    doNav();
+  }, [currentStep, selectedDoctor]);
 
   // ── Rendered step ──
   const sharedProps = {
@@ -607,7 +624,7 @@ export default function ReferralBonusesPage() {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} />;
+        return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} onDirtyChange={setStep1Dirty} />;
       case 2:
         return <StepHourNorms doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} getClinicName={getClinicName} permissions={permissions} />;
       case 3:
@@ -838,6 +855,42 @@ export default function ReferralBonusesPage() {
                 onClick={() => applyNdflImport('overwrite', ndflModal.matched, ndflModal.settingsMap)}
               >
                 Перезаписать всех
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved changes warning modal */}
+      {pendingNav && (
+        <div className="rb-modal-overlay" onClick={() => setPendingNav(null)}>
+          <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Несохранённые изменения
+              </h3>
+              <button className="rb-modal-close" onClick={() => setPendingNav(null)}>×</button>
+            </div>
+            <div className="rb-modal-body">
+              <p style={{ fontSize: 14, color: 'var(--rb-text)', lineHeight: 1.6, margin: 0 }}>
+                У врача <strong>{pendingNav.doctorName}</strong> есть несохранённые изменения.
+                Если уйти сейчас — они будут потеряны.
+              </p>
+            </div>
+            <div className="rb-modal-footer">
+              <button className="rb-btn rb-btn-secondary" onClick={() => setPendingNav(null)}>
+                Вернуться и сохранить
+              </button>
+              <button
+                className="rb-btn"
+                style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 18px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                onClick={() => { setStep1Dirty(false); pendingNav.action(); setPendingNav(null); }}
+              >
+                Уйти без сохранения
               </button>
             </div>
           </div>

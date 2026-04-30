@@ -1204,12 +1204,13 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const serviceSpecialties = React.useMemo(() => {
     const set = new Set();
     (doctors || []).forEach(d => {
@@ -1279,6 +1280,22 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     try { await referralBonuses.saveSuggests(next); } catch { toast.error('Не удалось сохранить подсказки'); }
   };
 
+  // Clear auto-save timer on unmount to prevent stale saves
+  useEffect(() => () => clearTimeout(autoSaveTimer.current), []);
+
+  // Block browser tab close / refresh when dirty
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
+
+  // Notify parent about dirty state changes
+  useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty]); // eslint-disable-line
+
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDoctor) return;
@@ -1319,7 +1336,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       setDoctorServices(svcs);
     })
     .catch(() => setExecData(execDefault()))
-    .finally(() => setLoading(false));
+    .finally(() => { setLoading(false); setIsDirty(false); });
   }, [selectedDoctor]);
 
   // ── Schedule hours ────────────────────────────────────────────────────────
@@ -1374,6 +1391,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       const toSave = dataOverride || execData;
       await executorSettings.save({ misUserId: selectedDoctor.id, doctorName: selectedDoctor.name, settings: toSave });
       clearExecCache(selectedDoctor.id);
+      setIsDirty(false);
       toast.success('Сохранено');
     } catch {
       toast.error('Ошибка сохранения');
@@ -1445,12 +1463,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const confirmPayTypeChange = () => {
     if (!pendingPayType) return;
     updateClinicData({ payType: pendingPayType.to, ...(pendingPayType.to === 'percent' ? { plusPercent: false } : {}) });
+    setIsDirty(true);
     scheduleAutoSave();
     setPendingPayType(null);
   };
 
   const handlePaymentFieldChange = (field, val) => {
     updateClinicData({ [field]: val });
+    setIsDirty(true);
     scheduleAutoSave();
   };
 
@@ -1894,15 +1914,28 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         <div className="rb-doctor-card-info">
           <h2>{selectedDoctor.name}</h2>
         </div>
-        {onTogglePanel && (
-          <button onClick={onTogglePanel} title={panelCollapsed ? 'Свернуть' : 'На всю ширину'} style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
-            {panelCollapsed ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-            )}
-          </button>
-        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+          {!readOnly && (
+            <button
+              className="rb-btn rb-btn-primary rb-btn-sm"
+              onClick={handleSavePayment}
+              disabled={saving || !isDirty}
+              title={isDirty ? 'Есть несохранённые изменения' : 'Нет изменений'}
+              style={{ opacity: isDirty ? 1 : 0.45, transition: 'opacity 0.2s' }}
+            >
+              {saving ? 'Сохранение...' : isDirty ? 'Сохранить' : 'Сохранено'}
+            </button>
+          )}
+          {onTogglePanel && (
+            <button onClick={onTogglePanel} title={panelCollapsed ? 'Свернуть' : 'На всю ширину'} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
+              {panelCollapsed ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Clinic tabs */}
@@ -2125,11 +2158,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               ))}
             </div>
 
-            <div className="rb-exec-save-row" style={{ justifyContent: 'flex-end' }}>
-              <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleSavePayment} disabled={saving}>
-                Сохранить
-              </button>
-            </div>
         </div>
 
         {pt === 'hourly' && (
