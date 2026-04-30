@@ -1309,8 +1309,8 @@
 
 /* Wide modal for user form */
 .modal.modal-wide {
-  width: 900px;
-  max-width: 95vw;
+  width: 1400px;
+  max-width: 96vw;
 }
 
 /* Two column form layout */
