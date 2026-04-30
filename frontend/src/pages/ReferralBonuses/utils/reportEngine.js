@@ -1035,7 +1035,7 @@ export async function buildReport({
           const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
           basePay += rate * hours;
-          hourlyRatesBreakdown.push({ label: roleTitle || 'Без роли', rate, hours, pay: rate * hours });
+          hourlyRatesBreakdown.push({ label: roleTitle || 'Без указания', rate, hours, pay: rate * hours });
           const normOverride = roleTitle ? roleNormOverrides.find(n => n.roleTitle === roleTitle) : null;
           const norm = normOverride ? parseFloat(normOverride.normHours) : (roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
@@ -1068,7 +1068,7 @@ export async function buildReport({
             const rate  = parseFloat(rr.rate) || baseRate;
             basePay += rate * hours;
             effectiveHoursWorked += hours;
-            hourlyRatesBreakdown.push({ label: rr.roleTitle || 'Без роли', rate, hours, pay: rate * hours });
+            hourlyRatesBreakdown.push({ label: rr.roleTitle || 'Без указания', rate, hours, pay: rate * hours });
           }
         } else {
           effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
