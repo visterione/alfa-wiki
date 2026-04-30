@@ -924,7 +924,7 @@ const ReviewBoard = () => {
                             const memberCards = getReviewsBySection(column.id, member.id);
                             return (
                               <div key={member.id} className="person-section">
-                                <div className="person-section-header">
+                                <div className="person-section-header" style={member.id ? { cursor: 'pointer' } : {}} onClick={member.id ? (e) => { e.stopPropagation(); navigate(`/users/${member.id}`); } : undefined}>
                                   <div className="person-section-avatar">
                                     {getAvatarUrl(member.avatar) ? (
                                       <img src={getAvatarUrl(member.avatar)} alt="" />
@@ -1289,7 +1289,7 @@ const ReviewBoard = () => {
                         const avatarUrl = getAvatarUrl(entry.user?.avatar);
                         return (
                           <div key={entry.id} className="history-comment">
-                            <div className="comment-avatar">
+                            <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
                               {avatarUrl
                                 ? <img src={avatarUrl} alt="" />
                                 : <div className="comment-avatar-placeholder"><User size={16} /></div>
@@ -1297,7 +1297,7 @@ const ReviewBoard = () => {
                             </div>
                             <div className="comment-body">
                               <div className="history-comment-header">
-                                <span className="comment-user">{userName}</span>
+                                <span className="comment-user" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>{userName}</span>
                                 <span className="comment-date">{date}</span>
                               </div>
                               {entry.comment && <div className="comment-bubble">{entry.comment}</div>}

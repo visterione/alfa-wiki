@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
-const { User, Role } = require('../models');
+const { User, Role, MedCenter } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { generateCode, send2FACode } = require('../services/emailService');
 
@@ -315,7 +315,8 @@ router.get('/me', authenticate, async (req, res) => {
     const user = await User.findByPk(req.user.id, {
       include: [
         { model: Role, as: 'role' },
-        { model: Role, as: 'roles', through: { attributes: [] } }
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name'] }
       ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
@@ -358,7 +359,10 @@ router.post('/change-password', authenticate, [
 router.put('/profile', authenticate, [
   body('displayName').optional().trim(),
   body('email').optional().isEmail().withMessage('Invalid email'),
-  body('avatar').optional().trim()
+  body('avatar').optional().trim(),
+  body('phone').optional().trim(),
+  body('position').optional().trim(),
+  body('bio').optional().trim()
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -366,18 +370,25 @@ router.put('/profile', authenticate, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { displayName, email, avatar, settings } = req.body;
-    
+    const { displayName, email, avatar, settings, phone, position, bio } = req.body;
+
     const updateData = {};
     if (displayName !== undefined) updateData.displayName = displayName;
     if (email !== undefined) updateData.email = email;
     if (avatar !== undefined) updateData.avatar = avatar;
     if (settings !== undefined) updateData.settings = settings;
+    if (phone !== undefined) updateData.phone = phone;
+    if (position !== undefined) updateData.position = position;
+    if (bio !== undefined) updateData.bio = bio;
 
     await req.user.update(updateData);
 
     const updatedUser = await User.findByPk(req.user.id, {
-      include: [{ model: Role, as: 'role' }],
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name'] }
+      ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] }
     });
 

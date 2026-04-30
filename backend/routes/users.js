@@ -1,7 +1,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { User, Role, MedCenter, UserRole, UserMedCenter } = require('../models');
+const { User, Role, MedCenter, UserRole, UserMedCenter, PageHistory, Page, CourseProgress, Course } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 const { authenticate, requireAdmin, requireAdminAccess } = require('../middleware/auth');
 const { send2FADisabledNotification, sendCredentials } = require('../services/emailService');
@@ -142,6 +142,33 @@ router.post('/mis-avatar', authenticate, async (req, res) => {
   } catch (err) {
     console.error('MIS avatar error:', err.message);
     res.status(500).json({ error: 'Не удалось скачать аватар' });
+  }
+});
+
+// Public profile — available to all authenticated users
+router.get('/:id/public', authenticate, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id, {
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] }, attributes: ['id', 'name'] }
+      ],
+      attributes: ['id', 'username', 'displayName', 'avatar', 'phone', 'position', 'bio', 'isAdmin', 'createdAt', 'lastSeen']
+    });
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    const completedCourses = await CourseProgress.findAll({
+      where: { userId: user.id, completedAt: { [Op.ne]: null } },
+      include: [{ model: Course, as: 'course', attributes: ['id', 'title', 'icon', 'estimatedDuration'] }],
+      attributes: ['id', 'completedAt', 'testScore'],
+      order: [['completedAt', 'DESC']]
+    });
+
+    res.json({ ...user.toJSON(), completedCourses });
+  } catch (error) {
+    console.error('Get public profile error:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
   }
 });
 

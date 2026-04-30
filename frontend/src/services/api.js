@@ -63,6 +63,7 @@ export const users = {
   list: (params) => api.get('/users', { params }), // Admin only - full user list with all details
   listBasic: (params) => api.get('/users/list', { params }), // All authenticated users - basic list for assignee selection
   get: (id) => api.get(`/users/${id}`),
+  getPublicProfile: (id) => api.get(`/users/${id}/public`),
   create: (data) => api.post('/users', data),
   update: (id, data) => api.put(`/users/${id}`, data),
   delete: (id) => api.delete(`/users/${id}`),

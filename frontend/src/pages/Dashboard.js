@@ -1326,9 +1326,9 @@ export default function Dashboard() {
                             className={`message ${isOwn ? 'own' : ''} ${highlightedMessageId === msg.id ? 'highlighted' : ''}`}
                             onContextMenu={(e) => !forwardMode && handleContextMenu(e, msg)}
                           >
-                            {!isOwn && showAvatar && <div className="message-avatar">{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
+                            {!isOwn && showAvatar && <div className="message-avatar" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{getAvatarUrl(msg.sender?.avatar) ? <img src={getAvatarUrl(msg.sender.avatar)} alt="" /> : <User size={16} />}</div>}
                             <div className={`message-bubble ${!showAvatar && !isOwn ? 'no-avatar' : ''} ${hasAttachments ? 'has-attachments' : ''}`}>
-                              {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender">{msg.sender?.displayName || msg.sender?.username}</div>}
+                              {!isOwn && showAvatar && activeChat.type === 'group' && <div className="message-sender" style={msg.sender?.id ? { cursor: 'pointer' } : {}} onClick={msg.sender?.id ? (e) => { e.stopPropagation(); navigate(`/users/${msg.sender.id}`); } : undefined}>{msg.sender?.displayName || msg.sender?.username}</div>}
                               {msg.replyTo && (
                                 <div className="reply-quote" onClick={() => scrollToMessage(msg.replyTo.id)}>
                                   <div className="reply-quote-sender">{msg.replyTo.sender?.displayName || msg.replyTo.sender?.username}</div>
@@ -1511,9 +1511,9 @@ export default function Dashboard() {
                     const isAdminMember = m.role === 'admin';
                     return (
                       <div key={m.userId} className="chat-member-item">
-                        <div className="chat-member-avatar">{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
+                        <div className="chat-member-avatar" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{getAvatarUrl(m.user?.avatar) ? <img src={getAvatarUrl(m.user.avatar)} alt="" /> : <User size={20} />}</div>
                         <div className="chat-member-info">
-                          <div className="chat-member-name">{m.user?.displayName || m.user?.username}</div>
+                          <div className="chat-member-name" style={m.userId ? { cursor: 'pointer' } : {}} onClick={m.userId ? () => navigate(`/users/${m.userId}`) : undefined}>{m.user?.displayName || m.user?.username}</div>
                           {isCreatorMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Создатель</div>}
                           {!isCreatorMember && isAdminMember && <div className="chat-member-badge" style={{ alignSelf: 'flex-start', marginTop: '2px' }}>Админ</div>}
                         </div>

@@ -583,3 +583,6 @@ input[type="radio"] {
     text-decoration: underline !important;
   }
 }
+/* Profile link — inline clickable user name/avatar */
+.user-profile-link { color: inherit; text-decoration: none; cursor: pointer; }
+.user-profile-link:hover { color: var(--primary); text-decoration: underline; }

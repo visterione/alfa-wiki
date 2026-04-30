@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Download, X, FileText, Table as TableIcon, FileCode, Calendar, User, Folder, Search, History } from 'lucide-react';
 import { journal, pages, folders } from '../../services/api';
 import { BASE_URL } from '../../services/api';
@@ -214,7 +215,7 @@ export default function AdminJournal() {
                       </div>
                     </td>
                     <td><span className="folder-path">{page.folderPath || '(Корневая папка)'}</span></td>
-                    <td>{page.author?.displayName || page.author?.username || '—'}</td>
+                    <td>{page.author?.id ? <Link to={`/users/${page.author.id}`} className="user-profile-link">{page.author.displayName || page.author.username}</Link> : (page.author?.displayName || page.author?.username || '—')}</td>
                     <td>
                       <div className="date-cell"><Calendar size={14} />{formatDate(page.updatedAt)}</div>
                     </td>

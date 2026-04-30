@@ -9,6 +9,7 @@ import Login from './pages/Login';
 import PageView from './pages/PageView';
 import PageEditor from './pages/PageEditor';
 import Profile from './pages/Profile';
+import UserProfile from './pages/UserProfile';
 import Favorites from './pages/Favorites';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminBots from './pages/admin/AdminBots';
@@ -96,6 +97,7 @@ function AppRoutes() {
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="users/:id" element={<UserProfile />} />
         <Route path="favorites" element={<Favorites />} />
         <Route path="calendar" element={<Calendar />} />
         <Route path="kanban" element={<BoardsList />} />

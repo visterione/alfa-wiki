@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -99,6 +99,7 @@ export default function AdminUsers() {
   const [filterMedCenter, setFilterMedCenter] = useState('');
   const [modal, setModal] = useState({ open: false, user: null });
   const [misDropdown, setMisDropdown] = useState({ open: false, results: [], searching: false });
+  const [avatarHover, setAvatarHover] = useState(false);
   const avatarInputRef = useRef(null);
   const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
@@ -698,12 +699,15 @@ export default function AdminUsers() {
             <div className="modal-body">
               {/* Верхний блок: аватар слева, имя и логин справа */}
               <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', marginBottom: 24 }}>
-                <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                <div
+                  onMouseEnter={() => setAvatarHover(true)}
+                  onMouseLeave={() => setAvatarHover(false)}
+                  style={{ flexShrink: 0, position: 'relative', width: 148, height: 148 }}
+                >
                   <div
                     onClick={() => avatarInputRef.current?.click()}
-                    title="Нажмите для загрузки фото"
                     style={{
-                      width: 90, height: 90, borderRadius: '50%',
+                      width: '100%', height: '100%', borderRadius: '50%',
                       background: 'var(--bg-secondary)', overflow: 'hidden',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       border: '2px solid var(--border)', cursor: 'pointer',
@@ -711,20 +715,37 @@ export default function AdminUsers() {
                   >
                     {form.avatar
                       ? <img src={`${BASE_URL}/${form.avatar}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      : <User size={36} style={{ color: 'var(--text-tertiary)' }} />
+                      : <User size={54} style={{ color: 'var(--text-tertiary)' }} />
                     }
                   </div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => avatarInputRef.current?.click()}>
-                      Загрузить
+                  {avatarHover && (
+                    <div
+                      onClick={() => avatarInputRef.current?.click()}
+                      style={{
+                        position: 'absolute', inset: 0,
+                        background: 'rgba(0,0,0,0.45)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '50%', cursor: 'pointer',
+                      }}
+                    >
+                      <Camera size={28} style={{ color: '#fff' }} />
+                    </div>
+                  )}
+                  {form.avatar && avatarHover && (
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); setForm({ ...form, avatar: '' }); }}
+                      style={{
+                        position: 'absolute', top: 4, right: 4,
+                        background: 'rgba(0,0,0,0.6)', border: 'none',
+                        borderRadius: '50%', width: 22, height: 22,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', color: '#fff', padding: 0, zIndex: 1,
+                      }}
+                    >
+                      <XIcon size={12} />
                     </button>
-                    {form.avatar && (
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setForm({ ...form, avatar: '' })}>
-                        <XIcon size={14} />
-                      </button>
-                    )}
-                  </div>
-                  <small style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>JPG, PNG до 5 МБ</small>
+                  )}
                   <input ref={avatarInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFileChange} />
                 </div>
 
@@ -755,7 +776,7 @@ export default function AdminUsers() {
                             >
                               {misDropdown.searching
                                 ? <Loader size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                                : 'Renovatio'
+                                : <><Search size={14} />Renovatio</>
                               }
                             </button>
                           </div>

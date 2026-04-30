@@ -142,10 +142,14 @@ export default function Favorites() {
               
               <div className="favorite-card-meta">
                 {fav.page?.author && (
-                  <span className="favorite-card-author">
+                  <Link
+                    to={`/users/${fav.page.author.id}`}
+                    className="favorite-card-author user-profile-link"
+                    onClick={e => e.stopPropagation()}
+                  >
                     <User size={14} />
                     {fav.page.author.displayName || fav.page.author.username}
-                  </span>
+                  </Link>
                 )}
                 <span className="favorite-card-date">
                   <Clock size={14} />
