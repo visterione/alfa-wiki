@@ -88,11 +88,20 @@ router.put('/:id', authenticate, requireAdminAccess('roles'), async (req, res) =
     const role = await Role.findByPk(req.params.id);
     if (!role) return res.status(404).json({ error: 'Role not found' });
 
-    if (role.isSystem) {
-      return res.status(400).json({ error: 'Cannot modify system role' });
-    }
-
     const { name, description, permissions } = req.body;
+
+    if (role.isSystem) {
+      // System roles: allow name/description edits, ignore permissions
+      if (name && name !== role.name) {
+        const existing = await Role.findOne({ where: { name } });
+        if (existing) return res.status(400).json({ error: 'Role name already exists' });
+      }
+      await role.update({
+        ...(name && { name }),
+        ...(description !== undefined && { description }),
+      });
+      return res.json(role);
+    }
 
     // Check name uniqueness
     if (name && name !== role.name) {

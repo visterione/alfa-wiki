@@ -129,19 +129,24 @@
 
 .empty-state { padding: 60px 20px; text-align: center; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 16px; }
 
-/* Roles */
-.roles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; padding: 20px; }
-.role-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 20px; }
-.role-card-header { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
-.role-icon { width: 48px; height: 48px; background: var(--primary-light); color: var(--primary); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; }
-.role-card-header h3 { font-size: 16px; margin-bottom: 4px; }
-.role-card-header p { font-size: 13px; color: var(--text-secondary); }
-.role-card-perms { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
-.role-card-footer { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid var(--border-light); font-size: 13px; color: var(--text-secondary); }
+/* Roles table */
+.role-cell-name { font-weight: 500; font-size: 14px; display: flex; align-items: center; }
+.role-cell-desc { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+.role-users-count { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-secondary); }
 
-.perms-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-.perm-section h4 { font-size: 14px; margin-bottom: 12px; color: var(--text-secondary); }
-.perm-section .checkbox-item { margin-bottom: 8px; }
+.role-row { cursor: pointer; }
+.role-row:hover td { background: #f0f7ff !important; }
+
+.role-perm-icons { display: inline-flex; flex-direction: column; gap: 5px; }
+.role-perm-row { display: flex; align-items: center; gap: 5px; }
+.role-perm-cat-icon { color: var(--text-tertiary); flex-shrink: 0; margin-right: 2px; }
+
+/* Permission toggles in modal */
+.modal .form-group { min-width: 0; }
+.role-perms-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 4px; }
+.role-perm-section { background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 14px; }
+.role-perm-section-header { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-light); }
+.role-perm-toggles { display: flex; flex-direction: column; gap: 10px; }
 
 /* Sidebar manager */
 .sidebar-list { padding: 8px; }
