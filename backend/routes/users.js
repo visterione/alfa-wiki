@@ -116,9 +116,15 @@ router.get('/mis-search', authenticate, async (req, res) => {
         return name.includes(q) || roles.includes(q) || profs.includes(q);
       })
       .slice(0, 50)
-      .map(({ id, name, email, avatar_small, role_titles, profession_titles, clinic_titles }) => ({
-        id, name, email, avatar_small, role_titles, profession_titles, clinic_titles
-      }));
+      .map((u) => {
+        const { id, name, email, avatar_small, role_titles, profession_titles, clinic_titles, gender, birth_date, contacts } = u;
+        const phoneContact = Array.isArray(contacts)
+          ? contacts.find(c => c.type === 'mobile' || c.type === 'phone' || (c.type_title || '').toLowerCase().includes('телефон'))
+          : null;
+        const phone = (u.phone && u.phone !== 'null') ? u.phone : (phoneContact ? phoneContact.value : '');
+        const birthDate = (birth_date && birth_date !== 'null') ? birth_date : null;
+        return { id, name, email, avatar_small, role_titles, profession_titles, clinic_titles, phone, gender, birth_date: birthDate };
+      });
     res.json(results);
   } catch (err) {
     console.error('MIS search error:', err);
@@ -202,7 +208,7 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       return res.status(400).json({ error: errors.array()[0].msg });
     }
 
-    let { username, password, displayName, email, avatar, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, avatar, phone, position, specialty, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
 
     // Проверка существования пользователя
     const existing = await User.findOne({ where: { username } });
@@ -258,6 +264,12 @@ router.post('/', authenticate, requireAdminAccess('users'), [
       displayName: displayName || username,
       email: email || null,
       avatar: avatar || null,
+      phone: phone || null,
+      position: position || null,
+      specialty: specialty || null,
+      gender: gender || null,
+      birthDate: birthDate || null,
+      bio: bio || null,
       roleId: roleId,
       isAdmin: isAdmin || false,
       isActive: isActive !== false,
@@ -335,7 +347,7 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    let { username, password, displayName, email, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
+    let { username, password, displayName, email, phone, position, specialty, gender, birthDate, bio, roleId, roleIds, medCenterIds, isAdmin, isActive, twoFactorEnabled, canEditDoctorCards, canEditAnalyses, canEditServices, canAccessSalary, canManagePromotions, adminAccess } = req.body;
 
     // Check username uniqueness
     if (username && username !== user.username) {
@@ -387,6 +399,12 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       ...(username && { username }),
       ...(displayName !== undefined && { displayName }),
       ...(email !== undefined && { email: email || null }),
+      ...(phone !== undefined && { phone: phone || null }),
+      ...(position !== undefined && { position: position || null }),
+      ...(specialty !== undefined && { specialty: specialty || null }),
+      ...(gender !== undefined && { gender: gender || null }),
+      ...(birthDate !== undefined && { birthDate: birthDate || null }),
+      ...(bio !== undefined && { bio: bio || null }),
       ...(roleId !== undefined && { roleId: roleId || null }),
       ...(isAdmin !== undefined && { isAdmin }),
       ...(isActive !== undefined && { isActive }),

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Edit, Trash2, Search, UserCheck, UserX, Shield, ShieldOff, Mail, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
+import DatePickerInput from '../../components/DatePickerInput';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -123,16 +124,22 @@ export default function AdminUsers() {
     displayName: '',
     email: '',
     avatar: '',
+    phone: '',
+    position: '',
+    specialty: '',
+    gender: '',
+    birthDate: '',
+    bio: '',
     roleIds: [],
     medCenterIds: [],
     isAdmin: false,
     isActive: true,
-    twoFactorEnabled: true,  // По умолчанию включена
-    canEditDoctorCards: false,  // Доступ к редактированию карточек врачей
-    canEditAnalyses: false,  // Доступ к редактированию анализов
-    canEditServices: false,  // Доступ к редактированию услуг
-    canAccessSalary: false,  // Доступ к разделу зарплаты
-    canManagePromotions: false,  // Доступ к управлению акциями
+    twoFactorEnabled: true,
+    canEditDoctorCards: false,
+    canEditAnalyses: false,
+    canEditServices: false,
+    canAccessSalary: false,
+    canManagePromotions: false,
     adminAccess: {
       pages: false,
       sidebar: false,
@@ -195,12 +202,33 @@ export default function AdminUsers() {
         } catch { /* аватар не скачался — не блокируем */ }
       }
       const username = generateUniqueUsername(emp.name || '');
+      const specialty = [].concat(emp.profession_titles || []).filter(Boolean).join(', ');
+      const gRaw = (emp.gender || '').toString().toLowerCase().trim();
+      const gender = (gRaw === 'male' || gRaw === 'm' || gRaw === 'м' || gRaw.startsWith('муж')) ? 'male'
+        : (gRaw === 'female' || gRaw === 'f' || gRaw === 'ж' || gRaw.startsWith('жен')) ? 'female'
+        : gRaw === '1' ? 'male'
+        : gRaw === '2' ? 'female'
+        : '';
+      // birth_date может прийти как YYYY-MM-DD или DD.MM.YYYY
+      let birthDate = '';
+      if (emp.birth_date) {
+        if (/^\d{2}\.\d{2}\.\d{4}$/.test(emp.birth_date)) {
+          const [d, m, y] = emp.birth_date.split('.');
+          birthDate = `${y}-${m}-${d}`;
+        } else {
+          birthDate = emp.birth_date.slice(0, 10);
+        }
+      }
       setForm(prev => ({
         ...prev,
         displayName: emp.name || '',
         email: emp.email || '',
         avatar,
         username,
+        phone: emp.phone || prev.phone,
+        specialty: specialty || prev.specialty,
+        gender: gender || prev.gender,
+        birthDate: birthDate || prev.birthDate,
       }));
       setMisDropdown({ open: false, results: [], searching: false });
     } catch {
@@ -343,6 +371,12 @@ export default function AdminUsers() {
         displayName: user.displayName || '',
         email: user.email || '',
         avatar: user.avatar || '',
+        phone: user.phone || '',
+        position: user.position || '',
+        specialty: user.specialty || '',
+        gender: user.gender || '',
+        birthDate: user.birthDate || '',
+        bio: user.bio || '',
         roleIds: user.roles ? user.roles.map(r => r.id) : [],
         medCenterIds: user.medCenters ? user.medCenters.map(mc => mc.id) : [],
         isAdmin: user.isAdmin,
@@ -367,7 +401,6 @@ export default function AdminUsers() {
         }
       });
     } else {
-      // При создании нового пользователя генерируем пароль и включаем 2FA
       const newPassword = generatePassword();
       setForm({
         username: '',
@@ -375,11 +408,17 @@ export default function AdminUsers() {
         displayName: '',
         email: '',
         avatar: '',
+        phone: '',
+        position: '',
+        specialty: '',
+        gender: '',
+        birthDate: '',
+        bio: '',
         roleIds: [],
         medCenterIds: [],
         isAdmin: false,
         isActive: true,
-        twoFactorEnabled: true,  // По умолчанию включена для новых пользователей
+        twoFactorEnabled: true,
         canEditDoctorCards: false,
         canEditAnalyses: false,
         canEditServices: false,
@@ -516,6 +555,7 @@ export default function AdminUsers() {
     try {
       await users.delete(user.id);
       toast.success('Удалено');
+      setModal({ open: false, user: null });
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
   };
@@ -539,7 +579,7 @@ export default function AdminUsers() {
     }
 
     return matchesSearch && matchesRole && matchesMedCenter;
-  });
+  }).sort((a, b) => (a.displayName || a.username).localeCompare(b.displayName || b.username, 'ru'));
 
   return (
     <div className="admin-page users-page">
@@ -604,16 +644,15 @@ export default function AdminUsers() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th style={{ width: '25%' }}>Пользователь</th>
-                <th>Email</th>
-                <th>Роли</th>
-                <th>Медцентры</th>
-                <th>Действия</th>
+                <th style={{ width: '25%', textAlign: 'left' }}>Пользователь</th>
+                <th style={{ textAlign: 'left' }}>Email</th>
+                <th style={{ textAlign: 'left' }}>Роли</th>
+                <th style={{ textAlign: 'left' }}>Медцентры</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(user => (
-                <tr key={user.id}>
+                <tr key={user.id} onClick={() => openModal(user)} style={{ cursor: 'pointer' }}>
                   <td>
                     <div className="user-cell">
                       <div className="user-avatar">
@@ -653,52 +692,23 @@ export default function AdminUsers() {
                     </div>
                   </td>
                   <td>
-                    {user.email ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Mail size={14} style={{ color: 'var(--text-tertiary)' }} />
-                        {user.email}
-                      </div>
-                    ) : (
-                      <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-                    )}
+                    {user.email || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
                   </td>
                   <td>
                     {user.roles && user.roles.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                        {user.roles.map(role => (
-                          <span key={role.id} className="badge badge-info">
-                            {role.name}
-                          </span>
-                        ))}
-                      </div>
+                      <span style={{ fontSize: 13 }}>{user.roles.map(r => r.name).join(', ')}</span>
                     ) : user.role ? (
-                      <span className="badge badge-info">{user.role.name}</span>
+                      <span style={{ fontSize: 13 }}>{user.role.name}</span>
                     ) : (
                       <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
                     )}
                   </td>
                   <td>
                     {user.medCenters && user.medCenters.length > 0 ? (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                        {user.medCenters.map(mc => (
-                          <span key={mc.id} className="badge badge-secondary">
-                            {mc.name}
-                          </span>
-                        ))}
-                      </div>
+                      <span style={{ fontSize: 13 }}>{user.medCenters.map(mc => mc.name).join(', ')}</span>
                     ) : (
                       <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
                     )}
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    <div className="action-btns" style={{ justifyContent: 'center' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => openModal(user)}>
-                        <Edit size={16} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(user)}>
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
                   </td>
                 </tr>
               ))}
@@ -850,24 +860,42 @@ export default function AdminUsers() {
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
                         <label className="form-label">Логин</label>
-                        <input
-                          className="input"
-                          value={form.username}
-                          onChange={e => setForm({...form, username: e.target.value})}
-                          placeholder="ivanov_i_i"
-                          style={{ background: 'var(--bg-secondary)' }}
-                        />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input
+                            className="input"
+                            value={form.username}
+                            onChange={e => setForm({...form, username: e.target.value})}
+                            placeholder="ivanov_i_i"
+                            style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                          />
+                          <button type="button" onClick={() => setForm({...form, isActive: !form.isActive})}
+                            title={form.isActive ? 'Активен' : 'Неактивен'}
+                            style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: form.isActive ? 'var(--primary, #2563eb)' : 'var(--error)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                            {form.isActive ? <UserCheck size={18} /> : <UserX size={18} />}
+                          </button>
+                        </div>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="form-group" style={{ margin: 0 }}>
                         <label className="form-label">Отображаемое имя</label>
-                        <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} />
+                        <input className="input" value={form.displayName} onChange={e => setForm({...form, displayName: e.target.value})} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }} />
                       </div>
                       <div className="form-group" style={{ margin: 0 }}>
                         <label className="form-label">Логин *</label>
-                        <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <input className="input" value={form.username} onChange={e => setForm({...form, username: e.target.value})} style={{ flex: 1, background: 'var(--bg-secondary)', border: '1px solid var(--border)' }} />
+                          <button type="button" onClick={() => setForm({...form, isActive: !form.isActive})}
+                            title={form.isActive ? 'Активен' : 'Неактивен'}
+                            style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: form.isActive ? 'var(--primary, #2563eb)' : 'var(--error)' }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                            {form.isActive ? <UserCheck size={18} /> : <UserX size={18} />}
+                          </button>
+                        </div>
                       </div>
                     </>
                   )}
@@ -897,13 +925,20 @@ export default function AdminUsers() {
                         </div>
                         <div className="form-group">
                           <label className="form-label">Email *</label>
-                          <input
-                            className="input"
-                            type="email"
-                            value={form.email}
-                            onChange={e => setForm({...form, email: e.target.value})}
-                            placeholder="user@example.com"
-                          />
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input
+                              className="input"
+                              type="email"
+                              value={form.email}
+                              onChange={e => setForm({...form, email: e.target.value})}
+                              placeholder="user@example.com"
+                              style={{ flex: 1, background: 'var(--bg-secondary)' }}
+                            />
+                            <button type="button" disabled title="2FA включена по умолчанию для новых пользователей"
+                              style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary, #2563eb)', opacity: 0.5, cursor: 'default' }}>
+                              <Shield size={18} />
+                            </button>
+                          </div>
                         </div>
                       </>
                     ) : (
@@ -917,23 +952,31 @@ export default function AdminUsers() {
                               value={form.password}
                               onChange={e => setForm({...form, password: e.target.value})}
                               placeholder="Оставьте пустым, чтобы не менять"
-                              style={{ flex: 1 }}
+                              style={{ flex: 1, background: 'var(--bg-secondary)' }}
                             />
                             <button type="button" className="btn btn-primary" onClick={copyPassword} title="Скопировать пароль" disabled={!form.password} style={{ width: 40, height: 40, padding: 0, flexShrink: 0 }}>
                               <Copy size={16} />
                             </button>
-                            <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль">
+                            <button type="button" className="btn btn-secondary" onClick={regeneratePassword} title="Сгенерировать новый пароль" style={{ width: 40, height: 40, padding: 0, flexShrink: 0 }}>
                               <RefreshCw size={16} />
                             </button>
                           </div>
                         </div>
                         <div className="form-group">
-                          <label className="form-label">Email {form.twoFactorEnabled && <span style={{color: 'var(--error)'}}>*</span>}</label>
-                          <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} />
+                          <label className="form-label">Email{form.twoFactorEnabled && <span style={{color: 'var(--error)'}}> *</span>}</label>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <input className="input" type="email" value={form.email} onChange={e => setForm({...form, email: e.target.value})} style={{ flex: 1, background: 'var(--bg-secondary)' }} />
+                            <button type="button"
+                              onClick={() => setForm({...form, twoFactorEnabled: !form.twoFactorEnabled})}
+                              title={form.twoFactorEnabled ? 'Двухфакторная аутентификация включена' : 'Двухфакторная аутентификация выключена'}
+                              style={{ width: 40, height: 40, padding: 0, flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: form.twoFactorEnabled ? 'var(--primary, #2563eb)' : 'var(--error)' }}
+                              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                              {form.twoFactorEnabled ? <Shield size={18} /> : <ShieldOff size={18} />}
+                            </button>
+                          </div>
                           {form.twoFactorEnabled && !form.email && (
-                            <small style={{ color: 'var(--error)', marginTop: 4, display: 'block' }}>
-                              Email обязателен для двухфакторной аутентификации
-                            </small>
+                            <small style={{ color: 'var(--error)', marginTop: 4, display: 'block' }}>Email обязателен для 2FA</small>
                           )}
                         </div>
                       </>
@@ -960,32 +1003,63 @@ export default function AdminUsers() {
                     />
                   </div>
 
-                  <div style={{
-                    background: 'var(--bg-secondary)',
-                    padding: 16,
-                    borderRadius: 'var(--radius-md)',
-                    display: 'grid',
-                    gridTemplateColumns: '1fr 1fr',
-                    gap: 16
-                  }}>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${form.isActive ? ' on' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isActive}
-                        onChange={e => setForm({...form, isActive: e.target.checked})}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+                    <div className="form-group">
+                      <label className="form-label">Телефон</label>
+                      <input
+                        className="input"
+                        value={form.phone}
+                        onChange={e => setForm({...form, phone: e.target.value})}
+                        placeholder="+7 (999) 000-00-00"
+                        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
                       />
-                      <span className="admin-toggle-label" style={{ fontWeight: 500 }}>Активен</span>
-                    </label>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${form.twoFactorEnabled ? ' on' : ''}${!modal.user ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.twoFactorEnabled}
-                        onChange={e => modal.user && setForm({...form, twoFactorEnabled: e.target.checked})}
-                        disabled={!modal.user}
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Пол</label>
+                      <select
+                        className="input"
+                        value={form.gender}
+                        onChange={e => setForm({...form, gender: e.target.value})}
+                        style={{ cursor: 'pointer', background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                      >
+                        <option value="">Не указан</option>
+                        <option value="male">Мужской</option>
+                        <option value="female">Женский</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Дата рождения</label>
+                      <DatePickerInput
+                        value={form.birthDate}
+                        onChange={val => setForm({...form, birthDate: val})}
+                        placeholder="Выберите дату"
                       />
-                      <span className="admin-toggle-label" style={{ fontWeight: 500 }}>Двухфакторная аутентификация</span>
-                    </label>
+                    </div>
                   </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Должность</label>
+                    <input
+                      className="input"
+                      value={form.position}
+                      onChange={e => setForm({...form, position: e.target.value})}
+                      placeholder="Менеджер, администратор..."
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Специальность</label>
+                    <input
+                      className="input"
+                      value={form.specialty}
+                      onChange={e => setForm({...form, specialty: e.target.value})}
+                      placeholder="Терапевт, хирург..."
+                      style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                    />
+                  </div>
+
+
                 </div>
 
                 {/* Правая колонка — Доступ к админ-разделам */}
@@ -1092,10 +1166,19 @@ export default function AdminUsers() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setModal({ open: false, user: null })}>
+              {modal.user && (
+                <button
+                  className="btn btn-danger"
+                  onClick={() => handleDelete(modal.user)}
+                  style={{ marginRight: 'auto', width: 120 }}
+                >
+                  Удалить
+                </button>
+              )}
+              <button className="btn btn-secondary" onClick={() => setModal({ open: false, user: null })} style={{ width: 120 }}>
                 Отмена
               </button>
-              <button className="btn btn-primary" onClick={handleSave}>
+              <button className="btn btn-primary" onClick={handleSave} style={{ width: 120 }}>
                 Сохранить
               </button>
             </div>
