@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -11,12 +13,13 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
   const [dropdownPos, setDropdownPos] = useState({});
   const dropdownRef = useRef(null);
   const triggerRef = useRef(null);
+  const portalRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
-      }
+      const outsideTrigger = dropdownRef.current && !dropdownRef.current.contains(event.target);
+      const outsidePortal = portalRef.current && !portalRef.current.contains(event.target);
+      if (outsideTrigger && outsidePortal) setIsOpen(false);
     };
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside);
@@ -73,8 +76,8 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
           <ChevronDown size={18} className={`multi-select-chevron ${isOpen ? 'open' : ''}`} />
         </div>
 
-        {isOpen && (
-          <div className="multi-select-dropdown" style={{
+        {isOpen && createPortal(
+          <div ref={portalRef} className="multi-select-dropdown" style={{
             position: 'fixed',
             top: dropdownPos.top,
             left: dropdownPos.left,
@@ -87,18 +90,20 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
                 key={option[optionKey]}
                 className="multi-select-option"
                 onClick={() => toggleOption(option[optionKey])}
+                style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}
               >
-                <span className={`admin-toggle-track${value.includes(option[optionKey]) ? ' on' : ''}`} style={{ flexShrink: 0 }} />
-                <input type="checkbox" style={{ display: 'none' }} checked={value.includes(option[optionKey])} onChange={() => {}} />
                 <div className="multi-select-option-label">
                   <div>{option[optionLabel]}</div>
                   {optionDescription && option[optionDescription] && (
                     <div className="multi-select-option-desc">{option[optionDescription]}</div>
                   )}
                 </div>
+                <input type="checkbox" style={{ display: 'none' }} checked={value.includes(option[optionKey])} onChange={() => {}} />
+                <span className={`admin-toggle-track${value.includes(option[optionKey]) ? ' on' : ''}`} style={{ flexShrink: 0 }} />
               </div>
             ))}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     </div>
@@ -106,6 +111,7 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
 }
 
 export default function AdminUsers() {
+  const { isAdmin: currentUserIsAdmin } = useAuth();
   const [userList, setUserList] = useState([]);
   const [roleList, setRoleList] = useState([]);
   const [medCenterList, setMedCenterList] = useState([]);
@@ -1074,93 +1080,105 @@ export default function AdminUsers() {
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
                     color: 'var(--text-secondary)',
-                    paddingBottom: 12,
-                    marginBottom: 16,
-                    borderBottom: '1px solid var(--border)'
+                    paddingBottom: 0,
+                    marginBottom: 16
                   }}>
-                    Доступ к админ-разделам
+                    Права пользователя
                   </div>
 
-                  <label className="admin-toggle-item admin-main" style={{ marginBottom: 16 }}>
-                    <span className={`admin-toggle-track${form.isAdmin ? ' on' : ''}`} />
+                  <label className="admin-toggle-item" style={{ marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8, opacity: currentUserIsAdmin ? 1 : 0.5, cursor: currentUserIsAdmin ? 'pointer' : 'not-allowed' }}>
+                    <span className="admin-toggle-label">
+                      <Crown size={15} style={{ color: form.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', transition: 'color 0.2s', verticalAlign: 'middle', marginRight: 5 }} />
+                      Суперадминистратор
+                    </span>
                     <input type="checkbox" style={{ display: 'none' }}
                       checked={form.isAdmin}
-                      onChange={e => setForm({...form, isAdmin: e.target.checked})}
+                      onChange={e => currentUserIsAdmin && setForm({...form, isAdmin: e.target.checked})}
                     />
-                    <span className="admin-toggle-label">Администратор (полный доступ ко всем разделам)</span>
+                    <span className={`admin-toggle-track${form.isAdmin ? ' on' : ''}${!currentUserIsAdmin ? ' forced' : ''}`} />
                   </label>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px' }}>
+                  {/* Основные */}
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                    color: 'var(--text-tertiary)',
+                    marginBottom: 8
+                  }}>
+                    Основные
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px', marginBottom: 16 }}>
                     {[
-                      { key: 'pages', label: 'Страницы' },
-                      { key: 'sidebar', label: 'Меню навигации' },
-                      { key: 'users', label: 'Пользователи' },
+                      { key: 'pages', label: 'Проводник' },
                       { key: 'roles', label: 'Роли и права' },
-                      { key: 'media', label: 'Медиафайлы' },
-                      { key: 'backup', label: 'Резервные копии' },
                       { key: 'settings', label: 'Настройки' },
-                      { key: 'courses', label: 'Курсы' },
-                      { key: 'journal', label: 'Журнал страниц' },
-                      { key: 'reviews', label: 'Отзывы' },
+                      { key: 'sidebar', label: 'Меню навигации' },
+                      { key: 'media', label: 'Медиафайлы' },
+                      { key: 'users', label: 'Пользователи' },
+                      { key: 'backup', label: 'Резервные копии' },
+                      { key: 'journal', label: 'Журнал' },
                     ].map(({ key, label }) => {
                       const checked = form.isAdmin || (form.adminAccess[key] ?? false);
                       return (
-                        <label key={key} className="admin-toggle-item">
-                          <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                        <label key={key} className="admin-toggle-item" style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
+                          <span className="admin-toggle-label">{label}</span>
                           <input type="checkbox" style={{ display: 'none' }}
                             checked={checked}
                             onChange={e => !form.isAdmin && setForm({...form, adminAccess: {...form.adminAccess, [key]: e.target.checked}})}
                             disabled={form.isAdmin}
                           />
-                          <span className="admin-toggle-label">{label}</span>
+                          <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
                         </label>
                       );
                     })}
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${(form.isAdmin || form.canEditDoctorCards) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isAdmin || form.canEditDoctorCards}
-                        onChange={e => !form.isAdmin && setForm({...form, canEditDoctorCards: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      <span className="admin-toggle-label">Карточки врачей</span>
-                    </label>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${(form.isAdmin || form.canEditAnalyses) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isAdmin || form.canEditAnalyses}
-                        onChange={e => !form.isAdmin && setForm({...form, canEditAnalyses: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      <span className="admin-toggle-label">Анализы</span>
-                    </label>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${(form.isAdmin || form.canEditServices) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isAdmin || form.canEditServices}
-                        onChange={e => !form.isAdmin && setForm({...form, canEditServices: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      <span className="admin-toggle-label">Услуги</span>
-                    </label>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${(form.isAdmin || form.canAccessSalary) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isAdmin || form.canAccessSalary}
-                        onChange={e => !form.isAdmin && setForm({...form, canAccessSalary: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      <span className="admin-toggle-label">Зарплата</span>
-                    </label>
-                    <label className="admin-toggle-item">
-                      <span className={`admin-toggle-track${(form.isAdmin || form.canManagePromotions) ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                      <input type="checkbox" style={{ display: 'none' }}
-                        checked={form.isAdmin || form.canManagePromotions}
-                        onChange={e => !form.isAdmin && setForm({...form, canManagePromotions: e.target.checked})}
-                        disabled={form.isAdmin}
-                      />
-                      <span className="admin-toggle-label">Акции</span>
-                    </label>
+                  </div>
+
+                  {/* Модули */}
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.07em',
+                    color: 'var(--text-tertiary)',
+                    marginBottom: 8
+                  }}>
+                    Модули
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px' }}>
+                    {[
+                      { key: 'reviews', label: 'Отзывы' },
+                      { key: 'services', label: 'Услуги' },
+                      { key: 'courses', label: 'Курсы' },
+                      { key: 'doctorCards', label: 'Карточки врачей' },
+                      { key: 'salary', label: 'Зарплата' },
+                      { key: 'analyses', label: 'Анализы' },
+                      { key: 'promotions', label: 'Акции' },
+                    ].map(({ key, label }) => {
+                      const moduleMap = {
+                        reviews: { get: form.adminAccess.reviews, set: v => setForm({...form, adminAccess: {...form.adminAccess, reviews: v}}) },
+                        services: { get: form.canEditServices, set: v => setForm({...form, canEditServices: v}) },
+                        courses: { get: form.adminAccess.courses, set: v => setForm({...form, adminAccess: {...form.adminAccess, courses: v}}) },
+                        doctorCards: { get: form.canEditDoctorCards, set: v => setForm({...form, canEditDoctorCards: v}) },
+                        salary: { get: form.canAccessSalary, set: v => setForm({...form, canAccessSalary: v}) },
+                        analyses: { get: form.canEditAnalyses, set: v => setForm({...form, canEditAnalyses: v}) },
+                        promotions: { get: form.canManagePromotions, set: v => setForm({...form, canManagePromotions: v}) },
+                      };
+                      const { get: val, set: setter } = moduleMap[key];
+                      const checked = form.isAdmin || val;
+                      return (
+                        <label key={key} className="admin-toggle-item" style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
+                          <span className="admin-toggle-label">{label}</span>
+                          <input type="checkbox" style={{ display: 'none' }}
+                            checked={checked}
+                            onChange={e => !form.isAdmin && setter(e.target.checked)}
+                            disabled={form.isAdmin}
+                          />
+                          <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 
 const MONTH_NAMES = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -22,20 +23,30 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
   const today = new Date();
 
   const [open, setOpen] = useState(false);
+  const [popupPos, setPopupPos] = useState({});
   const [step, setStep] = useState('days');
   const [navYear, setNavYear] = useState(parsed?.getFullYear() ?? today.getFullYear());
   const [navMonth, setNavMonth] = useState(parsed ? parsed.getMonth() + 1 : today.getMonth() + 1);
   const [yearStart, setYearStart] = useState(Math.floor((parsed?.getFullYear() ?? today.getFullYear()) / 10) * 10);
-  const ref = useRef(null);
+  const triggerRef = useRef(null);
+  const popupRef = useRef(null);
 
   useEffect(() => {
     if (!open) return;
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const h = e => {
+      const outsideTrigger = triggerRef.current && !triggerRef.current.contains(e.target);
+      const outsidePopup = popupRef.current && !popupRef.current.contains(e.target);
+      if (outsideTrigger && outsidePopup) setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
   const openPicker = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPopupPos({ top: rect.bottom + 4, left: rect.left });
+    }
     const y = parsed?.getFullYear() ?? today.getFullYear();
     const m = parsed ? parsed.getMonth() + 1 : today.getMonth() + 1;
     setNavYear(y);
@@ -94,8 +105,9 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
   };
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={openPicker}
         style={{
@@ -112,9 +124,9 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
         {formatDisplay() || placeholder}
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 9999,
+      {open && createPortal(
+        <div ref={popupRef} style={{
+          position: 'fixed', top: popupPos.top, left: popupPos.left, zIndex: 9999,
           background: 'var(--bg-primary)', border: '1px solid var(--border)',
           borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
           padding: '14px 16px', minWidth: 252,
@@ -220,7 +232,8 @@ export default function DatePickerInput({ value, onChange, placeholder = 'Выб
               </div>
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

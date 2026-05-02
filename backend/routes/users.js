@@ -388,6 +388,11 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
       }
     }
 
+    // Только администраторы могут менять статус суперадминистратора
+    if (isAdmin !== undefined && isAdmin !== user.isAdmin && !req.user.isAdmin) {
+      return res.status(403).json({ error: 'Только администраторы могут изменять статус суперадминистратора' });
+    }
+
     // Если пытаются включить 2FA, проверяем наличие email
     if (twoFactorEnabled && !email && !user.email) {
       return res.status(400).json({
