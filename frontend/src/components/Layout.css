@@ -424,7 +424,8 @@
 /* Кнопки быстрого доступа */
 .sidebar-quick-access {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, 44px);
+  justify-content: space-between;
   gap: 8px;
   background: var(--bg-secondary);
   border-radius: var(--radius-md);
@@ -435,7 +436,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 44px;
+  aspect-ratio: 1;
   border: none;
   border-radius: var(--radius-sm);
   cursor: pointer;
