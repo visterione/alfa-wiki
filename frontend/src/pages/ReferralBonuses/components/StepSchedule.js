@@ -1274,7 +1274,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const workedDaysSet = new Set();
     let workedMinutes = 0;
     let weekendCount  = 0;
-    const otherAbsences      = {}; // code -> count
+    const absenceDates       = {}; // code -> Set<dateStr> — counts unique days per code
     const byRoleMinutes      = {}; // roleTitle -> minutes
     const byCategoryMinutes  = {}; // categoryId -> minutes (entries with categoryId, no roleTitle)
 
@@ -1311,12 +1311,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         } else {
           const code = (typeof ex === 'object' ? ex.code : null) || 'ОТ';
           if (code === 'В') weekendCount++;
-          else otherAbsences[code] = (otherAbsences[code] || 0) + 1;
+          else {
+            if (!absenceDates[code]) absenceDates[code] = new Set();
+            absenceDates[code].add(dateStr);
+          }
         }
       }
       if (dayHasWork) workedDaysSet.add(dateStr);
     }
 
+    const otherAbsences = Object.fromEntries(
+      Object.entries(absenceDates).map(([code, dates]) => [code, dates.size])
+    );
     const totalOther = Object.values(otherAbsences).reduce((a, b) => a + b, 0);
 
     // Classify entries: roles vs professions using the doctor's own lists
@@ -1348,12 +1354,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const untaggedHours = untaggedMins / 60;
 
     return {
-      workedDays:  workedDaysSet.size,
-      workedHours: Math.floor(workedMinutes / 60),
-      workedMins:  workedMinutes % 60,
+      workedDays:   workedDaysSet.size,
+      workedHours:  Math.floor(workedMinutes / 60),
+      workedMins:   workedMinutes % 60,
       weekendCount,
       otherAbsences,
       totalOther,
+      vacationDays: otherAbsences['ОТ'] || 0,
       byRoles,
       byProfessions,
       byCategories,
@@ -1551,10 +1558,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
             <div className="rb-schedule-stat-sep" />
             <div className="rb-schedule-stat">
               <span className="rb-schedule-stat-value">
-                {monthStats.workedHours}
-                {monthStats.workedMins > 0 && (
-                  <span style={{ fontSize: '0.78em', fontWeight: 500 }}>:{pad2(monthStats.workedMins)}</span>
-                )}
+                {(monthStats.workedHours + monthStats.workedMins / 60).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
               </span>
               <span className="rb-schedule-stat-label">часов</span>
             </div>
@@ -1567,6 +1571,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
             <div className="rb-schedule-stat">
               <span className="rb-schedule-stat-value rb-schedule-stat-absence">{monthStats.totalOther}</span>
               <span className="rb-schedule-stat-label">неявок</span>
+            </div>
+            <div className="rb-schedule-stat-sep" />
+            <div className="rb-schedule-stat">
+              <span className="rb-schedule-stat-value" style={{ color: '#dc2626' }}>{monthStats.vacationDays}</span>
+              <span className="rb-schedule-stat-label">отпускных</span>
             </div>
           </div>
 

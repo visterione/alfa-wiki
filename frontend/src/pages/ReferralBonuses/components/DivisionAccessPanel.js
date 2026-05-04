@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
 import { structuralDivisions as divisionsApi, referralBonusAccess, executorSettings as execSettingsApi } from '../../../services/api';
 import { BASE_URL } from '../../../services/api';
@@ -19,6 +20,86 @@ const PERM_OPTIONS = [
 ];
 
 function genId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+
+function SearchableSelect({ value, onChange, options, placeholder = '— выберите —' }) {
+  const [open,   setOpen]   = useState(false);
+  const [search, setSearch] = useState('');
+  const [rect,   setRect]   = useState(null);
+  const btnRef              = useRef(null);
+  const dropRef             = useRef(null);
+
+  const openDropdown = () => {
+    if (btnRef.current) setRect(btnRef.current.getBoundingClientRect());
+    setSearch('');
+    setOpen(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = e => {
+      if (btnRef.current?.contains(e.target) || dropRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [open]);
+
+  const filtered = options.filter(o => !search || o.label.toLowerCase().includes(search.toLowerCase()));
+  const selected = options.find(o => o.value === value);
+  const rowStyle = { width: '100%', padding: '0 10px', height: 28, fontSize: 11, border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit', boxSizing: 'border-box', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
+
+  const dropdown = open && rect ? ReactDOM.createPortal(
+    <div ref={dropRef} style={{
+      position: 'fixed', top: rect.bottom + 2, left: rect.left,
+      width: Math.max(rect.width, 220), zIndex: 9999,
+      background: '#fff', border: '1px solid var(--rb-border)',
+      borderRadius: 7, boxShadow: '0 6px 20px rgba(0,0,0,.13)', overflow: 'hidden',
+    }}>
+      <div style={{ padding: '5px 6px', borderBottom: '1px solid var(--rb-border)' }}>
+        <input autoFocus type="text" placeholder="Поиск..." value={search}
+          onChange={e => setSearch(e.target.value)}
+          style={{ width: '100%', height: 24, padding: '0 8px', fontSize: 11,
+            border: '1px solid var(--rb-border)', borderRadius: 4, outline: 'none',
+            boxSizing: 'border-box', fontFamily: 'inherit' }} />
+      </div>
+      <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+        <button type="button" onClick={() => { onChange(''); setOpen(false); }}
+          style={{ ...rowStyle, color: 'var(--rb-text-secondary)', background: !value ? '#EFF6FF' : 'transparent' }}>
+          {placeholder}
+        </button>
+        {filtered.length === 0
+          ? <div style={{ padding: '8px 10px', fontSize: 11, color: 'var(--rb-text-secondary)' }}>Не найдено</div>
+          : filtered.map(o => (
+            <button key={o.value} type="button" onClick={() => { onChange(o.value); setOpen(false); setSearch(''); }}
+              style={{ ...rowStyle, color: 'var(--rb-text)', background: o.value === value ? '#EFF6FF' : 'transparent' }}>
+              {o.label}
+            </button>
+          ))
+        }
+      </div>
+    </div>,
+    document.body
+  ) : null;
+
+  return (
+    <div style={{ boxSizing: 'border-box', width: '100%' }}>
+      <button ref={btnRef} type="button" onClick={open ? () => setOpen(false) : openDropdown}
+        style={{ width: '100%', height: 28, padding: '0 8px', fontSize: 11,
+          border: '1px solid var(--rb-border)', borderRadius: 5, background: '#fff',
+          color: value ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+          cursor: 'pointer', textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap', boxSizing: 'border-box', fontFamily: 'inherit', outline: 'none' }}>
+        {selected ? selected.label : placeholder}
+      </button>
+      {dropdown}
+    </div>
+  );
+}
 
 function Avatar({ user }) {
   const src = user?.avatar
@@ -551,10 +632,12 @@ export default function DivisionAccessPanel({
                     </div>
                     <div>
                       {fldLabel('Значение')}
-                      <select value={rateValue} onChange={e => setRateValue(e.target.value)} style={selStyle}>
-                        <option value="">— выберите —</option>
-                        {opts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
+                      <SearchableSelect
+                        value={rateValue}
+                        onChange={setRateValue}
+                        options={opts}
+                        placeholder="— выберите —"
+                      />
                     </div>
                   </div>
                   {/* Row 2: Клиника | Ставка | Перезаписать */}
