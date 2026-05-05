@@ -264,6 +264,16 @@ input[type="radio"] {
   color: var(--error);
 }
 
+.badge-info {
+  background: #EFF6FF;
+  color: #3b82f6;
+}
+
+.badge-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -306,7 +316,7 @@ input[type="radio"] {
   padding: 16px 24px;
   border-top: 1px solid var(--border-light);
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
   gap: 12px;
 }
 

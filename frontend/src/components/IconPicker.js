@@ -5,12 +5,13 @@ import './IconPicker.css';
 
 export default function IconPicker({ value, onChange, placeholder = 'Выберите эмодзи' }) {
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef(null);
+  const [dropdownStyle, setDropdownStyle] = useState({});
+  const wrapperRef = useRef(null);
+  const triggerRef = useRef(null);
 
-  // Закрытие при клике вне
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
         setIsOpen(false);
       }
     };
@@ -18,17 +19,32 @@ export default function IconPicker({ value, onChange, placeholder = 'Выбер�
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const handleToggle = () => {
+    if (!isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
   const handleEmojiClick = (emojiData) => {
     onChange(emojiData.emoji);
     setIsOpen(false);
   };
 
   return (
-    <div className="icon-picker" ref={dropdownRef}>
+    <div className="icon-picker" ref={wrapperRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="icon-picker-trigger"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
       >
         {value ? (
           <>
@@ -44,7 +60,7 @@ export default function IconPicker({ value, onChange, placeholder = 'Выбер�
       </button>
 
       {isOpen && (
-        <div className="icon-picker-dropdown">
+        <div className="icon-picker-dropdown" style={dropdownStyle}>
           <div className="emoji-picker-wrapper">
             <EmojiPicker
               onEmojiClick={handleEmojiClick}

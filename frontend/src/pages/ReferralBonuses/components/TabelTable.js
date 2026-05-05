@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useCallback, useImperativeHandle, useMemo } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 
 export const STATUS_CODES = [
@@ -311,8 +311,9 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                   <td className="tt-td tt-name" rowSpan={4}>
                     <div style={{ lineHeight: 1.3 }}>{displayName}</div>
                     {role && <div style={{ fontSize: 10, color: '#555', marginTop: 2, lineHeight: 1.2 }}>{role}</div>}
+                    {doc.categoryLabel && <div style={{ fontSize: 10, color: 'var(--rb-primary)', marginTop: 2, lineHeight: 1.2, fontWeight: 600 }}>{doc.categoryLabel}</div>}
                   </td>
-                  <td className="tt-td tt-center" rowSpan={4}>{idx + 1}</td>
+                  <td className="tt-td tt-center" rowSpan={4}>{doc.tabelNumber || ''}</td>
 
                   {firstHalf.map(d => (
                     <td key={d}

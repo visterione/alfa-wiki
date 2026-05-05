@@ -6,7 +6,7 @@ import { referralBonuses as rbApi, executorSettings, hourNorms as hourNormsApi, 
 import { rbNormalizeName, rbNamesMatch } from './nameMatching';
 import { rbMatchClinicId, rbGetClinicName, rbGetClinicColor, rbCabMatch, rbProfessionTitle } from './clinicUtils';
 import { rbParseDate } from './excelUtils';
-import { calcScheduleHoursForPeriod } from './scheduleUtils';
+import { calcScheduleHoursForPeriod, calcHolidayHoursForPeriod } from './scheduleUtils';
 
 // ── Default executor clinic settings ──────────────────────────────────────────
 export function execClinicDefault() {
@@ -136,6 +136,7 @@ export async function buildReport({
   interim = false, normedOnly = false,
   corpIncludedKeys = null, // Set<string> of row indices; null = use legacy logic
   scheduleEntries = null,  // Array of schedule entries from doctorSchedules.list API (optional)
+  holidayDates = null,     // Set<string> of "YYYY-MM-DD" public holidays — hours on these days count x2
 }) {
   const doctorName = doctor.name;
 
@@ -1169,12 +1170,72 @@ export async function buildReport({
       basePay = fixedSalary + normServicesTotal;
     }
 
+    // ── Holiday surcharge (x2 rate): surcharge = rate × holiday_hours per role/category ──
+    const holidaySurchargeBreakdown = []; // [{ label, hours, rate, amount }]
+    let holidaySurchargeTotal = 0;
+    if (holidayDates?.size && scheduleEntries?.length && dateFrom && dateTo &&
+        (pt === 'hourly' || pt === 'normed') && clinicSettings.hoursFromSchedule) {
+      const { byRole: hByRole, byCategory: hByCategory } = calcHolidayHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId, holidayDates);
+
+      if (pt === 'hourly') {
+        const baseRate  = parseFloat(clinicSettings.hourlyRate) || 0;
+        const roleRates = clinicSettings.roleRates || [];
+        for (const [roleTitle, hours] of Object.entries(hByRole)) {
+          if (hours <= 0) continue;
+          const rr   = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
+          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          if (rate <= 0) continue;
+          const amount = rate * hours;
+          holidaySurchargeBreakdown.push({ label: roleTitle || 'Без указания', hours, rate, amount });
+          holidaySurchargeTotal += amount;
+        }
+        for (const [categoryId, hours] of Object.entries(hByCategory)) {
+          if (hours <= 0) continue;
+          const rr   = roleRates.find(r => r.roleTitle === categoryId);
+          const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
+          if (rate <= 0) continue;
+          const amount = rate * hours;
+          holidaySurchargeBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, categoryId, hours, rate, amount });
+          holidaySurchargeTotal += amount;
+        }
+      } else if (pt === 'normed') {
+        const normServices = clinicSettings.normServices || [];
+        // Build effective rate per role: sum(ns.rate * ns.hours) / sum(ns.hours)
+        const roleRateMap = {};
+        normServices.forEach(ns => {
+          const role = ns.roleTitle || '';
+          if (!roleRateMap[role]) roleRateMap[role] = { pay: 0, hours: 0 };
+          const h = parseFloat(ns.hours) || 0;
+          roleRateMap[role].pay   += (parseFloat(ns.rate) || 0) * h;
+          roleRateMap[role].hours += h;
+        });
+        for (const [roleTitle, hours] of Object.entries(hByRole)) {
+          if (hours <= 0) continue;
+          const grp = roleRateMap[roleTitle] || roleRateMap[''] || null;
+          const rate = grp && grp.hours > 0 ? grp.pay / grp.hours : 0;
+          if (rate <= 0) continue;
+          const amount = rate * hours;
+          holidaySurchargeBreakdown.push({ label: roleTitle || 'Без указания', hours, rate, amount });
+          holidaySurchargeTotal += amount;
+        }
+        for (const [categoryId, hours] of Object.entries(hByCategory)) {
+          if (hours <= 0) continue;
+          const norm = _normsByCategory[categoryId];
+          const rate = norm && norm > 0 ? (parseFloat(clinicSettings.fixedSalary || 0) / norm) : 0;
+          if (rate <= 0) continue;
+          const amount = rate * hours;
+          holidaySurchargeBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, categoryId, hours, rate, amount });
+          holidaySurchargeTotal += amount;
+        }
+      }
+    }
+
     const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
 
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
-    const preFinalSalary = basePay + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal + nurseIncomeTotal - effectiveReferralCostTotal;
+    const preFinalSalary = basePay + holidaySurchargeTotal + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal + nurseIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
@@ -1233,6 +1294,8 @@ export async function buildReport({
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
       hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
       hourlyRatesBreakdown,
+      holidaySurchargeTotal,
+      holidaySurchargeBreakdown,
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
       fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
@@ -1301,6 +1364,7 @@ export async function buildReport({
       salary.advance = 0;
       salary.mainPayment = 0;
       salary.finalSalary = salary.basePay
+        + holidaySurchargeTotal
         + (pt !== 'percent' && !!clinicSettings.plusPercent ? performedBonusTotal : 0)
         + extrasTotal;
     }

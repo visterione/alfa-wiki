@@ -111,6 +111,8 @@ export default function SalaryBlock({ salary }) {
     hourlyRate = 0,
     hoursWorked = 0,
     hourlyRatesBreakdown = [],
+    holidaySurchargeTotal = 0,
+    holidaySurchargeBreakdown = [],
   } = salary;
 
   // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
@@ -128,7 +130,7 @@ export default function SalaryBlock({ salary }) {
     : payType === 'hourly' ? 'Почасовой оклад'
     : rawBasePayLabel;
 
-  const preFinalSalary = (basePay || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) + (nurseIncomeTotal || 0) - (referralCostTotal || 0);
+  const preFinalSalary = (basePay || 0) + (holidaySurchargeTotal || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) + (nurseIncomeTotal || 0) - (referralCostTotal || 0);
   const turnoverDeductionItems = deductions.filter(d => d.deductionType !== 'final');
   const finalDeductionItems    = deductions.filter(d => d.deductionType === 'final');
   const turnoverMaterialItems  = materials.filter(m => m.deductionType !== 'final');
@@ -139,7 +141,7 @@ export default function SalaryBlock({ salary }) {
     return item.valueType === 'percent' ? (performedServicesSum || 0) * v / 100 : v;
   }
 
-  const hasWage             = (basePay || 0) > 0;
+  const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0;
@@ -161,7 +163,7 @@ export default function SalaryBlock({ salary }) {
       </div>
 
       {hasWage && (
-        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub(basePay)} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
+        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
           {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0) && (
             <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th>Деятельность</th><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
@@ -207,6 +209,14 @@ export default function SalaryBlock({ salary }) {
                     </td>
                   </tr>
                 )}
+                {holidaySurchargeBreakdown.map((row, i) => (
+                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: '#fff5f5' }}>
+                    <td>Доплата за работу в праздничные дни{row.label ? ` (${row.label})` : ''}</td>
+                    <td style={{ textAlign: 'center' }}>{row.rate.toFixed(2)} ₽</td>
+                    <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{row.amount.toFixed(2)} ₽</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
@@ -252,6 +262,14 @@ export default function SalaryBlock({ salary }) {
                     </td>
                   </tr>
                 )}
+                {holidaySurchargeBreakdown.map((row, i) => (
+                  <tr key={`holiday-${i}`} style={{ borderTop: i === 0 ? '1px solid #fecaca' : undefined, background: '#fff5f5' }}>
+                    <td>Доплата за работу в праздничные дни{row.label ? ` (${row.label})` : ''}</td>
+                    <td style={{ textAlign: 'right' }}>{row.rate.toFixed(2)} ₽</td>
+                    <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{row.amount.toFixed(2)} ₽</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}

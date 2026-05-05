@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useTabSlider } from '../utils/useTabSlider';
-import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords, doctorSchedules as schedulesApi } from '../../../services/api';
+import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords, doctorSchedules as schedulesApi, rbHolidays as holidaysApi } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
 import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows } from '../utils/reportEngine';
 import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
@@ -375,7 +375,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setCorpRecalcState(null);
   }, [selectedDoctor?.id]); // eslint-disable-line
 
-  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [] }) => {
+  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null }) => {
     const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
@@ -390,6 +390,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       interim, normedOnly: isNormed && !uploadedFile,
       corpIncludedKeys,
       scheduleEntries,
+      holidayDates,
     });
     if (filterClinic) {
       result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
@@ -408,14 +409,16 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     if (!dateFrom || !dateTo) { toast.error('Укажите период (дата с и по) для корректного расчёта', { duration: 5000 }); return; }
     setGenerating(true); setError(''); setReportData(null);
     try {
-      const [rbRes, pbRes, execSettings, savedAsstRes, schedRes] = await Promise.all([
+      const [rbRes, pbRes, execSettings, savedAsstRes, schedRes, holidaysRes] = await Promise.all([
         rbApi.getByDoctor(selectedDoctor.id),
         psbApi.getByDoctor(selectedDoctor.id),
         loadExecSettings(selectedDoctor.id),
         (dateFrom || dateTo) ? salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined }) : Promise.resolve({ data: [] }),
         schedulesApi.list(selectedDoctor.misUserId || selectedDoctor.id).catch(() => ({ data: [] })),
+        holidaysApi.list().catch(() => ({ data: [] })),
       ]);
       const scheduleEntries = Array.isArray(schedRes.data) ? schedRes.data : [];
+      const holidayDates = new Set((holidaysRes.data || []).map(h => h.date));
 
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
         cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
@@ -444,11 +447,11 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       if (corpRows.length > 0) {
         // Pause generation, show modal
         setGenerating(false);
-        setCorpModalState({ corpRows, colMap, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, scheduleEntries } });
+        setCorpModalState({ corpRows, colMap, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, scheduleEntries, holidayDates } });
         return;
       }
 
-      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries });
+      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
     } finally {
@@ -682,6 +685,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
           allDoctors: doctors, savedAssistanceIncome,
           interim, corpIncludedKeys,
           scheduleEntries,
+          holidayDates: bulkHolidayDates,
         });
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
@@ -715,14 +719,19 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       }
     }
 
-    // Fetch saved assistance income once for the whole bulk run
+    // Fetch saved assistance income and holidays once for the whole bulk run
     let savedAssistanceIncome = [];
+    let bulkHolidayDates = null;
     if (dateFrom || dateTo) {
       try {
         const savedAsstRes = await salaryRecords.getAssistanceIncome({ dateFrom: dateFrom || undefined, dateTo: dateTo || undefined });
         savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
       } catch { /* non-critical, ignore */ }
     }
+    try {
+      const holidaysRes = await holidaysApi.list();
+      bulkHolidayDates = new Set((holidaysRes.data || []).map(h => h.date));
+    } catch { /* non-critical */ }
 
     const corpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
     if (corpRows.length > 0) {

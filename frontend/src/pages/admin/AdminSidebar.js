@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
-  Plus, Edit, Trash2, GripVertical, FileText, Link as LinkIcon, Minus,
+  Plus, Trash2, GripVertical, FileText, Link as LinkIcon,
   ChevronDown, ChevronRight, X, Folder, FolderOpen, Type as TypeIcon,
-  ExternalLink, Check
+  ExternalLink, Check, Eye, EyeOff,
+  Image, Film, Music, Scroll, Table, FileCode, BookOpen, Archive, Package, File
 } from 'lucide-react';
 import { sidebar, folders, pages } from '../../services/api';
 import IconPicker from '../../components/IconPicker';
@@ -159,6 +160,58 @@ function PageTreeSelect({ pages, folders, value, onChange }) {
   );
 }
 
+function getPageIcon(page) {
+  if (!page) return FileText;
+  const { contentType, metadata } = page;
+  if (contentType === 'spreadsheet') return Table;
+  if (contentType === 'html') return FileCode;
+  if (contentType === 'file') {
+    const mime = metadata?.mimeType || '';
+    if (mime.startsWith('image/')) return Image;
+    if (mime.startsWith('video/')) return Film;
+    if (mime.startsWith('audio/')) return Music;
+    if (mime === 'application/pdf') return Scroll;
+    if (mime.includes('spreadsheet') || mime.includes('excel')) return Table;
+    if (mime.includes('word') || mime.includes('msword')) return BookOpen;
+    if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+         'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return Archive;
+    if (['application/x-msdownload','application/x-msi'].includes(mime)) return Package;
+    return File;
+  }
+  return FileText;
+}
+
+function getPageIconStyle(page) {
+  if (!page) return {};
+  const { contentType, metadata } = page;
+  if (contentType === 'spreadsheet') return { background: '#dcfce7', color: '#22c55e' };
+  if (contentType === 'html')        return { background: '#ffedd5', color: '#f97316' };
+  if (contentType === 'file') {
+    const mime = metadata?.mimeType || '';
+    if (mime.startsWith('image/'))   return { background: '#cffafe', color: '#06b6d4' };
+    if (mime.startsWith('video/'))   return { background: '#ede9fe', color: '#8b5cf6' };
+    if (mime.startsWith('audio/'))   return { background: '#fce7f3', color: '#ec4899' };
+    if (mime === 'application/pdf')  return { background: '#fee2e2', color: '#ef4444' };
+    if (mime.includes('spreadsheet') || mime.includes('excel')) return { background: '#dcfce7', color: '#22c55e' };
+    if (mime.includes('word') || mime.includes('msword'))       return { background: '#dbeafe', color: '#3b82f6' };
+    if (['application/zip','application/x-zip-compressed','application/x-rar-compressed',
+         'application/vnd.rar','application/x-7z-compressed'].includes(mime)) return { background: '#ede9fe', color: '#a78bfa' };
+    if (['application/x-msdownload','application/x-msi'].includes(mime)) return { background: '#f3f4f6', color: '#6b7280' };
+    return { background: '#f1f5f9', color: '#94a3b8' };
+  }
+  return {}; // wysiwyg — остаётся синим из CSS
+}
+
+// item.icon → page.icon → contentType-иконка (та же приоритетность что в Sidebar.js)
+function renderItemIcon(item, FallbackIcon, size = 16) {
+  const customIcon = item.icon || item.page?.icon;
+  if (customIcon && customIcon.length <= 4 && !customIcon.includes('-')) {
+    return <span style={{ fontSize: `${size}px`, lineHeight: 1 }}>{customIcon}</span>;
+  }
+  const Icon = FallbackIcon;
+  return <Icon size={size} />;
+}
+
 // Компонент элемента списка
 function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, level = 0 }) {
   const [expanded, setExpanded] = useState(true);
@@ -179,24 +232,14 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
     onReorderFolderPages(item.folder.id, newPages);
   };
 
-  const getIcon = (type) => {
-    if (type === 'link') return ExternalLink;
-    if (type === 'folder') return expanded ? FolderOpen : Folder;
-    if (type === 'header') return TypeIcon;
-    return FileText;
+  const getIcon = (item) => {
+    if (item.type === 'link') return ExternalLink;
+    if (item.type === 'folder') return expanded ? FolderOpen : Folder;
+    if (item.type === 'header') return TypeIcon;
+    return getPageIcon(item.page);
   };
 
-  const getTypeBadge = (type) => {
-    const badges = {
-      page: { label: 'Страница', class: 'badge-info' },
-      folder: { label: 'Папка', class: 'badge-warning' },
-      header: { label: 'Заголовок', class: 'badge-secondary' },
-      link: { label: 'Ссылка', class: 'badge-primary' }
-    };
-    return badges[type] || { label: type, class: '' };
-  };
-
-  const getTitle = () => {
+const getTitle = () => {
     if (item.type === 'folder' && item.folder) return item.title || item.folder.title;
     if (item.type === 'page' && item.page) return item.title || item.page.title;
     return item.title || 'Без названия';
@@ -215,8 +258,7 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
     return null;
   };
 
-  const IconComponent = getIcon(item.type);
-  const typeBadge = getTypeBadge(item.type);
+  const IconComponent = getIcon(item);
 
   return (
     <Draggable draggableId={item.id} index={index}>
@@ -225,41 +267,29 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
           <div
             className={`sidebar-list-item ${item.type} ${snapshot.isDragging ? 'dragging' : ''}`}
             style={{ paddingLeft: `${16 + level * 24}px` }}
+            onClick={() => !snapshot.isDragging && onEdit(item)}
           >
-            <div className="sidebar-list-drag" {...provided.dragHandleProps}>
+            <div className="sidebar-list-drag" {...provided.dragHandleProps} onClick={e => e.stopPropagation()}>
               <GripVertical size={16} />
             </div>
-            
+
+            <div className="sidebar-list-icon" style={item.type === 'page' ? getPageIconStyle(item.page) : {}}>
+              {renderItemIcon(item, IconComponent)}
+            </div>
+
+            <div className="sidebar-list-content">
+              <span className="sidebar-list-title">{getTitle()}</span>
+            </div>
+
+            <span className={`sidebar-visibility-icon ${item.isVisible ? 'visible' : 'hidden'}`} title={item.isVisible ? 'Видим' : 'Скрыт'}>
+              {item.isVisible ? <Eye size={16} /> : <EyeOff size={16} />}
+            </span>
+
             {hasChildren && (
-              <button className="sidebar-list-expand" onClick={() => setExpanded(!expanded)}>
+              <button className="sidebar-list-expand" onClick={e => { e.stopPropagation(); setExpanded(!expanded); }}>
                 {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               </button>
             )}
-            
-            <div className="sidebar-list-icon">
-              <IconComponent size={16} />
-            </div>
-            
-            <div className="sidebar-list-content">
-              <span className="sidebar-list-title">{getTitle()}</span>
-              {getSubtitle() && (
-                <span className="sidebar-list-page">{getSubtitle()}</span>
-              )}
-            </div>
-            
-            <span className={`badge ${typeBadge.class}`}>{typeBadge.label}</span>
-            <span className={`badge ${item.isVisible ? 'badge-success' : 'badge-error'}`}>
-              {item.isVisible ? 'Видим' : 'Скрыт'}
-            </span>
-            
-            <div className="sidebar-list-actions">
-              <button className="btn btn-icon" onClick={() => onEdit(item)} title="Редактировать">
-                <Edit size={16} />
-              </button>
-              <button className="btn btn-icon btn-danger" onClick={() => onDelete(item)} title="Удалить">
-                <Trash2 size={16} />
-              </button>
-            </div>
           </div>
           
           {/* Страницы внутри папки с drag-n-drop */}
@@ -288,12 +318,11 @@ function SidebarListItem({ item, index, onEdit, onDelete, onReorderFolderPages, 
                               <div className="sidebar-list-drag" {...provided.dragHandleProps}>
                                 <GripVertical size={14} />
                               </div>
-                              <div className="sidebar-list-icon">
-                                <FileText size={16} />
+                              <div className="sidebar-list-icon" style={getPageIconStyle(page)}>
+                                {renderItemIcon({ page }, getPageIcon(page))}
                               </div>
                               <div className="sidebar-list-content">
                                 <span className="sidebar-list-title">{page.title}</span>
-                                <span className="sidebar-list-page">→ {page.slug}</span>
                               </div>
                             </div>
                           )}
@@ -444,8 +473,21 @@ export default function AdminSidebar() {
       await sidebar.delete(item.id);
       toast.success('Удалено');
       load();
-    } catch (e) { 
-      toast.error('Ошибка'); 
+    } catch (e) {
+      toast.error('Ошибка');
+    }
+  };
+
+  const handleDeleteFromModal = async () => {
+    if (!modal.item) return;
+    if (!window.confirm(`Удалить элемент из меню?`)) return;
+    try {
+      await sidebar.delete(modal.item.id);
+      toast.success('Удалено');
+      setModal({ open: false, item: null });
+      load();
+    } catch (e) {
+      toast.error('Ошибка');
     }
   };
 
@@ -547,7 +589,7 @@ export default function AdminSidebar() {
         </button>
       </div>
 
-      <div className="card">
+      <div className="sidebar-card">
         {loading ? (
           <div className="admin-loading"><div className="loading-spinner" /></div>
         ) : (
@@ -577,8 +619,10 @@ export default function AdminSidebar() {
         )}
 
         {!loading && items.length === 0 && (
-          <div className="admin-empty">
-            <p>Меню пусто. Добавьте элементы.</p>
+          <div className="sidebar-empty-state">
+            <div className="sidebar-empty-icon"><GripVertical size={32} /></div>
+            <p>Меню пока пустое</p>
+            <span>Нажмите «Добавить», чтобы создать первый элемент навигации</span>
           </div>
         )}
       </div>
@@ -598,31 +642,29 @@ export default function AdminSidebar() {
               {/* Тип элемента */}
               <div className="form-group">
                 <label className="form-label">Тип элемента</label>
-                <div className="radio-group">
-                  <label className="radio-item">
-                    <input type="radio" checked={form.type === 'page'} onChange={() => setForm({...form, type: 'page'})} />
-                    <FileText size={16} />
-                    Страница
-                  </label>
-                  <label className="radio-item">
-                    <input type="radio" checked={form.type === 'folder'} onChange={() => setForm({...form, type: 'folder'})} />
-                    <Folder size={16} />
-                    Папка
-                  </label>
-                  <label className="radio-item">
-                    <input type="radio" checked={form.type === 'link'} onChange={() => setForm({...form, type: 'link'})} />
-                    <LinkIcon size={16} />
-                    Ссылка
-                  </label>
-                  <label className="radio-item">
-                    <input type="radio" checked={form.type === 'header'} onChange={() => setForm({...form, type: 'header'})} />
-                    <TypeIcon size={16} />
-                    Заголовок
-                  </label>
+                <div className="type-segmented">
+                  {[
+                    { value: 'page',   Icon: FileText, label: 'Страница' },
+                    { value: 'folder', Icon: Folder,   label: 'Папка' },
+                    { value: 'link',   Icon: LinkIcon,  label: 'Ссылка' },
+                    { value: 'header', Icon: TypeIcon,  label: 'Заголовок' },
+                  ].map(({ value, Icon, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={`type-segment type-segment-${value}${form.type === value ? ' active' : ''}`}
+                      onClick={() => setForm({ ...form, type: value })}
+                    >
+                      <Icon size={15} />
+                      {label}
+                    </button>
+                  ))}
                 </div>
-                <small className="text-muted" style={{ marginTop: '0.5rem', display: 'block' }}>
-                  Разделители автоматически добавляются после папок
-                </small>
+                {form.type === 'folder' && (
+                  <small className="text-muted" style={{ marginTop: '6px', display: 'block' }}>
+                    Разделители автоматически добавляются после папок
+                  </small>
+                )}
               </div>
 
               {/* Выбор страницы */}
@@ -684,15 +726,22 @@ export default function AdminSidebar() {
               )}
 
               {/* Видимость */}
-              <div className="form-group">
-                <label className="checkbox-item">
+              <div className="form-group toggle-row">
+                <label className="form-label">Показывать в меню</label>
+                <label className="toggle-switch">
                   <input type="checkbox" checked={form.isVisible} onChange={e => setForm({...form, isVisible: e.target.checked})} />
-                  Показывать в меню
+                  <span className="toggle-slider" />
                 </label>
               </div>
             </div>
 
             <div className="modal-footer">
+              {modal.item && (
+                <button className="btn btn-danger" onClick={handleDeleteFromModal}>
+                  <Trash2 size={16} /> Удалить
+                </button>
+              )}
+              <div style={{ flex: 1 }} />
               <button className="btn btn-secondary" onClick={() => setModal({ open: false, item: null })}>
                 Отмена
               </button>

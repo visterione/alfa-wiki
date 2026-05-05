@@ -8,6 +8,7 @@ import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetC
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
+import SearchableSelect from './components/SearchableSelect';
 import StepExecutors from './components/StepExecutors';
 import StepHourNorms from './components/StepHourNorms';
 import StepPerformed from './components/StepPerformed';
@@ -1016,13 +1017,17 @@ function DoctorsList({
 
       <div className="rb-filters">
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input
-            className="rb-search-input"
-            placeholder="Поиск по ФИО..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            style={{ flex: 1 }}
-          />
+          <div className="rb-search-wrap" style={{ flex: 1 }}>
+            <svg className="rb-search-wrap-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              className="rb-search-input"
+              placeholder="Поиск по ФИО..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
           {onGlobalReset && (
             <button
               onClick={onGlobalReset}
@@ -1037,10 +1042,15 @@ function DoctorsList({
           )}
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <select className="rb-select" style={{ flex: 1 }} value={filterClinic} onChange={e => setFilterClinic(e.target.value)}>
-            <option value="">Все медцентры</option>
-            {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          <SearchableSelect
+            style={{ flex: 1 }}
+            value={filterClinic}
+            onChange={setFilterClinic}
+            options={[
+              { value: '', label: 'Все медцентры' },
+              ...clinics.map(c => ({ value: String(c.id), label: c.name })),
+            ]}
+          />
           {onImportNdfl && (
             <button
               onClick={() => importFileRef.current?.click()}
@@ -1055,21 +1065,37 @@ function DoctorsList({
             </button>
           )}
         </div>
-        <select className="rb-select" value={filterRole} onChange={e => setFilterRole(e.target.value)}>
-          <option value="">Все должности</option>
-          {allRoles.map(r => <option key={r} value={r}>{r}</option>)}
-        </select>
-        <select className="rb-select" value={filterProfession} onChange={e => setFilterProfession(e.target.value)}>
-          <option value="">Все специальности</option>
-          {allProfessions.map(p => <option key={p} value={p}>{p}</option>)}
-        </select>
+        <SearchableSelect
+          value={filterRole}
+          onChange={setFilterRole}
+          options={[
+            { value: '', label: 'Все должности' },
+            ...allRoles.map(r => ({ value: r, label: r })),
+          ]}
+        />
+        <SearchableSelect
+          value={filterProfession}
+          onChange={setFilterProfession}
+          options={[
+            { value: '', label: 'Все специальности' },
+            ...allProfessions.map(p => ({ value: p, label: p })),
+          ]}
+        />
 
         {bulkMode && (
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="rb-btn rb-btn-secondary rb-btn-xs" style={{ flex: 1 }} onClick={selectAllBulk}>
+            <button className="rb-btn rb-btn-primary rb-btn-sm" style={{ flex: 1, justifyContent: 'center' }} onClick={selectAllBulk}>
               Выбрать все ({displayDoctors.length})
             </button>
-            <button className="rb-btn rb-btn-secondary rb-btn-xs" onClick={clearBulk}>Сбросить</button>
+            <button
+              title="Сбросить выбор"
+              style={{ flexShrink: 0, width: 30, height: 30, padding: 0, border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text-secondary)' }}
+              onClick={clearBulk}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
           </div>
         )}
 

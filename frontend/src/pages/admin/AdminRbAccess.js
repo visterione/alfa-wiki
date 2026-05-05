@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { User, Users, ChevronDown, ChevronUp, Check, Pencil, Trash2, Plus } from 'lucide-react';
-import { referralBonusAccess, rbScheduleDicts, BASE_URL } from '../../services/api';
+import { User, Users, ChevronDown, ChevronUp, Check, Pencil, Trash2, Plus, Calendar } from 'lucide-react';
+import { referralBonusAccess, rbScheduleDicts, rbHolidays as rbHolidaysApi, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -285,6 +285,149 @@ const btnSecondary = {
   border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 12,
   cursor: 'pointer', fontFamily: FONT,
 };
+
+// ── Holidays Tab ──────────────────────────────────────────────────────────────
+const MONTH_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const DAY_RU   = ['вс','пн','вт','ср','чт','пт','сб'];
+
+function HolidaysTab() {
+  const [list,    setList]    = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [newDate, setNewDate] = useState('');
+  const [newName, setNewName] = useState('');
+
+  useEffect(() => {
+    rbHolidaysApi.list()
+      .then(r => setList(r.data))
+      .catch(() => toast.error('Ошибка загрузки праздников'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const add = async () => {
+    if (!newDate) return;
+    setSaving(true);
+    try {
+      const { data } = await rbHolidaysApi.create({ date: newDate, name: newName.trim() || null });
+      setList(p => [...p, data].sort((a, b) => a.date.localeCompare(b.date)));
+      setNewDate(''); setNewName('');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Ошибка');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const del = async (id, date) => {
+    if (!window.confirm(`Удалить праздник ${date}?`)) return;
+    try {
+      await rbHolidaysApi.delete(id);
+      setList(p => p.filter(h => h.id !== id));
+    } catch {
+      toast.error('Ошибка удаления');
+    }
+  };
+
+  // Group by year
+  const byYear = {};
+  list.forEach(h => {
+    const y = h.date.slice(0, 4);
+    if (!byYear[y]) byYear[y] = [];
+    byYear[y].push(h);
+  });
+
+  const formatDate = (dateStr) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dow = DAY_U(new Date(y, m - 1, d));
+    return `${String(d).padStart(2,'0')} ${MONTH_RU[m-1]} ${y} (${dow})`;
+  };
+  function DAY_U(dt) { return DAY_RU[dt.getDay()]; }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 20, alignItems: 'start' }}>
+      {/* Add form */}
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b', display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Plus size={14} color="#007AFF" /> Добавить праздник
+          </span>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Дата</div>
+            <input
+              type="date"
+              value={newDate}
+              onChange={e => setNewDate(e.target.value)}
+              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>Название (необязательно)</div>
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Например: Новый год"
+              onKeyDown={e => e.key === 'Enter' && !saving && newDate && add()}
+              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+            />
+          </div>
+          <button
+            onClick={add} disabled={!newDate || saving}
+            style={{ ...btnPrimary, opacity: (!newDate || saving) ? 0.45 : 1, cursor: (!newDate || saving) ? 'not-allowed' : 'pointer' }}
+          >
+            Добавить
+          </button>
+        </div>
+      </div>
+
+      {/* List */}
+      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '12px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>
+            Праздничные дни
+            <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 400, color: '#94a3b8' }}>{list.length}</span>
+          </span>
+        </div>
+        {loading ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Загрузка...</div>
+        ) : list.length === 0 ? (
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Праздники не добавлены</div>
+        ) : (
+          <div>
+            {Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([year, items]) => (
+              <div key={year}>
+                <div style={{ padding: '8px 16px', fontSize: 11, fontWeight: 700, color: '#94a3b8', background: '#f8fafc', borderBottom: '1px solid #f1f5f9', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {year} · {items.length} дн.
+                </div>
+                {items.map((h, i) => (
+                  <div key={h.id}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderBottom: i < items.length - 1 ? '1px solid #f1f5f9' : 'none' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'white'}
+                  >
+                    <Calendar size={14} color="#ef4444" style={{ flexShrink: 0 }} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{formatDate(h.date)}</div>
+                      {h.name && <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{h.name}</div>}
+                    </div>
+                    <button
+                      onClick={() => del(h.id, h.date)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#dc2626'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}
+                      title="Удалить"
+                    ><Trash2 size={14} /></button>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function DictsTab() {
   const [subtab,  setSubtab]  = useState('categories');
@@ -674,12 +817,13 @@ export default function AdminRbAccess() {
         boxShadow: '0 1px 3px rgba(0,0,0,.06)',
       }}>
         {[
-          { key: 'access', label: 'Доступы пользователей',  icon: <Users size={14} /> },
-          { key: 'dicts',  label: 'Справочники расписания', icon: (
+          { key: 'access',   label: 'Доступы пользователей',  icon: <Users size={14} /> },
+          { key: 'dicts',    label: 'Справочники расписания', icon: (
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
               <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
           )},
+          { key: 'holidays', label: 'Праздничные дни', icon: <Calendar size={14} /> },
         ].map(({ key, label, icon }) => {
           const active = activeTab === key;
           return (
@@ -719,6 +863,9 @@ export default function AdminRbAccess() {
 
       {/* ── Dicts tab ── */}
       {activeTab === 'dicts' && <DictsTab />}
+
+      {/* ── Holidays tab ── */}
+      {activeTab === 'holidays' && <HolidaysTab />}
     </div>
   );
 }

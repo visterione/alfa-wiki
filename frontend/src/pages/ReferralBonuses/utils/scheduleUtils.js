@@ -120,3 +120,65 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
 
   return { total: totalMinutes / 60, byRole, byCategory };
 }
+
+/**
+ * Calculates hours worked ONLY on public holiday dates (used to compute holiday pay surcharge).
+ * The surcharge = rate × these hours (on top of the regular pay for those hours).
+ *
+ * @param {Array}       entries      - Schedule entries
+ * @param {string}      dateFrom     - "YYYY-MM-DD"
+ * @param {string}      dateTo       - "YYYY-MM-DD"
+ * @param {string|null} clinicId     - filter by clinic; null = all clinics
+ * @param {Set<string>} holidayDates - set of "YYYY-MM-DD" public holiday date strings
+ * @returns {{ byRole: Object.<string, number>, byCategory: Object.<string, number> }}
+ */
+export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, holidayDates) {
+  if (!entries?.length || !dateFrom || !dateTo || !holidayDates?.size) {
+    return { byRole: {}, byCategory: {} };
+  }
+
+  const cidStr = clinicId != null ? String(clinicId) : null;
+  const byRoleMinutes     = {};
+  const byCategoryMinutes = {};
+
+  const from = new Date(dateFrom + 'T00:00:00');
+  const to   = new Date(dateTo   + 'T00:00:00');
+  const d    = new Date(from);
+
+  while (d <= to) {
+    const dateStr = formatDateStr(d);
+    if (holidayDates.has(dateStr)) {
+      const year  = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day   = d.getDate();
+
+      for (const entry of entries) {
+        if (cidStr && String(entry.clinicId) !== cidStr) continue;
+        if (!isDayScheduled(entry, year, month, day)) continue;
+        if (isEntryCancelled(entry, dateStr)) continue;
+
+        const [fh, fm] = entry.timeFrom.split(':').map(Number);
+        const [th, tm] = entry.timeTo.split(':').map(Number);
+        let mins = (th * 60 + tm) - (fh * 60 + fm);
+        if (mins <= 0) mins += 24 * 60;
+        if (mins > 0) {
+          if (entry.roleTitle) {
+            byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
+          } else if (entry.categoryId) {
+            byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
+          } else {
+            byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
+          }
+        }
+      }
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  const byRole = {};
+  for (const [r, m] of Object.entries(byRoleMinutes)) byRole[r] = m / 60;
+  const byCategory = {};
+  for (const [c, m] of Object.entries(byCategoryMinutes)) byCategory[c] = m / 60;
+
+  return { byRole, byCategory };
+}

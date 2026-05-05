@@ -325,9 +325,10 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     mergeSet(ws, rowA, C1, rowD, C1, idx + 1,                 bodyOpts);
     const docRole = resolveRole(doc);
     const docDisplayName = abbreviateName(doc.doctorName || doc.misUserId)
-      + (docRole ? `\n${docRole}` : '');
+      + (docRole ? `\n${docRole}` : '')
+      + (doc.categoryLabel ? `\n${doc.categoryLabel}` : '');
     mergeSet(ws, rowA, C2, rowD, C2, docDisplayName, bodyLeft);
-    mergeSet(ws, rowA, C3, rowD, C3, idx + 1,                 bodyOpts);
+    mergeSet(ws, rowA, C3, rowD, C3, doc.tabelNumber || '',    bodyOpts);
 
     // ── Totals ──
     const get = (day) => entries[day] || { code: '', hours: '' };

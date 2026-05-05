@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
-import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleDicts, doctorSchedules } from '../../../services/api';
+import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleDicts, doctorSchedules, rbDoctorHeaders } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 import { useTabSlider } from '../utils/useTabSlider';
 import { calcScheduleHoursForPeriod } from '../utils/scheduleUtils';
@@ -1241,6 +1241,36 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     [doctorRoles, doctorProfessions]
   );
 
+  const [tabelNumber,     setTabelNumber]     = useState('');
+  const [tabelNumSaving,  setTabelNumSaving]  = useState(false);
+  const tabelNumTimer = useRef(null);
+
+  useEffect(() => {
+    if (!selectedDoctor) { setTabelNumber(''); return; }
+    rbDoctorHeaders.list()
+      .then(r => {
+        const row = (r.data || []).find(h => h.misUserId === selectedDoctor.id);
+        setTabelNumber(row?.tabelNumber || '');
+      })
+      .catch(() => {});
+  }, [selectedDoctor]);
+
+  const handleTabelNumberChange = (val) => {
+    setTabelNumber(val);
+    clearTimeout(tabelNumTimer.current);
+    tabelNumTimer.current = setTimeout(async () => {
+      if (!selectedDoctor) return;
+      setTabelNumSaving(true);
+      try {
+        await rbDoctorHeaders.upsert(selectedDoctor.id, { tabelNumber: val });
+      } catch {
+        toast.error('Ошибка сохранения табельного номера');
+      } finally {
+        setTabelNumSaving(false);
+      }
+    }, 800);
+  };
+
   const [scheduleCategories, setScheduleCategories] = React.useState([]);
   useEffect(() => {
     rbScheduleDicts.listCategories()
@@ -1911,8 +1941,28 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Header */}
       <div className="rb-doctor-card-header">
-        <div className="rb-doctor-card-info">
-          <h2>{selectedDoctor.name}</h2>
+        <div className="rb-doctor-card-info" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0 }}>{selectedDoctor.name}</h2>
+          {!readOnly && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+              <span>Таб. №</span>
+              <input
+                type="text"
+                value={tabelNumber}
+                onChange={e => handleTabelNumberChange(e.target.value)}
+                placeholder="—"
+                style={{
+                  width: 72, height: 26, padding: '0 8px', fontSize: 12,
+                  border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                  background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                  opacity: tabelNumSaving ? 0.6 : 1,
+                }}
+              />
+            </label>
+          )}
+          {readOnly && tabelNumber && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Таб. №: <b>{tabelNumber}</b></span>
+          )}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
           {!readOnly && (

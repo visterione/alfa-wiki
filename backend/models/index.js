@@ -2574,6 +2574,28 @@ DivisionAccess.belongsTo(StructuralDivision, { foreignKey: 'divisionId' });
 DivisionAccess.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 User.hasMany(DivisionAccess, { foreignKey: 'userId' });
 
+// === PUBLIC HOLIDAYS ===
+const RbHoliday = sequelize.define('RbHoliday', {
+  id:   { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  date: { type: DataTypes.DATEONLY, allowNull: false, unique: true },
+  name: { type: DataTypes.STRING(200), allowNull: true },
+}, {
+  tableName: 'rb_holidays',
+  timestamps: true,
+  underscored: true,
+});
+
+// === DOCTOR HEADERS (tabelNumber etc.) ===
+const RbDoctorHeader = sequelize.define('RbDoctorHeader', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId:   { type: DataTypes.STRING(100), allowNull: false, unique: true, field: 'mis_user_id' },
+  tabelNumber: { type: DataTypes.STRING(50),  allowNull: true, field: 'tabel_number' },
+}, {
+  tableName: 'rb_doctor_headers',
+  timestamps: true,
+  underscored: true,
+});
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2664,4 +2686,7 @@ module.exports = {
   // Structural divisions
   StructuralDivision,
   DivisionAccess,
+  // Public holidays + doctor headers
+  RbHoliday,
+  RbDoctorHeader,
 };

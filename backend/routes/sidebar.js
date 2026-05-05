@@ -120,21 +120,21 @@ router.get('/all', authenticate, requireAdminAccess('sidebar'), async (req, res)
     const items = await SidebarItem.findAll({
       where: { parentId: null },
       include: [
-        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon'] },
-        { 
-          model: Folder, 
-          as: 'folder', 
+        { model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'contentType', 'metadata'] },
+        {
+          model: Folder,
+          as: 'folder',
           attributes: ['id', 'title', 'icon'],
-          include: [{ 
-            model: Page, 
-            as: 'pages', 
-            attributes: ['id', 'slug', 'title', 'icon', 'sortOrder']
+          include: [{
+            model: Page,
+            as: 'pages',
+            attributes: ['id', 'slug', 'title', 'icon', 'sortOrder', 'contentType', 'metadata']
           }]
         },
-        { 
-          model: SidebarItem, 
+        {
+          model: SidebarItem,
           as: 'children',
-          include: [{ model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon'] }],
+          include: [{ model: Page, as: 'page', attributes: ['id', 'slug', 'title', 'icon', 'contentType', 'metadata'] }],
           separate: true,
           order: [['sortOrder', 'ASC']]
         }

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi, rbHolidays as holidaysApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
@@ -803,10 +803,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     ? clinics.filter(c => (selectedDoctor.clinics || []).includes(String(c.id)))
     : [];
 
+  const [holidayDates, setHolidayDates] = useState(new Set());
+
   // ── Load dictionaries once ───────────────────────────────────────────────
   useEffect(() => {
     dictsApi.listCategories().then(r => setCategories(r.data)).catch(() => {});
     dictsApi.listCabinets().then(r => setCabinets(r.data)).catch(() => {});
+    holidaysApi.list().then(r => setHolidayDates(new Set((r.data || []).map(h => h.date)))).catch(() => {});
   }, []);
 
   // ── Load role + profession + category norms when month/year changes ──────
@@ -1486,6 +1489,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                   {row.map((cell, di) => {
                     const cellEntries = getCellEntries(cell);
                     const tod = isToday(cell);
+                    const isHoliday = cell.isCurrentMonth && holidayDates.has(cellDate(cell));
                     return (
                       <td
                         key={di}
@@ -1493,12 +1497,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                           'rb-schedule-cell rb-schedule-cell-active',
                           di >= 5    ? 'rb-schedule-cell-weekend' : '',
                           tod        ? 'rb-schedule-cell-today'   : '',
+                          isHoliday  ? 'rb-schedule-cell-holiday' : '',
                         ].filter(Boolean).join(' ')}
                         onClick={() => handleDayClick(cell)}
                       >
                         <span
                           className={tod ? 'rb-schedule-day-num rb-schedule-today-num' : 'rb-schedule-day-num'}
-                          style={!cell.isCurrentMonth ? { color: '#b0bec5' } : undefined}
+                          style={!cell.isCurrentMonth ? { color: '#b0bec5' } : isHoliday ? { color: '#dc2626' } : undefined}
                         >
                           {cell.day}
                         </span>

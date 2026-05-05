@@ -712,4 +712,15 @@ export const structuralDivisions = {
   removeAccess: (id, userId)       => api.delete(`/structural-divisions/${id}/access/${userId}`),
 };
 
+export const rbHolidays = {
+  list:   ()         => api.get('/rb-holidays'),
+  create: (data)     => api.post('/rb-holidays', data),
+  delete: (id)       => api.delete(`/rb-holidays/${id}`),
+};
+
+export const rbDoctorHeaders = {
+  list:   ()                   => api.get('/rb-doctor-headers'),
+  upsert: (misUserId, data)    => api.put(`/rb-doctor-headers/${misUserId}`, data),
+};
+
 export default api;

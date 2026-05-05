@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../context/AuthContext';
-import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi, rbScheduleDicts as dictsApi, rbHolidays as holidaysApi, rbDoctorHeaders as doctorHeadersApi } from '../../../services/api';
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
 import MonthYearPicker from './MonthYearPicker';
@@ -250,24 +250,97 @@ function computePreset(doctors, schedulesMap, year, month) {
   return { entries, payData };
 }
 
+// ── Detailed preset: one virtual row per doctor×category ─────────────────────
+function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap) {
+  const lastDay = new Date(year, month, 0).getDate();
+  const virtualDoctors = [];
+  const entries  = {};
+  const payData  = {};
+
+  for (const doc of doctors) {
+    const docEntries = schedulesMap[doc.id] || [];
+
+    // Group schedule entries by categoryId, then by roleTitle as fallback
+    const groups = {};
+    for (const entry of docEntries) {
+      const key = entry.categoryId || entry.roleTitle || '__none__';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(entry);
+    }
+
+    for (const [categoryKey, groupEntries] of Object.entries(groups)) {
+      // Skip uncategorized entries in detailed view
+      if (categoryKey === '__none__') continue;
+      const isRoleTitleKey = !categoryKey.match(/^[0-9a-f-]{36}$/i) && categoryKey !== '__none__';
+      const categoryId    = (categoryKey === '__none__' || isRoleTitleKey) ? null : categoryKey;
+      const category      = categoryId ? categoriesMap[categoryId] : null;
+      const categoryLabel = category?.name || groupEntries[0]?.roleTitle || null;
+
+      const vid = `${doc.id}__${categoryKey}`;
+      const dayEntries  = {};
+      const absenceTotals = {};
+
+      for (let day = 1; day <= lastDay; day++) {
+        const dateStr  = `${year}-${pad2(month)}-${pad2(day)}`;
+        const covering = groupEntries.find(e => isDayScheduled(e, year, month, day));
+
+        if (!covering) {
+          dayEntries[day] = { code: 'В', hours: '' };
+        } else {
+          const excEntry = (covering.exceptions || []).find(ex =>
+            typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
+          );
+          if (excEntry !== undefined) {
+            const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
+            dayEntries[day] = { code, hours: '' };
+            const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
+            if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
+            absenceTotals[code].days  += 1;
+            absenceTotals[code].hours += h;
+          } else {
+            dayEntries[day] = {
+              code:  'Я',
+              hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
+            };
+          }
+        }
+      }
+
+      entries[vid] = dayEntries;
+
+      const absenceList = Object.entries(absenceTotals)
+        .filter(([code]) => code !== 'В')
+        .map(([code, { days, hours }]) => ({ code, hours: `${days} (${hours})` }));
+      if (absenceList.length) payData[vid] = fillAbsencesIntoPayData(absenceList);
+
+      virtualDoctors.push({ ...doc, id: vid, categoryLabel });
+    }
+  }
+
+  return { virtualDoctors, entries, payData };
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function StepWorkTime({ doctors = [], readOnly, clinics = [], getClinicName }) {
   const { user } = useAuth();
   const now = new Date();
 
-  const [divisions,     setDivisions]     = useState([]);
-  const [subdivision,   setSubdivision]   = useState('');
-  const [selectedIds,   setSelectedIds]   = useState(new Set());
-  const [year,          setYear]          = useState(now.getFullYear());
-  const [month,         setMonth]         = useState(now.getMonth() + 1);
-  const [orgName,       setOrgName]       = useState('');
-  const [docNumber,     setDocNumber]     = useState('1');
-  const [showDoc,       setShowDoc]       = useState(false);
-  const [presetEntries, setPresetEntries] = useState({});
-  const [presetPayData, setPresetPayData] = useState({});
-  const [tableKey,      setTableKey]      = useState(0);
-  const [generating,    setGenerating]    = useState(false);
-  const [saving,    setSaving]    = useState(false);
+  const [divisions,       setDivisions]       = useState([]);
+  const [subdivision,     setSubdivision]     = useState('');
+  const [selectedIds,     setSelectedIds]     = useState(new Set());
+  const [year,            setYear]            = useState(now.getFullYear());
+  const [month,           setMonth]           = useState(now.getMonth() + 1);
+  const [orgName,         setOrgName]         = useState('');
+  const [docNumber,       setDocNumber]       = useState('1');
+  const [tabelType,       setTabelType]       = useState('standard');
+  const [showDoc,         setShowDoc]         = useState(false);
+  const [presetEntries,   setPresetEntries]   = useState({});
+  const [presetPayData,   setPresetPayData]   = useState({});
+  const [virtualDoctors,  setVirtualDoctors]  = useState([]);
+  const [holidays,        setHolidays]        = useState([]);
+  const [tableKey,        setTableKey]        = useState(0);
+  const [generating,      setGenerating]      = useState(false);
+  const [saving,          setSaving]          = useState(false);
   const tabelRef = useRef(null);
 
   useEffect(() => {
@@ -311,43 +384,74 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
 
     setGenerating(true);
     try {
-      // Load schedules for all selected doctors in parallel
       const selected = doctors.filter(d => selectedIds.has(d.id));
-      const results  = await Promise.all(
-        selected.map(doc =>
-          schedulesApi.list(doc.id)
-            .then(res => ({ docId: doc.id, entries: res.data }))
-            .catch(() => ({ docId: doc.id, entries: [] }))
-        )
-      );
+
+      // Load schedules, holidays, and doctor headers in parallel
+      const [schedResults, holidayRes, headerRes] = await Promise.all([
+        Promise.all(
+          selected.map(doc =>
+            schedulesApi.list(doc.id)
+              .then(res => ({ docId: doc.id, entries: res.data }))
+              .catch(() => ({ docId: doc.id, entries: [] }))
+          )
+        ),
+        holidaysApi.list().catch(() => ({ data: [] })),
+        doctorHeadersApi.list().catch(() => ({ data: [] })),
+      ]);
 
       const schedulesMap = {};
-      for (const { docId, entries } of results) {
+      for (const { docId, entries } of schedResults) {
         schedulesMap[docId] = entries;
       }
 
-      const { entries: preset, payData: presetPay } = computePreset(selected, schedulesMap, year, month);
-      setPresetEntries(preset);
-      setPresetPayData(presetPay);
-      setTableKey(k => k + 1); // remount TabelTable with fresh state seeded from preset
+      // Build tabelNumber lookup: misUserId → tabelNumber
+      const tabelNumMap = {};
+      (headerRes.data || []).forEach(h => { tabelNumMap[h.misUserId] = h.tabelNumber || ''; });
+
+      // Enrich doctors with tabelNumber
+      const selectedWithNum = selected.map(d => ({ ...d, tabelNumber: tabelNumMap[d.id] || '' }));
+
+      // Holidays: keep as array of date strings 'YYYY-MM-DD'
+      const holidayDates = (holidayRes.data || []).map(h => h.date);
+      setHolidays(holidayDates);
+
+      if (tabelType === 'detailed') {
+        const catRes = await dictsApi.listCategories().catch(() => ({ data: [] }));
+        const categoriesMap = {};
+        (catRes.data || []).forEach(c => { categoriesMap[c.id] = c; });
+        const { virtualDoctors: vd, entries: preset, payData: presetPay } =
+          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap);
+        setVirtualDoctors(vd);
+        setPresetEntries(preset);
+        setPresetPayData(presetPay);
+      } else {
+        const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month);
+        setPresetEntries(preset);
+        setPresetPayData(presetPay);
+      }
+
+      setTableKey(k => k + 1);
       setShowDoc(true);
     } finally {
       setGenerating(false);
     }
   };
 
+  const tabelDoctors = tabelType === 'detailed' ? virtualDoctors : selectedDoctors;
+
   const handleSave = async () => {
     if (!tabelRef.current) return;
     const { entries, payData } = tabelRef.current.getSnapshot();
     setSaving(true);
     try {
-      const doctorsPayload = selectedDoctors.map(d => ({
-        misUserId:   d.id,
-        doctorName:  d.name,
-        roles:       d.roles || [],
-        professions: d.professions || [],
-        entries:     entries[d.id]  || {},
-        payData:     payData[d.id]  || {},
+      const doctorsPayload = tabelDoctors.map(d => ({
+        misUserId:     d.id,
+        doctorName:    d.name,
+        roles:         d.roles || [],
+        professions:   d.professions || [],
+        categoryLabel: d.categoryLabel || null,
+        entries:       entries[d.id]  || {},
+        payData:       payData[d.id]  || {},
       }));
       await tabelApi.create({
         month, year, orgName, subdivision, docNumber, userName,
@@ -364,20 +468,23 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
   const handleDownloadExcel = async () => {
     if (!tabelRef.current) return;
     const { entries, payData } = tabelRef.current.getSnapshot();
+    const isDetailed = tabelType === 'detailed';
     const record = {
       month, year, orgName, subdivision, docNumber, userName,
-      doctors: selectedDoctors.map(d => ({
-        misUserId:   d.id,
-        doctorName:  d.name,
-        roles:       d.roles || [],
-        professions: d.professions || [],
-        entries:     entries[d.id] || {},
-        payData:     payData[d.id] || {},
+      doctors: tabelDoctors.map(d => ({
+        misUserId:     d.id,
+        doctorName:    d.name,
+        roles:         d.roles || [],
+        professions:   d.professions || [],
+        categoryLabel: d.categoryLabel || null,
+        entries:       entries[d.id] || {},
+        payData:       payData[d.id] || {},
       })),
     };
     try {
+      const prefix = isDetailed ? 'Табель_детализированный' : 'Табель';
       await downloadTabelExcel(record, null,
-        `Табель_${year}_${pad2(month)}_${subdivision || 'таб'}.xlsx`);
+        `${prefix}_${year}_${pad2(month)}_${subdivision || 'таб'}.xlsx`);
     } catch {
       toast.error('Ошибка при генерации Excel');
     }
@@ -386,27 +493,50 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
+      {/* ── Tabel type toggle ── */}
+      {!readOnly && (
+        <div style={{
+          padding: '8px 16px 0', display: 'flex', gap: 0, background: 'var(--rb-bg)',
+        }}>
+          {[['standard', 'Стандартный'], ['detailed', 'Детализированный']].map(([val, label]) => (
+            <button key={val} type="button"
+              onClick={() => { setTabelType(val); setShowDoc(false); }}
+              style={{
+                height: 30, padding: '0 14px', fontSize: 12, fontWeight: 600,
+                border: '1px solid var(--rb-border-dark)',
+                borderRight: val === 'standard' ? 'none' : undefined,
+                borderRadius: val === 'standard' ? '6px 0 0 6px' : '0 6px 6px 0',
+                background: tabelType === val ? 'var(--rb-primary)' : '#fff',
+                color: tabelType === val ? '#fff' : 'var(--rb-text-secondary)',
+                cursor: 'pointer',
+              }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── Settings toolbar ── */}
       <div style={{
         padding: '12px 16px', borderBottom: '1px solid var(--rb-border)',
         display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end',
         background: 'var(--rb-bg)',
       }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 2, minWidth: 200 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Организация</label>
           <select className="rb-select" value={orgName} onChange={e => setOrgName(e.target.value)}
-            disabled={readOnly} style={{ height: 34, padding: '0 10px', minWidth: 380 }}>
+            disabled={readOnly} style={{ height: 34, padding: '0 10px', width: '100%' }}>
             <option value="">Выберите организацию</option>
             {ORGS.map(o => <option key={o} value={o}>{o}</option>)}
           </select>
         </div>
 
         {divisions.length > 0 && !readOnly && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 140 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Структурное подразделение</label>
             <select
               className="rb-select"
-              style={{ height: 34, padding: '0 10px', minWidth: 200 }}
+              style={{ height: 34, padding: '0 10px', width: '100%' }}
               value=""
               onChange={e => {
                 const div = divisions.find(d => d.id === e.target.value);
@@ -444,7 +574,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
         {!readOnly && (
           <button className="rb-btn rb-btn-primary" onClick={handleGenerate}
             disabled={generating}
-            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center', opacity: generating ? 0.6 : 1 }}>
+            style={{ height: 34, alignSelf: 'flex-end', justifyContent: 'center', opacity: generating ? 0.6 : 1 }}>
             {generating ? 'Загрузка...' : 'Расчёт'}
           </button>
         )}
@@ -452,11 +582,11 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
         {showDoc && !readOnly && (<>
           <button className="rb-btn rb-btn-primary" onClick={handleSave}
             disabled={saving}
-            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center', opacity: saving ? 0.6 : 1 }}>
+            style={{ height: 34, alignSelf: 'flex-end', justifyContent: 'center', opacity: saving ? 0.6 : 1 }}>
             {saving ? 'Сохранение...' : 'Сохранить'}
           </button>
           <button className="rb-btn rb-btn-primary" onClick={handleDownloadExcel}
-            style={{ height: 34, width: 96, alignSelf: 'flex-end', justifyContent: 'center' }}>
+            style={{ height: 34, alignSelf: 'flex-end', justifyContent: 'center' }}>
             Скачать
           </button>
         </>)}
@@ -556,7 +686,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
             <TabelTable
               key={tableKey}
               ref={tabelRef}
-              selectedDoctors={selectedDoctors}
+              selectedDoctors={tabelDoctors}
               year={year}
               month={month}
               readOnly={readOnly}
