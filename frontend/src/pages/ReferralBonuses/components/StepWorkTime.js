@@ -193,7 +193,7 @@ function fillAbsencesIntoPayData(absenceList) {
   return pay;
 }
 
-function computePreset(doctors, schedulesMap, year, month) {
+function computePreset(doctors, schedulesMap, year, month, holidaySet) {
   const lastDay  = new Date(year, month, 0).getDate();
   const entries  = {};
   const payData  = {};
@@ -225,9 +225,9 @@ function computePreset(doctors, schedulesMap, year, month) {
           absenceTotals[code].days  += 1;
           absenceTotals[code].hours += h;
         } else {
-          // Normal working day
+          // Normal working day — use РВ on public holidays
           entries[doc.id][day] = {
-            code:  'Я',
+            code:  holidaySet?.has(dateStr) ? 'РВ' : 'Я',
             hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
           };
         }
@@ -251,7 +251,7 @@ function computePreset(doctors, schedulesMap, year, month) {
 }
 
 // ── Detailed preset: one virtual row per doctor×category ─────────────────────
-function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap) {
+function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap, holidaySet) {
   const lastDay = new Date(year, month, 0).getDate();
   const virtualDoctors = [];
   const entries  = {};
@@ -298,8 +298,9 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
             absenceTotals[code].days  += 1;
             absenceTotals[code].hours += h;
           } else {
+            // Normal working day — use РВ on public holidays
             dayEntries[day] = {
-              code:  'Я',
+              code:  holidaySet?.has(dateStr) ? 'РВ' : 'Я',
               hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
             };
           }
@@ -411,8 +412,9 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
       // Enrich doctors with tabelNumber
       const selectedWithNum = selected.map(d => ({ ...d, tabelNumber: tabelNumMap[d.id] || '' }));
 
-      // Holidays: keep as array of date strings 'YYYY-MM-DD'
+      // Holidays: keep as array of date strings 'YYYY-MM-DD' and a Set for fast lookup
       const holidayDates = (holidayRes.data || []).map(h => h.date);
+      const holidaySet   = new Set(holidayDates);
       setHolidays(holidayDates);
 
       if (tabelType === 'detailed') {
@@ -420,12 +422,12 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
         const categoriesMap = {};
         (catRes.data || []).forEach(c => { categoriesMap[c.id] = c; });
         const { virtualDoctors: vd, entries: preset, payData: presetPay } =
-          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap);
+          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap, holidaySet);
         setVirtualDoctors(vd);
         setPresetEntries(preset);
         setPresetPayData(presetPay);
       } else {
-        const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month);
+        const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month, holidaySet);
         setPresetEntries(preset);
         setPresetPayData(presetPay);
       }

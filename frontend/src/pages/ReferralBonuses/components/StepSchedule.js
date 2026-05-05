@@ -1510,7 +1510,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         <div className="rb-schedule-entries">
                           {cellEntries.map(e => {
                             const cancelled = isExcepted(e, cell);
-                            const entryCode = cancelled ? (getExceptionCode(e, cell) || 'ОТ') : 'Я';
+                            const entryCode = cancelled ? (getExceptionCode(e, cell) || 'ОТ') : isHoliday ? 'РВ' : 'Я';
                             const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
                             const cab = e.cabinetId  ? cabinets.find(c => c.id === e.cabinetId)   : null;
                             return (
