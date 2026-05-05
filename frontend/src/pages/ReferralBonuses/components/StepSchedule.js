@@ -747,7 +747,7 @@ const btnGhost = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
+export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -1815,7 +1815,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
 
                       {/* Actions */}
-                      {!isConfirming ? (
+                      {!readOnly && (!isConfirming ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
@@ -1856,18 +1856,20 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                           </button>
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
                   </div>
                 );
               })}
             </div>
 
+            {!readOnly && (
             <div className="rb-modal-footer">
               <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openNewForm(modal.cell)}>
                 Создать
               </button>
             </div>
+            )}
           </div>
         </div>
       )}

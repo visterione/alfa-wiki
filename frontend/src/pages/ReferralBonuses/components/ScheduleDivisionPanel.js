@@ -235,7 +235,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
           const myPerm    = div.myPermission; // 'owner' | 'edit' | 'read' | 'public' | null
           const isOwner   = myPerm === 'owner';
           const canEdit   = isOwner || myPerm === 'edit' || user?.isAdmin;
-          const canAdmin  = isOwner || user?.isAdmin;
+          const canAdmin  = isOwner || myPerm === 'edit' || user?.isAdmin;
 
           const filtered = isAdding
             ? doctors.filter(d => {
