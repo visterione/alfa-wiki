@@ -662,7 +662,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
   const [expanded, setExpanded]       = useState(new Set());
   const [corpModalState, setCorpModalState] = useState(null);
 
-  const runBulk = async ({ rows, colMap, savedAssistanceIncome, corpIncludedKeys }) => {
+  const runBulk = async ({ rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates }) => {
     const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
     const results = [];
     for (let i = 0; i < doctorList.length; i++) {
@@ -685,7 +685,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
           allDoctors: doctors, savedAssistanceIncome,
           interim, corpIncludedKeys,
           scheduleEntries,
-          holidayDates: bulkHolidayDates,
+          holidayDates,
         });
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
@@ -749,11 +749,11 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       if (unmatched.length > 0) corpByDoctor.push({ doctor: { name: 'Прочие' }, rows: unmatched });
 
       setGenerating(false);
-      setCorpModalState({ corpRows, corpByDoctor, colMap, pendingData: { rows, colMap, savedAssistanceIncome }, isBulk: true });
+      setCorpModalState({ corpRows, corpByDoctor, colMap, pendingData: { rows, colMap, savedAssistanceIncome, holidayDates: bulkHolidayDates }, isBulk: true });
       return;
     }
 
-    await runBulk({ rows, colMap, savedAssistanceIncome, corpIncludedKeys: null });
+    await runBulk({ rows, colMap, savedAssistanceIncome, corpIncludedKeys: null, holidayDates: bulkHolidayDates });
   };
 
   const handleBulkCorpConfirm = async (includedKeys) => {
