@@ -144,9 +144,13 @@ export default function CorpReviewModal({ corpRows, corpByDoctor, colMap, isBulk
     assistant:      colMap.assistant        ? String(row[colMap.assistant]        || '').trim() : '',
     nurse:          colMap.nurse            ? String(row[colMap.nurse]            || '').trim() : '',
     anesthesiologist: colMap.anesthesiologist ? String(row[colMap.anesthesiologist] || '').trim() : '',
-    amount: colMap.totalCost != null
-      ? parseAmount(row[colMap.totalCost])
-      : colMap.servicePrice ? parseAmount(row[colMap.servicePrice]) : 0,
+    amount: (() => {
+      if (colMap.totalCost != null) {
+        const tv = row[colMap.totalCost];
+        if (tv !== '' && tv !== null && tv !== undefined) return parseAmount(tv);
+      }
+      return colMap.servicePrice ? parseAmount(row[colMap.servicePrice]) : 0;
+    })(),
   }));
 
   const allDisplayRows = useMemo(() => buildDisplayRows(corpRows), [corpRows, colMap]); // eslint-disable-line
