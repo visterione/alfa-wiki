@@ -303,7 +303,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
             { text: roleStr ? `Должность: ${roleStr}` : 'Должность:', style: 'hdrInfo' },
           ],
           [
-            { text: `Подразделение: ${clinicLabel}`, style: 'hdrInfo' },
+            { text: `Подразделение: Медицинский центр "${clinicLabel}"`, style: 'hdrInfo' },
             { text: `Оклад (тариф): ${tariffText}`, style: 'hdrInfo' },
           ],
         ],
