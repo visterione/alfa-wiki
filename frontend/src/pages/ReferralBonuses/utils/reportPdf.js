@@ -348,6 +348,15 @@ function makeDocDef(content) {
   };
 }
 
+function isEmptyReport(salary) {
+  if (!salary) return true;
+  const basePay    = parseFloat(salary.basePay)    || 0;
+  const finalSal   = parseFloat(salary.finalSalary) || 0;
+  const refBonus   = parseFloat(salary.referralBonuses) || 0;
+  const perfBonus  = parseFloat(salary.performedBonusTotal) || 0;
+  return basePay === 0 && finalSal === 0 && refBonus === 0 && perfBonus === 0;
+}
+
 // ── Экспорт одного отчёта (один врач, возможно несколько клиник) ──────────────
 export function exportReportPdf(reportData, tabelNumber = '') {
   const { clinicReports, doctor, dateFrom } = reportData;
@@ -357,17 +366,21 @@ export function exportReportPdf(reportData, tabelNumber = '') {
   const roleStr     = getDoctorRoles(doctor);
 
   const content = [];
+  let first = true;
 
-  clinicReports.forEach((cr, idx) => {
-    if (idx > 0) content.push(dashedSeparator());
+  clinicReports.forEach(cr => {
+    if (isEmptyReport(cr.salary)) return;
+    if (!first) content.push(dashedSeparator());
+    first = false;
 
     const items = buildPayslipContent({
       ...cr,
       doctorName, tabelNumber, titlePeriod, periodCell, roleStr,
     });
-    // Если листок не помещается на текущей странице — перенести целиком
     content.push({ stack: items, unbreakable: true });
   });
+
+  if (!content.length) return;
 
   const lastName = doctorName.split(' ')[0] || 'Листок';
   pdfMake.createPdf(makeDocDef(content)).download(
@@ -393,6 +406,7 @@ export function exportBulkReportPdf(bulkResults, tabelNumbers = {}) {
     const roleStr     = getDoctorRoles(doctor);
 
     clinicReports.forEach(cr => {
+      if (isEmptyReport(cr.salary)) return;
       if (!first) content.push(dashedSeparator());
       first = false;
 
