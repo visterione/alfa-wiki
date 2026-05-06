@@ -557,35 +557,34 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
 
-      {/* ── Tabel type toggle ── */}
-      {!readOnly && (
-        <div style={{
-          padding: '8px 16px 0', display: 'flex', gap: 0, background: 'var(--rb-bg)',
-        }}>
-          {[['standard', 'Стандартный'], ['detailed', 'Детализированный']].map(([val, label]) => (
-            <button key={val} type="button"
-              onClick={() => { setTabelType(val); setShowDoc(false); }}
-              style={{
-                height: 30, padding: '0 14px', fontSize: 12, fontWeight: 600,
-                border: '1px solid var(--rb-border-dark)',
-                borderRight: val === 'standard' ? 'none' : undefined,
-                borderRadius: val === 'standard' ? '6px 0 0 6px' : '0 6px 6px 0',
-                background: tabelType === val ? 'var(--rb-primary)' : '#fff',
-                color: tabelType === val ? '#fff' : 'var(--rb-text-secondary)',
-                cursor: 'pointer',
-              }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* ── Settings toolbar ── */}
       <div style={{
         padding: '12px 16px', borderBottom: '1px solid var(--rb-border)',
         display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end',
         background: 'var(--rb-bg)',
       }}>
+        {!readOnly && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Тип табеля</label>
+            <div style={{ display: 'flex', gap: 0 }}>
+              {[['standard', 'Стандартный'], ['detailed', 'Детализированный']].map(([val, label]) => (
+                <button key={val} type="button"
+                  onClick={() => { setTabelType(val); setShowDoc(false); }}
+                  style={{
+                    height: 34, padding: '0 14px', fontSize: 12, fontWeight: 600,
+                    border: '1px solid var(--rb-border-dark)',
+                    borderRight: val === 'standard' ? 'none' : undefined,
+                    borderRadius: val === 'standard' ? '6px 0 0 6px' : '0 6px 6px 0',
+                    background: tabelType === val ? 'var(--rb-primary)' : '#fff',
+                    color: tabelType === val ? '#fff' : 'var(--rb-text-secondary)',
+                    cursor: 'pointer',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 2, minWidth: 200 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Организация</label>
           <select className="rb-select" value={orgName} onChange={e => setOrgName(e.target.value)}
@@ -601,7 +600,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
             <select
               className="rb-select"
               style={{ height: 34, padding: '0 10px', width: '100%' }}
-              value=""
+              value={divisions.find(d => d.name === subdivision)?.id || ''}
               onChange={e => {
                 const div = divisions.find(d => d.id === e.target.value);
                 if (div) applyDivision(div);
