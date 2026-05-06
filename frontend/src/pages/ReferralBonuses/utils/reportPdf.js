@@ -18,6 +18,19 @@ function getOrgName(clinicId) {
   return '';
 }
 
+const CLINIC_FULL_NAMES = {
+  '1': 'Альфа Проф',
+  '2': 'Альфа',
+  '3': 'Альфа Дети',
+  '4': '3К',
+  '6': 'Альфа Линия',
+  '7': 'Альфа Смайл',
+};
+
+function getClinicFullName(clinicId, fallback) {
+  return CLINIC_FULL_NAMES[String(clinicId)] || fallback || '';
+}
+
 function fmt2(n) {
   return (parseFloat(n) || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -303,7 +316,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
             { text: roleStr ? `Должность: ${roleStr}` : 'Должность:', style: 'hdrInfo' },
           ],
           [
-            { text: `Подразделение: Медицинский центр "${clinicLabel}"`, style: 'hdrInfo' },
+            { text: `Подразделение: Медицинский центр "${getClinicFullName(clinicId, clinicLabel)}"`, style: 'hdrInfo' },
             { text: `Оклад (тариф): ${tariffText}`, style: 'hdrInfo' },
           ],
         ],
