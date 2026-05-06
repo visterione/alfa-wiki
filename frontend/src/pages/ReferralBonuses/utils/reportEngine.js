@@ -1035,6 +1035,7 @@ export async function buildReport({
     let basePay = 0, basePayLabel = '';
     let normTotalHours = 0, normPremiumAmount = 0;
     let effectiveHoursWorked = 0;
+    let effectiveDaysWorked = 0;
     const normPremiumByRole = []; // [{ roleTitle, categoryId, premiumAmount, workedHours, norm }]
     const hourlyRatesBreakdown = []; // { label, rate, hours, pay } — populated only for pt==='hourly'
     const _schedClinicId = (clinicId === 'global' || clinicId === 'unknown') ? null : clinicId;
@@ -1048,8 +1049,9 @@ export async function buildReport({
       basePayLabel = 'Почасовой оклад';
 
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const { total: schedTotal, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        const { total: schedTotal, days: schedDays, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
         effectiveHoursWorked = schedTotal;
+        effectiveDaysWorked  = schedDays || 0;
 
         const roleNormOverrides = clinicSettings.roleNormOverrides || [];
 
@@ -1064,7 +1066,7 @@ export async function buildReport({
             const premiumHours = hours - 2 * norm;
             const premiumAmt = rate * premiumHours;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: hours, norm });
+            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: hours, norm, premiumHours });
           }
         }
 
@@ -1079,7 +1081,7 @@ export async function buildReport({
             const premiumHours = hours - 2 * norm;
             const premiumAmt = rate * premiumHours;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm });
+            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm, premiumHours });
           }
         }
       } else {
@@ -1098,8 +1100,13 @@ export async function buildReport({
           if (_normHoursForPeriod != null && effectiveHoursWorked > 0 && effectiveHoursWorked >= 2 * _normHoursForPeriod) {
             const premiumHours = effectiveHoursWorked - 2 * _normHoursForPeriod;
             normPremiumAmount = baseRate * premiumHours;
-            normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod });
+            normPremiumByRole.push({ roleTitle: null, premiumAmount: normPremiumAmount, workedHours: effectiveHoursWorked, norm: _normHoursForPeriod, premiumHours });
           }
+        }
+        // Fallback: count scheduled days even when hours are entered manually
+        if (effectiveDaysWorked === 0 && scheduleEntries?.length && dateFrom && dateTo) {
+          const { days: sDays } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+          effectiveDaysWorked = sDays || 0;
         }
       }
     } else if (pt === 'percent') {
@@ -1112,7 +1119,8 @@ export async function buildReport({
       basePayLabel = 'Нормированный оклад';
 
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const { total: schedTotal, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        const { total: schedTotal, days: schedDays, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        effectiveDaysWorked = schedDays || 0;
 
         // Group normServices by roleTitle; '' = untagged
         const roleGroups = {};
@@ -1139,7 +1147,7 @@ export async function buildReport({
             const premiumHours = schedRoleHours - 2 * norm;
             const premiumAmt = groupPay > 0 ? groupPay * (premiumHours / schedRoleHours) : 0;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: schedRoleHours, norm });
+            normPremiumByRole.push({ roleTitle: roleTitle || null, categoryId: null, premiumAmount: premiumAmt, workedHours: schedRoleHours, norm, premiumHours });
           }
         }
 
@@ -1154,7 +1162,7 @@ export async function buildReport({
             const premiumHours = hours - 2 * norm;
             const premiumAmt = catPay > 0 ? catPay * (premiumHours / hours) : 0;
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm });
+            normPremiumByRole.push({ roleTitle: null, categoryId, label: _categoryLabels[categoryId] || null, premiumAmount: premiumAmt, workedHours: hours, norm, premiumHours });
           }
         }
       } else {
@@ -1177,7 +1185,7 @@ export async function buildReport({
             const premiumHours = group.hours - 2 * norm;
             const premiumAmt = group.total * (premiumHours / group.hours);
             normPremiumAmount += premiumAmt;
-            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: group.hours, norm });
+            normPremiumByRole.push({ roleTitle: roleTitle || null, premiumAmount: premiumAmt, workedHours: group.hours, norm, premiumHours });
           }
         }
       }
@@ -1245,7 +1253,7 @@ export async function buildReport({
       }
     }
 
-    const harmfulnessDeduction = (pt === 'normed' && !!clinicSettings.harmfulness) ? basePay * 0.04 : 0;
+    const harmfulnessDeduction = !!clinicSettings.harmfulness ? basePay * 0.04 : 0;
 
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
@@ -1308,6 +1316,7 @@ export async function buildReport({
       basePay, basePayLabel, payType: pt,
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
       hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
+      daysWorked: effectiveDaysWorked,
       hourlyRatesBreakdown,
       holidaySurchargeTotal,
       holidaySurchargeBreakdown,

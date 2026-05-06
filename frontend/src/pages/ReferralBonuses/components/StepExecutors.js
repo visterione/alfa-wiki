@@ -1285,7 +1285,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const [showAssistantForm, setShowAssistantForm] = useState(false);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [showSvcMaterialForm, setShowSvcMaterialForm] = useState(false);
-  const autoSaveTimer = useRef(null);
 
   const [suggests, setSuggests] = useState(DEFAULT_SUGGESTS);
   const [suggestsModal, setSuggestsModal] = useState(null); // { key, title }
@@ -1309,9 +1308,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     setSuggests(next);
     try { await referralBonuses.saveSuggests(next); } catch { toast.error('Не удалось сохранить подсказки'); }
   };
-
-  // Clear auto-save timer on unmount to prevent stale saves
-  useEffect(() => () => clearTimeout(autoSaveTimer.current), []);
 
   // Block browser tab close / refresh when dirty
   useEffect(() => {
@@ -1430,11 +1426,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     }
   }, [selectedDoctor, execData]);
 
-  const scheduleAutoSave = useCallback(() => {
-    clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => saveToServer(), 1500);
-  }, [saveToServer]);
-
   // ── Clinic tabs ───────────────────────────────────────────────────────────
   const clinicTabs = [
     { id: 'global', label: 'Общие', color: 'var(--rb-primary)' },
@@ -1494,18 +1485,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     if (!pendingPayType) return;
     updateClinicData({ payType: pendingPayType.to, ...(pendingPayType.to === 'percent' ? { plusPercent: false } : {}) });
     setIsDirty(true);
-    scheduleAutoSave();
     setPendingPayType(null);
   };
 
   const handlePaymentFieldChange = (field, val) => {
     updateClinicData({ [field]: val });
     setIsDirty(true);
-    scheduleAutoSave();
   };
 
   const handleSavePayment = async () => {
-    clearTimeout(autoSaveTimer.current);
     await saveToServer();
   };
 
@@ -2369,19 +2357,17 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               >+</button>
             )}
           </div>
+          <label className="rb-toggle-item" style={{ padding: '6px 0 8px' }}>
+            <span className="rb-toggle-switch">
+              <input type="checkbox" checked={!!data.harmfulness} onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)} />
+              <span className="rb-toggle-slider" />
+            </span>
+            <span className="rb-toggle-label">Вредность</span>
+          </label>
           <div style={{ marginBottom: 8 }}>
             <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />
             <AddItemForm section="deductions" suggests={suggests.deductions} onAdd={handleAddItem} readOnly={readOnly} visible={showDeductionForm} onToggle={() => setShowDeductionForm(v => !v)} submitLabel="Сохранить" noIcon onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'deductions', title: 'Взыскания' }) : undefined} />
           </div>
-          {pt === 'normed' && (
-            <label className="rb-toggle-item" style={{ padding: '6px 0 14px' }}>
-              <span className="rb-toggle-switch">
-                <input type="checkbox" checked={!!data.harmfulness} onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)} />
-                <span className="rb-toggle-slider" />
-              </span>
-              <span className="rb-toggle-label">Вредность</span>
-            </label>
-          )}
         </div>
 
         {/* ── Materials (not shown for normed) ── */}

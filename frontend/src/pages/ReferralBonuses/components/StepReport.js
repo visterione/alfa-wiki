@@ -1,10 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useTabSlider } from '../utils/useTabSlider';
-import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords, doctorSchedules as schedulesApi, rbHolidays as holidaysApi } from '../../../services/api';
+import { referralBonuses as rbApi, performedServiceBonuses as psbApi, salaryRecords, doctorSchedules as schedulesApi, rbHolidays as holidaysApi, rbDoctorHeaders } from '../../../services/api';
 import { parseExcelFile, rbMapNewColumns } from '../utils/excelUtils';
 import { buildReport, loadExecSettings, rbGetClinicSettings, extractCorpRows } from '../utils/reportEngine';
 import { exportReport, exportBulkReport, buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
+import { exportReportPdf, exportBulkReportPdf } from '../utils/reportPdf';
 import { rbNamesMatch } from '../utils/nameMatching';
 import SalaryBlock from './SalaryBlockRenderer';
 import CorpReviewModal from './CorpReviewModal';
@@ -299,8 +300,9 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
 }
 
 // ─── Toolbar: period + clinic filter + action button ──────────────────────────
-function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, actionDisabled, actionLabel, onAction, actionSpinner, onExport, exporting, onSave, saving, readOnly, hasReport }) {
+function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, actionDisabled, actionLabel, onAction, actionSpinner, onExport, exporting, onExportPdf, exportingPdf, onSave, saving, readOnly, hasReport }) {
   const [hovExport, setHovExport] = useState(false);
+  const [hovPdf, setHovPdf]       = useState(false);
   const [hovSave, setHovSave]     = useState(false);
   const btnBlue = { fontSize: 12, fontWeight: 600, padding: '0 12px', height: 30, width: 90, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'filter .15s' };
   return (
@@ -327,6 +329,15 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClin
             onMouseEnter={() => setHovExport(true)} onMouseLeave={() => setHovExport(false)}
           >
             {exporting ? 'Скачать...' : 'Скачать'}
+          </button>
+        )}
+        {hasReport && onExportPdf && (
+          <button
+            style={{ ...btnBlue, background: '#DC2626', filter: hovPdf && !exportingPdf ? 'brightness(0.88)' : '', opacity: exportingPdf ? 0.7 : 1 }}
+            onClick={onExportPdf} disabled={exportingPdf}
+            onMouseEnter={() => setHovPdf(true)} onMouseLeave={() => setHovPdf(false)}
+          >
+            {exportingPdf ? 'PDF...' : 'PDF'}
           </button>
         )}
         {hasReport && onSave && !readOnly && (
@@ -360,6 +371,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
   const [generating, setGenerating]     = useState(false);
   const [saving, setSaving]             = useState(false);
   const [exporting, setExporting]       = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [reportData, setReportData]     = useState(null);
   const [error, setError]               = useState('');
 
@@ -538,6 +550,24 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     finally { setExporting(false); }
   };
 
+  const handleExportPdf = async () => {
+    if (!reportData) return;
+    setExportingPdf(true);
+    try {
+      let tabelNumber = '';
+      try {
+        const res = await rbDoctorHeaders.list();
+        const row = (res.data || []).find(h => h.misUserId === selectedDoctor.id);
+        tabelNumber = row?.tabelNumber || '';
+      } catch { /* non-critical */ }
+      exportReportPdf(reportData, tabelNumber);
+    } catch (e) {
+      toast.error('Ошибка PDF: ' + e.message);
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -595,6 +625,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         onAction={handleGenerate}
         hasReport={!!reportData}
         onExport={handleExport} exporting={exporting}
+        onExportPdf={handleExportPdf} exportingPdf={exportingPdf}
         onSave={handleSaveToHistory} saving={saving}
         readOnly={readOnly}
       />
@@ -655,6 +686,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
   const [generating, setGenerating]     = useState(false);
   const [savingAll, setSavingAll]       = useState(false);
   const [exporting, setExporting]       = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [dupConfirm, setDupConfirm]     = useState(null);
 
   const [progress, setProgress]       = useState({ current: 0, total: 0, currentName: '' });
@@ -769,6 +801,22 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     try { await exportBulkReport(bulkResults); }
     catch (e) { toast.error('Ошибка экспорта: ' + e.message); }
     finally { setExporting(false); }
+  };
+
+  const handleExportBulkPdf = async () => {
+    setExportingPdf(true);
+    try {
+      const tabelNumbers = {};
+      try {
+        const res = await rbDoctorHeaders.list();
+        (res.data || []).forEach(h => { tabelNumbers[h.misUserId] = h.tabelNumber || ''; });
+      } catch { /* non-critical */ }
+      exportBulkReportPdf(bulkResults, tabelNumbers);
+    } catch (e) {
+      toast.error('Ошибка PDF: ' + e.message);
+    } finally {
+      setExportingPdf(false);
+    }
   };
 
   const doSaveAll = async (ok, existingMap) => {
@@ -895,6 +943,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         onAction={handleBulkGenerate}
         hasReport={bulkResults.length > 0}
         onExport={handleExportAll} exporting={exporting}
+        onExportPdf={handleExportBulkPdf} exportingPdf={exportingPdf}
         onSave={handleSaveAll} saving={savingAll}
         readOnly={readOnly}
       />
