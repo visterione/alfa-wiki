@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../../context/AuthContext';
-import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi, rbScheduleDicts as dictsApi, rbHolidays as holidaysApi, rbDoctorHeaders as doctorHeadersApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi, rbScheduleDicts as dictsApi, rbHolidays as holidaysApi, rbDoctorHeaders as doctorHeadersApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi } from '../../../services/api';
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
 import MonthYearPicker from './MonthYearPicker';
@@ -250,8 +250,40 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet) {
   return { entries, payData };
 }
 
+// ── Split entries by norm: returns mainEntries and combEntries ────────────────
+function splitByNorm(dayEntries, normHours, lastDay) {
+  const mainEntries = {};
+  const combEntries = {};
+  let accumulated = 0;
+
+  for (let day = 1; day <= lastDay; day++) {
+    const entry = dayEntries[day] || { code: 'В', hours: '' };
+    const h = parseFloat(entry.hours) || 0;
+
+    if (h === 0) {
+      mainEntries[day] = { ...entry };
+      combEntries[day] = { ...entry };
+    } else if (accumulated >= normHours - 0.001) {
+      mainEntries[day] = { code: 'В', hours: '' };
+      combEntries[day] = { ...entry };
+    } else if (accumulated + h <= normHours + 0.001) {
+      mainEntries[day] = { ...entry };
+      combEntries[day] = { code: 'В', hours: '' };
+      accumulated += h;
+    } else {
+      const mainH = Math.round((normHours - accumulated) * 100) / 100;
+      const combH = Math.round((h - mainH) * 100) / 100;
+      mainEntries[day] = { code: entry.code, hours: mainH > 0 ? String(mainH) : '' };
+      combEntries[day] = { code: entry.code, hours: combH > 0 ? String(combH) : '' };
+      accumulated = normHours;
+    }
+  }
+
+  return { mainEntries, combEntries };
+}
+
 // ── Detailed preset: one virtual row per doctor×category ─────────────────────
-function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap, holidaySet) {
+function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap = {}, categoryNormsMap = {}) {
   const lastDay = new Date(year, month, 0).getDate();
   const virtualDoctors = [];
   const entries  = {};
@@ -307,14 +339,36 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
         }
       }
 
-      entries[vid] = dayEntries;
-
       const absenceList = Object.entries(absenceTotals)
         .filter(([code]) => code !== 'В')
         .map(([code, { days, hours }]) => ({ code, hours: `${days} (${hours})` }));
-      if (absenceList.length) payData[vid] = fillAbsencesIntoPayData(absenceList);
 
-      virtualDoctors.push({ ...doc, id: vid, categoryLabel });
+      // Determine applicable hour norm (category norm takes priority over role norm)
+      let norm = null;
+      if (categoryId && categoryNormsMap[categoryId] != null) {
+        norm = categoryNormsMap[categoryId];
+      } else {
+        for (const role of (doc.roles || [])) {
+          if (roleNormsMap[role] != null) { norm = roleNormsMap[role]; break; }
+        }
+      }
+
+      const totalHours = Object.values(dayEntries).reduce((s, e) => s + (parseFloat(e.hours) || 0), 0);
+
+      if (norm != null && totalHours > norm + 0.001) {
+        const { mainEntries, combEntries } = splitByNorm(dayEntries, norm, lastDay);
+        entries[vid] = mainEntries;
+        if (absenceList.length) payData[vid] = fillAbsencesIntoPayData(absenceList);
+        virtualDoctors.push({ ...doc, id: vid, categoryLabel });
+
+        const combVid = `${vid}__comb`;
+        entries[combVid] = combEntries;
+        virtualDoctors.push({ ...doc, id: combVid, categoryLabel: `${categoryLabel} (Совмещение)` });
+      } else {
+        entries[vid] = dayEntries;
+        if (absenceList.length) payData[vid] = fillAbsencesIntoPayData(absenceList);
+        virtualDoctors.push({ ...doc, id: vid, categoryLabel });
+      }
     }
   }
 
@@ -418,11 +472,19 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
       setHolidays(holidayDates);
 
       if (tabelType === 'detailed') {
-        const catRes = await dictsApi.listCategories().catch(() => ({ data: [] }));
+        const [catRes, roleNormRes, catNormRes] = await Promise.all([
+          dictsApi.listCategories().catch(() => ({ data: [] })),
+          roleNormsApi.get(year, month).catch(() => ({ data: [] })),
+          categoryNormsApi.get(year, month).catch(() => ({ data: [] })),
+        ]);
         const categoriesMap = {};
         (catRes.data || []).forEach(c => { categoriesMap[c.id] = c; });
+        const roleNormsMap = {};
+        (roleNormRes.data || []).forEach(n => { if (n.normHours != null) roleNormsMap[n.roleTitle] = parseFloat(n.normHours); });
+        const categoryNormsMap = {};
+        (catNormRes.data || []).forEach(n => { if (n.normHours != null && n.categoryId) categoryNormsMap[n.categoryId] = parseFloat(n.normHours); });
         const { virtualDoctors: vd, entries: preset, payData: presetPay } =
-          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap, holidaySet);
+          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap, categoryNormsMap);
         setVirtualDoctors(vd);
         setPresetEntries(preset);
         setPresetPayData(presetPay);
