@@ -606,6 +606,7 @@ function RoleRatesList({ items, onDelete, onUpdate, readOnly, roles, professions
 
   const getItemHours = (item) => {
     if (hoursFromSchedule) {
+      if (item.categoryId) return (schedByCategory || {})[item.categoryId] ?? 0;
       return (schedByRole || {})[item.roleTitle] ?? (schedByCategory || {})[item.roleTitle] ?? 0;
     }
     return item.hoursWorked || 0;

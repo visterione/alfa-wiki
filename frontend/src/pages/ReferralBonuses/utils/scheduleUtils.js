@@ -64,19 +64,21 @@ export function isEntryCancelled(entry, dateStr) {
  * @param {string} dateFrom  - "YYYY-MM-DD"
  * @param {string} dateTo    - "YYYY-MM-DD"
  * @param {string|number|null} clinicId - filter by clinic; null/undefined = all clinics
- * @returns {{ total: number, days: number, byRole: Object.<string, number>, byCategory: Object.<string, number> }}
- *   total      — total hours
- *   days       — number of distinct calendar days with any scheduled time
- *   byRole     — hours per roleTitle; key '' covers entries with neither roleTitle nor categoryId
- *   byCategory — hours per categoryId (only entries that have categoryId and no roleTitle)
+ * @returns {{ total: number, days: number, byRole: Object.<string, number>, byCategory: Object.<string, number>, categoryRoles: Object.<string, string> }}
+ *   total         — total hours
+ *   days          — number of distinct calendar days with any scheduled time
+ *   byRole        — hours per roleTitle; key '' covers entries with neither roleTitle nor categoryId
+ *   byCategory    — hours per categoryId (category takes priority over roleTitle)
+ *   categoryRoles — categoryId → roleTitle map (when entry has both set)
  */
 export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) {
-  if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {}, byCategory: {} };
+  if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {}, byCategory: {}, categoryRoles: {} };
 
   const cidStr = clinicId != null ? String(clinicId) : null;
 
   const byRoleMinutes     = {};
   const byCategoryMinutes = {};
+  const categoryRoles     = {};
   let totalMinutes = 0;
   let scheduledDays = 0;
 
@@ -103,10 +105,11 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       if (mins > 0) {
         totalMinutes += mins;
         dayHadWork = true;
-        if (entry.roleTitle) {
-          byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
-        } else if (entry.categoryId) {
+        if (entry.categoryId) {
           byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
+          if (entry.roleTitle) categoryRoles[entry.categoryId] = entry.roleTitle;
+        } else if (entry.roleTitle) {
+          byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
         } else {
           byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
         }
@@ -123,7 +126,7 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
   const byCategory = {};
   for (const [cat, mins] of Object.entries(byCategoryMinutes)) byCategory[cat] = mins / 60;
 
-  return { total: totalMinutes / 60, days: scheduledDays, byRole, byCategory };
+  return { total: totalMinutes / 60, days: scheduledDays, byRole, byCategory, categoryRoles };
 }
 
 /**
@@ -145,6 +148,7 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
   const cidStr = clinicId != null ? String(clinicId) : null;
   const byRoleMinutes     = {};
   const byCategoryMinutes = {};
+  const categoryRoles     = {};
 
   const from = new Date(dateFrom + 'T00:00:00');
   const to   = new Date(dateTo   + 'T00:00:00');
@@ -167,10 +171,11 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
         let mins = (th * 60 + tm) - (fh * 60 + fm);
         if (mins <= 0) mins += 24 * 60;
         if (mins > 0) {
-          if (entry.roleTitle) {
-            byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
-          } else if (entry.categoryId) {
+          if (entry.categoryId) {
             byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
+            if (entry.roleTitle) categoryRoles[entry.categoryId] = entry.roleTitle;
+          } else if (entry.roleTitle) {
+            byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
           } else {
             byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
           }
@@ -185,5 +190,5 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
   const byCategory = {};
   for (const [c, m] of Object.entries(byCategoryMinutes)) byCategory[c] = m / 60;
 
-  return { byRole, byCategory };
+  return { byRole, byCategory, categoryRoles };
 }

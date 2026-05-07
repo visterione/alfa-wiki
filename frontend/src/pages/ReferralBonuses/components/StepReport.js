@@ -301,10 +301,35 @@ function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
 
 // ─── Toolbar: period + clinic filter + action button ──────────────────────────
 function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClinic, setFilterClinic, actionDisabled, actionLabel, onAction, actionSpinner, onExport, exporting, onExportPdf, exportingPdf, onSave, saving, readOnly, hasReport }) {
-  const [hovExport, setHovExport] = useState(false);
-  const [hovPdf, setHovPdf]       = useState(false);
-  const [hovSave, setHovSave]     = useState(false);
-  const btnBlue = { fontSize: 12, fontWeight: 600, padding: '0 12px', height: 30, width: 90, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'filter .15s' };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  const busy = exporting || exportingPdf || saving;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = e => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [menuOpen]);
+
+  const menuItems = [
+    onSave && !readOnly && {
+      label: saving ? 'Сохранение...' : 'Сохранить',
+      disabled: saving,
+      action: () => { setMenuOpen(false); onSave(); },
+    },
+    onExportPdf && {
+      label: exportingPdf ? 'Генерация PDF...' : 'Сохранить как PDF',
+      disabled: exportingPdf,
+      action: () => { setMenuOpen(false); onExportPdf(); },
+    },
+    onExport && {
+      label: exporting ? 'Генерация Excel...' : 'Сохранить как Excel',
+      disabled: exporting,
+      action: () => { setMenuOpen(false); onExport(); },
+    },
+  ].filter(Boolean);
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', flexWrap: 'wrap' }}>
       <DateRangePicker dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo} />
@@ -322,33 +347,6 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClin
       )}
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-        {hasReport && onExport && (
-          <button
-            style={{ ...btnBlue, filter: hovExport && !exporting ? 'brightness(0.88)' : exporting ? 'opacity(0.7)' : '', opacity: exporting ? 0.7 : 1 }}
-            onClick={onExport} disabled={exporting}
-            onMouseEnter={() => setHovExport(true)} onMouseLeave={() => setHovExport(false)}
-          >
-            {exporting ? 'Скачать...' : 'Скачать'}
-          </button>
-        )}
-        {hasReport && onExportPdf && (
-          <button
-            style={{ ...btnBlue, background: '#DC2626', filter: hovPdf && !exportingPdf ? 'brightness(0.88)' : '', opacity: exportingPdf ? 0.7 : 1 }}
-            onClick={onExportPdf} disabled={exportingPdf}
-            onMouseEnter={() => setHovPdf(true)} onMouseLeave={() => setHovPdf(false)}
-          >
-            {exportingPdf ? 'PDF...' : 'PDF'}
-          </button>
-        )}
-        {hasReport && onSave && !readOnly && (
-          <button
-            style={{ ...btnBlue, filter: hovSave && !saving ? 'brightness(0.88)' : '', opacity: saving ? 0.7 : 1 }}
-            onClick={onSave} disabled={saving}
-            onMouseEnter={() => setHovSave(true)} onMouseLeave={() => setHovSave(false)}
-          >
-            {saving ? 'Сохранить...' : 'Сохранить'}
-          </button>
-        )}
         <button
           className="rb-btn rb-btn-primary rb-btn-sm"
           disabled={actionDisabled}
@@ -357,6 +355,54 @@ function Toolbar({ dateFrom, setDateFrom, dateTo, setDateTo, clinics, filterClin
         >
           {actionLabel}
         </button>
+
+        {hasReport && menuItems.length > 0 && (
+          <div ref={menuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMenuOpen(v => !v)}
+              title="Действия"
+              style={{
+                width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', borderRadius: 7,
+                background: menuOpen ? 'var(--rb-primary-dark, #0062cc)' : 'var(--rb-primary)',
+                cursor: 'pointer', color: '#fff',
+                opacity: busy ? 0.7 : 1,
+                transition: 'background .15s, opacity .15s',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>
+              </svg>
+            </button>
+
+            {menuOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 300,
+                background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
+                boxShadow: '0 8px 24px rgba(0,0,0,.12)', minWidth: 190, overflow: 'hidden',
+              }}>
+                {menuItems.map((item, i) => (
+                  <button
+                    key={i}
+                    onClick={item.action}
+                    disabled={item.disabled}
+                    style={{
+                      width: '100%', padding: '9px 14px', border: 'none', background: 'none',
+                      cursor: item.disabled ? 'default' : 'pointer', textAlign: 'left',
+                      fontSize: 13, color: item.disabled ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
+                      borderTop: i > 0 ? '1px solid var(--rb-border)' : 'none',
+                      fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => { if (!item.disabled) e.currentTarget.style.background = '#f8fafc'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

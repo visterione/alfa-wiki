@@ -1049,7 +1049,7 @@ export async function buildReport({
       basePayLabel = 'Почасовой оклад';
 
       if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
-        const { total: schedTotal, days: schedDays, byRole: schedByRole, byCategory: schedByCategory } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        const { total: schedTotal, days: schedDays, byRole: schedByRole, byCategory: schedByCategory, categoryRoles: schedCategoryRoles } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
         effectiveHoursWorked = schedTotal;
         effectiveDaysWorked  = schedDays || 0;
 
@@ -1075,8 +1075,9 @@ export async function buildReport({
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
           basePay += rate * hours;
           hourlyRatesBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, rate, hours, pay: rate * hours });
-          const normOverride = roleNormOverrides.find(n => n.roleTitle === categoryId);
-          const norm = normOverride ? parseFloat(normOverride.normHours) : (_normsByCategory[categoryId] ?? null);
+          const roleForNorm = schedCategoryRoles?.[categoryId] || null;
+          const normOverride = roleForNorm ? roleNormOverrides.find(n => n.roleTitle === roleForNorm) : null;
+          const norm = normOverride ? parseFloat(normOverride.normHours) : (roleForNorm ? (_normsByRole[roleForNorm] ?? _normsByCategory[categoryId] ?? null) : (_normsByCategory[categoryId] ?? null));
           if (norm != null && hours > 0 && hours >= 2 * norm) {
             const premiumHours = hours - 2 * norm;
             const premiumAmt = rate * premiumHours;
