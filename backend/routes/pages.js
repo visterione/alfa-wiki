@@ -235,7 +235,7 @@ router.get('/:identifier', authenticate, async (req, res) => {
 // Create page
 router.post('/', authenticate, requirePermission('pages', 'write'), [
   body('title').trim().notEmpty().withMessage('Title is required'),
-  body('contentType').optional().isIn(['wysiwyg', 'html', 'file']).withMessage('Invalid content type')
+  body('contentType').optional().isIn(['wysiwyg', 'html', 'spreadsheet', 'file']).withMessage('Invalid content type')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
