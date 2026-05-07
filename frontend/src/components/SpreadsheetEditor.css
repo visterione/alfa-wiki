@@ -2,7 +2,7 @@
   width: 100%;
   background: #fff;
   border-radius: 8px;
-  overflow: hidden;
+  /* overflow: hidden убран — обрезал выпадающие меню и попапы Univer */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -12,6 +12,7 @@
   padding: 12px;
   background: #f8f9fa;
   border-bottom: 1px solid #e0e0e0;
+  border-radius: 8px 8px 0 0;
 }
 
 .spreadsheet-toolbar .btn {
@@ -68,22 +69,78 @@
 /* Univer контейнер */
 .univer-container {
   border: 1px solid #e0e0e0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
   position: relative;
-  overflow: hidden;
+  /* overflow: hidden убран — обрезал контекстные меню и тултипы Univer */
+}
+
+/* Без тулбара — закруглять сверху тоже */
+.univer-container:first-child {
+  border-top: 1px solid #e0e0e0;
+  border-radius: 8px;
 }
 
 .univer-container.readonly {
   user-select: none;
 }
 
+/* Univer рендерит попапы и меню через portal в body — не обрезать их */
+.univer-container canvas {
+  display: block;
+}
+
+/* Кнопки навигации вверх/вниз — над футером Univer */
+.spreadsheet-nav-buttons {
+  position: absolute;
+  /* Univer's footer (zoom + sheet tabs) ~34px high; ставим чуть выше */
+  bottom: 40px;
+  right: 14px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: all;
+}
+
+.spreadsheet-nav-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #d0d0d0;
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  color: #555;
+  padding: 0;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+
+.spreadsheet-nav-btn:hover {
+  background: #fff;
+  border-color: #0066cc;
+  color: #0066cc;
+  box-shadow: 0 2px 8px rgba(0, 60, 180, 0.22);
+}
+
+.spreadsheet-nav-btn:active {
+  transform: scale(0.92);
+}
+
 /* Стили для печати */
 @media print {
-  .spreadsheet-toolbar {
+  .spreadsheet-toolbar,
+  .spreadsheet-nav-buttons {
     display: none;
   }
 
   .univer-container {
     border: none;
     box-shadow: none;
+    border-radius: 0;
   }
 }

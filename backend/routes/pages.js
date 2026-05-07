@@ -100,6 +100,11 @@ function computeContentDiff(oldHtml, newHtml, contentType) {
 
 function computeSpreadsheetDiff(oldJson, newJson) {
   try {
+    // Пропускаем детальный diff для очень больших таблиц (>300KB) — слишком дорого
+    if ((oldJson?.length || 0) > 300000 || (newJson?.length || 0) > 300000) {
+      const delta = (newJson?.length || 0) - (oldJson?.length || 0);
+      return { field: 'content', label: 'Таблица', changedCells: [{ cell: '—', from: '', to: `Δ ${delta > 0 ? '+' : ''}${Math.round(delta / 1024)}KB` }] };
+    }
     const oldData = JSON.parse(oldJson || '{}');
     const newData = JSON.parse(newJson || '{}');
     const changed = [];
@@ -256,10 +261,16 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
     let sanitizedContent = '';
     let searchContent = '';
     if (contentType !== 'file') {
-      sanitizedContent = contentType === 'html'
-        ? content
-        : sanitizeHtml(content || '', sanitizeConfig);
-      searchContent = extractTextContent(sanitizedContent);
+      if (contentType === 'html') {
+        sanitizedContent = content;
+        searchContent = extractTextContent(content);
+      } else if (contentType === 'spreadsheet') {
+        sanitizedContent = content || '';
+        searchContent = '';
+      } else {
+        sanitizedContent = sanitizeHtml(content || '', sanitizeConfig);
+        searchContent = extractTextContent(sanitizedContent);
+      }
     }
 
     // Получаем maxSortOrder для папки
@@ -363,10 +374,17 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
     if (content !== undefined) {
       const type = contentType || page.contentType;
       if (type !== 'file') {
-        const sanitizedContent = type === 'html'
-          ? content
-          : sanitizeHtml(content || '', sanitizeConfig);
-        const searchContent = extractTextContent(sanitizedContent);
+        let sanitizedContent, searchContent;
+        if (type === 'html') {
+          sanitizedContent = content;
+          searchContent = extractTextContent(content);
+        } else if (type === 'spreadsheet') {
+          sanitizedContent = content || '';
+          searchContent = '';
+        } else {
+          sanitizedContent = sanitizeHtml(content || '', sanitizeConfig);
+          searchContent = extractTextContent(sanitizedContent);
+        }
         updateData.content = sanitizedContent;
         updateData.searchContent = searchContent;
       }
@@ -470,7 +488,7 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
         changesSummary,
         metadata: {
           changes: detailedChanges,
-          previousContent: oldValues.content
+          ...(page.contentType !== 'spreadsheet' && { previousContent: oldValues.content })
         }
       });
     }

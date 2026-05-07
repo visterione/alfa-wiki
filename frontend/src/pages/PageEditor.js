@@ -136,7 +136,10 @@ export default function PageEditor() {
       } else {
         await pages.update(form.id, payload);
         toast.success('Страница сохранена');
-        navigate(`/page/${form.slug}`);
+        // Для spreadsheet не переходим на view — пользователь теряет позицию прокрутки
+        if (form.contentType !== 'spreadsheet') {
+          navigate(`/page/${form.slug}`);
+        }
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Ошибка сохранения');

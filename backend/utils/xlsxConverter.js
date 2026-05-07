@@ -270,9 +270,9 @@ function convertXlsxToUniver(workbook) {
             t: cellType
           };
 
-          // Формула
+          // Формула — xlsx хранит без =, Univer ожидает с =
           if (cell.f) {
-            univerCell.f = cell.f;
+            univerCell.f = '=' + cell.f;
           }
 
           // Стиль
@@ -443,9 +443,9 @@ function convertUniverToXlsx(univerData) {
               }
             }
 
-            // Формула
+            // Формула — Univer хранит с =, xlsx ожидает без =
             if (cell.f) {
-              excelCell.f = cell.f;
+              excelCell.f = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f;
             }
 
             // Стиль

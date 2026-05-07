@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef, useCallback } from 'react';
-import { Upload, Download } from 'lucide-react';
+import { Upload, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import { pages } from '../services/api';
 import toast from 'react-hot-toast';
 import './SpreadsheetEditor.css';
@@ -8,7 +8,8 @@ import './SpreadsheetEditor.css';
 import { RUSSIAN_FORMULA_MAP, RUSSIAN_FORMULA_DESCRIPTIONS } from '../utils/russianFormulas';
 
 // Univer imports
-import { createUniver, LocaleType, mergeLocales } from '@univerjs/presets';
+import { createUniver } from '@univerjs/presets';
+import { LocaleType, mergeLocales } from '@univerjs/core';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
 import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
@@ -667,8 +668,8 @@ const SpreadsheetEditor = forwardRef(({
     }
   };
 
-  // Инициализация Univer
-  const initializeUniver = () => {
+  // Инициализация Univer (newContentOverride — для реинита без перезагрузки страницы)
+  const initializeUniver = (newContentOverride) => {
     console.log('initializeUniver() called');
 
     if (!containerRef.current) {
@@ -691,8 +692,9 @@ const SpreadsheetEditor = forwardRef(({
     // Подготовка данных
     let workbookData;
 
-    if (content && content.trim().length > 0) {
-      workbookData = convertLuckysheetToUniver(content);
+    const dataToLoad = newContentOverride !== undefined ? newContentOverride : content;
+    if (dataToLoad && dataToLoad.trim().length > 0) {
+      workbookData = convertLuckysheetToUniver(dataToLoad);
     }
 
     if (!workbookData) {
@@ -802,13 +804,11 @@ const SpreadsheetEditor = forwardRef(({
 
       // Подписка на изменения (для автосохранения)
       if (!readOnly) {
-        univerAPI.addEvent(univerAPI.Event.CommandExecuted, () => {
-          if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-          }
-          saveTimeoutRef.current = setTimeout(() => {
-            saveData();
-          }, 2000);
+        univerAPI.addEvent(univerAPI.Event.CommandExecuted, (command) => {
+          // Пропускаем операции просмотра: выделение, скролл, зум (type === 1 = OPERATION)
+          if (command?.type === 1) return;
+          if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = setTimeout(() => saveData(), 4000);
         });
       }
 
@@ -936,6 +936,49 @@ const SpreadsheetEditor = forwardRef(({
     }
   }), [readOnly]);
 
+  // Навигация по таблице — скролл через встроенную команду Univer
+  const scrollToRow = useCallback((row) => {
+    if (!univerAPIRef.current) return;
+    univerAPIRef.current.executeCommand('sheet.command.scroll-to-cell', {
+      range: { startRow: row, endRow: row, startColumn: 0, endColumn: 0 },
+      forceTop: true,
+      forceLeft: true
+    });
+  }, []);
+
+  const navigateToTop = useCallback(() => {
+    if (!isReady) return;
+    scrollToRow(0);
+  }, [isReady, scrollToRow]);
+
+  const navigateToBottom = useCallback(() => {
+    if (!isReady || !workbookRef.current) return;
+    try {
+      const sheet = workbookRef.current.getActiveSheet?.();
+      if (!sheet) return;
+
+      let lastRow = 0;
+
+      // Пробуем встроенный API Univer
+      if (typeof sheet.getLastRow === 'function') {
+        lastRow = sheet.getLastRow();
+      } else {
+        // Fallback: ищем максимальный индекс строки в снапшоте
+        const snapshot = workbookRef.current.getSnapshot();
+        const sheetId = sheet.getSheetId?.();
+        const cellData = (sheetId ? snapshot?.sheets?.[sheetId] : Object.values(snapshot?.sheets || {})[0])?.cellData || {};
+        const rows = Object.keys(cellData)
+          .map(Number)
+          .filter(r => !isNaN(r) && Object.keys(cellData[r] || {}).length > 0);
+        if (rows.length > 0) lastRow = Math.max(...rows);
+      }
+
+      scrollToRow(lastRow);
+    } catch (e) {
+      console.warn('Navigate to bottom:', e);
+    }
+  }, [isReady, scrollToRow]);
+
   // Импорт Excel файла
   const handleImportClick = () => {
     fileInputRef.current?.click();
@@ -961,14 +1004,18 @@ const SpreadsheetEditor = forwardRef(({
       formData.append('file', file);
 
       const { data } = await pages.importXlsx(pageId, formData);
+      const newContent = JSON.stringify(data.data);
 
-      // Обновляем content
-      onChange?.(JSON.stringify(data.data));
+      // Обновляем content в родительском компоненте
+      onChange?.(newContent);
 
       toast.success('Файл импортирован');
 
-      // Перезагрузка страницы для применения изменений
-      setTimeout(() => window.location.reload(), 1000);
+      // Реинициализируем Univer на месте — без перезагрузки страницы
+      contentRef.current = newContent;
+      initializedRef.current = false;
+      setIsReady(false);
+      initializeUniver(newContent);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Ошибка импорта файла');
       console.error(error);
@@ -1081,6 +1128,25 @@ const SpreadsheetEditor = forwardRef(({
             left: 0
           }}
         />
+        {/* Кнопки навигации — над футером Univer (зум/листы), справа */}
+        {isReady && (
+          <div className="spreadsheet-nav-buttons">
+            <button
+              className="spreadsheet-nav-btn"
+              onClick={navigateToTop}
+              title="В начало таблицы"
+            >
+              <ArrowUp size={13} />
+            </button>
+            <button
+              className="spreadsheet-nav-btn"
+              onClick={navigateToBottom}
+              title="К последней записи"
+            >
+              <ArrowDown size={13} />
+            </button>
+          </div>
+        )}
         {/* Loading overlay - рендерится отдельно */}
         {!isReady && (
           <div style={{
