@@ -1370,6 +1370,7 @@ export async function buildReport({
       salary.materials = [];
       salary.deductionsTotal = 0;
       salary.materialsTotal = 0;
+      salary.harmfulnessDeduction = 0;
       salary.finalDeductionsTotal = 0;
       salary.turnoverDeductionsTotal = 0;
       salary.finalMaterialsTotal = 0;
