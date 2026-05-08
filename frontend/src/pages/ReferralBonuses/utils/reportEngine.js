@@ -1398,6 +1398,7 @@ export async function buildReport({
       salary.nurseSections = [];
       salary.advance = 0;
       salary.mainPayment = 0;
+      salary.ndflTotal = 0;
       salary.finalSalary = salary.basePay
         + holidaySurchargeTotal
         + effectiveReferralBonusTotal
