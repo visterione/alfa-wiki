@@ -557,6 +557,13 @@ export async function buildReport({
     // только в тех строках, где реально начисляется бонус (нет «потерянных» долей).
     const deductionFactor = performedServicesSum > 0 ? turnoverDeductionsTotal / performedServicesSum : 0;
     const materialFactor  = nonOverrideSum > 0 ? turnoverMaterialsTotal / nonOverrideSum : 0;
+    // В промежуточном отчёте применяем только взыскание "Удержание" (тип оборот)
+    const uderzhanieDeduction = execDeductions.find(
+      d => (d.name || '').trim() === 'Удержание' && d.deductionType !== 'final'
+    );
+    const uderzhanieDeductionFactor = (interim && uderzhanieDeduction && performedServicesSum > 0)
+      ? calcItemRub(uderzhanieDeduction, performedServicesSum) / performedServicesSum
+      : 0;
 
     const _psvcClinicId = clinicId !== 'unknown' ? String(clinicId) : '';
     let performedBonusTotal = 0;
@@ -647,7 +654,9 @@ export async function buildReport({
                   ? row.cost * parseFloat(svcOverrideMat.value) / 100
                   : parseFloat(svcOverrideMat.value) / (s.count || 1))
               : row.cost * materialFactor);
-            const effectiveCost = interim ? row.cost : row.cost * (1 - deductionFactor) - matForRow;
+            const effectiveCost = interim
+              ? row.cost * (1 - uderzhanieDeductionFactor)
+              : row.cost * (1 - deductionFactor) - matForRow;
             const grossBonus = effectiveCost * parseFloat(bonus.bonusPercent) / 100;
 
             // ── Вспомогательная функция: поиск услуги в roleServices по коду ──
@@ -1362,26 +1371,16 @@ export async function buildReport({
     };
 
     if (interim) {
-      // "Удержание" с типом оборот учитывается даже в промежуточном отчёте
-      const uderzhanieDeduction = execDeductions.find(
-        d => (d.name || '').trim() === 'Удержание' && d.deductionType !== 'final'
-      );
-      const uderzhanieTotal = uderzhanieDeduction
-        ? calcItemRub(uderzhanieDeduction, performedServicesSum)
-        : 0;
-
-      salary.referralBonuses = 0;
-      salary.referralSections = [];
       salary.referralCostTotal = 0;
       salary.referralCostItems = [];
       salary.executorSections = [];
-      salary.deductions = uderzhanieDeduction ? [uderzhanieDeduction] : [];
+      salary.deductions = [];
       salary.materials = [];
       salary.deductionsTotal = 0;
       salary.materialsTotal = 0;
       salary.harmfulnessDeduction = 0;
       salary.finalDeductionsTotal = 0;
-      salary.turnoverDeductionsTotal = uderzhanieTotal;
+      salary.turnoverDeductionsTotal = 0;
       salary.finalMaterialsTotal = 0;
       salary.turnoverMaterialsTotal = 0;
       salary.assistancePaidTotal = 0;
@@ -1394,19 +1393,19 @@ export async function buildReport({
       salary.mainPayment = 0;
       salary.finalSalary = salary.basePay
         + holidaySurchargeTotal
+        + effectiveReferralBonusTotal
         + (pt !== 'percent' && !!clinicSettings.plusPercent ? performedBonusTotal : 0)
         + extrasTotal
         + assistanceIncomeTotal
         + anesthesiologistIncomeTotal
-        + nurseIncomeTotal
-        - uderzhanieTotal;
+        + nurseIncomeTotal;
     }
 
     clinicReports.push({
       clinicId,
       clinicLabel,
       clinicColor: rbGetClinicColor(clinicId),
-      referralSections: interim ? [] : referralSections,
+      referralSections,
       executorSections: interim ? [] : executorSections,
       salary,
       performedSections,
