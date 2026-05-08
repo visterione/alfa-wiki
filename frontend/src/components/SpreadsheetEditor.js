@@ -48,6 +48,29 @@ import '@univerjs/preset-sheets-thread-comment/lib/index.css';
 import '@univerjs/preset-sheets-sort/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 
+// Простые ссылки на ячейку другого листа ('Лист'!A1, Sheet!$A$1 и т.п.) при
+// вычислении возвращают 0 вместо пустой строки, если ячейка-источник пустая.
+// Оборачиваем их в IF(ISBLANK(ref),"",ref) при загрузке данных.
+const CROSS_SHEET_SIMPLE_REF = /^'?[^!'()=+\-*/,;:[\]]+?'?!\$?[A-Za-z]+\$?\d+$/;
+
+function wrapCrossSheetRefs(workbookData) {
+  if (!workbookData?.sheets) return workbookData;
+  for (const sheet of Object.values(workbookData.sheets)) {
+    if (!sheet?.cellData) continue;
+    for (const row of Object.values(sheet.cellData)) {
+      if (!row) continue;
+      for (const cell of Object.values(row)) {
+        if (!cell?.f) continue;
+        const raw = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f;
+        if (CROSS_SHEET_SIMPLE_REF.test(raw.trim())) {
+          cell.f = `=IF(ISBLANK(${raw}),"",${raw})`;
+        }
+      }
+    }
+  }
+  return workbookData;
+}
+
 const SpreadsheetEditor = forwardRef(({
   content,
   onChange,
@@ -593,7 +616,7 @@ const SpreadsheetEditor = forwardRef(({
 
       // Проверяем, это уже Univer формат?
       if (parsed && parsed.id && parsed.sheets && !Array.isArray(parsed)) {
-        return parsed;
+        return wrapCrossSheetRefs(parsed);
       }
 
       // Конвертируем Luckysheet → Univer
@@ -653,7 +676,7 @@ const SpreadsheetEditor = forwardRef(({
         };
       });
 
-      return {
+      return wrapCrossSheetRefs({
         id: 'workbook',
         name: 'Workbook',
         appVersion: '0.1.0',
@@ -661,7 +684,7 @@ const SpreadsheetEditor = forwardRef(({
         styles: {},
         sheets,
         sheetOrder: Object.keys(sheets)
-      };
+      });
     } catch (error) {
       console.error('Error converting Luckysheet to Univer:', error);
       return null;
