@@ -55,6 +55,7 @@ const CROSS_SHEET_SIMPLE_REF = /^'?[^!'()=+\-*/,;:[\]]+?'?!\$?[A-Za-z]+\$?\d+$/;
 
 function wrapCrossSheetRefs(workbookData) {
   if (!workbookData?.sheets) return workbookData;
+  let wrapped = 0;
   for (const sheet of Object.values(workbookData.sheets)) {
     if (!sheet?.cellData) continue;
     for (const row of Object.values(sheet.cellData)) {
@@ -64,10 +65,16 @@ function wrapCrossSheetRefs(workbookData) {
         const raw = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f;
         if (CROSS_SHEET_SIMPLE_REF.test(raw.trim())) {
           cell.f = `=IF(ISBLANK(${raw}),"",${raw})`;
+          // Удаляем закешированное значение, чтобы Univer пересчитал формулу заново.
+          // Без этого Univer может показывать старый v:0 без пересчёта.
+          delete cell.v;
+          delete cell.t;
+          wrapped++;
         }
       }
     }
   }
+  if (wrapped > 0) console.log(`[wrapCrossSheetRefs] обёрнуто ${wrapped} межлистовых ссылок`);
   return workbookData;
 }
 
