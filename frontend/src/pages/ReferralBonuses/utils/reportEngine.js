@@ -1362,18 +1362,26 @@ export async function buildReport({
     };
 
     if (interim) {
+      // "Удержание" с типом оборот учитывается даже в промежуточном отчёте
+      const uderzhanieDeduction = execDeductions.find(
+        d => (d.name || '').trim() === 'Удержание' && d.deductionType !== 'final'
+      );
+      const uderzhanieTotal = uderzhanieDeduction
+        ? calcItemRub(uderzhanieDeduction, performedServicesSum)
+        : 0;
+
       salary.referralBonuses = 0;
       salary.referralSections = [];
       salary.referralCostTotal = 0;
       salary.referralCostItems = [];
       salary.executorSections = [];
-      salary.deductions = [];
+      salary.deductions = uderzhanieDeduction ? [uderzhanieDeduction] : [];
       salary.materials = [];
       salary.deductionsTotal = 0;
       salary.materialsTotal = 0;
       salary.harmfulnessDeduction = 0;
       salary.finalDeductionsTotal = 0;
-      salary.turnoverDeductionsTotal = 0;
+      salary.turnoverDeductionsTotal = uderzhanieTotal;
       salary.finalMaterialsTotal = 0;
       salary.turnoverMaterialsTotal = 0;
       salary.assistancePaidTotal = 0;
@@ -1390,7 +1398,8 @@ export async function buildReport({
         + extrasTotal
         + assistanceIncomeTotal
         + anesthesiologistIncomeTotal
-        + nurseIncomeTotal;
+        + nurseIncomeTotal
+        - uderzhanieTotal;
     }
 
     clinicReports.push({
