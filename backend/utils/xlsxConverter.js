@@ -272,14 +272,7 @@ function convertXlsxToUniver(workbook) {
 
           // Формула — xlsx хранит без =, Univer ожидает с =
           if (cell.f) {
-            let formula = cell.f.trim();
-            // Простые ссылки на ячейку другого листа (='Лист'!A1, =Лист!$A$1 и т.п.)
-            // Если источник пустой, Univer показывает 0 (или 1900-01-00 для дат).
-            // Оборачиваем в IF(ISBLANK(...)) чтобы пустые ячейки оставались пустыми.
-            if (/^'?[^!'()]+?'?!\$?[A-Za-z]+\$?\d+$/.test(formula)) {
-              formula = `IF(ISBLANK(${formula}),"",${formula})`;
-            }
-            univerCell.f = '=' + formula;
+            univerCell.f = '=' + cell.f;
           }
 
           // Стиль
