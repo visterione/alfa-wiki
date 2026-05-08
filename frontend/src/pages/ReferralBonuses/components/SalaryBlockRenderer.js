@@ -97,7 +97,7 @@ export default function SalaryBlock({ salary }) {
     anesthesiologistIncomeTotal = 0, anesthesiologistIncomeSections = [],
     nursePaidTotal = 0, nurseSections = [],
     nurseIncomeTotal = 0, nurseIncomeSections = [],
-    finalSalary, advance, mainPayment, paymentMethod, mainPaymentMethod,
+    finalSalary, ndflTotal = 0, advance, mainPayment, paymentMethod, mainPaymentMethod,
     extraPayments = [],
     deductions = [], materials = [], extras = [],
     payType,
@@ -599,6 +599,14 @@ export default function SalaryBlock({ salary }) {
         </div>
       </div>
 
+      {/* НДФЛ — показывается после К выплате, не входит в её расчёт */}
+      {ndflTotal > 0 && (
+        <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+          <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
+          <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ndflTotal)}</div>
+        </div>
+      )}
+
       {/* Advance / main payment breakdown */}
       {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0) && (
         <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
@@ -633,7 +641,7 @@ export default function SalaryBlock({ salary }) {
           )}
           {(() => {
             const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-            const _remainder = (finalSalary || 0) - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
+            const _remainder = (finalSalary || 0) - ndflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
             return (
               <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{_remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div></div>

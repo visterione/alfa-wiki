@@ -526,6 +526,11 @@ export async function buildReport({
     const totalServiceCount = executorRows.reduce((s, r) => s + (rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1), 0);
 
     const execDeductions = clinicSettings.deductions || [];
+    // НДФЛ выносится в футер отчёта после «К выплате» — не участвует в расчёте finalSalary
+    const ndflDeduction = execDeductions.find(d => (d.name || '').trim() === 'НДФЛ');
+    const execDeductionsFiltered = ndflDeduction
+      ? execDeductions.filter(d => d !== ndflDeduction)
+      : execDeductions;
     // Для нормированного типа материалы не применяются (секция скрыта в UI)
     const _isNormedPt = (clinicSettings.payType || 'salary') === 'normed';
     const execMaterials  = _isNormedPt ? [] : (clinicSettings.materials  || []);
@@ -533,8 +538,8 @@ export async function buildReport({
     const execServiceMaterials = _isNormedPt ? [] : (clinicSettings.serviceMaterials || []);
     const extrasTotal = execExtras.reduce((s, e) => s + calcExtraRub(e), 0);
 
-    const turnoverDeductions = execDeductions.filter(d => d.deductionType !== 'final');
-    const finalDeductions    = execDeductions.filter(d => d.deductionType === 'final');
+    const turnoverDeductions = execDeductionsFiltered.filter(d => d.deductionType !== 'final');
+    const finalDeductions    = execDeductionsFiltered.filter(d => d.deductionType === 'final');
     const turnoverMaterials  = execMaterials.filter(m => m.deductionType !== 'final');
     const finalMaterials     = execMaterials.filter(m => m.deductionType === 'final');
 
@@ -1319,6 +1324,7 @@ export async function buildReport({
 
     const materialsTotal = finalMaterialsTotal + svcMatFinalTotal;
     const finalSalary = preFinalSalary - finalDeductionsTotal - finalMaterialsTotal - svcMatFinalTotal;
+    const ndflTotal = ndflDeduction ? calcItemRub(ndflDeduction, finalSalary) : 0;
 
     if (effectiveReferralBonusTotal) globalGrandTotal += effectiveReferralBonusTotal;
 
@@ -1365,7 +1371,8 @@ export async function buildReport({
       mainPayment: clinicSettings.mainPayment || 0,
       mainPaymentMethod: clinicSettings.mainPaymentMethod || 'card',
       extraPayments: clinicSettings.extraPayments || [],
-      deductions: execDeductions,
+      ndflTotal,
+      deductions: execDeductionsFiltered,
       materials: execMaterials,
       extras: execExtras,
     };
