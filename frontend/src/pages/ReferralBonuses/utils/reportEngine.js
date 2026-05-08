@@ -407,9 +407,27 @@ export async function buildReport({
       return !!clinicSettings.includeCorpInvoices;
     };
 
+    // Corp filter for referral rows: ignores corpIncludedKeys (which is executor-scoped),
+    // uses only the doctor's own includeCorpInvoices setting — keeps individual/bulk consistent.
+    const _corpOkForReferral = r => {
+      if (!colMap.invoiceType) return true;
+      const t = String(r[colMap.invoiceType] || '').toLowerCase().trim();
+      if (t !== 'юр. компания' && t !== 'юр.компания') return true;
+      if (colMap.invoiceCreatedDate) {
+        const invoiceDate = rbParseDate(r[colMap.invoiceCreatedDate]);
+        if (invoiceDate && invoiceDate < new Date(2026, 1, 1)) return false;
+      }
+      const corpMap = execSettings?.corpIncludedServices;
+      if (corpMap != null) {
+        const code = colMap.serviceCode ? String(r[colMap.serviceCode] || '').trim() : '';
+        return corpMap[code] !== false;
+      }
+      return !!clinicSettings.includeCorpInvoices;
+    };
+
     // 1. Rows where doctor is referrer
     const referrerRows = colMap.referrer
-      ? clinicRows.filter(r => _corpOk(r) && rbNamesMatch(doctorName, r[colMap.referrer] || ''))
+      ? clinicRows.filter(r => _corpOkForReferral(r) && rbNamesMatch(doctorName, r[colMap.referrer] || ''))
       : [];
 
     // 2. Rows where doctor is executor
