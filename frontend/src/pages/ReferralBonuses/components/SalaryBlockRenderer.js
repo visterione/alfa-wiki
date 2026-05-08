@@ -102,6 +102,7 @@ export default function SalaryBlock({ salary }) {
     deductions = [], materials = [], extras = [],
     payType,
     harmfulnessDeduction = 0,
+    interim = false,
     normServices: normServicesList = [],
     fixedSalary: normFixedSalary = 0,
     normTotalHours = 0,
@@ -144,7 +145,7 @@ export default function SalaryBlock({ salary }) {
   const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
-  const hasDeductions       = finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0;
+  const hasDeductions       = !interim && (finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0);
   const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasRoleDoctor       = (performedBonusTotal || 0) > 0;

@@ -1315,6 +1315,7 @@ export async function buildReport({
 
     const salary = {
       basePay, basePayLabel, payType: pt,
+      interim,
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
       hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
       daysWorked: effectiveDaysWorked,
