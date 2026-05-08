@@ -1,8 +1,25 @@
 const express = require('express');
-const { RoleNorm } = require('../models');
+const { RoleNorm, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+const RB_TIME_SLUG = 'rb-time';
+
+async function recordHistory(userId, summary) {
+  try {
+    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
+    await PageHistory.create({
+      pageId: page ? page.id : null,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { pageSlug: RB_TIME_SLUG }
+    });
+  } catch (err) {
+    console.error('role-norms history error:', err.message);
+  }
+}
 
 // GET /api/role-norms?year=2026&month=3
 router.get('/', authenticate, async (req, res) => {
@@ -63,6 +80,8 @@ router.post('/bulk', authenticate, async (req, res) => {
       await t.rollback();
       throw err;
     }
+
+    await recordHistory(req.user.id, `Обновлены нормы должностей: ${month}/${year}, должностей: ${records.length}`);
 
     res.json({ saved: records.length });
   } catch (err) {

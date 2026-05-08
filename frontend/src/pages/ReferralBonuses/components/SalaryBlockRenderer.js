@@ -591,66 +591,77 @@ export default function SalaryBlock({ salary }) {
         </SalaryRow>
       )}
 
-      {/* Total */}
-      <div className="rb-salary-total-row">
-        <div className="rb-salary-total-label">К выплате</div>
-        <div className={`rb-salary-total-value ${(finalSalary || 0) >= 0 ? 'positive' : 'negative'}`}>
-          {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
-        </div>
-      </div>
+      {/* Payment section */}
+      {(() => {
+        const hasBreakdown = ndflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
+        const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+        const _remainder = (finalSalary || 0) - ndflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
-      {/* НДФЛ — показывается после К выплате, не входит в её расчёт */}
-      {ndflTotal > 0 && (
-        <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-          <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
-          <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ndflTotal)}</div>
-        </div>
-      )}
+        if (!hasBreakdown) {
+          return (
+            <div className="rb-salary-total-row">
+              <div className="rb-salary-total-label">К выплате</div>
+              <div className={`rb-salary-total-value ${(finalSalary || 0) >= 0 ? 'positive' : 'negative'}`}>
+                {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
+              </div>
+            </div>
+          );
+        }
 
-      {/* Advance / main payment breakdown */}
-      {((mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0) && (
-        <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
-          {(advance || 0) > 0 && (
-            <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>
-              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{paymentMethod ? fmtMethod(paymentMethod) : ''}</div>
-              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
-            </div>
-          )}
-          {(mainPayment || 0) > 0 && (
-            <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
-              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
-              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
-            </div>
-          )}
-          {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
-            <div key={i} className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-              <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}</div></div>
-              <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{ep.method ? fmtMethod(ep.method) : ''}</div>
-              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
-            </div>
-          ))}
-          {normPremiumAmount > 0 && (
-            <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-              <div className="rb-salary-row-body">
-                <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Премия</div>
+        return (
+          <>
+            <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
+              <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>К выплате</div></div>
+                <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>
+                  {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
+                </div>
               </div>
-              <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(normPremiumAmount)}</div>
+              {ndflTotal > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ndflTotal)}</div>
+                </div>
+              )}
+              {(advance || 0) > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>
+                  <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{paymentMethod ? fmtMethod(paymentMethod) : ''}</div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
+                </div>
+              )}
+              {(mainPayment || 0) > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
+                  <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
+                </div>
+              )}
+              {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
+                <div key={i} className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}</div></div>
+                  <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{ep.method ? fmtMethod(ep.method) : ''}</div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
+                </div>
+              ))}
+              {normPremiumAmount > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
+                  <div className="rb-salary-row-body">
+                    <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Премия</div>
+                  </div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(normPremiumAmount)}</div>
+                </div>
+              )}
             </div>
-          )}
-          {(() => {
-            const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-            const _remainder = (finalSalary || 0) - ndflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
-            return (
-              <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
-                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{_remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div></div>
-                <div className="rb-salary-row-value" style={{ color: _remainder < 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)' }}>{_remainder < 0 ? '−' : ''}{fmtRub(Math.abs(_remainder))}</div>
+            <div className="rb-salary-total-row">
+              <div className="rb-salary-total-label">{_remainder < 0 ? 'Переплата' : 'Остаток к доплате'}</div>
+              <div className={`rb-salary-total-value ${_remainder >= 0 ? 'positive' : 'negative'}`}>
+                {_remainder < 0 ? '−' : ''}{fmtRub(Math.abs(_remainder))}
               </div>
-            );
-          })()}
-        </div>
-      )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

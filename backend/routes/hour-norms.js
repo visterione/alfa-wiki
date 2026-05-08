@@ -1,8 +1,25 @@
 const express = require('express');
-const { HourNorm } = require('../models');
+const { HourNorm, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+const RB_TIME_SLUG = 'rb-time';
+
+async function recordHistory(userId, summary) {
+  try {
+    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
+    await PageHistory.create({
+      pageId: page ? page.id : null,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { pageSlug: RB_TIME_SLUG }
+    });
+  } catch (err) {
+    console.error('hour-norms history error:', err.message);
+  }
+}
 
 // GET /api/hour-norms?year=2026&month=3
 // Возвращает нормы часов за указанный месяц
@@ -66,6 +83,8 @@ router.post('/bulk', authenticate, async (req, res) => {
       await t.rollback();
       throw err;
     }
+
+    await recordHistory(req.user.id, `Обновлены нормы часов: ${month}/${year}, специальностей: ${records.length}`);
 
     res.json({ saved: records.length });
   } catch (err) {

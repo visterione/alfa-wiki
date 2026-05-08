@@ -1034,7 +1034,12 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
             {bulkResults.map(r => {
               const isOpen     = expanded.has(r.doctor.id);
               const hasClinics = r.clinicReports?.length > 0;
-              const total      = (r.clinicReports || []).reduce((s, cr) => s + (cr.salary?.finalSalary || 0), 0);
+              const total      = (r.clinicReports || []).reduce((s, cr) => {
+                const sal = cr.salary;
+                if (!sal) return s;
+                const extraT = (sal.extraPayments || []).reduce((sum, ep) => sum + (parseFloat(ep.amount) || 0), 0);
+                return s + (sal.finalSalary || 0) - (sal.ndflTotal || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - extraT;
+              }, 0);
               return (
                 <div key={r.doctor.id} style={{ marginBottom: 6, border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
                   <div

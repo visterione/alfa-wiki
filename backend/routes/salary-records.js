@@ -1,9 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const { SalaryRecord, CashPayment } = require('../models');
+const { SalaryRecord, CashPayment, Page, PageHistory } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
+
+async function recordHistory(pageSlug, userId, summary) {
+  try {
+    const page = await Page.findOne({ where: { slug: pageSlug } });
+    await PageHistory.create({
+      pageId: page ? page.id : null,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { pageSlug }
+    });
+  } catch (err) {
+    console.error('salary-records history error:', err.message);
+  }
+}
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -110,6 +125,8 @@ router.post('/',
       );
     }
 
+    await recordHistory('rb-reports', req.user?.id, `Сохранён отчёт: ${doctorName}, ${periodLabel || dateFrom?.slice(0, 7) || ''}`);
+
     res.status(201).json(record);
   } catch (err) {
     console.error('POST /api/salary-records error:', err);
@@ -187,6 +204,13 @@ router.put('/:id', authenticate, async (req, res) => {
       reportData:  reportData  || null,
       excelData:   excelBase64 !== undefined ? (excelBase64 || null) : record.excelData,
     });
+
+    if (excelBase64) {
+      await recordHistory('rb-reports', req.user?.id, `Пересохранён отчёт: ${record.doctorName}, ${record.periodLabel || ''}`);
+    } else {
+      await recordHistory('rb-summary', req.user?.id, `Обновлён комментарий: ${record.doctorName}, ${record.periodLabel || ''}`);
+    }
+
     res.json({ ok: true });
   } catch (err) {
     console.error('PUT /api/salary-records/:id error:', err);
@@ -200,6 +224,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     const record = await SalaryRecord.findByPk(id);
     if (!record) return res.status(404).json({ error: 'Not found' });
+    await recordHistory('rb-archive', req.user?.id, `Удалён отчёт: ${record.doctorName}, ${record.periodLabel || ''}`);
     await record.destroy();
     res.json({ ok: true });
   } catch (err) {

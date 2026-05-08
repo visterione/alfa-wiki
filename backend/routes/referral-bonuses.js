@@ -5,7 +5,7 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-const REFERRAL_BONUSES_PAGE_SLUG = 'napravleniya';
+const REFERRAL_BONUSES_PAGE_SLUG = 'rb-referrals';
 
 // === HELPER: Запись в историю страницы ===
 async function recordHistory(pageSlug, userId, summary, changes = []) {

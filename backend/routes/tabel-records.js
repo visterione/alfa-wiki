@@ -1,7 +1,24 @@
 const express = require('express');
 const router  = express.Router();
-const { TabelRecord, TabelRecordDoctor } = require('../models');
+const { TabelRecord, TabelRecordDoctor, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
+
+const RB_TIME_SLUG = 'rb-time';
+
+async function recordHistory(userId, summary, changes = []) {
+  try {
+    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
+    await PageHistory.create({
+      pageId: page ? page.id : null,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { changes, pageSlug: RB_TIME_SLUG }
+    });
+  } catch (err) {
+    console.error('tabel-records history error:', err.message);
+  }
+}
 
 // GET /api/tabel-records — все батчи (без doctor-строк, только заголовки)
 router.get('/', authenticate, async (req, res) => {
@@ -89,6 +106,9 @@ router.post('/', authenticate, async (req, res) => {
     const full = await TabelRecord.findByPk(record.id, {
       include: [{ model: TabelRecordDoctor, as: 'doctors' }],
     });
+
+    await recordHistory(req.user?.id, `Сохранён табель: ${orgName || ''} ${month}/${year}, врачей: ${doctors.length}`);
+
     res.status(201).json(full);
   } catch (err) {
     console.error('POST /api/tabel-records error:', err);
@@ -120,6 +140,9 @@ router.put('/:id', authenticate, async (req, res) => {
     const full = await TabelRecord.findByPk(record.id, {
       include: [{ model: TabelRecordDoctor, as: 'doctors' }],
     });
+
+    await recordHistory(req.user?.id, `Обновлён табель: ${record.orgName || ''} ${record.month}/${record.year}, врачей: ${doctors.length}`);
+
     res.json(full);
   } catch (err) {
     console.error('PUT /api/tabel-records/:id error:', err);
@@ -132,6 +155,7 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const record = await TabelRecord.findByPk(req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
+    await recordHistory(req.user?.id, `Удалён табель: ${record.orgName || ''} ${record.month}/${record.year}`);
     await record.destroy(); // CASCADE deletes doctors too
     res.json({ ok: true });
   } catch (err) {

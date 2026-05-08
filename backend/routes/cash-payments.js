@@ -1,8 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
-const { CashPayment, SalaryRecord } = require('../models');
+const { CashPayment, SalaryRecord, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
+
+const RB_ARCHIVE_SLUG = 'rb-archive';
+
+async function recordHistory(userId, summary) {
+  try {
+    const page = await Page.findOne({ where: { slug: RB_ARCHIVE_SLUG } });
+    await PageHistory.create({
+      pageId: page ? page.id : null,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: { pageSlug: RB_ARCHIVE_SLUG }
+    });
+  } catch (err) {
+    console.error('cash-payments history error:', err.message);
+  }
+}
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -70,6 +87,8 @@ router.post('/',
       note: note || null,
     });
 
+    await recordHistory(req.user.id, `Выдача из кассы: ${paymentData.doctorName || ''}, ${parseFloat(amount).toFixed(2)} ₽`);
+
     res.json(payment);
   } catch (err) {
     console.error('POST /api/cash-payments error:', err);
@@ -136,6 +155,7 @@ router.put('/:id',
       const history = Array.isArray(payment.editHistory) ? [...payment.editHistory] : [];
       history.push({ editedBy: editorName, editedAt: new Date().toISOString(), changes });
       payment.editHistory = history;
+      await recordHistory(req.user.id, `Изменена выдача: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`);
     }
 
     await payment.save();
@@ -151,6 +171,7 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const payment = await CashPayment.findByPk(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Not found' });
+    await recordHistory(req.user?.id, `Удалена выдача: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`);
     await payment.destroy();
     res.json({ ok: true });
   } catch (err) {
