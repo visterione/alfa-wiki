@@ -1378,22 +1378,19 @@ export async function buildReport({
       salary.turnoverMaterialsTotal = 0;
       salary.assistancePaidTotal = 0;
       salary.assistanceSections = [];
-      salary.assistanceIncomeTotal = 0;
-      salary.assistanceIncomeSections = [];
       salary.anesthesiologistPaidTotal = 0;
       salary.anesthesiologistSections = [];
-      salary.anesthesiologistIncomeTotal = 0;
-      salary.anesthesiologistIncomeSections = [];
       salary.nursePaidTotal = 0;
       salary.nurseSections = [];
-      salary.nurseIncomeTotal = 0;
-      salary.nurseIncomeSections = [];
       salary.advance = 0;
       salary.mainPayment = 0;
       salary.finalSalary = salary.basePay
         + holidaySurchargeTotal
         + (pt !== 'percent' && !!clinicSettings.plusPercent ? performedBonusTotal : 0)
-        + extrasTotal;
+        + extrasTotal
+        + assistanceIncomeTotal
+        + anesthesiologistIncomeTotal
+        + nurseIncomeTotal;
     }
 
     clinicReports.push({
