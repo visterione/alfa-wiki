@@ -756,12 +756,16 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         const referralBonuses    = Array.isArray(rbRes.data)   ? rbRes.data   : [];
         const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
         const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
+        const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
+          cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+        );
         const result = await buildReport({
           rows, colMap, doctor,
           referralBonuses, performedDbBonuses, execSettings,
           dateFrom: dateFrom || null, dateTo: dateTo || null,
           allDoctors: doctors, savedAssistanceIncome,
-          interim, corpIncludedKeys,
+          interim, normedOnly: isNormed && !uploadedFile,
+          corpIncludedKeys,
           scheduleEntries,
           holidayDates,
         });
