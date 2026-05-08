@@ -53,7 +53,9 @@ import '@univerjs/preset-sheets-table/lib/index.css';
 // Оборачиваем их в IF(ISBLANK(ref),"",ref) при загрузке данных.
 const CROSS_SHEET_SIMPLE_REF = /^'?[^!'()=+\-*/,;:[\]]+?'?!\$?[A-Za-z]+\$?\d+$/;
 
-function wrapCrossSheetRefs(workbookData) {
+// forceRecalc=true (загрузка): удаляем v/t, чтобы Univer пересчитал с нуля.
+// forceRecalc=false (сохранение): только обновляем f, v оставляем (это текущее вычисленное значение).
+function wrapCrossSheetRefs(workbookData, forceRecalc = true) {
   if (!workbookData?.sheets) return workbookData;
   let wrapped = 0;
   for (const sheet of Object.values(workbookData.sheets)) {
@@ -65,11 +67,12 @@ function wrapCrossSheetRefs(workbookData) {
         const raw = cell.f.startsWith('=') ? cell.f.slice(1) : cell.f;
         if (CROSS_SHEET_SIMPLE_REF.test(raw.trim())) {
           cell.f = `=IF(ISBLANK(${raw}),"",${raw})`;
-          // Удаляем закешированное значение, чтобы Univer пересчитал формулу заново.
-          // Без этого Univer может показывать старый v:0 без пересчёта.
+          if (forceRecalc) { delete cell.v; delete cell.t; }
+          wrapped++;
+        } else if (forceRecalc && /^IF\s*\(\s*ISBLANK\s*\(/i.test(raw) && (cell.v === 0 || cell.v === null)) {
+          // Уже обёрнутая формула, но v=0 — значит Univer закешировал старое значение, форсируем пересчёт
           delete cell.v;
           delete cell.t;
-          wrapped++;
         }
       }
     }
@@ -95,6 +98,7 @@ const SpreadsheetEditor = forwardRef(({
   const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
   const saveTimeoutRef = useRef(null);
+  const autoWrapRef = useRef(false); // защита от рекурсии при живом оборачивании формул
 
   // Обновляем ref при изменении onChange и content
   useEffect(() => {
@@ -832,11 +836,32 @@ const SpreadsheetEditor = forwardRef(({
         }, 500);
       }
 
-      // Подписка на изменения (для автосохранения)
+      // Подписка на изменения (для автосохранения + живого оборачивания формул)
       if (!readOnly) {
+        // Пробуем обернуть активную ячейку если в ней голая межлистовая ссылка.
+        // Защищаемся от рекурсии флагом autoWrapRef.
+        const tryAutoWrap = () => {
+          if (autoWrapRef.current || !workbook) return;
+          try {
+            const sheet = workbook.getActiveSheet?.();
+            const range = sheet?.getActiveRange?.();
+            const formula = range?.getFormula?.();
+            if (!formula) return;
+            const raw = formula.startsWith('=') ? formula.slice(1) : formula;
+            if (!CROSS_SHEET_SIMPLE_REF.test(raw.trim())) return;
+            autoWrapRef.current = true;
+            try {
+              range.setFormula?.(`=IF(ISBLANK(${raw}),"",${raw})`);
+            } finally {
+              autoWrapRef.current = false;
+            }
+          } catch (e) { /* живое оборачивание best-effort, тихо игнорируем */ }
+        };
+
         univerAPI.addEvent(univerAPI.Event.CommandExecuted, (command) => {
           // Пропускаем операции просмотра: выделение, скролл, зум (type === 1 = OPERATION)
           if (command?.type === 1) return;
+          tryAutoWrap();
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
           saveTimeoutRef.current = setTimeout(() => saveData(), 4000);
         });
@@ -916,6 +941,10 @@ const SpreadsheetEditor = forwardRef(({
 
       const snapshot = workbookRef.current.getSnapshot();
       console.log('saveData: Got snapshot from Univer');
+
+      // Оборачиваем голые межлистовые ссылки перед сохранением.
+      // Если живое оборачивание (tryAutoWrap) не сработало — это поймает здесь.
+      wrapCrossSheetRefs(snapshot, false);
 
       const jsonData = JSON.stringify(snapshot);
       console.log('saveData: JSON length:', jsonData?.length);
