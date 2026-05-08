@@ -72,6 +72,10 @@ function parseCrossSheetRef(raw) {
 // Гарантируем что пустые ячейки-источники хранят v:"" (пустая строка),
 // тогда межлистовая ссылка вернёт "" вместо 0. Формулы НЕ трогаем —
 // в строке формул пользователь видит обычный вид типа ='Вызов'!B2.
+//
+// Дополнительно заполняем весь диапазон строк referenced-колонок значением v:"".
+// Это покрывает перетягивание формул: новая строка уже имеет v:"" в Univer,
+// поэтому ссылка сразу возвращает "" без перезагрузки страницы.
 function fixEmptySourceCells(workbookData) {
   if (!workbookData?.sheets) return workbookData;
 
@@ -79,6 +83,10 @@ function fixEmptySourceCells(workbookData) {
   for (const sheet of Object.values(workbookData.sheets)) {
     if (sheet?.name) byName[sheet.name] = sheet;
   }
+
+  // Шаг 1: сканируем формулы → исправляем конкретные ячейки-источники,
+  // попутно собираем какие колонки каждого листа-источника используются.
+  const refCols = {}; // sheetName → Set<col>
 
   for (const sheet of Object.values(workbookData.sheets)) {
     if (!sheet?.cellData) continue;
@@ -92,23 +100,46 @@ function fixEmptySourceCells(workbookData) {
         const ref = parseCrossSheetRef(raw);
         if (!ref) continue;
 
+        if (!refCols[ref.sheetName]) refCols[ref.sheetName] = new Set();
+        refCols[ref.sheetName].add(ref.col);
+
         const srcSheet = byName[ref.sheetName];
         if (!srcSheet) continue;
-
         if (!srcSheet.cellData) srcSheet.cellData = {};
         if (!srcSheet.cellData[ref.row]) srcSheet.cellData[ref.row] = {};
-
         const src = srcSheet.cellData[ref.row][ref.col];
-        // Только если источник отсутствует или null — ставим v:"" чтобы ссылка
-        // вернула "" вместо 0. Реальный v:0 (явно введённый) не трогаем.
         if (!src || src.v === null || src.v === undefined) {
           srcSheet.cellData[ref.row][ref.col] = { ...(src || {}), v: '', t: 1 };
         }
 
-        // Сбрасываем устаревший кеш v:0 в ячейке-назначении — Univer пересчитает
+        // Сбрасываем устаревший кеш v:0 у ячейки-назначения
         if (cell.v === 0 || cell.v === null) {
           delete cell.v;
           delete cell.t;
+        }
+      }
+    }
+  }
+
+  // Шаг 2: для каждой referenced-колонки заполняем весь диапазон строк листа-источника.
+  // После этого перетягивание формулы в любую строку в пределах данных листа
+  // сразу возвращает "" — Univer уже видит v:"" в источнике.
+  for (const [sheetName, cols] of Object.entries(refCols)) {
+    const sheet = byName[sheetName];
+    if (!sheet?.cellData) continue;
+
+    let maxRow = 0;
+    for (const rowStr of Object.keys(sheet.cellData)) {
+      const r = Number(rowStr);
+      if (!isNaN(r) && r > maxRow) maxRow = r;
+    }
+
+    for (let r = 0; r <= maxRow; r++) {
+      if (!sheet.cellData[r]) sheet.cellData[r] = {};
+      for (const col of cols) {
+        const cell = sheet.cellData[r][col];
+        if (!cell || cell.v === null || cell.v === undefined) {
+          sheet.cellData[r][col] = { ...(cell || {}), v: '', t: 1 };
         }
       }
     }
