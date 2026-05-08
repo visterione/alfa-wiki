@@ -362,21 +362,14 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     }
 
 
-    // Итого
+    // Итого / разбивка
     ws.addRow([]);
-    const totalRow = ws.addRow(['К выплате', '', '', '', '', parseFloat((sal.finalSalary || 0).toFixed(2))]);
-    const totalColor = (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000';
-    totalRow.getCell(1).font = { ...fontBold, size: 13, color: { argb: totalColor } };
-    totalRow.getCell(6).font = { ...fontBold, size: 13, color: { argb: totalColor } };
-    totalRow.getCell(6).numFmt = '#,##0.00';
-    totalRow.getCell(6).border = allBorders;
-    totalRow.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (sal.finalSalary || 0) >= 0 ? 'FFD1FAE5' : 'FFFEE2E2' } };
-    ws.mergeCells(`A${totalRow.number}:E${totalRow.number}`);
-    autoWidth(totalRow, 6);
-
-    // Аванс / тело з/п / доп. выплаты
     const _extraPayments = sal.extraPayments || [];
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+    const _ndflTotal = sal.ndflTotal || 0;
+    const _hasBreakdown = _ndflTotal > 0 || (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0;
+    const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
+
     const addPayRow = (label, method, value) => {
       const row = ws.addRow([label, '', '', method ? (method === 'cash' ? 'наличные' : 'карта') : '', '', parseFloat((value || 0).toFixed(2))]);
       row.getCell(1).font = fontNormal;
@@ -387,7 +380,32 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       autoWidth(row, 6);
       return row;
     };
-    if ((sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || _extraTotal > 0) {
+
+    const addTotalBlock = (label, value) => {
+      const row = ws.addRow([label, '', '', '', '', parseFloat((value || 0).toFixed(2))]);
+      const color = (value || 0) >= 0 ? 'FF166534' : 'FFCC0000';
+      row.getCell(1).font = { ...fontBold, size: 13, color: { argb: color } };
+      row.getCell(6).font = { ...fontBold, size: 13, color: { argb: color } };
+      row.getCell(6).numFmt = '#,##0.00';
+      row.getCell(6).border = allBorders;
+      row.getCell(6).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: (value || 0) >= 0 ? 'FFD1FAE5' : 'FFFEE2E2' } };
+      ws.mergeCells(`A${row.number}:E${row.number}`);
+      autoWidth(row, 6);
+      return row;
+    };
+
+    if (!_hasBreakdown) {
+      addTotalBlock('К выплате', sal.finalSalary || 0);
+    } else {
+      addSalRow('К выплате', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
+      if (_ndflTotal > 0) {
+        const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
+        ndflRow.getCell(1).font = fontNormal;
+        ndflRow.getCell(6).font = { ...fontNormal, color: { argb: 'FF64748B' } };
+        ndflRow.getCell(6).numFmt = '#,##0.00';
+        ws.mergeCells(`A${ndflRow.number}:E${ndflRow.number}`);
+        autoWidth(ndflRow, 6);
+      }
       if ((sal.advance || 0) > 0)
         addPayRow('Аванс', sal.paymentMethod, sal.advance);
       if ((sal.mainPayment || 0) > 0)
@@ -396,7 +414,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
         if ((ep.amount || 0) > 0)
           addPayRow(ep.label || 'Доп. выплата', ep.method, ep.amount);
       });
-      addSalRow('Остаток к выплате', (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - _extraTotal, '=');
+      if ((sal.normPremiumAmount || 0) > 0)
+        addPayRow('Премия', null, sal.normPremiumAmount);
+      addTotalBlock(_remainder < 0 ? 'Переплата' : 'Остаток к доплате', _remainder);
     }
 
     // Касса

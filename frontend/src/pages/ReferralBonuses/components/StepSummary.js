@@ -21,7 +21,7 @@ const fmtRub = v =>
 function calcRemainder(sal) {
   if (!sal) return 0;
   const extraTotal = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-  return parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTotal;
+  return parseFloat(sal.finalSalary || 0) - parseFloat(sal.ndflTotal || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - parseFloat(sal.normPremiumAmount || 0) - extraTotal;
 }
 
 // Извлекает сумму вычета по имени из объекта salary (поддерживает % и ₽)
@@ -43,6 +43,8 @@ function _getDeductionAmount(salary, namePredicate) {
 }
 
 function getNdflAmount(salary) {
+  if (!salary) return 0;
+  if ((salary.ndflTotal || 0) > 0) return salary.ndflTotal;
   return _getDeductionAmount(salary, n => n.toUpperCase() === 'НДФЛ');
 }
 
