@@ -1,25 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
-const { CashPayment, SalaryRecord, Page, PageHistory } = require('../models');
+const { CashPayment, SalaryRecord } = require('../models');
 const { authenticate } = require('../middleware/auth');
-
-const RB_ARCHIVE_SLUG = 'rb-archive';
-
-async function recordHistory(userId, summary) {
-  try {
-    const page = await Page.findOne({ where: { slug: RB_ARCHIVE_SLUG } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { pageSlug: RB_ARCHIVE_SLUG }
-    });
-  } catch (err) {
-    console.error('cash-payments history error:', err.message);
-  }
-}
+const { logRbActivity } = require('../services/rbLogger');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -36,10 +20,7 @@ function formatFinancistName(name) {
   return `${last} ${first[0]}.`;
 }
 
-// POST /api/cash-payments — зафиксировать выдачу из кассы
-// Два режима:
-//   Привязанный:    { salaryRecordId, amount, note? }
-//   Свободный:      { misUserId, doctorName, periodLabel?, amount, note? }
+// POST /api/cash-payments
 router.post('/',
   authenticate,
   body('salaryRecordId').optional({ nullable: true }).isUUID().withMessage('salaryRecordId должен быть UUID'),
@@ -65,45 +46,53 @@ router.post('/',
       if (!record) return res.status(404).json({ error: 'Salary record not found' });
       paymentData = {
         salaryRecordId,
-        misUserId: record.misUserId,
-        doctorName: record.doctorName,
+        misUserId:   record.misUserId,
+        doctorName:  record.doctorName,
         periodLabel: record.periodLabel || (record.dateFrom ? record.dateFrom.toString().slice(0, 7) : null),
       };
     } else {
       paymentData = {
         salaryRecordId: null,
-        misUserId: misUserId.trim(),
-        doctorName: (doctorName || '').trim(),
+        misUserId:   misUserId.trim(),
+        doctorName:  (doctorName || '').trim(),
         periodLabel: periodLabel || null,
       };
     }
 
     const payment = await CashPayment.create({
       ...paymentData,
-      amount: parseFloat(amount),
-      issuedAt: new Date(),
+      amount:         parseFloat(amount),
+      issuedAt:       new Date(),
       issuedByUserId: req.user.id,
       financistName,
       note: note || null,
     });
 
-    await recordHistory(req.user.id, `Выдача из кассы: ${paymentData.doctorName || ''}, ${parseFloat(amount).toFixed(2)} ₽`);
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'archive',
+      action:     'create',
+      entityType: 'cash_payment',
+      entityId:   payment.id,
+      misUserId:  paymentData.misUserId || null,
+      doctorName: paymentData.doctorName || null,
+      summary:    `Выдача из кассы: ${paymentData.doctorName || ''}, ${parseFloat(amount).toFixed(2)} ₽`,
+      diff:       { after: { amount: parseFloat(amount), periodLabel: paymentData.periodLabel, note } },
+    });
 
     res.json(payment);
   } catch (err) {
     console.error('POST /api/cash-payments error:', err);
     res.status(500).json({ error: err.message });
   }
-});  // end POST /api/cash-payments
+});
 
-// GET /api/cash-payments?misUserId=X — все выдачи по сотруднику
-// GET /api/cash-payments?salaryRecordId=X — выдачи по конкретной записи
-// GET /api/cash-payments — все выдачи
+// GET /api/cash-payments
 router.get('/', authenticate, async (req, res) => {
   try {
     const where = {};
     if (req.query.salaryRecordId) where.salaryRecordId = req.query.salaryRecordId;
-    if (req.query.misUserId) where.misUserId = req.query.misUserId;
+    if (req.query.misUserId)      where.misUserId      = req.query.misUserId;
 
     const payments = await CashPayment.findAll({
       where,
@@ -116,7 +105,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/cash-payments/:id — редактировать выдачу
+// PUT /api/cash-payments/:id
 router.put('/:id',
   authenticate,
   param('id').isUUID().withMessage('id должен быть UUID'),
@@ -155,7 +144,26 @@ router.put('/:id',
       const history = Array.isArray(payment.editHistory) ? [...payment.editHistory] : [];
       history.push({ editedBy: editorName, editedAt: new Date().toISOString(), changes });
       payment.editHistory = history;
-      await recordHistory(req.user.id, `Изменена выдача: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`);
+
+      const CASH_LABELS = { amount: 'Сумма', note: 'Комментарий', financistName: 'Кассир' };
+      const diffChanges = Object.entries(changes).map(([field, { from, to }]) => ({
+        field,
+        label: CASH_LABELS[field] || field,
+        before: from,
+        after: to,
+      }));
+
+      await logRbActivity({
+        userId:     req.user.id,
+        tab:        'archive',
+        action:     'update',
+        entityType: 'cash_payment',
+        entityId:   payment.id,
+        misUserId:  payment.misUserId || null,
+        doctorName: payment.doctorName || null,
+        summary:    `Изменена выдача из кассы: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`,
+        diff:       { changes: diffChanges },
+      });
     }
 
     await payment.save();
@@ -164,14 +172,26 @@ router.put('/:id',
     console.error('PUT /api/cash-payments/:id error:', err);
     res.status(500).json({ error: err.message });
   }
-});  // end PUT /api/cash-payments/:id
+});
 
 // DELETE /api/cash-payments/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {
     const payment = await CashPayment.findByPk(req.params.id);
     if (!payment) return res.status(404).json({ error: 'Not found' });
-    await recordHistory(req.user?.id, `Удалена выдача: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`);
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'archive',
+      action:     'delete',
+      entityType: 'cash_payment',
+      entityId:   payment.id,
+      misUserId:  payment.misUserId || null,
+      doctorName: payment.doctorName || null,
+      summary:    `Удалена выдача из кассы: ${payment.doctorName || ''}, ${parseFloat(payment.amount).toFixed(2)} ₽`,
+      diff:       { before: { amount: payment.amount, periodLabel: payment.periodLabel, note: payment.note } },
+    });
+
     await payment.destroy();
     res.json({ ok: true });
   } catch (err) {

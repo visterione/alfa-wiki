@@ -45,6 +45,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
 
   const [selectedScheduleDoctor, setSelectedScheduleDoctor] = useState(null);
   const [managingDivision,       setManagingDivision]       = useState(null); // { id, name } | null
+  const [scheduleView,           setScheduleView]           = useState('divisions'); // 'divisions' | 'list'
   const divisionPanelRef = useRef(null);
 
   const handleSelectDoctor = (id) => {
@@ -241,19 +242,36 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
         </div>
 
         <div className="rb-layout">
-          {/* Левая панель — подразделения */}
-          <ScheduleDivisionPanel
-            ref={divisionPanelRef}
-            doctors={visibleDoctors}
-            selectedDoctorId={selectedScheduleDoctor}
-            onSelectDoctor={handleSelectDoctor}
-            readOnly={permSchedule === 'read'}
-            getClinicColor={getClinicColor}
-            getClinicName={getClinicName}
-            onManageAccess={handleManageAccess}
-            managingDivisionId={managingDivision?.id ?? null}
-            onDivisionRenamed={handleDivisionRenamed}
-          />
+          {/* Левая панель — подразделения или полный список */}
+          {scheduleView === 'divisions' ? (
+            <ScheduleDivisionPanel
+              ref={divisionPanelRef}
+              doctors={visibleDoctors}
+              selectedDoctorId={selectedScheduleDoctor}
+              onSelectDoctor={handleSelectDoctor}
+              readOnly={permSchedule === 'read'}
+              getClinicColor={getClinicColor}
+              getClinicName={getClinicName}
+              onManageAccess={handleManageAccess}
+              managingDivisionId={managingDivision?.id ?? null}
+              onDivisionRenamed={handleDivisionRenamed}
+              onToggleView={() => { setScheduleView('list'); setManagingDivision(null); }}
+            />
+          ) : (
+            <ScheduleListPanel
+              doctors={filteredScheduleDoctors}
+              selectedDoctorId={selectedScheduleDoctor}
+              onSelectDoctor={handleSelectDoctor}
+              onToggleView={() => setScheduleView('divisions')}
+              search={scheduleSearch}
+              setSearch={setScheduleSearch}
+              filterClinic={scheduleFilterClinic}
+              setFilterClinic={setScheduleFilterClinic}
+              clinics={clinics}
+              getClinicColor={getClinicColor}
+              getClinicName={getClinicName}
+            />
+          )}
 
           {/* Правая панель — календарь расписания */}
           <StepSchedule
@@ -263,7 +281,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             getClinicColor={getClinicColor}
             getClinicName={getClinicName}
             readOnly={permSchedule === 'read'}
-            managingDivision={managingDivision}
+            managingDivision={scheduleView === 'divisions' ? managingDivision : null}
             onDivisionRenamed={handleDivisionRenamed}
             scheduleCategories={categories}
             allRoles={allScheduleRoles}
@@ -441,6 +459,94 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
         </div>
       )}
       </>)}
+    </div>
+  );
+}
+
+function ScheduleListPanel({
+  doctors, selectedDoctorId, onSelectDoctor, onToggleView,
+  search, setSearch, filterClinic, setFilterClinic,
+  clinics, getClinicColor, getClinicName,
+}) {
+  return (
+    <div className="rb-panel">
+      <div className="rb-panel-header">
+        <div className="rb-panel-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          Сотрудники
+        </div>
+        <button
+          onClick={onToggleView}
+          title="По подразделениям"
+          style={{
+            width: 26, height: 26, borderRadius: 6, border: 'none',
+            background: '#64748b', color: '#fff', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+            <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+            <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div className="rb-filters">
+        <div className="rb-search-wrap">
+          <svg className="rb-search-wrap-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            className="rb-search-input"
+            placeholder="Поиск по ФИО..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select
+          value={filterClinic}
+          onChange={e => setFilterClinic(e.target.value)}
+          style={{
+            height: 32, padding: '0 8px', fontSize: 12,
+            border: '1px solid var(--rb-border)', borderRadius: 6,
+            background: '#fff', color: 'var(--rb-text)', outline: 'none',
+            cursor: 'pointer', width: '100%', fontFamily: 'inherit',
+          }}
+        >
+          <option value="">Все медцентры</option>
+          {clinics.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+        </select>
+      </div>
+      <div className="rb-doctors-list">
+        {doctors.length === 0 && <div className="rb-loading">Нет врачей по фильтру</div>}
+        {doctors.map(d => {
+          const specialty = (d.professions || [])
+            .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+            .filter(Boolean).join(', ');
+          const isActive = selectedDoctorId === d.id;
+          return (
+            <div
+              key={d.id}
+              className={`rb-doctor-item${isActive ? ' active' : ''}`}
+              onClick={() => onSelectDoctor(isActive ? null : d.id)}
+            >
+              <div className="rb-doctor-info">
+                <div className="rb-doctor-badges">
+                  {(d.clinics || []).slice(0, 4).map(cId => (
+                    <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor ? getClinicColor(cId) : '#94a3b8' }}>
+                      {getClinicName ? getClinicName(cId) : cId}
+                    </span>
+                  ))}
+                </div>
+                <div className="rb-doctor-name">{d.name}</div>
+                {specialty && <div className="rb-doctor-specialty">{specialty}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

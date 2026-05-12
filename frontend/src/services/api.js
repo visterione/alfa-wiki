@@ -137,6 +137,12 @@ export const journal = {
   pageAuthors: () => api.get('/journal/page-authors')
 };
 
+export const rbActivityLog = {
+  list:  (params) => api.get('/rb-activity-log',       { params }),
+  tabs:  ()       => api.get('/rb-activity-log/tabs'),
+  users: ()       => api.get('/rb-activity-log/users'),
+};
+
 // Folders
 export const folders = {
   browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),
@@ -676,10 +682,15 @@ export const bots = {
 };
 
 export const doctorSchedules = {
-  list:   (misUserId)       => api.get('/doctor-schedules', { params: { misUserId } }),
-  create: (data)            => api.post('/doctor-schedules', data),
-  update: (id, data)        => api.put(`/doctor-schedules/${id}`, data),
-  delete: (id)              => api.delete(`/doctor-schedules/${id}`),
+  list:                 (misUserId)              => api.get('/doctor-schedules', { params: { misUserId } }),
+  create:               (data)                   => api.post('/doctor-schedules', data),
+  update:               (id, data)               => api.put(`/doctor-schedules/${id}`, data),
+  delete:               (id)                     => api.delete(`/doctor-schedules/${id}`),
+  importFromMis:           (misUserId, month)          => api.post('/doctor-schedules/import-from-mis', { misUserId, month }),
+  cancelMisImport:         (misUserId)                 => api.delete(`/doctor-schedules/mis-import/for-user/${misUserId}`),
+  getMisCategoryMap:       ()                          => api.get('/doctor-schedules/mis-category-map'),
+  updateMisCategoryMap:    (misId, rbCategoryId)       => api.put(`/doctor-schedules/mis-category-map/${misId}`, { rbCategoryId }),
+  setMisCategoryMapForRb:  (rbCategoryId, misCategoryId) => api.put(`/doctor-schedules/mis-category-map/for-rb-category/${rbCategoryId}`, { misCategoryId }),
 };
 
 export const rbScheduleDicts = {

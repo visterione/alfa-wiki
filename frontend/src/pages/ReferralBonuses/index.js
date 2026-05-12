@@ -9,6 +9,7 @@ import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
+import ScheduleDivisionPanel from './components/ScheduleDivisionPanel';
 import StepExecutors from './components/StepExecutors';
 import StepHourNorms from './components/StepHourNorms';
 import StepPerformed from './components/StepPerformed';
@@ -126,6 +127,7 @@ export default function ReferralBonusesPage() {
   // ── Wizard navigation ──
   const [currentStep, setCurrentStep] = useState(1);
   const [panelCollapsed, setPanelCollapsed] = useState(false);
+  const [doctorPanelView, setDoctorPanelView] = useState('list'); // 'list' | 'divisions'
   const [archiveTabelEdit, setArchiveTabelEdit] = useState(false);
   const [step1Dirty, setStep1Dirty] = useState(false);
   const step1DirtyRef = React.useRef(false);
@@ -911,37 +913,52 @@ export default function ReferralBonusesPage() {
       {/* Step Content */}
       <div className="rb-layout" style={currentStep === 7 || currentStep === 2 || panelCollapsed || (currentStep === 6 && archiveTabelEdit) ? { gridTemplateColumns: '1fr' } : undefined}>
         {/* Left: Doctors list (hidden on Сводка tab) */}
-        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && !(currentStep === 6 && archiveTabelEdit) && <DoctorsList
-          doctors={filteredDoctors}
-          allDoctors={visibleDoctors}
-          clinics={clinics}
-          loading={doctorsLoading}
-          error={doctorsError}
-          selectedDoctor={selectedDoctor}
-          onSelect={handleSelectDoctor}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          filterClinic={filterClinic}
-          setFilterClinic={setFilterClinic}
-          filterRole={filterRole}
-          setFilterRole={setFilterRole}
-          allRoles={allRoles}
-          filterProfession={filterProfession}
-          setFilterProfession={setFilterProfession}
-          allProfessions={allProfessions}
-          bonusCounts={bonusCounts}
-          getClinicColor={getClinicColor}
-          getClinicName={getClinicName}
-          currentStep={currentStep}
-          bulkMode={currentStep === 5 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
-          bulkSelectedIds={bulkSelectedIds}
-          setBulkSelectedIds={setBulkSelectedIds}
-          compareMode={currentStep === 6}
-          pinnedForCompare={pinnedForCompare}
-          togglePinCompare={togglePinCompare}
-          onGlobalReset={currentStep === 1 && !isStepReadOnly(1) ? handleGlobalReset : null}
-          onImportNdfl={currentStep === 1 && !isStepReadOnly(1) ? handleImportNdfl : null}
-        />}
+        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && !(currentStep === 6 && archiveTabelEdit) && (
+          doctorPanelView === 'divisions' ? (
+            <ScheduleDivisionPanel
+              doctors={visibleDoctors}
+              selectedDoctorId={selectedDoctor?.id ?? null}
+              onSelectDoctor={handleSelectDoctor}
+              readOnly={isStepReadOnly(currentStep)}
+              getClinicColor={getClinicColor}
+              getClinicName={getClinicName}
+              onToggleView={() => setDoctorPanelView('list')}
+            />
+          ) : (
+            <DoctorsList
+              doctors={filteredDoctors}
+              allDoctors={visibleDoctors}
+              clinics={clinics}
+              loading={doctorsLoading}
+              error={doctorsError}
+              selectedDoctor={selectedDoctor}
+              onSelect={handleSelectDoctor}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              filterClinic={filterClinic}
+              setFilterClinic={setFilterClinic}
+              filterRole={filterRole}
+              setFilterRole={setFilterRole}
+              allRoles={allRoles}
+              filterProfession={filterProfession}
+              setFilterProfession={setFilterProfession}
+              allProfessions={allProfessions}
+              bonusCounts={bonusCounts}
+              getClinicColor={getClinicColor}
+              getClinicName={getClinicName}
+              currentStep={currentStep}
+              bulkMode={currentStep === 5 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
+              bulkSelectedIds={bulkSelectedIds}
+              setBulkSelectedIds={setBulkSelectedIds}
+              compareMode={currentStep === 6}
+              pinnedForCompare={pinnedForCompare}
+              togglePinCompare={togglePinCompare}
+              onGlobalReset={currentStep === 1 && !isStepReadOnly(1) ? handleGlobalReset : null}
+              onImportNdfl={currentStep === 1 && !isStepReadOnly(1) ? handleImportNdfl : null}
+              onToggleView={() => setDoctorPanelView('divisions')}
+            />
+          )
+        )}
         {/* Right: Step content */}
         <div className="rb-detail-panel">
           <div style={{ display: currentStep === 5 ? 'contents' : 'none' }}>
@@ -974,6 +991,7 @@ function DoctorsList({
   compareMode, pinnedForCompare, togglePinCompare,
   onGlobalReset,
   onImportNdfl,
+  onToggleView,
 }) {
   const importFileRef = React.useRef(null);
   const toggleBulk = (id) => {
@@ -1005,14 +1023,30 @@ function DoctorsList({
           </svg>
           Сотрудники
         </div>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-          {bulkMode && bulkSelectedIds.size > 0
-            ? <span style={{ color: 'var(--rb-primary)', fontWeight: 600 }}>✓ {bulkSelectedIds.size} выбрано</span>
-            : compareMode && pinCount === 1
-              ? <span style={{ fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
-              : <>{displayDoctors.length} из {displayAllDoctors.length}</>
-          }
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {bulkMode && bulkSelectedIds.size > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--rb-primary)', fontWeight: 600 }}>✓ {bulkSelectedIds.size} выбрано</span>
+          )}
+          {compareMode && pinCount === 1 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
+          )}
+          {onToggleView && !bulkMode && !compareMode && (
+            <button
+              onClick={onToggleView}
+              title="По подразделениям"
+              style={{
+                width: 26, height: 26, borderRadius: 6, border: 'none',
+                background: '#64748b', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="rb-filters">

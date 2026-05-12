@@ -60,6 +60,7 @@ const tabelRecordsRoutes         = require('./routes/tabel-records');
 const structuralDivisionsRoutes  = require('./routes/structural-divisions');
 const rbHolidaysRoutes           = require('./routes/rb-holidays');
 const rbDoctorHeadersRoutes      = require('./routes/rb-doctor-headers');
+const rbActivityLogRoutes        = require('./routes/rb-activity-log');
 
 const app = express();
 const server = http.createServer(app);
@@ -247,6 +248,7 @@ app.use('/api/tabel-records',        tabelRecordsRoutes);
 app.use('/api/structural-divisions', structuralDivisionsRoutes);
 app.use('/api/rb-holidays',         rbHolidaysRoutes);
 app.use('/api/rb-doctor-headers',   rbDoctorHeadersRoutes);
+app.use('/api/rb-activity-log',     rbActivityLogRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})

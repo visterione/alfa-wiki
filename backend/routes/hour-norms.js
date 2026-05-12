@@ -1,28 +1,11 @@
 const express = require('express');
-const { HourNorm, Page, PageHistory } = require('../models');
+const { HourNorm } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { logRbActivity } = require('../services/rbLogger');
 
 const router = express.Router();
 
-const RB_TIME_SLUG = 'rb-time';
-
-async function recordHistory(userId, summary) {
-  try {
-    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { pageSlug: RB_TIME_SLUG }
-    });
-  } catch (err) {
-    console.error('hour-norms history error:', err.message);
-  }
-}
-
 // GET /api/hour-norms?year=2026&month=3
-// Возвращает нормы часов за указанный месяц
 router.get('/', authenticate, async (req, res) => {
   try {
     const { year, month } = req.query;
@@ -41,7 +24,6 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // GET /api/hour-norms/periods
-// Возвращает список всех периодов (year, month), для которых есть хоть одна запись
 router.get('/periods', authenticate, async (req, res) => {
   try {
     const rows = await HourNorm.findAll({
@@ -57,8 +39,6 @@ router.get('/periods', authenticate, async (req, res) => {
 });
 
 // POST /api/hour-norms/bulk
-// Сохраняет (upsert) нормы для набора специальностей за период
-// Body: { year, month, norms: [{ professionTitle, normHours }] }
 router.post('/bulk', authenticate, async (req, res) => {
   try {
     const { year, month, norms } = req.body;
@@ -66,9 +46,14 @@ router.post('/bulk', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'year, month и norms обязательны' });
     }
 
+    const existing = await HourNorm.findAll({
+      where: { year: parseInt(year), month: parseInt(month) }
+    });
+    const oldMap = Object.fromEntries(existing.map(n => [n.professionTitle, n.normHours != null ? parseFloat(n.normHours) : null]));
+
     const records = norms.map(n => ({
       professionTitle: String(n.professionTitle || '').trim(),
-      year: parseInt(year),
+      year:  parseInt(year),
       month: parseInt(month),
       normHours: n.normHours != null ? parseFloat(n.normHours) : null,
       createdBy: req.user.id
@@ -84,7 +69,25 @@ router.post('/bulk', authenticate, async (req, res) => {
       throw err;
     }
 
-    await recordHistory(req.user.id, `Обновлены нормы часов: ${month}/${year}, специальностей: ${records.length}`);
+    const newMap = Object.fromEntries(records.map(n => [n.professionTitle, n.normHours]));
+    const changes = [];
+    const allKeys = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+    for (const key of allKeys) {
+      const ov = oldMap[key] ?? null;
+      const nv = newMap[key] ?? null;
+      if (ov !== nv) {
+        changes.push({ profession: key, before: ov, after: nv });
+      }
+    }
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'hour-norms',
+      action:     'update',
+      entityType: 'hour_norm',
+      summary:    `Норма часов по специальностям: ${month}/${year}, специальностей: ${records.length}${changes.length ? `, изменений: ${changes.length}` : ''}`,
+      diff:       changes.length ? { changes } : null,
+    });
 
     res.json({ saved: records.length });
   } catch (err) {

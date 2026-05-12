@@ -71,6 +71,14 @@ function findTimeConflicts(form, entries, editId) {
   return conflicts;
 }
 
+function getContrastColor(hex) {
+  const h = (hex || '#94a3b8').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) || 0;
+  const g = parseInt(h.slice(2, 4), 16) || 0;
+  const b = parseInt(h.slice(4, 6), 16) || 0;
+  return (r * 0.299 + g * 0.587 + b * 0.114) > 140 ? 'rgba(0,0,0,0.7)' : '#fff';
+}
+
 function abbreviateName(fullName) {
   const parts = (fullName || '').trim().split(/\s+/);
   if (parts.length <= 1) return fullName;
@@ -779,6 +787,17 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [conflictConfirm, setConflictConfirm] = useState(null); // [{ entry, dates }] — time overlap warning
   const skipConflictCheck = useRef(false);
 
+  // MIS import
+  const [importModal,        setImportModal]        = useState(false);
+  const [importing,          setImporting]          = useState(false);
+  const [importResult,       setImportResult]       = useState(null); // { imported, newCategories, month } | null
+  const [importError,        setImportError]        = useState(null);
+  const [catMapModal,        setCatMapModal]        = useState(false);
+  const [catMapData,         setCatMapData]         = useState([]);
+  const [catMapLoading,      setCatMapLoading]      = useState(false);
+  const [cancelImportModal,  setCancelImportModal]  = useState(false);
+  const [cancelling,         setCancelling]         = useState(false);
+
   // Tab slider for pattern selector inside the form modal
   const { wrapRef: patternWrapRef, sliderEl: patternSliderEl } = useTabSlider(form?.pattern?.type ?? 'daily');
 
@@ -854,6 +873,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           categoryId: r.categoryId || null,
           cabinetId:  r.cabinetId  || null,
           roleTitle:  r.roleTitle  || null,
+          source:     r.source || 'manual',
         })));
       })
       .catch(err => console.error('Load schedules error:', err))
@@ -881,6 +901,85 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     if (!ex) return null;
     return typeof ex === 'object' ? ex.code : 'ОТ';
   };
+
+  // ── MIS import handlers ───────────────────────────────────────────────────
+  const handleMisImport = useCallback(async () => {
+    if (!selectedDoctor) return;
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    const monthStr  = `${year}-${String(month).padStart(2, '0')}`;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const res = await schedulesApi.importFromMis(misUserId, monthStr);
+      setImportResult(res.data);
+      // Reload entries + cabinets (import may have auto-created new ones)
+      loadedForRef.current = null;
+      const [listRes, cabRes] = await Promise.all([
+        schedulesApi.list(misUserId),
+        dictsApi.listCabinets(),
+      ]);
+      setCabinets(cabRes.data);
+      setEntries(listRes.data.map(r => ({
+        id:         r.id,
+        doctorId:   selectedDoctor.id,
+        misUserId:  r.misUserId,
+        clinicId:   r.clinicId,
+        dateFrom:   r.dateFrom,
+        dateTo:     r.dateTo,
+        pattern:    r.pattern,
+        timeFrom:   r.timeFrom,
+        timeTo:     r.timeTo,
+        exceptions: r.exceptions || [],
+        categoryId: r.categoryId || null,
+        cabinetId:  r.cabinetId  || null,
+        roleTitle:  r.roleTitle  || null,
+        source:     r.source || 'manual',
+      })));
+      loadedForRef.current = misUserId;
+    } catch (err) {
+      setImportError('Ошибка: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setImporting(false);
+    }
+  }, [selectedDoctor, year, month]);
+
+  const hasMisEntries = entries.some(e => e.source === 'mis_import');
+
+  const handleCancelMisImport = useCallback(async () => {
+    if (!selectedDoctor) return;
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    setCancelling(true);
+    try {
+      await schedulesApi.cancelMisImport(misUserId);
+      setCancelImportModal(false);
+      // Remove mis_import entries from local state
+      setEntries(prev => prev.filter(e => e.source !== 'mis_import'));
+    } catch (err) {
+      console.error('Cancel MIS import error:', err);
+    } finally {
+      setCancelling(false);
+    }
+  }, [selectedDoctor]);
+
+  const handleCatMapUpdate = useCallback(async (misCategoryId, rbCategoryId) => {
+    try {
+      await schedulesApi.updateMisCategoryMap(misCategoryId, rbCategoryId || null);
+      setCatMapData(prev => prev.map(r =>
+        r.misCategoryId === misCategoryId ? { ...r, rbCategoryId: rbCategoryId || null } : r
+      ));
+    } catch (err) {
+      console.error('Category map update error:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!catMapModal) return;
+    setCatMapLoading(true);
+    schedulesApi.getMisCategoryMap()
+      .then(res => setCatMapData(res.data))
+      .catch(err => console.error('Load category map error:', err))
+      .finally(() => setCatMapLoading(false));
+  }, [catMapModal]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const closeModal = () => { setModal(null); setForm(null); setConfirmDel(null); setConflictConfirm(null); skipConflictCheck.current = false; };
@@ -1409,6 +1508,38 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         </span>
         <button onClick={nextMonth} style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>›</button>
 
+        {selectedDoctor && !readOnly && (
+          <div style={{ marginLeft: 8, display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => { setImportModal(true); setImportResult(null); setImportError(null); }}
+              title="Импортировать расписание из МИС"
+              style={{ background: 'transparent', border: '1px solid var(--rb-border)', borderRadius: 7, height: 32, padding: '0 10px', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'all .15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--rb-primary)'; e.currentTarget.style.color = 'var(--rb-primary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--rb-border)'; e.currentTarget.style.color = 'var(--rb-text-secondary)'; }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              МИС
+            </button>
+            {hasMisEntries && (
+              <button
+                onClick={() => setCancelImportModal(true)}
+                title="Удалить все записи, импортированные из МИС"
+                style={{ background: 'transparent', border: '1px solid var(--rb-border)', borderRadius: 7, height: 32, padding: '0 8px', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', transition: 'all .15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = '#dc2626'; e.currentTarget.style.color = '#dc2626'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--rb-border)'; e.currentTarget.style.color = 'var(--rb-text-secondary)'; }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* ── Quick Nav Popup ── */}
         {quickNav && (
           <div ref={quickNavRef} style={{
@@ -1522,22 +1653,35 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                                     borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
                                     opacity: cancelled ? 0.4 : 1,
                                   }}
-                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}${e.roleTitle ? ' · ' + e.roleTitle : ''}`}
+                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}${e.roleTitle ? ' · ' + e.roleTitle : ''}${e.source === 'mis_import' ? ' · МИС' : ''}`}
                                 >
-                                  {cat && (
+                                  {(() => {
+                                    const bg = cat ? cat.color : clinicColor(e.clinicId);
+                                    return (
+                                      <span style={{
+                                        position: 'absolute', top: 5, right: 2,
+                                        width: 11, height: 11, borderRadius: '50%',
+                                        background: bg, flexShrink: 0,
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        fontSize: entryCode.length === 1 ? 7.5 : 5.5,
+                                        fontWeight: 800, lineHeight: 1, letterSpacing: -0.3,
+                                        color: getContrastColor(bg),
+                                      }}>{entryCode}</span>
+                                    );
+                                  })()}
+                                  {e.source === 'mis_import' && (
                                     <span style={{
-                                      position: 'absolute', top: 3, right: 3,
-                                      width: 8, height: 8, borderRadius: '50%',
-                                      background: cat.color, flexShrink: 0,
-                                    }} />
+                                      position: 'absolute', top: 5, right: 15,
+                                      width: 11, height: 11, borderRadius: '50%',
+                                      background: '#8FC742', flexShrink: 0,
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                      fontSize: 7.5, fontWeight: 800, lineHeight: 1, color: '#fff',
+                                    }}>R</span>
                                   )}
                                   <span className="rb-schedule-entry-time">{e.timeFrom} – {e.timeTo}</span>
                                   <span className="rb-schedule-entry-name">{abbreviateName(selectedDoctor.name)}</span>
                                   <span className="rb-schedule-entry-clinic">{cab ? cab.name : clinicName(e.clinicId)}</span>
                                 </div>
-                                <span className={cancelled ? 'rb-schedule-entry-cancel-code' : 'rb-schedule-entry-work-code'}>
-                                  {entryCode}
-                                </span>
                               </div>
                             );
                           })}
@@ -2207,6 +2351,136 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               >
                 Сохранить всё равно
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel MIS Import Modal ── */}
+      {cancelImportModal && (
+        <div className="rb-modal-overlay" onClick={() => { if (!cancelling) setCancelImportModal(false); }}>
+          <div className="rb-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Удалить импорт МИС</h3>
+              <button className="rb-modal-close" onClick={() => { if (!cancelling) setCancelImportModal(false); }}>×</button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
+                Будут удалены <strong style={{ color: 'var(--rb-text)' }}>все записи, импортированные из МИС</strong> для сотрудника <strong style={{ color: 'var(--rb-text)' }}>{selectedDoctor?.name}</strong>.
+                {' '}Вручную созданные записи не изменятся.
+              </div>
+            </div>
+            <div className="rb-modal-footer">
+              <button style={{ ...btnGhost }} onClick={() => setCancelImportModal(false)} disabled={cancelling}>Отмена</button>
+              <button style={{ ...btnRed, opacity: cancelling ? 0.6 : 1, minWidth: 120 }} onClick={handleCancelMisImport} disabled={cancelling}>
+                {cancelling ? 'Удаление...' : 'Удалить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MIS Import Modal ── */}
+      {importModal && (
+        <div className="rb-modal-overlay" onClick={() => { if (!importing) { setImportModal(false); } }}>
+          <div className="rb-modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Импорт расписания из МИС</h3>
+              <button className="rb-modal-close" onClick={() => { if (!importing) setImportModal(false); }}>×</button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <div style={{ fontSize: 13, marginBottom: 10 }}>
+                <span style={{ color: 'var(--rb-text-secondary)' }}>Сотрудник: </span>
+                <strong>{selectedDoctor?.name}</strong>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>
+                Будет импортировано расписание за <strong style={{ color: 'var(--rb-text)' }}>{MONTH_NAMES[month - 1]} {year}</strong> из МИС.
+                {' '}Ранее импортированные записи за этот месяц будут заменены.
+                {' '}Записи, созданные вручную, не изменятся.
+              </div>
+              {importResult && (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontSize: 13, marginBottom: 12 }}>
+                  Готово: импортировано <strong>{importResult.imported}</strong> зап.
+                  {importResult.newCategories > 0 && (
+                    <> · <span style={{ color: '#ca8a04' }}>{importResult.newCategories} новых категорий МИС — настройте маппинг</span></>
+                  )}
+                </div>
+              )}
+              {importError && (
+                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>
+                  {importError}
+                </div>
+              )}
+            </div>
+            <div className="rb-modal-footer">
+              <button
+                style={{ ...btnGhost }}
+                onClick={() => setCatMapModal(true)}
+              >
+                Категории МИС
+              </button>
+              <button
+                style={{ ...btnBlue, opacity: importing ? 0.6 : 1, minWidth: 140 }}
+                disabled={importing}
+                onClick={handleMisImport}
+              >
+                {importing ? 'Идёт импорт...' : importResult ? 'Повторить импорт' : 'Импортировать'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MIS Category Map Modal ── */}
+      {catMapModal && (
+        <div className="rb-modal-overlay" onClick={() => setCatMapModal(false)}>
+          <div className="rb-modal" style={{ maxWidth: 500 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Категории МИС</h3>
+              <button className="rb-modal-close" onClick={() => setCatMapModal(false)}>×</button>
+            </div>
+            <div style={{ padding: '12px 16px' }}>
+              <p style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 14 }}>
+                Сопоставьте ID категорий из МИС с категориями расписания в этой системе. После настройки следующий импорт автоматически подставит категории.
+              </p>
+              {catMapLoading ? (
+                <div style={{ textAlign: 'center', padding: 24, color: 'var(--rb-text-secondary)', fontSize: 13 }}>Загрузка...</div>
+              ) : catMapData.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 24, color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+                  Нет данных. Сначала выполните импорт — категории появятся здесь.
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--rb-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid var(--rb-border)', width: 90 }}>ID МИС</th>
+                      <th style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--rb-text-secondary)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid var(--rb-border)' }}>Категория в системе</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {catMapData.map(row => (
+                      <tr key={row.misCategoryId}>
+                        <td style={{ padding: '6px 8px', borderBottom: '1px solid var(--rb-border)', color: 'var(--rb-text)', fontFamily: 'monospace', fontSize: 13 }}>{row.misCategoryId}</td>
+                        <td style={{ padding: '4px 8px', borderBottom: '1px solid var(--rb-border)' }}>
+                          <select
+                            value={row.rbCategoryId || ''}
+                            onChange={e => handleCatMapUpdate(row.misCategoryId, e.target.value || null)}
+                            style={{ ...inputStyle, width: '100%', fontSize: 13 }}
+                          >
+                            <option value="">— не выбрано —</option>
+                            {categories.map(cat => (
+                              <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            <div className="rb-modal-footer">
+              <button style={{ ...btnGhost }} onClick={() => setCatMapModal(false)}>Закрыть</button>
             </div>
           </div>
         </div>

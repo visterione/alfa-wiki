@@ -1,29 +1,12 @@
 const express = require('express');
 const { Op } = require('sequelize');
-const { ReferralBonus, Page, PageHistory, RbUserPermission, User, Setting } = require('../models');
+const { ReferralBonus, RbUserPermission, User, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { logRbActivity } = require('../services/rbLogger');
 
 const router = express.Router();
 
-const REFERRAL_BONUSES_PAGE_SLUG = 'rb-referrals';
-
-// === HELPER: Запись в историю страницы ===
-async function recordHistory(pageSlug, userId, summary, changes = []) {
-  try {
-    const page = await Page.findOne({ where: { slug: pageSlug } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { changes, pageSlug }
-    });
-  } catch (err) {
-    console.error('History record error:', err.message);
-  }
-}
-
-// === Suggests (подсказки автозаполнения) ===
+// === Suggests ===
 const RB_SUGGESTS_KEY = 'rb_exec_suggests';
 
 router.get('/suggests', authenticate, async (req, res) => {
@@ -72,7 +55,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Получить все бонусы по услуге (для всех врачей)
+// Получить все бонусы по услуге
 router.get('/by-service', authenticate, async (req, res) => {
   try {
     const { serviceCode } = req.query;
@@ -83,7 +66,6 @@ router.get('/by-service', authenticate, async (req, res) => {
       where: { serviceCode },
       order: [['doctorName', 'ASC']]
     });
-    // Возвращаем map: misUserId -> { id, bonusPercent, bonusRub }
     const map = {};
     bonuses.forEach(b => {
       map[b.misUserId] = { id: b.id, bonusPercent: b.bonusPercent, bonusRub: b.bonusRub };
@@ -95,7 +77,7 @@ router.get('/by-service', authenticate, async (req, res) => {
   }
 });
 
-// Сохранить/обновить бонус для услуги врача
+// Сохранить/обновить бонус
 router.post('/', authenticate, async (req, res) => {
   try {
     const { misUserId, doctorName, serviceCode, serviceName, bonusPercent, bonusRub } = req.body;
@@ -108,13 +90,16 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Укажите bonusPercent или bonusRub' });
     }
 
+    const existing = await ReferralBonus.findOne({ where: { misUserId, serviceCode, clinicId } });
+    const before = existing ? { bonusPercent: existing.bonusPercent, bonusRub: existing.bonusRub } : null;
+
     const [bonus, created] = await ReferralBonus.upsert({
       misUserId,
       doctorName: doctorName || '',
       serviceCode,
       serviceName,
       bonusPercent: bonusPercent != null ? parseFloat(bonusPercent) : null,
-      bonusRub: bonusRub != null ? parseFloat(bonusRub) : null,
+      bonusRub:     bonusRub    != null ? parseFloat(bonusRub)     : null,
       clinicId,
       createdBy: req.user.id
     }, {
@@ -122,15 +107,21 @@ router.post('/', authenticate, async (req, res) => {
       returning: true
     });
 
-    await recordHistory(
-      REFERRAL_BONUSES_PAGE_SLUG,
-      req.user.id,
-      created
-        ? `Добавлен бонус: ${doctorName || misUserId} — ${serviceName}`
-        : `Обновлён бонус: ${doctorName || misUserId} — ${serviceName}`,
-      [{ field: 'bonus', label: created ? 'Добавлен бонус' : 'Обновлён бонус',
-        to: `${serviceName} (${bonusPercent != null ? bonusPercent + '%' : bonusRub + ' руб.'})` }]
-    );
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'referrals',
+      action:     created ? 'create' : 'update',
+      entityType: 'referral_bonus',
+      entityId:   bonus.id,
+      misUserId,
+      doctorName: doctorName || null,
+      clinicId:   clinicId || null,
+      summary:    `${created ? 'Добавлен' : 'Изменён'} бонус (направления): ${doctorName || misUserId} — ${serviceName}${clinicId ? ` [клиника ${clinicId}]` : ''}`,
+      diff: {
+        before,
+        after: { bonusPercent: bonus.bonusPercent, bonusRub: bonus.bonusRub },
+      },
+    });
 
     res.status(created ? 201 : 200).json(bonus);
   } catch (err) {
@@ -139,9 +130,7 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// Массовое сохранение бонусов врача
-// services: [{ serviceCode, serviceName, bonusPercent, bonusRub }]
-// Если оба поля null — запись удаляется (если была)
+// Массовое сохранение бонусов
 router.post('/bulk', authenticate, async (req, res) => {
   try {
     const { misUserId, doctorName, services } = req.body;
@@ -149,6 +138,13 @@ router.post('/bulk', authenticate, async (req, res) => {
     if (!misUserId || !Array.isArray(services)) {
       return res.status(400).json({ error: 'misUserId и services обязательны' });
     }
+
+    const existingBonuses = await ReferralBonus.findAll({ where: { misUserId, clinicId } });
+    const existingNameMap = Object.fromEntries(existingBonuses.map(b => [b.serviceCode, b.serviceName]));
+    const oldMap = Object.fromEntries(existingBonuses.map(b => [b.serviceCode, {
+      bonusPercent: b.bonusPercent != null ? parseFloat(b.bonusPercent) : null,
+      bonusRub:     b.bonusRub     != null ? parseFloat(b.bonusRub)     : null,
+    }]));
 
     const toUpsert = services.filter(s => s.bonusPercent != null || s.bonusRub != null);
     const toDeleteCodes = services
@@ -166,7 +162,7 @@ router.post('/bulk', authenticate, async (req, res) => {
         serviceCode: String(s.serviceCode || '').slice(0, 100),
         serviceName: String(s.serviceName || '').slice(0, 500),
         bonusPercent: s.bonusPercent != null ? parseFloat(s.bonusPercent) : null,
-        bonusRub:     s.bonusRub     != null ? parseFloat(s.bonusRub)     : null,
+        bonusRub:     s.bonusRub    != null ? parseFloat(s.bonusRub)     : null,
         clinicId,
         createdBy: req.user.id
       }));
@@ -180,15 +176,35 @@ router.post('/bulk', authenticate, async (req, res) => {
       }
     }
 
+    // Compute changes for diff
+    const newNameMap = Object.fromEntries(toUpsert.map(s => [String(s.serviceCode), s.serviceName || s.serviceCode]));
+    const newMap = Object.fromEntries(toUpsert.map(s => [String(s.serviceCode), { bonusPercent: s.bonusPercent ?? null, bonusRub: s.bonusRub ?? null }]));
+    const fmtBonus = b => b == null ? null : [b.bonusPercent != null ? `${b.bonusPercent}%` : null, b.bonusRub != null ? `${b.bonusRub} ₽` : null].filter(Boolean).join(' / ') || '—';
+    const allCodes = new Set([...Object.keys(oldMap), ...toDeleteCodes, ...Object.keys(newMap)]);
+    const changes = [];
+    for (const code of allCodes) {
+      const ov = oldMap[code] || null;
+      const nv = toDeleteCodes.includes(code) ? null : (newMap[code] || null);
+      if (JSON.stringify(ov) !== JSON.stringify(nv)) {
+        changes.push({ serviceCode: code, label: newNameMap[code] || existingNameMap[code] || code, before: fmtBonus(ov), after: fmtBonus(nv) });
+      }
+    }
+
     const parts = [];
-    if (toUpsert.length > 0) parts.push(`сохранено: ${toUpsert.length}`);
+    if (toUpsert.length > 0)      parts.push(`сохранено: ${toUpsert.length}`);
     if (toDeleteCodes.length > 0) parts.push(`удалено: ${toDeleteCodes.length}`);
-    await recordHistory(
-      REFERRAL_BONUSES_PAGE_SLUG,
-      req.user.id,
-      `Бонусы врача ${doctorName || misUserId}: ${parts.join(', ')}`,
-      [{ field: 'bonusBulk', label: 'Массовое обновление бонусов', to: `${doctorName || misUserId}` }]
-    );
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'referrals',
+      action:     'update',
+      entityType: 'referral_bonus',
+      misUserId,
+      doctorName: doctorName || null,
+      clinicId:   clinicId || null,
+      summary:    `Бонусы (направления): ${doctorName || misUserId}${clinicId ? ` [клиника ${clinicId}]` : ''} — ${parts.join(', ')}`,
+      diff:       changes.length ? { changes } : null,
+    });
 
     res.json({ upserted: toUpsert.length, deleted: toDeleteCodes.length });
   } catch (err) {
@@ -204,16 +220,22 @@ router.delete('/:id', authenticate, async (req, res) => {
     if (!bonus) {
       return res.status(404).json({ error: 'Запись не найдена' });
     }
-    const { doctorName, misUserId, serviceName } = bonus;
+    const { doctorName, misUserId, serviceName, clinicId, bonusPercent, bonusRub } = bonus;
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'referrals',
+      action:     'delete',
+      entityType: 'referral_bonus',
+      entityId:   bonus.id,
+      misUserId,
+      doctorName: doctorName || null,
+      clinicId:   clinicId || null,
+      summary:    `Удалён бонус (направления): ${doctorName || misUserId} — ${serviceName}${clinicId ? ` [клиника ${clinicId}]` : ''}`,
+      diff:       { before: { serviceName, bonusPercent, bonusRub } },
+    });
+
     await bonus.destroy();
-
-    await recordHistory(
-      REFERRAL_BONUSES_PAGE_SLUG,
-      req.user.id,
-      `Удалён бонус: ${doctorName || misUserId} — ${serviceName}`,
-      [{ field: 'bonus', label: 'Удалён бонус', from: serviceName }]
-    );
-
     res.json({ message: 'Удалено' });
   } catch (err) {
     console.error('Delete referral bonus error:', err);
@@ -225,7 +247,6 @@ router.delete('/:id', authenticate, async (req, res) => {
 // ACCESS PERMISSIONS
 // ════════════════════════════════════════
 
-// Получить свои права доступа
 router.get('/permissions/my', authenticate, async (req, res) => {
   try {
     if (req.user.isAdmin) {
@@ -243,7 +264,6 @@ router.get('/permissions/my', authenticate, async (req, res) => {
   }
 });
 
-// Получить список пользователей с доступом к разделу зарплаты + их права (только admin)
 router.get('/permissions/users', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
   try {
@@ -283,24 +303,40 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
     for (const v of [tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi]) {
       if (v && !valid.includes(v)) return res.status(400).json({ error: `Недопустимое значение: ${v}` });
     }
+
+    const existing = await RbUserPermission.findOne({ where: { userId } });
+    const before = existing ? {
+      tab1: existing.tab1, tabWorkTime: existing.tabWorkTime, tabHourNorms: existing.tabHourNorms,
+      tabSchedule: existing.tabSchedule, tab2: existing.tab2, tab3: existing.tab3, tab4: existing.tab4,
+      tabArchiveHistory: existing.tabArchiveHistory, tabArchiveKassa: existing.tabArchiveKassa,
+      tabArchiveTabel: existing.tabArchiveTabel, tabSummary: existing.tabSummary, tabKpi: existing.tabKpi,
+      clinics: existing.clinics,
+    } : null;
+
     const data = {
       userId,
-      tab1: tab1 || 'edit',
-      tabWorkTime: tabWorkTime || 'edit',
-      tabHourNorms: tabHourNorms || 'edit',
-      tabSchedule: tabSchedule || 'edit',
-      tab2: tab2 || 'edit',
-      tab3: tab3 || 'edit',
-      tab4: tab4 || 'edit',
-      tabArchiveHistory: tabArchiveHistory || 'edit',
-      tabArchiveKassa: tabArchiveKassa || 'edit',
-      tabArchiveTabel: tabArchiveTabel || 'edit',
-      tabSummary: tabSummary || 'edit',
-      tabKpi: tabKpi || 'edit',
+      tab1: tab1 || 'edit', tabWorkTime: tabWorkTime || 'edit', tabHourNorms: tabHourNorms || 'edit',
+      tabSchedule: tabSchedule || 'edit', tab2: tab2 || 'edit', tab3: tab3 || 'edit', tab4: tab4 || 'edit',
+      tabArchiveHistory: tabArchiveHistory || 'edit', tabArchiveKassa: tabArchiveKassa || 'edit',
+      tabArchiveTabel: tabArchiveTabel || 'edit', tabSummary: tabSummary || 'edit', tabKpi: tabKpi || 'edit',
       clinics: Array.isArray(clinics) ? clinics : [],
     };
     const [perm, created] = await RbUserPermission.findOrCreate({ where: { userId }, defaults: data });
     if (!created) await perm.update(data);
+
+    const targetUser = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
+    const targetName = targetUser?.displayName || targetUser?.username || userId;
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'schedule',
+      action:     created ? 'create' : 'update',
+      entityType: 'user_permission',
+      entityId:   userId,
+      summary:    `${created ? 'Назначены' : 'Изменены'} права доступа: ${targetName}`,
+      diff:       { before, after: { tab1: data.tab1, tabWorkTime: data.tabWorkTime, tabHourNorms: data.tabHourNorms, tabSchedule: data.tabSchedule, tab2: data.tab2, tab3: data.tab3, tab4: data.tab4, tabArchiveHistory: data.tabArchiveHistory, tabArchiveKassa: data.tabArchiveKassa, tabArchiveTabel: data.tabArchiveTabel, tabSummary: data.tabSummary, tabKpi: data.tabKpi, clinics: data.clinics } },
+    });
+
     res.json({ success: true });
   } catch (err) {
     console.error('Update rb permissions error:', err);

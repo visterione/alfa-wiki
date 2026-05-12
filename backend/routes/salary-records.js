@@ -1,24 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
-const { SalaryRecord, CashPayment, Page, PageHistory } = require('../models');
+const { SalaryRecord, CashPayment } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
-
-async function recordHistory(pageSlug, userId, summary) {
-  try {
-    const page = await Page.findOne({ where: { slug: pageSlug } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { pageSlug }
-    });
-  } catch (err) {
-    console.error('salary-records history error:', err.message);
-  }
-}
+const { logRbActivity } = require('../services/rbLogger');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -26,7 +12,7 @@ const validate = (req, res, next) => {
   next();
 };
 
-// GET /api/salary-records/find?misUserId=X&dateFrom=Y — найти запись за тот же год-месяц
+// GET /api/salary-records/find?misUserId=X&dateFrom=Y
 router.get('/find', authenticate, async (req, res) => {
   try {
     const { misUserId, dateFrom } = req.query;
@@ -54,7 +40,7 @@ router.get('/find', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/salary-records/all — все записи (сводка)
+// GET /api/salary-records/all
 router.get('/all', authenticate, async (req, res) => {
   try {
     const records = await SalaryRecord.findAll({
@@ -108,15 +94,14 @@ router.post('/',
     const record = await SalaryRecord.create({
       misUserId,
       doctorName,
-      dateFrom: dateFrom || null,
-      dateTo: dateTo || null,
+      dateFrom:    dateFrom    || null,
+      dateTo:      dateTo      || null,
       periodLabel: periodLabel || null,
-      reportData: reportData || null,
-      excelData: excelBase64 || null,
+      reportData:  reportData  || null,
+      excelData:   excelBase64 || null,
       createdBy: req.user?.id || null,
     });
 
-    // Привязываем свободные выплаты из кассы за тот же период к созданному листу
     const recPeriod = periodLabel || (dateFrom ? dateFrom.slice(0, 7) : null);
     if (recPeriod) {
       await CashPayment.update(
@@ -125,16 +110,26 @@ router.post('/',
       );
     }
 
-    await recordHistory('rb-reports', req.user?.id, `Сохранён отчёт: ${doctorName}, ${periodLabel || dateFrom?.slice(0, 7) || ''}`);
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'report',
+      action:     'save',
+      entityType: 'salary_record',
+      entityId:   record.id,
+      misUserId,
+      doctorName,
+      summary:    `Сохранён зарплатный отчёт: ${doctorName}, ${periodLabel || dateFrom?.slice(0, 7) || ''}`,
+      diff:       { after: { periodLabel, dateFrom, dateTo } },
+    });
 
     res.status(201).json(record);
   } catch (err) {
     console.error('POST /api/salary-records error:', err);
     res.status(500).json({ error: err.message });
   }
-});  // end POST /api/salary-records
+});
 
-// GET /api/salary-records/:id/excel — скачать сохранённый Excel-файл
+// GET /api/salary-records/:id/excel
 router.get('/:id/excel', authenticate, async (req, res) => {
   try {
     const record = await SalaryRecord.findByPk(req.params.id);
@@ -154,8 +149,6 @@ router.get('/:id/excel', authenticate, async (req, res) => {
 });
 
 // GET /api/salary-records/assistance-income?dateFrom=...&dateTo=...
-// Returns all assistance payments from saved salary records in the period,
-// so Doctor B can see income that Doctor A deducted from their own report.
 router.get('/assistance-income', authenticate, async (req, res) => {
   try {
     const { dateFrom, dateTo } = req.query;
@@ -191,12 +184,13 @@ router.get('/assistance-income', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/salary-records/:id — перезаписать существующую запись
+// PUT /api/salary-records/:id
 router.put('/:id', authenticate, async (req, res) => {
   try {
     const record = await SalaryRecord.findByPk(req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
     const { dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
+    const oldComment = record.reportData?.comment ?? null;
     await record.update({
       dateFrom:    dateFrom    || null,
       dateTo:      dateTo      || null,
@@ -206,9 +200,33 @@ router.put('/:id', authenticate, async (req, res) => {
     });
 
     if (excelBase64) {
-      await recordHistory('rb-reports', req.user?.id, `Пересохранён отчёт: ${record.doctorName}, ${record.periodLabel || ''}`);
+      await logRbActivity({
+        userId:     req.user?.id,
+        tab:        'report',
+        action:     'update',
+        entityType: 'salary_record',
+        entityId:   record.id,
+        misUserId:  record.misUserId,
+        doctorName: record.doctorName,
+        summary:    `Пересохранён зарплатный отчёт: ${record.doctorName}, ${record.periodLabel || ''}`,
+        diff:       { after: { periodLabel: record.periodLabel, dateFrom: record.dateFrom, dateTo: record.dateTo } },
+      });
     } else {
-      await recordHistory('rb-summary', req.user?.id, `Обновлён комментарий: ${record.doctorName}, ${record.periodLabel || ''}`);
+      const newComment = reportData?.comment ?? null;
+      const commentChanged = oldComment !== newComment;
+      await logRbActivity({
+        userId:     req.user?.id,
+        tab:        'summary',
+        action:     'update',
+        entityType: 'comment',
+        entityId:   record.id,
+        misUserId:  record.misUserId,
+        doctorName: record.doctorName,
+        summary:    `Обновлён комментарий в сводке: ${record.doctorName}, ${record.periodLabel || ''}`,
+        diff: commentChanged
+          ? { before: { comment: oldComment }, after: { comment: newComment } }
+          : null,
+      });
     }
 
     res.json({ ok: true });
@@ -224,7 +242,19 @@ router.delete('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
     const record = await SalaryRecord.findByPk(id);
     if (!record) return res.status(404).json({ error: 'Not found' });
-    await recordHistory('rb-archive', req.user?.id, `Удалён отчёт: ${record.doctorName}, ${record.periodLabel || ''}`);
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'archive',
+      action:     'delete',
+      entityType: 'salary_record',
+      entityId:   id,
+      misUserId:  record.misUserId,
+      doctorName: record.doctorName,
+      summary:    `Удалён зарплатный отчёт из архива: ${record.doctorName}, ${record.periodLabel || ''}`,
+      diff:       { before: { periodLabel: record.periodLabel, dateFrom: record.dateFrom, dateTo: record.dateTo } },
+    });
+
     await record.destroy();
     res.json({ ok: true });
   } catch (err) {

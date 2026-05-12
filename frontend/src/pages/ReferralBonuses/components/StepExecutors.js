@@ -1416,7 +1416,10 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     setSaving(true);
     try {
       const toSave = dataOverride || execData;
-      await executorSettings.save({ misUserId: selectedDoctor.id, doctorName: selectedDoctor.name, settings: toSave });
+      const clinicNames = Object.fromEntries(
+        (clinics || []).map(c => [String(c.id), c.name]).filter(([, n]) => n)
+      );
+      await executorSettings.save({ misUserId: selectedDoctor.id, doctorName: selectedDoctor.name, settings: toSave, clinicNames });
       clearExecCache(selectedDoctor.id);
       setIsDirty(false);
       toast.success('Сохранено');
@@ -1425,7 +1428,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     } finally {
       setSaving(false);
     }
-  }, [selectedDoctor, execData]);
+  }, [selectedDoctor, execData, clinics]);
 
   // ── Clinic tabs ───────────────────────────────────────────────────────────
   const clinicTabs = [

@@ -130,12 +130,6 @@ const MODULE_LABELS = {
   'archive-vehicles': 'Архив транспорта',
   'map': 'Карта',
   'price-compare': 'Сравнение цен',
-  'refferal-bonuses': 'Зарплата: Общее',
-  'rb-referrals': 'Зарплата: Направления',
-  'rb-time': 'Зарплата: Учёт времени',
-  'rb-reports': 'Зарплата: Отчёт',
-  'rb-archive': 'Зарплата: Архив',
-  'rb-summary': 'Зарплата: Сводка',
 };
 
 // GET /api/journal/activities - история действий в специализированных модулях

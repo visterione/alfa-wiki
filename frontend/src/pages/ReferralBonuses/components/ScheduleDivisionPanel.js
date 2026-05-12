@@ -7,6 +7,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   doctors = [], selectedDoctorId, onSelectDoctor, readOnly,
   getClinicColor, getClinicName,
   onManageAccess, managingDivisionId, onDivisionRenamed,
+  onToggleView,
 }, ref) {
   const { user } = useAuth();
   const [divisions,    setDivisions]    = useState([]);
@@ -171,22 +172,40 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
           </svg>
           Подразделения
         </div>
-        {!readOnly && (
-          <button
-            onClick={() => { setShowCreate(v => !v); setNewDivName(''); }}
-            title="Создать подразделение"
-            style={{
-              width: 26, height: 26, borderRadius: 6, border: 'none',
-              background: showCreate ? '#1d4ed8' : 'var(--rb-primary)',
-              color: '#fff', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {!readOnly && (
+            <button
+              onClick={() => { setShowCreate(v => !v); setNewDivName(''); }}
+              title="Создать подразделение"
+              style={{
+                width: 26, height: 26, borderRadius: 6, border: 'none',
+                background: showCreate ? '#1d4ed8' : 'var(--rb-primary)',
+                color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          )}
+          {onToggleView && (
+            <button
+              onClick={onToggleView}
+              title="Список сотрудников"
+              style={{
+                width: 26, height: 26, borderRadius: 6, border: 'none',
+                background: '#64748b', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Create form */}

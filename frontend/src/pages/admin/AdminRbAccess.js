@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { User, Users, ChevronDown, ChevronUp, Check, Pencil, Trash2, Plus, Calendar } from 'lucide-react';
-import { referralBonusAccess, rbScheduleDicts, rbHolidays as rbHolidaysApi, BASE_URL } from '../../services/api';
+import { referralBonusAccess, rbScheduleDicts, rbHolidays as rbHolidaysApi, doctorSchedules, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 
@@ -441,6 +441,8 @@ function DictsTab() {
   const [editCatId,    setEditCatId]    = useState(null);
   const [editCatName,  setEditCatName]  = useState('');
   const [editCatColor, setEditCatColor] = useState('');
+  const [editMisId,    setEditMisId]    = useState(''); // MIS category_id for the category being edited
+  const [catMisMap,    setCatMisMap]    = useState({}); // { [rbCategoryId]: misCategoryId }
   const [catSaving,    setCatSaving]    = useState(false);
 
   // Cabinet form
@@ -453,8 +455,20 @@ function DictsTab() {
   const [openClinics,   setOpenClinics]   = useState(new Set());
 
   useEffect(() => {
-    Promise.all([rbScheduleDicts.listCategories(), rbScheduleDicts.listCabinets()])
-      .then(([cats, cabs]) => { setCatList(cats.data); setCabList(cabs.data); })
+    Promise.all([
+      rbScheduleDicts.listCategories(),
+      rbScheduleDicts.listCabinets(),
+      doctorSchedules.getMisCategoryMap().catch(() => ({ data: [] })),
+    ])
+      .then(([cats, cabs, misMap]) => {
+        setCatList(cats.data);
+        setCabList(cabs.data);
+        const map = {};
+        for (const row of misMap.data) {
+          if (row.rbCategoryId) map[row.rbCategoryId] = row.misCategoryId;
+        }
+        setCatMisMap(map);
+      })
       .catch(() => toast.error('Ошибка загрузки справочников'))
       .finally(() => setLoading(false));
   }, []);
@@ -477,9 +491,19 @@ function DictsTab() {
     if (!editCatName.trim()) return;
     setCatSaving(true);
     try {
-      const { data } = await rbScheduleDicts.updateCategory(id, { name: editCatName.trim(), color: editCatColor });
+      const [{ data }] = await Promise.all([
+        rbScheduleDicts.updateCategory(id, { name: editCatName.trim(), color: editCatColor }),
+        doctorSchedules.setMisCategoryMapForRb(id, editMisId ? parseInt(editMisId, 10) : null),
+      ]);
       setCatList(p => p.map(c => c.id === id ? data : c));
-      setEditCatId(null); toast.success('Сохранено');
+      setCatMisMap(prev => {
+        const next = { ...prev };
+        if (editMisId) next[id] = parseInt(editMisId, 10);
+        else delete next[id];
+        return next;
+      });
+      setEditCatId(null);
+      toast.success('Сохранено');
     } catch { toast.error('Ошибка'); } finally { setCatSaving(false); }
   };
   const delCat = async (id, name) => {
@@ -605,6 +629,16 @@ function DictsTab() {
                         <div style={{ marginBottom: 14 }}>
                           <ColorPicker value={editCatColor} onChange={setEditCatColor} />
                         </div>
+                        <div style={{ marginBottom: 14 }}>
+                          <div style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.4 }}>ID категории в МИС</div>
+                          <input
+                            style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                            value={editMisId}
+                            onChange={e => setEditMisId(e.target.value.replace(/[^0-9]/g, ''))}
+                            placeholder="Не задан"
+                            inputMode="numeric"
+                          />
+                        </div>
                         <div style={{ display: 'flex', gap: 8 }}>
                           <button onClick={() => saveCat(cat.id)} disabled={catSaving} style={{ ...btnPrimary, padding: '6px 16px', fontSize: 12 }}>Сохранить</button>
                           <button onClick={() => setEditCatId(null)} style={btnSecondary}>Отмена</button>
@@ -618,8 +652,13 @@ function DictsTab() {
                         <span style={{ width: 16, height: 16, borderRadius: '50%', background: cat.color, flexShrink: 0, boxShadow: `0 0 0 3px ${cat.color}30` }} />
                         <span style={{ flex: 1, fontSize: 14, color: '#1e293b', fontWeight: 500 }}>{cat.name}</span>
                         <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{cat.color}</span>
+                        {catMisMap[cat.id] != null && (
+                          <span style={{ fontSize: 11, color: '#475569', background: '#f1f5f9', border: '1px solid #e2e8f0', padding: '1px 6px', borderRadius: 4, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                            МИС: {catMisMap[cat.id]}
+                          </span>
+                        )}
                         <button
-                          onClick={() => { setEditCatId(cat.id); setEditCatName(cat.name); setEditCatColor(cat.color); }}
+                          onClick={() => { setEditCatId(cat.id); setEditCatName(cat.name); setEditCatColor(cat.color); setEditMisId(catMisMap[cat.id] != null ? String(catMisMap[cat.id]) : ''); }}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, color: '#94a3b8', display: 'flex', transition: 'color .15s' }}
                           onMouseEnter={e => e.currentTarget.style.color = '#007AFF'}
                           onMouseLeave={e => e.currentTarget.style.color = '#94a3b8'}

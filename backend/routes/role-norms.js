@@ -1,25 +1,9 @@
 const express = require('express');
-const { RoleNorm, Page, PageHistory } = require('../models');
+const { RoleNorm } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { logRbActivity } = require('../services/rbLogger');
 
 const router = express.Router();
-
-const RB_TIME_SLUG = 'rb-time';
-
-async function recordHistory(userId, summary) {
-  try {
-    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { pageSlug: RB_TIME_SLUG }
-    });
-  } catch (err) {
-    console.error('role-norms history error:', err.message);
-  }
-}
 
 // GET /api/role-norms?year=2026&month=3
 router.get('/', authenticate, async (req, res) => {
@@ -55,7 +39,6 @@ router.get('/periods', authenticate, async (req, res) => {
 });
 
 // POST /api/role-norms/bulk
-// Body: { year, month, norms: [{ roleTitle, normHours }] }
 router.post('/bulk', authenticate, async (req, res) => {
   try {
     const { year, month, norms } = req.body;
@@ -63,9 +46,14 @@ router.post('/bulk', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'year, month и norms обязательны' });
     }
 
+    const existing = await RoleNorm.findAll({
+      where: { year: parseInt(year), month: parseInt(month) }
+    });
+    const oldMap = Object.fromEntries(existing.map(n => [n.roleTitle, n.normHours != null ? parseFloat(n.normHours) : null]));
+
     const records = norms.map(n => ({
       roleTitle: String(n.roleTitle || '').trim(),
-      year: parseInt(year),
+      year:  parseInt(year),
       month: parseInt(month),
       normHours: n.normHours != null ? parseFloat(n.normHours) : null,
       createdBy: req.user.id
@@ -81,7 +69,23 @@ router.post('/bulk', authenticate, async (req, res) => {
       throw err;
     }
 
-    await recordHistory(req.user.id, `Обновлены нормы должностей: ${month}/${year}, должностей: ${records.length}`);
+    const newMap = Object.fromEntries(records.map(n => [n.roleTitle, n.normHours]));
+    const changes = [];
+    const allKeys = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+    for (const key of allKeys) {
+      if (oldMap[key] !== newMap[key]) {
+        changes.push({ role: key, before: oldMap[key] ?? null, after: newMap[key] ?? null });
+      }
+    }
+
+    await logRbActivity({
+      userId:     req.user.id,
+      tab:        'hour-norms',
+      action:     'update',
+      entityType: 'role_norm',
+      summary:    `Норма часов по должностям: ${month}/${year}, должностей: ${records.length}${changes.length ? `, изменений: ${changes.length}` : ''}`,
+      diff:       changes.length ? { changes } : null,
+    });
 
     res.json({ saved: records.length });
   } catch (err) {

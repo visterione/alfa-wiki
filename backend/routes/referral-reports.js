@@ -2,10 +2,11 @@ const express = require('express');
 const { Op } = require('sequelize');
 const { ReferralReport } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { logRbActivity } = require('../services/rbLogger');
 
 const router = express.Router();
 
-// Получить список отчётов (с пагинацией)
+// Получить список отчётов
 router.get('/', authenticate, async (req, res) => {
   try {
     const { reportType, misUserId, limit = 50, offset = 0 } = req.query;
@@ -18,7 +19,7 @@ router.get('/', authenticate, async (req, res) => {
       order: [['createdAt', 'DESC']],
       limit: parseInt(limit),
       offset: parseInt(offset),
-      attributes: { exclude: ['reportData'] } // без данных для списка
+      attributes: { exclude: ['reportData'] }
     });
 
     res.json({ total: count, reports: rows });
@@ -28,7 +29,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// Получить полный отчёт по ID (включая reportData)
+// Получить полный отчёт по ID
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const report = await ReferralReport.findByPk(req.params.id);
@@ -53,12 +54,24 @@ router.post('/', authenticate, async (req, res) => {
       reportType,
       title,
       doctorName: doctorName || null,
-      misUserId: misUserId || null,
-      dateFrom: dateFrom || null,
-      dateTo: dateTo || null,
+      misUserId:  misUserId  || null,
+      dateFrom:   dateFrom   || null,
+      dateTo:     dateTo     || null,
       totalAmount: totalAmount != null ? parseFloat(totalAmount) : null,
       reportData,
       createdBy: req.user?.id || null
+    });
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'report',
+      action:     'save',
+      entityType: 'referral_report',
+      entityId:   report.id,
+      misUserId:  misUserId || null,
+      doctorName: doctorName || null,
+      summary:    `Сохранён отчёт: ${title}${doctorName ? ` (${doctorName})` : ''}`,
+      diff:       { after: { reportType, title, dateFrom, dateTo, totalAmount } },
     });
 
     res.status(201).json({ id: report.id, message: 'Отчёт сохранён в архив' });
@@ -73,6 +86,19 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const report = await ReferralReport.findByPk(req.params.id);
     if (!report) return res.status(404).json({ error: 'Отчёт не найден' });
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'archive',
+      action:     'delete',
+      entityType: 'referral_report',
+      entityId:   report.id,
+      misUserId:  report.misUserId || null,
+      doctorName: report.doctorName || null,
+      summary:    `Удалён отчёт из архива: ${report.title}${report.doctorName ? ` (${report.doctorName})` : ''}`,
+      diff:       { before: { reportType: report.reportType, title: report.title, dateFrom: report.dateFrom, dateTo: report.dateTo, totalAmount: report.totalAmount } },
+    });
+
     await report.destroy();
     res.json({ message: 'Отчёт удалён' });
   } catch (err) {

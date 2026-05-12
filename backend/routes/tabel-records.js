@@ -1,26 +1,10 @@
 const express = require('express');
 const router  = express.Router();
-const { TabelRecord, TabelRecordDoctor, Page, PageHistory } = require('../models');
+const { TabelRecord, TabelRecordDoctor } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { logRbActivity } = require('../services/rbLogger');
 
-const RB_TIME_SLUG = 'rb-time';
-
-async function recordHistory(userId, summary, changes = []) {
-  try {
-    const page = await Page.findOne({ where: { slug: RB_TIME_SLUG } });
-    await PageHistory.create({
-      pageId: page ? page.id : null,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: { changes, pageSlug: RB_TIME_SLUG }
-    });
-  } catch (err) {
-    console.error('tabel-records history error:', err.message);
-  }
-}
-
-// GET /api/tabel-records — все батчи (без doctor-строк, только заголовки)
+// GET /api/tabel-records
 router.get('/', authenticate, async (req, res) => {
   try {
     const records = await TabelRecord.findAll({
@@ -38,7 +22,7 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/tabel-records/by-doctor?misUserId=X — история конкретного врача
+// GET /api/tabel-records/by-doctor?misUserId=X
 router.get('/by-doctor', authenticate, async (req, res) => {
   try {
     const { misUserId } = req.query;
@@ -60,7 +44,7 @@ router.get('/by-doctor', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/tabel-records/:id — один батч с полными данными по врачам
+// GET /api/tabel-records/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const record = await TabelRecord.findByPk(req.params.id, {
@@ -74,8 +58,7 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// POST /api/tabel-records — сохранить новый батч
-// body: { month, year, orgName, subdivision, docNumber, doctors: [{misUserId, doctorName, entries, payData}] }
+// POST /api/tabel-records
 router.post('/', authenticate, async (req, res) => {
   try {
     const { month, year, orgName, subdivision, docNumber, userName, doctors = [] } = req.body;
@@ -107,7 +90,17 @@ router.post('/', authenticate, async (req, res) => {
       include: [{ model: TabelRecordDoctor, as: 'doctors' }],
     });
 
-    await recordHistory(req.user?.id, `Сохранён табель: ${orgName || ''} ${month}/${year}, врачей: ${doctors.length}`);
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'worktime',
+      action:     'save',
+      entityType: 'tabel',
+      entityId:   record.id,
+      summary:    `Сохранён табель: ${orgName || ''} ${month}/${year}, врачей: ${doctors.length}`,
+      diff: {
+        after: { month, year, orgName, subdivision, docNumber, doctorCount: doctors.length }
+      },
+    });
 
     res.status(201).json(full);
   } catch (err) {
@@ -116,14 +109,20 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/tabel-records/:id — обновить данные врачей в батче
+// PUT /api/tabel-records/:id
 router.put('/:id', authenticate, async (req, res) => {
   try {
     const { doctors = [] } = req.body;
     const record = await TabelRecord.findByPk(req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
 
-    // Replace all doctor records for this batch
+    const oldDoctors = await TabelRecordDoctor.findAll({
+      where: { tabelRecordId: record.id },
+      attributes: ['misUserId', 'doctorName'],
+    });
+    const oldIdSet = new Set(oldDoctors.map(d => d.misUserId));
+    const newIdSet = new Set(doctors.map(d => d.misUserId));
+
     await TabelRecordDoctor.destroy({ where: { tabelRecordId: record.id } });
     if (doctors.length > 0) {
       await TabelRecordDoctor.bulkCreate(
@@ -141,7 +140,23 @@ router.put('/:id', authenticate, async (req, res) => {
       include: [{ model: TabelRecordDoctor, as: 'doctors' }],
     });
 
-    await recordHistory(req.user?.id, `Обновлён табель: ${record.orgName || ''} ${record.month}/${record.year}, врачей: ${doctors.length}`);
+    const addedDoctors   = doctors.filter(d => !oldIdSet.has(d.misUserId));
+    const removedDoctors = oldDoctors.filter(d => !newIdSet.has(d.misUserId));
+    const diffChanges = [];
+    for (const d of addedDoctors)   diffChanges.push({ field: 'doctor_added',   label: 'Добавлен врач',   before: null, after: d.doctorName || d.misUserId });
+    for (const d of removedDoctors) diffChanges.push({ field: 'doctor_removed', label: 'Исключён врач',   before: d.doctorName || d.misUserId, after: null });
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'archive',
+      action:     'update',
+      entityType: 'tabel',
+      entityId:   record.id,
+      summary:    `Изменён табель из архива: ${record.orgName || ''} ${record.month}/${record.year}, врачей: ${oldDoctors.length} → ${doctors.length}`,
+      diff: diffChanges.length > 0
+        ? { changes: diffChanges }
+        : { before: { doctorCount: oldDoctors.length }, after: { doctorCount: doctors.length } },
+    });
 
     res.json(full);
   } catch (err) {
@@ -153,10 +168,28 @@ router.put('/:id', authenticate, async (req, res) => {
 // DELETE /api/tabel-records/:id
 router.delete('/:id', authenticate, async (req, res) => {
   try {
-    const record = await TabelRecord.findByPk(req.params.id);
+    const record = await TabelRecord.findByPk(req.params.id, {
+      include: [{ model: TabelRecordDoctor, as: 'doctors', attributes: ['id'] }],
+    });
     if (!record) return res.status(404).json({ error: 'Not found' });
-    await recordHistory(req.user?.id, `Удалён табель: ${record.orgName || ''} ${record.month}/${record.year}`);
-    await record.destroy(); // CASCADE deletes doctors too
+
+    await logRbActivity({
+      userId:     req.user?.id,
+      tab:        'archive',
+      action:     'delete',
+      entityType: 'tabel',
+      entityId:   record.id,
+      summary:    `Удалён табель из архива: ${record.orgName || ''} ${record.month}/${record.year}`,
+      diff: {
+        before: {
+          month: record.month, year: record.year,
+          orgName: record.orgName, subdivision: record.subdivision,
+          doctorCount: record.doctors?.length || 0,
+        }
+      },
+    });
+
+    await record.destroy();
     res.json({ ok: true });
   } catch (err) {
     console.error('DELETE /api/tabel-records/:id error:', err);

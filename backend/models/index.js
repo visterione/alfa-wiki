@@ -2495,6 +2495,8 @@ const DoctorSchedule = sequelize.define('DoctorSchedule', {
   categoryId: { type: DataTypes.UUID,        allowNull: true, field: 'category_id' },
   cabinetId:  { type: DataTypes.UUID,        allowNull: true, field: 'cabinet_id' },
   roleTitle:  { type: DataTypes.STRING(200), allowNull: true, field: 'role_title' },
+  source:     { type: DataTypes.STRING(20),  allowNull: false, defaultValue: 'manual' },
+  misData:    { type: DataTypes.JSONB,       allowNull: true,  field: 'mis_data' },
   createdBy:  { type: DataTypes.UUID },
 }, {
   tableName: 'doctor_schedules',
@@ -2596,6 +2598,41 @@ const RbDoctorHeader = sequelize.define('RbDoctorHeader', {
   underscored: true,
 });
 
+// === MIS SCHEDULE CATEGORY MAPPING ===
+const MisScheduleCategoryMap = sequelize.define('MisScheduleCategoryMap', {
+  id:            { type: DataTypes.UUID,    defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misCategoryId: { type: DataTypes.INTEGER, allowNull: false, unique: true, field: 'mis_category_id' },
+  rbCategoryId:  { type: DataTypes.UUID,    allowNull: true,  field: 'rb_category_id' },
+}, {
+  tableName: 'mis_schedule_category_map',
+  timestamps: true,
+  underscored: true,
+});
+
+MisScheduleCategoryMap.belongsTo(RbScheduleCategory, { foreignKey: 'rbCategoryId', as: 'rbCategory' });
+
+// === RB ACTIVITY LOG ===
+const RbActivityLog = sequelize.define('RbActivityLog', {
+  id:         { type: DataTypes.UUID,    defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  userId:     { type: DataTypes.UUID,    allowNull: true,  field: 'user_id' },
+  tab:        { type: DataTypes.STRING(50),  allowNull: false },
+  action:     { type: DataTypes.STRING(50),  allowNull: false },
+  entityType: { type: DataTypes.STRING(100), allowNull: true,  field: 'entity_type' },
+  entityId:   { type: DataTypes.STRING(255), allowNull: true,  field: 'entity_id' },
+  doctorName: { type: DataTypes.STRING(255), allowNull: true,  field: 'doctor_name' },
+  misUserId:  { type: DataTypes.STRING(100), allowNull: true,  field: 'mis_user_id' },
+  clinicId:   { type: DataTypes.STRING(100), allowNull: true,  field: 'clinic_id' },
+  summary:    { type: DataTypes.TEXT,        allowNull: false },
+  diff:       { type: DataTypes.JSONB,       allowNull: true },
+}, {
+  tableName:   'rb_activity_log',
+  timestamps:  true,
+  updatedAt:   false,
+  underscored: true,
+});
+
+RbActivityLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2689,4 +2726,8 @@ module.exports = {
   // Public holidays + doctor headers
   RbHoliday,
   RbDoctorHeader,
+  // MIS schedule category mapping
+  MisScheduleCategoryMap,
+  // RB Activity Log
+  RbActivityLog,
 };
