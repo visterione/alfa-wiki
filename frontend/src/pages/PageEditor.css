@@ -206,3 +206,45 @@
   font-size: 0.85rem;
   color: var(--text-primary);
 }
+
+/* Spreadsheet: растягиваем на всю высоту через flex-цепочку */
+.page-editor.spreadsheet-view {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-editor.spreadsheet-view form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-editor.spreadsheet-view .editor-header,
+.page-editor.spreadsheet-view .form-group,
+.page-editor.spreadsheet-view .editor-type-tabs {
+  flex-shrink: 0;
+}
+
+.page-editor.spreadsheet-view .editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-editor.spreadsheet-view .editor-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page-editor.spreadsheet-view .spreadsheet-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}

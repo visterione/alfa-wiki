@@ -32,6 +32,20 @@ export default function Layout() {
     }
   }, [isMobile]);
 
+  // Автоматически закрываем sidebar при открытии страницы с таблицей
+  useEffect(() => {
+    const handler = (e) => {
+      if (isMobile) return;
+      if (e.detail.active) {
+        setSidebarOpen(false);
+      } else {
+        setSidebarOpen(true);
+      }
+    };
+    window.addEventListener('spreadsheet-page', handler);
+    return () => window.removeEventListener('spreadsheet-page', handler);
+  }, [isMobile]);
+
   const handleCloseSidebar = () => {
     setSidebarOpen(false);
   };

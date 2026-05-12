@@ -252,6 +252,43 @@
   margin-top: 24px;
 }
 
+/* Spreadsheet: растягиваем на всю высоту через flex-цепочку */
+.page-view.spreadsheet-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.page-view.spreadsheet-view > div:last-child {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-view.spreadsheet-view .card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-view.spreadsheet-view .page-content {
+  flex: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page-view.spreadsheet-view .spreadsheet-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* Стили для печати */
 .printable-header {
   display: none;

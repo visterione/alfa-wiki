@@ -152,7 +152,8 @@ const SpreadsheetEditor = forwardRef(({
   content,
   onChange,
   pageId,
-  readOnly = false
+  readOnly = false,
+  fullHeight = false
 }, ref) => {
   const containerRef = useRef(null);
   const univerAPIRef = useRef(null);
@@ -1216,8 +1217,8 @@ const SpreadsheetEditor = forwardRef(({
         className={readOnly ? 'univer-container readonly' : 'univer-container'}
         style={{
           width: '100%',
-          height: readOnly ? '700px' : 'calc(100vh - 300px)',
-          minHeight: '500px',
+          height: fullHeight ? '100%' : (readOnly ? '700px' : 'calc(100vh - 300px)'),
+          minHeight: fullHeight ? '0' : '500px',
           position: 'relative'
         }}
       >

@@ -408,6 +408,15 @@ export default function PageView() {
     loadPage();
   }, [slug]);
 
+  // Закрываем sidebar при открытии страницы с таблицей, восстанавливаем при выходе
+  useEffect(() => {
+    if (page?.contentType !== 'spreadsheet') return;
+    window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+    };
+  }, [page?.contentType]);
+
   const loadPage = async () => {
     setLoading(true);
     setError(null);
@@ -489,7 +498,7 @@ export default function PageView() {
   if (page.folder) folderBreadcrumbs.push(page.folder);
 
   return (
-    <div className="page-view">
+    <div className={`page-view${page.contentType === 'spreadsheet' ? ' spreadsheet-view' : ''}`}>
       <nav className="page-explorer-breadcrumbs">
         <Link to="/explorer" className="page-breadcrumb-item">
           <Home size={13} />
@@ -574,6 +583,7 @@ export default function PageView() {
                 content={page.content}
                 pageId={page.id}
                 readOnly={true}
+                fullHeight={true}
               />
             ) : (
               <div dangerouslySetInnerHTML={{ __html: getContentWithoutScripts() }} />

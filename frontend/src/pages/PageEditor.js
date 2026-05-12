@@ -47,6 +47,15 @@ export default function PageEditor() {
     if (!isNew) loadPage();
   }, [slug]);
 
+  // Закрываем sidebar при редактировании таблицы, восстанавливаем при выходе
+  useEffect(() => {
+    if (form.contentType !== 'spreadsheet') return;
+    window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+    };
+  }, [form.contentType]);
+
   const loadRoles = async () => {
     try {
       const { data } = await roles.list();
@@ -171,7 +180,7 @@ export default function PageEditor() {
   }
 
   return (
-    <div className="page-editor">
+    <div className={`page-editor${form.contentType === 'spreadsheet' ? ' spreadsheet-view' : ''}`}>
       <form onSubmit={handleSubmit}>
         <div className="editor-header">
           <button type="button" className="btn btn-primary editor-header-btn" onClick={() => navigate(-1)}>
@@ -290,6 +299,7 @@ export default function PageEditor() {
                   console.log('Form state updated');
                 }}
                 pageId={form.id}
+                fullHeight={true}
               />
             ) : (
               <div className="html-editor">
