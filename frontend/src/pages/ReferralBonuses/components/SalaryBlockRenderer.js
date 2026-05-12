@@ -132,20 +132,34 @@ export default function SalaryBlock({ salary }) {
     : rawBasePayLabel;
 
   const preFinalSalary = (basePay || 0) + (holidaySurchargeTotal || 0) + (referralBonuses || 0) + (performedBonusTotal || 0) + (extrasTotal || 0) + (assistanceIncomeTotal || 0) + (anesthesiologistIncomeTotal || 0) + (nurseIncomeTotal || 0) - (referralCostTotal || 0);
-  const turnoverDeductionItems = deductions.filter(d => d.deductionType !== 'final');
-  const finalDeductionItems    = deductions.filter(d => d.deductionType === 'final');
-  const turnoverMaterialItems  = materials.filter(m => m.deductionType !== 'final');
-  const finalMaterialItems     = materials.filter(m => m.deductionType === 'final');
 
   function turnoverItemRub(item) {
     const v = parseFloat(item.value) || 0;
     return item.valueType === 'percent' ? (performedServicesSum || 0) * v / 100 : v;
   }
 
+  // Обратная совместимость: в старых записях НДФЛ хранится внутри deductions, а не в ndflTotal
+  const ndflFromList = deductions.find(d => (d.name || '').trim() === 'НДФЛ');
+  const ndflFromListAmount = ndflFromList
+    ? (ndflFromList.deductionType !== 'final'
+        ? turnoverItemRub(ndflFromList)
+        : (ndflFromList.valueType === 'percent'
+            ? preFinalSalary * (parseFloat(ndflFromList.value) || 0) / 100
+            : (parseFloat(ndflFromList.value) || 0)))
+    : 0;
+  const effectiveNdflTotal = ndflTotal || ndflFromListAmount;
+  const deductionsForDisplay = ndflFromList ? deductions.filter(d => d !== ndflFromList) : deductions;
+  const adjustedFinalDeductionsTotal = Math.max(0, finalDeductionsTotal - (ndflFromList ? ndflFromListAmount : 0));
+
+  const turnoverDeductionItems = deductionsForDisplay.filter(d => d.deductionType !== 'final');
+  const finalDeductionItems    = deductionsForDisplay.filter(d => d.deductionType === 'final');
+  const turnoverMaterialItems  = materials.filter(m => m.deductionType !== 'final');
+  const finalMaterialItems     = materials.filter(m => m.deductionType === 'final');
+
   const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
-  const hasDeductions       = !interim && (finalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0);
+  const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0);
   const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasRoleDoctor       = (performedBonusTotal || 0) > 0;
@@ -430,7 +444,7 @@ export default function SalaryBlock({ salary }) {
       {hasDeductions && (
         <SalaryRow
           label="Взыскания"
-          value={`−${fmtRub(finalDeductionsTotal)}`}
+          value={`−${fmtRub(adjustedFinalDeductionsTotal)}`}
           color="var(--rb-danger)"
           expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
         >
@@ -593,9 +607,11 @@ export default function SalaryBlock({ salary }) {
 
       {/* Payment section */}
       {(() => {
-        const hasBreakdown = ndflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
+        const hasBreakdown = effectiveNdflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-        const _remainder = (finalSalary || 0) - ndflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
+        // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
+        const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
+        const _remainder = displayFinalSalary - effectiveNdflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {
           return (
@@ -614,15 +630,15 @@ export default function SalaryBlock({ salary }) {
               <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>К выплате</div></div>
                 <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>
-                  {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
+                  {displayFinalSalary < 0 ? '−' : ''}{fmtRub(Math.abs(displayFinalSalary))}
                 </div>
               </div>
-              {ndflTotal > 0 && (
-                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
-                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ndflTotal)}</div>
+              <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
+                <div className="rb-salary-row-value" style={{ color: effectiveNdflTotal > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)' }}>
+                  {effectiveNdflTotal > 0 ? `−${fmtRub(effectiveNdflTotal)}` : fmtRub(0)}
                 </div>
-              )}
+              </div>
               {(advance || 0) > 0 && (
                 <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Аванс</div></div>

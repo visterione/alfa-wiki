@@ -345,6 +345,9 @@ async function startServer() {
     // Initialize partner services cache cron job (nightly at 02:00 MSK)
     require('./cron/partnerServicesCacheCron');
 
+    // Initialize MIS schedule auto-import cron job (14th and 28th at 03:00 MSK)
+    require('./cron/misScheduleAutoImportCron');
+
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');
     await initMissedCallsBot();

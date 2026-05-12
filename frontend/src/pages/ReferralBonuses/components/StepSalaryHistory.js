@@ -324,7 +324,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   }, 0);
   const netRemainder = totalRemainder - cashPaidTotal;
 
-  let basePay = 0, referralBonuses = 0, performedBonusTotal = 0, extrasTotal = 0, deductionsTotal = 0;
+  let basePay = 0, referralBonuses = 0, performedBonusTotal = 0, extrasTotal = 0, deductionsTotal = 0, ndflTotal = 0;
   reps.forEach(cr => {
     const s = cr.salary || {};
     basePay            += parseFloat(s.basePay || 0);
@@ -332,6 +332,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
     performedBonusTotal += parseFloat(s.performedBonusTotal || 0);
     extrasTotal        += parseFloat(s.extrasTotal || 0);
     deductionsTotal    += parseFloat(s.deductionsTotal || 0);
+    ndflTotal          += parseFloat(s.ndflTotal || 0);
   });
 
   const period    = record.periodLabel || (record.dateFrom ? record.dateFrom.slice(0, 7) : 'Без периода');
@@ -363,6 +364,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
             { label: 'Услуги',       value: fmtRub(performedBonusTotal),color: null },
             { label: 'Надбавки',     value: fmtRub(extrasTotal),        color: null },
             { label: 'Удержания',    value: deductionsTotal > 0 ? `−${fmtRub(deductionsTotal)}` : fmtRub(0), color: deductionsTotal > 0 ? 'var(--rb-danger)' : null },
+            { label: 'НДФЛ',         value: ndflTotal > 0 ? `−${fmtRub(ndflTotal)}` : fmtRub(0),            color: ndflTotal > 0 ? 'var(--rb-danger)' : null },
             { label: 'Выдано',       value: cashPaidTotal > 0 ? `−${fmtRub(cashPaidTotal)}` : fmtRub(0),    color: cashPaidTotal > 0 ? '#15803d' : null },
             { label: 'Остаток',      value: cashPaidTotal > 0 ? `${netRemainder < 0 ? '−' : ''}${fmtRub(Math.abs(netRemainder))}` : fmtRub(0), color: cashPaidTotal > 0 ? (netRemainder < 0 ? '#dc2626' : '#0284c7') : null },
           ].map(({ label, value, color }) => (

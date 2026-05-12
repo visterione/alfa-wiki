@@ -18,11 +18,12 @@ function parseMisTime(ddmmyyyyHHMM) {
   return parts[1] || '09:00';
 }
 
-async function fetchSchedulePeriods(misUserId, month) {
+async function fetchSchedulePeriods(misUserId, month, endDay = null) {
   const [yyyy, mm] = month.split('-');
   const daysInMonth = new Date(Number(yyyy), Number(mm), 0).getDate();
+  const lastDay = endDay ? Math.min(endDay, daysInMonth) : daysInMonth;
   const timeStart = `01.${mm}.${yyyy} 00:00`;
-  const timeEnd   = `${String(daysInMonth).padStart(2, '0')}.${mm}.${yyyy} 23:59`;
+  const timeEnd   = `${String(lastDay).padStart(2, '0')}.${mm}.${yyyy} 23:59`;
 
   console.log(`📅 МИС импорт расписания: user=${misUserId} период=${timeStart} – ${timeEnd}`);
 
@@ -61,13 +62,19 @@ async function getCabinetId(clinicId, room) {
  * @param {string} month  "YYYY-MM"
  * @returns {{ imported: number, newCategories: number, month: string }}
  */
-async function importForUser(misUserId, month) {
+/**
+ * @param {string|number} misUserId
+ * @param {string} month  "YYYY-MM"
+ * @param {number|null} endDay  last day to import (e.g. 14); null = full month
+ */
+async function importForUser(misUserId, month, endDay = null) {
   const [yyyy, mm] = month.split('-');
   const daysInMonth = new Date(Number(yyyy), Number(mm), 0).getDate();
+  const effectiveEnd = endDay ? Math.min(endDay, daysInMonth) : daysInMonth;
   const firstDay = `${yyyy}-${mm}-01`;
-  const lastDay  = `${yyyy}-${mm}-${String(daysInMonth).padStart(2, '0')}`;
+  const lastDay  = `${yyyy}-${mm}-${String(effectiveEnd).padStart(2, '0')}`;
 
-  const data = await fetchSchedulePeriods(misUserId, month);
+  const data = await fetchSchedulePeriods(misUserId, month, endDay);
 
   if (!data || Number(data.error) !== 0 || !Array.isArray(data.data)) {
     throw new Error(`МИС вернул ошибку: ${JSON.stringify(data?.data ?? data)}`);
