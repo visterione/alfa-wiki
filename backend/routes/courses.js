@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
-const { Course, Lesson, TestQuestion, CourseProgress, User, Role, MedCenter, CourseRole, CourseMedCenter } = require('../models');
+const { Course, Lesson, TestQuestion, CourseProgress, User, Role, MedCenter, CourseRole, CourseMedCenter, CourseUser } = require('../models');
 const { authenticate, requirePermission, requireAdminAccess, checkCourseAccess } = require('../middleware/auth');
 
 const router = express.Router();
@@ -35,12 +35,18 @@ router.get('/', authenticate, async (req, res) => {
           model: MedCenter,
           as: 'allowedMedCenters',
           through: { attributes: [] }
+        },
+        {
+          model: User,
+          as: 'allowedUsers',
+          attributes: ['id'],
+          through: { attributes: [] }
         }
       ],
       order: [['createdAt', 'DESC']]
     });
 
-    // Фильтруем курсы по доступу пользователя (правило AND)
+    // Фильтруем курсы по доступу пользователя
     const userRoleIds = req.user.roles?.map(r => r.id) || [];
     const userMedCenterIds = req.user.medCenters?.map(m => m.id) || [];
 
@@ -50,25 +56,32 @@ router.get('/', authenticate, async (req, res) => {
 
       const hasRoleRestrictions = course.allowedRoles && course.allowedRoles.length > 0;
       const hasMedCenterRestrictions = course.allowedMedCenters && course.allowedMedCenters.length > 0;
+      const hasUserRestrictions = course.allowedUsers && course.allowedUsers.length > 0;
 
       // Если нет ограничений вообще, курс доступен всем
-      if (!hasRoleRestrictions && !hasMedCenterRestrictions) return true;
+      if (!hasRoleRestrictions && !hasMedCenterRestrictions && !hasUserRestrictions) return true;
+
+      // Если пользователь явно добавлен — доступ разрешён
+      if (hasUserRestrictions) {
+        const allowedUserIds = course.allowedUsers.map(u => u.id);
+        if (allowedUserIds.includes(req.user.id)) return true;
+      }
 
       // Проверяем роль (если есть ограничения по ролям)
-      let hasRoleAccess = !hasRoleRestrictions; // Если нет ограничений, проходит
+      let hasRoleAccess = !hasRoleRestrictions;
       if (hasRoleRestrictions) {
         const allowedRoleIds = course.allowedRoles.map(r => r.id);
         hasRoleAccess = userRoleIds.some(roleId => allowedRoleIds.includes(roleId));
       }
 
       // Проверяем медцентр (если есть ограничения по медцентрам)
-      let hasMedCenterAccess = !hasMedCenterRestrictions; // Если нет ограничений, проходит
+      let hasMedCenterAccess = !hasMedCenterRestrictions;
       if (hasMedCenterRestrictions) {
         const allowedMedCenterIds = course.allowedMedCenters.map(m => m.id);
         hasMedCenterAccess = userMedCenterIds.some(mcId => allowedMedCenterIds.includes(mcId));
       }
 
-      // Оба условия должны быть true (логика AND)
+      // Оба условия должны быть true (логика AND для роль+медцентр)
       return hasRoleAccess && hasMedCenterAccess;
     });
 
@@ -457,6 +470,12 @@ router.get('/admin/all', authenticate, requireAdminAccess('courses'), async (req
           model: MedCenter,
           as: 'allowedMedCenters',
           through: { attributes: [] }
+        },
+        {
+          model: User,
+          as: 'allowedUsers',
+          attributes: ['id', 'displayName', 'username'],
+          through: { attributes: [] }
         }
       ],
       order: [['createdAt', 'DESC']]
@@ -488,7 +507,7 @@ router.post('/admin', authenticate, requireAdminAccess('courses'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds } = req.body;
+    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds, allowedUserIds } = req.body;
 
     const course = await Course.create({
       title,
@@ -509,11 +528,17 @@ router.post('/admin', authenticate, requireAdminAccess('courses'), [
       await course.setAllowedMedCenters(allowedMedCenterIds);
     }
 
+    // Сохраняем связи с конкретными пользователями
+    if (allowedUserIds && Array.isArray(allowedUserIds) && allowedUserIds.length > 0) {
+      await course.setAllowedUsers(allowedUserIds);
+    }
+
     // Загружаем курс с связями для возврата
     const courseWithRelations = await Course.findByPk(course.id, {
       include: [
         { model: Role, as: 'allowedRoles', through: { attributes: [] } },
-        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } }
+        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } },
+        { model: User, as: 'allowedUsers', attributes: ['id', 'displayName', 'username'], through: { attributes: [] } }
       ]
     });
 
@@ -532,7 +557,7 @@ router.put('/admin/:id', authenticate, requireAdminAccess('courses'), async (req
       return res.status(404).json({ error: 'Course not found' });
     }
 
-    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds } = req.body;
+    const { title, description, icon, estimatedDuration, isPublished, allowedRoleIds, allowedMedCenterIds, allowedUserIds } = req.body;
 
     await course.update({
       title: title !== undefined ? title : course.title,
@@ -544,29 +569,25 @@ router.put('/admin/:id', authenticate, requireAdminAccess('courses'), async (req
 
     // Обновляем связи с ролями
     if (allowedRoleIds !== undefined) {
-      if (Array.isArray(allowedRoleIds) && allowedRoleIds.length > 0) {
-        await course.setAllowedRoles(allowedRoleIds);
-      } else {
-        // Если массив пустой, удаляем все связи
-        await course.setAllowedRoles([]);
-      }
+      await course.setAllowedRoles(Array.isArray(allowedRoleIds) ? allowedRoleIds : []);
     }
 
     // Обновляем связи с медцентрами
     if (allowedMedCenterIds !== undefined) {
-      if (Array.isArray(allowedMedCenterIds) && allowedMedCenterIds.length > 0) {
-        await course.setAllowedMedCenters(allowedMedCenterIds);
-      } else {
-        // Если массив пустой, удаляем все связи
-        await course.setAllowedMedCenters([]);
-      }
+      await course.setAllowedMedCenters(Array.isArray(allowedMedCenterIds) ? allowedMedCenterIds : []);
+    }
+
+    // Обновляем связи с конкретными пользователями
+    if (allowedUserIds !== undefined) {
+      await course.setAllowedUsers(Array.isArray(allowedUserIds) ? allowedUserIds : []);
     }
 
     // Загружаем курс с связями для возврата
     const courseWithRelations = await Course.findByPk(course.id, {
       include: [
         { model: Role, as: 'allowedRoles', through: { attributes: [] } },
-        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } }
+        { model: MedCenter, as: 'allowedMedCenters', through: { attributes: [] } },
+        { model: User, as: 'allowedUsers', attributes: ['id', 'displayName', 'username'], through: { attributes: [] } }
       ]
     });
 
@@ -623,6 +644,12 @@ router.get('/admin/:id/edit', authenticate, requireAdminAccess('courses'), async
         {
           model: MedCenter,
           as: 'allowedMedCenters',
+          through: { attributes: [] }
+        },
+        {
+          model: User,
+          as: 'allowedUsers',
+          attributes: ['id', 'displayName', 'username'],
           through: { attributes: [] }
         }
       ]

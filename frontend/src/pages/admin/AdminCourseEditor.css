@@ -122,6 +122,110 @@
   margin-bottom: 8px;
 }
 
+/* AccessPicker */
+.access-picker {
+  position: relative;
+}
+
+.access-picker-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.access-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--card-bg);
+  z-index: 1;
+}
+
+.access-picker-search svg {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.access-picker-search input {
+  border: none;
+  background: none;
+  outline: none;
+  flex: 1;
+  font-size: 14px;
+  color: var(--text);
+  padding: 0;
+}
+
+.access-picker-group-header {
+  padding: 8px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary);
+}
+
+.access-picker-empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+/* Chips */
+.access-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.access-chip button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+  color: inherit;
+}
+
+.access-chip button:hover {
+  opacity: 1;
+}
+
+.access-chip--role {
+  background: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+}
+
+.access-chip--mc {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.access-chip--user {
+  background: rgba(139, 92, 246, 0.1);
+  color: #8b5cf6;
+}
+
 /* Lessons list */
 .lessons-list,
 .questions-list {

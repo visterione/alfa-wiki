@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Save, ArrowLeft, Plus, Edit, Trash2, GripVertical,
-  BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon
+  BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon, Search
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { courses, roles as rolesApi, users } from '../../services/api';
@@ -119,6 +119,176 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
   );
 }
 
+// Единый контрол доступа: роли + медцентры + пользователи с поиском
+function AccessPicker({
+  roleIds, onChangeRoles, roles, disabledRoles = [],
+  medCenterIds, onChangeMedCenters, medCenters,
+  userIds, onChangeUsers, users
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const dropdownRef = useRef(null);
+  const searchRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsOpen(false);
+        setSearch('');
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && searchRef.current) searchRef.current.focus();
+  }, [isOpen]);
+
+  const q = search.toLowerCase();
+  const filteredRoles = roles.filter(r => r.name.toLowerCase().includes(q));
+  const filteredMedCenters = medCenters.filter(m => m.displayName.toLowerCase().includes(q));
+  const filteredUsers = users.filter(u =>
+    (u.displayName || '').toLowerCase().includes(q) || (u.username || '').toLowerCase().includes(q)
+  );
+
+  const totalSelected = roleIds.length + medCenterIds.length + userIds.length;
+
+  const toggleRole = (id) => {
+    if (disabledRoles.includes(id)) return;
+    onChangeRoles(roleIds.includes(id) ? roleIds.filter(x => x !== id) : [...roleIds, id]);
+  };
+  const toggleMedCenter = (id) => {
+    onChangeMedCenters(medCenterIds.includes(id) ? medCenterIds.filter(x => x !== id) : [...medCenterIds, id]);
+  };
+  const toggleUser = (id) => {
+    onChangeUsers(userIds.includes(id) ? userIds.filter(x => x !== id) : [...userIds, id]);
+  };
+
+  const removeChip = (type, id, e) => {
+    e.stopPropagation();
+    if (type === 'role' && !disabledRoles.includes(id)) toggleRole(id);
+    else if (type === 'mc') toggleMedCenter(id);
+    else if (type === 'user') toggleUser(id);
+  };
+
+  const selectedRoles = roles.filter(r => roleIds.includes(r.id));
+  const selectedMedCenters = medCenters.filter(m => medCenterIds.includes(m.id));
+  const selectedUsers = users.filter(u => userIds.includes(u.id));
+  const noResults = filteredRoles.length === 0 && filteredMedCenters.length === 0 && filteredUsers.length === 0;
+
+  return (
+    <div className="access-picker" ref={dropdownRef}>
+      <div
+        className={`multi-select-trigger ${isOpen ? 'open' : ''}`}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {totalSelected === 0 ? (
+          <span className="multi-select-placeholder">Нет ограничений — курс доступен всем</span>
+        ) : (
+          <div className="multi-select-values">
+            {selectedRoles.map(r => (
+              <span key={r.id} className="access-chip access-chip--role">
+                {r.name}
+                {!disabledRoles.includes(r.id) && (
+                  <button type="button" onClick={(e) => removeChip('role', r.id, e)}><XIcon size={11} /></button>
+                )}
+              </span>
+            ))}
+            {selectedMedCenters.map(m => (
+              <span key={m.id} className="access-chip access-chip--mc">
+                {m.displayName}
+                <button type="button" onClick={(e) => removeChip('mc', m.id, e)}><XIcon size={11} /></button>
+              </span>
+            ))}
+            {selectedUsers.map(u => (
+              <span key={u.id} className="access-chip access-chip--user">
+                {u.displayName || u.username}
+                <button type="button" onClick={(e) => removeChip('user', u.id, e)}><XIcon size={11} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+        <ChevronDown size={18} className={`multi-select-chevron ${isOpen ? 'open' : ''}`} />
+      </div>
+
+      {isOpen && (
+        <div className="access-picker-dropdown">
+          <div className="access-picker-search">
+            <Search size={14} />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Поиск..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onClick={e => e.stopPropagation()}
+            />
+          </div>
+
+          {filteredRoles.length > 0 && (
+            <div className="access-picker-group">
+              <div className="access-picker-group-header">Роли</div>
+              {filteredRoles.map(r => {
+                const isDisabled = disabledRoles.includes(r.id);
+                return (
+                  <div
+                    key={r.id}
+                    className={`multi-select-option ${isDisabled ? 'disabled' : ''}`}
+                    onClick={() => toggleRole(r.id)}
+                    style={isDisabled ? { cursor: 'not-allowed' } : {}}
+                  >
+                    <input type="checkbox" checked={roleIds.includes(r.id)} disabled={isDisabled} onChange={() => {}} />
+                    <div className="multi-select-option-label">
+                      <div>{r.name}</div>
+                      {r.description && <div className="multi-select-option-desc">{r.description}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {filteredMedCenters.length > 0 && (
+            <div className="access-picker-group">
+              <div className="access-picker-group-header">Медцентры</div>
+              {filteredMedCenters.map(m => (
+                <div key={m.id} className="multi-select-option" onClick={() => toggleMedCenter(m.id)}>
+                  <input type="checkbox" checked={medCenterIds.includes(m.id)} onChange={() => {}} />
+                  <div className="multi-select-option-label">{m.displayName}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {filteredUsers.length > 0 && (
+            <div className="access-picker-group">
+              <div className="access-picker-group-header">Пользователи</div>
+              {filteredUsers.map(u => (
+                <div key={u.id} className="multi-select-option" onClick={() => toggleUser(u.id)}>
+                  <input type="checkbox" checked={userIds.includes(u.id)} onChange={() => {}} />
+                  <div className="multi-select-option-label">
+                    <div>{u.displayName || u.username}</div>
+                    {u.username && u.displayName && (
+                      <div className="multi-select-option-desc">{u.username}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {noResults && (
+            <div className="access-picker-empty">Ничего не найдено</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminCourseEditor() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -136,7 +306,8 @@ export default function AdminCourseEditor() {
     estimatedDuration: '',
     isPublished: false,
     allowedRoleIds: [],
-    allowedMedCenterIds: []
+    allowedMedCenterIds: [],
+    allowedUserIds: []
   });
 
   const [lessons, setLessons] = useState([]);
@@ -145,6 +316,7 @@ export default function AdminCourseEditor() {
   // Access control lists
   const [availableRoles, setAvailableRoles] = useState([]);
   const [availableMedCenters, setAvailableMedCenters] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
 
   // Admin role ID (всегда должна быть выбрана)
   const [adminRoleId, setAdminRoleId] = useState(null);
@@ -178,13 +350,15 @@ export default function AdminCourseEditor() {
 
   const loadRolesAndMedCenters = async () => {
     try {
-      const [rolesRes, medCentersRes] = await Promise.all([
+      const [rolesRes, medCentersRes, usersRes] = await Promise.all([
         rolesApi.list(),
-        users.getMedCenters()
+        users.getMedCenters(),
+        users.listBasic()
       ]);
       const roles = rolesRes.data || [];
       setAvailableRoles(roles);
       setAvailableMedCenters(medCentersRes.data || []);
+      setAvailableUsers(usersRes.data || []);
 
       // Находим роль администратора
       const adminRole = roles.find(r => r.name === 'Администратор');
@@ -207,7 +381,8 @@ export default function AdminCourseEditor() {
         estimatedDuration: data.estimatedDuration || '',
         isPublished: data.isPublished,
         allowedRoleIds: data.allowedRoles?.map(r => r.id) || [],
-        allowedMedCenterIds: data.allowedMedCenters?.map(m => m.id) || []
+        allowedMedCenterIds: data.allowedMedCenters?.map(m => m.id) || [],
+        allowedUserIds: data.allowedUsers?.map(u => u.id) || []
       });
       setLessons(data.lessons || []);
       setQuestions(data.testQuestions || []);
@@ -455,32 +630,24 @@ export default function AdminCourseEditor() {
 
               <div className="access-control-section">
                 <h3>Контроль доступа</h3>
-                <p className="form-help" style={{ marginBottom: '16px' }}>
-                  Если не выбраны роли или медцентры, курс доступен всем.
-                  При выборе пользователь должен соответствовать ОБОИМ условиям (роль И медцентр).
+                <p className="form-help" style={{ marginBottom: '12px' }}>
+                  Роли и медцентры работают по правилу И. Конкретный пользователь получает доступ независимо от роли/медцентра.
                 </p>
-
-                <MultiSelect
-                  label="Доступные роли"
-                  placeholder="Выберите роли или оставьте пустым для доступа всем"
-                  value={form.allowedRoleIds}
-                  onChange={(newValue) => setForm({ ...form, allowedRoleIds: newValue })}
-                  options={availableRoles}
-                  optionKey="id"
-                  optionLabel="name"
-                  optionDescription="description"
-                  disabledOptions={adminRoleId ? [adminRoleId] : []}
-                />
-
-                <MultiSelect
-                  label="Доступные медцентры"
-                  placeholder="Выберите медцентры или оставьте пустым для доступа всем"
-                  value={form.allowedMedCenterIds}
-                  onChange={(newValue) => setForm({ ...form, allowedMedCenterIds: newValue })}
-                  options={availableMedCenters}
-                  optionKey="id"
-                  optionLabel="displayName"
-                />
+                <div className="form-group">
+                  <label className="form-label">Кто имеет доступ</label>
+                  <AccessPicker
+                    roles={availableRoles}
+                    roleIds={form.allowedRoleIds}
+                    onChangeRoles={(v) => setForm({ ...form, allowedRoleIds: v })}
+                    disabledRoles={adminRoleId ? [adminRoleId] : []}
+                    medCenters={availableMedCenters}
+                    medCenterIds={form.allowedMedCenterIds}
+                    onChangeMedCenters={(v) => setForm({ ...form, allowedMedCenterIds: v })}
+                    users={availableUsers}
+                    userIds={form.allowedUserIds}
+                    onChangeUsers={(v) => setForm({ ...form, allowedUserIds: v })}
+                  />
+                </div>
               </div>
 
               {isNew && (

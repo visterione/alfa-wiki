@@ -1080,6 +1080,21 @@ const CourseMedCenter = sequelize.define('CourseMedCenter', {
   ]
 });
 
+// === COURSE-USER MODEL (Many-to-Many for individual access) ===
+const CourseUser = sequelize.define('CourseUser', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  courseId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false }
+}, {
+  tableName: 'course_users',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['courseId', 'userId'] },
+    { fields: ['courseId'] },
+    { fields: ['userId'] }
+  ]
+});
+
 // === REFERRAL BONUS MODEL ===
 const ReferralBonus = sequelize.define('ReferralBonus', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -1678,6 +1693,10 @@ Role.belongsToMany(Course, { through: CourseRole, foreignKey: 'roleId', as: 'cou
 // Course & MedCenter (Many-to-Many for access control)
 Course.belongsToMany(MedCenter, { through: CourseMedCenter, foreignKey: 'courseId', as: 'allowedMedCenters' });
 MedCenter.belongsToMany(Course, { through: CourseMedCenter, foreignKey: 'medCenterId', as: 'courses' });
+
+// Course & User (Many-to-Many for individual access control)
+Course.belongsToMany(User, { through: CourseUser, foreignKey: 'courseId', as: 'allowedUsers' });
+User.belongsToMany(Course, { through: CourseUser, foreignKey: 'userId', as: 'allowedCourses' });
 
 // CalendarEvent relationships
 CalendarEvent.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
@@ -2663,6 +2682,7 @@ module.exports = {
   CourseProgress,
   CourseRole,
   CourseMedCenter,
+  CourseUser,
   Analysis,
   AnalysisPageNote,
   Service,

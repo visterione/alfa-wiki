@@ -73,10 +73,14 @@ cron.schedule('0 3 14 * *', async () => {
   await runAutoImport(14);
 }, { timezone: 'Europe/Moscow' });
 
-// 28-го в 03:00 МСК — импорт полного месяца
-cron.schedule('0 3 28 * *', async () => {
-  console.log('[MIS Auto Import] Запуск: полный месяц');
+// Последний день месяца в 03:00 МСК — импорт полного месяца
+// node-cron не поддерживает "L", поэтому запускаемся с 28-го и проверяем внутри
+cron.schedule('0 3 28,29,30,31 * *', async () => {
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  if (now.getDate() !== daysInMonth) return; // не последний день — пропускаем
+  console.log('[MIS Auto Import] Запуск: полный месяц (последний день месяца)');
   await runAutoImport(null);
 }, { timezone: 'Europe/Moscow' });
 
-console.log('✅ Cron автоимпорта расписания из МИС инициализирован (14-е и 28-е в 03:00 МСК)');
+console.log('✅ Cron автоимпорта расписания из МИС инициализирован (14-е и последний день месяца в 03:00 МСК)');
