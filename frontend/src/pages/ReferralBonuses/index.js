@@ -1204,7 +1204,7 @@ function DoctorsList({
               <div className="rb-doctor-info">
                 <div className="rb-doctor-badges">
                   {d.clinics.slice(0, 6).map(cId => (
-                    <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId) }}>
+                    <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId), ...(cId === 'ip' ? { width: 'auto', padding: '2px 6px' } : {}) }}>
                       {getClinicName(cId)}
                     </span>
                   ))}
