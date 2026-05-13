@@ -1431,9 +1431,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   }, [selectedDoctor, execData, clinics]);
 
   // ── Clinic tabs ───────────────────────────────────────────────────────────
+  const isIpDoctor = (selectedDoctor?.clinics || []).includes('ip');
   const clinicTabs = [
     { id: 'global', label: 'Общие', color: 'var(--rb-primary)' },
     ...(clinics || []).filter(c => {
+      if (isIpDoctor && String(c.id) !== 'ip') return false;
       const cs = execData.clinicSettings || {};
       return cs[String(c.id)] || (selectedDoctor?.clinics || []).includes(String(c.id));
     }).map(c => ({ id: String(c.id), label: c.name, color: c.color })),
