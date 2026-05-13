@@ -134,6 +134,7 @@ export default function ReferralBonusesPage() {
   // Keep ref in sync with state for use inside callbacks without stale closure
   React.useEffect(() => { step1DirtyRef.current = step1Dirty; }, [step1Dirty]);
   const [pendingNav, setPendingNav] = useState(null); // { action: fn, doctorName: string }
+  const [settingsResetKey, setSettingsResetKey] = useState(0);
   const wizardNavRef = React.useRef(null);
   const [wizardSlider, setWizardSlider] = React.useState({ left: 0, width: 0, duration: 0 });
   React.useLayoutEffect(() => {
@@ -356,6 +357,7 @@ export default function ReferralBonusesPage() {
     try {
       await execSettingsApi.resetAll();
       clearExecCache();
+      setSettingsResetKey(k => k + 1);
       toast.success('Незафиксированные записи сброшены у всех врачей');
     } catch {
       toast.error('Ошибка глобального сброса');
@@ -640,7 +642,7 @@ export default function ReferralBonusesPage() {
   const renderStep = () => {
     switch (currentStep) {
       case 1:
-        return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} onDirtyChange={setStep1Dirty} />;
+        return <StepExecutors {...sharedProps} readOnly={isStepReadOnly(1)} onDirtyChange={setStep1Dirty} settingsResetKey={settingsResetKey} />;
       case 2:
         return <StepHourNorms doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} getClinicName={getClinicName} permissions={permissions} />;
       case 3:

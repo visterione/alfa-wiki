@@ -274,9 +274,11 @@ export async function buildReport({
     if (normedOnly) {
       // Типы без Excel (normed/hourly/salary) — создаём синтетические записи по настроенным клиникам
       const cs = execSettings?.clinicSettings || {};
-      const noExcelClinicIds = Object.keys(cs).filter(
-        cid => cid !== 'global' && (cs[cid].payType === 'normed' || cs[cid].payType === 'hourly' || cs[cid].payType === 'salary')
-      );
+      const noExcelClinicIds = Object.keys(cs).filter(cid => {
+        if (cid === 'global') return false;
+        const pt = cs[cid].payType || 'salary'; // default matches execClinicDefault
+        return pt === 'normed' || pt === 'hourly' || pt === 'salary';
+      });
       if (noExcelClinicIds.length > 0) {
         noExcelClinicIds.forEach(cid => {
           byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };

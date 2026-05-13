@@ -1205,7 +1205,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
@@ -1364,7 +1364,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     })
     .catch(() => setExecData(execDefault()))
     .finally(() => { setLoading(false); setIsDirty(false); });
-  }, [selectedDoctor]);
+  }, [selectedDoctor, settingsResetKey]); // eslint-disable-line
 
   // ── Schedule hours ────────────────────────────────────────────────────────
   const _now = new Date();
