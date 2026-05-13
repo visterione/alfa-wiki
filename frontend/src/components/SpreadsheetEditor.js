@@ -11,40 +11,34 @@ import { RUSSIAN_FORMULA_MAP, RUSSIAN_FORMULA_DESCRIPTIONS } from '../utils/russ
 import { createUniver } from '@univerjs/presets';
 import { LocaleType, mergeLocales } from '@univerjs/core';
 import { UniverSheetsCorePreset } from '@univerjs/preset-sheets-core';
-import { UniverSheetsDrawingPreset } from '@univerjs/preset-sheets-drawing';
 import { UniverSheetsFilterPreset } from '@univerjs/preset-sheets-filter';
 import { UniverSheetsConditionalFormattingPreset } from '@univerjs/preset-sheets-conditional-formatting';
 import { UniverSheetsDataValidationPreset } from '@univerjs/preset-sheets-data-validation';
 import { UniverSheetsFindReplacePreset } from '@univerjs/preset-sheets-find-replace';
 import { UniverSheetsHyperLinkPreset } from '@univerjs/preset-sheets-hyper-link';
 import { UniverSheetsNotePreset } from '@univerjs/preset-sheets-note';
-import { UniverSheetsThreadCommentPreset } from '@univerjs/preset-sheets-thread-comment';
 import { UniverSheetsSortPreset } from '@univerjs/preset-sheets-sort';
 import { UniverSheetsTablePreset } from '@univerjs/preset-sheets-table';
 
 // Локализации
 import UniverPresetSheetsCoreRuRU from '@univerjs/preset-sheets-core/locales/ru-RU';
-import UniverPresetSheetsDrawingRuRU from '@univerjs/preset-sheets-drawing/locales/ru-RU';
 import UniverPresetSheetsFilterRuRU from '@univerjs/preset-sheets-filter/locales/ru-RU';
 import UniverPresetSheetsConditionalFormattingRuRU from '@univerjs/preset-sheets-conditional-formatting/locales/ru-RU';
 import UniverPresetSheetsDataValidationRuRU from '@univerjs/preset-sheets-data-validation/locales/ru-RU';
 import UniverPresetSheetsFindReplaceRuRU from '@univerjs/preset-sheets-find-replace/locales/ru-RU';
 import UniverPresetSheetsHyperLinkRuRU from '@univerjs/preset-sheets-hyper-link/locales/ru-RU';
 import UniverPresetSheetsNoteRuRU from '@univerjs/preset-sheets-note/locales/ru-RU';
-import UniverPresetSheetsThreadCommentRuRU from '@univerjs/preset-sheets-thread-comment/locales/ru-RU';
 import UniverPresetSheetsSortRuRU from '@univerjs/preset-sheets-sort/locales/ru-RU';
 import UniverPresetSheetsTableRuRU from '@univerjs/preset-sheets-table/locales/ru-RU';
 
 // Univer styles
 import '@univerjs/preset-sheets-core/lib/index.css';
-import '@univerjs/preset-sheets-drawing/lib/index.css';
 import '@univerjs/preset-sheets-filter/lib/index.css';
 import '@univerjs/preset-sheets-conditional-formatting/lib/index.css';
 import '@univerjs/preset-sheets-data-validation/lib/index.css';
 import '@univerjs/preset-sheets-find-replace/lib/index.css';
 import '@univerjs/preset-sheets-hyper-link/lib/index.css';
 import '@univerjs/preset-sheets-note/lib/index.css';
-import '@univerjs/preset-sheets-thread-comment/lib/index.css';
 import '@univerjs/preset-sheets-sort/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 
@@ -666,20 +660,14 @@ const SpreadsheetEditor = forwardRef(({
         }
       };
 
-      let registeredCount = 0;
-
       // Регистрируем реализованные функции
       for (const [name, { fn, desc }] of Object.entries(russianFunctions)) {
         try {
           formulaEngine.registerFunction(name, fn, desc);
-          registeredCount++;
         } catch (err) {
           // Функция уже существует или ошибка регистрации
-          console.debug(`Could not register ${name}:`, err.message);
         }
       }
-
-      console.log(`✅ Зарегистрировано русских функций: ${registeredCount}`);
     } catch (error) {
       console.warn('Could not register Russian formulas:', error);
     }
@@ -771,20 +759,14 @@ const SpreadsheetEditor = forwardRef(({
 
   // Инициализация Univer (newContentOverride — для реинита без перезагрузки страницы)
   const initializeUniver = (newContentOverride) => {
-    console.log('initializeUniver() called');
-
-    if (!containerRef.current) {
-      console.error('Container not found');
-      return;
-    }
+    if (!containerRef.current) return;
 
     // Очистка предыдущего экземпляра
     if (univerAPIRef.current) {
       try {
-        console.log('Disposing previous Univer instance...');
         univerAPIRef.current.dispose();
       } catch (error) {
-        console.warn('Error disposing previous instance:', error);
+        // ignore dispose errors
       }
       univerAPIRef.current = null;
       workbookRef.current = null;
@@ -838,22 +820,17 @@ const SpreadsheetEditor = forwardRef(({
     }
 
     try {
-      console.log('Creating Univer instance with locale:', LocaleType.RU_RU);
-      console.log('Workbook data:', workbookData);
-
       const { univerAPI } = createUniver({
         locale: LocaleType.RU_RU,
         locales: {
           [LocaleType.RU_RU]: mergeLocales(
             UniverPresetSheetsCoreRuRU,
-            UniverPresetSheetsDrawingRuRU,
             UniverPresetSheetsFilterRuRU,
             UniverPresetSheetsConditionalFormattingRuRU,
             UniverPresetSheetsDataValidationRuRU,
             UniverPresetSheetsFindReplaceRuRU,
             UniverPresetSheetsHyperLinkRuRU,
             UniverPresetSheetsNoteRuRU,
-            UniverPresetSheetsThreadCommentRuRU,
             UniverPresetSheetsSortRuRU,
             UniverPresetSheetsTableRuRU
           )
@@ -862,28 +839,21 @@ const SpreadsheetEditor = forwardRef(({
           UniverSheetsCorePreset({
             container: containerRef.current
           }),
-          UniverSheetsDrawingPreset(),
           UniverSheetsFilterPreset(),
           UniverSheetsConditionalFormattingPreset(),
           UniverSheetsDataValidationPreset(),
           UniverSheetsFindReplacePreset(),
           UniverSheetsHyperLinkPreset(),
           UniverSheetsNotePreset(),
-          UniverSheetsThreadCommentPreset(),
           UniverSheetsSortPreset(),
           UniverSheetsTablePreset()
         ]
       });
 
-      console.log('✅ createUniver completed');
       univerAPIRef.current = univerAPI;
 
-      // Создаем workbook с данными
-      console.log('Creating workbook...');
       const workbook = univerAPI.createUniverSheet(workbookData);
       workbookRef.current = workbook;
-
-      console.log('✅ Univer instance and workbook created successfully');
 
       // Регистрация русских названий функций
       registerRussianFormulas(univerAPI);
@@ -895,10 +865,9 @@ const SpreadsheetEditor = forwardRef(({
             const permission = workbook.getWorkbookPermission();
             if (permission && permission.setReadOnly) {
               permission.setReadOnly();
-              console.log('✅ Read-only mode enabled');
             }
           } catch (err) {
-            console.warn('Could not set read-only mode:', err);
+            // read-only mode not available
           }
         }, 500);
       }
@@ -909,13 +878,12 @@ const SpreadsheetEditor = forwardRef(({
           // Пропускаем операции просмотра: выделение, скролл, зум (type === 1 = OPERATION)
           if (command?.type === 1) return;
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = setTimeout(() => saveData(), 4000);
+          saveTimeoutRef.current = setTimeout(() => saveData(), 8000);
         });
       }
 
       initializedRef.current = true;
       setIsReady(true);
-      console.log('=== Univer initialization complete ===');
 
     } catch (error) {
       console.error('❌ Error initializing Univer:', error);
@@ -925,26 +893,14 @@ const SpreadsheetEditor = forwardRef(({
 
   // Инициализация при монтировании
   useEffect(() => {
-    if (initializedRef.current) {
-      console.log('Already initialized, skipping');
-      return;
-    }
+    if (initializedRef.current) return;
 
-    console.log('=== Starting Univer initialization ===');
-    console.log('readOnly:', readOnly);
-    console.log('content length:', content?.length);
-
-    // Используем requestAnimationFrame для гарантии что DOM полностью отрендерился
     let rafId;
     let timerId;
 
     rafId = requestAnimationFrame(() => {
       timerId = setTimeout(() => {
-        console.log('After RAF: containerRef.current exists:', !!containerRef.current);
-        if (!containerRef.current) {
-          console.error('⚠️ Container not found after RAF!');
-          return;
-        }
+        if (!containerRef.current) return;
         initializeUniver();
       }, 100);
     });
@@ -958,8 +914,6 @@ const SpreadsheetEditor = forwardRef(({
   // Очистка при размонтировании
   useEffect(() => {
     return () => {
-      console.log('⚠️ COMPONENT UNMOUNTING - Cleaning up Univer...');
-      console.trace('Unmount stack trace');
       if (univerAPIRef.current) {
         try {
           univerAPIRef.current.dispose();
@@ -980,30 +934,21 @@ const SpreadsheetEditor = forwardRef(({
     if (readOnly) return null;
 
     try {
-      if (!workbookRef.current) {
-        console.error('Workbook not initialized');
-        return null;
-      }
+      if (!workbookRef.current) return null;
 
       const snapshot = workbookRef.current.getSnapshot();
-      console.log('saveData: Got snapshot from Univer');
 
       // Фиксируем пустые ячейки-источники перед сохранением, чтобы при следующей
       // загрузке ссылки на них возвращали "" вместо 0.
       fixEmptySourceCells(snapshot);
 
       const jsonData = JSON.stringify(snapshot);
-      console.log('saveData: JSON length:', jsonData?.length);
 
       if (onChangeRef.current) {
-        console.log('saveData: Calling onChange callback');
         onChangeRef.current(jsonData);
-      } else {
-        console.warn('saveData: onChange callback is not defined');
       }
 
       contentRef.current = jsonData;
-      console.log('saveData: Updated contentRef');
 
       return jsonData;
     } catch (error) {

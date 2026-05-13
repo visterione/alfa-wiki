@@ -356,7 +356,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       addSalRow('Бонусы направителям', sal.referralCostTotal, '-', (executorSections || sal.executorSections || []).length > 0);
       (executorSections || sal.executorSections || []).forEach(({ referrer, services, total }) => {
         addSubHdr(referrer, total, 'FFCC0000', 1);
-        addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'К выплате, руб'], 2);
+        addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Начислено, руб'], 2);
         services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
       });
     }
@@ -395,9 +395,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     };
 
     if (!_hasBreakdown) {
-      addTotalBlock('К выплате', sal.finalSalary || 0);
+      addTotalBlock('Начислено', sal.finalSalary || 0);
     } else {
-      addSalRow('К выплате', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
+      addSalRow('Начислено', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
       if (_ndflTotal > 0) {
         const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
         ndflRow.getCell(1).font = fontNormal;
@@ -523,7 +523,7 @@ export function buildBulkWorkbook(bulkResults) {
   // Summary sheet
   const summaryWs = wb.addWorksheet('Сводка');
   summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }];
-  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'К выплате, руб', 'Остаток к доплате, руб', 'Период']);
+  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'Начислено, руб', 'Остаток к доплате, руб', 'Период']);
   hdr.eachCell({ includeEmpty: true }, (cell, c) => {
     if (c <= 5) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
   });

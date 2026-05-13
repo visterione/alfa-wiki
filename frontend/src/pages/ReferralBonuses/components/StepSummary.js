@@ -596,7 +596,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         { header: 'ФИО врача',      key: 'name',      width: 36 },
         { header: 'Премия',         key: 'bonus',     width: 18 },
         { header: 'Выдано (касса)', key: 'cashPaid',  width: 18 },
-        { header: 'К выплате',      key: 'netBonus',  width: 18 },
+        { header: 'Начислено',       key: 'netBonus',  width: 18 },
         { header: 'Подпись врача',  key: 'signature', width: 36 },
       ];
 

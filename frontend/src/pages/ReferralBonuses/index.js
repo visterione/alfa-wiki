@@ -213,6 +213,12 @@ export default function ReferralBonusesPage() {
           if (!list.find(c => String(c.id) === '8')) {
             list.push({ id: 8, name: 'Направители', color: '#00bfff' });
           }
+          if (!list.find(c => String(c.id) === '11')) {
+            list.push({ id: 11, name: 'Сукко', color: '#2d7055' });
+          }
+          if (!list.find(c => String(c.id) === 'ip')) {
+            list.push({ id: 'ip', name: 'ИП Микаелян', color: '#e05252' });
+          }
           setClinics(list);
         }
       })
@@ -260,12 +266,16 @@ export default function ReferralBonusesPage() {
           } else if (d.role) {
             roles = [d.role];
           }
+          const mappedClinics = rawClinics.map(rbClinicId);
+          if (roles.includes('Сотрудник call-центра') && !mappedClinics.includes('ip')) {
+            mappedClinics.push('ip');
+          }
           return {
             id: String(d.id),
             name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
             professions,
             roles,
-            clinics: rawClinics.map(rbClinicId),
+            clinics: mappedClinics,
           };
         });
         setDoctors(normalized);
@@ -1190,7 +1200,7 @@ function DoctorsList({
               )}
               <div className="rb-doctor-info">
                 <div className="rb-doctor-badges">
-                  {d.clinics.slice(0, 4).map(cId => (
+                  {d.clinics.slice(0, 6).map(cId => (
                     <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId) }}>
                       {getClinicName(cId)}
                     </span>

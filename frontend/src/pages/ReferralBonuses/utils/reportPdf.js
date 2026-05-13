@@ -309,7 +309,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
         body: [
           [
             { text: `${doctorName}${tabelNumber ? ` (${tabelNumber})` : ''}`, style: 'hdrName' },
-            { text: `К выплате: ${fmt2(salary.finalSalary || 0)} ₽`, style: 'hdrPay' },
+            { text: `Начислено: ${fmt2(salary.finalSalary || 0)} ₽`, style: 'hdrPay' },
           ],
           [
             { text: orgName ? `Организация: ${orgName}` : 'Организация:', style: 'hdrInfo' },

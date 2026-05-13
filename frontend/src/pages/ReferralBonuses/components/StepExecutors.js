@@ -1536,6 +1536,34 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer(newData);
   };
 
+  const handleTogglePlusPercentLock = async () => {
+    const newLocked = !data.lockedPlusPercent;
+    updateClinicData({ lockedPlusPercent: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedPlusPercent: newLocked } } };
+    await saveToServer(newData);
+  };
+
+  const handleToggleIncludeReferralBonusesLock = async () => {
+    const newLocked = !data.lockedIncludeReferralBonuses;
+    updateClinicData({ lockedIncludeReferralBonuses: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedIncludeReferralBonuses: newLocked } } };
+    await saveToServer(newData);
+  };
+
+  const handleToggleIncludeReferralDeductionsLock = async () => {
+    const newLocked = !data.lockedIncludeReferralDeductions;
+    updateClinicData({ lockedIncludeReferralDeductions: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedIncludeReferralDeductions: newLocked } } };
+    await saveToServer(newData);
+  };
+
+  const handleToggleHarmfulnessLock = async () => {
+    const newLocked = !data.lockedHarmfulness;
+    updateClinicData({ lockedHarmfulness: newLocked });
+    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHarmfulness: newLocked } } };
+    await saveToServer(newData);
+  };
+
   // ── Cabinets ──────────────────────────────────────────────────────────────
   const globalCabinets = (execData.clinicSettings?.global?.cabinets) || [];
 
@@ -2040,6 +2068,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   type="number" min="0" step="any" placeholder="0"
                   value={data.fixedSalary || ''}
                   onChange={e => handlePaymentFieldChange('fixedSalary', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedFixedSalary}
                 />
               </div>
             )}
@@ -2054,46 +2083,59 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   type="number" min="0" step="any" placeholder="0"
                   value={data.fixedSalary || ''}
                   onChange={e => handlePaymentFieldChange('fixedSalary', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedFixedSalary}
                 />
               </div>
             )}
 
             <div className="rb-plus-pct-row rb-plus-pct-row--inline">
               {pt !== 'percent' && (
-                <label className="rb-toggle-item">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <label className="rb-toggle-item" style={data.lockedPlusPercent ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
+                    <span className="rb-toggle-switch">
+                      <input
+                        type="checkbox" id="exec-plus-pct"
+                        checked={!!data.plusPercent}
+                        onChange={e => handlePaymentFieldChange('plusPercent', e.target.checked)}
+                        disabled={!!data.lockedPlusPercent}
+                      />
+                      <span className="rb-toggle-slider" />
+                    </span>
+                    <span className="rb-toggle-label">Выполненные услуги</span>
+                  </label>
+                  {!readOnly && <LockBtn locked={!!data.lockedPlusPercent} onClick={handleTogglePlusPercentLock} />}
+                </div>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label className="rb-toggle-item" style={data.lockedIncludeReferralBonuses ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
                   <span className="rb-toggle-switch">
                     <input
-                      type="checkbox" id="exec-plus-pct"
-                      checked={!!data.plusPercent}
-                      onChange={e => handlePaymentFieldChange('plusPercent', e.target.checked)}
+                      type="checkbox" id="exec-include-ref-bonuses"
+                      checked={data.includeReferralBonuses !== false}
+                      onChange={e => handlePaymentFieldChange('includeReferralBonuses', e.target.checked)}
+                      disabled={!!data.lockedIncludeReferralBonuses}
                     />
                     <span className="rb-toggle-slider" />
                   </span>
-                  <span className="rb-toggle-label">Выполненные услуги</span>
+                  <span className="rb-toggle-label">Бонусы за направления</span>
                 </label>
-              )}
-              <label className="rb-toggle-item">
-                <span className="rb-toggle-switch">
-                  <input
-                    type="checkbox" id="exec-include-ref-bonuses"
-                    checked={data.includeReferralBonuses !== false}
-                    onChange={e => handlePaymentFieldChange('includeReferralBonuses', e.target.checked)}
-                  />
-                  <span className="rb-toggle-slider" />
-                </span>
-                <span className="rb-toggle-label">Бонусы за направления</span>
-              </label>
-              <label className="rb-toggle-item">
-                <span className="rb-toggle-switch">
-                  <input
-                    type="checkbox" id="exec-include-ref-deductions"
-                    checked={data.includeReferralDeductions !== false}
-                    onChange={e => handlePaymentFieldChange('includeReferralDeductions', e.target.checked)}
-                  />
-                  <span className="rb-toggle-slider" />
-                </span>
-                <span className="rb-toggle-label">Бонусы направителям</span>
-              </label>
+                {!readOnly && <LockBtn locked={!!data.lockedIncludeReferralBonuses} onClick={handleToggleIncludeReferralBonusesLock} />}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <label className="rb-toggle-item" style={data.lockedIncludeReferralDeductions ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
+                  <span className="rb-toggle-switch">
+                    <input
+                      type="checkbox" id="exec-include-ref-deductions"
+                      checked={data.includeReferralDeductions !== false}
+                      onChange={e => handlePaymentFieldChange('includeReferralDeductions', e.target.checked)}
+                      disabled={!!data.lockedIncludeReferralDeductions}
+                    />
+                    <span className="rb-toggle-slider" />
+                  </span>
+                  <span className="rb-toggle-label">Бонусы направителям</span>
+                </label>
+                {!readOnly && <LockBtn locked={!!data.lockedIncludeReferralDeductions} onClick={handleToggleIncludeReferralDeductionsLock} />}
+              </div>
             </div>
             <div className="rb-exec-fields-grid" style={{ marginTop: 12, gridTemplateColumns: '1fr 1fr 24px 1fr 1fr' }}>
               <div className="rb-exec-field">
@@ -2114,6 +2156,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   type="number" min="0" step="any" placeholder="0"
                   value={data.advance || ''}
                   onChange={e => handlePaymentFieldChange('advance', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedAdvance}
                 />
               </div>
               <div />
@@ -2135,6 +2178,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   type="number" min="0" step="any" placeholder="0"
                   value={data.mainPayment || ''}
                   onChange={e => handlePaymentFieldChange('mainPayment', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedMainPayment}
                 />
               </div>
 
@@ -2184,6 +2228,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         handlePaymentFieldChange('extraPayments', arr);
                       }}
                       style={{ flex: 1, minWidth: 0 }}
+                      disabled={!!ep.locked}
                     />
                     <input
                       type="number" min="0" step="any" placeholder="0"
@@ -2194,6 +2239,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         handlePaymentFieldChange('extraPayments', arr);
                       }}
                       style={{ width: 90, flexShrink: 0, textAlign: 'right' }}
+                      disabled={!!ep.locked}
                     />
                   </div>
                 </div>
@@ -2227,6 +2273,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   type="number" min="0" step="any" placeholder="0"
                   value={data.hourlyRate || ''}
                   onChange={e => handlePaymentFieldChange('hourlyRate', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedHourlyRate}
                 />
               </div>
               <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
@@ -2266,6 +2313,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                     type="number" min="0" step="0.5" placeholder="0"
                     value={data.hoursWorked || ''}
                     onChange={e => handlePaymentFieldChange('hoursWorked', parseFloat(e.target.value) || 0)}
+                    disabled={!!data.lockedHoursWorked}
                   />
                 )}
               </div>
@@ -2361,13 +2409,16 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               >+</button>
             )}
           </div>
-          <label className="rb-toggle-item" style={{ padding: '6px 0 8px' }}>
-            <span className="rb-toggle-switch">
-              <input type="checkbox" checked={!!data.harmfulness} onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)} />
-              <span className="rb-toggle-slider" />
-            </span>
-            <span className="rb-toggle-label">Вредность</span>
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 0 8px' }}>
+            <label className="rb-toggle-item" style={data.lockedHarmfulness ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
+              <span className="rb-toggle-switch">
+                <input type="checkbox" checked={!!data.harmfulness} onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)} disabled={!!data.lockedHarmfulness} />
+                <span className="rb-toggle-slider" />
+              </span>
+              <span className="rb-toggle-label">Вредность</span>
+            </label>
+            {!readOnly && <LockBtn locked={!!data.lockedHarmfulness} onClick={handleToggleHarmfulnessLock} />}
+          </div>
           <div style={{ marginBottom: 8 }}>
             <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />
             <AddItemForm section="deductions" suggests={suggests.deductions} onAdd={handleAddItem} readOnly={readOnly} visible={showDeductionForm} onToggle={() => setShowDeductionForm(v => !v)} submitLabel="Сохранить" noIcon onEditSuggests={!readOnly ? () => setSuggestsModal({ key: 'deductions', title: 'Взыскания' }) : undefined} />

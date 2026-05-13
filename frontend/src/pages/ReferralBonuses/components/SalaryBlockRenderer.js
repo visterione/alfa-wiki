@@ -599,7 +599,7 @@ export default function SalaryBlock({ salary }) {
         <SalaryRow label="Бонусы направителям" value={`−${fmtRub(referralCostTotal)}`} color="var(--rb-danger)" expandable={executorSections.length > 0}>
           {executorSections.map(({ referrer, services, total }, i) => (
             <SubSection key={i} label={referrer} value={`−${fmtRub(total)}`} color="var(--rb-danger)" type="minus">
-              <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'К выплате']} negative />
+              <ServiceTable sections={services} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Начислено']} negative />
             </SubSection>
           ))}
         </SalaryRow>
@@ -616,7 +616,7 @@ export default function SalaryBlock({ salary }) {
         if (!hasBreakdown) {
           return (
             <div className="rb-salary-total-row">
-              <div className="rb-salary-total-label">К выплате</div>
+              <div className="rb-salary-total-label">Начислено</div>
               <div className={`rb-salary-total-value ${(finalSalary || 0) >= 0 ? 'positive' : 'negative'}`}>
                 {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
               </div>
@@ -628,7 +628,7 @@ export default function SalaryBlock({ salary }) {
           <>
             <div style={{ borderTop: '1px dashed var(--rb-border)' }}>
               <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>К выплате</div></div>
+                <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Начислено</div></div>
                 <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>
                   {displayFinalSalary < 0 ? '−' : ''}{fmtRub(Math.abs(displayFinalSalary))}
                 </div>

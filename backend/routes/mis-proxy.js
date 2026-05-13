@@ -408,12 +408,14 @@ router.get('/clinics', authenticate, (req, res) => {
   res.json({
     success: true,
     data: [
-      { id: 2, name: 'Альфа', code: 'А', color: '#de64a1' },
-      { id: 3, name: 'Кидс', code: 'К', color: '#ed9121' },
-      { id: 1, name: 'Проф', code: 'П', color: '#9999ff' },
-      { id: 6, name: 'Линия', code: 'Л', color: '#e2d1bb' },
-      { id: 4, name: '3К', code: '3К', color: '#800080' },
-      { id: 7, name: 'Смайл', code: 'С', color: '#999999' }
+      { id: 2,  name: 'Альфа',       code: 'А',  color: '#de64a1' },
+      { id: 3,  name: 'Кидс',        code: 'К',  color: '#ed9121' },
+      { id: 1,  name: 'Проф',        code: 'П',  color: '#9999ff' },
+      { id: 6,  name: 'Линия',       code: 'Л',  color: '#e2d1bb' },
+      { id: 4,  name: '3К',          code: '3К', color: '#800080' },
+      { id: 7,  name: 'Смайл',       code: 'С',  color: '#999999' },
+      { id: 11, name: 'Сукко',       code: 'Ск', color: '#2d7055' },
+      { id: 8,  name: 'Направители', code: 'Н',  color: '#00bfff' },
     ]
   });
 });

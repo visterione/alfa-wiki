@@ -293,11 +293,7 @@ export default function PageEditor() {
                 key="spreadsheet-editor"
                 ref={spreadsheetRef}
                 content={form.content}
-                onChange={(content) => {
-                  console.log('SpreadsheetEditor onChange called, content length:', content?.length);
-                  setForm(prev => ({ ...prev, content }));
-                  console.log('Form state updated');
-                }}
+                onChange={() => {}}
                 pageId={form.id}
                 fullHeight={true}
               />

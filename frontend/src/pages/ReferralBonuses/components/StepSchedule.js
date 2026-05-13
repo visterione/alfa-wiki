@@ -133,6 +133,15 @@ function isDayScheduled(entry, year, month, day) {
   if (d < from || d > to) return false;
   const { pattern } = entry;
   const dow = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon … 6=Sun
+
+  // Weekday filter: applies to all patterns except 'weekdays' (which already IS the day filter)
+  if (pattern.type !== 'weekdays') {
+    const allowed = pattern.allowedWeekdays;
+    if (allowed && allowed.length > 0 && allowed.length < 7) {
+      if (!allowed.includes(dow)) return false;
+    }
+  }
+
   switch (pattern.type) {
     case 'daily':    return true;
     case 'workdays': return dow <= 4; // Mon–Fri
@@ -158,7 +167,7 @@ function makeBlankForm(cell, doctorClinics) {
     clinicId:   doctorClinics[0] ? String(doctorClinics[0].id) : '',
     dateFrom:   formatDate(new Date(cell.year, cell.month - 1, cell.day)),
     dateTo:     formatDate(new Date(cell.year, cell.month, 0)),
-    pattern:    { type: 'daily', weekdays: [], evenOdd: 'even', workDays: 5, restDays: 2 },
+    pattern:    { type: 'daily', weekdays: [], allowedWeekdays: [], evenOdd: 'even', workDays: 5, restDays: 2 },
     timeFrom:   '09:00',
     timeTo:     '18:00',
     categoryId: null,
@@ -173,7 +182,7 @@ function entryToForm(entry) {
     clinicId:   entry.clinicId,
     dateFrom:   entry.dateFrom,
     dateTo:     entry.dateTo,
-    pattern:    { ...entry.pattern, weekdays: [...(entry.pattern.weekdays || [])] },
+    pattern:    { ...entry.pattern, weekdays: [...(entry.pattern.weekdays || [])], allowedWeekdays: [...(entry.pattern.allowedWeekdays || [])] },
     timeFrom:   entry.timeFrom,
     timeTo:     entry.timeTo,
     categoryId: entry.categoryId || null,
@@ -1357,6 +1366,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const arr = form.pattern.weekdays || [];
     updatePat('weekdays', arr.includes(i) ? arr.filter(d => d !== i) : [...arr, i].sort());
   };
+  const toggleAllowedWday = (i) => {
+    const current = form.pattern.allowedWeekdays || [];
+    const effective = current.length === 0 ? [0, 1, 2, 3, 4, 5, 6] : current;
+    const next = effective.includes(i) ? effective.filter(d => d !== i) : [...effective, i].sort();
+    updatePat('allowedWeekdays', next.length === 7 ? [] : next);
+  };
 
   const canSave = form && form.clinicId && form.dateFrom && form.dateTo &&
     !(form.pattern.type === 'weekdays' && !form.pattern.weekdays?.length);
@@ -2246,6 +2261,26 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
                     )}
 
+                  </div>
+                )}
+
+                {/* Weekday filter — applies to all patterns except 'weekdays' (which already IS the day selector) */}
+                {form.pattern.type !== 'weekdays' && (
+                  <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', padding: '12px 14px', background: 'var(--rb-bg)', marginTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {WDAY_LABELS.map((lbl, i) => {
+                        const allowed = form.pattern.allowedWeekdays || [];
+                        const checked = allowed.length === 0 || allowed.includes(i);
+                        return (
+                          <button key={i} type="button" onClick={() => toggleAllowedWday(i)} style={{
+                            width: 40, height: 36, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                            border: checked ? '2px solid var(--rb-primary)' : '1px solid var(--rb-border)',
+                            background: checked ? 'var(--rb-primary)' : (i >= 5 ? '#fef2f2' : 'white'),
+                            color: checked ? 'white' : (i >= 5 ? '#dc2626' : 'var(--rb-text)'),
+                          }}>{lbl}</button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
