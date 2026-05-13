@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Save, ArrowLeft, Plus, Edit, Trash2, GripVertical,
-  BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon, Search
+  BookOpen, FileText, HelpCircle, ChevronDown, X as XIcon, Search, Printer
 } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { courses, roles as rolesApi, users } from '../../services/api';
@@ -470,6 +470,72 @@ export default function AdminCourseEditor() {
     }
   };
 
+  const handlePrintAllLessons = () => {
+    if (lessons.length === 0) {
+      toast.error('Нет уроков для печати');
+      return;
+    }
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast.error('Браузер заблокировал открытие окна');
+      return;
+    }
+
+    const lessonsHtml = lessons.map((lesson, index) => `
+      <div class="lesson-block${index > 0 ? ' page-break' : ''}">
+        <h2 class="lesson-title">Урок ${index + 1}. ${lesson.title || ''}</h2>
+        <div class="lesson-content">${lesson.content || ''}</div>
+      </div>
+    `).join('');
+
+    win.document.write(`<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>${form.title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; font-size: 11pt; color: #000; background: #fff; padding: 0; }
+    .course-title { font-size: 22pt; font-weight: 700; margin-bottom: 6px; }
+    .course-meta { font-size: 10pt; color: #555; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 2px solid #000; }
+    .lesson-block { margin-bottom: 32px; }
+    .page-break { page-break-before: always; padding-top: 0; }
+    .lesson-title { font-size: 16pt; font-weight: 600; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 1px solid #ccc; }
+    .lesson-content { line-height: 1.6; }
+    .lesson-content h1, .lesson-content h2, .lesson-content h3 { margin: 16px 0 8px; font-weight: 600; }
+    .lesson-content p { margin-bottom: 8px; }
+    .lesson-content ul, .lesson-content ol { margin: 8px 0 8px 24px; }
+    .lesson-content li { margin-bottom: 4px; }
+    .lesson-content table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    .lesson-content th, .lesson-content td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    .lesson-content th { background: #f0f0f0; font-weight: 600; }
+    .lesson-content img { max-width: 100%; height: auto; }
+    .lesson-content pre, .lesson-content code { font-family: monospace; background: #f5f5f5; padding: 2px 4px; border-radius: 3px; }
+    .lesson-content pre { padding: 10px; white-space: pre-wrap; word-break: break-word; }
+    .lesson-content blockquote { border-left: 3px solid #ccc; padding-left: 12px; color: #555; margin: 8px 0; }
+    @media print {
+      @page { size: A4 portrait; margin: 15mm; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .page-break { page-break-before: always !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="course-title">${form.title}</div>
+  ${form.description ? `<div class="course-meta">${form.description}</div>` : ''}
+  ${lessonsHtml}
+  <script>
+    window.onload = function() {
+      window.print();
+      window.onafterprint = function() { window.close(); };
+    };
+  </script>
+</body>
+</html>`);
+    win.document.close();
+  };
+
   const handleSaveQuestion = async (questionData) => {
     try {
       if (questionData.id) {
@@ -662,13 +728,25 @@ export default function AdminCourseEditor() {
             <div className="editor-section">
               <div className="section-header">
                 <h2>Уроки курса</h2>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => setLessonModal({ title: '', content: '' })}
-                >
-                  <Plus size={18} />
-                  Добавить урок
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {lessons.length > 0 && (
+                    <button
+                      className="btn btn-outline"
+                      onClick={handlePrintAllLessons}
+                      title="Распечатать все уроки как один PDF"
+                    >
+                      <Printer size={18} />
+                      Печать всего курса
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setLessonModal({ title: '', content: '' })}
+                  >
+                    <Plus size={18} />
+                    Добавить урок
+                  </button>
+                </div>
               </div>
 
               {lessons.length === 0 ? (
