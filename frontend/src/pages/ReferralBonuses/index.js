@@ -270,6 +270,9 @@ export default function ReferralBonusesPage() {
           if (roles.includes('Сотрудник call-центра') && !mappedClinics.includes('ip')) {
             mappedClinics.push('ip');
           }
+          if (mappedClinics.includes('ip')) {
+            mappedClinics.splice(0, mappedClinics.length, 'ip');
+          }
           return {
             id: String(d.id),
             name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
