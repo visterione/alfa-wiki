@@ -137,6 +137,12 @@ const User = sequelize.define('User', {
     allowNull: true,
     defaultValue: null,
     comment: 'Время перемещения пользователя в корзину (null = активен)'
+  },
+  deletedBy: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'ID администратора, переместившего пользователя в корзину'
   }
 }, { tableName: 'users', timestamps: true });
 
@@ -1607,6 +1613,9 @@ const EmailLog = sequelize.define('EmailLog', {
 // ═══════════════════════════════════════════════════════════════
 // RELATIONSHIPS
 // ═══════════════════════════════════════════════════════════════
+
+// User self-reference: кто переместил в корзину
+User.belongsTo(User, { foreignKey: 'deletedBy', as: 'deletedByUser' });
 
 // User & Role (старая связь - оставляем для обратной совместимости, но устарела)
 User.belongsTo(Role, { foreignKey: 'roleId', as: 'role' });

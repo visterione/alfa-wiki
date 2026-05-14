@@ -160,7 +160,8 @@ router.get('/trash', authenticate, requireAdminAccess('users'), async (req, res)
       include: [
         { model: Role, as: 'role' },
         { model: Role, as: 'roles', through: { attributes: [] } },
-        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } },
+        { model: User, as: 'deletedByUser', attributes: ['id', 'username', 'displayName'], required: false }
       ],
       attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] },
       order: [['deletedAt', 'DESC']]
@@ -535,7 +536,7 @@ router.delete('/:id', authenticate, requireAdminAccess('users'), async (req, res
       return res.status(400).json({ error: 'Пользователь уже в корзине' });
     }
 
-    await user.update({ deletedAt: new Date(), isActive: false });
+    await user.update({ deletedAt: new Date(), deletedBy: req.user.id, isActive: false });
     res.json({ message: 'Пользователь перемещён в корзину' });
   } catch (error) {
     console.error('Delete user error:', error);
@@ -553,7 +554,7 @@ router.post('/:id/restore', authenticate, requireAdminAccess('users'), async (re
       return res.status(400).json({ error: 'Пользователь не в корзине' });
     }
 
-    await user.update({ deletedAt: null, isActive: true });
+    await user.update({ deletedAt: null, deletedBy: null, isActive: true });
     res.json({ message: 'Пользователь восстановлен' });
   } catch (error) {
     console.error('Restore user error:', error);

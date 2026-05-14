@@ -611,7 +611,7 @@ export default function AdminUsers() {
   return (
     <div className="admin-page users-page">
       <div className="admin-header">
-        <h1>Пользователи</h1>
+        <h1>{showTrash ? 'Корзина' : 'Пользователи'}</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             className={`btn ${showTrash ? 'btn-danger' : 'btn-secondary'}`}
@@ -627,140 +627,139 @@ export default function AdminUsers() {
         </div>
       </div>
 
-      <div className="admin-toolbar">
-        <div className="search-box">
-          <Search size={18} />
-          <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)} />
+      {!showTrash && (
+        <div className="admin-toolbar">
+          <div className="search-box">
+            <Search size={18} />
+            <input type="text" placeholder="Поиск..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+
+          <select
+            className="filter-select"
+            value={filterRole}
+            onChange={e => setFilterRole(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">Все роли</option>
+            {roleList.map(role => (
+              <option key={role.id} value={role.id}>{role.name}</option>
+            ))}
+          </select>
+
+          <select
+            className="filter-select"
+            value={filterMedCenter}
+            onChange={e => setFilterMedCenter(e.target.value)}
+            style={{
+              padding: '10px 14px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border)',
+              background: 'var(--bg-primary)',
+              color: 'var(--text-primary)',
+              fontSize: '14px',
+              cursor: 'pointer'
+            }}
+          >
+            <option value="">Все медцентры</option>
+            {medCenterList.map(mc => (
+              <option key={mc.id} value={mc.id}>{mc.name}</option>
+            ))}
+          </select>
         </div>
+      )}
 
-        <select
-          className="filter-select"
-          value={filterRole}
-          onChange={e => setFilterRole(e.target.value)}
-          style={{
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
-        >
-          <option value="">Все роли</option>
-          {roleList.map(role => (
-            <option key={role.id} value={role.id}>{role.name}</option>
-          ))}
-        </select>
-
-        <select
-          className="filter-select"
-          value={filterMedCenter}
-          onChange={e => setFilterMedCenter(e.target.value)}
-          style={{
-            padding: '10px 14px',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-            background: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-            fontSize: '14px',
-            cursor: 'pointer'
-          }}
-        >
-          <option value="">Все медцентры</option>
-          {medCenterList.map(mc => (
-            <option key={mc.id} value={mc.id}>{mc.name}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="card">
-        {loading ? (
-          <div className="admin-loading"><div className="loading-spinner" /></div>
-        ) : (
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th style={{ width: '25%', textAlign: 'left' }}>Пользователь</th>
-                <th style={{ textAlign: 'left' }}>Email</th>
-                <th style={{ textAlign: 'left' }}>Роли</th>
-                <th style={{ textAlign: 'left' }}>Медцентры</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(user => (
-                <tr key={user.id} onClick={() => openModal(user)} style={{ cursor: 'pointer' }}>
-                  <td>
-                    <div className="user-cell">
-                      <div className="user-avatar">
-                        {getAvatarUrl(user) ? (
-                          <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
-                        ) : (
-                          <User size={20} strokeWidth={2} />
-                        )}
-                      </div>
-                      <div>
-                        <div className="user-name">{user.displayName || user.username}</div>
-                        <div className="user-login">@{user.username}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
-                        <span title={user.isAdmin ? 'Администратор' : 'Не администратор'} style={{ display: 'flex', color: user.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', opacity: user.isAdmin ? 1 : 0.4 }}>
-                          <Crown size={15} />
-                        </span>
-                        {user.twoFactorEnabled ? (
-                          <span title="Двухфакторная аутентификация включена" style={{ display: 'flex', color: 'var(--success)' }}>
-                            <Shield size={15} />
-                          </span>
-                        ) : (
-                          <span title="2FA выключена" style={{ display: 'flex', color: 'var(--text-tertiary)' }}>
-                            <ShieldOff size={15} />
-                          </span>
-                        )}
-                        {user.isActive ? (
-                          <span title="Активен" style={{ display: 'flex', color: 'var(--success)' }}>
-                            <UserCheck size={15} />
-                          </span>
-                        ) : (
-                          <span title="Неактивен" style={{ display: 'flex', color: 'var(--error)' }}>
-                            <UserX size={15} />
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td>
-                    {user.email || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
-                  </td>
-                  <td>
-                    {user.roles && user.roles.length > 0 ? (
-                      <span style={{ fontSize: 13 }}>{user.roles.map(r => r.name).join(', ')}</span>
-                    ) : user.role ? (
-                      <span style={{ fontSize: 13 }}>{user.role.name}</span>
-                    ) : (
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    {user.medCenters && user.medCenters.length > 0 ? (
-                      <span style={{ fontSize: 13 }}>{user.medCenters.map(mc => mc.name).join(', ')}</span>
-                    ) : (
-                      <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
-                    )}
-                  </td>
+      {!showTrash && (
+        <div className="card">
+          {loading ? (
+            <div className="admin-loading"><div className="loading-spinner" /></div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '25%', textAlign: 'left' }}>Пользователь</th>
+                  <th style={{ textAlign: 'left' }}>Email</th>
+                  <th style={{ textAlign: 'left' }}>Роли</th>
+                  <th style={{ textAlign: 'left' }}>Медцентры</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {filtered.map(user => (
+                  <tr key={user.id} onClick={() => openModal(user)} style={{ cursor: 'pointer' }}>
+                    <td>
+                      <div className="user-cell">
+                        <div className="user-avatar">
+                          {getAvatarUrl(user) ? (
+                            <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
+                          ) : (
+                            <User size={20} strokeWidth={2} />
+                          )}
+                        </div>
+                        <div>
+                          <div className="user-name">{user.displayName || user.username}</div>
+                          <div className="user-login">@{user.username}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+                          <span title={user.isAdmin ? 'Администратор' : 'Не администратор'} style={{ display: 'flex', color: user.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', opacity: user.isAdmin ? 1 : 0.4 }}>
+                            <Crown size={15} />
+                          </span>
+                          {user.twoFactorEnabled ? (
+                            <span title="Двухфакторная аутентификация включена" style={{ display: 'flex', color: 'var(--success)' }}>
+                              <Shield size={15} />
+                            </span>
+                          ) : (
+                            <span title="2FA выключена" style={{ display: 'flex', color: 'var(--text-tertiary)' }}>
+                              <ShieldOff size={15} />
+                            </span>
+                          )}
+                          {user.isActive ? (
+                            <span title="Активен" style={{ display: 'flex', color: 'var(--success)' }}>
+                              <UserCheck size={15} />
+                            </span>
+                          ) : (
+                            <span title="Неактивен" style={{ display: 'flex', color: 'var(--error)' }}>
+                              <UserX size={15} />
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {user.email || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                    </td>
+                    <td>
+                      {user.roles && user.roles.length > 0 ? (
+                        <span style={{ fontSize: 13 }}>{user.roles.map(r => r.name).join(', ')}</span>
+                      ) : user.role ? (
+                        <span style={{ fontSize: 13 }}>{user.role.name}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
+                      )}
+                    </td>
+                    <td>
+                      {user.medCenters && user.medCenters.length > 0 ? (
+                        <span style={{ fontSize: 13 }}>{user.medCenters.map(mc => mc.name).join(', ')}</span>
+                      ) : (
+                        <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {showTrash && (
-        <div className="card" style={{ marginTop: 24 }}>
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Trash2 size={16} style={{ color: 'var(--error)' }} />
-            <strong>Корзина</strong>
-            {trashList.length > 0 && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>({trashList.length})</span>}
-          </div>
+        <div className="card">
           {trashList.length === 0 ? (
             <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Корзина пуста</div>
           ) : (
@@ -794,6 +793,11 @@ export default function AdminUsers() {
                     <td>{user.email || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}</td>
                     <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                       {user.deletedAt ? new Date(user.deletedAt).toLocaleString('ru-RU') : '—'}
+                      {user.deletedByUser && (
+                        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                          {user.deletedByUser.displayName || user.deletedByUser.username}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <button
