@@ -126,6 +126,7 @@ const TAB_DEFS = [
   { key: 'tabArchiveHistory', label: 'Архив',                  group: 'Архив' },
   { key: 'tabArchiveKassa',   label: 'Касса',                  group: 'Архив' },
   { key: 'tabArchiveTabel',   label: 'Табели',                 group: 'Архив' },
+  { key: 'tabArchiveSources', label: 'Источники',              group: 'Архив' },
   { key: 'tabSummary',        label: 'Сводка' },
   { key: 'tabKpi',            label: 'KPI' },
 ];
