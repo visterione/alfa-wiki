@@ -892,7 +892,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         })));
         const s = settingsRes.data || {};
         execSettingsRef.current = s;
-        setDisableMisAutoImport(!!s.disableMisAutoImport);
+        const isDoctor = (selectedDoctor.roles || []).includes('Врач');
+        setDisableMisAutoImport('disableMisAutoImport' in s ? !!s.disableMisAutoImport : !isDoctor);
       })
       .catch(err => console.error('Load schedules error:', err))
       .finally(() => setLoading(false));
