@@ -7,6 +7,7 @@ import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } fr
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
+import { getSources } from './utils/excelSources';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
 import ScheduleDivisionPanel from './components/ScheduleDivisionPanel';
@@ -130,6 +131,11 @@ export default function ReferralBonusesPage() {
   const [doctorPanelView, setDoctorPanelView] = useState('list'); // 'list' | 'divisions'
   const [archiveTabelEdit, setArchiveTabelEdit] = useState(false);
   const [step1Dirty, setStep1Dirty] = useState(false);
+  const [excelSources, setExcelSources] = useState([]);
+  const reloadExcelSources = useCallback(() => {
+    getSources().then(setExcelSources).catch(() => {});
+  }, []);
+  useEffect(() => { reloadExcelSources(); }, []); // eslint-disable-line
   const step1DirtyRef = React.useRef(false);
   // Keep ref in sync with state for use inside callbacks without stale closure
   React.useEffect(() => { step1DirtyRef.current = step1Dirty; }, [step1Dirty]);
@@ -594,11 +600,14 @@ export default function ReferralBonusesPage() {
     panelCollapsed,
     onTogglePanel: () => setPanelCollapsed(v => !v),
     onArchiveTabelEdit: setArchiveTabelEdit,
+    excelSources,
+    onSourcesChange: reloadExcelSources,
+    currentUserName: user?.displayName || user?.username || '',
   };
 
   // Steps 2 and 6 use 3 sub-keys instead of a single key
   const STEP2_KEYS = ['tabWorkTime', 'tabHourNorms', 'tabSchedule'];
-  const STEP6_KEYS = ['tabArchiveHistory', 'tabArchiveKassa', 'tabArchiveTabel'];
+  const STEP6_KEYS = ['tabArchiveHistory', 'tabArchiveKassa', 'tabArchiveTabel', 'tabArchiveSources'];
   const TAB_KEYS   = ['tab1', null, 'tab2', 'tab3', 'tab4', null, 'tabSummary', 'tabKpi'];
 
   const canViewStep = (step) => {

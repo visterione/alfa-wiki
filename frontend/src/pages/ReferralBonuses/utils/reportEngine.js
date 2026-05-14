@@ -52,31 +52,44 @@ export function clearExecCache(misUserId) {
   else Object.keys(_execCache).forEach(k => delete _execCache[k]);
 }
 
-export async function loadExecSettings(misUserId) {
-  if (_execCache[misUserId]) return _execCache[misUserId];
-  try {
-    const res = await executorSettings.get(misUserId);
-    const raw = res.data;
-    if (!raw || !Object.keys(raw).length) {
+const HARMFUL_ROLES = ['Врач', 'Медсестра'];
+
+function applyHarmfulnessDefault(execDataObj, roles) {
+  if (!roles || !roles.some(r => HARMFUL_ROLES.includes(r))) return execDataObj;
+  const cs = { ...(execDataObj.clinicSettings || {}) };
+  let modified = false;
+  Object.keys(cs).forEach(key => {
+    if (!cs[key].harmfulness) { cs[key] = { ...cs[key], harmfulness: true }; modified = true; }
+  });
+  return modified ? { ...execDataObj, clinicSettings: cs } : execDataObj;
+}
+
+export async function loadExecSettings(misUserId, roles) {
+  if (!_execCache[misUserId]) {
+    try {
+      const res = await executorSettings.get(misUserId);
+      const raw = res.data;
+      if (!raw || !Object.keys(raw).length) {
+        _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
+      } else if (!raw.clinicSettings) {
+        // Old format migration
+        const global = execClinicDefault();
+        global.deductions = raw.deductions || [];
+        global.materials  = raw.materials  || [];
+        global.extras     = raw.extras     || [];
+        global.payType = 'salary';
+        global.fixedSalary = raw.wage || raw.payment || 0;
+        global.advance = raw.advance || 0;
+        global.paymentMethod = raw.method || 'card';
+        _execCache[misUserId] = { clinicSettings: { global } };
+      } else {
+        _execCache[misUserId] = raw;
+      }
+    } catch {
       _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
-    } else if (!raw.clinicSettings) {
-      // Old format migration
-      const global = execClinicDefault();
-      global.deductions = raw.deductions || [];
-      global.materials  = raw.materials  || [];
-      global.extras     = raw.extras     || [];
-      global.payType = 'salary';
-      global.fixedSalary = raw.wage || raw.payment || 0;
-      global.advance = raw.advance || 0;
-      global.paymentMethod = raw.method || 'card';
-      _execCache[misUserId] = { clinicSettings: { global } };
-    } else {
-      _execCache[misUserId] = raw;
     }
-  } catch {
-    _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
   }
-  return _execCache[misUserId];
+  return applyHarmfulnessDefault(_execCache[misUserId], roles);
 }
 
 // ── Core calculation engine ────────────────────────────────────────────────────
@@ -1294,7 +1307,7 @@ export async function buildReport({
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
     const preFinalSalary = basePay + holidaySurchargeTotal + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal + nurseIncomeTotal - effectiveReferralCostTotal;
-    const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0) + harmfulnessDeduction;
+    const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
     const svcMatFinalTotal = Object.values(perfByService).reduce((sum, svc) => {

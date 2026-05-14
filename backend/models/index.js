@@ -2380,6 +2380,24 @@ const SalaryRecord = sequelize.define('SalaryRecord', {
   ]
 });
 
+// === RB EXCEL SOURCE MODEL (хранилище Excel-источников для отчётов) ===
+const RbExcelSource = sequelize.define('RbExcelSource', {
+  id:          { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  dateFrom:    { type: DataTypes.DATEONLY, allowNull: false },
+  dateTo:      { type: DataTypes.DATEONLY, allowNull: false },
+  periodLabel: { type: DataTypes.STRING(255), allowNull: true },
+  fileName:    { type: DataTypes.STRING(500), allowNull: false },
+  fileData:    { type: DataTypes.TEXT, allowNull: false },   // base64-encoded Excel
+  uploadedBy:  { type: DataTypes.STRING(255), allowNull: true },
+}, {
+  tableName: 'rb_excel_sources',
+  timestamps: true,
+  indexes: [
+    { fields: ['dateFrom'] },
+    { fields: ['dateTo'] },
+  ],
+});
+
 // === PROMOTION MODEL ===
 const Promotion = sequelize.define('Promotion', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -2750,4 +2768,6 @@ module.exports = {
   MisScheduleCategoryMap,
   // RB Activity Log
   RbActivityLog,
+  // RB Excel Sources
+  RbExcelSource,
 };

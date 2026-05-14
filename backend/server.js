@@ -52,6 +52,7 @@ const botManagementRoutes = require('./routes/bot-management');
 const notifyRoutes = require('./routes/notify');
 const salaryRecordsRoutes = require('./routes/salary-records');
 const cashPaymentsRoutes = require('./routes/cash-payments');
+const rbExcelSourcesRoutes = require('./routes/rb-excel-sources');
 const promotionsRoutes = require('./routes/promotions');
 const partnerServicesRoutes = require('./routes/partner-services');
 const doctorSchedulesRoutes      = require('./routes/doctor-schedules');
@@ -249,6 +250,7 @@ app.use('/api/structural-divisions', structuralDivisionsRoutes);
 app.use('/api/rb-holidays',         rbHolidaysRoutes);
 app.use('/api/rb-doctor-headers',   rbDoctorHeadersRoutes);
 app.use('/api/rb-activity-log',     rbActivityLogRoutes);
+app.use('/api/rb-excel-sources',    rbExcelSourcesRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})

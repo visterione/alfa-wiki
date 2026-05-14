@@ -59,7 +59,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     return row;
   };
 
-  const addSubHdr = (name, value, clr, lvl, hasChildren = true) => {
+  const addSubHdr = (name, value, clr, lvl) => {
     const row = ws.addRow([name, '', '', '', '', parseFloat((value || 0).toFixed(2))]);
     row.getCell(1).font = { ...fontBold, color: { argb: clr } };
     row.getCell(6).font = { ...fontBold, color: { argb: clr } };
@@ -250,12 +250,11 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     {
       const xlsAllDeds = sal.deductions || [];
       const xlsTurnoverDeds = xlsAllDeds.filter(d => d.deductionType !== 'final');
-      const xlsHarmfulness = sal.harmfulnessDeduction || 0;
-      const xlsDedsTotal = (sal.finalDeductionsTotal || 0) + xlsHarmfulness;
+      const xlsDedsTotal = sal.finalDeductionsTotal || 0;
       if (xlsDedsTotal > 0 || xlsTurnoverDeds.length > 0 || (sal.assistancePaidTotal || 0) > 0) {
         const xlsPreFinal = (sal.basePay || 0) + (sal.referralBonuses || 0) + (sal.performedBonusTotal || 0) + (sal.extrasTotal || 0) - (sal.referralCostTotal || 0);
-        addSalRow('Взыскания', xlsDedsTotal, '-', !!(xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0));
-        if (xlsAllDeds.length || xlsHarmfulness > 0 || (sal.assistancePaidTotal || 0) > 0) {
+        addSalRow('Взыскания', xlsDedsTotal, '-', !!(xlsAllDeds.length || (sal.assistancePaidTotal || 0) > 0));
+        if (xlsAllDeds.length || (sal.assistancePaidTotal || 0) > 0) {
           addTblHdr(['Наименование', 'База', '', '', 'Значение', 'Итого, руб'], 1);
           xlsAllDeds.forEach(d => {
             const v = parseFloat(d.value) || 0;
@@ -270,9 +269,6 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
             if (isTurnover) row.getCell(6).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true };
             autoWidth(row, 6); row.outlineLevel = 1; row.hidden = true;
           });
-          if (xlsHarmfulness > 0) {
-            addTblRow(['Вредность', 'от з/п', '', '', '4%', parseFloat(xlsHarmfulness.toFixed(2))], 1);
-          }
           if ((sal.assistancePaidTotal || 0) > 0) {
             addTblRow(['Услуги ассистирования', 'ассистент', '', '', '—', parseFloat((sal.assistancePaidTotal || 0).toFixed(2))], 1);
           }
@@ -522,15 +518,16 @@ export function buildBulkWorkbook(bulkResults) {
 
   // Summary sheet
   const summaryWs = wb.addWorksheet('Сводка');
-  summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 20 }];
-  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'Начислено, руб', 'Остаток к доплате, руб', 'Период']);
+  // Columns: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
+  summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 24 }, { width: 24 }];
+  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'Период', 'Начислено, руб', 'Часы работы', 'НДФЛ', 'Вредность', 'Начислено, руб', 'Выплата после вредности']);
   hdr.eachCell({ includeEmpty: true }, (cell, c) => {
-    if (c <= 5) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+    if (c <= 9) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
   });
 
   for (const r of bulkResults) {
     if (r.error || !r.clinicReports?.length) {
-      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), '', '', r.periodLabel || '']);
+      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), r.periodLabel || '', '', '', '', '', '', '']);
       eRow.getCell(2).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
       continue;
     }
@@ -539,12 +536,22 @@ export function buildBulkWorkbook(bulkResults) {
       const sal = cr.salary || {};
       const extraTot = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
       const remainder = (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - extraTot;
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', parseFloat((sal.finalSalary || 0).toFixed(2)), parseFloat(remainder.toFixed(2)), r.periodLabel || '']);
-      row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 5) { cell.font = fontNormal; cell.border = allBorders; } });
-      row.getCell(3).numFmt = '#,##0.00';
-      row.getCell(3).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      const pt = sal.payType || '';
+      const hoursWorked = pt === 'hourly' ? (parseFloat(sal.hoursWorked) || 0) :
+                          pt === 'normed' ? (parseFloat(sal.normTotalHours) || 0) : 0;
+      const ndfl = parseFloat((sal.ndflTotal || 0).toFixed(2));
+      const harmfulness = parseFloat((sal.harmfulnessDeduction || 0).toFixed(2));
+      const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.harmfulnessDeduction || 0)).toFixed(2));
+      // Order: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
+      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', parseFloat((sal.finalSalary || 0).toFixed(2)), hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
+      row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 9) { cell.font = fontNormal; cell.border = allBorders; } });
       row.getCell(4).numFmt = '#,##0.00';
-      row.getCell(4).font = { ...fontNormal, color: { argb: remainder >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(4).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(6).numFmt = '#,##0.00';
+      row.getCell(7).numFmt = '#,##0.00';
+      row.getCell(8).numFmt = '#,##0.00';
+      row.getCell(8).font = { ...fontNormal, color: { argb: remainder >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(9).numFmt = '#,##0.00';
     });
   }
 

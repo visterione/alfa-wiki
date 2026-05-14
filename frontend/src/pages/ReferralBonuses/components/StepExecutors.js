@@ -1334,8 +1334,17 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       performedServiceBonuses.getByDoctor(selectedDoctor.id).catch(() => ({ data: [] })),
     ]).then(([settingsRes, bonusRes]) => {
       const raw = settingsRes.data;
+      const isHarmfulRole = (selectedDoctor.roles || []).some(r => r === 'Врач' || r === 'Медсестра');
+      const applyHarmfulness = (execDataObj) => {
+        if (!isHarmfulRole) return execDataObj;
+        const cs = { ...(execDataObj.clinicSettings || {}) };
+        Object.keys(cs).forEach(key => {
+          if (!cs[key].harmfulness) cs[key] = { ...cs[key], harmfulness: true };
+        });
+        return { ...execDataObj, clinicSettings: cs };
+      };
       if (!raw || !Object.keys(raw).length) {
-        setExecData(execDefault());
+        setExecData(applyHarmfulness(execDefault()));
       } else if (!raw.clinicSettings) {
         // Old format migration
         const global = execClinicDefault();
@@ -1346,9 +1355,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         global.fixedSalary = raw.wage || raw.payment || 0;
         global.advance     = raw.advance || 0;
         global.paymentMethod = raw.method || 'card';
-        setExecData({ clinicSettings: { global } });
+        setExecData(applyHarmfulness({ clinicSettings: { global } }));
       } else {
-        setExecData(raw);
+        setExecData(applyHarmfulness(raw));
       }
       const bonuses = Array.isArray(bonusRes.data) ? bonusRes.data : [];
       const seen = new Set();

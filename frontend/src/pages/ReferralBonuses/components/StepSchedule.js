@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, useMemo } from 'react';
 import ReactDOM from 'react-dom';
-import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi, rbHolidays as holidaysApi } from '../../../services/api';
+import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi, rbHolidays as holidaysApi, executorSettings as execSettingsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
@@ -796,11 +796,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [conflictConfirm, setConflictConfirm] = useState(null); // [{ entry, dates }] — time overlap warning
   const skipConflictCheck = useRef(false);
 
+  // MIS auto-import block flag
+  const [disableMisAutoImport, setDisableMisAutoImport] = useState(false);
+  const [savingAutoImportFlag, setSavingAutoImportFlag] = useState(false);
+  const execSettingsRef = useRef({});
+
   // MIS import
-  const [importModal,        setImportModal]        = useState(false);
-  const [importing,          setImporting]          = useState(false);
-  const [importResult,       setImportResult]       = useState(null); // { imported, newCategories, month } | null
-  const [importError,        setImportError]        = useState(null);
   const [catMapModal,        setCatMapModal]        = useState(false);
   const [catMapData,         setCatMapData]         = useState([]);
   const [catMapLoading,      setCatMapLoading]      = useState(false);
@@ -858,6 +859,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   useEffect(() => {
     if (!selectedDoctor) {
       setEntries([]);
+      setDisableMisAutoImport(false);
+      execSettingsRef.current = {};
       loadedForRef.current = null;
       return;
     }
@@ -866,9 +869,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     loadedForRef.current = misUserId;
 
     setLoading(true);
-    schedulesApi.list(misUserId)
-      .then(res => {
-        setEntries(res.data.map(r => ({
+    Promise.all([
+      schedulesApi.list(misUserId),
+      execSettingsApi.get(misUserId).catch(() => ({ data: {} })),
+    ])
+      .then(([schedRes, settingsRes]) => {
+        setEntries(schedRes.data.map(r => ({
           id:         r.id,
           doctorId:   selectedDoctor.id,
           misUserId:  r.misUserId,
@@ -884,6 +890,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           roleTitle:  r.roleTitle  || null,
           source:     r.source || 'manual',
         })));
+        const s = settingsRes.data || {};
+        execSettingsRef.current = s;
+        setDisableMisAutoImport(!!s.disableMisAutoImport);
       })
       .catch(err => console.error('Load schedules error:', err))
       .finally(() => setLoading(false));
@@ -911,47 +920,6 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     return typeof ex === 'object' ? ex.code : 'ОТ';
   };
 
-  // ── MIS import handlers ───────────────────────────────────────────────────
-  const handleMisImport = useCallback(async () => {
-    if (!selectedDoctor) return;
-    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
-    const monthStr  = `${year}-${String(month).padStart(2, '0')}`;
-    setImporting(true);
-    setImportError(null);
-    try {
-      const res = await schedulesApi.importFromMis(misUserId, monthStr);
-      setImportResult(res.data);
-      // Reload entries + cabinets (import may have auto-created new ones)
-      loadedForRef.current = null;
-      const [listRes, cabRes] = await Promise.all([
-        schedulesApi.list(misUserId),
-        dictsApi.listCabinets(),
-      ]);
-      setCabinets(cabRes.data);
-      setEntries(listRes.data.map(r => ({
-        id:         r.id,
-        doctorId:   selectedDoctor.id,
-        misUserId:  r.misUserId,
-        clinicId:   r.clinicId,
-        dateFrom:   r.dateFrom,
-        dateTo:     r.dateTo,
-        pattern:    r.pattern,
-        timeFrom:   r.timeFrom,
-        timeTo:     r.timeTo,
-        exceptions: r.exceptions || [],
-        categoryId: r.categoryId || null,
-        cabinetId:  r.cabinetId  || null,
-        roleTitle:  r.roleTitle  || null,
-        source:     r.source || 'manual',
-      })));
-      loadedForRef.current = misUserId;
-    } catch (err) {
-      setImportError('Ошибка: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setImporting(false);
-    }
-  }, [selectedDoctor, year, month]);
-
   const hasMisEntries = entries.some(e => e.source === 'mis_import');
 
   const handleCancelMisImport = useCallback(async () => {
@@ -969,6 +937,23 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       setCancelling(false);
     }
   }, [selectedDoctor]);
+
+  const handleToggleDisableAutoImport = useCallback(async () => {
+    if (!selectedDoctor) return;
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    const newVal = !disableMisAutoImport;
+    const newSettings = { ...execSettingsRef.current, disableMisAutoImport: newVal };
+    setSavingAutoImportFlag(true);
+    try {
+      await execSettingsApi.save({ misUserId, doctorName: selectedDoctor.name, settings: newSettings });
+      execSettingsRef.current = newSettings;
+      setDisableMisAutoImport(newVal);
+    } catch (err) {
+      console.error('Save disableMisAutoImport error:', err);
+    } finally {
+      setSavingAutoImportFlag(false);
+    }
+  }, [selectedDoctor, disableMisAutoImport]);
 
   const handleCatMapUpdate = useCallback(async (misCategoryId, rbCategoryId) => {
     try {
@@ -1524,21 +1509,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         <button onClick={nextMonth} style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>›</button>
 
         {selectedDoctor && !readOnly && (
-          <div style={{ marginLeft: 8, display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => { setImportModal(true); setImportResult(null); setImportError(null); }}
-              title="Импортировать расписание из МИС"
-              style={{ background: 'transparent', border: '1px solid var(--rb-border)', borderRadius: 7, height: 32, padding: '0 10px', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', transition: 'all .15s' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--rb-primary)'; e.currentTarget.style.color = 'var(--rb-primary)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--rb-border)'; e.currentTarget.style.color = 'var(--rb-text-secondary)'; }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-              </svg>
-              МИС
-            </button>
+          <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
             {hasMisEntries && (
               <button
                 onClick={() => setCancelImportModal(true)}
@@ -1552,6 +1523,28 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 </svg>
               </button>
             )}
+            {/* Тумблер авто-импорта из МИС */}
+            <label
+              title={!disableMisAutoImport ? 'Автоимпорт расписания из МИС включён' : 'Автоимпорт расписания из МИС отключён'}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', cursor: savingAutoImportFlag ? 'wait' : 'pointer', userSelect: 'none', opacity: savingAutoImportFlag ? 0.6 : 1 }}
+            >
+              <span
+                onClick={savingAutoImportFlag ? undefined : handleToggleDisableAutoImport}
+                style={{
+                  position: 'relative', display: 'inline-block', width: 34, height: 18, flexShrink: 0,
+                  borderRadius: 9, cursor: savingAutoImportFlag ? 'wait' : 'pointer',
+                  background: !disableMisAutoImport ? 'var(--rb-primary)' : '#d1d5db',
+                  transition: 'background 0.2s',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 2, left: !disableMisAutoImport ? 18 : 2,
+                  width: 14, height: 14, borderRadius: '50%', background: '#fff',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left 0.2s',
+                }} />
+              </span>
+              <span style={{ fontSize: 11 }}>Импорт</span>
+            </label>
           </div>
         )}
 
@@ -2409,57 +2402,6 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               <button style={{ ...btnGhost }} onClick={() => setCancelImportModal(false)} disabled={cancelling}>Отмена</button>
               <button style={{ ...btnRed, opacity: cancelling ? 0.6 : 1, minWidth: 120 }} onClick={handleCancelMisImport} disabled={cancelling}>
                 {cancelling ? 'Удаление...' : 'Удалить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MIS Import Modal ── */}
-      {importModal && (
-        <div className="rb-modal-overlay" onClick={() => { if (!importing) { setImportModal(false); } }}>
-          <div className="rb-modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
-            <div className="rb-modal-header">
-              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Импорт расписания из МИС</h3>
-              <button className="rb-modal-close" onClick={() => { if (!importing) setImportModal(false); }}>×</button>
-            </div>
-            <div style={{ padding: '16px' }}>
-              <div style={{ fontSize: 13, marginBottom: 10 }}>
-                <span style={{ color: 'var(--rb-text-secondary)' }}>Сотрудник: </span>
-                <strong>{selectedDoctor?.name}</strong>
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginBottom: 16 }}>
-                Будет импортировано расписание за <strong style={{ color: 'var(--rb-text)' }}>{MONTH_NAMES[month - 1]} {year}</strong> из МИС.
-                {' '}Ранее импортированные записи за этот месяц будут заменены.
-                {' '}Записи, созданные вручную, не изменятся.
-              </div>
-              {importResult && (
-                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontSize: 13, marginBottom: 12 }}>
-                  Готово: импортировано <strong>{importResult.imported}</strong> зап.
-                  {importResult.newCategories > 0 && (
-                    <> · <span style={{ color: '#ca8a04' }}>{importResult.newCategories} новых категорий МИС — настройте маппинг</span></>
-                  )}
-                </div>
-              )}
-              {importError && (
-                <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontSize: 13, marginBottom: 12 }}>
-                  {importError}
-                </div>
-              )}
-            </div>
-            <div className="rb-modal-footer">
-              <button
-                style={{ ...btnGhost }}
-                onClick={() => setCatMapModal(true)}
-              >
-                Категории МИС
-              </button>
-              <button
-                style={{ ...btnBlue, opacity: importing ? 0.6 : 1, minWidth: 140 }}
-                disabled={importing}
-                onClick={handleMisImport}
-              >
-                {importing ? 'Идёт импорт...' : importResult ? 'Повторить импорт' : 'Импортировать'}
               </button>
             </div>
           </div>

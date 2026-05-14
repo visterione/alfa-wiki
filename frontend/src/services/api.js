@@ -734,4 +734,12 @@ export const rbDoctorHeaders = {
   upsert: (misUserId, data)    => api.put(`/rb-doctor-headers/${misUserId}`, data),
 };
 
+export const rbExcelSources = {
+  list:       ()               => api.get('/rb-excel-sources'),
+  create:     (data)           => api.post('/rb-excel-sources', data),
+  update:     (id, data)       => api.put(`/rb-excel-sources/${id}`, data),
+  delete:     (id)             => api.delete(`/rb-excel-sources/${id}`),
+  getFile:    (id)             => api.get(`/rb-excel-sources/${id}/file`, { responseType: 'blob' }),
+};
+
 export default api;

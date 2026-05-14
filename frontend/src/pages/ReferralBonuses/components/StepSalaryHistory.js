@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTabSlider } from '../utils/useTabSlider';
+import { addSource, updateSource, deleteSource, readFileAsBuffer } from '../utils/excelSources';
+import DateRangePicker from './DateRangePicker';
 import toast from 'react-hot-toast';
 import {
   Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ComposedChart, Bar, Legend,
 } from 'recharts';
-import { salaryRecords, cashPayments as cashPaymentsApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi } from '../../../services/api';
+import { salaryRecords, cashPayments as cashPaymentsApi, tabelRecords as tabelApi, structuralDivisions as divisionsApi, rbExcelSources } from '../../../services/api';
 import { buildSingleWorkbook, workbookToBase64 } from '../utils/reportExport';
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
@@ -874,11 +876,12 @@ function CompareView({ pinnedForCompare, doctors, clinics, cmpRecords, cmpLoadin
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly, permissions = {}, onArchiveTabelEdit }) {
+export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [], pinnedForCompare = [], readOnly, permissions = {}, onArchiveTabelEdit, excelSources = [], onSourcesChange, currentUserName = '' }) {
   const permHistory = permissions.tabArchiveHistory ?? 'edit';
   const permKassa   = permissions.tabArchiveKassa   ?? 'edit';
   const permTabel   = permissions.tabArchiveTabel   ?? 'edit';
-  const ARCHIVE_VIEW_PERM = { history: permHistory, kassa: permKassa, tabel: permTabel };
+  const permSources = permissions.tabArchiveSources ?? 'edit';
+  const ARCHIVE_VIEW_PERM = { history: permHistory, kassa: permKassa, tabel: permTabel, sources: permSources };
   const [records, setRecords]             = useState([]);
   const [loading, setLoading]             = useState(false);
   const [activeYear, setActiveYear]       = useState(null);
@@ -886,13 +889,29 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [cmpRecords, setCmpRecords]       = useState({});
   const [cmpLoading, setCmpLoading]       = useState({});
 
+  // Sources (Источники) state
+  const [srcDateFrom,   setSrcDateFrom]   = useState('');
+  const [srcDateTo,     setSrcDateTo]     = useState('');
+  const [srcLabel,      setSrcLabel]      = useState('');
+  const [srcFile,       setSrcFile]       = useState(null);
+  const [srcSaving,     setSrcSaving]     = useState(false);
+  const [srcFilterYear, setSrcFilterYear] = useState('');
+  const [srcSearch,     setSrcSearch]     = useState('');
+  const [srcEditId,     setSrcEditId]     = useState(null);
+  const [srcEditFrom,   setSrcEditFrom]   = useState('');
+  const [srcEditTo,     setSrcEditTo]     = useState('');
+  const [srcEditLabel,  setSrcEditLabel]  = useState('');
+  const [srcEditSaving, setSrcEditSaving] = useState(false);
+  const srcFileRef = useRef(null);
+
   // Cash payments
   const [viewMode, setViewMode]           = useState(() => {
     if (permHistory !== 'block') return 'history';
     if (permKassa   !== 'block') return 'kassa';
     if (permTabel   !== 'block') return 'tabel';
+    if (permSources !== 'block') return 'sources';
     return 'history';
-  }); // 'history' | 'kassa' | 'tabel'
+  }); // 'history' | 'kassa' | 'tabel' | 'sources'
   const { wrapRef: salaryTabRef, sliderEl: salarySlider } = useTabSlider(viewMode);
   const [cashPaymentsMap, setCashPaymentsMap] = useState({}); // { [salaryRecordId]: [...] }
   const [kassaData, setKassaData]         = useState([]);
@@ -1190,6 +1209,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         { key: 'history', label: 'Архив' },
         { key: 'kassa',   label: 'Касса' },
         { key: 'tabel',   label: 'Табели' },
+        { key: 'sources', label: 'Источники' },
       ].filter(({ key }) => ARCHIVE_VIEW_PERM[key] !== 'block').map(({ key, label }) => (
         <button key={key}
           className={`rb-clinic-tab${viewMode === key ? ' active' : ''}`}
@@ -1214,6 +1234,292 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       setKassaEditId(null);
     } catch { /* error already toasted */ } finally { setKassaEditSaving(false); }
   };
+
+  // ── Источники view ────────────────────────────────────────────────────────
+  if (viewMode === 'sources') {
+    const fmtDate = iso => {
+      if (!iso) return '';
+      const d = new Date(iso + 'T00:00:00');
+      if (isNaN(d)) return iso;
+      return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+    };
+    const fmtDateTimeShort = iso => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d)) return '';
+      return d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const getYear = iso => iso ? new Date(iso + 'T00:00:00').getFullYear() : null;
+
+    // ── available years for filter pills
+    const allYears = [...new Set(excelSources.map(s => getYear(s.dateFrom)).filter(Boolean))].sort((a, b) => b - a);
+
+    // ── filter + search
+    const searchLow = srcSearch.toLowerCase();
+    const filtered = [...excelSources]
+      .filter(s => !srcFilterYear || String(getYear(s.dateFrom)) === srcFilterYear)
+      .filter(s => !searchLow || s.fileName.toLowerCase().includes(searchLow) || (s.periodLabel || '').toLowerCase().includes(searchLow))
+      .sort((a, b) => (b.dateFrom || '').localeCompare(a.dateFrom || ''));
+
+    // ── group by year
+    const byYear = filtered.reduce((acc, s) => {
+      const y = getYear(s.dateFrom) || '—';
+      if (!acc[y]) acc[y] = [];
+      acc[y].push(s);
+      return acc;
+    }, {});
+    const yearKeys = Object.keys(byYear).sort((a, b) => Number(b) - Number(a));
+
+    const handleSrcFileChange = e => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      e.target.value = '';
+      if (!f.name.match(/\.(xlsx|xls)$/i)) { toast.error('Выберите файл Excel (.xlsx или .xls)'); return; }
+      setSrcFile(f);
+    };
+
+    const handleAddSource = async () => {
+      if (!srcDateFrom || !srcDateTo) { toast.error('Укажите период (дата с и по)'); return; }
+      if (!srcFile) { toast.error('Выберите Excel файл'); return; }
+      if (srcDateFrom > srcDateTo) { toast.error('Дата "с" не может быть позже даты "по"'); return; }
+      const dupCheck = excelSources.filter(s => s.dateFrom === srcDateFrom && s.dateTo === srcDateTo);
+      if (dupCheck.length > 0) {
+        const names = dupCheck.map(s => s.fileName).join(', ');
+        if (!window.confirm(`Для указанного периода уже существует источник: ${names}.\nВсё равно добавить?`)) return;
+      }
+      setSrcSaving(true);
+      try {
+        const fileData = await readFileAsBuffer(srcFile);
+        await addSource({
+          dateFrom: srcDateFrom, dateTo: srcDateTo,
+          periodLabel: srcLabel.trim() || `${fmtDate(srcDateFrom)} – ${fmtDate(srcDateTo)}`,
+          fileName: srcFile.name, fileData, uploadedBy: currentUserName,
+        });
+        onSourcesChange?.();
+        setSrcDateFrom(''); setSrcDateTo(''); setSrcLabel(''); setSrcFile(null);
+        toast.success('Источник добавлен');
+      } catch { toast.error('Ошибка при сохранении'); }
+      finally { setSrcSaving(false); }
+    };
+
+    const handleDeleteSource = async (id, fileName) => {
+      if (!window.confirm(`Удалить источник «${fileName}»?`)) return;
+      try { await deleteSource(id); onSourcesChange?.(); toast.success('Источник удалён'); }
+      catch { toast.error('Ошибка при удалении'); }
+    };
+
+    const handleStartEdit = src => {
+      setSrcEditId(src.id);
+      setSrcEditFrom(src.dateFrom || '');
+      setSrcEditTo(src.dateTo || '');
+      setSrcEditLabel(src.periodLabel || '');
+    };
+    const handleCancelEdit = () => { setSrcEditId(null); };
+    const handleSaveEdit = async (src) => {
+      if (!srcEditFrom || !srcEditTo) { toast.error('Укажите период'); return; }
+      if (srcEditFrom > srcEditTo) { toast.error('Дата "с" не может быть позже даты "по"'); return; }
+      setSrcEditSaving(true);
+      try {
+        await updateSource(src.id, {
+          dateFrom: srcEditFrom, dateTo: srcEditTo,
+          periodLabel: srcEditLabel.trim() || `${fmtDate(srcEditFrom)} – ${fmtDate(srcEditTo)}`,
+        });
+        onSourcesChange?.();
+        setSrcEditId(null);
+        toast.success('Изменения сохранены');
+      } catch { toast.error('Ошибка при сохранении'); }
+      finally { setSrcEditSaving(false); }
+    };
+
+    const handleDownload = async src => {
+      try {
+        const res = await rbExcelSources.getFile(src.id);
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement('a');
+        a.href = url; a.download = src.fileName; a.click();
+        URL.revokeObjectURL(url);
+      } catch { toast.error('Не удалось скачать файл'); }
+    };
+
+    const inputStyle = {
+      height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7,
+      padding: '0 10px', fontSize: 13, fontFamily: 'inherit',
+      background: '#fff', color: 'var(--rb-text)', outline: 'none', boxSizing: 'border-box',
+    };
+    const canEdit = permSources === 'edit' && !readOnly;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+        {viewToggle}
+
+        {/* ── Add form ── */}
+        {canEdit && (
+          <div style={{ margin: '0 12px 8px', padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid var(--rb-border)', flexShrink: 0 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 8 }}>
+              Добавить источник
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Период</span>
+                <DateRangePicker dateFrom={srcDateFrom} setDateFrom={setSrcDateFrom} dateTo={srcDateTo} setDateTo={setSrcDateTo} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Название</span>
+                <input type="text" placeholder="напр. Январь 2026" value={srcLabel} onChange={e => setSrcLabel(e.target.value)} style={{ ...inputStyle, width: 170 }} />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Файл Excel</span>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <button onClick={() => srcFileRef.current?.click()} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', color: srcFile ? '#16a34a' : 'var(--rb-text)', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {srcFile ? srcFile.name : 'Выбрать файл…'}
+                  </button>
+                  {srcFile && <button onClick={() => setSrcFile(null)} style={{ width: 26, height: 26, border: 'none', borderRadius: 6, background: 'transparent', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>×</button>}
+                </div>
+                <input ref={srcFileRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={handleSrcFileChange} />
+              </div>
+              <button onClick={handleAddSource} disabled={srcSaving} style={{ height: 32, padding: '0 16px', border: 'none', borderRadius: 7, background: 'var(--rb-primary)', color: '#fff', fontSize: 13, cursor: srcSaving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: srcSaving ? 0.6 : 1, whiteSpace: 'nowrap', alignSelf: 'flex-end' }}>
+                {srcSaving ? 'Сохранение…' : 'Добавить'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Filters ── */}
+        <div style={{ margin: '0 12px 8px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
+          {/* Year pills */}
+          {allYears.length > 1 && (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setSrcFilterYear('')}
+                style={{ height: 26, padding: '0 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: !srcFilterYear ? 'var(--rb-primary)' : '#fff', color: !srcFilterYear ? '#fff' : 'var(--rb-text)' }}
+              >Все</button>
+              {allYears.map(y => (
+                <button key={y}
+                  onClick={() => setSrcFilterYear(String(y) === srcFilterYear ? '' : String(y))}
+                  style={{ height: 26, padding: '0 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 20, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: String(y) === srcFilterYear ? 'var(--rb-primary)' : '#fff', color: String(y) === srcFilterYear ? '#fff' : 'var(--rb-text)' }}
+                >{y}</button>
+              ))}
+            </div>
+          )}
+          {/* Search */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 140 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13" style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }}>
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input
+              type="text"
+              placeholder="Поиск по названию или файлу…"
+              value={srcSearch}
+              onChange={e => setSrcSearch(e.target.value)}
+              style={{ width: '100%', height: 28, paddingLeft: 28, paddingRight: srcSearch ? 26 : 8, border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', outline: 'none', background: '#fff', color: 'var(--rb-text)', boxSizing: 'border-box' }}
+            />
+            {srcSearch && (
+              <button onClick={() => setSrcSearch('')} style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 16, height: 16, border: 'none', background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>×</button>
+            )}
+          </div>
+        </div>
+
+        {/* ── List ── */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 12px 12px' }}>
+          {excelSources.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+              Источников нет. Добавьте Excel файл с указанием периода.
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+              Ничего не найдено
+            </div>
+          ) : yearKeys.map(yr => (
+            <div key={yr} style={{ marginBottom: 16 }}>
+              {/* Year header — only when multiple years are present in the filtered list */}
+              {yearKeys.length > 1 && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 6, paddingLeft: 2 }}>{yr}</div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {byYear[yr].map(src => {
+                  const isEditing = srcEditId === src.id;
+                  return (
+                    <div key={src.id} style={{ background: '#fff', border: `1px solid ${isEditing ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 10, overflow: 'hidden', transition: 'border-color .15s' }}>
+                      {/* Normal row */}
+                      {!isEditing && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', fontSize: 13 }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" width="18" height="18" style={{ flexShrink: 0 }}>
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                          </svg>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 600, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {src.periodLabel || `${fmtDate(src.dateFrom)} – ${fmtDate(src.dateTo)}`}
+                            </div>
+                            <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {src.fileName}
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', textAlign: 'right', flexShrink: 0, lineHeight: 1.6, marginRight: 4 }}>
+                            <div>{fmtDate(src.dateFrom)} – {fmtDate(src.dateTo)}</div>
+                            {src.uploadedAt && <div>{fmtDateTimeShort(src.uploadedAt)}{src.uploadedBy ? ` · ${src.uploadedBy}` : ''}</div>}
+                          </div>
+                          {/* Download */}
+                          <button onClick={() => handleDownload(src)} title="Скачать файл" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#16a34a' }}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                          </button>
+                          {/* Edit */}
+                          {canEdit && (
+                            <button onClick={() => handleStartEdit(src)} title="Редактировать период" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: 'var(--rb-text-secondary)' }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                          )}
+                          {/* Delete */}
+                          {canEdit && (
+                            <button onClick={() => handleDeleteSource(src.id, src.fileName)} title="Удалить источник" style={{ width: 28, height: 28, border: '1px solid #fca5a5', borderRadius: 7, background: '#fff5f5', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Inline edit row */}
+                      {isEditing && (
+                        <div style={{ padding: '12px 14px', background: '#f0f7ff', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Период</span>
+                            <DateRangePicker dateFrom={srcEditFrom} setDateFrom={setSrcEditFrom} dateTo={srcEditTo} setDateTo={setSrcEditTo} />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Название</span>
+                            <input
+                              type="text"
+                              placeholder="напр. Январь 2026"
+                              value={srcEditLabel}
+                              onChange={e => setSrcEditLabel(e.target.value)}
+                              style={{ ...inputStyle, width: 170 }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, alignSelf: 'flex-end' }}>
+                            <button onClick={() => handleSaveEdit(src)} disabled={srcEditSaving} style={{ height: 32, padding: '0 14px', border: 'none', borderRadius: 7, background: 'var(--rb-primary)', color: '#fff', fontSize: 13, cursor: srcEditSaving ? 'default' : 'pointer', fontFamily: 'inherit', opacity: srcEditSaving ? 0.6 : 1 }}>
+                              {srcEditSaving ? 'Сохранение…' : 'Сохранить'}
+                            </button>
+                            <button onClick={handleCancelEdit} style={{ height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', color: 'var(--rb-text-secondary)', fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Отмена
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   // ── Табели view ───────────────────────────────────────────────────────────
   if (viewMode === 'tabel') {

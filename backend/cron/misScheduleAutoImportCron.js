@@ -9,6 +9,7 @@ const cron   = require('node-cron');
 const axios  = require('axios');
 const qs     = require('qs');
 const { importForUser } = require('../services/misScheduleImport');
+const { ExecutorSettings } = require('../models');
 
 const MIS_API_KEY  = process.env.MIS_API_KEY  || 'c58544bba9e867e1adea5743c418c5fa';
 const MIS_BASE_URL = process.env.MIS_BASE_URL || 'https://rnova.medcentralfa.ru:3010/api/public';
@@ -29,6 +30,22 @@ async function runAutoImport(endDay = null) {
 
   console.log(`[MIS Auto Import] Старт: месяц=${month}, диапазон=${label}`);
 
+  // Загружаем список сотрудников с запретом автоимпорта
+  let blockedSet = new Set();
+  try {
+    const allSettings = await ExecutorSettings.findAll({ attributes: ['misUserId', 'settings'] });
+    blockedSet = new Set(
+      allSettings
+        .filter(r => r.settings?.disableMisAutoImport === true)
+        .map(r => String(r.misUserId))
+    );
+    if (blockedSet.size > 0) {
+      console.log(`[MIS Auto Import] Запрет автоимпорта у ${blockedSet.size} сотр.: ${[...blockedSet].join(', ')}`);
+    }
+  } catch (err) {
+    console.error('[MIS Auto Import] Не удалось загрузить список запретов:', err.message);
+  }
+
   let data;
   try {
     data = await fetchAllDoctors();
@@ -42,8 +59,9 @@ async function runAutoImport(endDay = null) {
     return;
   }
 
-  // Оставляем только сотрудников с ролью "Врач"
+  // Оставляем только сотрудников с ролью "Врач" и без запрета автоимпорта
   const doctors = data.data.filter(d => {
+    if (blockedSet.has(String(d.id))) return false;
     const roles = d.role_titles
       ? String(d.role_titles).split(',').map(s => s.trim())
       : (Array.isArray(d.role_names) ? d.role_names : []);
