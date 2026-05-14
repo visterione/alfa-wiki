@@ -76,6 +76,7 @@ router.get('/list', authenticate, async (req, res) => {
 router.get('/', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const users = await User.findAll({
+      where: { deletedAt: null },
       include: [
         { model: Role, as: 'role' },
         { model: Role, as: 'roles', through: { attributes: [] } },
@@ -148,6 +149,26 @@ router.post('/mis-avatar', authenticate, async (req, res) => {
   } catch (err) {
     console.error('MIS avatar error:', err.message);
     res.status(500).json({ error: 'Не удалось скачать аватар' });
+  }
+});
+
+// Get deleted users (trash)
+router.get('/trash', authenticate, requireAdminAccess('users'), async (req, res) => {
+  try {
+    const trashedUsers = await User.findAll({
+      where: { deletedAt: { [Op.not]: null } },
+      include: [
+        { model: Role, as: 'role' },
+        { model: Role, as: 'roles', through: { attributes: [] } },
+        { model: MedCenter, as: 'medCenters', through: { attributes: [] } }
+      ],
+      attributes: { exclude: ['password', 'twoFactorCode', 'twoFactorCodeExpires'] },
+      order: [['deletedAt', 'DESC']]
+    });
+    res.json(trashedUsers);
+  } catch (error) {
+    console.error('Get trash error:', error);
+    res.status(500).json({ error: 'Ошибка загрузки корзины' });
   }
 });
 
@@ -500,21 +521,43 @@ router.put('/:id', authenticate, requireAdminAccess('users'), async (req, res) =
   }
 });
 
-// Delete user
+// Move user to trash (soft delete)
 router.delete('/:id', authenticate, requireAdminAccess('users'), async (req, res) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
 
-    // Prevent self-deletion
     if (user.id === req.user.id) {
       return res.status(400).json({ error: 'Нельзя удалить самого себя' });
     }
 
-    await user.destroy();
-    res.json({ message: 'Пользователь удалён' });
+    if (user.deletedAt) {
+      return res.status(400).json({ error: 'Пользователь уже в корзине' });
+    }
+
+    await user.update({ deletedAt: new Date(), isActive: false });
+    res.json({ message: 'Пользователь перемещён в корзину' });
   } catch (error) {
+    console.error('Delete user error:', error);
     res.status(500).json({ error: 'Ошибка удаления пользователя' });
+  }
+});
+
+// Restore user from trash
+router.post('/:id/restore', authenticate, requireAdminAccess('users'), async (req, res) => {
+  try {
+    const user = await User.findByPk(req.params.id);
+    if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+
+    if (!user.deletedAt) {
+      return res.status(400).json({ error: 'Пользователь не в корзине' });
+    }
+
+    await user.update({ deletedAt: null, isActive: true });
+    res.json({ message: 'Пользователь восстановлен' });
+  } catch (error) {
+    console.error('Restore user error:', error);
+    res.status(500).json({ error: 'Ошибка восстановления пользователя' });
   }
 });
 

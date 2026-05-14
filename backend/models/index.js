@@ -129,6 +129,14 @@ const User = sequelize.define('User', {
     type: DataTypes.BOOLEAN,
     defaultValue: false,
     comment: 'Разрешение на создание, редактирование и удаление акций медцентров'
+  },
+
+  // Мягкое удаление (корзина)
+  deletedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
+    comment: 'Время перемещения пользователя в корзину (null = активен)'
   }
 }, { tableName: 'users', timestamps: true });
 

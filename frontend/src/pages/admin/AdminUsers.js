@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown } from 'lucide-react';
+import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw } from 'lucide-react';
 import { users, roles, BASE_URL } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
@@ -122,6 +122,8 @@ export default function AdminUsers() {
   const [modal, setModal] = useState({ open: false, user: null });
   const [misDropdown, setMisDropdown] = useState({ open: false, results: [], searching: false });
   const [avatarHover, setAvatarHover] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashList, setTrashList] = useState([]);
   const avatarInputRef = useRef(null);
   const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
@@ -258,6 +260,25 @@ export default function AdminUsers() {
       toast.error('Ошибка загрузки');
     }
     finally { setLoading(false); }
+  };
+
+  const loadTrash = async () => {
+    try {
+      const res = await users.trash();
+      setTrashList(res.data);
+    } catch (e) {
+      toast.error('Ошибка загрузки корзины');
+    }
+  };
+
+  const handleRestore = async (user) => {
+    if (!window.confirm(`Восстановить пользователя "${user.username}"?`)) return;
+    try {
+      await users.restore(user.id);
+      toast.success('Пользователь восстановлён');
+      loadTrash();
+      load();
+    } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
   };
 
   // Получение URL аватара пользователя
@@ -557,10 +578,10 @@ export default function AdminUsers() {
   };
 
   const handleDelete = async (user) => {
-    if (!window.confirm(`Удалить пользователя "${user.username}"?`)) return;
+    if (!window.confirm(`Переместить пользователя "${user.username}" в корзину?`)) return;
     try {
       await users.delete(user.id);
-      toast.success('Удалено');
+      toast.success('Пользователь перемещён в корзину');
       setModal({ open: false, user: null });
       load();
     } catch (e) { toast.error(e.response?.data?.error || 'Ошибка'); }
@@ -591,9 +612,19 @@ export default function AdminUsers() {
     <div className="admin-page users-page">
       <div className="admin-header">
         <h1>Пользователи</h1>
-        <button className="btn btn-primary" onClick={() => openModal()}>
-          Добавить
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className={`btn ${showTrash ? 'btn-danger' : 'btn-secondary'}`}
+            onClick={() => { const next = !showTrash; setShowTrash(next); if (next) loadTrash(); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Trash2 size={16} />
+            Корзина{trashList.length > 0 && showTrash ? ` (${trashList.length})` : ''}
+          </button>
+          <button className="btn btn-primary" onClick={() => openModal()}>
+            Добавить
+          </button>
+        </div>
       </div>
 
       <div className="admin-toolbar">
@@ -722,6 +753,65 @@ export default function AdminUsers() {
           </table>
         )}
       </div>
+
+      {showTrash && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trash2 size={16} style={{ color: 'var(--error)' }} />
+            <strong>Корзина</strong>
+            {trashList.length > 0 && <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>({trashList.length})</span>}
+          </div>
+          {trashList.length === 0 ? (
+            <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--text-secondary)' }}>Корзина пуста</div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '25%', textAlign: 'left' }}>Пользователь</th>
+                  <th style={{ textAlign: 'left' }}>Email</th>
+                  <th style={{ textAlign: 'left' }}>Удалён</th>
+                  <th style={{ textAlign: 'left' }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {trashList.map(user => (
+                  <tr key={user.id}>
+                    <td>
+                      <div className="user-cell">
+                        <div className="user-avatar">
+                          {getAvatarUrl(user) ? (
+                            <img src={getAvatarUrl(user)} alt={user.displayName || user.username} />
+                          ) : (
+                            <User size={20} strokeWidth={2} />
+                          )}
+                        </div>
+                        <div>
+                          <div className="user-name">{user.displayName || user.username}</div>
+                          <div className="user-login">@{user.username}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{user.email || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}</td>
+                    <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                      {user.deletedAt ? new Date(user.deletedAt).toLocaleString('ru-RU') : '—'}
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleRestore(user)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                      >
+                        <RotateCcw size={14} />
+                        Восстановить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {modal.open && (
         <div className="modal-overlay" onClick={() => setModal({ open: false, user: null })}>
@@ -1188,9 +1278,10 @@ export default function AdminUsers() {
                 <button
                   className="btn btn-danger"
                   onClick={() => handleDelete(modal.user)}
-                  style={{ marginRight: 'auto', width: 120 }}
+                  style={{ marginRight: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}
                 >
-                  Удалить
+                  <Trash2 size={15} />
+                  В корзину
                 </button>
               )}
               <button className="btn btn-secondary" onClick={() => setModal({ open: false, user: null })} style={{ width: 120 }}>
