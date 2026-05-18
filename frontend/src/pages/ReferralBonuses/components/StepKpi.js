@@ -1421,6 +1421,7 @@ export default function StepKpi({ excelSources = [] }) {
     }
   }, [periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth, excelSources]);
 
+
   const uniquePatientsCount = useMemo(() => new Set(rows.map(getPatientKey).filter(Boolean)).size, [rows]);
 
   return (

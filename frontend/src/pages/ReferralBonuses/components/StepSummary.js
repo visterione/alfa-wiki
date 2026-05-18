@@ -481,9 +481,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const getDoctorSpecialty = (misUserId) => {
     const doc = doctors.find(d => d.id === String(misUserId));
     if (!doc) return '—';
-    return doc.professions
-      .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
-      .filter(Boolean).join(', ') || '—';
+    return doc.roles.filter(Boolean).join(', ') || '—';
   };
 
   // ── Flatten records → one row per clinic report ───────────────────────────
@@ -655,7 +653,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       ws.columns = [
         { header: 'ФИО врача',      key: 'name',      width: 32 },
         { header: 'Медцентр',       key: 'clinic',    width: 22 },
-        { header: 'Специальность',  key: 'specialty', width: 26 },
+        { header: 'Должность',       key: 'specialty', width: 26 },
         { header: 'Дата',           key: 'date',      width: 18 },
         { header: 'Начислено',      key: 'total',     width: 16 },
         { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
@@ -885,7 +883,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 {[
                   { label: 'ФИО врача',      key: 'name' },
                   { label: 'Медцентр',        key: null },
-                  { label: 'Специальность',   key: null },
+                  { label: 'Должность',        key: null },
                   { label: 'Дата',            key: 'date' },
                   { label: 'НДФЛ',            key: null },
                   { label: 'Зарплата',        key: 'salary' },
