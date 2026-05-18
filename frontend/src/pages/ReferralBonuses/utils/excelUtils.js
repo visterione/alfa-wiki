@@ -47,6 +47,8 @@ export function rbMapNewColumns(rows) {
     serviceName:  ['Наименование услуги'],
     cabinet:      ['Кабинет'],
     category:     ['Категории пациента', 'Категория пациента', 'Категория услуги'],
+    costPrice:    ['Себестоимость услуги', 'Себестоимость'],
+    sourceEntry:  ['Источник записи'],
     serviceSpec:  ['Специальность услуги'],
     servicePrice: ['Стоимость услуги'],
     qty:          ['Количество'],
@@ -89,6 +91,8 @@ export function rbMapNewColumns(rows) {
     if (!colMap.assistant        && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
     if (!colMap.anesthesiologist && (kl === 'анестезиолог' || kl.includes('анестезиолог'))) colMap.anesthesiologist = k;
     if (!colMap.nurse            && (kl === 'медсестра' || kl === 'медицинская сестра' || kl.includes('медсестр'))) colMap.nurse = k;
+    if (!colMap.costPrice        && kl.includes('себестоим')) colMap.costPrice = k;
+    if (!colMap.sourceEntry      && kl.includes('источник') && kl.includes('запис')) colMap.sourceEntry = k;
   });
   // Fallbacks
   if (!colMap.date) colMap.date = keys[0];

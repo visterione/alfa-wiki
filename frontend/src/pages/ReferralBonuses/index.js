@@ -18,6 +18,7 @@ import StepReferral from './components/StepReferral';
 import StepReport from './components/StepReport';
 import StepSalaryHistory from './components/StepSalaryHistory';
 import StepSummary from './components/StepSummary';
+import StepKpi from './components/StepKpi';
 
 // ═══════════════════════════════════════
 // WIZARD STEP ICONS
@@ -665,7 +666,7 @@ export default function ReferralBonusesPage() {
       case 7:
         return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} permissions={permissions} />;
       case 8:
-        return null;
+        return <StepKpi excelSources={excelSources} permissions={permissions} />;
       default:
         return null;
     }
@@ -935,9 +936,9 @@ export default function ReferralBonusesPage() {
       )}
 
       {/* Step Content */}
-      <div className="rb-layout" style={currentStep === 7 || currentStep === 2 || panelCollapsed || (currentStep === 6 && archiveTabelEdit) ? { gridTemplateColumns: '1fr' } : undefined}>
-        {/* Left: Doctors list (hidden on Сводка tab) */}
-        {currentStep !== 7 && currentStep !== 2 && !panelCollapsed && !(currentStep === 6 && archiveTabelEdit) && (
+      <div className="rb-layout" style={currentStep === 7 || currentStep === 8 || currentStep === 2 || panelCollapsed || (currentStep === 6 && archiveTabelEdit) ? { gridTemplateColumns: '1fr' } : undefined}>
+        {/* Left: Doctors list (hidden on Сводка and KPI tabs) */}
+        {currentStep !== 7 && currentStep !== 8 && currentStep !== 2 && !panelCollapsed && !(currentStep === 6 && archiveTabelEdit) && (
           doctorPanelView === 'divisions' ? (
             <ScheduleDivisionPanel
               doctors={visibleDoctors}

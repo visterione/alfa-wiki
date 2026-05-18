@@ -72,11 +72,12 @@
     "@tauri-apps/cli": "^2.10.1",
     "@types/react": "^18.2.47",
     "@types/react-dom": "^18.2.18",
+    "cross-env": "^10.1.0",
     "react-scripts": "5.0.1"
   },
   "scripts": {
-    "start": "set PORT=9000 && craco start",
-    "build": "set NODE_OPTIONS=--max-old-space-size=4096 && craco build",
+    "start": "cross-env PORT=9000 craco start",
+    "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 craco build",
     "test": "craco test",
     "eject": "react-scripts eject",
     "tauri": "tauri",
