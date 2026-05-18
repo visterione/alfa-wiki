@@ -101,7 +101,7 @@ export default function SalaryBlock({ salary }) {
     extraPayments = [],
     deductions = [], materials = [], extras = [],
     payType,
-    harmfulnessDeduction = 0,
+
     interim = false,
     normServices: normServicesList = [],
     fixedSalary: normFixedSalary = 0,
@@ -159,7 +159,7 @@ export default function SalaryBlock({ salary }) {
   const hasWage             = (basePay || 0) > 0 || (holidaySurchargeTotal || 0) > 0;
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
-  const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0);
+  const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0);
   const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasRoleDoctor       = (performedBonusTotal || 0) > 0;
@@ -446,7 +446,7 @@ export default function SalaryBlock({ salary }) {
           label="Взыскания"
           value={`−${fmtRub(adjustedFinalDeductionsTotal)}`}
           color="var(--rb-danger)"
-          expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0 || (harmfulnessDeduction || 0) > 0}
+          expandable={[...turnoverDeductionItems, ...finalDeductionItems].length > 0 || assistanceSections.length > 0 || (assistancePaidTotal || 0) > 0 || anesthesiologistSections.length > 0 || (anesthesiologistPaidTotal || 0) > 0}
         >
           <table className="rb-report-table rb-report-table--bordered">
             <thead><tr><th style={{ textAlign: 'center' }}>Название</th><th style={{ textAlign: 'center' }}>Тип</th><th style={{ textAlign: 'center' }}>Значение</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
@@ -522,14 +522,6 @@ export default function SalaryBlock({ salary }) {
                   </tr>
                 )
               }
-              {(harmfulnessDeduction || 0) > 0 && (
-                <tr>
-                  <td>Вредность</td>
-                  <td><span style={{ fontSize: 10, background: '#fff7ed', color: '#c2410c', padding: '1px 5px', borderRadius: 3, fontWeight: 600 }}>от з/п</span></td>
-                  <td style={{ textAlign: 'right' }}>4%</td>
-                  <td style={{ fontWeight: 600, color: 'var(--rb-danger)', textAlign: 'right' }}>−{(harmfulnessDeduction || 0).toFixed(2)} ₽</td>
-                </tr>
-              )}
             </tbody>
           </table>
           {(turnoverDeductionItems.length > 0 || assistanceSections.length > 0 || anesthesiologistSections.length > 0 || nurseSections.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0) && (

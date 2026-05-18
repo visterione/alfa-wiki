@@ -844,6 +844,40 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         })();
         return (
         <>
+        {/* ── Totals footer ── */}
+        {filtered.length > 0 && <div style={{ borderBottom: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
+            Итого ({filtered.length} строк)
+          </span>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', flex: 1 }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма зарплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e40af' }}>{fmtRub(totalSalary)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма авансов</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{fmtRub(filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0))}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
+            </div>
+            {totalCashPaid > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма по кассе</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rb-text-secondary)' }}>−{fmtRub(totalCashPaid)}</div>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <SummaryBtn onClick={handleExport} disabled={exporting} loading={exporting} label="Excel" />
+            <SummaryBtn onClick={handlePayoutExport} disabled={exportingPayout} loading={exportingPayout} label="Выплата" />
+          </div>
+        </div>}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <table className="rb-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -1112,40 +1146,6 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           </table>
         </div>
 
-        {/* ── Totals footer ── */}
-        {filtered.length > 0 && <div style={{ borderTop: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-            Итого ({filtered.length} строк)
-          </span>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', flex: 1 }}>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма зарплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e40af' }}>{fmtRub(totalSalary)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма авансов</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{fmtRub(filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0))}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
-            </div>
-            {totalCashPaid > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма по кассе</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rb-text-secondary)' }}>−{fmtRub(totalCashPaid)}</div>
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <SummaryBtn onClick={handleExport} disabled={exporting} loading={exporting} label="Excel" />
-            <SummaryBtn onClick={handlePayoutExport} disabled={exportingPayout} loading={exportingPayout} label="Выплата" />
-          </div>
-        </div>}
         </>
         );
       })()}
