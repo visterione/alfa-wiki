@@ -832,6 +832,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const rem = calcRemainder(r.cr?.salary);
           return s + (rem < 0 ? rem : 0);
         }, 0);
+        const totalNdfl = filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0);
         const totalCashPaid = (() => {
           const seen = new Set();
           return filtered.reduce((s, { rec }) => {
@@ -860,6 +861,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
             </div>
+            {totalNdfl > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма НДФЛ</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>−{fmtRub(totalNdfl)}</div>
+              </div>
+            )}
             <div>
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
