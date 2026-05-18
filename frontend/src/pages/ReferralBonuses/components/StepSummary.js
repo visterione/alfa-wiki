@@ -688,8 +688,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const tag = d.deductionType === 'final' ? '% от зп' : '% от об.';
           return `${d.name}: -${fmtA(amt)} ₽ (${v}${tag})`;
         };
-        (salary.deductions || []).filter(d => (d.name || '').trim().toUpperCase() !== 'НДФЛ').forEach(d => lines.push(formatDed(d)));
-        (salary.materials  || []).forEach(m => lines.push(formatDed(m)));
+        (salary.deductions || []).filter(d => (d.name || '').trim().toUpperCase() !== 'НДФЛ' && d.deductionType !== 'final').forEach(d => lines.push(formatDed(d)));
+        (salary.materials  || []).filter(m => m.deductionType !== 'final').forEach(m => lines.push(formatDed(m)));
         (salary.extras     || []).forEach(e => {
           const hrs = parseFloat(e.hours) || 0;
           const amt = hrs > 0 ? parseFloat(e.amount) * hrs : parseFloat(e.amount);
