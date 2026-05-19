@@ -843,7 +843,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const totalBase    = filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
-          return s + parseFloat(sal.mainPayment || 0) + et + parseFloat(sal.advance || 0);
+          return s + parseFloat(sal.mainPayment || 0) + et;
         }, 0);
         const totalOverpay = filtered.reduce((s, r) => {
           const rem = calcRemainder(r.cr?.salary);
