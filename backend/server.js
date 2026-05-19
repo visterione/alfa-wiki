@@ -62,6 +62,7 @@ const structuralDivisionsRoutes  = require('./routes/structural-divisions');
 const rbHolidaysRoutes           = require('./routes/rb-holidays');
 const rbDoctorHeadersRoutes      = require('./routes/rb-doctor-headers');
 const rbActivityLogRoutes        = require('./routes/rb-activity-log');
+const misAppointmentsRoutes      = require('./routes/mis-appointments');
 
 const app = express();
 const server = http.createServer(app);
@@ -251,6 +252,7 @@ app.use('/api/rb-holidays',         rbHolidaysRoutes);
 app.use('/api/rb-doctor-headers',   rbDoctorHeadersRoutes);
 app.use('/api/rb-activity-log',     rbActivityLogRoutes);
 app.use('/api/rb-excel-sources',    rbExcelSourcesRoutes);
+app.use('/api/mis-appointments',    misAppointmentsRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})
@@ -349,6 +351,9 @@ async function startServer() {
 
     // Initialize MIS schedule auto-import cron job (14th and 28th at 03:00 MSK)
     require('./cron/misScheduleAutoImportCron');
+
+    // Initialize MIS appointments daily sync cron job (00:05 MSK)
+    require('./cron/misAppointmentsSyncCron');
 
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');

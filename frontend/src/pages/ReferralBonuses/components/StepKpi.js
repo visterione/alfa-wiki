@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTabSlider } from '../utils/useTabSlider';
 import { parseExcelFile, rbMapNewColumns, rbParseDate } from '../utils/excelUtils';
 import { fetchSourceFile } from '../utils/excelSources';
 import { rbMatchClinicId, DEFAULT_CLINICS } from '../utils/clinicUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
+import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -36,6 +37,18 @@ const ORG_GROUPS = [
     nameMatch: n => n.includes('сукко') || n.includes('алекс') },
 ];
 
+// Расписание работы клиник (hardcode): minPerDay = рабочих минут в сутках, workDays = JS day-of-week (0=вс)
+const CLINIC_SCHEDULES = {
+  '2':  { minPerDay: (24   - 8)   * 60, workDays: [0,1,2,3,4,5,6] }, // Альфа  8–24 пн-вс
+  '3':  { minPerDay: (23   - 7.5) * 60, workDays: [0,1,2,3,4,5,6] }, // Кидс   7:30–23 пн-вс
+  '6':  { minPerDay: (21   - 8)   * 60, workDays: [0,1,2,3,4,5,6] }, // Линия  8–21 пн-вс
+  '1':  { minPerDay: (20   - 7.5) * 60, workDays: [0,1,2,3,4,5,6] }, // Проф   7:30–20 пн-вс
+  '7':  { minPerDay: (21   - 8)   * 60, workDays: [0,1,2,3,4,5,6] }, // Смайл  8–21 пн-вс
+  '4':  { minPerDay: (20   - 8)   * 60, workDays: [0,1,2,3,4,5,6] }, // 3К     8–20 пн-вс
+  '11': { minPerDay: (17   - 8)   * 60, workDays: [1,2,3,4,5]     }, // Сукко  8–17 пн-пт
+  '12': { minPerDay: (17   - 8)   * 60, workDays: [1,2,3,4,5]     }, // Сукко2 8–17 пн-пт
+};
+
 // Цвет конкретной клиники по её id
 const _CLINIC_COLOR_MAP = Object.fromEntries(DEFAULT_CLINICS.map(c => [String(c.id), c.color]));
 function getClinicColorById(clinicId) {
@@ -55,6 +68,7 @@ const KPI_TABS = [
   { key: 'patients',   label: 'Пациенты' },
   { key: 'margin',     label: 'Маржинальность' },
   { key: 'efficiency', label: 'Эффективность' },
+  { key: 'rooms',      label: 'Кабинеты' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -359,6 +373,144 @@ function buildReturnVisitStats(rows) {
     .sort((a, b) => b.total - a.total);
 }
 
+// ── Appointment analysis helpers ──────────────────────────────────────────────
+
+function parseApptTime(str) {
+  if (!str) return null;
+  // ISO-like: "2026-04-01 09:00:00" или "2026-04-01T09:00:00"
+  const iso = Date.parse(str.replace(' ', 'T'));
+  if (!isNaN(iso)) return new Date(iso);
+  // dd.mm.yyyy hh:mm
+  const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]);
+  return null;
+}
+
+// Рабочих минут клиники за период (с учётом её индивидуального расписания)
+function clinicWorkMinutesInPeriod(clinicId, start, end) {
+  const sched = CLINIC_SCHEDULES[String(clinicId)];
+  const minPerDay = sched ? sched.minPerDay : 480;
+  const workDays  = sched ? sched.workDays  : [1,2,3,4,5,6]; // fallback: пн–сб
+
+  let count = 0;
+  const cur = new Date(start);
+  cur.setHours(0, 0, 0, 0);
+  const fin = new Date(end);
+  fin.setHours(23, 59, 59, 999);
+  while (cur <= fin) {
+    if (workDays.includes(cur.getDay())) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count * minPerDay;
+}
+
+// Расписания для отображения в UI (зеркало CLINIC_SCHEDULES, но с читаемыми строками)
+const CLINIC_SCHEDULE_LABELS = {
+  '2':  'Альфа: 08:00–24:00, пн–вс',
+  '3':  'Кидс: 07:30–23:00, пн–вс',
+  '6':  'Линия: 08:00–21:00, пн–вс',
+  '1':  'Проф: 07:30–20:00, пн–вс',
+  '7':  'Смайл: 08:00–21:00, пн–вс',
+  '4':  '3К: 08:00–20:00, пн–вс',
+  '11': 'Сукко: 08:00–17:00, пн–пт',
+  '12': 'Сукко: 08:00–17:00, пн–пт',
+};
+function clinicScheduleLabel(clinicId) {
+  return CLINIC_SCHEDULE_LABELS[String(clinicId)] || '';
+}
+
+// Загрузка кабинетов: суммарное время визитов / ёмкость клиники за период
+function buildRoomStats(appointments, start, end) {
+  const map = {};
+  for (const a of appointments) {
+    if (a.status_id === 5 || a.status === 'refused') continue;
+    const room = (a.room || '').trim();
+    if (!room) continue;
+    const t0 = parseApptTime(a.time_start);
+    const t1 = parseApptTime(a.time_end);
+    if (!t0 || !t1) continue;
+    const dur = (t1 - t0) / 60000;
+    if (dur <= 0 || dur > 720) continue;
+    const clinicId = String(a.clinic_id || '');
+    const key = `${clinicId}|${room}`;
+    if (!map[key]) map[key] = { room, clinicId, totalMin: 0 };
+    map[key].totalMin += dur;
+  }
+
+  return Object.values(map).map(d => {
+    const clinic   = DEFAULT_CLINICS.find(c => String(c.id) === d.clinicId);
+    const capacity = clinicWorkMinutesInPeriod(d.clinicId, start, end);
+    return {
+      ...d,
+      name:        d.room,
+      _clinicName: clinic?.name || (d.clinicId ? `Клиника ${d.clinicId}` : ''),
+      totalHours:  d.totalMin / 60,
+      capacity,
+      utilPct:     capacity > 0 ? (d.totalMin / capacity * 100) : 0,
+      color:       getClinicColorById(d.clinicId),
+    };
+  }).sort((a, b) => b.utilPct - a.utilPct);
+}
+
+// Средний «зазор» между последовательными визитами в одном кабинете (в минутах).
+// Зазор = time_start следующего − time_end предыдущего, только в рамках одного дня.
+function buildRoomGapStats(appointments) {
+  const byRoom = {};
+  for (const a of appointments) {
+    if (a.status_id === 5 || a.status === 'refused') continue;
+    const room = (a.room || '').trim();
+    if (!room) continue;
+    const t0 = parseApptTime(a.time_start);
+    const t1 = parseApptTime(a.time_end);
+    if (!t0 || !t1) continue;
+    const clinicId = String(a.clinic_id || '');
+    const key = `${clinicId}|${room}`;
+    if (!byRoom[key]) byRoom[key] = { room, clinicId, appts: [] };
+    byRoom[key].appts.push({ start: t0, end: t1 });
+  }
+
+  const results = [];
+  for (const d of Object.values(byRoom)) {
+    d.appts.sort((a, b) => a.start - b.start);
+
+    const gaps = [];
+    for (let i = 1; i < d.appts.length; i++) {
+      const prev = d.appts[i - 1];
+      const cur  = d.appts[i];
+      // Только в рамках одного дня (иначе ночной разрыв искажает картину)
+      if (prev.end.toDateString() !== cur.start.toDateString()) continue;
+      const gapMin = (cur.start - prev.end) / 60000;
+      if (gapMin >= 0) gaps.push(gapMin); // отрицательный = перекрытие (пропускаем)
+    }
+    if (!gaps.length) continue;
+
+    const avg    = gaps.reduce((s, v) => s + v, 0) / gaps.length;
+    const sorted = [...gaps].sort((a, b) => a - b);
+    const mid    = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+
+    const clinic = DEFAULT_CLINICS.find(c => String(c.id) === d.clinicId);
+    results.push({
+      room:        d.room,
+      clinicId:    d.clinicId,
+      name:        d.room,
+      _clinicName: clinic?.name || (d.clinicId ? `Клиника ${d.clinicId}` : ''),
+      color:       getClinicColorById(d.clinicId),
+      value:       avg,
+      median,
+      gapCount:    gaps.length,
+    });
+  }
+
+  // Сортировка: наиболее плотные кабинеты первыми (наименьший зазор)
+  results.sort((a, b) => a.value - b.value);
+
+  const allGaps = results.map(r => r.value);
+  const overallAvg = allGaps.length ? allGaps.reduce((s, v) => s + v, 0) / allGaps.length : 0;
+
+  return { rooms: results, overallAvg };
+}
+
 function getUniqueClinics(rows) {
   return [...new Set(rows.map(r => r.clinicRaw).filter(Boolean))].sort();
 }
@@ -449,8 +601,8 @@ function applyChartSort(data, mode, dataKey, labelKey) {
 }
 
 // Горизонтальный бар-чарт (кастомный, без recharts — для плавной анимации и читаемых подписей)
-function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef7', colorKey, maxItems, formatter, labelWidth = 220, subLabelKey }) {
-  const [sortMode, setSortMode] = useState('val-desc');
+function HBarChart({ data, dataKey = 'value', labelKey = 'name', color = '#4f8ef7', colorKey, maxItems, formatter, labelWidth = 220, subLabelKey, defaultSort = 'val-desc' }) {
+  const [sortMode, setSortMode] = useState(defaultSort);
 
   const items = useMemo(() => {
     const sorted = applyChartSort(data, sortMode, dataKey, labelKey);
@@ -1356,6 +1508,233 @@ function TabEfficiency({ rows }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tab: Кабинеты
+// ─────────────────────────────────────────────────────────────────────────────
+function TabRooms({ periodStart, periodEnd }) {
+  const [appointments, setAppointments] = useState([]);
+  const [loading,      setLoading]      = useState(false);
+  const [syncStatus,   setSyncStatus]   = useState(null); // { syncing, done, total, phase, totalInDb, lastSyncAt }
+  const [syncing,      setSyncing]      = useState(false);
+  const [roomClinic,   setRoomClinic]   = useState('');
+
+  const pollRef = useRef(null);
+
+  // ── Fetch sync status ────────────────────────────────────────────────────────
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const s = await getSyncStatus();
+      setSyncStatus(s);
+      return s;
+    } catch { return null; }
+  }, []);
+
+  // ── Start polling while sync is running ──────────────────────────────────────
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      const s = await fetchSyncStatus();
+      if (s && !s.syncing) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setSyncing(false);
+      }
+    }, 2000);
+  }, [fetchSyncStatus]);
+
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  // ── Load appointments from DB when period changes ────────────────────────────
+  const loadFromDB = useCallback(async () => {
+    if (!periodStart || !periodEnd) return;
+    setLoading(true);
+    try {
+      const data = await fetchAppointmentsFromDB(periodStart, periodEnd);
+      setAppointments(data);
+    } catch (e) {
+      console.error('[TabRooms] DB load error:', e);
+      toast.error('Ошибка загрузки визитов');
+    } finally {
+      setLoading(false);
+    }
+  }, [periodStart, periodEnd]);
+
+  // Check DB on mount and whenever period changes
+  useEffect(() => {
+    fetchSyncStatus();
+    loadFromDB();
+  }, [fetchSyncStatus, loadFromDB]);
+
+  // ── Trigger full initial sync ────────────────────────────────────────────────
+  const handleFirstSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      await triggerSync({});
+      await fetchSyncStatus();
+      startPolling();
+    } catch (e) {
+      console.error('[TabRooms] sync trigger error:', e);
+      toast.error('Не удалось запустить синхронизацию');
+      setSyncing(false);
+    }
+  }, [fetchSyncStatus, startPolling]);
+
+  // ── Computed ─────────────────────────────────────────────────────────────────
+  const clinicOptions = useMemo(() => {
+    if (!appointments.length) return [];
+    const ids = [...new Set(appointments.map(a => String(a.clinic_id || '')).filter(Boolean))];
+    return ids.map(id => ({
+      value: id,
+      label: DEFAULT_CLINICS.find(c => String(c.id) === id)?.name || `Клиника ${id}`,
+    })).sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  }, [appointments]);
+
+  const roomStats = useMemo(() => {
+    if (!appointments.length) return [];
+    const filtered = roomClinic ? appointments.filter(a => String(a.clinic_id) === roomClinic) : appointments;
+    return buildRoomStats(filtered, periodStart, periodEnd);
+  }, [appointments, periodStart, periodEnd, roomClinic]);
+
+  const gapStats = useMemo(() => {
+    if (!appointments.length) return null;
+    const filtered = roomClinic ? appointments.filter(a => String(a.clinic_id) === roomClinic) : appointments;
+    return buildRoomGapStats(filtered);
+  }, [appointments, roomClinic]);
+
+  const fmtMin = v => {
+    if (v < 1) return '< 1 мин';
+    const h = Math.floor(v / 60);
+    const m = Math.round(v % 60);
+    return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+  };
+
+  // ── Loading state ────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 12, color: 'var(--rb-text-secondary)' }}>
+        <span className="rb-spinner" style={{ width: 22, height: 22 }} />
+        <span style={{ fontSize: 14 }}>Загрузка визитов из БД…</span>
+      </div>
+    );
+  }
+
+  // ── Sync in progress (initial load) ─────────────────────────────────────────
+  if (syncing || syncStatus?.syncing) {
+    const { done = 0, total = 0, phase = '' } = syncStatus || {};
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', gap: 12, color: 'var(--rb-text-secondary)' }}>
+        <span className="rb-spinner" style={{ width: 22, height: 22 }} />
+        <span style={{ fontSize: 14 }}>Первичная загрузка данных из МИС…</span>
+        {total > 0 && <span style={{ fontSize: 12 }}>{done} / {total} дней</span>}
+        {phase && <span style={{ fontSize: 12, color: '#94a3b8' }}>{phase}</span>}
+      </div>
+    );
+  }
+
+  // ── Empty DB — offer initial sync ────────────────────────────────────────────
+  if (!appointments.length && syncStatus && syncStatus.totalInDb === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 14 }}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="48" height="48" style={{ opacity: 0.35 }}>
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+        </svg>
+        <div style={{ fontSize: 14 }}>База данных визитов пуста</div>
+        <div style={{ fontSize: 12, color: '#94a3b8' }}>Загрузим данные с 01.02.2026 по текущий день. Это займёт несколько минут.</div>
+        <button
+          onClick={handleFirstSync}
+          style={{ padding: '8px 22px', background: 'var(--rb-primary)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+        >
+          Первичная загрузка
+        </button>
+      </div>
+    );
+  }
+
+  // ── No data for period (but DB has records) ──────────────────────────────────
+  if (!appointments.length) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', color: 'var(--rb-text-secondary)', gap: 10 }}>
+        <div style={{ fontSize: 14 }}>Нет визитов за выбранный период</div>
+        {syncStatus?.lastSyncAt && (
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>
+            Последняя синхронизация: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Main content ─────────────────────────────────────────────────────────────
+  return (
+    <div>
+      {/* Статус-строка */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        {syncStatus?.lastSyncAt && (
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            Обновлено: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')} · {(syncStatus.totalInDb || 0).toLocaleString('ru-RU')} записей
+          </span>
+        )}
+        <button
+          onClick={loadFromDB}
+          style={{ marginLeft: 'auto', padding: '3px 12px', fontSize: 12, border: '1px solid var(--rb-border-dark)', borderRadius: 6, cursor: 'pointer', background: '#fff', color: 'var(--rb-text)', fontFamily: 'inherit' }}
+        >
+          Обновить
+        </button>
+      </div>
+
+      {/* Загрузка кабинетов */}
+      <SectionHeader title="Загрузка по кабинетам (% от рабочего времени клиники)">
+        <select
+          value={roomClinic}
+          onChange={e => setRoomClinic(e.target.value)}
+          style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: roomClinic ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+        >
+          <option value="">Все клиники</option>
+          {clinicOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      </SectionHeader>
+
+      {roomStats.length > 0 ? (
+        <HBarChart
+          data={roomStats}
+          dataKey="utilPct"
+          labelKey="name"
+          colorKey="color"
+          color="#4f8ef7"
+          labelWidth={200}
+          subLabelKey={roomClinic ? undefined : '_clinicName'}
+          formatter={v => `${v.toFixed(1)}%`}
+        />
+      ) : (
+        <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+          Нет данных по кабинетам — визиты не содержат поле «кабинет»
+        </div>
+      )}
+
+      {/* Средний зазор между визитами в кабинете */}
+      <SectionTitle>Средний интервал между визитами в кабинете</SectionTitle>
+      {gapStats && gapStats.rooms.length > 0 ? (
+        <HBarChart
+          data={gapStats.rooms}
+          dataKey="value"
+          labelKey="name"
+          colorKey="color"
+          color="#f97316"
+          labelWidth={200}
+          subLabelKey={roomClinic ? undefined : '_clinicName'}
+          formatter={fmtMin}
+          defaultSort="val-asc"
+        />
+      ) : (
+        <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+          Недостаточно данных — нужны кабинеты с 2+ визитами в один день
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StepKpi({ excelSources = [] }) {
@@ -1370,6 +1749,7 @@ export default function StepKpi({ excelSources = [] }) {
   const [loading,  setLoading]  = useState(false);
   const [loaded,   setLoaded]   = useState(false);
   const [viewMode, setViewMode] = useState('general');
+
 
   const { wrapRef: tabRef, sliderEl } = useTabSlider(viewMode);
 
@@ -1563,6 +1943,10 @@ export default function StepKpi({ excelSources = [] }) {
           {viewMode === 'patients'   && <TabPatients rows={rows} />}
           {viewMode === 'margin'     && <TabMargin rows={rows} />}
           {viewMode === 'efficiency' && <TabEfficiency rows={rows} />}
+          {viewMode === 'rooms'      && (() => {
+            const { start, end } = getPeriodRange(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
+            return <TabRooms periodStart={start} periodEnd={end} />;
+          })()}
         </>
       )}
     </div>

@@ -391,9 +391,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     };
 
     if (!_hasBreakdown) {
-      addTotalBlock('Начислено', sal.finalSalary || 0);
+      addTotalBlock('Начислено', (sal.finalSalary || 0) + _extraTotal);
     } else {
-      addSalRow('Начислено', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
+      addSalRow('Начислено', (sal.finalSalary || 0) + _extraTotal, ((sal.finalSalary || 0) + _extraTotal) >= 0 ? '+' : '-');
       if (_ndflTotal > 0) {
         const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
         ndflRow.getCell(1).font = fontNormal;
@@ -543,10 +543,11 @@ export function buildBulkWorkbook(bulkResults) {
       const harmfulness = parseFloat((sal.harmfulnessDeduction || 0).toFixed(2));
       const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.harmfulnessDeduction || 0)).toFixed(2));
       // Order: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', parseFloat((sal.finalSalary || 0).toFixed(2)), hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
+      const nachlislenoVal = parseFloat(((sal.finalSalary || 0) + extraTot).toFixed(2));
+      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', nachlislenoVal, hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
       row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 9) { cell.font = fontNormal; cell.border = allBorders; } });
       row.getCell(4).numFmt = '#,##0.00';
-      row.getCell(4).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(4).font = { ...fontNormal, color: { argb: nachlislenoVal >= 0 ? 'FF166534' : 'FFCC0000' } };
       row.getCell(6).numFmt = '#,##0.00';
       row.getCell(7).numFmt = '#,##0.00';
       row.getCell(8).numFmt = '#,##0.00';

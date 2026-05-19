@@ -602,7 +602,8 @@ export default function SalaryBlock({ salary }) {
         const hasBreakdown = effectiveNdflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
         // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
-        const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
+        // Доп. выплаты (Отпускные и т.п.) включаются в Начислено, поэтому прибавляем их здесь
+        const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0) + extraTotal;
         const _remainder = displayFinalSalary - effectiveNdflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {

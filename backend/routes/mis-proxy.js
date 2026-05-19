@@ -400,6 +400,60 @@ router.post('/search-mis', authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ВИЗИТЫ (APPOINTMENTS)
+// ═══════════════════════════════════════════════════════════════
+
+// getAppointments v2 — список визитов пациентов
+// Фронтенд вызывает порциями (по неделям), поэтому date_from/date_to обязательны
+router.post('/appointments', authenticate, async (req, res) => {
+  try {
+    const {
+      date_from, date_to,
+      clinic_id, doctor_id, patient_id, room,
+      status, status_id, appointment_id,
+      number,
+    } = req.body;
+
+    if (!date_from || !date_to) {
+      return res.status(400).json({
+        error: 1,
+        data: { desc: 'date_from и date_to обязательны (формат: dd.mm.yyyy hh:mm)' },
+      });
+    }
+
+    console.log('📅 Запрос визитов:', date_from, '→', date_to,
+      clinic_id ? `clinic_id=${clinic_id}` : '');
+
+    const params = { date_from, date_to };
+    if (clinic_id)      params.clinic_id      = clinic_id;
+    if (doctor_id)      params.doctor_id      = doctor_id;
+    if (patient_id)     params.patient_id     = patient_id;
+    if (room)           params.room           = room;
+    if (status)         params.status         = status;
+    if (status_id)      params.status_id      = status_id;
+    if (appointment_id) params.appointment_id = appointment_id;
+    if (number != null) params.number         = number;
+
+    // Пробуем getAppointmentsV2 (документация называет его "v2"),
+    // при 500/ошибке fallback на getAppointments
+    let data;
+    try {
+      data = await misRequest('getAppointmentsV2', params);
+    } catch (innerErr) {
+      console.warn('⚠️  getAppointmentsV2 не сработал, пробуем getAppointments:',
+        innerErr.response?.status, JSON.stringify(innerErr.response?.data)?.slice(0, 200));
+      data = await misRequest('getAppointments', params);
+    }
+
+    res.json(data);
+  } catch (err) {
+    const misBody = JSON.stringify(err.response?.data)?.slice(0, 500);
+    console.error('❌ Ошибка /mis/appointments:', err.message, misBody ? `| МИС: ${misBody}` : '');
+    res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе визитов' } });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // КЛИНИКИ
 // ═══════════════════════════════════════════════════════════════
 

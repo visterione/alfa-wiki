@@ -2687,6 +2687,35 @@ const RbActivityLog = sequelize.define('RbActivityLog', {
 
 RbActivityLog.belongsTo(User, { foreignKey: 'userId', as: 'user' });
 
+// ── MIS Appointments ──────────────────────────────────────────────────────────
+const MisAppointment = sequelize.define('MisAppointment', {
+  id:          { type: DataTypes.INTEGER,     autoIncrement: true, primaryKey: true },
+  apptId:      { type: DataTypes.INTEGER,     allowNull: false, unique: true, field: 'appt_id' },
+  clinicId:    { type: DataTypes.SMALLINT,    allowNull: true,  field: 'clinic_id' },
+  room:        { type: DataTypes.STRING(100), allowNull: true },
+  doctorId:    { type: DataTypes.INTEGER,     allowNull: true,  field: 'doctor_id' },
+  patientId:   { type: DataTypes.INTEGER,     allowNull: true,  field: 'patient_id' },
+  timeStart:   { type: DataTypes.DATE,        allowNull: true,  field: 'time_start' },
+  timeEnd:     { type: DataTypes.DATE,        allowNull: true,  field: 'time_end' },
+  statusId:    { type: DataTypes.SMALLINT,    allowNull: true,  field: 'status_id' },
+  status:      { type: DataTypes.STRING(20),  allowNull: true },
+  dateCreated: { type: DataTypes.DATE,        allowNull: true,  field: 'date_created' },
+  dateUpdated: { type: DataTypes.DATE,        allowNull: true,  field: 'date_updated' },
+  data:        { type: DataTypes.JSONB,       allowNull: false, defaultValue: {} },
+  syncedAt:    { type: DataTypes.DATE,        allowNull: false, defaultValue: DataTypes.NOW, field: 'synced_at' },
+}, {
+  tableName:  'mis_appointments',
+  timestamps: false,
+  indexes: [
+    { fields: ['clinic_id'] },
+    { fields: ['room'] },
+    { fields: ['time_start'] },
+    { fields: ['doctor_id'] },
+    { fields: ['patient_id'] },
+    { fields: ['status_id'] },
+  ],
+});
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2787,4 +2816,6 @@ module.exports = {
   RbActivityLog,
   // RB Excel Sources
   RbExcelSource,
+  // MIS Appointments cache
+  MisAppointment,
 };
