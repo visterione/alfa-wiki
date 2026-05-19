@@ -702,6 +702,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const seenRecForCash = new Set();
       filtered.forEach(({ rec, cr, clinicName }) => {
         const s = cr?.salary || {};
+        const _rowExtraTotal = (s.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
         const remainder = calcRemainder(s);
         const cashPaidForRow = !seenRecForCash.has(rec.id)
           ? (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0)
@@ -715,10 +716,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           clinic:    clinicName,
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
-          total:     parseFloat(s.finalSalary || 0) + (s.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0),
+          total:     parseFloat(s.finalSalary || 0),
           ndfl:      getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
-          body:      parseFloat(s.mainPayment || 0),
+          body:      parseFloat(s.mainPayment || 0) + _rowExtraTotal,
           bonus:     netRemainder >= 0 ? netRemainder : 0,
           overpay:   netRemainder < 0  ? netRemainder : 0,
           cashPaid:  cashPaid || null,
@@ -765,14 +766,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       })();
       const totalRow = ws.addRow({
         name:    'ИТОГО',
-        total:   filtered.reduce((s, r) => {
-          const sal = r.cr?.salary || {};
-          const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
-          return s + parseFloat(sal.finalSalary || 0) + et;
-        }, 0),
+        total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
         ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
-        body:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0), 0),
+        body:    filtered.reduce((s, r) => {
+          const sal = r.cr?.salary || {};
+          const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
+          return s + parseFloat(sal.mainPayment || 0) + et;
+        }, 0),
         bonus:   (() => {
           const seenB = new Set();
           return filtered.reduce((s, r) => {
@@ -830,12 +831,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           История зарплат пуста. Сохраните расчёт во вкладке «Отчёт».
         </div>
       ) : (() => {
-        const totalSalary  = filtered.reduce((s, r) => {
+        const totalSalary  = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
+        const totalBase    = filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
-          return s + parseFloat(sal.finalSalary || 0) + et;
+          return s + parseFloat(sal.mainPayment || 0) + et + parseFloat(sal.advance || 0);
         }, 0);
-        const totalBase    = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.mainPayment || 0) + parseFloat(r.cr?.salary?.advance || 0), 0);
         const totalOverpay = filtered.reduce((s, r) => {
           const rem = calcRemainder(r.cr?.salary);
           return s + (rem < 0 ? rem : 0);
@@ -1001,10 +1002,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                         {(advance > 0 || body > 0 || extraTotal > 0 || bonus > 0 || overpay < 0 || (() => { const rowCash = cashPaymentsMap[rec.id] || []; return rowCash.length > 0; })()) && (
                           <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
-                            {body > 0    && <span>Основная ЗП: {fmtRub(body)}</span>}
-                            {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
-                              <span key={i}>{ep.label || `Доп. выплата ${i + 1}`}: {fmtRub(ep.amount)}</span>
-                            ))}
+                            {(body + extraTotal) > 0 && <span>Основная ЗП: {fmtRub(body + extraTotal)}</span>}
                             {bonus > 0   && <span>Премия: {fmtRub(bonus)}</span>}
                             {(() => {
                               const rowCash = cashPaymentsMap[rec.id] || [];

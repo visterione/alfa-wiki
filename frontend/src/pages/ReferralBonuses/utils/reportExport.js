@@ -391,9 +391,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     };
 
     if (!_hasBreakdown) {
-      addTotalBlock('Начислено', (sal.finalSalary || 0) + _extraTotal);
+      addTotalBlock('Начислено', sal.finalSalary || 0);
     } else {
-      addSalRow('Начислено', (sal.finalSalary || 0) + _extraTotal, ((sal.finalSalary || 0) + _extraTotal) >= 0 ? '+' : '-');
+      addSalRow('Начислено', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
       if (_ndflTotal > 0) {
         const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
         ndflRow.getCell(1).font = fontNormal;
@@ -404,12 +404,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       }
       if ((sal.advance || 0) > 0)
         addPayRow('Аванс', sal.paymentMethod, sal.advance);
-      if ((sal.mainPayment || 0) > 0)
-        addPayRow('Основная ЗП', sal.mainPaymentMethod, sal.mainPayment);
-      _extraPayments.forEach(ep => {
-        if ((ep.amount || 0) > 0)
-          addPayRow(ep.label || 'Доп. выплата', ep.method, ep.amount);
-      });
+      const _combinedMain = (sal.mainPayment || 0) + _extraTotal;
+      if (_combinedMain > 0)
+        addPayRow('Основная ЗП', sal.mainPaymentMethod, _combinedMain);
       if ((sal.normPremiumAmount || 0) > 0)
         addPayRow('Премия', null, sal.normPremiumAmount);
       addTotalBlock(_remainder < 0 ? 'Переплата' : 'Остаток к доплате', _remainder);
@@ -543,11 +540,10 @@ export function buildBulkWorkbook(bulkResults) {
       const harmfulness = parseFloat((sal.harmfulnessDeduction || 0).toFixed(2));
       const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.harmfulnessDeduction || 0)).toFixed(2));
       // Order: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
-      const nachlislenoVal = parseFloat(((sal.finalSalary || 0) + extraTot).toFixed(2));
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', nachlislenoVal, hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
+      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', parseFloat((sal.finalSalary || 0).toFixed(2)), hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
       row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 9) { cell.font = fontNormal; cell.border = allBorders; } });
       row.getCell(4).numFmt = '#,##0.00';
-      row.getCell(4).font = { ...fontNormal, color: { argb: nachlislenoVal >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(4).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
       row.getCell(6).numFmt = '#,##0.00';
       row.getCell(7).numFmt = '#,##0.00';
       row.getCell(8).numFmt = '#,##0.00';

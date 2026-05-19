@@ -602,8 +602,7 @@ export default function SalaryBlock({ salary }) {
         const hasBreakdown = effectiveNdflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
         // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
-        // Доп. выплаты (Отпускные и т.п.) включаются в Начислено, поэтому прибавляем их здесь
-        const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0) + extraTotal;
+        const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
         const _remainder = displayFinalSalary - effectiveNdflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {
@@ -639,20 +638,13 @@ export default function SalaryBlock({ salary }) {
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
                 </div>
               )}
-              {(mainPayment || 0) > 0 && (
+              {((mainPayment || 0) + extraTotal) > 0 && (
                 <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
                   <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
-                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(mainPayment)}</div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub((mainPayment || 0) + extraTotal)}</div>
                 </div>
               )}
-              {extraPayments.map((ep, i) => (ep.amount || 0) > 0 && (
-                <div key={i} className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
-                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>{ep.label || `Доп. выплата ${i + 1}`}</div></div>
-                  <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{ep.method ? fmtMethod(ep.method) : ''}</div>
-                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(ep.amount)}</div>
-                </div>
-              ))}
               {normPremiumAmount > 0 && (
                 <div className="rb-salary-row" style={{ background: '#f8fafc' }}>
                   <div className="rb-salary-row-body">

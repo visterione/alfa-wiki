@@ -193,12 +193,10 @@ function buildRightRows(salary, periodCell) {
   const payments = [];
   if ((salary.advance || 0) > 0)
     payments.push({ label: 'За первую половину месяца', period: periodCell, sum: salary.advance, isPayment: true });
-  if ((salary.mainPayment || 0) > 0)
-    payments.push({ label: 'Зарплата за месяц', period: periodCell, sum: salary.mainPayment, isPayment: true });
-  (salary.extraPayments || []).forEach(ep => {
-    const amt = parseFloat(ep.amount) || 0;
-    if (amt > 0) payments.push({ label: ep.label || 'Доп. выплата', period: periodCell, sum: amt, isPayment: true });
-  });
+  const _extraPaysTotal = (salary.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+  const _combinedMain = (salary.mainPayment || 0) + _extraPaysTotal;
+  if (_combinedMain > 0)
+    payments.push({ label: 'Зарплата за месяц', period: periodCell, sum: _combinedMain, isPayment: true });
   if (payments.length > 0) {
     const payTotal = payments.reduce((s, r) => s + (parseFloat(r.sum) || 0), 0);
     rows.push({ label: 'Выплачено:', period: '', sum: payTotal, isPayHeader: true });
@@ -309,7 +307,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
         body: [
           [
             { text: `${doctorName}${tabelNumber ? ` (${tabelNumber})` : ''}`, style: 'hdrName' },
-            { text: `Начислено: ${fmt2((salary.finalSalary || 0) + (salary.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0))} ₽`, style: 'hdrPay' },
+            { text: `Начислено: ${fmt2(salary.finalSalary || 0)} ₽`, style: 'hdrPay' },
           ],
           [
             { text: orgName ? `Организация: ${orgName}` : 'Организация:', style: 'hdrInfo' },
