@@ -427,7 +427,30 @@ function clinicScheduleLabel(clinicId) {
   return CLINIC_SCHEDULE_LABELS[String(clinicId)] || '';
 }
 
-// Загрузка кабинетов: суммарное время визитов / ёмкость клиники за период
+// Объединение пересекающихся интервалов → сумма уникальных минут
+function unionIntervalMinutes(ranges) {
+  if (!ranges.length) return 0;
+  const sorted = [...ranges].sort((a, b) => a.t0 - b.t0);
+  let total = 0;
+  let curStart = sorted[0].t0;
+  let curEnd   = sorted[0].t1;
+  for (let i = 1; i < sorted.length; i++) {
+    const { t0, t1 } = sorted[i];
+    if (t0 <= curEnd) {
+      if (t1 > curEnd) curEnd = t1;
+    } else {
+      total += (curEnd - curStart) / 60000;
+      curStart = t0;
+      curEnd   = t1;
+    }
+  }
+  total += (curEnd - curStart) / 60000;
+  return total;
+}
+
+// Загрузка кабинетов: объединённое время занятости / ёмкость клиники за период.
+// Используем union интервалов, чтобы перекрывающиеся приёмы (2 врача в одном кабинете)
+// не давали >100%.
 function buildRoomStats(appointments, start, end) {
   const map = {};
   for (const a of appointments) {
@@ -441,20 +464,21 @@ function buildRoomStats(appointments, start, end) {
     if (dur <= 0 || dur > 720) continue;
     const clinicId = String(a.clinic_id || '');
     const key = `${clinicId}|${room}`;
-    if (!map[key]) map[key] = { room, clinicId, totalMin: 0 };
-    map[key].totalMin += dur;
+    if (!map[key]) map[key] = { room, clinicId, ranges: [] };
+    map[key].ranges.push({ t0, t1 });
   }
 
   return Object.values(map).map(d => {
     const clinic   = DEFAULT_CLINICS.find(c => String(c.id) === d.clinicId);
     const capacity = clinicWorkMinutesInPeriod(d.clinicId, start, end);
+    const totalMin = unionIntervalMinutes(d.ranges);
     return {
-      ...d,
       name:        d.room,
+      clinicId:    d.clinicId,
       _clinicName: clinic?.name || (d.clinicId ? `Клиника ${d.clinicId}` : ''),
-      totalHours:  d.totalMin / 60,
+      totalHours:  totalMin / 60,
       capacity,
-      utilPct:     capacity > 0 ? (d.totalMin / capacity * 100) : 0,
+      utilPct:     capacity > 0 ? (totalMin / capacity * 100) : 0,
       color:       getClinicColorById(d.clinicId),
     };
   }).sort((a, b) => b.utilPct - a.utilPct);
