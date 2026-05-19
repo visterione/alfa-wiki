@@ -363,9 +363,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     const _extraPayments = sal.extraPayments || [];
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
     const _ndflTotal = sal.ndflTotal || 0;
-    const _totalDeductionsForDisplay = (sal.finalDeductionsTotal || 0) + (sal.finalMaterialsTotal || 0) + (sal.svcMatFinalTotal || 0);
-    const _grossFinalSalary = (sal.finalSalary || 0) + _totalDeductionsForDisplay;
-    const _hasBreakdown = _ndflTotal > 0 || (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0 || _totalDeductionsForDisplay > 0;
+    const _deductionsWithoutNdfl = (sal.finalDeductionsTotal || 0) + (sal.finalMaterialsTotal || 0) + (sal.svcMatFinalTotal || 0);
+    const _grossFinalSalary = (sal.finalSalary || 0) + _deductionsWithoutNdfl;
+    const _totalUderzhano = _deductionsWithoutNdfl + _ndflTotal;
+    const _hasBreakdown = (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0 || _totalUderzhano > 0;
     const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
 
     const addPayRow = (label, method, value) => {
@@ -396,8 +397,8 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       addTotalBlock('Начислено', sal.finalSalary || 0);
     } else {
       addSalRow('Начислено', _grossFinalSalary, _grossFinalSalary >= 0 ? '+' : '-');
-      if (_totalDeductionsForDisplay > 0) {
-        const dedRow = ws.addRow(['Удержано', '', '', '', '', parseFloat(_totalDeductionsForDisplay.toFixed(2))]);
+      if (_totalUderzhano > 0) {
+        const dedRow = ws.addRow(['Удержано', '', '', '', '', parseFloat(_totalUderzhano.toFixed(2))]);
         dedRow.getCell(1).font = fontNormal;
         dedRow.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
         dedRow.getCell(6).numFmt = '#,##0.00';
@@ -405,9 +406,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
         autoWidth(dedRow, 6);
       }
       if (_ndflTotal > 0) {
-        const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
-        ndflRow.getCell(1).font = fontNormal;
-        ndflRow.getCell(6).font = { ...fontNormal, color: { argb: 'FF64748B' } };
+        const ndflRow = ws.addRow(['НДФЛ* (учтено в Удержано)', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
+        ndflRow.getCell(1).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true };
+        ndflRow.getCell(6).font = { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true };
         ndflRow.getCell(6).numFmt = '#,##0.00';
         ws.mergeCells(`A${ndflRow.number}:E${ndflRow.number}`);
         autoWidth(ndflRow, 6);
