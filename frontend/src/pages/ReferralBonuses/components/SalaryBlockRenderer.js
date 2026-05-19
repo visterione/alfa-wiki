@@ -599,10 +599,12 @@ export default function SalaryBlock({ salary }) {
 
       {/* Payment section */}
       {(() => {
-        const hasBreakdown = effectiveNdflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0;
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+        const totalDeductionsForDisplay = adjustedFinalDeductionsTotal + (finalMaterialsTotal || 0) + (svcMatFinalTotal || 0);
+        const hasBreakdown = effectiveNdflTotal > 0 || (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0 || totalDeductionsForDisplay > 0;
         // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
         const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
+        const grossDisplayFinalSalary = displayFinalSalary + totalDeductionsForDisplay;
         const _remainder = displayFinalSalary - effectiveNdflTotal - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {
@@ -622,9 +624,17 @@ export default function SalaryBlock({ salary }) {
               <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Начислено</div></div>
                 <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>
-                  {displayFinalSalary < 0 ? '−' : ''}{fmtRub(Math.abs(displayFinalSalary))}
+                  {grossDisplayFinalSalary < 0 ? '−' : ''}{fmtRub(Math.abs(grossDisplayFinalSalary))}
                 </div>
               </div>
+              {totalDeductionsForDisplay > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Удержано</div></div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-danger)' }}>
+                    −{fmtRub(totalDeductionsForDisplay)}
+                  </div>
+                </div>
+              )}
               <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                 <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>НДФЛ</div></div>
                 <div className="rb-salary-row-value" style={{ color: effectiveNdflTotal > 0 ? 'var(--rb-danger)' : 'var(--rb-text-secondary)' }}>

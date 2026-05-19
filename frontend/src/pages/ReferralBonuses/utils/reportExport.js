@@ -363,7 +363,9 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     const _extraPayments = sal.extraPayments || [];
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
     const _ndflTotal = sal.ndflTotal || 0;
-    const _hasBreakdown = _ndflTotal > 0 || (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0;
+    const _totalDeductionsForDisplay = (sal.finalDeductionsTotal || 0) + (sal.finalMaterialsTotal || 0) + (sal.svcMatFinalTotal || 0);
+    const _grossFinalSalary = (sal.finalSalary || 0) + _totalDeductionsForDisplay;
+    const _hasBreakdown = _ndflTotal > 0 || (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0 || _totalDeductionsForDisplay > 0;
     const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
 
     const addPayRow = (label, method, value) => {
@@ -393,7 +395,15 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     if (!_hasBreakdown) {
       addTotalBlock('Начислено', sal.finalSalary || 0);
     } else {
-      addSalRow('Начислено', sal.finalSalary || 0, (sal.finalSalary || 0) >= 0 ? '+' : '-');
+      addSalRow('Начислено', _grossFinalSalary, _grossFinalSalary >= 0 ? '+' : '-');
+      if (_totalDeductionsForDisplay > 0) {
+        const dedRow = ws.addRow(['Удержано', '', '', '', '', parseFloat(_totalDeductionsForDisplay.toFixed(2))]);
+        dedRow.getCell(1).font = fontNormal;
+        dedRow.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
+        dedRow.getCell(6).numFmt = '#,##0.00';
+        ws.mergeCells(`A${dedRow.number}:E${dedRow.number}`);
+        autoWidth(dedRow, 6);
+      }
       if (_ndflTotal > 0) {
         const ndflRow = ws.addRow(['НДФЛ', '', '', '', '', parseFloat(_ndflTotal.toFixed(2))]);
         ndflRow.getCell(1).font = fontNormal;

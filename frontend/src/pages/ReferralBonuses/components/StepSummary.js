@@ -695,6 +695,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           const amt = hrs > 0 ? parseFloat(e.amount) * hrs : parseFloat(e.amount);
           lines.push(`${e.name}: +${fmtA(amt)} ₽`);
         });
+        (salary.deductions || []).filter(d => (d.name || '').trim().toUpperCase() !== 'НДФЛ' && d.deductionType === 'final').forEach(d => lines.push(formatDed(d)));
+        (salary.materials  || []).filter(m => m.deductionType === 'final').forEach(m => lines.push(formatDed(m)));
         return lines.join('\n');
       };
 
@@ -716,7 +718,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           clinic:    clinicName,
           specialty: getDoctorSpecialty(rec.misUserId),
           date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
-          total:     parseFloat(s.finalSalary || 0),
+          total:     parseFloat(s.finalSalary || 0) + parseFloat(s.finalDeductionsTotal || 0) + parseFloat(s.finalMaterialsTotal || 0) + parseFloat(s.svcMatFinalTotal || 0),
           ndfl:      getNdflAmount(s) || null,
           advance:   parseFloat(s.advance     || 0),
           body:      parseFloat(s.mainPayment || 0) + _rowExtraTotal,
@@ -766,7 +768,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       })();
       const totalRow = ws.addRow({
         name:    'ИТОГО',
-        total:   filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0),
+        total:   filtered.reduce((s, r) => {
+          const sal = r.cr?.salary || {};
+          return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.finalDeductionsTotal || 0) + parseFloat(sal.finalMaterialsTotal || 0) + parseFloat(sal.svcMatFinalTotal || 0);
+        }, 0),
         ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
         advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
         body:    filtered.reduce((s, r) => {
@@ -831,7 +836,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           История зарплат пуста. Сохраните расчёт во вкладке «Отчёт».
         </div>
       ) : (() => {
-        const totalSalary  = filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.finalSalary || 0), 0);
+        const totalSalary  = filtered.reduce((s, r) => {
+          const sal = r.cr?.salary || {};
+          return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.finalDeductionsTotal || 0) + parseFloat(sal.finalMaterialsTotal || 0) + parseFloat(sal.svcMatFinalTotal || 0);
+        }, 0);
         const totalBase    = filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
