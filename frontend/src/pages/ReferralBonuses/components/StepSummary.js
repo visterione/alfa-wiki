@@ -48,6 +48,16 @@ function getNdflAmount(salary) {
   return _getDeductionAmount(salary, n => n.toUpperCase() === 'НДФЛ');
 }
 
+function getDeductionsTotal(salary) {
+  if (!salary) return 0;
+  const total = parseFloat(salary.finalDeductionsTotal || 0);
+  // If НДФЛ is stored inside deductions array (legacy format), subtract it to avoid
+  // double-counting with the separately displayed "Сумма НДФЛ"
+  const ndflInList = (salary.deductions || []).find(d => (d.name || '').trim() === 'НДФЛ');
+  if (!ndflInList) return total;
+  return Math.max(0, total - _getDeductionAmount(salary, n => n.toUpperCase() === 'НДФЛ'));
+}
+
 function getUderzhanieInfo(salary) {
   if (!salary) return { amount: 0, percent: null };
   const deductions = salary.deductions || [];
@@ -850,6 +860,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           return s + (rem < 0 ? rem : 0);
         }, 0);
         const totalNdfl = filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0);
+        const totalDeductions = filtered.reduce((s, r) => s + getDeductionsTotal(r.cr?.salary), 0);
         const totalCashPaid = (() => {
           const seen = new Set();
           return filtered.reduce((s, { rec }) => {
@@ -882,6 +893,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               <div>
                 <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма НДФЛ</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>−{fmtRub(totalNdfl)}</div>
+              </div>
+            )}
+            {totalDeductions > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма взысканий</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>−{fmtRub(totalDeductions)}</div>
               </div>
             )}
             <div>

@@ -177,15 +177,23 @@ function getOrgGroup(row) {
   return null;
 }
 
+const _sourceRowsCache = new Map();
+
 async function loadSourceRows(sources) {
   const allRows = [];
   for (const src of sources) {
+    if (_sourceRowsCache.has(src.id)) {
+      allRows.push(..._sourceRowsCache.get(src.id));
+      continue;
+    }
     try {
       const file    = await fetchSourceFile(src);
       const rawRows = await parseExcelFile(file);
       if (!rawRows.length) continue;
-      const cm = rbMapNewColumns(rawRows);
-      for (const r of rawRows) allRows.push(parseRow(r, cm));
+      const cm     = rbMapNewColumns(rawRows);
+      const parsed = rawRows.map(r => parseRow(r, cm));
+      _sourceRowsCache.set(src.id, parsed);
+      allRows.push(...parsed);
     } catch (e) {
       console.error('[KPI] failed to load source', src.id, e);
     }
@@ -1804,6 +1812,11 @@ export default function StepKpi({ excelSources = [] }) {
 
   const uniquePatientsCount = useMemo(() => new Set(rows.map(getPatientKey).filter(Boolean)).size, [rows]);
 
+  const { start: periodStart, end: periodEnd } = useMemo(
+    () => getPeriodRange(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth),
+    [periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth]
+  );
+
   return (
     <div style={{ padding: '16px 20px', height: '100%', overflowY: 'auto' }}>
 
@@ -1901,52 +1914,55 @@ export default function StepKpi({ excelSources = [] }) {
         )}
       </div>
 
-      {/* Пустой экран */}
-      {!loading && !loaded && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 14 }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="52" height="52" style={{ opacity: 0.4 }}>
-            <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
-            <polyline points="16 7 22 7 22 13"/>
-          </svg>
-          <div style={{ fontSize: 14 }}>Выберите период и нажмите «Загрузить»</div>
-          {excelSources.length === 0 && (
-            <div style={{ fontSize: 12, color: '#ef4444' }}>
-              Нет загруженных источников — добавьте файлы в разделе Архив → Источники
+      {/* Под-вкладки — всегда видны */}
+      <div className="rb-clinic-tab-wrap" ref={tabRef} style={{ marginBottom: 20 }}>
+        {sliderEl}
+        {KPI_TABS.map(t => (
+          <button
+            key={t.key}
+            className={`rb-clinic-tab${viewMode === t.key ? ' active' : ''}`}
+            onClick={() => setViewMode(t.key)}
+          >{t.label}</button>
+        ))}
+      </div>
+
+      {/* Кабинеты — всегда смонтирован, не требует Excel-источников */}
+      <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
+        <TabRooms periodStart={periodStart} periodEnd={periodEnd} />
+      </div>
+
+      {/* Остальные вкладки */}
+      {viewMode !== 'rooms' && (
+        <>
+          {!loading && !loaded && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 14 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="52" height="52" style={{ opacity: 0.4 }}>
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+                <polyline points="16 7 22 7 22 13"/>
+              </svg>
+              <div style={{ fontSize: 14 }}>Выберите период и нажмите «Загрузить»</div>
+              {excelSources.length === 0 && (
+                <div style={{ fontSize: 12, color: '#ef4444' }}>
+                  Нет загруженных источников — добавьте файлы в разделе Архив → Источники
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Нет данных */}
-      {!loading && loaded && rows.length === 0 && (
-        <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
-          Нет данных за {getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth)}
-        </div>
-      )}
+          {!loading && loaded && rows.length === 0 && (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+              Нет данных за {getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth)}
+            </div>
+          )}
 
-      {/* Контент */}
-      {loaded && rows.length > 0 && (
-        <>
-          {/* Под-вкладки */}
-          <div className="rb-clinic-tab-wrap" ref={tabRef} style={{ marginBottom: 20 }}>
-            {sliderEl}
-            {KPI_TABS.map(t => (
-              <button
-                key={t.key}
-                className={`rb-clinic-tab${viewMode === t.key ? ' active' : ''}`}
-                onClick={() => setViewMode(t.key)}
-              >{t.label}</button>
-            ))}
-          </div>
-
-          {viewMode === 'general'    && <TabGeneral rows={rows} />}
-          {viewMode === 'patients'   && <TabPatients rows={rows} />}
-          {viewMode === 'margin'     && <TabMargin rows={rows} />}
-          {viewMode === 'efficiency' && <TabEfficiency rows={rows} />}
-          {viewMode === 'rooms'      && (() => {
-            const { start, end } = getPeriodRange(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
-            return <TabRooms periodStart={start} periodEnd={end} />;
-          })()}
+          {loaded && rows.length > 0 && (
+            <>
+              {viewMode === 'general'    && <TabGeneral rows={rows} />}
+              {viewMode === 'patients'   && <TabPatients rows={rows} />}
+              {viewMode === 'margin'     && <TabMargin rows={rows} />}
+              {viewMode === 'efficiency' && <TabEfficiency rows={rows} />}
+            </>
+          )}
         </>
       )}
     </div>

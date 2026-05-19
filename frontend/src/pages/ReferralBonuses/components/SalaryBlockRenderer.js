@@ -640,7 +640,6 @@ export default function SalaryBlock({ salary }) {
                 <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                   <div className="rb-salary-row-body">
                     <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)', opacity: 0.7 }}>НДФЛ*</div>
-                    <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', opacity: 0.6, marginTop: 1 }}>учтено в Удержано</div>
                   </div>
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)', opacity: 0.7 }}>
                     −{fmtRub(effectiveNdflTotal)}
