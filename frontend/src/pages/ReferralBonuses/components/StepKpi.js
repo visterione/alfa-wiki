@@ -1703,7 +1703,7 @@ function TabRooms({ periodStart, periodEnd }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
         {syncStatus?.lastSyncAt && (
           <span style={{ fontSize: 11, color: '#94a3b8' }}>
-            Обновлено: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')} · {(syncStatus.totalInDb || 0).toLocaleString('ru-RU')} записей
+            Обновлено: {new Date(syncStatus.lastSyncAt).toLocaleString('ru-RU')}
           </span>
         )}
         <button
@@ -1715,7 +1715,7 @@ function TabRooms({ periodStart, periodEnd }) {
       </div>
 
       {/* Загрузка кабинетов */}
-      <SectionHeader title="Загрузка по кабинетам (% от рабочего времени клиники)">
+      <SectionHeader title="Загрузка по кабинетам">
         <select
           value={roomClinic}
           onChange={e => setRoomClinic(e.target.value)}
