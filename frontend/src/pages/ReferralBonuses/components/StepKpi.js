@@ -1802,7 +1802,6 @@ export default function StepKpi({ excelSources = [] }) {
       const { start, end } = getPeriodRange(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
       const matching = matchSourcesRange(excelSources, start, end);
       if (!matching.length) {
-        toast('Источники для выбранного периода не найдены', { duration: 3000 });
         setRows([]);
         setPrevRows([]);
         setLoaded(true);
@@ -1821,10 +1820,6 @@ export default function StepKpi({ excelSources = [] }) {
       setRows(currentRows);
       setPrevRows(prevLoaded);
       setLoaded(true);
-      toast.success(
-        `Загружено: ${currentRows.length.toLocaleString('ru-RU')} строк из ${matching.length} файл${matching.length === 1 ? 'а' : 'ов'}`,
-        { duration: 2500 }
-      );
     } catch (e) {
       console.error('[KPI] load error:', e);
       toast.error('Ошибка загрузки данных KPI');
@@ -1833,6 +1828,8 @@ export default function StepKpi({ excelSources = [] }) {
     }
   }, [periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth, excelSources]);
 
+  // Авто-загрузка при монтировании и при смене периода
+  useEffect(() => { loadData(); }, [loadData]);
 
   const uniquePatientsCount = useMemo(() => new Set(rows.map(getPatientKey).filter(Boolean)).size, [rows]);
 
@@ -1851,7 +1848,7 @@ export default function StepKpi({ excelSources = [] }) {
           {PERIOD_MODES.map(m => (
             <button
               key={m.key}
-              onClick={() => { setPeriodMode(m.key); setLoaded(false); }}
+              onClick={() => setPeriodMode(m.key)}
               style={{
                 padding: '6px 12px', fontSize: 12, borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
                 border: '1px solid var(--rb-border-dark)',
@@ -1866,7 +1863,7 @@ export default function StepKpi({ excelSources = [] }) {
         {/* Год */}
         <select
           value={selYear}
-          onChange={e => { setSelYear(Number(e.target.value)); setLoaded(false); }}
+          onChange={e => setSelYear(Number(e.target.value))}
           style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
         >
           {availYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -1876,7 +1873,7 @@ export default function StepKpi({ excelSources = [] }) {
         {periodMode === 'month' && (
           <select
             value={selMonth}
-            onChange={e => { setSelMonth(Number(e.target.value)); setLoaded(false); }}
+            onChange={e => setSelMonth(Number(e.target.value))}
             style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
           >
             {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
@@ -1887,7 +1884,7 @@ export default function StepKpi({ excelSources = [] }) {
         {periodMode === 'quarter' && (
           <select
             value={selQuarter}
-            onChange={e => { setSelQuarter(Number(e.target.value)); setLoaded(false); }}
+            onChange={e => setSelQuarter(Number(e.target.value))}
             style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
           >
             {QUARTERS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
@@ -1899,7 +1896,7 @@ export default function StepKpi({ excelSources = [] }) {
           <>
             <select
               value={selFromMonth}
-              onChange={e => { setSelFromMonth(Number(e.target.value)); setLoaded(false); }}
+              onChange={e => setSelFromMonth(Number(e.target.value))}
               style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
             >
               {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
@@ -1907,7 +1904,7 @@ export default function StepKpi({ excelSources = [] }) {
             <span style={{ fontSize: 13, color: 'var(--rb-text)' }}>—</span>
             <select
               value={selToMonth}
-              onChange={e => { setSelToMonth(Number(e.target.value)); setLoaded(false); }}
+              onChange={e => setSelToMonth(Number(e.target.value))}
               style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
             >
               {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
@@ -1915,26 +1912,25 @@ export default function StepKpi({ excelSources = [] }) {
           </>
         )}
 
-        <button
-          onClick={loadData}
-          disabled={loading}
-          style={{
-            padding: '7px 18px', background: 'var(--rb-primary)', color: '#fff',
-            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            cursor: loading ? 'wait' : 'pointer',
-            display: 'flex', alignItems: 'center', gap: 6, opacity: loading ? 0.8 : 1,
-          }}
-        >
-          {loading
-            ? <><span className="rb-spinner" style={{ width: 14, height: 14 }} /> Загрузка...</>
-            : 'Загрузить'}
-        </button>
-
-        {loaded && (
-          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-            {rows.length.toLocaleString('ru-RU')} строк · {fmt(uniquePatientsCount)} пациентов
-            {prevRows.length > 0 && <span style={{ marginLeft: 8, color: '#94a3b8' }}>+ пред. период загружен</span>}
+        {loading && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            <span className="rb-spinner" style={{ width: 13, height: 13 }} />
+            Загрузка…
           </span>
+        )}
+
+        {!loading && loaded && (
+          <>
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+              {rows.length.toLocaleString('ru-RU')} строк · {fmt(uniquePatientsCount)} пациентов
+              {prevRows.length > 0 && <span style={{ marginLeft: 8, color: '#94a3b8' }}>+ пред. период</span>}
+            </span>
+            <button
+              onClick={loadData}
+              title="Обновить данные"
+              style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text-secondary)', fontFamily: 'inherit', lineHeight: 1 }}
+            >↻</button>
+          </>
         )}
       </div>
 
@@ -1958,24 +1954,19 @@ export default function StepKpi({ excelSources = [] }) {
       {/* Остальные вкладки */}
       {viewMode !== 'rooms' && (
         <>
-          {!loading && !loaded && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 14 }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="52" height="52" style={{ opacity: 0.4 }}>
-                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
-                <polyline points="16 7 22 7 22 13"/>
-              </svg>
-              <div style={{ fontSize: 14 }}>Выберите период и нажмите «Загрузить»</div>
-              {excelSources.length === 0 && (
-                <div style={{ fontSize: 12, color: '#ef4444' }}>
-                  Нет загруженных источников — добавьте файлы в разделе Архив → Источники
-                </div>
-              )}
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>
+              <span className="rb-spinner" style={{ width: 22, height: 22 }} />
+              <span style={{ fontSize: 14 }}>Загрузка данных…</span>
             </div>
           )}
 
           {!loading && loaded && rows.length === 0 && (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
-              Нет данных за {getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth)}
+              {excelSources.length === 0
+                ? <span style={{ color: '#ef4444', fontSize: 13 }}>Нет загруженных источников — добавьте файлы в разделе Архив → Источники</span>
+                : `Нет данных за ${getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth)}`
+              }
             </div>
           )}
 
