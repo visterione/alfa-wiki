@@ -319,7 +319,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setCorpRecalcState(null);
   }, [selectedDoctor?.id]); // eslint-disable-line
 
-  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null }) => {
+  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null, noExcelData = false }) => {
     const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
@@ -339,7 +339,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     if (filterClinic) {
       result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
     }
-    setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
+    setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo, noExcelData });
     // Save context for post-generation re-editing
     if (corpRows?.length > 0) {
       setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes } });
@@ -378,6 +378,11 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         }
       }
 
+      const noExcelDataFlag = uploadedFile != null && rows.length > 0 && !rows.some(r =>
+        (colMap.executor && rbNamesMatch(selectedDoctor.name, String(r[colMap.executor] || '').trim())) ||
+        (colMap.referrer && rbNamesMatch(selectedDoctor.name, String(r[colMap.referrer] || '').trim()))
+      );
+
       const allCorpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
       // For individual report — show rows where this doctor appears in any role column
       const corpRows = allCorpRows.filter(({ row }) => {
@@ -395,7 +400,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         return;
       }
 
-      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates });
+      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates, noExcelData: noExcelDataFlag });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
     } finally {
@@ -581,6 +586,18 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
         {reportData && (
           <div className="rb-report">
+            {reportData.noExcelData && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="18" height="18" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 2 }}>Врач не найден в файле Excel</div>
+                  <div>В загруженном файле нет ни одной записи, где этот врач выступает исполнителем или рекомендателем. Возможно, данные ошибочны — проверьте файл.</div>
+                </div>
+              </div>
+            )}
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
@@ -682,6 +699,10 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     for (let i = 0; i < doctorList.length; i++) {
       const doctor = doctorList[i];
       setProgress({ current: i + 1, total: doctorList.length, currentName: doctor.name });
+      const noExcelData = uploadedFile != null && rows.length > 0 && !rows.some(r =>
+        (colMap.executor && rbNamesMatch(doctor.name, String(r[colMap.executor] || '').trim())) ||
+        (colMap.referrer && rbNamesMatch(doctor.name, String(r[colMap.referrer] || '').trim()))
+      );
       try {
         const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
           rbApi.getByDoctor(doctor.id),
@@ -708,9 +729,9 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
         }
-        results.push({ doctor, ...result, dateFrom, dateTo, error: null });
+        results.push({ doctor, ...result, dateFrom, dateTo, error: null, noExcelData });
       } catch (e) {
-        results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' });
+        results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка', noExcelData });
       }
     }
     setBulkResults(results);
@@ -991,7 +1012,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                 <div key={r.doctor.id} style={{ marginBottom: 6, border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
                   <div
                     onClick={() => hasClinics && toggleExpanded(r.doctor.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: r.error ? '#FEF2F2' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics ? 'pointer' : 'default', userSelect: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: r.error ? '#FEF2F2' : r.noExcelData ? '#fffbeb' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics ? 'pointer' : 'default', userSelect: 'none' }}
                   >
                     {/* Clinic colour bars */}
                     <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
@@ -1007,6 +1028,15 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                           ? <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{(r.clinicReports || []).map(cr => cr.clinicLabel).join(' · ')}</div>
                           : <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Нет данных за период</div>
                       }
+                      {r.noExcelData && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#92400e', marginTop: 2 }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0 }}>
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                          </svg>
+                          Нет в файле Excel — проверьте данные
+                        </div>
+                      )}
                     </div>
                     {hasClinics && (
                       <div style={{ fontWeight: 700, fontSize: 13, color: total >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)', whiteSpace: 'nowrap' }}>
