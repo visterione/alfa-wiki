@@ -487,6 +487,8 @@ function buildTop20(rows, content, pageBreak) {
   ));
 }
 
+const TOP_N = 50; // rows shown per «top» and «bottom» slice
+
 function buildMargin(rows, content, pageBreak) {
   const popMap = {}, svcMap = {};
   for (const r of rows) {
@@ -504,36 +506,62 @@ function buildMargin(rows, content, pageBreak) {
     cost:      s.count ? s.sumCost  / s.count : 0,
     margin:    s.sumPrice - s.sumCost,
     marginPct: s.sumPrice ? ((s.sumPrice - s.sumCost) / s.sumPrice * 100) : 0,
-  })).sort((a, b) => b.sumPrice - a.sumPrice);
+  }));
   const hasCost = services.some(s => s.sumCost > 0);
   const hasCode = services.some(s => s.code);
 
   content.push(pdfSection('Маржинальность', pageBreak));
-  content.push(pdfSubsection('Популярные услуги (по количеству)'));
-  content.push(pdfHBar(popular, { valueKey: 'count', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
 
+  // ── Popular services: top N most + top N least ────────────────────────────
+  const popTop    = popular.slice(0, TOP_N);
+  const popBottom = popular.length > TOP_N
+    ? popular.slice(-Math.min(TOP_N, popular.length - TOP_N))
+    : [];
+  const hidden    = popular.length - popTop.length - popBottom.length;
+
+  const popNote = popular.length > TOP_N
+    ? ` (из ${popular.length}${hidden > 0 ? `, скрыто ${hidden}` : ''})`
+    : '';
+
+  content.push(pdfSubsection(`Топ ${popTop.length} — наиболее популярные услуги${popNote}`));
+  content.push(pdfHBar(popTop, { valueKey: 'count', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
+
+  if (popBottom.length) {
+    content.push(pdfSubsection(`Топ ${popBottom.length} — наименее популярные услуги`));
+    content.push(pdfHBar(popBottom, { valueKey: 'count', labelKey: 'name', defColor: '#94a3b8', formatter: fmtN }));
+  }
+
+  // ── Margin table: top N highest + top N lowest — landscape for column fit ─
   if (hasCost) {
-    // Wide table — render on a landscape page so all columns fit
+    const byHigh = [...services].sort((a, b) => b.margin - a.margin).slice(0, TOP_N);
+    const byLow  = [...services].sort((a, b) => a.margin - b.margin).slice(0, TOP_N);
+    const totalSvc = services.length;
+
+    const mHeaders = hasCode
+      ? ['Код', 'Услуга', 'Кол-во', 'Стоимость', 'Себест.', 'Маржа', 'Марж.%']
+      : ['Услуга', 'Кол-во', 'Стоимость', 'Себест.', 'Маржа', 'Марж.%'];
+    const mWidths = hasCode ? [45, '*', 48, 90, 90, 90, 48] : ['*', 48, 90, 90, 90, 48];
+    const mRow = s => hasCode
+      ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]
+      : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')];
+
+    // Landscape so all 7 columns fit; next pdfSection restores portrait automatically
     content.push({
-      text: 'Маржинальность услуг',
+      text: `Топ ${byHigh.length} — наибольшая маржа (из ${totalSvc})`,
       fontSize: 10, bold: true, color: '#374151', margin: [0, 10, 0, 3],
       pageBreak: 'before', pageOrientation: 'landscape',
     });
-    // Landscape usable width: 841 - 25 - 25 = 791pt
-    content.push(pdfTable(
-      hasCode
-        ? ['Код', 'Услуга', 'Кол-во', 'Стоимость', 'Себестоимость', 'Маржа', 'Марж.%']
-        : ['Услуга', 'Кол-во', 'Стоимость', 'Себестоимость', 'Маржа', 'Марж.%'],
-      services.map(s => hasCode
-        ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]
-        : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]),
-      hasCode ? [45, '*', 48, 95, 95, 95, 48] : ['*', 48, 95, 95, 95, 48],
-    ));
-    // Next section's pdfSection() has pageBreak:'before',pageOrientation:'portrait' — auto-restores portrait
+    content.push(pdfTable(mHeaders, byHigh.map(mRow), mWidths));
+
+    if (byLow.length) {
+      content.push(pdfSubsection(`Топ ${byLow.length} — наименьшая маржа`));
+      content.push(pdfTable(mHeaders, byLow.map(mRow), mWidths));
+    }
   } else {
+    const byPop = [...services].sort((a, b) => b.count - a.count).slice(0, TOP_N);
     content.push(pdfTable(
       hasCode ? ['Код', 'Услуга', 'Кол-во', 'Стоимость'] : ['Услуга', 'Кол-во', 'Стоимость'],
-      services.map(s => hasCode
+      byPop.map(s => hasCode
         ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price))]
         : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price))]),
       hasCode ? [55, '*', 65, 100] : ['*', 65, 100],
