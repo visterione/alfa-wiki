@@ -413,49 +413,29 @@ function buildGeneral(rows, content, pageBreak) {
     [220, '*'],
   ));
 
+  // Org groups — chart only (table would duplicate)
   const orgStats = ORG_GROUPS.map(g => ({
     name: g.label, color: g.color, ...rev_pat(rows.filter(r => getOrgGroup(r)?.key === g.key)),
   }));
   content.push(pdfSubsection('Выручка по организациям'));
   content.push(pdfHBar(orgStats, { valueKey: 'revenue', labelKey: 'name', colorKey: 'color', formatter: fmtRub, labelWidth: 140 }));
-  content.push(pdfTable(
-    ['Организация', 'Выручка', 'Пациентов', 'Средний чек'],
-    orgStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 90, 70, 100],
-  ));
 
+  // Clinics — pies stacked full-width so legend has enough room for long names
   const clinicStats = Object.entries(groupBy(rows, r => r.clinicRaw || '-'))
     .map(([name, rs]) => ({ name, color: clinicColor(rs), ...rev_pat(rs) }))
     .sort((a, b) => b.revenue - a.revenue);
-  content.push(pdfSubsection('По клиникам'));
-  content.push({
-    columns: [
-      { stack: [
-        { text: 'Выручка', fontSize: 8, bold: true, margin: [0,0,0,3] },
-        pdfPie(clinicStats.map(c => ({ label: c.name, value: c.revenue, color: c.color })), { size: 140, formatter: fmtRub }) || { text: '' },
-      ], width: '*' },
-      { stack: [
-        { text: 'Пациентов', fontSize: 8, bold: true, margin: [0,0,0,3] },
-        pdfPie(clinicStats.map(c => ({ label: c.name, value: c.patients, color: c.color })), { size: 140 }) || { text: '' },
-      ], width: '*' },
-    ],
-    columnGap: 16, margin: [0, 0, 0, 4],
-  });
-  content.push(pdfTable(
-    ['Клиника', 'Выручка', 'Пациентов', 'Средний чек'],
-    clinicStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 90, 70, 100],
-  ));
+  content.push(pdfSubsection('По клиникам — выручка'));
+  const revPie = pdfPie(clinicStats.map(c => ({ label: c.name, value: c.revenue, color: c.color })), { size: 190, formatter: fmtRub });
+  if (revPie) content.push(revPie);
+  content.push(pdfSubsection('По клиникам — пациентов'));
+  const patPie = pdfPie(clinicStats.map(c => ({ label: c.name, value: c.patients, color: c.color })), { size: 190 });
+  if (patPie) content.push(patPie);
 
+  // Specialties — chart only
   const specStats = Object.entries(groupByMulti(rows, r => splitComma(r.executorSpec)))
     .map(([name, rs]) => ({ name, ...rev_pat(rs) })).sort((a, b) => b.patients - a.patients);
   content.push(pdfSubsection('Пациентов по специальностям'));
   content.push(pdfHBar(specStats, { valueKey: 'patients', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
-  content.push(pdfTable(
-    ['Специальность', 'Пациентов', 'Выручка', 'Средний чек'],
-    specStats.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 70, 90, 100],
-  ));
 }
 
 function buildPatients(rows, content, pageBreak) {
@@ -510,31 +490,16 @@ function buildPatients(rows, content, pageBreak) {
     .filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по врачам'));
   content.push(pdfHBar(avgByDoc, { valueKey: 'avgCheck', labelKey: 'name', colorKey: 'color', formatter: fmtRub }));
-  content.push(pdfTable(
-    ['Врач', 'Пациентов', 'Выручка', 'Средний чек'],
-    avgByDoc.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 70, 90, 100],
-  ));
 
   const avgBySpec = Object.entries(groupByMulti(rows, r => splitComma(r.executorSpec)))
     .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по специальностям'));
   content.push(pdfHBar(avgBySpec, { valueKey: 'avgCheck', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtRub }));
-  content.push(pdfTable(
-    ['Специальность', 'Пациентов', 'Выручка', 'Средний чек'],
-    avgBySpec.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 70, 90, 100],
-  ));
 
   const avgBySrc = Object.entries(groupBy(rows, r => r.sourceEntry || 'Не указан'))
     .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по источнику записи'));
   content.push(pdfHBar(avgBySrc, { valueKey: 'avgCheck', labelKey: 'name', defColor: '#14b8a6', formatter: fmtRub }));
-  content.push(pdfTable(
-    ['Источник', 'Пациентов', 'Выручка', 'Средний чек'],
-    avgBySrc.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 70, 90, 100],
-  ));
 }
 
 function buildTop20(rows, content, pageBreak) {
@@ -575,18 +540,9 @@ function buildMargin(rows, content, pageBreak) {
   content.push(pdfSection('Маржинальность', pageBreak));
   content.push(pdfSubsection('Популярные услуги (по количеству)'));
   content.push(pdfHBar(popular, { valueKey: 'count', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
-  content.push(pdfTable(
-    hasCode ? ['Код', 'Услуга', 'Кол-во'] : ['Услуга', 'Кол-во'],
-    popular.map(s => hasCode
-      ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count))]
-      : [cell(s.name), rCell(fmtN(s.count))]),
-    hasCode ? [55, '*', 75] : ['*', 75],
-  ));
 
   if (hasCost) {
-    const byMargin = [...services].sort((a, b) => b.margin - a.margin);
     content.push(pdfSubsection('Маржинальность услуг'));
-    content.push(pdfHBar(byMargin, { valueKey: 'margin', labelKey: 'name', defColor: '#10b981', formatter: fmtRub }));
     content.push(pdfTable(
       hasCode
         ? ['Код', 'Услуга', 'Кол-во', 'Стоим.', 'Себест.', 'Маржа', 'Марж.%']
@@ -594,7 +550,7 @@ function buildMargin(rows, content, pageBreak) {
       services.map(s => hasCode
         ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]
         : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]),
-      hasCode ? [45, '*', 50, 80, 80, 80, 50] : ['*', 50, 80, 80, 80, 50],
+      hasCode ? [38, '*', 42, 68, 68, 68, 42] : ['*', 42, 68, 68, 68, 42],
     ));
   } else {
     content.push(pdfTable(
@@ -615,11 +571,6 @@ function buildEfficiency(rows, content, pageBreak) {
     .filter(d => d.patients > 0).sort((a, b) => b.patients - a.patients);
   content.push(pdfSubsection('Пациентов у врача'));
   content.push(pdfHBar(docData, { valueKey: 'patients', labelKey: 'name', colorKey: 'color', formatter: fmtN }));
-  content.push(pdfTable(
-    ['Врач', 'Пациентов', 'Выручка', 'Средний чек'],
-    docData.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 70, 90, 100],
-  ));
 
   const referrals = buildReferralPairs(rows);
   if (referrals.length) {
@@ -635,19 +586,9 @@ function buildEfficiency(rows, content, pageBreak) {
 
     content.push(pdfSubsection('Кто чаще направляет'));
     content.push(pdfHBar(topRefs, { valueKey: 'count', labelKey: 'name', defColor: '#f97316', formatter: fmtN }));
-    content.push(pdfTable(
-      ['Врач', 'Направлений', 'Сумма'],
-      topRefs.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
-      ['*', 80, 100],
-    ));
 
     content.push(pdfSubsection('Кто приносит больше через направления'));
     content.push(pdfHBar(topByRev, { valueKey: 'revenue', labelKey: 'name', defColor: '#10b981', formatter: fmtRub }));
-    content.push(pdfTable(
-      ['Врач', 'Направлений', 'Сумма'],
-      topByRev.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
-      ['*', 80, 100],
-    ));
 
     const lookup = {};
     for (const r of referrals) lookup[`${r.refKey} ${r.execKey}`] = r;
