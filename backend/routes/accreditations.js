@@ -232,7 +232,7 @@ router.post('/reindex', authenticate, async (req, res) => {
 
 // Создать аккредитацию
 router.post('/', authenticate, [
-  body('medCenter').isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К']),
+  body('medCenter').isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян']),
   body('fullName').trim().notEmpty(),
   body('specialty').trim().notEmpty(),
   body('expirationDate').isDate()
@@ -268,7 +268,7 @@ router.post('/', authenticate, [
 
 // Обновить аккредитацию
 router.put('/:id', authenticate, [
-  body('medCenter').optional().isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К']),
+  body('medCenter').optional().isIn(['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян']),
   body('fullName').optional().trim().notEmpty(),
   body('specialty').optional().trim().notEmpty(),
   body('expirationDate').optional().isDate()

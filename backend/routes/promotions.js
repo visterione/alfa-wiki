@@ -4,7 +4,7 @@ const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
 
-const MED_CENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'];
+const MED_CENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
 
 // GET /api/promotions — получить все акции (сгруппированные по медцентру)
 router.get('/', authenticate, async (_req, res) => {

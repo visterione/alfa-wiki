@@ -18,6 +18,18 @@ const ORG_GROUPS = [
 ];
 const CLINIC_COLOR_MAP = Object.fromEntries(DEFAULT_CLINICS.map(c => [String(c.id), c.color]));
 
+// ── Clinic schedules (mirrored from StepKpi) ───────────────────────────────────
+const CLINIC_SCHEDULES = {
+  '2':  { minPerDay: (24   - 8)   * 60, workDays: [0,1,2,3,4,5,6] },
+  '3':  { minPerDay: (23   - 7.5) * 60, workDays: [0,1,2,3,4,5,6] },
+  '6':  { minPerDay: (21   - 8)   * 60, workDays: [0,1,2,3,4,5,6] },
+  '1':  { minPerDay: (20   - 7.5) * 60, workDays: [0,1,2,3,4,5,6] },
+  '7':  { minPerDay: (21   - 8)   * 60, workDays: [0,1,2,3,4,5,6] },
+  '4':  { minPerDay: (20   - 8)   * 60, workDays: [0,1,2,3,4,5,6] },
+  '11': { minPerDay: (17   - 8)   * 60, workDays: [1,2,3,4,5]     },
+  '12': { minPerDay: (17   - 8)   * 60, workDays: [1,2,3,4,5]     },
+};
+
 // ── Data helpers ───────────────────────────────────────────────────────────────
 function nameToKey(name) {
   if (!name) return '';
@@ -38,6 +50,9 @@ function clinicColor(rs) {
   for (const r of rs) if (r.clinicId) counts[r.clinicId] = (counts[r.clinicId] || 0) + 1;
   const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0];
   return top ? (CLINIC_COLOR_MAP[top] || '#94a3b8') : '#94a3b8';
+}
+function getClinicColorById(clinicId) {
+  return CLINIC_COLOR_MAP[String(clinicId)] || '#94a3b8';
 }
 function groupBy(rows, fn) {
   const m = {};
@@ -81,7 +96,7 @@ function buildReferralPairs(rows) {
   }
   return Object.values(p).sort((a, b) => b.count - a.count);
 }
-function buildReturnVisits(rows) {
+function buildReturnVisits_data(rows) {
   const byPat = {};
   for (const r of rows) { const k = getPatientKey(r); if (k) { if (!byPat[k]) byPat[k] = []; byPat[k].push(r); } }
   const stats = {};
@@ -119,313 +134,424 @@ function buildChains(rows) {
       if (!from || !to || from === to) continue;
       if (!ch) { ch = [from, to]; }
       else if (ch[ch.length - 1] === from) { ch.push(to); }
-      else { if (ch.length >= 2) cc[ch.join(' → ')] = (cc[ch.join(' → ')] || 0) + 1; ch = [from, to]; }
+      else { if (ch.length >= 2) cc[ch.join(' -> ')] = (cc[ch.join(' -> ')] || 0) + 1; ch = [from, to]; }
     }
-    if (ch && ch.length >= 2) cc[ch.join(' → ')] = (cc[ch.join(' → ')] || 0) + 1;
+    if (ch && ch.length >= 2) cc[ch.join(' -> ')] = (cc[ch.join(' -> ')] || 0) + 1;
   }
-  return Object.entries(cc).map(([name, count]) => ({ name, count, steps: name.split(' → ').length - 1 })).sort((a, b) => b.count - a.count);
+  return Object.entries(cc).map(([name, count]) => ({ name, count, steps: name.split(' -> ').length - 1 })).sort((a, b) => b.count - a.count);
+}
+
+// ── Room stat helpers (mirrored from StepKpi) ──────────────────────────────────
+function parseApptTime(str) {
+  if (!str) return null;
+  const iso = Date.parse(str.replace(' ', 'T'));
+  if (!isNaN(iso)) return new Date(iso);
+  const m = str.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5]);
+  return null;
+}
+function clinicWorkMinutesInPeriod(clinicId, start, end) {
+  const sched = CLINIC_SCHEDULES[String(clinicId)];
+  const minPerDay = sched ? sched.minPerDay : 480;
+  const workDays  = sched ? sched.workDays  : [1,2,3,4,5,6];
+  let count = 0;
+  const cur = new Date(start); cur.setHours(0,0,0,0);
+  const fin = new Date(end);   fin.setHours(23,59,59,999);
+  while (cur <= fin) { if (workDays.includes(cur.getDay())) count++; cur.setDate(cur.getDate() + 1); }
+  return count * minPerDay;
+}
+function unionIntervalMinutes(ranges) {
+  if (!ranges.length) return 0;
+  const sorted = [...ranges].sort((a, b) => a.t0 - b.t0);
+  let total = 0, curStart = sorted[0].t0, curEnd = sorted[0].t1;
+  for (let i = 1; i < sorted.length; i++) {
+    const { t0, t1 } = sorted[i];
+    if (t0 <= curEnd) { if (t1 > curEnd) curEnd = t1; }
+    else { total += (curEnd - curStart) / 60000; curStart = t0; curEnd = t1; }
+  }
+  total += (curEnd - curStart) / 60000;
+  return total;
+}
+function buildRoomStats(appointments, start, end) {
+  const map = {};
+  for (const a of appointments) {
+    if (a.status_id === 5 || a.status === 'refused') continue;
+    const room = (a.room || '').trim(); if (!room) continue;
+    const t0 = parseApptTime(a.time_start), t1 = parseApptTime(a.time_end);
+    if (!t0 || !t1) continue;
+    const dur = (t1 - t0) / 60000; if (dur <= 0 || dur > 720) continue;
+    const clinicId = String(a.clinic_id || '');
+    const key = `${clinicId}|${room}`;
+    if (!map[key]) map[key] = { room, clinicId, ranges: [] };
+    map[key].ranges.push({ t0, t1 });
+  }
+  return Object.values(map).map(d => {
+    const clinic   = DEFAULT_CLINICS.find(c => String(c.id) === d.clinicId);
+    const capacity = clinicWorkMinutesInPeriod(d.clinicId, start, end);
+    const totalMin = unionIntervalMinutes(d.ranges);
+    return {
+      name:        d.room,
+      clinicId:    d.clinicId,
+      clinicName:  clinic?.name || (d.clinicId ? `Клиника ${d.clinicId}` : ''),
+      totalHours:  totalMin / 60,
+      capacity,
+      utilPct:     capacity > 0 ? (totalMin / capacity * 100) : 0,
+      color:       getClinicColorById(d.clinicId),
+    };
+  }).sort((a, b) => b.utilPct - a.utilPct);
+}
+function buildRoomGapStats(appointments) {
+  const byRoom = {};
+  for (const a of appointments) {
+    if (a.status_id === 5 || a.status === 'refused') continue;
+    const room = (a.room || '').trim(); if (!room) continue;
+    const t0 = parseApptTime(a.time_start), t1 = parseApptTime(a.time_end);
+    if (!t0 || !t1) continue;
+    const clinicId = String(a.clinic_id || '');
+    const key = `${clinicId}|${room}`;
+    if (!byRoom[key]) byRoom[key] = { room, clinicId, appts: [] };
+    byRoom[key].appts.push({ start: t0, end: t1 });
+  }
+  const results = [];
+  for (const d of Object.values(byRoom)) {
+    d.appts.sort((a, b) => a.start - b.start);
+    const gaps = [];
+    for (let i = 1; i < d.appts.length; i++) {
+      const prev = d.appts[i - 1], cur = d.appts[i];
+      if (prev.end.toDateString() !== cur.start.toDateString()) continue;
+      const gapMin = (cur.start - prev.end) / 60000;
+      if (gapMin >= 0) gaps.push(gapMin);
+    }
+    if (!gaps.length) continue;
+    const avg    = gaps.reduce((s, v) => s + v, 0) / gaps.length;
+    const sorted = [...gaps].sort((a, b) => a - b);
+    const mid    = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    const clinic = DEFAULT_CLINICS.find(c => String(c.id) === d.clinicId);
+    results.push({
+      name: d.room, clinicId: d.clinicId,
+      clinicName: clinic?.name || (d.clinicId ? `Клиника ${d.clinicId}` : ''),
+      color:      getClinicColorById(d.clinicId),
+      avgGap: avg, median, gapCount: gaps.length,
+    });
+  }
+  results.sort((a, b) => a.avgGap - b.avgGap);
+  const overallAvg = results.length ? results.reduce((s, r) => s + r.avgGap, 0) / results.length : 0;
+  return { rooms: results, overallAvg };
 }
 
 const fmtN   = n => Math.round(n || 0).toLocaleString('ru-RU');
-const fmtRub = n => fmtN(n) + ' ₽';
+const fmtRub = n => fmtN(n) + ' ₽';  // ₽ via code point — always safe
+const fmtMin = v => {
+  if (v < 1) return '< 1 мин';
+  const h = Math.floor(v / 60), m = Math.round(v % 60);
+  return h > 0 ? `${h} ч ${m} мин` : `${m} мин`;
+};
 
-// ── Canvas chart rendering (offscreen — показывает все данные) ─────────────────
-function mkCanvas(w, h) {
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const ctx = c.getContext('2d');
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, w, h);
-  return { c, ctx };
-}
-function toPng(canvas) { return canvas.toDataURL('image/png').split(',')[1]; }
-
-function renderDonutAt(ctx, cx, cy, R, segments) {
-  const r = R * 0.52;
-  const total = segments.reduce((s, d) => s + d.value, 0);
-  if (!total) return;
-  let angle = -Math.PI / 2;
-  for (const seg of segments) {
-    const sweep = (seg.value / total) * 2 * Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(cx + r * Math.cos(angle), cy + r * Math.sin(angle));
-    ctx.arc(cx, cy, R, angle, angle + sweep);
-    ctx.arc(cx, cy, r, angle + sweep, angle, true);
-    ctx.closePath();
-    ctx.fillStyle = seg.color || '#94a3b8';
-    ctx.fill();
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
-    if (sweep > 0.2) {
-      const mid = angle + sweep / 2;
-      ctx.font = 'bold 10px Arial';
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText((seg.value / total * 100).toFixed(0) + '%',
-        cx + (R + r) / 2 * Math.cos(mid), cy + (R + r) / 2 * Math.sin(mid));
-    }
-    angle += sweep;
-  }
+// Strips chars outside the Roboto subset bundled with pdfmake.
+// Safe: ASCII, Cyrillic (U+0400–U+04FF), common Latin Extended,
+//   spaces, digits, punctuation.
+// Replaced: arrows (→ ← ↑ ↓), checkmarks (✓ ✗), fancy quotes, etc.
+function safeStr(s) {
+  return String(s || '')
+    .replace(/→/g, '->')   // → rightwards arrow
+    .replace(/←/g, '<-')   // ← leftwards arrow
+    .replace(/↑/g, '^')    // ↑
+    .replace(/↓/g, 'v')    // ↓
+    .replace(/✓/g, '+')    // ✓ check mark
+    .replace(/✗/g, 'x')    // ✗ ballot x
+    .replace(/—/g, '-')    // — em dash (usually ok, but safe fallback)
+    .replace(/…/g, '...')  // …
+    .replace(/[‘’]/g, "'")  // curly single quotes
+    .replace(/[“”]/g, '"'); // curly double quotes
 }
 
-function renderLegendAt(ctx, lx, startY, segments, maxW, formatter) {
-  let y = startY;
-  for (const seg of segments) {
-    if (y > 1400) break;
-    ctx.fillStyle = seg.color || '#94a3b8';
-    ctx.fillRect(lx, y, 10, 10);
-    ctx.fillStyle = '#374151';
-    ctx.font = '11px Arial';
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    const raw = String(seg.label || ''), mc = Math.floor(maxW / 6.5);
-    ctx.fillText(raw.length > mc ? raw.slice(0, mc - 1) + '…' : raw, lx + 14, y + 1);
-    ctx.fillStyle = '#64748b'; ctx.font = '10px Arial';
-    ctx.fillText(formatter ? formatter(seg.value) : fmtN(seg.value), lx + 14, y + 15);
-    y += 30;
-  }
-}
+// ── Layout (A4 portrait, margins 25 each side → usable ~545pt) ────────────────
+const PW          = 545;
+const BAR_LABEL_W = 185;
+const BAR_MAX_W   = PW - BAR_LABEL_W - 90; // 270
 
-// Donut chart — показывает все сегменты
-function chartDonut(title, segments, formatter, W = 600, H = 320) {
-  if (!segments?.length) return null;
-  const { c, ctx } = mkCanvas(W, H);
-  ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#1e293b';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText(title, 12, 10);
-  const top = 36, avH = H - top - 12;
-  const cx = 130, cy = top + avH / 2, R = Math.min(avH / 2 - 6, 100);
-  renderDonutAt(ctx, cx, cy, R, segments);
-  renderLegendAt(ctx, cx + R + 20, top + 4, segments, W - cx - R - 30, formatter);
-  return toPng(c);
-}
-
-// Horizontal bar chart — показывает все данные (без ограничения viewport)
-function chartHBar(title, data, valueKey, labelKey, colorKey, defColor, formatter, maxItems = 60) {
-  const items = [...data].sort((a, b) => (b[valueKey] || 0) - (a[valueKey] || 0)).slice(0, maxItems);
-  if (!items.length) return null;
-
-  const ROW_H = 22, TOP = 44, LABEL_W = 240, W = 900;
-  const BAR_X = LABEL_W + 10, BAR_W = W - BAR_X - 130;
-  const H = TOP + items.length * ROW_H + 16;
-  const maxVal = Math.max(...items.map(d => d[valueKey] || 0), 1);
-
-  const { c, ctx } = mkCanvas(W, H);
-  ctx.font = 'bold 13px Arial'; ctx.fillStyle = '#1e293b';
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  ctx.fillText(title, 12, 12);
-
-  ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(LABEL_W, TOP - 2); ctx.lineTo(LABEL_W, H - 14); ctx.stroke();
-
-  for (let i = 0; i < items.length; i++) {
-    const d = items[i];
-    const y = TOP + i * ROW_H;
-    const barH = ROW_H - 5;
-    const val = d[valueKey] || 0;
-    const fw = Math.max((val / maxVal) * BAR_W, val > 0 ? 2 : 0);
-    const color = (colorKey && d[colorKey]) ? d[colorKey] : (defColor || '#4f8ef7');
-
-    if (i % 2 === 1) { ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, y - 1, W, ROW_H); }
-
-    const raw = String(d[labelKey] || ''), mc = Math.floor((LABEL_W - 10) / 6.5);
-    ctx.font = '10px Arial'; ctx.fillStyle = '#374151';
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillText(raw.length > mc ? raw.slice(0, mc - 1) + '…' : raw, LABEL_W - 7, y + barH / 2 + 1);
-
-    ctx.fillStyle = '#f1f5f9'; ctx.fillRect(BAR_X, y + 1, BAR_W, barH);
-    if (fw > 0) { ctx.globalAlpha = 0.85; ctx.fillStyle = color; ctx.fillRect(BAR_X, y + 1, fw, barH); ctx.globalAlpha = 1; }
-
-    ctx.fillStyle = '#1e293b'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(formatter ? formatter(val) : fmtN(val), BAR_X + fw + 6, y + barH / 2 + 1);
-  }
-  return toPng(c);
-}
-
-// ── PDF helpers ────────────────────────────────────────────────────────────────
-// A4 landscape 841pt, margins 30pt each side → usable ≈ 781pt
-const PW = 751;
-
-function pdfSection(text) {
-  return { text, fontSize: 12, bold: true, color: '#1e3a8a', margin: [0, 14, 0, 4] };
+// ── PDF element helpers ────────────────────────────────────────────────────────
+// pageBreak: 'before' starts each section on a new page (pass false for first).
+function pdfSection(text, pageBreak = true) {
+  return {
+    text, fontSize: 12, bold: true, color: '#1e3a8a', margin: [0, 16, 0, 5],
+    ...(pageBreak ? { pageBreak: 'before' } : {}),
+  };
 }
 function pdfSubsection(text) {
-  return { text, fontSize: 10, bold: true, color: '#374151', margin: [0, 8, 0, 3] };
+  return { text, fontSize: 10, bold: true, color: '#374151', margin: [0, 10, 0, 3] };
 }
-
-function pdfImg(base64, w = PW) {
-  if (!base64) return null;
-  return { image: 'data:image/png;base64,' + base64, width: w, margin: [0, 4, 0, 8] };
-}
-
-const H_FILL = '#d1d5db';
-const H_STYLE = { fontSize: 8, bold: true, fillColor: H_FILL, alignment: 'center' };
-const D_STYLE = { fontSize: 8 };
 
 function pdfTable(headers, rows, widths) {
+  if (!rows.length) return null;
   return {
     table: {
       headerRows: 1,
       widths: widths || headers.map(() => '*'),
       body: [
-        headers.map(h => ({ text: h, ...H_STYLE })),
+        headers.map(h => ({ text: h, fontSize: 8, bold: true, fillColor: '#e2e8f0', color: '#374151' })),
         ...rows,
       ],
     },
-    layout: 'lightHorizontalLines',
+    layout: {
+      hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length) ? 1 : 0.3,
+      vLineWidth: () => 0,
+      hLineColor: (i) => (i === 0 || i === 1) ? '#94a3b8' : '#e2e8f0',
+      fillColor:  (i) => i % 2 === 0 && i > 0 ? '#f8fafc' : null,
+      paddingLeft: () => 4, paddingRight: () => 4,
+      paddingTop:  () => 3, paddingBottom: () => 3,
+    },
     margin: [0, 0, 0, 10],
   };
 }
 
 function cell(text, align = 'left') {
-  return { text: String(text ?? ''), ...D_STYLE, alignment: align };
+  return { text: safeStr(text), fontSize: 8, color: '#374151', alignment: align };
 }
 function rCell(text) { return cell(text, 'right'); }
+function cCell(text) { return cell(text, 'center'); }
+
+// ── Horizontal bar chart (native pdfMake — unlimited rows, auto-paginates) ─────
+function pdfHBar(data, {
+  valueKey   = 'value',
+  labelKey   = 'name',
+  colorKey,
+  defColor   = '#4f8ef7',
+  formatter,
+  labelWidth = BAR_LABEL_W,
+  barMaxW    = BAR_MAX_W,
+} = {}) {
+  if (!data.length) return null;
+  const max = Math.max(...data.map(d => d[valueKey] || 0), 1);
+  return {
+    table: {
+      widths: [labelWidth, barMaxW, 88],
+      body: data.map(d => {
+        const val   = d[valueKey] || 0;
+        const barW  = Math.max((val / max) * barMaxW, val > 0 ? 1.5 : 0);
+        const color = colorKey ? (d[colorKey] || defColor) : defColor;
+        return [
+          { text: safeStr(d[labelKey]), fontSize: 8, color: '#374151', margin: [0, 2, 4, 2] },
+          { canvas: barW > 0 ? [{ type: 'rect', x: 0, y: 4, w: barW, h: 9, r: 2, color }] : [], margin: [0,0,0,0] },
+          { text: formatter ? formatter(val) : val.toLocaleString('ru-RU'), fontSize: 8, color: '#374151', alignment: 'right', margin: [4, 2, 0, 2] },
+        ];
+      }),
+    },
+    layout: {
+      hLineWidth: (i, node) => (i === 0 || i === node.table.body.length) ? 0 : 0.3,
+      vLineWidth: () => 0,
+      hLineColor: () => '#e2e8f0',
+      fillColor:  (i) => i % 2 === 1 ? '#f8fafc' : null,
+      paddingTop: () => 0, paddingBottom: () => 0,
+      paddingLeft: () => 2, paddingRight: () => 2,
+    },
+    margin: [0, 0, 0, 12],
+  };
+}
+
+// ── Donut chart (SVG arcs + pdfMake legend — no Cyrillic in SVG paths) ─────────
+function pdfPie(segments, { size = 140, formatter } = {}) {
+  const segs = segments.filter(s => s.value > 0);
+  if (!segs.length) return null;
+  const total = segs.reduce((s, d) => s + d.value, 0);
+  const cx = size / 2, cy = size / 2, R = size * 0.44, r = size * 0.24;
+  let angle = -Math.PI / 2, svgPaths = '';
+  for (const seg of segs) {
+    const sweep = (seg.value / total) * 2 * Math.PI;
+    const end = angle + sweep, large = sweep > Math.PI ? 1 : 0;
+    const [c0, s0] = [Math.cos(angle), Math.sin(angle)];
+    const [c1, s1] = [Math.cos(end),   Math.sin(end)];
+    const d = [
+      `M ${(cx + r * c0).toFixed(2)} ${(cy + r * s0).toFixed(2)}`,
+      `L ${(cx + R * c0).toFixed(2)} ${(cy + R * s0).toFixed(2)}`,
+      `A ${R} ${R} 0 ${large} 1 ${(cx + R * c1).toFixed(2)} ${(cy + R * s1).toFixed(2)}`,
+      `L ${(cx + r * c1).toFixed(2)} ${(cy + r * s1).toFixed(2)}`,
+      `A ${r} ${r} 0 ${large} 0 ${(cx + r * c0).toFixed(2)} ${(cy + r * s0).toFixed(2)} Z`,
+    ].join(' ');
+    svgPaths += `<path d="${d}" fill="${seg.color||'#94a3b8'}" stroke="white" stroke-width="1.5"/>`;
+    // Only ASCII numbers in SVG — no Cyrillic risk
+    if (sweep > 0.25) {
+      const mid = angle + sweep / 2;
+      svgPaths += `<text x="${(cx+(R+r)/2*Math.cos(mid)).toFixed(1)}" y="${(cy+(R+r)/2*Math.sin(mid)).toFixed(1)}" text-anchor="middle" dominant-baseline="middle" font-size="9" font-weight="bold" fill="white">${(seg.value/total*100).toFixed(0)}%</text>`;
+    }
+    angle = end;
+  }
+  const legendBody = segs.map(seg => [
+    { canvas: [{ type: 'rect', x: 0, y: 2, w: 8, h: 8, r: 1, color: seg.color||'#94a3b8' }], width: 14, margin: [0,0,0,0] },
+    { text: safeStr(seg.label), fontSize: 8, color: '#374151', margin: [0, 1, 0, 1] },
+    { text: formatter ? formatter(seg.value) : seg.value.toLocaleString('ru-RU'), fontSize: 8, bold: true, color: '#374151', alignment: 'right', margin: [0,1,0,1] },
+  ]);
+  return {
+    columns: [
+      { svg: `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">${svgPaths}</svg>`, width: size, height: size },
+      {
+        stack: [{ table: { widths: [12,'*',80], body: legendBody }, layout: { hLineWidth: ()=>0, vLineWidth: ()=>0, paddingTop:()=>2, paddingBottom:()=>2 } }],
+        margin: [12, Math.max(0, (size - segs.length * 20) / 2), 0, 0],
+        width: '*',
+      },
+    ],
+    margin: [0, 4, 0, 10],
+  };
+}
 
 // ── Section builders ───────────────────────────────────────────────────────────
 
-function buildGeneral(rows, content) {
+function buildGeneral(rows, content, pageBreak) {
   const totalRev = rows.reduce((s, r) => s + r.totalCost, 0);
   const totalPat = new Set(rows.map(getPatientKey).filter(Boolean)).size;
 
-  content.push(pdfSection('Общая статистика'));
+  content.push(pdfSection('Общая статистика', pageBreak));
   content.push(pdfTable(
     ['Показатель', 'Значение'],
     [
-      [cell('Всего строк'),     rCell(rows.length.toLocaleString('ru-RU'))],
+      [cell('Всего строк'),          rCell(rows.length.toLocaleString('ru-RU'))],
       [cell('Уникальных пациентов'), rCell(fmtN(totalPat))],
-      [cell('Общая выручка, ₽'),    rCell(fmtRub(totalRev))],
-      [cell('Средний чек, ₽'),      rCell(fmtRub(totalPat ? totalRev / totalPat : 0))],
-    ],
-    [200, '*'],
-  ));
-
-  // Org groups
-  const orgStats = ORG_GROUPS.map(g => ({
-    name: g.label, color: g.color, ...rev_pat(rows.filter(r => getOrgGroup(r)?.key === g.key)),
-  }));
-  content.push(pdfSubsection('Выручка по организациям'));
-  const orgPng = chartHBar('Выручка по организациям', orgStats, 'revenue', 'name', 'color', '#4f8ef7', fmtRub, 10);
-  if (orgPng) content.push(pdfImg(orgPng, PW));
-  content.push(pdfTable(
-    ['Организация', 'Выручка, ₽', 'Пациентов', 'Средний чек, ₽'],
-    orgStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 100, 80, 110],
-  ));
-
-  // Clinics
-  const clinicStats = Object.entries(groupBy(rows, r => r.clinicRaw || '—'))
-    .map(([name, rs]) => ({ name, color: clinicColor(rs), ...rev_pat(rs) }))
-    .sort((a, b) => b.revenue - a.revenue);
-  content.push(pdfSubsection('По клиникам'));
-  const donutPng = chartDonut(
-    `Выручка по клиникам · ${fmtRub(totalRev)}`,
-    clinicStats.map(c => ({ label: c.name, value: c.revenue, color: c.color })),
-    fmtRub, 700, Math.max(280, clinicStats.length * 32 + 50),
-  );
-  if (donutPng) content.push(pdfImg(donutPng, 600));
-  content.push(pdfTable(
-    ['Клиника', 'Выручка, ₽', 'Пациентов', 'Средний чек, ₽'],
-    clinicStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 100, 80, 110],
-  ));
-
-  // Specialty
-  const specStats = Object.entries(groupByMulti(rows, r => splitComma(r.executorSpec)))
-    .map(([name, rs]) => ({ name, ...rev_pat(rs) })).sort((a, b) => b.patients - a.patients);
-  content.push(pdfSubsection('Пациентов по специальностям'));
-  const specPng = chartHBar('Пациентов по специальностям', specStats, 'patients', 'name', null, '#8b5cf6', fmtN);
-  if (specPng) content.push(pdfImg(specPng));
-  content.push(pdfTable(
-    ['Специальность', 'Пациентов', 'Выручка, ₽', 'Средний чек, ₽'],
-    specStats.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 80, 100, 110],
-  ));
-}
-
-function buildPatients(rows, content) {
-  const patMap   = buildPatientMap(rows);
-  const patients = Array.from(patMap.values());
-  const lkCount  = patients.filter(p => p.hasLK).length;
-  const discRows = rows.filter(r => r.discount > 0);
-  const discPat  = new Set(discRows.map(getPatientKey).filter(Boolean)).size;
-  const totalDisc  = discRows.reduce((s, r) => s + r.discount, 0);
-  const vipDisc    = rows.filter(r => r.isVip && r.discount > 0).reduce((s, r) => s + r.discount, 0);
-  const vipDiscPat = new Set(discRows.filter(r => r.isVip).map(getPatientKey).filter(Boolean)).size;
-
-  content.push(pdfSection('Пациенты'));
-  content.push(pdfTable(
-    ['Показатель', 'Значение'],
-    [
-      [cell('Всего пациентов'),           rCell(fmtN(patients.length))],
-      [cell('С Личным кабинетом'),        rCell(fmtN(lkCount))],
-      [cell('Без Личного кабинета'),      rCell(fmtN(patients.length - lkCount))],
-      [cell('% пациентов с ЛК'),          rCell((patients.length ? lkCount / patients.length * 100 : 0).toFixed(1) + '%')],
-      [cell('Пациентов со скидками'),     rCell(fmtN(discPat))],
-      [cell('Из них VIP'),                rCell(fmtN(vipDiscPat))],
-      [cell('Скидки VIP, ₽'),             rCell(fmtRub(vipDisc))],
-      [cell('Скидки прочих, ₽'),          rCell(fmtRub(totalDisc - vipDisc))],
-      [cell('Итого скидок, ₽'),           rCell(fmtRub(totalDisc))],
+      [cell('Общая выручка'),        rCell(fmtRub(totalRev))],
+      [cell('Средний чек'),          rCell(fmtRub(totalPat ? totalRev / totalPat : 0))],
     ],
     [220, '*'],
   ));
 
-  // LK pie
-  const lkSeg = [
-    { label: 'С ЛК', value: lkCount, color: '#10b981' },
-    { label: 'Без ЛК', value: patients.length - lkCount, color: '#ef4444' },
-  ].filter(s => s.value > 0);
-  const lkPng = chartDonut(`Личный кабинет (${fmtN(patients.length)} пац.)`, lkSeg, fmtN, 480, 260);
-  if (lkPng) content.push(pdfImg(lkPng, 400));
+  const orgStats = ORG_GROUPS.map(g => ({
+    name: g.label, color: g.color, ...rev_pat(rows.filter(r => getOrgGroup(r)?.key === g.key)),
+  }));
+  content.push(pdfSubsection('Выручка по организациям'));
+  content.push(pdfHBar(orgStats, { valueKey: 'revenue', labelKey: 'name', colorKey: 'color', formatter: fmtRub, labelWidth: 140 }));
+  content.push(pdfTable(
+    ['Организация', 'Выручка', 'Пациентов', 'Средний чек'],
+    orgStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
+    ['*', 90, 70, 100],
+  ));
+
+  const clinicStats = Object.entries(groupBy(rows, r => r.clinicRaw || '-'))
+    .map(([name, rs]) => ({ name, color: clinicColor(rs), ...rev_pat(rs) }))
+    .sort((a, b) => b.revenue - a.revenue);
+  content.push(pdfSubsection('По клиникам'));
+  content.push({
+    columns: [
+      { stack: [
+        { text: 'Выручка', fontSize: 8, bold: true, margin: [0,0,0,3] },
+        pdfPie(clinicStats.map(c => ({ label: c.name, value: c.revenue, color: c.color })), { size: 140, formatter: fmtRub }) || { text: '' },
+      ], width: '*' },
+      { stack: [
+        { text: 'Пациентов', fontSize: 8, bold: true, margin: [0,0,0,3] },
+        pdfPie(clinicStats.map(c => ({ label: c.name, value: c.patients, color: c.color })), { size: 140 }) || { text: '' },
+      ], width: '*' },
+    ],
+    columnGap: 16, margin: [0, 0, 0, 4],
+  });
+  content.push(pdfTable(
+    ['Клиника', 'Выручка', 'Пациентов', 'Средний чек'],
+    clinicStats.map(d => [cell(d.name), rCell(fmtRub(d.revenue)), rCell(fmtN(d.patients)), rCell(fmtRub(d.avgCheck))]),
+    ['*', 90, 70, 100],
+  ));
+
+  const specStats = Object.entries(groupByMulti(rows, r => splitComma(r.executorSpec)))
+    .map(([name, rs]) => ({ name, ...rev_pat(rs) })).sort((a, b) => b.patients - a.patients);
+  content.push(pdfSubsection('Пациентов по специальностям'));
+  content.push(pdfHBar(specStats, { valueKey: 'patients', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
+  content.push(pdfTable(
+    ['Специальность', 'Пациентов', 'Выручка', 'Средний чек'],
+    specStats.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
+    ['*', 70, 90, 100],
+  ));
+}
+
+function buildPatients(rows, content, pageBreak) {
+  const patMap   = buildPatientMap(rows);
+  const patients = Array.from(patMap.values());
+  const lkCount  = patients.filter(p => p.hasLK).length;
+  const discRows  = rows.filter(r => r.discount > 0);
+  const discPat   = new Set(discRows.map(getPatientKey).filter(Boolean)).size;
+  const totalDisc = discRows.reduce((s, r) => s + r.discount, 0);
+  const vipDisc   = rows.filter(r => r.isVip && r.discount > 0).reduce((s, r) => s + r.discount, 0);
+  const vipDiscPat = new Set(discRows.filter(r => r.isVip).map(getPatientKey).filter(Boolean)).size;
+
+  content.push(pdfSection('Пациенты', pageBreak));
+  content.push(pdfTable(
+    ['Показатель', 'Значение'],
+    [
+      [cell('Всего пациентов'),      rCell(fmtN(patients.length))],
+      [cell('С Личным кабинетом'),   rCell(fmtN(lkCount))],
+      [cell('Без Личного кабинета'), rCell(fmtN(patients.length - lkCount))],
+      [cell('% с ЛК'),              rCell((patients.length ? lkCount / patients.length * 100 : 0).toFixed(1) + '%')],
+      [cell('Пациентов со скидками'),rCell(fmtN(discPat))],
+      [cell('Из них VIP'),          rCell(fmtN(vipDiscPat))],
+      [cell('Скидки VIP'),          rCell(fmtRub(vipDisc))],
+      [cell('Скидки прочих'),       rCell(fmtRub(totalDisc - vipDisc))],
+      [cell('Итого скидок'),        rCell(fmtRub(totalDisc))],
+    ],
+    [210, '*'],
+  ));
+
+  content.push({
+    columns: [
+      { stack: [
+        { text: 'Личный кабинет', fontSize: 8, bold: true, margin: [0,0,0,3] },
+        pdfPie([
+          { label: 'С ЛК',   value: lkCount,                   color: '#10b981' },
+          { label: 'Без ЛК', value: patients.length - lkCount, color: '#ef4444' },
+        ].filter(s => s.value > 0), { size: 130 }) || { text: '' },
+      ], width: '*' },
+      discPat > 0 ? { stack: [
+        { text: 'Пациенты со скидками', fontSize: 8, bold: true, margin: [0,0,0,3] },
+        pdfPie([
+          { label: 'VIP',    value: vipDiscPat,           color: '#f59e0b' },
+          { label: 'Прочие', value: discPat - vipDiscPat, color: '#f97316' },
+        ].filter(s => s.value > 0), { size: 130 }) || { text: '' },
+      ], width: '*' } : { text: '', width: '*' },
+    ],
+    columnGap: 16, margin: [0, 0, 0, 4],
+  });
 
   const avgByDoc = Object.entries(groupBy(rows, r => r.executor || null))
-    .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
+    .map(([name, rs]) => ({ name, color: clinicColor(rs), ...rev_pat(rs) }))
+    .filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по врачам'));
-  const docPng = chartHBar('Средний чек по врачам', avgByDoc, 'avgCheck', 'name', null, '#4f8ef7', fmtRub);
-  if (docPng) content.push(pdfImg(docPng));
+  content.push(pdfHBar(avgByDoc, { valueKey: 'avgCheck', labelKey: 'name', colorKey: 'color', formatter: fmtRub }));
   content.push(pdfTable(
-    ['Врач', 'Пациентов', 'Выручка, ₽', 'Средний чек, ₽'],
+    ['Врач', 'Пациентов', 'Выручка', 'Средний чек'],
     avgByDoc.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 80, 100, 110],
+    ['*', 70, 90, 100],
   ));
 
   const avgBySpec = Object.entries(groupByMulti(rows, r => splitComma(r.executorSpec)))
     .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по специальностям'));
-  const specPng = chartHBar('Средний чек по специальностям', avgBySpec, 'avgCheck', 'name', null, '#8b5cf6', fmtRub);
-  if (specPng) content.push(pdfImg(specPng));
+  content.push(pdfHBar(avgBySpec, { valueKey: 'avgCheck', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtRub }));
   content.push(pdfTable(
-    ['Специальность', 'Пациентов', 'Выручка, ₽', 'Средний чек, ₽'],
+    ['Специальность', 'Пациентов', 'Выручка', 'Средний чек'],
     avgBySpec.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 80, 100, 110],
+    ['*', 70, 90, 100],
   ));
 
   const avgBySrc = Object.entries(groupBy(rows, r => r.sourceEntry || 'Не указан'))
     .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.avgCheck - a.avgCheck);
   content.push(pdfSubsection('Средний чек по источнику записи'));
-  const srcPng = chartHBar('Средний чек по источнику записи', avgBySrc, 'avgCheck', 'name', null, '#14b8a6', fmtRub);
-  if (srcPng) content.push(pdfImg(srcPng));
+  content.push(pdfHBar(avgBySrc, { valueKey: 'avgCheck', labelKey: 'name', defColor: '#14b8a6', formatter: fmtRub }));
   content.push(pdfTable(
-    ['Источник', 'Пациентов', 'Выручка, ₽', 'Средний чек, ₽'],
+    ['Источник', 'Пациентов', 'Выручка', 'Средний чек'],
     avgBySrc.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 80, 100, 110],
+    ['*', 70, 90, 100],
   ));
 }
 
-function buildTop20(rows, content) {
+function buildTop20(rows, content, pageBreak) {
   const all   = Array.from(buildPatientMap(rows).values());
   const top20 = top20pct(all);
-  content.push(pdfSection(`Топ 20% пациентов (${top20.length} из ${all.length})`));
+  content.push(pdfSection(`Топ 20% пациентов (${top20.length} из ${all.length})`, pageBreak));
   content.push(pdfTable(
-    ['#', '№ карты', 'ФИО', 'Выручка, ₽', 'VIP', 'ЛК'],
+    ['#', 'N карты', 'ФИО', 'Выручка', 'VIP', 'ЛК'],
     top20.map((p, i) => [
       rCell(i + 1), cell(p.card || ''), cell(p.name || ''),
-      rCell(fmtRub(p.revenue)),
-      cell(p.isVip ? 'Да' : '', 'center'), cell(p.hasLK ? 'Да' : '', 'center'),
+      rCell(fmtRub(p.revenue)), cCell(p.isVip ? 'да' : ''), cCell(p.hasLK ? 'да' : ''),
     ]),
-    [24, 70, '*', 100, 30, 30],
+    [24, 65, '*', 95, 28, 28],
   ));
 }
 
-function buildMargin(rows, content) {
+function buildMargin(rows, content, pageBreak) {
   const popMap = {}, svcMap = {};
   for (const r of rows) {
     const name = r.serviceName; if (!name) continue;
@@ -437,180 +563,267 @@ function buildMargin(rows, content) {
   }
   const popular  = Object.values(popMap).sort((a, b) => b.count - a.count);
   const services = Object.values(svcMap).map(s => ({
-    ...s, price: s.count ? s.sumPrice / s.count : 0, cost: s.count ? s.sumCost / s.count : 0,
-    margin: s.sumPrice - s.sumCost,
+    ...s,
+    price:     s.count ? s.sumPrice / s.count : 0,
+    cost:      s.count ? s.sumCost  / s.count : 0,
+    margin:    s.sumPrice - s.sumCost,
+    marginPct: s.sumPrice ? ((s.sumPrice - s.sumCost) / s.sumPrice * 100) : 0,
   })).sort((a, b) => b.sumPrice - a.sumPrice);
   const hasCost = services.some(s => s.sumCost > 0);
   const hasCode = services.some(s => s.code);
 
-  content.push(pdfSection('Маржинальность'));
-
+  content.push(pdfSection('Маржинальность', pageBreak));
   content.push(pdfSubsection('Популярные услуги (по количеству)'));
-  const popPng = chartHBar('Популярные услуги', popular, 'count', 'name', null, '#8b5cf6', fmtN);
-  if (popPng) content.push(pdfImg(popPng));
+  content.push(pdfHBar(popular, { valueKey: 'count', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
   content.push(pdfTable(
-    hasCode ? ['Код', 'Услуга', 'Количество'] : ['Услуга', 'Количество'],
+    hasCode ? ['Код', 'Услуга', 'Кол-во'] : ['Услуга', 'Кол-во'],
     popular.map(s => hasCode
-      ? [cell(s.code || ''), cell(s.name), rCell(fmtN(s.count))]
+      ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count))]
       : [cell(s.name), rCell(fmtN(s.count))]),
-    hasCode ? [60, '*', 80] : ['*', 80],
+    hasCode ? [55, '*', 75] : ['*', 75],
   ));
 
   if (hasCost) {
     const byMargin = [...services].sort((a, b) => b.margin - a.margin);
     content.push(pdfSubsection('Маржинальность услуг'));
-    const mrgPng = chartHBar('Маржа по услугам', byMargin, 'margin', 'name', null, '#10b981', fmtRub);
-    if (mrgPng) content.push(pdfImg(mrgPng));
+    content.push(pdfHBar(byMargin, { valueKey: 'margin', labelKey: 'name', defColor: '#10b981', formatter: fmtRub }));
     content.push(pdfTable(
-      hasCode ? ['Код', 'Услуга', 'Кол-во', 'Стоимость, ₽', 'Себест., ₽', 'Маржа, ₽'] : ['Услуга', 'Кол-во', 'Стоимость, ₽', 'Себест., ₽', 'Маржа, ₽'],
-      services.map(s => (hasCode
-        ? [cell(s.code || ''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost > 0 ? fmtRub(s.cost) : '—'), rCell(fmtRub(s.margin))]
-        : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost > 0 ? fmtRub(s.cost) : '—'), rCell(fmtRub(s.margin))])),
-      hasCode ? [50, '*', 60, 90, 90, 90] : ['*', 60, 90, 90, 90],
+      hasCode
+        ? ['Код', 'Услуга', 'Кол-во', 'Стоим.', 'Себест.', 'Маржа', 'Марж.%']
+        : ['Услуга', 'Кол-во', 'Стоим.', 'Себест.', 'Маржа', 'Марж.%'],
+      services.map(s => hasCode
+        ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]
+        : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]),
+      hasCode ? [45, '*', 50, 80, 80, 80, 50] : ['*', 50, 80, 80, 80, 50],
     ));
   } else {
     content.push(pdfTable(
-      hasCode ? ['Код', 'Услуга', 'Кол-во', 'Стоимость, ₽'] : ['Услуга', 'Кол-во', 'Стоимость, ₽'],
+      hasCode ? ['Код', 'Услуга', 'Кол-во', 'Стоимость'] : ['Услуга', 'Кол-во', 'Стоимость'],
       services.map(s => hasCode
-        ? [cell(s.code || ''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price))]
+        ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price))]
         : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price))]),
-      hasCode ? [60, '*', 70, 110] : ['*', 70, 110],
+      hasCode ? [55, '*', 65, 100] : ['*', 65, 100],
     ));
   }
 }
 
-function buildDoctorPatients(rows, content) {
-  const data = Object.entries(groupBy(rows, r => r.executor || null))
-    .map(([name, rs]) => ({ name, ...rev_pat(rs) })).filter(d => d.patients > 0).sort((a, b) => b.patients - a.patients);
+function buildEfficiency(rows, content, pageBreak) {
+  content.push(pdfSection('Эффективность', pageBreak));
 
-  content.push(pdfSection('Пациентов у врача'));
-  const png = chartHBar('Пациентов у врача', data, 'patients', 'name', null, '#4f8ef7', fmtN);
-  if (png) content.push(pdfImg(png));
+  const docData = Object.entries(groupBy(rows, r => r.executor || null))
+    .map(([name, rs]) => ({ name, color: clinicColor(rs), ...rev_pat(rs) }))
+    .filter(d => d.patients > 0).sort((a, b) => b.patients - a.patients);
+  content.push(pdfSubsection('Пациентов у врача'));
+  content.push(pdfHBar(docData, { valueKey: 'patients', labelKey: 'name', colorKey: 'color', formatter: fmtN }));
   content.push(pdfTable(
-    ['Врач', 'Пациентов', 'Выручка, ₽', 'Средний чек, ₽'],
-    data.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
-    ['*', 80, 100, 110],
+    ['Врач', 'Пациентов', 'Выручка', 'Средний чек'],
+    docData.map(d => [cell(d.name), rCell(fmtN(d.patients)), rCell(fmtRub(d.revenue)), rCell(fmtRub(d.avgCheck))]),
+    ['*', 70, 90, 100],
   ));
-}
 
-function buildReferrals(rows, content) {
   const referrals = buildReferralPairs(rows);
-  content.push(pdfSection('Направления'));
-  if (!referrals.length) { content.push({ text: 'Данные о направлениях отсутствуют', fontSize: 9, color: '#94a3b8' }); return; }
-
-  const refMap = {}, execMap = {};
-  for (const r of referrals) {
-    if (!refMap[r.referrer]) refMap[r.referrer] = { name: r.referrer, count: 0, revenue: 0 };
-    refMap[r.referrer].count += r.count; refMap[r.referrer].revenue += r.revenue;
-    if (!execMap[r.executor]) execMap[r.executor] = { name: r.executor, count: 0, revenue: 0 };
-    execMap[r.executor].count += r.count; execMap[r.executor].revenue += r.revenue;
-  }
-  const topRefs  = Object.values(refMap).sort((a, b) => b.count - a.count);
-  const topByRev = Object.values(execMap).sort((a, b) => b.revenue - a.revenue);
-
-  content.push(pdfSubsection('Кто чаще направляет'));
-  const refPng = chartHBar('Кто чаще направляет', topRefs, 'count', 'name', null, '#f97316', fmtN);
-  if (refPng) content.push(pdfImg(refPng));
-  content.push(pdfTable(
-    ['Врач', 'Направлений', 'Сумма, ₽'],
-    topRefs.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
-    ['*', 90, 110],
-  ));
-
-  content.push(pdfSubsection('Кто приносит больше через направления'));
-  const revPng = chartHBar('Выручка через направления', topByRev, 'revenue', 'name', null, '#10b981', fmtRub);
-  if (revPng) content.push(pdfImg(revPng));
-  content.push(pdfTable(
-    ['Врач', 'Направлений', 'Сумма, ₽'],
-    topByRev.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
-    ['*', 90, 110],
-  ));
-
-  content.push(pdfSubsection('Все направления между врачами'));
-  content.push(pdfTable(
-    ['Рекомендатель', 'Исполнитель', 'Кол-во', 'Сумма, ₽'],
-    referrals.map(r => [cell(r.referrer), cell(r.executor), rCell(fmtN(r.count)), rCell(fmtRub(r.revenue))]),
-    ['*', '*', 70, 110],
-  ));
-}
-
-function buildReturnVisitsSection(rows, content) {
-  const data = buildReturnVisits_data(rows);
-  content.push(pdfSection('Повторные визиты'));
-  content.push(pdfTable(
-    ['Врач', 'Всего пац.', 'Не вернулся', 'К тому же врачу', 'К другому по направлению', 'К другому самост.'],
-    data.map(d => [cell(d.name), rCell(fmtN(d.total)), rCell(fmtN(d.notReturned)), rCell(fmtN(d.sameDoctor)), rCell(fmtN(d.otherReferred)), rCell(fmtN(d.otherSelf))]),
-    ['*', 65, 70, 80, 110, 90],
-  ));
-}
-
-function buildChains_section(rows, content) {
-  const chains = buildChains(rows);
-  content.push(pdfSection(`Цепочки направлений (${chains.length})`));
-  content.push(pdfTable(
-    ['Цепочка', 'Пациентов', 'Шагов'],
-    chains.map(c => [cell(c.name), rCell(fmtN(c.count)), rCell(c.steps)]),
-    ['*', 70, 50],
-  ));
-}
-
-// Rename to avoid conflict with the data helper
-function buildReturnVisits_data(rows) {
-  const byPat = {};
-  for (const r of rows) { const k = getPatientKey(r); if (k) { if (!byPat[k]) byPat[k] = []; byPat[k].push(r); } }
-  const stats = {};
-  for (const pr of Object.values(byPat)) {
-    for (const doc of [...new Set(pr.map(r => r.executor).filter(Boolean))]) {
-      if (!stats[doc]) stats[doc] = { name: doc, total: 0, notReturned: 0, sameDoctor: 0, otherReferred: 0, otherSelf: 0 };
-      const s = stats[doc], dk = nameToKey(doc);
-      const dv = pr.filter(r => r.executor === doc), ov = pr.filter(r => r.executor && r.executor !== doc);
-      s.total++;
-      if (!ov.length && dv.length === 1) s.notReturned++;
-      if (dv.length >= 2) s.sameDoctor++;
-      if (ov.length > 0) {
-        if (ov.some(r => nameToKey(r.referrer || '') === dk)) s.otherReferred++;
-        if (ov.some(r => nameToKey(r.referrer || '') !== dk)) s.otherSelf++;
-      }
+  if (referrals.length) {
+    const refMap = {}, execMap = {};
+    for (const r of referrals) {
+      if (!refMap[r.referrer]) refMap[r.referrer] = { name: r.referrer, count: 0, revenue: 0 };
+      refMap[r.referrer].count += r.count; refMap[r.referrer].revenue += r.revenue;
+      if (!execMap[r.executor]) execMap[r.executor] = { name: r.executor, count: 0, revenue: 0 };
+      execMap[r.executor].count += r.count; execMap[r.executor].revenue += r.revenue;
     }
+    const topRefs  = Object.values(refMap).sort((a, b) => b.count - a.count);
+    const topByRev = Object.values(execMap).sort((a, b) => b.revenue - a.revenue);
+
+    content.push(pdfSubsection('Кто чаще направляет'));
+    content.push(pdfHBar(topRefs, { valueKey: 'count', labelKey: 'name', defColor: '#f97316', formatter: fmtN }));
+    content.push(pdfTable(
+      ['Врач', 'Направлений', 'Сумма'],
+      topRefs.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
+      ['*', 80, 100],
+    ));
+
+    content.push(pdfSubsection('Кто приносит больше через направления'));
+    content.push(pdfHBar(topByRev, { valueKey: 'revenue', labelKey: 'name', defColor: '#10b981', formatter: fmtRub }));
+    content.push(pdfTable(
+      ['Врач', 'Направлений', 'Сумма'],
+      topByRev.map(d => [cell(d.name), rCell(fmtN(d.count)), rCell(fmtRub(d.revenue))]),
+      ['*', 80, 100],
+    ));
+
+    const lookup = {};
+    for (const r of referrals) lookup[`${r.refKey} ${r.execKey}`] = r;
+    const seenPairs = new Set();
+    const mutual = [];
+    for (const r of referrals) {
+      const pk = [r.refKey, r.execKey].sort().join(' ');
+      if (seenPairs.has(pk)) continue;
+      seenPairs.add(pk);
+      const rev = lookup[`${r.execKey} ${r.refKey}`];
+      if (!rev) continue;
+      mutual.push({ docA: r.referrer, docB: r.executor, aToB: r.count, bToA: rev.count, total: r.count + rev.count });
+    }
+    mutual.sort((a, b) => b.total - a.total);
+    if (mutual.length) {
+      content.push(pdfSubsection('Взаимные направления'));
+      content.push(pdfTable(
+        ['#', 'Врач А', 'A->B', 'B->A', 'Врач Б', 'Итого'],
+        mutual.slice(0, 50).map((p, i) => [rCell(i+1), cell(p.docA), cCell(p.aToB), cCell(p.bToA), cell(p.docB), rCell(p.total)]),
+        [22, '*', 42, 42, '*', 42],
+      ));
+    }
+
+    content.push(pdfSubsection('Все направления между врачами'));
+    content.push(pdfTable(
+      ['Рекомендатель', 'Исполнитель', 'Кол-во', 'Сумма'],
+      referrals.map(r => [cell(r.referrer), cell(r.executor), rCell(fmtN(r.count)), rCell(fmtRub(r.revenue))]),
+      ['*', '*', 60, 100],
+    ));
+  } else {
+    content.push({ text: 'Данные о направлениях отсутствуют', fontSize: 9, color: '#94a3b8', margin: [0, 4, 0, 8] });
   }
-  return Object.values(stats).filter(d => d.total > 0).sort((a, b) => b.total - a.total);
+
+  const retVisits = buildReturnVisits_data(rows);
+  content.push(pdfSubsection('Повторные визиты'));
+  if (retVisits.length) {
+    content.push(pdfTable(
+      ['Врач', 'Всего', 'Не верн.', 'К тому же', 'По направл.', 'Самост.'],
+      retVisits.map(d => [cell(d.name), rCell(fmtN(d.total)), rCell(fmtN(d.notReturned)), rCell(fmtN(d.sameDoctor)), rCell(fmtN(d.otherReferred)), rCell(fmtN(d.otherSelf))]),
+      ['*', 48, 52, 60, 68, 55],
+    ));
+  } else {
+    content.push({ text: 'Недостаточно данных', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
+  }
+
+  const chains = buildChains(rows);
+  content.push(pdfSubsection(`Цепочки направлений (${chains.length})`));
+  if (chains.length) {
+    content.push(pdfTable(
+      ['Цепочка', 'Пациентов', 'Шагов'],
+      chains.map(c => [cell(c.name), rCell(fmtN(c.count)), cCell(c.steps)]),
+      ['*', 65, 45],
+    ));
+  } else {
+    content.push({ text: 'Цепочки не найдены', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
+  }
+}
+
+function buildRooms(appointments, periodStart, periodEnd, content, pageBreak) {
+  if (!appointments.length || !periodStart || !periodEnd) return;
+
+  const roomStats = buildRoomStats(appointments, periodStart, periodEnd);
+  const gapStats  = buildRoomGapStats(appointments);
+
+  content.push(pdfSection('Кабинеты', pageBreak));
+
+  content.push(pdfSubsection('Загрузка кабинетов (% от рабочего времени)'));
+  if (roomStats.length) {
+    content.push(pdfHBar(
+      roomStats.map(d => ({ name: d.name, sub: d.clinicName, value: d.utilPct, color: d.color })),
+      { valueKey: 'value', labelKey: 'name', colorKey: 'color', formatter: v => v.toFixed(1) + '%' },
+    ));
+    content.push(pdfTable(
+      ['Кабинет', 'Клиника', 'Загружено ч', 'Ёмкость мин', 'Загрузка %'],
+      roomStats.map(d => [
+        cell(d.name), cell(d.clinicName),
+        rCell(d.totalHours.toFixed(1)),
+        rCell(fmtN(d.capacity)),
+        rCell(d.utilPct.toFixed(1) + '%'),
+      ]),
+      ['*', '*', 70, 75, 65],
+    ));
+  } else {
+    content.push({ text: 'Нет данных по кабинетам (поле "кабинет" не заполнено)', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
+  }
+
+  content.push(pdfSubsection('Средний интервал между визитами в кабинете'));
+  if (gapStats.rooms.length) {
+    content.push({ text: `Средний по всем кабинетам: ${fmtMin(gapStats.overallAvg)}`, fontSize: 8, color: '#64748b', margin: [0, 0, 0, 4] });
+    content.push(pdfHBar(
+      gapStats.rooms.map(d => ({ name: d.name, sub: d.clinicName, value: d.avgGap, color: d.color })),
+      { valueKey: 'value', labelKey: 'name', colorKey: 'color', formatter: fmtMin },
+    ));
+    content.push(pdfTable(
+      ['Кабинет', 'Клиника', 'Сред. интервал', 'Медиана', 'Визитов'],
+      gapStats.rooms.map(d => [
+        cell(d.name), cell(d.clinicName),
+        rCell(fmtMin(d.avgGap)), rCell(fmtMin(d.median)), rCell(fmtN(d.gapCount)),
+      ]),
+      ['*', '*', 85, 70, 55],
+    ));
+  } else {
+    content.push({ text: 'Недостаточно данных (нужны кабинеты с 2+ визитами в один день)', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
-export function buildKpiPdf(rows, periodLabel) {
-  const totalRev = rows.reduce((s, r) => s + r.totalCost, 0);
-  const totalPat = new Set(rows.map(getPatientKey).filter(Boolean)).size;
+// config = {
+//   sections:     { general, patients, top20, margin, efficiency, rooms }
+//   clinicFilter: string
+//   specFilter:   string
+//   appointments: array   — required for rooms section
+//   periodStart:  Date
+//   periodEnd:    Date
+// }
+export function buildKpiPdf(rows, periodLabel, config = {}) {
+  const {
+    sections     = {},
+    clinicFilter = '',
+    specFilter   = '',
+    appointments = [],
+    periodStart  = null,
+    periodEnd    = null,
+  } = config;
+
+  const sec = key => sections[key] !== false; // default: all on
+
+  let filteredRows = rows;
+  if (clinicFilter) filteredRows = filteredRows.filter(r => r.clinicRaw === clinicFilter);
+  if (specFilter)   filteredRows = filteredRows.filter(r => splitComma(r.executorSpec).includes(specFilter));
+
+  const filterParts = [];
+  if (clinicFilter) filterParts.push(`Клиника: ${clinicFilter}`);
+  if (specFilter)   filterParts.push(`Спец.: ${specFilter}`);
 
   const content = [];
 
-  // Заголовок
-  content.push({ text: `KPI — ${periodLabel}`, fontSize: 18, bold: true, margin: [0, 0, 0, 4] });
-  content.push({
-    text: `Строк: ${rows.length.toLocaleString('ru-RU')} · Пациентов: ${fmtN(totalPat)} · Выручка: ${fmtRub(totalRev)}`,
-    fontSize: 10, color: '#64748b', margin: [0, 0, 0, 16],
-  });
+  // Title
+  content.push({ text: `KPI -- ${periodLabel}`, fontSize: 16, bold: true, margin: [0, 0, 0, 4] });
+  if (filterParts.length) {
+    content.push({ text: `Фильтр: ${filterParts.join(' | ')}`, fontSize: 9, color: '#64748b', margin: [0, 0, 0, 12] });
+  }
 
-  buildGeneral(rows, content);
-  buildPatients(rows, content);
-  buildTop20(rows, content);
-  buildMargin(rows, content);
-  buildDoctorPatients(rows, content);
-  buildReferrals(rows, content);
-  buildReturnVisitsSection(rows, content);
-  buildChains_section(rows, content);
+  // Track whether first section was pushed (to avoid blank first page)
+  let isFirst = true;
+  const push = (key, buildFn, ...args) => {
+    if (!sec(key)) return;
+    buildFn(...args, content, !isFirst);
+    isFirst = false;
+  };
 
-  // Фильтруем null из content
-  const filteredContent = content.filter(Boolean);
+  push('general',    buildGeneral,    filteredRows);
+  push('patients',   buildPatients,   filteredRows);
+  push('top20',      buildTop20,      filteredRows);
+  push('margin',     buildMargin,     filteredRows);
+  push('efficiency', buildEfficiency, filteredRows);
+  if (sec('rooms') && appointments.length) {
+    buildRooms(appointments, periodStart, periodEnd, content, !isFirst);
+    isFirst = false;
+  }
+
+  const suffix = [
+    clinicFilter ? clinicFilter.replace(/\s+/g, '_') : '',
+    specFilter   ? specFilter.replace(/\s+/g, '_')   : '',
+  ].filter(Boolean).join('_');
 
   pdfMake.createPdf({
     pageSize: 'A4',
-    pageOrientation: 'landscape',
-    pageMargins: [30, 30, 30, 30],
-    content: filteredContent,
+    pageMargins: [25, 30, 25, 30],
+    content: content.filter(Boolean),
     defaultStyle: { font: 'Roboto', fontSize: 9 },
     footer: (page, pages) => ({
-      text: `${page} / ${pages}`, fontSize: 8, color: '#94a3b8',
-      alignment: 'right', margin: [0, 0, 30, 0],
+      columns: [
+        { text: `KPI ${safeStr(periodLabel)}${filterParts.length ? '  |  ' + safeStr(filterParts.join(', ')) : ''}`, fontSize: 7, color: '#94a3b8', margin: [25, 0, 0, 0] },
+        { text: `${page} / ${pages}`, fontSize: 7, color: '#94a3b8', alignment: 'right', margin: [0, 0, 25, 0] },
+      ],
     }),
-  }).download(`KPI_${periodLabel}.pdf`);
+  }).download(`KPI_${periodLabel}${suffix ? '_' + suffix : ''}.pdf`);
 }

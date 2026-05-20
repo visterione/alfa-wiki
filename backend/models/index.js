@@ -349,7 +349,7 @@ const MessageReaction = require('./messageReaction')(sequelize, DataTypes);
 const Accreditation = sequelize.define('Accreditation', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   medCenter: {
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'),
     allowNull: false
   },
   fullName: { type: DataTypes.STRING(255), allowNull: false },
@@ -654,7 +654,7 @@ const ServicePageNote = sequelize.define('ServicePageNote', {
 const MedCenter = sequelize.define('MedCenter', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   name: {
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'),
     allowNull: false,
     unique: true,
     comment: 'Название медицинского центра'
@@ -2421,7 +2421,7 @@ const Promotion = sequelize.define('Promotion', {
   title: { type: DataTypes.STRING(255), allowNull: false },
   description: { type: DataTypes.TEXT },
   medCenter: {
-    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К'),
+    type: DataTypes.ENUM('Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'),
     allowNull: false
   },
   dateFrom: { type: DataTypes.DATEONLY, allowNull: true, comment: 'Дата начала акции (опционально)' },

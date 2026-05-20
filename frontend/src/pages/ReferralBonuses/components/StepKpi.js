@@ -6,6 +6,7 @@ import { rbMatchClinicId, DEFAULT_CLINICS } from '../utils/clinicUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
+import { buildKpiPdf } from '../utils/kpiPdfExport';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -1542,7 +1543,7 @@ function TabEfficiency({ rows }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab: Кабинеты
 // ─────────────────────────────────────────────────────────────────────────────
-function TabRooms({ periodStart, periodEnd }) {
+function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded }) {
   const [appointments, setAppointments] = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [syncStatus,   setSyncStatus]   = useState(null); // { syncing, done, total, phase, totalInDb, lastSyncAt }
@@ -1582,6 +1583,7 @@ function TabRooms({ periodStart, periodEnd }) {
     try {
       const data = await fetchAppointmentsFromDB(periodStart, periodEnd);
       setAppointments(data);
+      onAppointmentsLoaded?.(data);
     } catch (e) {
       console.error('[TabRooms] DB load error:', e);
       toast.error('Ошибка загрузки визитов');
@@ -1767,6 +1769,128 @@ function TabRooms({ periodStart, periodEnd }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PDF config modal
+// ─────────────────────────────────────────────────────────────────────────────
+const PDF_SECTIONS = [
+  { key: 'general',    label: 'Общая статистика',       sub: 'выручка по орг., клиникам, специальностям' },
+  { key: 'patients',   label: 'Пациенты',               sub: 'ЛК, скидки, средний чек, источники' },
+  { key: 'top20',      label: 'Топ 20% пациентов',      sub: 'список с выручкой' },
+  { key: 'margin',     label: 'Маржинальность',         sub: 'популярные услуги, маржа' },
+  { key: 'efficiency', label: 'Эффективность',          sub: 'направления, повторные визиты, цепочки' },
+  { key: 'rooms',      label: 'Кабинеты',               sub: 'загрузка и интервалы (требует вкладки Кабинеты)', requiresAppt: true },
+];
+
+function PdfConfigModal({ rows, appointments, onClose, onExport }) {
+  const [sections,     setSections]     = useState(() => Object.fromEntries(PDF_SECTIONS.map(s => [s.key, true])));
+  const [clinicFilter, setClinicFilter] = useState('');
+  const [specFilter,   setSpecFilter]   = useState('');
+
+  const clinicOptions  = useMemo(() => getUniqueClinics(rows), [rows]);
+  const specOptions    = useMemo(() => getUniqueSpecs(rows),   [rows]);
+  const hasAppt        = appointments.length > 0;
+
+  const availSections = PDF_SECTIONS.filter(s => !s.requiresAppt || hasAppt);
+  const allOn         = availSections.every(s => sections[s.key]);
+  const toggleAll     = () => setSections(prev => {
+    const next = { ...prev };
+    availSections.forEach(s => { next[s.key] = !allOn; });
+    return next;
+  });
+
+  return (
+    <div className="rb-modal-overlay" onClick={onClose}>
+      <div className="rb-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+        <div className="rb-modal-header">
+          <h3>Настройка PDF-отчёта</h3>
+          <button className="rb-modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="rb-modal-body">
+
+          {/* Разделы */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text)' }}>Разделы</div>
+              <button
+                onClick={toggleAll}
+                style={{ fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 5, cursor: 'pointer', background: '#fff', color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}
+              >{allOn ? 'Снять все' : 'Выбрать все'}</button>
+            </div>
+            {PDF_SECTIONS.map(s => {
+              const disabled = s.requiresAppt && !hasAppt;
+              return (
+                <label
+                  key={s.key}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '6px 0', cursor: disabled ? 'default' : 'pointer', borderBottom: '1px solid var(--rb-border)', opacity: disabled ? 0.45 : 1 }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!disabled && sections[s.key]}
+                    disabled={disabled}
+                    onChange={() => !disabled && setSections(prev => ({ ...prev, [s.key]: !prev[s.key] }))}
+                    style={{ marginTop: 2, cursor: disabled ? 'default' : 'pointer', flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 13, color: 'var(--rb-text)' }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 1 }}>
+                      {disabled ? 'Откройте вкладку "Кабинеты" для загрузки данных' : s.sub}
+                    </div>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+
+          {/* Фильтры */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text)', marginBottom: 8 }}>
+              Фильтры <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--rb-text-secondary)' }}>— применяются ко всем разделам</span>
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 160 }}>
+                <label style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Клиника</label>
+                <select
+                  value={clinicFilter}
+                  onChange={e => setClinicFilter(e.target.value)}
+                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: clinicFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+                >
+                  <option value="">Все клиники</option>
+                  {clinicOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 160 }}>
+                <label style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Специальность</label>
+                <select
+                  value={specFilter}
+                  onChange={e => setSpecFilter(e.target.value)}
+                  style={{ padding: '6px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', color: specFilter ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}
+                >
+                  <option value="">Все специальности</option>
+                  {specOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Кнопки */}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              onClick={onClose}
+              style={{ padding: '7px 16px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text)', fontFamily: 'inherit' }}
+            >Отмена</button>
+            <button
+              onClick={() => onExport({ sections, clinicFilter, specFilter })}
+              disabled={!PDF_SECTIONS.some(s => sections[s.key])}
+              style={{ padding: '7px 20px', border: 'none', borderRadius: 8, background: 'var(--rb-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#fff', fontFamily: 'inherit', opacity: PDF_SECTIONS.some(s => sections[s.key]) ? 1 : 0.5 }}
+            >Сформировать PDF</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function StepKpi({ excelSources = [] }) {
@@ -1778,9 +1902,12 @@ export default function StepKpi({ excelSources = [] }) {
   const [selToMonth,   setSelToMonth]   = useState(() => new Date().getMonth() + 1);
   const [rows,         setRows]         = useState([]);
   const [prevRows, setPrevRows] = useState([]);
-  const [loading,  setLoading]  = useState(false);
-  const [loaded,   setLoaded]   = useState(false);
-  const [viewMode, setViewMode] = useState('general');
+  const [loading,       setLoading]       = useState(false);
+  const [loaded,        setLoaded]        = useState(false);
+  const [viewMode,      setViewMode]      = useState('general');
+  const [appointments,  setAppointments]  = useState([]);
+  const [pdfConfigOpen, setPdfConfigOpen] = useState(false);
+  const [pdfExporting,  setPdfExporting]  = useState(false);
 
 
   const { wrapRef: tabRef, sliderEl } = useTabSlider(viewMode);
@@ -1838,8 +1965,31 @@ export default function StepKpi({ excelSources = [] }) {
     [periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth]
   );
 
+  const handleExportPdf = useCallback(async (config) => {
+    setPdfConfigOpen(false);
+    setPdfExporting(true);
+    try {
+      const label = getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
+      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd });
+    } catch (e) {
+      console.error('[KPI PDF]', e);
+      toast.error('Ошибка экспорта PDF');
+    } finally {
+      setPdfExporting(false);
+    }
+  }, [rows, appointments, periodStart, periodEnd, periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth]);
+
   return (
     <div style={{ padding: '16px 20px', height: '100%', overflowY: 'auto' }}>
+
+      {pdfConfigOpen && (
+        <PdfConfigModal
+          rows={rows}
+          appointments={appointments}
+          onClose={() => setPdfConfigOpen(false)}
+          onExport={handleExportPdf}
+        />
+      )}
 
       {/* Панель выбора периода */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -1930,6 +2080,24 @@ export default function StepKpi({ excelSources = [] }) {
               title="Обновить данные"
               style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text-secondary)', fontFamily: 'inherit', lineHeight: 1 }}
             >↻</button>
+            <button
+              onClick={() => setPdfConfigOpen(true)}
+              disabled={pdfExporting}
+              title="Экспорт в PDF"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                padding: '4px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                background: pdfExporting ? '#f1f5f9' : '#fff',
+                cursor: pdfExporting ? 'default' : 'pointer',
+                fontSize: 12, color: pdfExporting ? '#94a3b8' : 'var(--rb-text)',
+                fontFamily: 'inherit', lineHeight: 1,
+              }}
+            >
+              {pdfExporting
+                ? <><span className="rb-spinner" style={{ width: 11, height: 11 }} /> PDF…</>
+                : '↓ PDF'
+              }
+            </button>
           </>
         )}
       </div>
@@ -1948,7 +2116,7 @@ export default function StepKpi({ excelSources = [] }) {
 
       {/* Кабинеты — всегда смонтирован, не требует Excel-источников */}
       <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
-        <TabRooms periodStart={periodStart} periodEnd={periodEnd} />
+        <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} />
       </div>
 
       {/* Остальные вкладки */}

@@ -661,19 +661,20 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       const ws = wb.addWorksheet('Сводка зарплат');
 
       ws.columns = [
-        { header: 'ФИО врача',      key: 'name',      width: 32 },
-        { header: 'Медцентр',       key: 'clinic',    width: 22 },
-        { header: 'Должность',       key: 'specialty', width: 26 },
-        { header: 'Дата',           key: 'date',      width: 18 },
-        { header: 'Начислено',      key: 'total',     width: 16 },
-        { header: 'НДФЛ',           key: 'ndfl',      width: 16 },
-        { header: 'Детализация',    key: 'detail',    width: 52 },
-        { header: 'Аванс',          key: 'advance',   width: 16 },
-        { header: 'Основная ЗП',    key: 'body',      width: 16 },
-        { header: 'Премия',         key: 'bonus',     width: 16 },
-        { header: 'Переплата',      key: 'overpay',   width: 16 },
-        { header: 'Выдано (касса)', key: 'cashPaid',  width: 16 },
-        { header: 'Комментарий',    key: 'comment',   width: 36 },
+        { header: 'ФИО врача',      key: 'name',       width: 32 },
+        { header: 'Медцентр',       key: 'clinic',     width: 22 },
+        { header: 'Должность',       key: 'specialty',  width: 26 },
+        { header: 'Дата',           key: 'date',       width: 18 },
+        { header: 'Начислено',      key: 'total',      width: 16 },
+        { header: 'НДФЛ',           key: 'ndfl',       width: 16 },
+        { header: 'Взыскания',      key: 'deductions', width: 16 },
+        { header: 'Детализация',    key: 'detail',     width: 52 },
+        { header: 'Аванс',          key: 'advance',    width: 16 },
+        { header: 'Основная ЗП',    key: 'body',       width: 16 },
+        { header: 'Премия',         key: 'bonus',      width: 16 },
+        { header: 'Переплата',      key: 'overpay',    width: 16 },
+        { header: 'Выдано (касса)', key: 'cashPaid',   width: 16 },
+        { header: 'Комментарий',    key: 'comment',    width: 36 },
       ];
 
       const hRow = ws.getRow(1);
@@ -724,24 +725,25 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const cashPaid = (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
         const detailStr = buildDetail(s);
         const row = ws.addRow({
-          name:      rec.doctorName || '—',
-          clinic:    clinicName,
-          specialty: getDoctorSpecialty(rec.misUserId),
-          date:      rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
-          total:     parseFloat(s.finalSalary || 0) + parseFloat(s.finalDeductionsTotal || 0) + parseFloat(s.finalMaterialsTotal || 0) + parseFloat(s.svcMatFinalTotal || 0),
-          ndfl:      getNdflAmount(s) || null,
-          advance:   parseFloat(s.advance     || 0),
-          body:      parseFloat(s.mainPayment || 0) + _rowExtraTotal,
-          bonus:     netRemainder >= 0 ? netRemainder : 0,
-          overpay:   netRemainder < 0  ? netRemainder : 0,
-          cashPaid:  cashPaid || null,
-          detail:    detailStr || null,
-          comment:   rec.reportData?.summaryComment || null,
+          name:       rec.doctorName || '—',
+          clinic:     clinicName,
+          specialty:  getDoctorSpecialty(rec.misUserId),
+          date:       rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : '—'),
+          total:      parseFloat(s.finalSalary || 0) + parseFloat(s.finalDeductionsTotal || 0) + parseFloat(s.finalMaterialsTotal || 0) + parseFloat(s.svcMatFinalTotal || 0),
+          ndfl:       getNdflAmount(s) || null,
+          deductions: getDeductionsTotal(s) || null,
+          advance:    parseFloat(s.advance     || 0),
+          body:       parseFloat(s.mainPayment || 0) + _rowExtraTotal,
+          bonus:      netRemainder >= 0 ? netRemainder : 0,
+          overpay:    netRemainder < 0  ? netRemainder : 0,
+          cashPaid:   cashPaid || null,
+          detail:     detailStr || null,
+          comment:    rec.reportData?.summaryComment || null,
         });
         dataRows.push({ row, detailStr });
       });
 
-      ['total', 'ndfl', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
+      ['total', 'ndfl', 'deductions', 'advance', 'body', 'bonus', 'overpay', 'cashPaid'].forEach(key => {
         ws.getColumn(key).numFmt = '#,##0.00 ₽';
       });
 
@@ -777,14 +779,15 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         }, 0);
       })();
       const totalRow = ws.addRow({
-        name:    'ИТОГО',
-        total:   filtered.reduce((s, r) => {
+        name:       'ИТОГО',
+        total:      filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.finalDeductionsTotal || 0) + parseFloat(sal.finalMaterialsTotal || 0) + parseFloat(sal.svcMatFinalTotal || 0);
         }, 0),
-        ndfl:    filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
-        advance: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
-        body:    filtered.reduce((s, r) => {
+        ndfl:       filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0) || null,
+        deductions: filtered.reduce((s, r) => s + getDeductionsTotal(r.cr?.salary), 0) || null,
+        advance:    filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance     || 0), 0),
+        body:       filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           const et = (sal.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
           return s + parseFloat(sal.mainPayment || 0) + et;
