@@ -276,7 +276,8 @@ const BAR_MAX_W   = PW - BAR_LABEL_W - 90; // 270
 function pdfSection(text, pageBreak = true) {
   return {
     text, fontSize: 12, bold: true, color: '#1e3a8a', margin: [0, 16, 0, 5],
-    ...(pageBreak ? { pageBreak: 'before' } : {}),
+    // Always specify portrait so a landscape margin section is properly closed
+    ...(pageBreak ? { pageBreak: 'before', pageOrientation: 'portrait' } : {}),
   };
 }
 function pdfSubsection(text) {
@@ -398,20 +399,7 @@ function pdfPie(segments, { size = 140, formatter } = {}) {
 // ── Section builders ───────────────────────────────────────────────────────────
 
 function buildGeneral(rows, content, pageBreak) {
-  const totalRev = rows.reduce((s, r) => s + r.totalCost, 0);
-  const totalPat = new Set(rows.map(getPatientKey).filter(Boolean)).size;
-
   content.push(pdfSection('Общая статистика', pageBreak));
-  content.push(pdfTable(
-    ['Показатель', 'Значение'],
-    [
-      [cell('Всего строк'),          rCell(rows.length.toLocaleString('ru-RU'))],
-      [cell('Уникальных пациентов'), rCell(fmtN(totalPat))],
-      [cell('Общая выручка'),        rCell(fmtRub(totalRev))],
-      [cell('Средний чек'),          rCell(fmtRub(totalPat ? totalRev / totalPat : 0))],
-    ],
-    [220, '*'],
-  ));
 
   // Org groups — chart only (table would duplicate)
   const orgStats = ORG_GROUPS.map(g => ({
@@ -444,26 +432,9 @@ function buildPatients(rows, content, pageBreak) {
   const lkCount  = patients.filter(p => p.hasLK).length;
   const discRows  = rows.filter(r => r.discount > 0);
   const discPat   = new Set(discRows.map(getPatientKey).filter(Boolean)).size;
-  const totalDisc = discRows.reduce((s, r) => s + r.discount, 0);
-  const vipDisc   = rows.filter(r => r.isVip && r.discount > 0).reduce((s, r) => s + r.discount, 0);
   const vipDiscPat = new Set(discRows.filter(r => r.isVip).map(getPatientKey).filter(Boolean)).size;
 
   content.push(pdfSection('Пациенты', pageBreak));
-  content.push(pdfTable(
-    ['Показатель', 'Значение'],
-    [
-      [cell('Всего пациентов'),      rCell(fmtN(patients.length))],
-      [cell('С Личным кабинетом'),   rCell(fmtN(lkCount))],
-      [cell('Без Личного кабинета'), rCell(fmtN(patients.length - lkCount))],
-      [cell('% с ЛК'),              rCell((patients.length ? lkCount / patients.length * 100 : 0).toFixed(1) + '%')],
-      [cell('Пациентов со скидками'),rCell(fmtN(discPat))],
-      [cell('Из них VIP'),          rCell(fmtN(vipDiscPat))],
-      [cell('Скидки VIP'),          rCell(fmtRub(vipDisc))],
-      [cell('Скидки прочих'),       rCell(fmtRub(totalDisc - vipDisc))],
-      [cell('Итого скидок'),        rCell(fmtRub(totalDisc))],
-    ],
-    [210, '*'],
-  ));
 
   content.push({
     columns: [
@@ -542,16 +513,23 @@ function buildMargin(rows, content, pageBreak) {
   content.push(pdfHBar(popular, { valueKey: 'count', labelKey: 'name', defColor: '#8b5cf6', formatter: fmtN }));
 
   if (hasCost) {
-    content.push(pdfSubsection('Маржинальность услуг'));
+    // Wide table — render on a landscape page so all columns fit
+    content.push({
+      text: 'Маржинальность услуг',
+      fontSize: 10, bold: true, color: '#374151', margin: [0, 10, 0, 3],
+      pageBreak: 'before', pageOrientation: 'landscape',
+    });
+    // Landscape usable width: 841 - 25 - 25 = 791pt
     content.push(pdfTable(
       hasCode
-        ? ['Код', 'Услуга', 'Кол-во', 'Стоим.', 'Себест.', 'Маржа', 'Марж.%']
-        : ['Услуга', 'Кол-во', 'Стоим.', 'Себест.', 'Маржа', 'Марж.%'],
+        ? ['Код', 'Услуга', 'Кол-во', 'Стоимость', 'Себестоимость', 'Маржа', 'Марж.%']
+        : ['Услуга', 'Кол-во', 'Стоимость', 'Себестоимость', 'Маржа', 'Марж.%'],
       services.map(s => hasCode
         ? [cell(s.code||''), cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]
         : [cell(s.name), rCell(fmtN(s.count)), rCell(fmtRub(s.price)), rCell(s.cost>0?fmtRub(s.cost):'-'), rCell(fmtRub(s.margin)), rCell(s.cost>0?s.marginPct.toFixed(1)+'%':'-')]),
-      hasCode ? [38, '*', 42, 68, 68, 68, 42] : ['*', 42, 68, 68, 68, 42],
+      hasCode ? [45, '*', 48, 95, 95, 95, 48] : ['*', 48, 95, 95, 95, 48],
     ));
+    // Next section's pdfSection() has pageBreak:'before',pageOrientation:'portrait' — auto-restores portrait
   } else {
     content.push(pdfTable(
       hasCode ? ['Код', 'Услуга', 'Кол-во', 'Стоимость'] : ['Услуга', 'Кол-во', 'Стоимость'],
@@ -661,16 +639,6 @@ function buildRooms(appointments, periodStart, periodEnd, content, pageBreak) {
       roomStats.map(d => ({ name: d.name, sub: d.clinicName, value: d.utilPct, color: d.color })),
       { valueKey: 'value', labelKey: 'name', colorKey: 'color', formatter: v => v.toFixed(1) + '%' },
     ));
-    content.push(pdfTable(
-      ['Кабинет', 'Клиника', 'Загружено ч', 'Ёмкость мин', 'Загрузка %'],
-      roomStats.map(d => [
-        cell(d.name), cell(d.clinicName),
-        rCell(d.totalHours.toFixed(1)),
-        rCell(fmtN(d.capacity)),
-        rCell(d.utilPct.toFixed(1) + '%'),
-      ]),
-      ['*', '*', 70, 75, 65],
-    ));
   } else {
     content.push({ text: 'Нет данных по кабинетам (поле "кабинет" не заполнено)', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
   }
@@ -681,14 +649,6 @@ function buildRooms(appointments, periodStart, periodEnd, content, pageBreak) {
     content.push(pdfHBar(
       gapStats.rooms.map(d => ({ name: d.name, sub: d.clinicName, value: d.avgGap, color: d.color })),
       { valueKey: 'value', labelKey: 'name', colorKey: 'color', formatter: fmtMin },
-    ));
-    content.push(pdfTable(
-      ['Кабинет', 'Клиника', 'Сред. интервал', 'Медиана', 'Визитов'],
-      gapStats.rooms.map(d => [
-        cell(d.name), cell(d.clinicName),
-        rCell(fmtMin(d.avgGap)), rCell(fmtMin(d.median)), rCell(fmtN(d.gapCount)),
-      ]),
-      ['*', '*', 85, 70, 55],
     ));
   } else {
     content.push({ text: 'Недостаточно данных (нужны кабинеты с 2+ визитами в один день)', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
