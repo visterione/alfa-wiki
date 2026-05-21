@@ -1282,7 +1282,8 @@ function DoctorHeatmap({ rows, periodStart, periodEnd }) {
     return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>;
   }
 
-  const CELL_W  = Math.max(32, Math.min(52, Math.floor(1100 / Math.max(days.length, 1))));
+  // Ширина ячейки вписывается в ~750px сетки — для месяца не будет горизонтального скролла на большинстве экранов
+  const CELL_W  = Math.max(24, Math.min(40, Math.floor(750 / Math.max(days.length, 1))));
   const CELL_H  = 34;
   const LABEL_W = 240;
 
@@ -1321,8 +1322,10 @@ function DoctorHeatmap({ rows, periodStart, periodEnd }) {
               const dayKey = d.toISOString().slice(0,10);
               const count  = doc.dayCounts[dayKey] || 0;
               const ratio  = count / maxCount;
-              const bg     = count ? blendToWhite(doc.color, ratio) : '#f1f5f9';
-              const textCol = count === 0 ? '#e2e8f0' : (ratio >= 0.45 ? '#fff' : '#374151');
+              // Минимальный блендинг 25%, чтобы даже 1 пациент давал заметный оттенок
+              const ar     = count ? (0.25 + ratio * 0.75) : 0;
+              const bg     = count ? blendToWhite(doc.color, ar) : '#f1f5f9';
+              const textCol = count === 0 ? '#e2e8f0' : (ar >= 0.70 ? '#fff' : '#374151');
               return (
                 <div
                   key={i}
@@ -1729,13 +1732,14 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
   }, [rows, cabinetsStaff]);
 
   // Красно-жёлто-зелёная шкала через HSL: 0° (красный) → 60° (жёлтый) → 120° (зелёный)
+  // Минимальная насыщенность 42% lightness — даже при 1 пациенте цвет хорошо виден
   const getColor = useCallback((count) => {
     if (!count) return '#f1f5f9';
     const ratio = Math.min(count / maxCount, 1);
     const hue = ratio * 120;
-    const sat = 80;
-    const lig = ratio < 0.5 ? 52 : 46; // жёлтая зона чуть ярче
-    return `hsl(${hue}, ${sat}%, ${lig}%)`;
+    // lightness: 50% у красного, 55% у жёлтого (самый яркий), 44% у зелёного
+    const lig = ratio < 0.5 ? 50 + ratio * 10 : 60 - (ratio - 0.5) * 32;
+    return `hsl(${hue}, 82%, ${lig}%)`;
   }, [maxCount]);
 
   if (!cabinetsStaff.length) {
@@ -1745,8 +1749,8 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
     return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных по сотрудникам с ролью «КабинетыИРабота» за выбранный период</div>;
   }
 
-  // Ячейки растягиваем на весь экран: минимум 32px, для коротких периодов крупнее
-  const CELL_W = Math.max(32, Math.min(52, Math.floor(1100 / Math.max(days.length, 1))));
+  // Ширина ячейки — вписываемся в ~720px зоны сетки (остальное — имена + итог)
+  const CELL_W = Math.max(22, Math.min(36, Math.floor(720 / Math.max(days.length, 1))));
   const CELL_H = 34;
   const LABEL_W = 240;
 
@@ -1757,61 +1761,65 @@ function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
   );
 
   return (
-    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '16px 18px', overflowX: 'auto' }}>
-      {/* Заголовок: числа дней */}
-      <div style={{ display: 'flex', marginBottom: 4 }}>
-        <div style={{ width: LABEL_W, flexShrink: 0 }} />
-        {days.map((d, i) => (
-          <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
-            {multiMonth && d.getDate() === 1
-              ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0, 3)}</div><div>{d.getDate()}</div></>
-              : d.getDate()
-            }
+    // Внешняя карточка без overflow — чтобы не ломать ширину соседних блоков
+    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10 }}>
+      {/* Скроллируемая сетка — только она горизонтально прокручивается */}
+      <div style={{ overflowX: 'auto', padding: '16px 18px 8px' }}>
+        {/* Заголовок: числа дней */}
+        <div style={{ display: 'flex', marginBottom: 4 }}>
+          <div style={{ width: LABEL_W, flexShrink: 0 }} />
+          {days.map((d, i) => (
+            <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
+              {multiMonth && d.getDate() === 1
+                ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0, 3)}</div><div>{d.getDate()}</div></>
+                : d.getDate()
+              }
+            </div>
+          ))}
+          <div style={{ width: 48, flexShrink: 0 }} />
+        </div>
+
+        {/* Строки сотрудников */}
+        {staffList.map(s => (
+          <div key={s.key} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
+            <div
+              style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}
+              title={s.name}
+            >
+              {s.name}
+            </div>
+            {days.map((d, i) => {
+              const dayKey = d.toISOString().slice(0, 10);
+              const count = s.dayCounts[dayKey] || 0;
+              const ratio = count / maxCount;
+              // жёлтая зона (0.3–0.7) — тёмный текст, края — белый
+              const textCol = count === 0 ? '#e2e8f0' : (ratio > 0.25 && ratio < 0.75 ? '#1a1a1a' : '#fff');
+              return (
+                <div
+                  key={i}
+                  title={count ? `${s.name}: ${count} пац. ${d.toLocaleDateString('ru-RU')}` : undefined}
+                  style={{
+                    width: CELL_W - 3, height: CELL_H - 4, flexShrink: 0, margin: '0 1.5px',
+                    background: getColor(count), borderRadius: 4,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: count ? 700 : 400,
+                    color: textCol,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {count || ''}
+                </div>
+              );
+            })}
+            <div style={{ marginLeft: 8, fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 40, textAlign: 'right', fontWeight: 600 }}>
+              {s.total}
+            </div>
           </div>
         ))}
-        <div style={{ width: 48, flexShrink: 0 }} />
       </div>
 
-      {/* Строки сотрудников */}
-      {staffList.map(s => (
-        <div key={s.key} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
-          <div
-            style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}
-            title={s.name}
-          >
-            {s.name}
-          </div>
-          {days.map((d, i) => {
-            const dayKey = d.toISOString().slice(0, 10);
-            const count = s.dayCounts[dayKey] || 0;
-            const ratio = count / maxCount;
-            // жёлтая зона (0.3–0.7) — тёмный текст, края — белый
-            const textCol = count === 0 ? '#e2e8f0' : (ratio > 0.25 && ratio < 0.75 ? '#1a1a1a' : '#fff');
-            return (
-              <div
-                key={i}
-                title={count ? `${s.name}: ${count} пац. ${d.toLocaleDateString('ru-RU')}` : undefined}
-                style={{
-                  width: CELL_W - 3, height: CELL_H - 4, flexShrink: 0, margin: '0 1.5px',
-                  background: getColor(count), borderRadius: 4,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 11, fontWeight: count ? 700 : 400,
-                  color: textCol,
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {count || ''}
-              </div>
-            );
-          })}
-          <div style={{ marginLeft: 8, fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 40, textAlign: 'right', fontWeight: 600 }}>
-            {s.total}
-          </div>
-        </div>
-      ))}
-
-      {/* Легенда */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
+      {/* Легенда — вне скролла, всегда по ширине карточки */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 18px 14px', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Пациентов в день:</span>
         {[0, Math.round(maxCount * 0.25), Math.round(maxCount * 0.5), Math.round(maxCount * 0.75), maxCount].map((v, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
