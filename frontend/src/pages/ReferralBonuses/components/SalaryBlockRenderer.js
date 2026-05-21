@@ -114,6 +114,7 @@ export default function SalaryBlock({ salary }) {
     hourlyRatesBreakdown = [],
     holidaySurchargeTotal = 0,
     holidaySurchargeBreakdown = [],
+    harmfulnessDeduction = 0,
   } = salary;
 
   // Парсим старый формат "Почасовой оклад (100 ₽ × 90 ч)" для обратной совместимости
@@ -167,7 +168,8 @@ export default function SalaryBlock({ salary }) {
   const hasRoleAnesthesiologist = (anesthesiologistIncomeTotal || 0) !== 0 || anesthesiologistIncomeSections.length > 0;
   const hasRoleNurse        = (nurseIncomeTotal || 0) > 0;
   const hasPerformedBlock   = hasRoleDoctor || hasRoleAssistant || hasRoleAnesthesiologist || hasRoleNurse;
-  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost;
+  const hasHarmfulness      = (harmfulnessDeduction || 0) > 0;
+  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasHarmfulness;
 
   if (!hasAny) return null;
 
@@ -289,6 +291,10 @@ export default function SalaryBlock({ salary }) {
             </table>
           )}
         </SalaryRow>
+      )}
+
+      {hasHarmfulness && (
+        <SalaryRow label="Надбавка за вредность" value={`+${fmtRub(harmfulnessDeduction)}`} color="var(--rb-success)" />
       )}
 
       {hasReferral && (
@@ -605,7 +611,7 @@ export default function SalaryBlock({ salary }) {
         const hasBreakdown = (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0 || totalUderzhano > 0;
         // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
         const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
-        const grossDisplayFinalSalary = displayFinalSalary + deductionsWithoutNdfl;
+        const grossDisplayFinalSalary = displayFinalSalary + deductionsWithoutNdfl + (harmfulnessDeduction || 0);
         const _remainder = grossDisplayFinalSalary - totalUderzhano - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {
