@@ -126,6 +126,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       }
     }
 
+    // Надбавка за вредность
+    if ((sal.harmfulnessDeduction || 0) > 0)
+      addSalRow('Надбавка за вредность 4%', sal.harmfulnessDeduction, '+');
+
     // Бонусы за направления
     if ((sal.referralBonuses || 0) > 0) {
       addSalRow('Бонусы за направления', sal.referralBonuses, '+', (sal.referralSections || []).length > 0);
