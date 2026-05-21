@@ -168,7 +168,8 @@ function isDayScheduled(entry, year, month, day) {
 
 function calcHoursFromTimes(timeFrom, timeTo) {
   const [fh, fm] = (timeFrom || '09:00').split(':').map(Number);
-  const [th, tm] = (timeTo   || '18:00').split(':').map(Number);
+  let [th, tm] = (timeTo   || '18:00').split(':').map(Number);
+  if (th === 0 && tm === 0) th = 24; // midnight end = 24:00
   const mins = (th * 60 + tm) - (fh * 60 + fm);
   if (mins <= 0) return '';
   const h = Math.round(mins / 60 * 2) / 2; // round to nearest 0.5
