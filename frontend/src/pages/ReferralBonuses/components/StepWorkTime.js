@@ -209,29 +209,44 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet) {
 
     for (let day = 1; day <= lastDay; day++) {
       const dateStr  = `${year}-${pad2(month)}-${pad2(day)}`;
-      const covering = docEntries.find(e => isDayScheduled(e, year, month, day));
+      const coverings = docEntries.filter(e => isDayScheduled(e, year, month, day));
 
-      if (!covering) {
+      if (coverings.length === 0) {
         // No schedule → выходной (not recorded in Неявки)
         entries[doc.id][day] = { code: 'В', hours: '' };
       } else {
-        const excEntry = (covering.exceptions || []).find(ex =>
-          typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
-        );
-        if (excEntry !== undefined) {
-          // Cancelled → use the specified code (legacy string exceptions default to ОТ)
-          const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
-          entries[doc.id][day] = { code, hours: '' };
+        let totalWorkedHours = 0;
+        let anyWorked = false;
+        let firstExcCode = null;
+
+        for (const covering of coverings) {
+          const excEntry = (covering.exceptions || []).find(ex =>
+            typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
+          );
           const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
-          if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
-          absenceTotals[code].days  += 1;
-          absenceTotals[code].hours += h;
-        } else {
-          // Normal working day — use РВ on public holidays
+
+          if (excEntry !== undefined) {
+            // Cancelled shift — use the specified code (legacy string exceptions default to ОТ)
+            const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
+            if (!firstExcCode) firstExcCode = code;
+            if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
+            absenceTotals[code].hours += h;
+          } else {
+            totalWorkedHours += h;
+            anyWorked = true;
+          }
+        }
+
+        if (anyWorked) {
+          // Normal working day (sum of all shifts) — use РВ on public holidays
           entries[doc.id][day] = {
             code:  holidaySet?.has(dateStr) ? 'РВ' : 'Я',
-            hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
+            hours: String(totalWorkedHours),
           };
+        } else {
+          // All shifts cancelled → day is absent
+          if (firstExcCode) absenceTotals[firstExcCode].days += 1;
+          entries[doc.id][day] = { code: firstExcCode || 'В', hours: '' };
         }
       }
     }
@@ -316,27 +331,42 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
 
       for (let day = 1; day <= lastDay; day++) {
         const dateStr  = `${year}-${pad2(month)}-${pad2(day)}`;
-        const covering = groupEntries.find(e => isDayScheduled(e, year, month, day));
+        const coverings = groupEntries.filter(e => isDayScheduled(e, year, month, day));
 
-        if (!covering) {
+        if (coverings.length === 0) {
           dayEntries[day] = { code: 'В', hours: '' };
         } else {
-          const excEntry = (covering.exceptions || []).find(ex =>
-            typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
-          );
-          if (excEntry !== undefined) {
-            const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
-            dayEntries[day] = { code, hours: '' };
+          let totalWorkedHours = 0;
+          let anyWorked = false;
+          let firstExcCode = null;
+
+          for (const covering of coverings) {
+            const excEntry = (covering.exceptions || []).find(ex =>
+              typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
+            );
             const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
-            if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
-            absenceTotals[code].days  += 1;
-            absenceTotals[code].hours += h;
-          } else {
-            // Normal working day — use РВ on public holidays
+
+            if (excEntry !== undefined) {
+              const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
+              if (!firstExcCode) firstExcCode = code;
+              if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
+              absenceTotals[code].hours += h;
+            } else {
+              totalWorkedHours += h;
+              anyWorked = true;
+            }
+          }
+
+          if (anyWorked) {
+            // Normal working day (sum of all shifts) — use РВ on public holidays
             dayEntries[day] = {
               code:  holidaySet?.has(dateStr) ? 'РВ' : 'Я',
-              hours: calcHoursFromTimes(covering.timeFrom, covering.timeTo),
+              hours: String(totalWorkedHours),
             };
+          } else {
+            // All shifts cancelled → day is absent
+            if (firstExcCode) absenceTotals[firstExcCode].days += 1;
+            dayEntries[day] = { code: firstExcCode || 'В', hours: '' };
           }
         }
       }
