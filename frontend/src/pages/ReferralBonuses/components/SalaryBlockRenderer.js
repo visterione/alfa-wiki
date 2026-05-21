@@ -294,7 +294,7 @@ export default function SalaryBlock({ salary }) {
       )}
 
       {hasHarmfulness && (
-        <SalaryRow label="Надбавка за вредность" value={`+${fmtRub(harmfulnessDeduction)}`} color="var(--rb-success)" />
+        <SalaryRow label="Надбавка за вредность 4%" value={`+${fmtRub(harmfulnessDeduction)}`} color="var(--rb-success)" />
       )}
 
       {hasReferral && (
@@ -615,11 +615,12 @@ export default function SalaryBlock({ salary }) {
         const _remainder = grossDisplayFinalSalary - totalUderzhano - (advance || 0) - (mainPayment || 0) - (normPremiumAmount || 0) - extraTotal;
 
         if (!hasBreakdown) {
+          const simpleTotal = (finalSalary || 0) + (harmfulnessDeduction || 0);
           return (
             <div className="rb-salary-total-row">
               <div className="rb-salary-total-label">Начислено</div>
-              <div className={`rb-salary-total-value ${(finalSalary || 0) >= 0 ? 'positive' : 'negative'}`}>
-                {(finalSalary || 0) < 0 ? '−' : ''}{fmtRub(Math.abs(finalSalary || 0))}
+              <div className={`rb-salary-total-value ${simpleTotal >= 0 ? 'positive' : 'negative'}`}>
+                {simpleTotal < 0 ? '−' : ''}{fmtRub(Math.abs(simpleTotal))}
               </div>
             </div>
           );
