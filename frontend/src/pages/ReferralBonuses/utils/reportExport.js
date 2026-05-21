@@ -364,10 +364,11 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
     const _ndflTotal = sal.ndflTotal || 0;
     const _deductionsWithoutNdfl = (sal.finalDeductionsTotal || 0) + (sal.finalMaterialsTotal || 0) + (sal.svcMatFinalTotal || 0);
-    const _grossFinalSalary = (sal.finalSalary || 0) + _deductionsWithoutNdfl;
+    const _harmfulness = sal.harmfulnessDeduction || 0;
+    const _grossFinalSalary = (sal.finalSalary || 0) + _deductionsWithoutNdfl + _harmfulness;
     const _totalUderzhano = _deductionsWithoutNdfl + _ndflTotal;
     const _hasBreakdown = (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0 || _totalUderzhano > 0;
-    const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
+    const _remainder = (sal.finalSalary || 0) + _harmfulness - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
 
     const addPayRow = (label, method, value) => {
       const row = ws.addRow([label, '', '', method ? (method === 'cash' ? 'наличные' : 'карта') : '', '', parseFloat((value || 0).toFixed(2))]);
@@ -394,7 +395,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     };
 
     if (!_hasBreakdown) {
-      addTotalBlock('Начислено', sal.finalSalary || 0);
+      addTotalBlock('Начислено', (sal.finalSalary || 0) + (sal.harmfulnessDeduction || 0));
     } else {
       addSalRow('Начислено', _grossFinalSalary, _grossFinalSalary >= 0 ? '+' : '-');
       if (_totalUderzhano > 0) {
@@ -504,7 +505,7 @@ export function buildSingleWorkbook(reportData, cashPayments) {
     ? clinicReports.reduce((s, cr) => {
         const sal = cr.salary || {};
         const extraTot = (sal.extraPayments || []).reduce((es, ep) => es + (parseFloat(ep.amount) || 0), 0);
-        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTot;
+        return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.harmfulnessDeduction || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTot;
       }, 0)
     : null;
 
@@ -543,18 +544,21 @@ export function buildBulkWorkbook(bulkResults) {
     r.clinicReports.forEach(cr => {
       const sal = cr.salary || {};
       const extraTot = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-      const remainder = (sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - extraTot;
       const pt = sal.payType || '';
       const hoursWorked = pt === 'hourly' ? (parseFloat(sal.hoursWorked) || 0) :
                           pt === 'normed' ? (parseFloat(sal.normTotalHours) || 0) : 0;
       const ndfl = parseFloat((sal.ndflTotal || 0).toFixed(2));
       const harmfulness = parseFloat((sal.harmfulnessDeduction || 0).toFixed(2));
-      const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.harmfulnessDeduction || 0)).toFixed(2));
+      const nachleno = parseFloat(((sal.finalSalary || 0) + harmfulness).toFixed(2));
+      // remainder без вредности — показывается в "Выплата после вредности" (через обычный расчёт)
+      const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - extraTot).toFixed(2));
+      // Остаток к доплате включает вредность
+      const remainder = parseFloat((afterHarmfulness + harmfulness).toFixed(2));
       // Order: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', parseFloat((sal.finalSalary || 0).toFixed(2)), hoursWorked || '', ndfl || '', harmfulness || '', parseFloat(remainder.toFixed(2)), afterHarmfulness]);
+      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', nachleno, hoursWorked || '', ndfl || '', harmfulness || '', remainder, afterHarmfulness]);
       row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 9) { cell.font = fontNormal; cell.border = allBorders; } });
       row.getCell(4).numFmt = '#,##0.00';
-      row.getCell(4).font = { ...fontNormal, color: { argb: (sal.finalSalary || 0) >= 0 ? 'FF166534' : 'FFCC0000' } };
+      row.getCell(4).font = { ...fontNormal, color: { argb: nachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
       row.getCell(6).numFmt = '#,##0.00';
       row.getCell(7).numFmt = '#,##0.00';
       row.getCell(8).numFmt = '#,##0.00';
