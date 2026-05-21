@@ -666,7 +666,7 @@ export default function ReferralBonusesPage() {
       case 7:
         return <StepSummary doctors={doctors} clinics={clinics} getClinicColor={getClinicColor} permissions={permissions} />;
       case 8:
-        return <StepKpi excelSources={excelSources} permissions={permissions} />;
+        return <StepKpi excelSources={excelSources} permissions={permissions} doctors={doctors} />;
       default:
         return null;
     }

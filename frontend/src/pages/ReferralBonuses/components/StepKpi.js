@@ -966,9 +966,9 @@ function TabPatients({ rows }) {
       .sort((a, b) => b.avgCheck - a.avgCheck);
   }, [avgDocRows]);
 
-  // Средний чек по специальности
+  // Средний чек по специальности услуги
   const avgBySpec = useMemo(() => {
-    const bySpec = groupByMulti(rows, r => splitComma(r.executorSpec));
+    const bySpec = groupByMulti(rows, r => splitComma(r.serviceSpec));
     return Object.entries(bySpec)
       .map(([name, rs]) => ({ name, ...revenueAndPatients(rs) }))
       .filter(d => d.patients > 0)
@@ -1224,6 +1224,132 @@ function TabMargin({ rows }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Doctor heatmap: пациентов у врача по дням, раскраска по цвету клиники
+// ─────────────────────────────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  if (!hex || hex.length < 7) return [148, 163, 184];
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+}
+
+function blendToWhite(hex, ratio) {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgb(${Math.round(255+(r-255)*ratio)},${Math.round(255+(g-255)*ratio)},${Math.round(255+(b-255)*ratio)})`;
+}
+
+function DoctorHeatmap({ rows, periodStart, periodEnd }) {
+  const days = useMemo(() => {
+    if (!periodStart || !periodEnd) return [];
+    const result = [];
+    const cur = new Date(periodStart); cur.setHours(0,0,0,0);
+    const fin = new Date(periodEnd);   fin.setHours(23,59,59,999);
+    while (cur <= fin) { result.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
+    return result;
+  }, [periodStart, periodEnd]);
+
+  const { doctorList, maxCount } = useMemo(() => {
+    const colorByDoc = {};
+    const byDoc = {};
+    for (const r of rows) {
+      if (!r.executor) continue;
+      const name = r.executor;
+      if (r.clinicId && !colorByDoc[name]) colorByDoc[name] = getClinicColorById(r.clinicId);
+      if (!r.date) continue;
+      const dayKey = r.date.toISOString().slice(0,10);
+      const pk = getPatientKey(r);
+      if (!pk) continue;
+      if (!byDoc[name]) byDoc[name] = {};
+      if (!byDoc[name][dayKey]) byDoc[name][dayKey] = new Set();
+      byDoc[name][dayKey].add(pk);
+    }
+    let mx = 1;
+    const doctorList = [];
+    for (const [name, dayData] of Object.entries(byDoc)) {
+      const dayCounts = {};
+      let total = 0;
+      for (const [day, set] of Object.entries(dayData)) {
+        dayCounts[day] = set.size;
+        total += set.size;
+        if (set.size > mx) mx = set.size;
+      }
+      doctorList.push({ name, color: colorByDoc[name] || '#94a3b8', dayCounts, total });
+    }
+    doctorList.sort((a, b) => b.total - a.total);
+    return { doctorList, maxCount: mx };
+  }, [rows]);
+
+  if (!doctorList.length) {
+    return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>;
+  }
+
+  const CELL_W  = Math.max(32, Math.min(52, Math.floor(1100 / Math.max(days.length, 1))));
+  const CELL_H  = 34;
+  const LABEL_W = 240;
+
+  const multiMonth = days.length > 0 && (
+    days[0].getMonth() !== days[days.length-1].getMonth() ||
+    days[0].getFullYear() !== days[days.length-1].getFullYear()
+  );
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '16px 18px' }}>
+      <div style={{ overflowX: 'auto', maxHeight: 760, overflowY: 'auto' }}>
+        {/* Заголовок (липкий при вертикальном скролле) */}
+        <div style={{ display: 'flex', marginBottom: 4, position: 'sticky', top: 0, background: '#fff', zIndex: 1, paddingBottom: 2 }}>
+          <div style={{ width: LABEL_W, flexShrink: 0 }} />
+          {days.map((d, i) => (
+            <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
+              {multiMonth && d.getDate() === 1
+                ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0,3)}</div><div>{d.getDate()}</div></>
+                : d.getDate()
+              }
+            </div>
+          ))}
+          <div style={{ width: 48, flexShrink: 0 }} />
+        </div>
+
+        {/* Строки врачей */}
+        {doctorList.map(doc => (
+          <div key={doc.name} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
+            <div
+              style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}
+              title={doc.name}
+            >
+              {doc.name}
+            </div>
+            {days.map((d, i) => {
+              const dayKey = d.toISOString().slice(0,10);
+              const count  = doc.dayCounts[dayKey] || 0;
+              const ratio  = count / maxCount;
+              const bg     = count ? blendToWhite(doc.color, ratio) : '#f1f5f9';
+              const textCol = count === 0 ? '#e2e8f0' : (ratio >= 0.45 ? '#fff' : '#374151');
+              return (
+                <div
+                  key={i}
+                  title={count ? `${doc.name}: ${count} пац. ${d.toLocaleDateString('ru-RU')}` : undefined}
+                  style={{
+                    width: CELL_W - 3, height: CELL_H - 4, flexShrink: 0, margin: '0 1.5px',
+                    background: bg, borderRadius: 4,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, fontWeight: count ? 700 : 400,
+                    color: textCol, fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {count || ''}
+                </div>
+              );
+            })}
+            <div style={{ marginLeft: 8, fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 40, textAlign: 'right', fontWeight: 600 }}>
+              {doc.total}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 function ReturnVisitsTable({ data }) {
   const [sortKey, setSortKey] = useState('total');
   const [sortDir, setSortDir] = useState(-1);
@@ -1284,7 +1410,7 @@ function ReturnVisitsTable({ data }) {
 
 // Tab: Эффективность
 // ─────────────────────────────────────────────────────────────────────────────
-function TabEfficiency({ rows }) {
+function TabEfficiency({ rows, periodStart, periodEnd }) {
   const [refSearch, setRefSearch] = useState('');
   const [docClinic, setDocClinic] = useState('');
   const [docSpec,   setDocSpec]   = useState('');
@@ -1399,7 +1525,7 @@ function TabEfficiency({ rows }) {
         <ChartFilter value={docSpec}   onChange={setDocSpec}   options={specOptions}   placeholder="Все специальности" />
         <ChartFilter value={docClinic} onChange={setDocClinic} options={clinicOptions} placeholder="Все клиники" />
       </SectionHeader>
-      <HBarChart data={doctorPatients} dataKey="patients" labelKey="name" colorKey="color" color="#4f8ef7" />
+      <DoctorHeatmap rows={docRows} periodStart={periodStart} periodEnd={periodEnd} />
 
       {referrals.length > 0 ? (
         <>
@@ -1541,9 +1667,168 @@ function TabEfficiency({ rows }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Staff heatmap: пациенты по дням для сотрудников с ролью КабинетыИРабота
+// ─────────────────────────────────────────────────────────────────────────────
+function abbrevName(fullName) {
+  const parts = String(fullName || '').trim().split(/\s+/);
+  if (!parts.length) return fullName;
+  const [last, first, middle] = parts;
+  return last + (first ? ` ${first[0]}.` : '') + (middle ? `${middle[0]}.` : '');
+}
+
+function StaffHeatmap({ rows, doctors, periodStart, periodEnd }) {
+  const cabinetsStaff = useMemo(
+    () => (doctors || []).filter(d => d.roles?.includes('КабинетыИРабота')),
+    [doctors],
+  );
+
+  const days = useMemo(() => {
+    if (!periodStart || !periodEnd) return [];
+    const result = [];
+    const cur = new Date(periodStart); cur.setHours(0, 0, 0, 0);
+    const fin = new Date(periodEnd);   fin.setHours(23, 59, 59, 999);
+    while (cur <= fin) { result.push(new Date(cur)); cur.setDate(cur.getDate() + 1); }
+    return result;
+  }, [periodStart, periodEnd]);
+
+  const { staffList, maxCount } = useMemo(() => {
+    const staffMap = new Map();
+    for (const d of cabinetsStaff) {
+      const k = nameToKey(d.name);
+      if (k) staffMap.set(k, { key: k, name: d.name, short: abbrevName(d.name) });
+    }
+
+    const sets = {};
+    for (const [k] of staffMap) sets[k] = {};
+
+    for (const r of rows) {
+      if (!r.executor || !r.date) continue;
+      const k = nameToKey(r.executor);
+      if (!sets[k]) continue;
+      const dayKey = r.date.toISOString().slice(0, 10);
+      const pk = getPatientKey(r);
+      if (!pk) continue;
+      if (!sets[k][dayKey]) sets[k][dayKey] = new Set();
+      sets[k][dayKey].add(pk);
+    }
+
+    let mx = 1;
+    const staffList = [];
+    for (const [k, info] of staffMap) {
+      const dayCounts = {};
+      let total = 0;
+      for (const [day, set] of Object.entries(sets[k])) {
+        dayCounts[day] = set.size;
+        total += set.size;
+        if (set.size > mx) mx = set.size;
+      }
+      if (total > 0) staffList.push({ ...info, dayCounts, total });
+    }
+    staffList.sort((a, b) => b.total - a.total);
+    return { staffList, maxCount: mx };
+  }, [rows, cabinetsStaff]);
+
+  // Красно-жёлто-зелёная шкала через HSL: 0° (красный) → 60° (жёлтый) → 120° (зелёный)
+  const getColor = useCallback((count) => {
+    if (!count) return '#f1f5f9';
+    const ratio = Math.min(count / maxCount, 1);
+    const hue = ratio * 120;
+    const sat = 80;
+    const lig = ratio < 0.5 ? 52 : 46; // жёлтая зона чуть ярче
+    return `hsl(${hue}, ${sat}%, ${lig}%)`;
+  }, [maxCount]);
+
+  if (!cabinetsStaff.length) {
+    return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Сотрудники с ролью «КабинетыИРабота» не найдены</div>;
+  }
+  if (!staffList.length) {
+    return <div style={{ padding: '16px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных по сотрудникам с ролью «КабинетыИРабота» за выбранный период</div>;
+  }
+
+  // Ячейки растягиваем на весь экран: минимум 32px, для коротких периодов крупнее
+  const CELL_W = Math.max(32, Math.min(52, Math.floor(1100 / Math.max(days.length, 1))));
+  const CELL_H = 34;
+  const LABEL_W = 240;
+
+  // Показываем разделитель месяца в заголовке если период > 1 месяца
+  const multiMonth = days.length > 0 && (
+    days[0].getMonth() !== days[days.length - 1].getMonth() ||
+    days[0].getFullYear() !== days[days.length - 1].getFullYear()
+  );
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '16px 18px', overflowX: 'auto' }}>
+      {/* Заголовок: числа дней */}
+      <div style={{ display: 'flex', marginBottom: 4 }}>
+        <div style={{ width: LABEL_W, flexShrink: 0 }} />
+        {days.map((d, i) => (
+          <div key={i} style={{ width: CELL_W, flexShrink: 0, textAlign: 'center', fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', lineHeight: multiMonth ? 1.3 : 1 }}>
+            {multiMonth && d.getDate() === 1
+              ? <><div style={{ fontSize: 9, color: '#94a3b8' }}>{MONTH_NAMES[d.getMonth()].slice(0, 3)}</div><div>{d.getDate()}</div></>
+              : d.getDate()
+            }
+          </div>
+        ))}
+        <div style={{ width: 48, flexShrink: 0 }} />
+      </div>
+
+      {/* Строки сотрудников */}
+      {staffList.map(s => (
+        <div key={s.key} style={{ display: 'flex', alignItems: 'center', marginBottom: 3 }}>
+          <div
+            style={{ width: LABEL_W, flexShrink: 0, fontSize: 12, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: 10 }}
+            title={s.name}
+          >
+            {s.name}
+          </div>
+          {days.map((d, i) => {
+            const dayKey = d.toISOString().slice(0, 10);
+            const count = s.dayCounts[dayKey] || 0;
+            const ratio = count / maxCount;
+            // жёлтая зона (0.3–0.7) — тёмный текст, края — белый
+            const textCol = count === 0 ? '#e2e8f0' : (ratio > 0.25 && ratio < 0.75 ? '#1a1a1a' : '#fff');
+            return (
+              <div
+                key={i}
+                title={count ? `${s.name}: ${count} пац. ${d.toLocaleDateString('ru-RU')}` : undefined}
+                style={{
+                  width: CELL_W - 3, height: CELL_H - 4, flexShrink: 0, margin: '0 1.5px',
+                  background: getColor(count), borderRadius: 4,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: count ? 700 : 400,
+                  color: textCol,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {count || ''}
+              </div>
+            );
+          })}
+          <div style={{ marginLeft: 8, fontSize: 12, color: 'var(--rb-text-secondary)', flexShrink: 0, fontVariantNumeric: 'tabular-nums', width: 40, textAlign: 'right', fontWeight: 600 }}>
+            {s.total}
+          </div>
+        </div>
+      ))}
+
+      {/* Легенда */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Пациентов в день:</span>
+        {[0, Math.round(maxCount * 0.25), Math.round(maxCount * 0.5), Math.round(maxCount * 0.75), maxCount].map((v, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <div style={{ width: 18, height: 18, background: getColor(v), borderRadius: 3, border: '1px solid #e2e8f0' }} />
+            <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+          </div>
+        ))}
+        <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>· итого за период справа</span>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tab: Кабинеты
 // ─────────────────────────────────────────────────────────────────────────────
-function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded }) {
+function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doctors = [] }) {
   const [appointments, setAppointments] = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [syncStatus,   setSyncStatus]   = useState(null); // { syncing, done, total, phase, totalInDb, lastSyncAt }
@@ -1764,6 +2049,10 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded }) {
           Недостаточно данных — нужны кабинеты с 2+ визитами в один день
         </div>
       )}
+
+      {/* Пациенты сотрудников кабинетов по дням */}
+      <SectionTitle>Пациентов в день — сотрудники кабинетов</SectionTitle>
+      <StaffHeatmap rows={rows} doctors={doctors} periodStart={periodStart} periodEnd={periodEnd} />
     </div>
   );
 }
@@ -1893,7 +2182,7 @@ function PdfConfigModal({ rows, appointments, onClose, onExport }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
-export default function StepKpi({ excelSources = [] }) {
+export default function StepKpi({ excelSources = [], doctors = [] }) {
   const [periodMode,   setPeriodMode]   = useState('month');
   const [selYear,      setSelYear]      = useState(() => new Date().getFullYear());
   const [selMonth,     setSelMonth]     = useState(() => new Date().getMonth() + 1);
@@ -2116,7 +2405,7 @@ export default function StepKpi({ excelSources = [] }) {
 
       {/* Кабинеты — всегда смонтирован, не требует Excel-источников */}
       <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
-        <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} />
+        <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} rows={rows} doctors={doctors} />
       </div>
 
       {/* Остальные вкладки */}
@@ -2143,7 +2432,7 @@ export default function StepKpi({ excelSources = [] }) {
               {viewMode === 'general'    && <TabGeneral rows={rows} />}
               {viewMode === 'patients'   && <TabPatients rows={rows} />}
               {viewMode === 'margin'     && <TabMargin rows={rows} />}
-              {viewMode === 'efficiency' && <TabEfficiency rows={rows} />}
+              {viewMode === 'efficiency' && <TabEfficiency rows={rows} periodStart={periodStart} periodEnd={periodEnd} />}
             </>
           )}
         </>
