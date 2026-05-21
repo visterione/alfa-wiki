@@ -616,6 +616,21 @@ function ChartFilter({ value, onChange, options, placeholder }) {
   );
 }
 
+function ModeToggle({ mode, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 2, marginLeft: 'auto' }}>
+      {[{ key: 'bar', label: 'Обычный' }, { key: 'heatmap', label: 'Детальный' }].map(m => (
+        <button key={m.key} onClick={() => onChange(m.key)} style={{
+          padding: '2px 10px', fontSize: 11, borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit',
+          border: '1px solid var(--rb-border-dark)',
+          background: mode === m.key ? 'var(--rb-primary)' : '#fff',
+          color:      mode === m.key ? '#fff'              : 'var(--rb-text-secondary)',
+        }}>{m.label}</button>
+      ))}
+    </div>
+  );
+}
+
 // Сортировка для графиков
 const CHART_SORT_OPTIONS = [
   { value: 'val-desc', label: '↓ Спад' },
@@ -1414,9 +1429,10 @@ function ReturnVisitsTable({ data }) {
 // Tab: Эффективность
 // ─────────────────────────────────────────────────────────────────────────────
 function TabEfficiency({ rows, periodStart, periodEnd }) {
-  const [refSearch, setRefSearch] = useState('');
-  const [docClinic, setDocClinic] = useState('');
-  const [docSpec,   setDocSpec]   = useState('');
+  const [refSearch,    setRefSearch]    = useState('');
+  const [docClinic,    setDocClinic]    = useState('');
+  const [docSpec,      setDocSpec]      = useState('');
+  const [docViewMode,  setDocViewMode]  = useState('bar');
 
   const clinicOptions = useMemo(() => getUniqueClinics(rows), [rows]);
   const specOptions   = useMemo(() => getUniqueSpecs(rows), [rows]);
@@ -1527,8 +1543,12 @@ function TabEfficiency({ rows, periodStart, periodEnd }) {
       <SectionHeader title="Пациентов у врача">
         <ChartFilter value={docSpec}   onChange={setDocSpec}   options={specOptions}   placeholder="Все специальности" />
         <ChartFilter value={docClinic} onChange={setDocClinic} options={clinicOptions} placeholder="Все клиники" />
+        <ModeToggle mode={docViewMode} onChange={setDocViewMode} />
       </SectionHeader>
-      <DoctorHeatmap rows={docRows} periodStart={periodStart} periodEnd={periodEnd} />
+      {docViewMode === 'bar'
+        ? <HBarChart data={doctorPatients} dataKey="patients" labelKey="name" colorKey="color" color="#4f8ef7" />
+        : <DoctorHeatmap rows={docRows} periodStart={periodStart} periodEnd={periodEnd} />
+      }
 
       {referrals.length > 0 ? (
         <>
@@ -1842,6 +1862,7 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
   const [syncStatus,   setSyncStatus]   = useState(null); // { syncing, done, total, phase, totalInDb, lastSyncAt }
   const [syncing,      setSyncing]      = useState(false);
   const [roomClinic,   setRoomClinic]   = useState('');
+  const [staffMode,    setStaffMode]    = useState('bar');
 
   const pollRef = useRef(null);
 
@@ -1926,6 +1947,31 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
     const filtered = roomClinic ? appointments.filter(a => String(a.clinic_id) === roomClinic) : appointments;
     return buildRoomGapStats(filtered);
   }, [appointments, roomClinic]);
+
+  // Суммарные пациенты по сотрудникам кабинетов (для режима «Обычный»)
+  const staffBarData = useMemo(() => {
+    if (!rows.length || !doctors.length) return [];
+    const cabinetsStaff = doctors.filter(d => d.roles?.includes('КабинетыИРабота'));
+    const staffKeys = new Map();
+    for (const d of cabinetsStaff) {
+      const k = nameToKey(d.name);
+      if (k) staffKeys.set(k, d.name);
+    }
+    const byStaff = {};
+    for (const r of rows) {
+      if (!r.executor) continue;
+      const k = nameToKey(r.executor);
+      if (!staffKeys.has(k)) continue;
+      const pk = getPatientKey(r);
+      if (!pk) continue;
+      const name = staffKeys.get(k);
+      if (!byStaff[name]) byStaff[name] = new Set();
+      byStaff[name].add(pk);
+    }
+    return Object.entries(byStaff)
+      .map(([name, pats]) => ({ name, value: pats.size }))
+      .sort((a, b) => b.value - a.value);
+  }, [rows, doctors]);
 
   const fmtMin = v => {
     if (v < 1) return '< 1 мин';
@@ -2058,9 +2104,14 @@ function TabRooms({ periodStart, periodEnd, onAppointmentsLoaded, rows = [], doc
         </div>
       )}
 
-      {/* Пациенты сотрудников кабинетов по дням */}
-      <SectionTitle>Пациентов в день — сотрудники кабинетов</SectionTitle>
-      <StaffHeatmap rows={rows} doctors={doctors} periodStart={periodStart} periodEnd={periodEnd} />
+      {/* Пациенты сотрудников кабинетов */}
+      <SectionHeader title="Сотрудники кабинетов — пациентов за период">
+        <ModeToggle mode={staffMode} onChange={setStaffMode} />
+      </SectionHeader>
+      {staffMode === 'bar'
+        ? <HBarChart data={staffBarData} dataKey="value" labelKey="name" color="#10b981" />
+        : <StaffHeatmap rows={rows} doctors={doctors} periodStart={periodStart} periodEnd={periodEnd} />
+      }
     </div>
   );
 }
@@ -2267,14 +2318,14 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
     setPdfExporting(true);
     try {
       const label = getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
-      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd });
+      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors });
     } catch (e) {
       console.error('[KPI PDF]', e);
       toast.error('Ошибка экспорта PDF');
     } finally {
       setPdfExporting(false);
     }
-  }, [rows, appointments, periodStart, periodEnd, periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth]);
+  }, [rows, appointments, periodStart, periodEnd, periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth, doctors]);
 
   return (
     <div style={{ padding: '16px 20px', height: '100%', overflowY: 'auto' }}>

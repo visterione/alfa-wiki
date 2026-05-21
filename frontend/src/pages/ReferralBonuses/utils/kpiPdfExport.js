@@ -54,6 +54,144 @@ function clinicColor(rs) {
 function getClinicColorById(clinicId) {
   return CLINIC_COLOR_MAP[String(clinicId)] || '#94a3b8';
 }
+// ── Heatmap helpers ────────────────────────────────────────────────────────────
+function blendHex(hex, ratio) {
+  if (!hex || hex.length < 7) return '#f5f5f5';
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  const ar = 0.25 + ratio * 0.75;
+  return `#${[r,g,b].map(c => Math.round(255+(c-255)*ar).toString(16).padStart(2,'0')).join('')}`;
+}
+function hslHex(hue, sat, lig) {
+  sat /= 100; lig /= 100;
+  const a = sat * Math.min(lig, 1-lig);
+  const f = n => { const k=(n+hue/30)%12; return Math.round(255*(lig-a*Math.max(Math.min(k-3,9-k,1),-1))).toString(16).padStart(2,'0'); };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+function heatDays(periodStart, periodEnd) {
+  if (!periodStart || !periodEnd) return [];
+  const days = [], cur = new Date(periodStart); cur.setHours(0,0,0,0);
+  const fin = new Date(periodEnd); fin.setHours(23,59,59,999);
+  while (cur <= fin) { days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
+  return days;
+}
+function heatTable(body, days, labelW) {
+  const pageW = 515; // A4 usable
+  const dayW  = Math.max(4, Math.floor((pageW - labelW - 14) / days.length));
+  return {
+    table: {
+      headerRows: 1,
+      widths: [labelW, ...days.map(() => dayW), 14],
+      body,
+    },
+    layout: {
+      hLineWidth: () => 0.3, vLineWidth: () => 0.3,
+      hLineColor: () => '#e2e8f0', vLineColor: () => '#e2e8f0',
+      paddingLeft: () => 1, paddingRight: () => 1,
+      paddingTop: () => 0.5, paddingBottom: () => 0.5,
+    },
+    margin: [0, 2, 0, 10],
+  };
+}
+function heatHeader(days) {
+  return [
+    { text: '', fillColor: '#f1f5f9', border: [false, false, false, true] },
+    ...days.map(d => ({
+      text: String(d.getDate()), fontSize: 5, alignment: 'center',
+      fillColor: [0,6].includes(d.getDay()) ? '#e2e8f0' : '#f1f5f9',
+      border: [false, false, false, true],
+    })),
+    { text: 'Σ', fontSize: 5, alignment: 'center', fillColor: '#f1f5f9', border: [false, false, false, true] },
+  ];
+}
+
+function buildDoctorHeatmapPdf(rows, periodStart, periodEnd, content) {
+  const days = heatDays(periodStart, periodEnd);
+  if (!days.length || days.length > 65) return;
+
+  const colorByDoc = {}, byDoc = {};
+  for (const r of rows) {
+    if (!r.executor) continue;
+    if (r.clinicId && !colorByDoc[r.executor]) colorByDoc[r.executor] = getClinicColorById(r.clinicId);
+    if (!r.date) continue;
+    const dk = r.date.toISOString().slice(0,10), pk = getPatientKey(r);
+    if (!pk) continue;
+    if (!byDoc[r.executor]) byDoc[r.executor] = {};
+    if (!byDoc[r.executor][dk]) byDoc[r.executor][dk] = new Set();
+    byDoc[r.executor][dk].add(pk);
+  }
+  const docList = Object.entries(byDoc).map(([name, dd]) => {
+    const dc = {}, total = Object.values(dd).reduce((s,v) => s+v.size, 0);
+    for (const [d,s] of Object.entries(dd)) dc[d] = s.size;
+    return { name, color: colorByDoc[name]||'#94a3b8', dc, total };
+  }).sort((a,b) => b.total - a.total);
+  if (!docList.length) return;
+
+  const mx = Math.max(1, ...docList.flatMap(d => Object.values(d.dc)));
+  const showN = days.length <= 31;
+  const body  = [heatHeader(days)];
+  for (const doc of docList) {
+    body.push([
+      { text: doc.name, fontSize: 5.5, border: [false,false,false,false] },
+      ...days.map(d => {
+        const count = doc.dc[d.toISOString().slice(0,10)] || 0;
+        const ratio = count / mx;
+        return { text: showN && count ? String(count) : '', fontSize: 5, alignment: 'center',
+          fillColor: count ? blendHex(doc.color, ratio) : '#f8fafc',
+          color: ratio > 0.6 ? '#fff' : '#333', border: [false,false,false,false] };
+      }),
+      { text: String(doc.total), fontSize: 5, alignment: 'center', color: '#64748b', border: [false,false,false,false] },
+    ]);
+  }
+  content.push(heatTable(body, days, 90));
+}
+
+function buildStaffHeatmapPdf(rows, doctors, periodStart, periodEnd, content) {
+  const days = heatDays(periodStart, periodEnd);
+  if (!days.length || days.length > 65 || !doctors?.length) return;
+
+  const cabinets = doctors.filter(d => d.roles?.includes('КабинетыИРабота'));
+  if (!cabinets.length) return;
+  const staffKeys = new Map();
+  for (const d of cabinets) { const k = nameToKey(d.name); if (k) staffKeys.set(k, d.name); }
+
+  const sets = {};
+  for (const r of rows) {
+    if (!r.executor || !r.date) continue;
+    const k = nameToKey(r.executor);
+    if (!staffKeys.has(k)) continue;
+    const name = staffKeys.get(k), dk = r.date.toISOString().slice(0,10), pk = getPatientKey(r);
+    if (!pk) continue;
+    if (!sets[name]) sets[name] = {};
+    if (!sets[name][dk]) sets[name][dk] = new Set();
+    sets[name][dk].add(pk);
+  }
+  const staffList = Object.entries(sets).map(([name, dd]) => {
+    const dc = {}, total = Object.values(dd).reduce((s,v) => s+v.size, 0);
+    for (const [d,s] of Object.entries(dd)) dc[d] = s.size;
+    return { name, dc, total };
+  }).filter(s => s.total > 0).sort((a,b) => b.total - a.total);
+  if (!staffList.length) return;
+
+  const mx = Math.max(1, ...staffList.flatMap(s => Object.values(s.dc)));
+  const showN = days.length <= 31;
+  const body  = [heatHeader(days)];
+  for (const s of staffList) {
+    body.push([
+      { text: s.name, fontSize: 5.5, border: [false,false,false,false] },
+      ...days.map(d => {
+        const count = s.dc[d.toISOString().slice(0,10)] || 0;
+        const ratio = count / mx;
+        const hue = ratio * 120, lig = ratio < 0.5 ? 50+ratio*10 : 60-(ratio-0.5)*32;
+        return { text: showN && count ? String(count) : '', fontSize: 5, alignment: 'center',
+          fillColor: count ? hslHex(hue, 82, lig) : '#f8fafc',
+          color: ratio > 0.6 ? '#fff' : '#333', border: [false,false,false,false] };
+      }),
+      { text: String(s.total), fontSize: 5, alignment: 'center', color: '#64748b', border: [false,false,false,false] },
+    ]);
+  }
+  content.push(heatTable(body, days, 90));
+}
+
 function groupBy(rows, fn) {
   const m = {};
   for (const r of rows) { const k = fn(r); if (k != null && k !== '') { if (!m[k]) m[k] = []; m[k].push(r); } }
@@ -569,7 +707,7 @@ function buildMargin(rows, content, pageBreak) {
   }
 }
 
-function buildEfficiency(rows, content, pageBreak) {
+function buildEfficiency(rows, opts, content, pageBreak) {
   content.push(pdfSection('Эффективность', pageBreak));
 
   const docData = Object.entries(groupBy(rows, r => r.executor || null))
@@ -577,6 +715,7 @@ function buildEfficiency(rows, content, pageBreak) {
     .filter(d => d.patients > 0).sort((a, b) => b.patients - a.patients);
   content.push(pdfSubsection('Пациентов у врача'));
   content.push(pdfHBar(docData, { valueKey: 'patients', labelKey: 'name', colorKey: 'color', formatter: fmtN }));
+  buildDoctorHeatmapPdf(rows, opts?.periodStart, opts?.periodEnd, content);
 
   const referrals = buildReferralPairs(rows);
   if (referrals.length) {
@@ -653,7 +792,7 @@ function buildEfficiency(rows, content, pageBreak) {
   }
 }
 
-function buildRooms(appointments, periodStart, periodEnd, content, pageBreak) {
+function buildRooms(appointments, rows, doctors, periodStart, periodEnd, content, pageBreak) {
   if (!appointments.length || !periodStart || !periodEnd) return;
 
   const roomStats = buildRoomStats(appointments, periodStart, periodEnd);
@@ -681,6 +820,11 @@ function buildRooms(appointments, periodStart, periodEnd, content, pageBreak) {
   } else {
     content.push({ text: 'Недостаточно данных (нужны кабинеты с 2+ визитами в один день)', fontSize: 8, color: '#94a3b8', margin: [0, 2, 0, 8] });
   }
+
+  if (rows?.length && doctors?.length) {
+    content.push(pdfSubsection('Сотрудники кабинетов — пациентов по дням'));
+    buildStaffHeatmapPdf(rows, doctors, periodStart, periodEnd, content);
+  }
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -700,6 +844,7 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
     appointments = [],
     periodStart  = null,
     periodEnd    = null,
+    doctors      = [],
   } = config;
 
   const sec = key => sections[key] !== false; // default: all on
@@ -732,9 +877,9 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
   push('patients',   buildPatients,   filteredRows);
   push('top20',      buildTop20,      filteredRows);
   push('margin',     buildMargin,     filteredRows);
-  push('efficiency', buildEfficiency, filteredRows);
+  push('efficiency', buildEfficiency, filteredRows, { periodStart, periodEnd });
   if (sec('rooms') && appointments.length) {
-    buildRooms(appointments, periodStart, periodEnd, content, !isFirst);
+    buildRooms(appointments, filteredRows, doctors, periodStart, periodEnd, content, !isFirst);
     isFirst = false;
   }
 
