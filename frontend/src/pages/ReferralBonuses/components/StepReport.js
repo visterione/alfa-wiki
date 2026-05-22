@@ -250,6 +250,80 @@ function SourceConflictModal({ sources, onPick, onDismiss }) {
   );
 }
 
+// ─── Missing bonus detection helpers ──────────────────────────────────────────
+function collectMissingBonuses(clinicReports) {
+  const mp = (clinicReports || []).flatMap(cr =>
+    (cr.salary?.performedSections || [])
+      .filter(s => s.bonusLabel === '—')
+      .map(s => ({ name: s.name || s.code || '—', code: s.code || '', clinic: cr.clinicLabel || '' }))
+  );
+  const mr = (clinicReports || []).flatMap(cr =>
+    (cr.salary?.referralSections || []).flatMap(sec =>
+      (sec.services || [])
+        .filter(svc => svc.bonusLabel === '—')
+        .map(svc => ({ name: svc.name || svc.code || '—', code: svc.code || '', clinic: cr.clinicLabel || '' }))
+    )
+  );
+  const dedup = (arr) => {
+    const seen = new Set();
+    return arr.filter(x => { const k = `${x.code}||${x.name}||${x.clinic}`; return seen.has(k) ? false : (seen.add(k), true); });
+  };
+  return { missingPerformed: dedup(mp), missingReferral: dedup(mr) };
+}
+
+function MissingBonusBanner({ clinicReports }) {
+  const [expanded, setExpanded] = useState(false);
+  const { missingPerformed, missingReferral } = collectMissingBonuses(clinicReports);
+  if (!missingPerformed.length && !missingReferral.length) return null;
+  const total = missingPerformed.length + missingReferral.length;
+
+  return (
+    <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+          Не настроен бонус для {total} {total === 1 ? 'услуги' : 'услуг'} — бонус не будет начислен
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      {expanded && (
+        <div style={{ padding: '0 14px 12px', borderTop: '1px solid #fde68a' }}>
+          {missingPerformed.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>Выполненные услуги (нет в «Услуги»):</div>
+              {missingPerformed.map((s, i) => (
+                <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                  <span style={{ color: '#a16207', flexShrink: 0 }}>·</span>
+                  <span>{s.name}{s.code ? <span style={{ color: '#a16207', marginLeft: 4 }}>({s.code})</span> : ''}{missingPerformed.length > 1 && s.clinic ? <span style={{ color: '#a16207', marginLeft: 4 }}>— {s.clinic}</span> : ''}</span>
+                </div>
+              ))}
+            </>
+          )}
+          {missingReferral.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>Направления (нет в «Направления»):</div>
+              {missingReferral.map((s, i) => (
+                <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                  <span style={{ color: '#a16207', flexShrink: 0 }}>·</span>
+                  <span>{s.name}{s.code ? <span style={{ color: '#a16207', marginLeft: 4 }}>({s.code})</span> : ''}{missingReferral.length > 1 && s.clinic ? <span style={{ color: '#a16207', marginLeft: 4 }}>— {s.clinic}</span> : ''}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Individual mode ───────────────────────────────────────────────────────────
 function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = false, excelSources = [] }) {
   const [dateFrom, setDateFrom] = useState('');
@@ -319,7 +393,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     setCorpRecalcState(null);
   }, [selectedDoctor?.id]); // eslint-disable-line
 
-  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null, noExcelData = false }) => {
+  const runBuildReport = async ({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys, corpRows, scheduleEntries = [], holidayDates = null }) => {
     const referralBonuses    = Array.isArray(rbRes.data) ? rbRes.data : [];
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
@@ -339,7 +413,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     if (filterClinic) {
       result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
     }
-    setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo, noExcelData });
+    setReportData({ ...result, doctor: selectedDoctor, dateFrom, dateTo });
     // Save context for post-generation re-editing
     if (corpRows?.length > 0) {
       setCorpRecalcState({ corpRows, colMap, corpIncludedKeys, pendingData: { rows, colMap, rbRes, pbRes, execSettings, savedAsstRes } });
@@ -378,11 +452,6 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         }
       }
 
-      const noExcelDataFlag = uploadedFile != null && rows.length > 0 && !rows.some(r =>
-        (colMap.executor && rbNamesMatch(selectedDoctor.name, String(r[colMap.executor] || '').trim())) ||
-        (colMap.referrer && rbNamesMatch(selectedDoctor.name, String(r[colMap.referrer] || '').trim()))
-      );
-
       const allCorpRows = extractCorpRows(rows, colMap, dateFrom, dateTo);
       // For individual report — show rows where this doctor appears in any role column
       const corpRows = allCorpRows.filter(({ row }) => {
@@ -400,7 +469,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         return;
       }
 
-      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates, noExcelData: noExcelDataFlag });
+      await runBuildReport({ rows, colMap, rbRes, pbRes, execSettings, savedAsstRes, corpIncludedKeys: null, corpRows, scheduleEntries, holidayDates });
     } catch (e) {
       setError(e.message || 'Ошибка при построении отчёта');
     } finally {
@@ -586,18 +655,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
         {reportData && (
           <div className="rb-report">
-            {reportData.noExcelData && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, fontSize: 13, color: '#92400e' }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="18" height="18" style={{ flexShrink: 0, marginTop: 1 }}>
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 2 }}>Врач не найден в файле Excel</div>
-                  <div>В загруженном файле нет ни одной записи, где этот врач выступает исполнителем или рекомендателем. Возможно, данные ошибочны — проверьте файл.</div>
-                </div>
-              </div>
-            )}
+            <MissingBonusBanner clinicReports={reportData.clinicReports} />
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
@@ -699,10 +757,6 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     for (let i = 0; i < doctorList.length; i++) {
       const doctor = doctorList[i];
       setProgress({ current: i + 1, total: doctorList.length, currentName: doctor.name });
-      const noExcelData = uploadedFile != null && rows.length > 0 && !rows.some(r =>
-        (colMap.executor && rbNamesMatch(doctor.name, String(r[colMap.executor] || '').trim())) ||
-        (colMap.referrer && rbNamesMatch(doctor.name, String(r[colMap.referrer] || '').trim()))
-      );
       try {
         const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
           rbApi.getByDoctor(doctor.id),
@@ -729,9 +783,9 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
         }
-        results.push({ doctor, ...result, dateFrom, dateTo, error: null, noExcelData });
+        results.push({ doctor, ...result, dateFrom, dateTo, error: null });
       } catch (e) {
-        results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка', noExcelData });
+        results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' });
       }
     }
     setBulkResults(results);
@@ -1002,6 +1056,8 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
             {bulkResults.map(r => {
               const isOpen     = expanded.has(r.doctor.id);
               const hasClinics = r.clinicReports?.length > 0;
+              const { missingPerformed: bmp, missingReferral: bmr } = hasClinics && !r.error ? collectMissingBonuses(r.clinicReports) : { missingPerformed: [], missingReferral: [] };
+              const missingBonusCount = bmp.length + bmr.length;
               const total      = (r.clinicReports || []).reduce((s, cr) => {
                 const sal = cr.salary;
                 if (!sal) return s;
@@ -1012,7 +1068,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                 <div key={r.doctor.id} style={{ marginBottom: 6, border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
                   <div
                     onClick={() => hasClinics && toggleExpanded(r.doctor.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: r.error ? '#FEF2F2' : r.noExcelData ? '#fffbeb' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics ? 'pointer' : 'default', userSelect: 'none' }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: r.error ? '#FEF2F2' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics ? 'pointer' : 'default', userSelect: 'none' }}
                   >
                     {/* Clinic colour bars */}
                     <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
@@ -1028,13 +1084,13 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                           ? <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{(r.clinicReports || []).map(cr => cr.clinicLabel).join(' · ')}</div>
                           : <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Нет данных за период</div>
                       }
-                      {r.noExcelData && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#92400e', marginTop: 2 }}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0 }}>
+                      {missingBonusCount > 0 && (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 6px', marginTop: 3 }}>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="10" height="10" style={{ flexShrink: 0 }}>
                             <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                             <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                           </svg>
-                          Нет в файле Excel — проверьте данные
+                          Нет бонуса: {missingBonusCount} {missingBonusCount === 1 ? 'услуга' : missingBonusCount < 5 ? 'услуги' : 'услуг'}
                         </div>
                       )}
                     </div>
