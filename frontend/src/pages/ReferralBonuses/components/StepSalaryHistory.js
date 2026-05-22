@@ -897,11 +897,12 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
   const [srcSaving,     setSrcSaving]     = useState(false);
   const [srcFilterYear, setSrcFilterYear] = useState('');
   const [srcSearch,     setSrcSearch]     = useState('');
-  const [srcEditId,     setSrcEditId]     = useState(null);
-  const [srcEditFrom,   setSrcEditFrom]   = useState('');
-  const [srcEditTo,     setSrcEditTo]     = useState('');
-  const [srcEditLabel,  setSrcEditLabel]  = useState('');
-  const [srcEditSaving, setSrcEditSaving] = useState(false);
+  const [srcEditId,       setSrcEditId]       = useState(null);
+  const [srcEditFrom,     setSrcEditFrom]     = useState('');
+  const [srcEditTo,       setSrcEditTo]       = useState('');
+  const [srcEditLabel,    setSrcEditLabel]    = useState('');
+  const [srcEditFileName, setSrcEditFileName] = useState('');
+  const [srcEditSaving,   setSrcEditSaving]   = useState(false);
   const srcFileRef = useRef(null);
 
   // Cash payments
@@ -1313,16 +1314,19 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
       setSrcEditFrom(src.dateFrom || '');
       setSrcEditTo(src.dateTo || '');
       setSrcEditLabel(src.periodLabel || '');
+      setSrcEditFileName(src.fileName || '');
     };
     const handleCancelEdit = () => { setSrcEditId(null); };
     const handleSaveEdit = async (src) => {
       if (!srcEditFrom || !srcEditTo) { toast.error('Укажите период'); return; }
       if (srcEditFrom > srcEditTo) { toast.error('Дата "с" не может быть позже даты "по"'); return; }
+      if (!srcEditFileName.trim()) { toast.error('Имя файла не может быть пустым'); return; }
       setSrcEditSaving(true);
       try {
         await updateSource(src.id, {
           dateFrom: srcEditFrom, dateTo: srcEditTo,
           periodLabel: srcEditLabel.trim() || `${fmtDate(srcEditFrom)} – ${fmtDate(srcEditTo)}`,
+          fileName: srcEditFileName.trim(),
         });
         onSourcesChange?.();
         setSrcEditId(null);
@@ -1456,7 +1460,8 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                           </div>
                           <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', textAlign: 'right', flexShrink: 0, lineHeight: 1.6, marginRight: 4 }}>
                             <div>{fmtDate(src.dateFrom)} – {fmtDate(src.dateTo)}</div>
-                            {src.uploadedAt && <div>{fmtDateTimeShort(src.uploadedAt)}{src.uploadedBy ? ` · ${src.uploadedBy}` : ''}</div>}
+                            {(src.uploadedAt || src.createdAt) && <div>{fmtDateTimeShort(src.uploadedAt || src.createdAt)}</div>}
+                            {src.uploadedBy && <div style={{ fontWeight: 500, color: 'var(--rb-text)' }}>{src.uploadedBy}</div>}
                           </div>
                           {/* Download */}
                           <button onClick={() => handleDownload(src)} title="Скачать файл" style={{ width: 28, height: 28, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#16a34a' }}>
@@ -1498,6 +1503,16 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                               value={srcEditLabel}
                               onChange={e => setSrcEditLabel(e.target.value)}
                               style={{ ...inputStyle, width: 170 }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Имя файла (.xlsx)</span>
+                            <input
+                              type="text"
+                              placeholder="имя_файла.xlsx"
+                              value={srcEditFileName}
+                              onChange={e => setSrcEditFileName(e.target.value)}
+                              style={{ ...inputStyle, width: 220 }}
                             />
                           </div>
                           <div style={{ display: 'flex', gap: 6, alignSelf: 'flex-end' }}>

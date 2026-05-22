@@ -16,8 +16,8 @@ export async function addSource({ dateFrom, dateTo, periodLabel, fileName, fileD
   return res.data;
 }
 
-export async function updateSource(id, { dateFrom, dateTo, periodLabel }) {
-  const res = await rbExcelSources.update(id, { dateFrom, dateTo, periodLabel });
+export async function updateSource(id, { dateFrom, dateTo, periodLabel, fileName }) {
+  const res = await rbExcelSources.update(id, { dateFrom, dateTo, periodLabel, fileName });
   return res.data;
 }
 

@@ -475,10 +475,35 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         // Загружаем кассу отдельно — не критично если упадёт
         cashPaymentsApi.getAll()
           .then(cpRes => {
+            const cpList = Array.isArray(cpRes.data) ? cpRes.data : [];
             const cpMap = {};
-            (Array.isArray(cpRes.data) ? cpRes.data : []).forEach(p => {
-              if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
-              cpMap[p.salaryRecordId].push(p);
+            const standaloneByUser = {}; // misUserId → standalone payments (без salaryRecordId)
+            cpList.forEach(p => {
+              if (p.salaryRecordId) {
+                if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
+                cpMap[p.salaryRecordId].push(p);
+              } else if (p.misUserId) {
+                if (!standaloneByUser[p.misUserId]) standaloneByUser[p.misUserId] = [];
+                standaloneByUser[p.misUserId].push(p);
+              }
+            });
+            // Сопоставляем standalone выплаты с записями зарплат по misUserId + период
+            const matchedPaymentIds = new Set();
+            list.forEach(rec => {
+              const userPayments = standaloneByUser[String(rec.misUserId)];
+              if (!userPayments || userPayments.length === 0) return;
+              const recPeriod = rec.periodLabel || (rec.dateFrom ? String(rec.dateFrom).slice(0, 7) : null);
+              const matching = userPayments.filter(p =>
+                !matchedPaymentIds.has(p.id) &&
+                p.periodLabel &&
+                recPeriod &&
+                p.periodLabel === recPeriod
+              );
+              matching.forEach(p => matchedPaymentIds.add(p.id));
+              if (matching.length > 0) {
+                if (!cpMap[rec.id]) cpMap[rec.id] = [];
+                cpMap[rec.id].push(...matching);
+              }
             });
             setCashPaymentsMap(cpMap);
           })

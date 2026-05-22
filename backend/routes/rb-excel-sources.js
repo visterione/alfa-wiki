@@ -17,7 +17,10 @@ router.get('/', authenticate, async (req, res) => {
       attributes: ['id', 'dateFrom', 'dateTo', 'periodLabel', 'fileName', 'uploadedBy', 'createdAt', 'updatedAt'],
       order: [['dateFrom', 'DESC']],
     });
-    res.json(sources);
+    res.json(sources.map(s => {
+      const d = s.toJSON();
+      return { ...d, uploadedAt: d.createdAt };
+    }));
   } catch (err) {
     console.error('GET /api/rb-excel-sources error:', err);
     res.status(500).json({ error: err.message });
@@ -91,7 +94,7 @@ router.post('/',
   }
 );
 
-// PUT /api/rb-excel-sources/:id — обновить период / название
+// PUT /api/rb-excel-sources/:id — обновить период / название / имя файла
 router.put('/:id',
   authenticate,
   [
@@ -104,13 +107,16 @@ router.put('/:id',
       const source = await RbExcelSource.findByPk(req.params.id);
       if (!source) return res.status(404).json({ error: 'Источник не найден' });
 
-      const { dateFrom, dateTo, periodLabel } = req.body;
+      const { dateFrom, dateTo, periodLabel, fileName } = req.body;
 
       if (dateFrom > dateTo) {
         return res.status(400).json({ error: 'dateFrom не может быть позже dateTo' });
       }
 
-      await source.update({ dateFrom, dateTo, periodLabel: periodLabel || null });
+      const updates = { dateFrom, dateTo, periodLabel: periodLabel || null };
+      if (fileName && fileName.trim()) updates.fileName = fileName.trim();
+
+      await source.update(updates);
 
       res.json({
         id: source.id,
@@ -119,6 +125,7 @@ router.put('/:id',
         periodLabel: source.periodLabel,
         fileName: source.fileName,
         uploadedBy: source.uploadedBy,
+        uploadedAt: source.createdAt,
         createdAt: source.createdAt,
         updatedAt: source.updatedAt,
       });
