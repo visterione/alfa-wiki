@@ -1057,7 +1057,6 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
               const isOpen     = expanded.has(r.doctor.id);
               const hasClinics = r.clinicReports?.length > 0;
               const { missingPerformed: bmp, missingReferral: bmr } = hasClinics && !r.error ? collectMissingBonuses(r.clinicReports) : { missingPerformed: [], missingReferral: [] };
-              const missingBonusCount = bmp.length + bmr.length;
               const total      = (r.clinicReports || []).reduce((s, cr) => {
                 const sal = cr.salary;
                 if (!sal) return s;
@@ -1084,13 +1083,32 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                           ? <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{(r.clinicReports || []).map(cr => cr.clinicLabel).join(' · ')}</div>
                           : <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Нет данных за период</div>
                       }
-                      {missingBonusCount > 0 && (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#92400e', background: '#fef3c7', border: '1px solid #f59e0b', borderRadius: 4, padding: '1px 6px', marginTop: 3 }}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="10" height="10" style={{ flexShrink: 0 }}>
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                          </svg>
-                          Нет бонуса: {missingBonusCount} {missingBonusCount === 1 ? 'услуга' : missingBonusCount < 5 ? 'услуги' : 'услуг'}
+                      {(bmp.length > 0 || bmr.length > 0) && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: '#92400e', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          {bmp.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, marginTop: 1 }}>
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                              </svg>
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ fontWeight: 600 }}>Услуги без бонуса: </span>
+                                <span style={{ color: '#78350f' }}>{bmp.map(s => s.name || s.code || '—').join(', ')}</span>
+                              </div>
+                            </div>
+                          )}
+                          {bmr.length > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, marginTop: 1 }}>
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                              </svg>
+                              <div style={{ minWidth: 0 }}>
+                                <span style={{ fontWeight: 600 }}>Направления без бонуса: </span>
+                                <span style={{ color: '#78350f' }}>{bmr.map(s => s.name || s.code || '—').join(', ')}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
