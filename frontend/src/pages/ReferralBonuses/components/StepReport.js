@@ -255,13 +255,13 @@ function collectMissingBonuses(clinicReports) {
   const mp = (clinicReports || []).flatMap(cr =>
     (cr.salary?.performedSections || [])
       .filter(s => s.bonusLabel === '—')
-      .map(s => ({ name: s.name || s.code || '—', code: s.code || '', clinic: cr.clinicLabel || '' }))
+      .map(s => ({ name: s.name || s.code || '—', code: s.code || '', clinic: cr.clinicLabel || '', clinicId: cr.clinicId }))
   );
   const mr = (clinicReports || []).flatMap(cr =>
     (cr.salary?.referralSections || []).flatMap(sec =>
       (sec.services || [])
         .filter(svc => svc.bonusLabel === '—')
-        .map(svc => ({ name: svc.name || svc.code || '—', code: svc.code || '', clinic: cr.clinicLabel || '' }))
+        .map(svc => ({ name: svc.name || svc.code || '—', code: svc.code || '', clinic: cr.clinicLabel || '', clinicId: cr.clinicId }))
     )
   );
   const dedup = (arr) => {
@@ -274,37 +274,93 @@ function collectMissingBonuses(clinicReports) {
 function groupByClinic(arr) {
   const map = {};
   arr.forEach(s => {
-    const key = s.clinic || '';
-    if (!map[key]) map[key] = [];
-    map[key].push(s);
+    const key = s.clinicId !== undefined ? String(s.clinicId) : (s.clinic || '');
+    if (!map[key]) map[key] = { label: s.clinic || '', items: [] };
+    map[key].items.push(s);
   });
-  return Object.entries(map);
+  return Object.values(map);
 }
 
-function MissingSection({ label, items }) {
+function MissingSection({ label, items, kind, forms, onFormChange, onSave, saving, canEdit }) {
   if (!items.length) return null;
   return (
     <>
       <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>{label}:</div>
-      {groupByClinic(items).map(([clinic, svcs]) => (
-        <div key={clinic} style={{ marginBottom: 6 }}>
-          {clinic && <div style={{ fontSize: 12, fontWeight: 600, color: '#a16207', margin: '4px 0 2px' }}>— {clinic}</div>}
-          {svcs.map((s, i) => (
-            <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', paddingLeft: clinic ? 12 : 0 }}>
-              {s.code && <span style={{ fontWeight: 500, marginRight: 6 }}>{s.code}</span>}{s.name}
-            </div>
-          ))}
+      {groupByClinic(items).map(({ label: clinicLabel, items: svcs }) => (
+        <div key={clinicLabel}>
+          {clinicLabel && <div style={{ fontSize: 12, fontWeight: 600, color: '#a16207', margin: '4px 0 3px' }}>— {clinicLabel}</div>}
+          {svcs.map((s, i) => {
+            const key = `${kind}|${s.code}|${String(s.clinicId ?? '')}`;
+            const form = forms?.[key] || { type: 'pct', value: '' };
+            const isSaving = !!saving?.[key];
+            return (
+              <div key={i} style={{ paddingLeft: clinicLabel ? 12 : 0, marginBottom: canEdit ? 7 : 2 }}>
+                <div style={{ fontSize: 12, color: '#78350f', marginBottom: canEdit ? 4 : 0 }}>
+                  {s.code && <span style={{ fontWeight: 600 }}>{s.code}{' '}</span>}{s.name}
+                </div>
+                {canEdit && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div style={{ display: 'flex', border: '1px solid #f59e0b', borderRadius: 4, overflow: 'hidden', flexShrink: 0, fontSize: 11 }}>
+                      <button onClick={() => onFormChange(key, 'type', 'pct')} style={{ padding: '2px 8px', background: form.type === 'pct' ? '#fbbf24' : '#fff', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: form.type === 'pct' ? 700 : 400, fontFamily: 'inherit' }}>%</button>
+                      <button onClick={() => onFormChange(key, 'type', 'rub')} style={{ padding: '2px 8px', background: form.type === 'rub' ? '#fbbf24' : '#fff', border: 'none', borderLeft: '1px solid #f59e0b', cursor: 'pointer', color: '#92400e', fontWeight: form.type === 'rub' ? 700 : 400, fontFamily: 'inherit' }}>₽</button>
+                    </div>
+                    <input
+                      type="number" min="0" step="0.1"
+                      value={form.value}
+                      onChange={e => onFormChange(key, 'value', e.target.value)}
+                      placeholder={form.type === 'pct' ? '%' : '₽'}
+                      style={{ width: 72, padding: '3px 7px', fontSize: 11, border: '1px solid #f59e0b', borderRadius: 4, outline: 'none', fontFamily: 'inherit' }}
+                    />
+                    <button
+                      onClick={() => onSave(s, kind, key)}
+                      disabled={isSaving || !form.value}
+                      style={{ padding: '3px 12px', fontSize: 11, background: form.value && !isSaving ? '#d97706' : '#e5e7eb', color: form.value && !isSaving ? '#fff' : '#9ca3af', border: 'none', borderRadius: 4, cursor: form.value && !isSaving ? 'pointer' : 'default', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
+                    >
+                      {isSaving ? 'Сохранение...' : 'Сохранить'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ))}
     </>
   );
 }
 
-function MissingBonusBanner({ clinicReports }) {
+function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
   const [expanded, setExpanded] = useState(false);
+  const [forms, setForms] = useState({});
+  const [saving, setSaving] = useState({});
+
   const { missingPerformed, missingReferral } = collectMissingBonuses(clinicReports);
   if (!missingPerformed.length && !missingReferral.length) return null;
   const total = missingPerformed.length + missingReferral.length;
+
+  const onFormChange = (key, field, val) =>
+    setForms(prev => ({ ...prev, [key]: { ...(prev[key] || { type: 'pct', value: '' }), [field]: val } }));
+
+  const onSave = async (item, kind, key) => {
+    const form = forms[key] || { type: 'pct', value: '' };
+    const val = parseFloat(form.value);
+    if (isNaN(val) || val < 0) { toast.error('Укажите корректное значение'); return; }
+    const dbClinicId = item.clinicId && item.clinicId !== 'unknown' ? String(item.clinicId) : '';
+    setSaving(prev => ({ ...prev, [key]: true }));
+    try {
+      if (kind === 'referral') {
+        await rbApi.save({ misUserId: doctor.id, doctorName: doctor.name, serviceCode: item.code, serviceName: item.name, bonusPercent: form.type === 'pct' ? val : null, bonusRub: form.type === 'rub' ? val : null, clinicId: dbClinicId });
+      } else {
+        await psbApi.save({ misUserId: doctor.id, doctorName: doctor.name, clinicId: dbClinicId, serviceCode: item.code, serviceName: item.name, bonusPercent: form.type === 'pct' ? val : null, bonusRub: form.type === 'rub' ? val : null });
+      }
+      toast.success('Бонус сохранён');
+      if (onSaved) onSaved();
+    } catch {
+      toast.error('Ошибка сохранения');
+    } finally {
+      setSaving(prev => ({ ...prev, [key]: false }));
+    }
+  };
 
   return (
     <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
@@ -325,8 +381,8 @@ function MissingBonusBanner({ clinicReports }) {
       </div>
       {expanded && (
         <div style={{ padding: '0 14px 12px', borderTop: '1px solid #fde68a' }}>
-          <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} />
-          <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} />
+          <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} kind="performed" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} />
+          <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} kind="referral" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} />
         </div>
       )}
     </div>
@@ -664,7 +720,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         {error && <div className="rb-alert rb-alert-danger" style={{ whiteSpace: 'pre-wrap' }}>{error}</div>}
         {reportData && (
           <div className="rb-report">
-            <MissingBonusBanner clinicReports={reportData.clinicReports} />
+            <MissingBonusBanner clinicReports={reportData.clinicReports} doctor={selectedDoctor} canEdit={!readOnly} onSaved={handleGenerate} />
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
