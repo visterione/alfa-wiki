@@ -271,6 +271,35 @@ function collectMissingBonuses(clinicReports) {
   return { missingPerformed: dedup(mp), missingReferral: dedup(mr) };
 }
 
+function groupByClinic(arr) {
+  const map = {};
+  arr.forEach(s => {
+    const key = s.clinic || '';
+    if (!map[key]) map[key] = [];
+    map[key].push(s);
+  });
+  return Object.entries(map);
+}
+
+function MissingSection({ label, items }) {
+  if (!items.length) return null;
+  return (
+    <>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>{label}:</div>
+      {groupByClinic(items).map(([clinic, svcs]) => (
+        <div key={clinic} style={{ marginBottom: 6 }}>
+          {clinic && <div style={{ fontSize: 12, fontWeight: 600, color: '#a16207', margin: '4px 0 2px' }}>— {clinic}</div>}
+          {svcs.map((s, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', paddingLeft: clinic ? 12 : 0 }}>
+              {s.code && <span style={{ fontWeight: 500, marginRight: 6 }}>{s.code}</span>}{s.name}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function MissingBonusBanner({ clinicReports }) {
   const [expanded, setExpanded] = useState(false);
   const { missingPerformed, missingReferral } = collectMissingBonuses(clinicReports);
@@ -296,28 +325,8 @@ function MissingBonusBanner({ clinicReports }) {
       </div>
       {expanded && (
         <div style={{ padding: '0 14px 12px', borderTop: '1px solid #fde68a' }}>
-          {missingPerformed.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>Выполненные услуги (нет в «Услуги»):</div>
-              {missingPerformed.map((s, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ color: '#a16207', flexShrink: 0 }}>·</span>
-                  <span>{s.name}{s.code ? <span style={{ color: '#a16207', marginLeft: 4 }}>({s.code})</span> : ''}{missingPerformed.length > 1 && s.clinic ? <span style={{ color: '#a16207', marginLeft: 4 }}>— {s.clinic}</span> : ''}</span>
-                </div>
-              ))}
-            </>
-          )}
-          {missingReferral.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', margin: '10px 0 5px' }}>Направления (нет в «Направления»):</div>
-              {missingReferral.map((s, i) => (
-                <div key={i} style={{ fontSize: 12, color: '#78350f', padding: '1px 0', display: 'flex', gap: 6, alignItems: 'baseline' }}>
-                  <span style={{ color: '#a16207', flexShrink: 0 }}>·</span>
-                  <span>{s.name}{s.code ? <span style={{ color: '#a16207', marginLeft: 4 }}>({s.code})</span> : ''}{missingReferral.length > 1 && s.clinic ? <span style={{ color: '#a16207', marginLeft: 4 }}>— {s.clinic}</span> : ''}</span>
-                </div>
-              ))}
-            </>
-          )}
+          <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} />
+          <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} />
         </div>
       )}
     </div>
@@ -1084,29 +1093,17 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                           : <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>Нет данных за период</div>
                       }
                       {(bmp.length > 0 || bmr.length > 0) && (
-                        <div style={{ marginTop: 4, fontSize: 11, color: '#92400e', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ marginTop: 5, fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6, padding: '5px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                           {bmp.length > 0 && (
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, marginTop: 1 }}>
-                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                              </svg>
-                              <div style={{ minWidth: 0 }}>
-                                <span style={{ fontWeight: 600 }}>Услуги без бонуса: </span>
-                                <span style={{ color: '#78350f' }}>{bmp.map(s => s.name || s.code || '—').join(', ')}</span>
-                              </div>
+                            <div>
+                              <span style={{ fontWeight: 600 }}>Услуги без бонуса: </span>
+                              <span style={{ color: '#78350f' }}>{bmp.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
                             </div>
                           )}
                           {bmr.length > 0 && (
-                            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, marginTop: 1 }}>
-                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-                              </svg>
-                              <div style={{ minWidth: 0 }}>
-                                <span style={{ fontWeight: 600 }}>Направления без бонуса: </span>
-                                <span style={{ color: '#78350f' }}>{bmr.map(s => s.name || s.code || '—').join(', ')}</span>
-                              </div>
+                            <div>
+                              <span style={{ fontWeight: 600 }}>Направления без бонуса: </span>
+                              <span style={{ color: '#78350f' }}>{bmr.map(s => [s.code, s.name].filter(Boolean).join(' ')).join(', ')}</span>
                             </div>
                           )}
                         </div>
