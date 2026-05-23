@@ -675,7 +675,8 @@ window.dcApp = (function() {
     3: 'Кидс',
     4: '3К',
     6: 'Линия',
-    7: 'Смайл'
+    7: 'Смайл',
+    11: 'Сукко'
   };
   var notesEditor = null;
   var currentUser = null;
@@ -687,11 +688,12 @@ window.dcApp = (function() {
     { id: 3, name: 'Кидс', color: '#ed9121' },
     { id: 4, name: '3К', color: '#800080' },
     { id: 6, name: 'Линия', color: '#e2d1bb' },
-    { id: 7, name: 'Смайл', color: '#999999' }
+    { id: 7, name: 'Смайл', color: '#999999' },
+    { id: 11, name: 'Сукко', color: '#2d7055' }
   ];
 
   // Display order for dc-card-top clinic badges (preserves old visual order)
-  var CLINICS_DISPLAY_ORDER = [2, 3, 1, 6, 4, 7]; // Альфа, Кидс, Проф, Линия, 3К, Смайл
+  var CLINICS_DISPLAY_ORDER = [2, 3, 1, 6, 4, 7, 11]; // Альфа, Кидс, Проф, Линия, 3К, Смайл, Сукко
 
   // Mapping old clinic IDs (stored in DB) to new correct IDs (used by API)
   var OLD_TO_NEW_CLINIC_ID = {
