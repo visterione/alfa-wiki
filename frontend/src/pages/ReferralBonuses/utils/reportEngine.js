@@ -59,7 +59,7 @@ function applyHarmfulnessDefault(execDataObj, roles) {
   const cs = { ...(execDataObj.clinicSettings || {}) };
   let modified = false;
   Object.keys(cs).forEach(key => {
-    if (!cs[key].harmfulness) { cs[key] = { ...cs[key], harmfulness: true }; modified = true; }
+    if (!cs[key].harmfulnessSet && !cs[key].harmfulness) { cs[key] = { ...cs[key], harmfulness: true }; modified = true; }
   });
   return modified ? { ...execDataObj, clinicSettings: cs } : execDataObj;
 }

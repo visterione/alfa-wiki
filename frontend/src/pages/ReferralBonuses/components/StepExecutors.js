@@ -1339,7 +1339,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         if (!isHarmfulRole) return execDataObj;
         const cs = { ...(execDataObj.clinicSettings || {}) };
         Object.keys(cs).forEach(key => {
-          if (!cs[key].harmfulness) cs[key] = { ...cs[key], harmfulness: true };
+          if (!cs[key].harmfulnessSet && !cs[key].harmfulness) cs[key] = { ...cs[key], harmfulness: true };
         });
         return { ...execDataObj, clinicSettings: cs };
       };
@@ -1504,7 +1504,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handlePaymentFieldChange = (field, val) => {
-    updateClinicData({ [field]: val });
+    if (field === 'harmfulness') {
+      updateClinicData({ harmfulness: val, harmfulnessSet: true });
+    } else {
+      updateClinicData({ [field]: val });
+    }
     setIsDirty(true);
   };
 
