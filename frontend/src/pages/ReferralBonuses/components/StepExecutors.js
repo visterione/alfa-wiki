@@ -40,6 +40,7 @@ function execClinicDefault() {
     normServices: [],
     roleRates: [],
     harmfulness: false,
+    holidayDoubleRate: false,
   };
 }
 
@@ -1516,67 +1517,54 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     await saveToServer();
   };
 
-  const handleToggleMainPaymentLock = async () => {
-    const newLocked = !data.lockedMainPayment;
-    updateClinicData({ lockedMainPayment: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedMainPayment: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleMainPaymentLock = () => {
+    updateClinicData({ lockedMainPayment: !data.lockedMainPayment });
+    setIsDirty(true);
   };
 
-  const handleToggleAdvanceLock = async () => {
-    const newLocked = !data.lockedAdvance;
-    updateClinicData({ lockedAdvance: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedAdvance: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleAdvanceLock = () => {
+    updateClinicData({ lockedAdvance: !data.lockedAdvance });
+    setIsDirty(true);
   };
 
-  const handleToggleFixedSalaryLock = async () => {
-    const newLocked = !data.lockedFixedSalary;
-    updateClinicData({ lockedFixedSalary: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedFixedSalary: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleFixedSalaryLock = () => {
+    updateClinicData({ lockedFixedSalary: !data.lockedFixedSalary });
+    setIsDirty(true);
   };
 
-  const handleToggleHourlyRateLock = async () => {
-    const newLocked = !data.lockedHourlyRate;
-    updateClinicData({ lockedHourlyRate: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHourlyRate: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleHourlyRateLock = () => {
+    updateClinicData({ lockedHourlyRate: !data.lockedHourlyRate });
+    setIsDirty(true);
   };
 
-  const handleToggleHoursWorkedLock = async () => {
-    const newLocked = !data.lockedHoursWorked;
-    updateClinicData({ lockedHoursWorked: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHoursWorked: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleHoursWorkedLock = () => {
+    updateClinicData({ lockedHoursWorked: !data.lockedHoursWorked });
+    setIsDirty(true);
   };
 
-  const handleTogglePlusPercentLock = async () => {
-    const newLocked = !data.lockedPlusPercent;
-    updateClinicData({ lockedPlusPercent: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedPlusPercent: newLocked } } };
-    await saveToServer(newData);
+  const handleTogglePlusPercentLock = () => {
+    updateClinicData({ lockedPlusPercent: !data.lockedPlusPercent });
+    setIsDirty(true);
   };
 
-  const handleToggleIncludeReferralBonusesLock = async () => {
-    const newLocked = !data.lockedIncludeReferralBonuses;
-    updateClinicData({ lockedIncludeReferralBonuses: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedIncludeReferralBonuses: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleIncludeReferralBonusesLock = () => {
+    updateClinicData({ lockedIncludeReferralBonuses: !data.lockedIncludeReferralBonuses });
+    setIsDirty(true);
   };
 
-  const handleToggleIncludeReferralDeductionsLock = async () => {
-    const newLocked = !data.lockedIncludeReferralDeductions;
-    updateClinicData({ lockedIncludeReferralDeductions: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedIncludeReferralDeductions: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleIncludeReferralDeductionsLock = () => {
+    updateClinicData({ lockedIncludeReferralDeductions: !data.lockedIncludeReferralDeductions });
+    setIsDirty(true);
   };
 
-  const handleToggleHarmfulnessLock = async () => {
-    const newLocked = !data.lockedHarmfulness;
-    updateClinicData({ lockedHarmfulness: newLocked });
-    const newData = { ...execData, clinicSettings: { ...execData.clinicSettings, [activeClinic]: { ...(execData.clinicSettings?.[activeClinic] || execClinicDefault()), lockedHarmfulness: newLocked } } };
-    await saveToServer(newData);
+  const handleToggleHarmfulnessLock = () => {
+    updateClinicData({ lockedHarmfulness: !data.lockedHarmfulness });
+    setIsDirty(true);
+  };
+
+  const handleToggleHolidayDoubleRateLock = () => {
+    updateClinicData({ lockedHolidayDoubleRate: !data.lockedHolidayDoubleRate });
+    setIsDirty(true);
   };
 
   // ── Cabinets ──────────────────────────────────────────────────────────────
@@ -2341,6 +2329,16 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             </div>
             <RoleRatesList items={data.roleRates || []} onDelete={handleDeleteRoleRate} onUpdate={handleUpdateRoleRate} readOnly={readOnly} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} schedByRole={scheduleHoursData.byRole} schedByCategory={scheduleHoursData.byCategory} schedLoading={schedLoading} hoursFromSchedule={!!data.hoursFromSchedule} />
             <RoleRateAddForm onAdd={handleAddRoleRate} readOnly={readOnly} visible={showRoleRateForm} roles={doctorRoles} professions={doctorProfessions} categories={scheduleCategories} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 12px 10px' }}>
+              <label className="rb-toggle-item" style={data.lockedHolidayDoubleRate ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
+                <span className="rb-toggle-switch">
+                  <input type="checkbox" checked={!!data.holidayDoubleRate} onChange={e => handlePaymentFieldChange('holidayDoubleRate', e.target.checked)} disabled={!!data.lockedHolidayDoubleRate} />
+                  <span className="rb-toggle-slider" />
+                </span>
+                <span className="rb-toggle-label">Надбавка за работу в праздничные дни</span>
+              </label>
+              {!readOnly && <LockBtn locked={!!data.lockedHolidayDoubleRate} onClick={handleToggleHolidayDoubleRateLock} />}
+            </div>
           </div>
         )}
 

@@ -1245,7 +1245,7 @@ export async function buildReport({
     const holidaySurchargeBreakdown = []; // [{ label, hours, rate, amount }]
     let holidaySurchargeTotal = 0;
     if (holidayDates?.size && scheduleEntries?.length && dateFrom && dateTo &&
-        (pt === 'hourly' || pt === 'normed') && clinicSettings.hoursFromSchedule) {
+        (pt === 'hourly' || pt === 'normed') && clinicSettings.hoursFromSchedule && clinicSettings.holidayDoubleRate) {
       const { byRole: hByRole, byCategory: hByCategory } = calcHolidayHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId, holidayDates);
 
       if (pt === 'hourly') {
