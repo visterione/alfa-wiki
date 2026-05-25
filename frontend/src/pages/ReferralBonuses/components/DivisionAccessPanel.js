@@ -40,7 +40,10 @@ function SearchableSelect({ value, onChange, options, placeholder = '— выб�
       if (btnRef.current?.contains(e.target) || dropRef.current?.contains(e.target)) return;
       setOpen(false);
     };
-    const onScroll = () => setOpen(false);
+    const onScroll = e => {
+      if (dropRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', onDown);
     window.addEventListener('scroll', onScroll, true);
     return () => {
