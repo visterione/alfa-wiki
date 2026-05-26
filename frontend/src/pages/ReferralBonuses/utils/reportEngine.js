@@ -1105,8 +1105,9 @@ export async function buildReport({
         for (const [roleTitle, hours] of Object.entries(schedByRole)) {
           const rr = roleTitle ? roleRates.find(r => r.roleTitle === roleTitle) : null;
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
-          basePay += rate * hours;
-          hourlyRatesBreakdown.push({ label: roleTitle || 'Без указания', rate, hours, pay: rate * hours });
+          const pay = Math.round(rate * hours);
+          basePay += pay;
+          hourlyRatesBreakdown.push({ label: roleTitle || 'Без указания', rate, hours, pay });
           const normOverride = roleTitle ? roleNormOverrides.find(n => n.roleTitle === roleTitle) : null;
           const norm = normOverride ? parseFloat(normOverride.normHours) : (roleTitle ? (_normsByRole[roleTitle] ?? null) : _normHoursForPeriod);
           if (norm != null && hours > 0 && hours >= 2 * norm) {
@@ -1120,8 +1121,9 @@ export async function buildReport({
         for (const [categoryId, hours] of Object.entries(schedByCategory)) {
           const rr = roleRates.find(r => r.roleTitle === categoryId);
           const rate = rr ? (parseFloat(rr.rate) || baseRate) : baseRate;
-          basePay += rate * hours;
-          hourlyRatesBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, rate, hours, pay: rate * hours });
+          const pay = Math.round(rate * hours);
+          basePay += pay;
+          hourlyRatesBreakdown.push({ label: _categoryLabels[categoryId] || categoryId, rate, hours, pay });
           const roleForNorm = schedCategoryRoles?.[categoryId] || null;
           const normOverride = roleForNorm ? roleNormOverrides.find(n => n.roleTitle === roleForNorm) : null;
           const norm = normOverride ? parseFloat(normOverride.normHours) : (roleForNorm ? (_normsByRole[roleForNorm] ?? _normsByCategory[categoryId] ?? null) : (_normsByCategory[categoryId] ?? null));
@@ -1138,9 +1140,10 @@ export async function buildReport({
           for (const rr of roleRates) {
             const hours = parseFloat(rr.hoursWorked) || 0;
             const rate  = parseFloat(rr.rate) || baseRate;
-            basePay += rate * hours;
+            const pay = Math.round(rate * hours);
+            basePay += pay;
             effectiveHoursWorked += hours;
-            hourlyRatesBreakdown.push({ label: rr.roleTitle || 'Без указания', rate, hours, pay: rate * hours });
+            hourlyRatesBreakdown.push({ label: rr.roleTitle || 'Без указания', rate, hours, pay });
           }
         } else {
           effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;

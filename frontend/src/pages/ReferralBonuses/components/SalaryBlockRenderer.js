@@ -193,7 +193,7 @@ export default function SalaryBlock({ salary }) {
                         <td>{row.label}</td>
                         <td style={{ textAlign: 'center' }}>{row.rate.toFixed(2)} ₽</td>
                         <td style={{ textAlign: 'center' }}>{Number.isInteger(row.hours) ? row.hours : row.hours.toFixed(1)}</td>
-                        <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{row.pay.toFixed(2)} ₽</td>
+                        <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{Math.round(row.pay).toLocaleString('ru-RU')} ₽</td>
                       </tr>
                       {premiumItem && (
                         <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
@@ -209,7 +209,7 @@ export default function SalaryBlock({ salary }) {
                     <td>—</td>
                     <td style={{ textAlign: 'center' }}>{_hourlyRate.toFixed(2)} ₽</td>
                     <td style={{ textAlign: 'center' }}>{_hoursWorked}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(_hourlyRate * _hoursWorked).toFixed(2)} ₽</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{Math.round(_hourlyRate * _hoursWorked).toLocaleString('ru-RU')} ₽</td>
                   </tr>
                 )}
                 {hourlyRatesBreakdown.length === 0 && normPremiumAmount > 0 && normPremiumByRole.length > 0 && normPremiumByRole.map((item, i) => (
