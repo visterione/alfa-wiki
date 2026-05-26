@@ -1,0 +1,260 @@
+/* ─── Layout wrappers ─────────────────────────────────────────────────── */
+
+/* Outer flex column: [col-panel-row?] + [main-row] */
+.sg-outer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #f8f8f8;
+}
+
+/* Top row: corner + col-group-panel */
+.sg-top-row {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+}
+
+/* Corner square (top-left) */
+.sg-corner {
+  flex-shrink: 0;
+  background: #f0f0f0;
+  border-right: 1px solid #d0d0d0;
+  border-bottom: 1px solid #d0d0d0;
+}
+
+/* Main row: row-group-panel + univer-container */
+.sg-main-row {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ─── Row group panel ─────────────────────────────────────────────────── */
+
+.sg-row-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f0f0f0;
+  border-right: 1px solid #d0d0d0;
+  user-select: none;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Level buttons row (matches Univer's column-header height) */
+.sg-level-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-bottom: 1px solid #d0d0d0;
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
+/* Bars drawing area */
+.sg-bars-area {
+  position: relative;
+  overflow: hidden;
+  flex: 1;
+}
+
+/* ─── Col group panel ─────────────────────────────────────────────────── */
+
+.sg-col-panel {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  background: #f0f0f0;
+  border-bottom: 1px solid #d0d0d0;
+  user-select: none;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* Level buttons column (matches Univer's row-header width) */
+.sg-level-col {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-right: 1px solid #d0d0d0;
+  padding: 2px 0;
+}
+
+/* Bars drawing area (horizontal) */
+.sg-bars-area-h {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+}
+
+/* ─── Level number buttons ────────────────────────────────────────────── */
+
+.sg-level-btn {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #aaa;
+  border-radius: 2px;
+  background: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  color: #333;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
+}
+
+.sg-level-btn:hover {
+  background: #0066cc;
+  color: #fff;
+  border-color: #0066cc;
+}
+
+/* ─── Group bar primitives ────────────────────────────────────────────── */
+
+/* Common bar wrapper – positioned absolutely inside the bars area */
+.sg-bar-wrap,
+.sg-bar-wrap-h {
+  position: absolute;
+}
+
+/* Vertical line */
+.sg-line-v {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  background: #666;
+}
+
+/* Horizontal line */
+.sg-line-h {
+  position: absolute;
+  left: 0;
+  height: 1px;
+  background: #666;
+}
+
+/* Horizontal end-cap at the bottom of a row-group bar */
+.sg-cap-h {
+  position: absolute;
+  height: 1px;
+  background: #666;
+}
+
+/* Vertical end-cap at the right of a col-group bar */
+.sg-cap-v {
+  position: absolute;
+  width: 1px;
+  background: #666;
+}
+
+/* Short tick showing where collapsed rows/cols were */
+.sg-tick-h {
+  position: absolute;
+  height: 1px;
+  background: #999;
+}
+
+.sg-tick-v {
+  position: absolute;
+  width: 1px;
+  background: #999;
+}
+
+/* ─── Toggle buttons [+] / [−] ────────────────────────────────────────── */
+
+.sg-btn {
+  position: absolute;
+  border: 1px solid #888;
+  border-radius: 2px;
+  background: #fff;
+  color: #333;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.sg-btn:hover {
+  background: #0066cc;
+  color: #fff;
+  border-color: #0066cc;
+}
+
+.sg-btn-collapse {
+  color: #222;
+}
+
+.sg-btn-expand {
+  color: #0066cc;
+}
+
+/* ─── Right-click context menu ─────────────────────────────────────────── */
+
+.sg-ctx-menu {
+  position: absolute;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  padding: 4px 0;
+  min-width: 220px;
+  font-size: 13px;
+  user-select: none;
+}
+
+.sg-ctx-section {
+  padding: 4px 14px 2px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #888;
+  letter-spacing: 0.05em;
+}
+
+.sg-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: #222;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.sg-ctx-item:hover {
+  background: #f0f4ff;
+  color: #0066cc;
+}
+
+.sg-ctx-divider {
+  height: 1px;
+  background: #e8e8e8;
+  margin: 4px 0;
+}

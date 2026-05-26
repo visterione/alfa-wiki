@@ -229,6 +229,39 @@ function convertXlsxStyleToUniver(xlsxCell) {
 }
 
 /**
+ * Строит массив групп из карты outlineLevel { rowIndex: level }.
+ * Смежные индексы с level >= L образуют группу уровня L.
+ */
+function buildGroupsFromOutlineLevels(levels) {
+  if (!levels || Object.keys(levels).length === 0) return [];
+  const levelNums = Object.values(levels).map(Number).filter(n => n > 0);
+  if (!levelNums.length) return [];
+
+  const maxLevel = Math.max(...levelNums);
+  const indices = Object.keys(levels).map(Number).sort((a, b) => a - b);
+  const maxIndex = indices[indices.length - 1];
+  const groups = [];
+
+  for (let lv = 1; lv <= maxLevel; lv++) {
+    let start = null;
+    for (let i = 0; i <= maxIndex + 1; i++) {
+      const rowLv = Number(levels[i] || 0);
+      if (rowLv >= lv) {
+        if (start === null) start = i;
+      } else {
+        if (start !== null) {
+          groups.push({ start, end: i - 1, level: lv, collapsed: false });
+          start = null;
+        }
+      }
+    }
+    if (start !== null) groups.push({ start, end: maxIndex, level: lv, collapsed: false });
+  }
+
+  return groups;
+}
+
+/**
  * Конвертирует Excel Workbook в формат Univer
  */
 function convertXlsxToUniver(workbook) {
@@ -310,29 +343,39 @@ function convertXlsxToUniver(workbook) {
       });
     }
 
-    // Обработка размеров столбцов
+    // Обработка размеров и группировки столбцов
     const columnData = {};
+    const colOutlineLevels = {};
     if (worksheet['!cols']) {
       worksheet['!cols'].forEach((col, index) => {
-        if (col && col.width) {
-          columnData[index] = {
-            w: Math.round(col.width * 8.43) // конвертация в пиксели
-          };
-        }
+        if (!col) return;
+        const entry = {};
+        if (col.width) entry.w = Math.round(col.width * 8.43);
+        if (col.hidden) entry.hd = 1;
+        if (Object.keys(entry).length) columnData[index] = entry;
+        if (col.outlineLevel > 0) colOutlineLevels[index] = col.outlineLevel;
       });
     }
 
-    // Обработка размеров строк
+    // Обработка размеров и группировки строк
     const rowData = {};
+    const rowOutlineLevels = {};
     if (worksheet['!rows']) {
       worksheet['!rows'].forEach((row, index) => {
-        if (row && row.height) {
-          rowData[index] = {
-            h: row.height
-          };
-        }
+        if (!row) return;
+        const entry = {};
+        if (row.height || row.hpt) entry.h = row.height || row.hpt;
+        if (row.hidden) entry.hd = 1;
+        if (Object.keys(entry).length) rowData[index] = entry;
+        if (row.outlineLevel > 0) rowOutlineLevels[index] = row.outlineLevel;
       });
     }
+
+    const rowGroupsData = buildGroupsFromOutlineLevels(rowOutlineLevels);
+    const colGroupsData = buildGroupsFromOutlineLevels(colOutlineLevels);
+
+    // Применяем hd:1 для свёрнутых групп при первоначальной загрузке
+    // (Excel хранит collapsed state в row.hidden, мы уже обработали выше)
 
     sheets[sheetId] = {
       id: sheetId,
@@ -350,14 +393,10 @@ function convertXlsxToUniver(workbook) {
       rowData,
       columnData,
       mergeData,
-      rowHeader: {
-        width: 46,
-        hidden: 0
-      },
-      columnHeader: {
-        height: 20,
-        hidden: 0
-      }
+      rowHeader: { width: 46, hidden: 0 },
+      columnHeader: { height: 20, hidden: 0 },
+      ...(rowGroupsData.length > 0 && { rowGroupsData }),
+      ...(colGroupsData.length > 0 && { colGroupsData }),
     };
   });
 
@@ -484,26 +523,76 @@ function convertUniverToXlsx(univerData) {
       }));
     }
 
+    // Вычисляем outlineLevel для строк из групп
+    const rowOutlineLevels = {};
+    const rowGroupsCollapsed = {};
+    if (sheet.rowGroupsData && sheet.rowGroupsData.length > 0) {
+      for (const g of sheet.rowGroupsData) {
+        for (let r = g.start; r <= g.end; r++) {
+          rowOutlineLevels[r] = Math.max(rowOutlineLevels[r] || 0, g.level);
+        }
+        if (g.collapsed) {
+          for (let r = g.start; r <= g.end; r++) rowGroupsCollapsed[r] = true;
+        }
+      }
+    }
+
+    // Вычисляем outlineLevel для столбцов
+    const colOutlineLevels = {};
+    const colGroupsCollapsed = {};
+    if (sheet.colGroupsData && sheet.colGroupsData.length > 0) {
+      for (const g of sheet.colGroupsData) {
+        for (let c = g.start; c <= g.end; c++) {
+          colOutlineLevels[c] = Math.max(colOutlineLevels[c] || 0, g.level);
+        }
+        if (g.collapsed) {
+          for (let c = g.start; c <= g.end; c++) colGroupsCollapsed[c] = true;
+        }
+      }
+    }
+
     // Ширина столбцов
-    if (sheet.columnData && Object.keys(sheet.columnData).length > 0) {
+    const maxColIdx = Math.max(
+      ...Object.keys(sheet.columnData || {}).map(Number),
+      ...Object.keys(colOutlineLevels).map(Number),
+      -1
+    );
+    if (maxColIdx >= 0) {
       worksheet['!cols'] = [];
-      Object.keys(sheet.columnData).forEach(colIndex => {
-        const col = sheet.columnData[colIndex];
-        worksheet['!cols'][parseInt(colIndex)] = {
-          width: col.w ? col.w / 8.43 : undefined // конвертация из пикселей
-        };
-      });
+      for (let ci = 0; ci <= maxColIdx; ci++) {
+        const col = sheet.columnData?.[ci];
+        const entry = {};
+        if (col?.w) entry.width = col.w / 8.43;
+        if (col?.hd) entry.hidden = true;
+        if (colOutlineLevels[ci]) entry.outlineLevel = colOutlineLevels[ci];
+        if (colGroupsCollapsed[ci]) entry.hidden = true;
+        if (Object.keys(entry).length) worksheet['!cols'][ci] = entry;
+      }
     }
 
     // Высота строк
-    if (sheet.rowData && Object.keys(sheet.rowData).length > 0) {
+    const maxRowIdx = Math.max(
+      ...Object.keys(sheet.rowData || {}).map(Number),
+      ...Object.keys(rowOutlineLevels).map(Number),
+      -1
+    );
+    if (maxRowIdx >= 0) {
       worksheet['!rows'] = [];
-      Object.keys(sheet.rowData).forEach(rowIndex => {
-        const row = sheet.rowData[rowIndex];
-        worksheet['!rows'][parseInt(rowIndex)] = {
-          hpt: row.h || undefined
-        };
-      });
+      for (let ri = 0; ri <= maxRowIdx; ri++) {
+        const row = sheet.rowData?.[ri];
+        const entry = {};
+        if (row?.h) entry.hpt = row.h;
+        if (row?.hd) entry.hidden = true;
+        if (rowOutlineLevels[ri]) entry.outlineLevel = rowOutlineLevels[ri];
+        if (rowGroupsCollapsed[ri]) entry.hidden = true;
+        if (Object.keys(entry).length) worksheet['!rows'][ri] = entry;
+      }
+    }
+
+    // Устанавливаем флаги outline для листа
+    if (Object.keys(rowOutlineLevels).length > 0 || Object.keys(colOutlineLevels).length > 0) {
+      if (!worksheet['!sheetPr']) worksheet['!sheetPr'] = {};
+      worksheet['!sheetPr'].outlinePr = { summaryBelow: true, summaryRight: true };
     }
 
     const sheetName = sheet.name || `Sheet${workbook.SheetNames.length + 1}`;

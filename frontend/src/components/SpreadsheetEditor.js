@@ -3,9 +3,25 @@ import { Upload, Download, ArrowUp, ArrowDown } from 'lucide-react';
 import { pages } from '../services/api';
 import toast from 'react-hot-toast';
 import './SpreadsheetEditor.css';
+import './SpreadsheetGrouping.css';
 
 // Русские названия функций
 import { RUSSIAN_FORMULA_MAP, RUSSIAN_FORMULA_DESCRIPTIONS } from '../utils/russianFormulas';
+
+// Grouping
+import {
+  RowGroupPanel,
+  ColGroupPanel,
+  buildGroupsFromOutlineLevels,
+  findNewGroupLevel,
+  getOutlineLevelsFromGroups,
+  UNIVER_COL_HEADER_HEIGHT,
+  UNIVER_ROW_HEADER_WIDTH,
+  GROUP_LEVEL_WIDTH,
+  GROUP_LEVEL_HEIGHT,
+  DEFAULT_ROW_HEIGHT,
+  DEFAULT_COL_WIDTH,
+} from './SpreadsheetGrouping';
 
 // Univer imports
 import { createUniver } from '@univerjs/presets';
@@ -42,10 +58,9 @@ import '@univerjs/preset-sheets-note/lib/index.css';
 import '@univerjs/preset-sheets-sort/lib/index.css';
 import '@univerjs/preset-sheets-table/lib/index.css';
 
-// Простые ссылки на ячейку другого листа ('Лист'!A1, Sheet!$A$1 и т.п.)
+// Простые ссылки на ячейку другого листа
 const CROSS_SHEET_SIMPLE_REF = /^'?[^!'()=+\-*/,;:[\]]+?'?!\$?[A-Za-z]+\$?\d+$/;
 
-// "B2" / "$B$2" → { row, col } (0-based)
 function parseCellAddress(addr) {
   const s = addr.replace(/\$/g, '');
   const m = s.match(/^([A-Za-z]+)(\d+)$/);
@@ -55,7 +70,6 @@ function parseCellAddress(addr) {
   return { row: parseInt(m[2], 10) - 1, col: col - 1 };
 }
 
-// "'Лист'!B2" → { sheetName, row, col }
 function parseCrossSheetRef(raw) {
   const m = raw.match(/^'?([^!']+?)'?!\$?([A-Za-z]+\$?\d+)$/);
   if (!m) return null;
@@ -63,13 +77,6 @@ function parseCrossSheetRef(raw) {
   return addr ? { sheetName: m[1], ...addr } : null;
 }
 
-// Гарантируем что пустые ячейки-источники хранят v:"" (пустая строка),
-// тогда межлистовая ссылка вернёт "" вместо 0. Формулы НЕ трогаем —
-// в строке формул пользователь видит обычный вид типа ='Вызов'!B2.
-//
-// Дополнительно заполняем весь диапазон строк referenced-колонок значением v:"".
-// Это покрывает перетягивание формул: новая строка уже имеет v:"" в Univer,
-// поэтому ссылка сразу возвращает "" без перезагрузки страницы.
 function fixEmptySourceCells(workbookData) {
   if (!workbookData?.sheets) return workbookData;
 
@@ -78,9 +85,7 @@ function fixEmptySourceCells(workbookData) {
     if (sheet?.name) byName[sheet.name] = sheet;
   }
 
-  // Шаг 1: сканируем формулы → исправляем конкретные ячейки-источники,
-  // попутно собираем какие колонки каждого листа-источника используются.
-  const refCols = {}; // sheetName → Set<col>
+  const refCols = {};
 
   for (const sheet of Object.values(workbookData.sheets)) {
     if (!sheet?.cellData) continue;
@@ -106,7 +111,6 @@ function fixEmptySourceCells(workbookData) {
           srcSheet.cellData[ref.row][ref.col] = { ...(src || {}), v: '', t: 1 };
         }
 
-        // Сбрасываем устаревший кеш v:0 у ячейки-назначения
         if (cell.v === 0 || cell.v === null) {
           delete cell.v;
           delete cell.t;
@@ -115,9 +119,6 @@ function fixEmptySourceCells(workbookData) {
     }
   }
 
-  // Шаг 2: для каждой referenced-колонки заполняем весь диапазон строк листа-источника.
-  // После этого перетягивание формулы в любую строку в пределах данных листа
-  // сразу возвращает "" — Univer уже видит v:"" в источнике.
   for (const [sheetName, cols] of Object.entries(refCols)) {
     const sheet = byName[sheetName];
     if (!sheet?.cellData) continue;
@@ -142,6 +143,34 @@ function fixEmptySourceCells(workbookData) {
   return workbookData;
 }
 
+// ─── Grouping data helpers ────────────────────────────────────────────────────
+
+/**
+ * Extract groups for all sheets from a snapshot.
+ * rowGroups/colGroups fields are custom fields we persist alongside Univer data.
+ */
+function extractGroupsFromSnapshot(snapshot) {
+  const rowGroups = {};
+  const colGroups = {};
+  if (!snapshot?.sheets) return { rowGroups, colGroups };
+  for (const [sheetId, sheet] of Object.entries(snapshot.sheets)) {
+    if (sheet?.rowGroupsData?.length > 0) rowGroups[sheetId] = sheet.rowGroupsData;
+    if (sheet?.colGroupsData?.length > 0) colGroups[sheetId] = sheet.colGroupsData;
+  }
+  return { rowGroups, colGroups };
+}
+
+/**
+ * Get rowData and columnData objects for the active sheet from the snapshot.
+ */
+function getSheetMeta(snapshot, sheetId) {
+  const sheet = snapshot?.sheets?.[sheetId];
+  return {
+    rowData: sheet?.rowData || {},
+    colData: sheet?.columnData || {},
+  };
+}
+
 const SpreadsheetEditor = forwardRef(({
   content,
   onChange,
@@ -161,34 +190,65 @@ const SpreadsheetEditor = forwardRef(({
   const fileInputRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // Обновляем ref при изменении onChange и content
+  // ─── Grouping state ────────────────────────────────────────────────────────
+  const [activeSheetId, setActiveSheetId] = useState(null);
+  const [rowGroups, setRowGroups] = useState([]);
+  const [colGroups, setColGroups] = useState([]);
+  const [scrollState, setScrollState] = useState({
+    sheetViewStartRow: 0,
+    sheetViewStartColumn: 0,
+    offsetY: 0,
+    offsetX: 0,
+  });
+  const [rowData, setRowData] = useState({});
+  const [colData, setColData] = useState({});
+  const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+
+  // Refs for group data (used in save/commands without needing re-render)
+  const allRowGroupsRef = useRef({});  // { sheetId: groups[] }
+  const allColGroupsRef = useRef({});
+  // Ref to always-current grouping action callbacks (used by Univer menu items registered once at init)
+  const groupActionsRef = useRef({});
+  const activeSheetIdRef = useRef(null);
+  const rowDataRef = useRef({});
+  const colDataRef = useRef({});
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     onChangeRef.current = onChange;
     contentRef.current = content;
   }, [onChange, content]);
 
-  // Регистрация русских названий функций
+  // Track the Univer canvas wrapper size for group panel height calculations
+  const univerWrapperRef = useRef(null);
+  useEffect(() => {
+    const target = containerRef.current?.parentElement;
+    if (!target) return;
+    univerWrapperRef.current = target;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+      }
+    });
+    ro.observe(target);
+    return () => ro.disconnect();
+  }, [isReady]);
+
+  // ─── Russian formulas registration ────────────────────────────────────────
   const registerRussianFormulas = (univerAPI) => {
     try {
       const formulaEngine = univerAPI.getFormula();
+      if (!formulaEngine || !formulaEngine.registerFunction) return;
 
-      if (!formulaEngine || !formulaEngine.registerFunction) {
-        console.warn('Formula engine not available for Russian functions registration');
-        return;
-      }
-
-      // Хелпер для извлечения числовых значений из аргументов (включая массивы)
       const flattenArgs = (args) => {
         const result = [];
         for (const arg of args) {
           if (Array.isArray(arg)) {
-            // Двумерный массив (диапазон ячеек)
             for (const row of arg) {
               if (Array.isArray(row)) {
                 for (const cell of row) {
-                  if (cell !== null && cell !== undefined && cell !== '') {
-                    result.push(cell);
-                  }
+                  if (cell !== null && cell !== undefined && cell !== '') result.push(cell);
                 }
               } else if (row !== null && row !== undefined && row !== '') {
                 result.push(row);
@@ -201,514 +261,113 @@ const SpreadsheetEditor = forwardRef(({
         return result;
       };
 
-      const getNumbers = (args) => {
-        return flattenArgs(args)
-          .map(v => typeof v === 'number' ? v : parseFloat(v))
-          .filter(v => !isNaN(v));
-      };
+      const getNumbers = (args) =>
+        flattenArgs(args).map(v => typeof v === 'number' ? v : parseFloat(v)).filter(v => !isNaN(v));
 
-      // Реализации основных функций
       const russianFunctions = {
-        // === МАТЕМАТИЧЕСКИЕ ===
-        'СУММ': {
-          fn: (...args) => getNumbers(args).reduce((a, b) => a + b, 0),
-          desc: 'Суммирует все числа в диапазоне'
-        },
-        'ПРОИЗВЕД': {
-          fn: (...args) => {
-            const nums = getNumbers(args);
-            return nums.length ? nums.reduce((a, b) => a * b, 1) : 0;
-          },
-          desc: 'Перемножает все числа'
-        },
-        'КОРЕНЬ': {
-          fn: (num) => Math.sqrt(Number(num) || 0),
-          desc: 'Возвращает квадратный корень числа'
-        },
-        'СТЕПЕНЬ': {
-          fn: (base, exp) => Math.pow(Number(base) || 0, Number(exp) || 0),
-          desc: 'Возводит число в степень'
-        },
-        'ОСТАТ': {
-          fn: (num, divisor) => (Number(num) || 0) % (Number(divisor) || 1),
-          desc: 'Возвращает остаток от деления'
-        },
-        'ЧАСТНОЕ': {
-          fn: (num, divisor) => Math.trunc((Number(num) || 0) / (Number(divisor) || 1)),
-          desc: 'Возвращает целую часть от деления'
-        },
-        'ЦЕЛОЕ': {
-          fn: (num) => Math.floor(Number(num) || 0),
-          desc: 'Округляет число до ближайшего меньшего целого'
-        },
-        'ОТБР': {
-          fn: (num, digits = 0) => {
-            const d = Math.pow(10, Number(digits) || 0);
-            return Math.trunc((Number(num) || 0) * d) / d;
-          },
-          desc: 'Усекает число до указанного количества знаков'
-        },
-        'ЗНАК': {
-          fn: (num) => Math.sign(Number(num) || 0),
-          desc: 'Возвращает знак числа'
-        },
-        'ОКРУГЛ': {
-          fn: (num, digits = 0) => {
-            const d = Math.pow(10, Number(digits) || 0);
-            return Math.round((Number(num) || 0) * d) / d;
-          },
-          desc: 'Округляет число до указанного количества знаков'
-        },
-        'ОКРУГЛВВЕРХ': {
-          fn: (num, digits = 0) => {
-            const d = Math.pow(10, Number(digits) || 0);
-            return Math.ceil((Number(num) || 0) * d) / d;
-          },
-          desc: 'Округляет число вверх'
-        },
-        'ОКРУГЛВНИЗ': {
-          fn: (num, digits = 0) => {
-            const d = Math.pow(10, Number(digits) || 0);
-            return Math.floor((Number(num) || 0) * d) / d;
-          },
-          desc: 'Округляет число вниз'
-        },
-        'ЧЁТН': {
-          fn: (num) => {
-            const n = Math.ceil(Math.abs(Number(num) || 0));
-            const result = n % 2 === 0 ? n : n + 1;
-            return (Number(num) || 0) < 0 ? -result : result;
-          },
-          desc: 'Округляет до ближайшего чётного'
-        },
-        'НЕЧЁТ': {
-          fn: (num) => {
-            const n = Math.ceil(Math.abs(Number(num) || 0));
-            const result = n % 2 === 1 ? n : n + 1;
-            return (Number(num) || 0) < 0 ? -result : result;
-          },
-          desc: 'Округляет до ближайшего нечётного'
-        },
-        'ПИ': {
-          fn: () => Math.PI,
-          desc: 'Возвращает число Пи'
-        },
-        'СЛЧИС': {
-          fn: () => Math.random(),
-          desc: 'Возвращает случайное число от 0 до 1'
-        },
-        'СЛУЧМЕЖДУ': {
-          fn: (min, max) => {
-            const minN = Math.ceil(Number(min) || 0);
-            const maxN = Math.floor(Number(max) || 0);
-            return Math.floor(Math.random() * (maxN - minN + 1)) + minN;
-          },
-          desc: 'Возвращает случайное целое число в диапазоне'
-        },
-
-        // === СТАТИСТИЧЕСКИЕ ===
-        'СРЗНАЧ': {
-          fn: (...args) => {
-            const nums = getNumbers(args);
-            return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
-          },
-          desc: 'Вычисляет среднее арифметическое'
-        },
-        'СЧЁТ': {
-          fn: (...args) => getNumbers(args).length,
-          desc: 'Подсчитывает количество чисел'
-        },
-        'СЧЕТ': {
-          fn: (...args) => getNumbers(args).length,
-          desc: 'Подсчитывает количество чисел'
-        },
-        'СЧЁТЗ': {
-          fn: (...args) => flattenArgs(args).length,
-          desc: 'Подсчитывает непустые ячейки'
-        },
-        'СЧЕТЗ': {
-          fn: (...args) => flattenArgs(args).length,
-          desc: 'Подсчитывает непустые ячейки'
-        },
-        'МАКС': {
-          fn: (...args) => {
-            const nums = getNumbers(args);
-            return nums.length ? Math.max(...nums) : 0;
-          },
-          desc: 'Возвращает максимальное значение'
-        },
-        'МИН': {
-          fn: (...args) => {
-            const nums = getNumbers(args);
-            return nums.length ? Math.min(...nums) : 0;
-          },
-          desc: 'Возвращает минимальное значение'
-        },
-        'МЕДИАНА': {
-          fn: (...args) => {
-            const nums = getNumbers(args).sort((a, b) => a - b);
-            if (!nums.length) return 0;
-            const mid = Math.floor(nums.length / 2);
-            return nums.length % 2 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
-          },
-          desc: 'Возвращает медиану'
-        },
-        'НАИБОЛЬШИЙ': {
-          fn: (range, k) => {
-            const nums = getNumbers([range]).sort((a, b) => b - a);
-            const idx = (Number(k) || 1) - 1;
-            return nums[idx] !== undefined ? nums[idx] : 0;
-          },
-          desc: 'Возвращает k-е наибольшее значение'
-        },
-        'НАИМЕНЬШИЙ': {
-          fn: (range, k) => {
-            const nums = getNumbers([range]).sort((a, b) => a - b);
-            const idx = (Number(k) || 1) - 1;
-            return nums[idx] !== undefined ? nums[idx] : 0;
-          },
-          desc: 'Возвращает k-е наименьшее значение'
-        },
-
-        // === ЛОГИЧЕСКИЕ ===
-        'ЕСЛИ': {
-          fn: (condition, valueIfTrue, valueIfFalse = false) => {
-            return condition ? valueIfTrue : valueIfFalse;
-          },
-          desc: 'Проверяет условие и возвращает значение'
-        },
-        'И': {
-          fn: (...args) => flattenArgs(args).every(v => Boolean(v)),
-          desc: 'Возвращает ИСТИНА, если все аргументы истинны'
-        },
-        'ИЛИ': {
-          fn: (...args) => flattenArgs(args).some(v => Boolean(v)),
-          desc: 'Возвращает ИСТИНА, если хотя бы один аргумент истинен'
-        },
-        'НЕ': {
-          fn: (value) => !value,
-          desc: 'Меняет логическое значение на противоположное'
-        },
-        'ИСКЛИЛИ': {
-          fn: (...args) => {
-            const values = flattenArgs(args).map(v => Boolean(v));
-            return values.filter(v => v).length % 2 === 1;
-          },
-          desc: 'Исключающее ИЛИ'
-        },
-        'ИСТИНА': {
-          fn: () => true,
-          desc: 'Возвращает логическое значение ИСТИНА'
-        },
-        'ЛОЖЬ': {
-          fn: () => false,
-          desc: 'Возвращает логическое значение ЛОЖЬ'
-        },
-        'ЕСЛИОШИБКА': {
-          fn: (value, valueIfError) => {
-            // В контексте Univer ошибки приходят как специальные объекты
-            if (value instanceof Error || value === '#ERROR!' || value === '#VALUE!' ||
-                value === '#REF!' || value === '#NAME?' || value === '#DIV/0!' ||
-                value === '#N/A' || value === '#NULL!') {
-              return valueIfError;
-            }
-            return value;
-          },
-          desc: 'Возвращает значение, если нет ошибки'
-        },
-
-        // === ТЕКСТОВЫЕ ===
-        'СЦЕПИТЬ': {
-          fn: (...args) => flattenArgs(args).join(''),
-          desc: 'Объединяет текстовые строки'
-        },
-        'СЦЕП': {
-          fn: (...args) => flattenArgs(args).join(''),
-          desc: 'Объединяет текстовые строки'
-        },
-        'ЛЕВСИМВ': {
-          fn: (text, numChars = 1) => String(text || '').substring(0, Number(numChars) || 1),
-          desc: 'Возвращает символы с начала строки'
-        },
-        'ПРАВСИМВ': {
-          fn: (text, numChars = 1) => {
-            const s = String(text || '');
-            const n = Number(numChars) || 1;
-            return s.substring(s.length - n);
-          },
-          desc: 'Возвращает символы с конца строки'
-        },
-        'ПСТР': {
-          fn: (text, start, numChars) => {
-            const s = String(text || '');
-            const startIdx = (Number(start) || 1) - 1;
-            return s.substring(startIdx, startIdx + (Number(numChars) || 1));
-          },
-          desc: 'Возвращает часть строки'
-        },
-        'ДЛСТР': {
-          fn: (text) => String(text || '').length,
-          desc: 'Возвращает длину строки'
-        },
-        'ПРОПИСН': {
-          fn: (text) => String(text || '').toUpperCase(),
-          desc: 'Преобразует в верхний регистр'
-        },
-        'СТРОЧН': {
-          fn: (text) => String(text || '').toLowerCase(),
-          desc: 'Преобразует в нижний регистр'
-        },
-        'ПРОПНАЧ': {
-          fn: (text) => String(text || '').replace(/\b\w/g, c => c.toUpperCase()),
-          desc: 'Делает первую букву каждого слова заглавной'
-        },
-        'СЖПРОБЕЛЫ': {
-          fn: (text) => String(text || '').trim().replace(/\s+/g, ' '),
-          desc: 'Удаляет лишние пробелы'
-        },
-        'НАЙТИ': {
-          fn: (findText, withinText, startNum = 1) => {
-            const idx = String(withinText || '').indexOf(String(findText || ''), (Number(startNum) || 1) - 1);
-            return idx >= 0 ? idx + 1 : '#VALUE!';
-          },
-          desc: 'Находит позицию подстроки (с учётом регистра)'
-        },
-        'ПОИСК': {
-          fn: (findText, withinText, startNum = 1) => {
-            const idx = String(withinText || '').toLowerCase()
-              .indexOf(String(findText || '').toLowerCase(), (Number(startNum) || 1) - 1);
-            return idx >= 0 ? idx + 1 : '#VALUE!';
-          },
-          desc: 'Находит позицию подстроки (без учёта регистра)'
-        },
-        'ЗАМЕНИТЬ': {
-          fn: (oldText, startNum, numChars, newText) => {
-            const s = String(oldText || '');
-            const start = (Number(startNum) || 1) - 1;
-            const len = Number(numChars) || 0;
-            return s.substring(0, start) + String(newText || '') + s.substring(start + len);
-          },
-          desc: 'Заменяет часть строки'
-        },
-        'ПОДСТАВИТЬ': {
-          fn: (text, oldText, newText, instanceNum) => {
-            const s = String(text || '');
-            const old = String(oldText || '');
-            const newS = String(newText || '');
-            if (instanceNum) {
-              let count = 0;
-              return s.replace(new RegExp(old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), (match) => {
-                count++;
-                return count === Number(instanceNum) ? newS : match;
-              });
-            }
-            return s.split(old).join(newS);
-          },
-          desc: 'Заменяет все вхождения подстроки'
-        },
-        'ПОВТОР': {
-          fn: (text, times) => String(text || '').repeat(Number(times) || 0),
-          desc: 'Повторяет текст указанное число раз'
-        },
-        'ТЕКСТ': {
-          fn: (value, format) => {
-            // Упрощённая реализация форматирования
-            const num = Number(value);
-            if (isNaN(num)) return String(value || '');
-            const fmt = String(format || '');
-            if (fmt.includes('%')) return (num * 100).toFixed(fmt.split('.')[1]?.length || 0) + '%';
-            if (fmt.includes('.')) {
-              const decimals = fmt.split('.')[1]?.replace(/[^0#]/g, '').length || 0;
-              return num.toFixed(decimals);
-            }
-            return String(num);
-          },
-          desc: 'Форматирует число как текст'
-        },
-        'ЗНАЧЕН': {
-          fn: (text) => {
-            const num = parseFloat(String(text || '').replace(/[^\d.-]/g, ''));
-            return isNaN(num) ? '#VALUE!' : num;
-          },
-          desc: 'Преобразует текст в число'
-        },
-        'Т': {
-          fn: (value) => typeof value === 'string' ? value : '',
-          desc: 'Возвращает текст, если аргумент - текст'
-        },
-        'Ч': {
-          fn: (value) => {
-            const num = Number(value);
-            return isNaN(num) ? 0 : num;
-          },
-          desc: 'Преобразует значение в число'
-        },
-
-        // === ДАТА И ВРЕМЯ ===
-        'СЕГОДНЯ': {
-          fn: () => {
-            const now = new Date();
-            // Excel serial date (days since 1900-01-01)
-            return Math.floor((now - new Date(1899, 11, 30)) / 86400000);
-          },
-          desc: 'Возвращает текущую дату'
-        },
-        'ТДАТА': {
-          fn: () => {
-            const now = new Date();
-            return (now - new Date(1899, 11, 30)) / 86400000;
-          },
-          desc: 'Возвращает текущую дату и время'
-        },
-        'ГОД': {
-          fn: (dateValue) => {
-            const d = new Date(1899, 11, 30 + Number(dateValue));
-            return d.getFullYear();
-          },
-          desc: 'Возвращает год из даты'
-        },
-        'МЕСЯЦ': {
-          fn: (dateValue) => {
-            const d = new Date(1899, 11, 30 + Number(dateValue));
-            return d.getMonth() + 1;
-          },
-          desc: 'Возвращает месяц из даты'
-        },
-        'ДЕНЬ': {
-          fn: (dateValue) => {
-            const d = new Date(1899, 11, 30 + Number(dateValue));
-            return d.getDate();
-          },
-          desc: 'Возвращает день из даты'
-        },
-        'ДАТА': {
-          fn: (year, month, day) => {
-            const d = new Date(Number(year), Number(month) - 1, Number(day));
-            return Math.floor((d - new Date(1899, 11, 30)) / 86400000);
-          },
-          desc: 'Создаёт дату из компонентов'
-        },
-        'ЧАС': {
-          fn: (timeValue) => {
-            const fraction = Number(timeValue) % 1;
-            return Math.floor(fraction * 24);
-          },
-          desc: 'Возвращает час из времени'
-        },
-        'МИНУТЫ': {
-          fn: (timeValue) => {
-            const fraction = Number(timeValue) % 1;
-            return Math.floor((fraction * 24 * 60) % 60);
-          },
-          desc: 'Возвращает минуты из времени'
-        },
-        'СЕКУНДЫ': {
-          fn: (timeValue) => {
-            const fraction = Number(timeValue) % 1;
-            return Math.floor((fraction * 24 * 60 * 60) % 60);
-          },
-          desc: 'Возвращает секунды из времени'
-        },
-        'ДЕНЬНЕД': {
-          fn: (dateValue, returnType = 1) => {
-            const d = new Date(1899, 11, 30 + Number(dateValue));
-            const day = d.getDay();
-            if (returnType === 1) return day + 1; // Воскресенье = 1
-            if (returnType === 2) return day === 0 ? 7 : day; // Понедельник = 1
-            return day === 0 ? 7 : day;
-          },
-          desc: 'Возвращает день недели'
-        },
-
-        // === ИНФОРМАЦИОННЫЕ ===
-        'ЕПУСТО': {
-          fn: (value) => value === null || value === undefined || value === '',
-          desc: 'Проверяет, пуста ли ячейка'
-        },
-        'ЕЧИСЛО': {
-          fn: (value) => typeof value === 'number' && !isNaN(value),
-          desc: 'Проверяет, является ли значение числом'
-        },
-        'ЕТЕКСТ': {
-          fn: (value) => typeof value === 'string',
-          desc: 'Проверяет, является ли значение текстом'
-        },
-        'ЕЛОГИЧ': {
-          fn: (value) => typeof value === 'boolean',
-          desc: 'Проверяет, является ли значение логическим'
-        },
-        'ЕОШИБКА': {
-          fn: (value) => {
-            return value instanceof Error || String(value).startsWith('#');
-          },
-          desc: 'Проверяет наличие ошибки'
-        },
-        'НД': {
-          fn: () => '#N/A',
-          desc: 'Возвращает ошибку #Н/Д'
-        },
-        'ТИП': {
-          fn: (value) => {
-            if (typeof value === 'number') return 1;
-            if (typeof value === 'string') return 2;
-            if (typeof value === 'boolean') return 4;
-            if (String(value).startsWith('#')) return 16;
-            if (Array.isArray(value)) return 64;
-            return 0;
-          },
-          desc: 'Возвращает тип значения'
-        }
+        'СУММ': { fn: (...args) => getNumbers(args).reduce((a, b) => a + b, 0), desc: 'Суммирует числа' },
+        'ПРОИЗВЕД': { fn: (...args) => { const n = getNumbers(args); return n.length ? n.reduce((a, b) => a * b, 1) : 0; }, desc: 'Перемножает числа' },
+        'КОРЕНЬ': { fn: (n) => Math.sqrt(Number(n) || 0), desc: 'Квадратный корень' },
+        'СТЕПЕНЬ': { fn: (b, e) => Math.pow(Number(b) || 0, Number(e) || 0), desc: 'Возводит в степень' },
+        'ОСТАТ': { fn: (n, d) => (Number(n) || 0) % (Number(d) || 1), desc: 'Остаток от деления' },
+        'ЧАСТНОЕ': { fn: (n, d) => Math.trunc((Number(n) || 0) / (Number(d) || 1)), desc: 'Целая часть от деления' },
+        'ЦЕЛОЕ': { fn: (n) => Math.floor(Number(n) || 0), desc: 'Округление вниз' },
+        'ОТБР': { fn: (n, d = 0) => { const p = Math.pow(10, Number(d) || 0); return Math.trunc((Number(n) || 0) * p) / p; }, desc: 'Усечение' },
+        'ЗНАК': { fn: (n) => Math.sign(Number(n) || 0), desc: 'Знак числа' },
+        'ОКРУГЛ': { fn: (n, d = 0) => { const p = Math.pow(10, Number(d) || 0); return Math.round((Number(n) || 0) * p) / p; }, desc: 'Округление' },
+        'ОКРУГЛВВЕРХ': { fn: (n, d = 0) => { const p = Math.pow(10, Number(d) || 0); return Math.ceil((Number(n) || 0) * p) / p; }, desc: 'Округление вверх' },
+        'ОКРУГЛВНИЗ': { fn: (n, d = 0) => { const p = Math.pow(10, Number(d) || 0); return Math.floor((Number(n) || 0) * p) / p; }, desc: 'Округление вниз' },
+        'ЧЁТН': { fn: (n) => { const v = Math.ceil(Math.abs(Number(n) || 0)); const r = v % 2 === 0 ? v : v + 1; return (Number(n) || 0) < 0 ? -r : r; }, desc: 'До чётного' },
+        'НЕЧЁТ': { fn: (n) => { const v = Math.ceil(Math.abs(Number(n) || 0)); const r = v % 2 === 1 ? v : v + 1; return (Number(n) || 0) < 0 ? -r : r; }, desc: 'До нечётного' },
+        'ПИ': { fn: () => Math.PI, desc: 'Число Пи' },
+        'СЛЧИС': { fn: () => Math.random(), desc: 'Случайное 0..1' },
+        'СЛУЧМЕЖДУ': { fn: (mn, mx) => Math.floor(Math.random() * (Math.floor(Number(mx)) - Math.ceil(Number(mn)) + 1)) + Math.ceil(Number(mn)), desc: 'Случайное целое' },
+        'СРЗНАЧ': { fn: (...args) => { const n = getNumbers(args); return n.length ? n.reduce((a, b) => a + b, 0) / n.length : 0; }, desc: 'Среднее' },
+        'СЧЁТ': { fn: (...args) => getNumbers(args).length, desc: 'Кол-во чисел' },
+        'СЧЕТ': { fn: (...args) => getNumbers(args).length, desc: 'Кол-во чисел' },
+        'СЧЁТЗ': { fn: (...args) => flattenArgs(args).length, desc: 'Непустые ячейки' },
+        'СЧЕТЗ': { fn: (...args) => flattenArgs(args).length, desc: 'Непустые ячейки' },
+        'МАКС': { fn: (...args) => { const n = getNumbers(args); return n.length ? Math.max(...n) : 0; }, desc: 'Максимум' },
+        'МИН': { fn: (...args) => { const n = getNumbers(args); return n.length ? Math.min(...n) : 0; }, desc: 'Минимум' },
+        'МЕДИАНА': { fn: (...args) => { const n = getNumbers(args).sort((a, b) => a - b); if (!n.length) return 0; const m = Math.floor(n.length / 2); return n.length % 2 ? n[m] : (n[m - 1] + n[m]) / 2; }, desc: 'Медиана' },
+        'НАИБОЛЬШИЙ': { fn: (r, k) => { const n = getNumbers([r]).sort((a, b) => b - a); return n[(Number(k) || 1) - 1] ?? 0; }, desc: 'k-е наибольшее' },
+        'НАИМЕНЬШИЙ': { fn: (r, k) => { const n = getNumbers([r]).sort((a, b) => a - b); return n[(Number(k) || 1) - 1] ?? 0; }, desc: 'k-е наименьшее' },
+        'ЕСЛИ': { fn: (c, t, f = false) => c ? t : f, desc: 'Условие' },
+        'И': { fn: (...args) => flattenArgs(args).every(v => Boolean(v)), desc: 'Логическое И' },
+        'ИЛИ': { fn: (...args) => flattenArgs(args).some(v => Boolean(v)), desc: 'Логическое ИЛИ' },
+        'НЕ': { fn: (v) => !v, desc: 'Логическое НЕ' },
+        'ИСКЛИЛИ': { fn: (...args) => flattenArgs(args).map(v => Boolean(v)).filter(v => v).length % 2 === 1, desc: 'Исключающее ИЛИ' },
+        'ИСТИНА': { fn: () => true, desc: 'ИСТИНА' },
+        'ЛОЖЬ': { fn: () => false, desc: 'ЛОЖЬ' },
+        'ЕСЛИОШИБКА': { fn: (v, e) => { if (v instanceof Error || String(v).startsWith('#')) return e; return v; }, desc: 'Если ошибка' },
+        'СЦЕПИТЬ': { fn: (...args) => flattenArgs(args).join(''), desc: 'Объединение текста' },
+        'СЦЕП': { fn: (...args) => flattenArgs(args).join(''), desc: 'Объединение текста' },
+        'ЛЕВСИМВ': { fn: (t, n = 1) => String(t || '').substring(0, Number(n) || 1), desc: 'Левые символы' },
+        'ПРАВСИМВ': { fn: (t, n = 1) => { const s = String(t || ''); return s.substring(s.length - (Number(n) || 1)); }, desc: 'Правые символы' },
+        'ПСТР': { fn: (t, s, n) => { const str = String(t || ''); return str.substring((Number(s) || 1) - 1, (Number(s) || 1) - 1 + (Number(n) || 1)); }, desc: 'Часть строки' },
+        'ДЛСТР': { fn: (t) => String(t || '').length, desc: 'Длина строки' },
+        'ПРОПИСН': { fn: (t) => String(t || '').toUpperCase(), desc: 'Верхний регистр' },
+        'СТРОЧН': { fn: (t) => String(t || '').toLowerCase(), desc: 'Нижний регистр' },
+        'ПРОПНАЧ': { fn: (t) => String(t || '').replace(/\b\w/g, c => c.toUpperCase()), desc: 'Начало с заглавной' },
+        'СЖПРОБЕЛЫ': { fn: (t) => String(t || '').trim().replace(/\s+/g, ' '), desc: 'Убрать пробелы' },
+        'НАЙТИ': { fn: (f, w, s = 1) => { const i = String(w || '').indexOf(String(f || ''), (Number(s) || 1) - 1); return i >= 0 ? i + 1 : '#VALUE!'; }, desc: 'Позиция подстроки' },
+        'ПОИСК': { fn: (f, w, s = 1) => { const i = String(w || '').toLowerCase().indexOf(String(f || '').toLowerCase(), (Number(s) || 1) - 1); return i >= 0 ? i + 1 : '#VALUE!'; }, desc: 'Поиск подстроки' },
+        'ЗАМЕНИТЬ': { fn: (o, s, n, nw) => { const str = String(o || ''); const si = (Number(s) || 1) - 1; return str.substring(0, si) + String(nw || '') + str.substring(si + (Number(n) || 0)); }, desc: 'Замена части строки' },
+        'ПОДСТАВИТЬ': { fn: (t, o, nw, i) => { const s = String(t || ''), ov = String(o || ''), nv = String(nw || ''); if (i) { let c = 0; return s.replace(new RegExp(ov.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), m => ++c === Number(i) ? nv : m); } return s.split(ov).join(nv); }, desc: 'Подстановка' },
+        'ПОВТОР': { fn: (t, n) => String(t || '').repeat(Number(n) || 0), desc: 'Повтор текста' },
+        'ТЕКСТ': { fn: (v, f) => { const n = Number(v); if (isNaN(n)) return String(v || ''); const fmt = String(f || ''); if (fmt.includes('%')) return (n * 100).toFixed(fmt.split('.')[1]?.length || 0) + '%'; if (fmt.includes('.')) return n.toFixed(fmt.split('.')[1]?.replace(/[^0#]/g, '').length || 0); return String(n); }, desc: 'Формат числа как текст' },
+        'ЗНАЧЕН': { fn: (t) => { const n = parseFloat(String(t || '').replace(/[^\d.-]/g, '')); return isNaN(n) ? '#VALUE!' : n; }, desc: 'Текст в число' },
+        'Т': { fn: (v) => typeof v === 'string' ? v : '', desc: 'Текстовое значение' },
+        'Ч': { fn: (v) => { const n = Number(v); return isNaN(n) ? 0 : n; }, desc: 'Числовое значение' },
+        'СЕГОДНЯ': { fn: () => Math.floor((new Date() - new Date(1899, 11, 30)) / 86400000), desc: 'Текущая дата' },
+        'ТДАТА': { fn: () => (new Date() - new Date(1899, 11, 30)) / 86400000, desc: 'Дата и время' },
+        'ГОД': { fn: (d) => new Date(1899, 11, 30 + Number(d)).getFullYear(), desc: 'Год' },
+        'МЕСЯЦ': { fn: (d) => new Date(1899, 11, 30 + Number(d)).getMonth() + 1, desc: 'Месяц' },
+        'ДЕНЬ': { fn: (d) => new Date(1899, 11, 30 + Number(d)).getDate(), desc: 'День' },
+        'ДАТА': { fn: (y, m, d) => Math.floor((new Date(Number(y), Number(m) - 1, Number(d)) - new Date(1899, 11, 30)) / 86400000), desc: 'Дата' },
+        'ЧАС': { fn: (t) => Math.floor((Number(t) % 1) * 24), desc: 'Час' },
+        'МИНУТЫ': { fn: (t) => Math.floor(((Number(t) % 1) * 24 * 60) % 60), desc: 'Минуты' },
+        'СЕКУНДЫ': { fn: (t) => Math.floor(((Number(t) % 1) * 24 * 60 * 60) % 60), desc: 'Секунды' },
+        'ДЕНЬНЕД': { fn: (d, r = 1) => { const day = new Date(1899, 11, 30 + Number(d)).getDay(); if (r === 2) return day === 0 ? 7 : day; return day + 1; }, desc: 'День недели' },
+        'ЕПУСТО': { fn: (v) => v === null || v === undefined || v === '', desc: 'Пусто?' },
+        'ЕЧИСЛО': { fn: (v) => typeof v === 'number' && !isNaN(v), desc: 'Число?' },
+        'ЕТЕКСТ': { fn: (v) => typeof v === 'string', desc: 'Текст?' },
+        'ЕЛОГИЧ': { fn: (v) => typeof v === 'boolean', desc: 'Логическое?' },
+        'ЕОШИБКА': { fn: (v) => v instanceof Error || String(v).startsWith('#'), desc: 'Ошибка?' },
+        'НД': { fn: () => '#N/A', desc: 'Ошибка #Н/Д' },
+        'ТИП': { fn: (v) => { if (typeof v === 'number') return 1; if (typeof v === 'string') return 2; if (typeof v === 'boolean') return 4; if (String(v).startsWith('#')) return 16; if (Array.isArray(v)) return 64; return 0; }, desc: 'Тип значения' },
       };
 
-      // Регистрируем реализованные функции
       for (const [name, { fn, desc }] of Object.entries(russianFunctions)) {
-        try {
-          formulaEngine.registerFunction(name, fn, desc);
-        } catch (err) {
-          // Функция уже существует или ошибка регистрации
-        }
+        try { formulaEngine.registerFunction(name, fn, desc); } catch (e) { /* already registered */ }
       }
     } catch (error) {
       console.warn('Could not register Russian formulas:', error);
     }
   };
 
-  // Конвертация данных Luckysheet → Univer (для обратной совместимости)
+  // ─── Univer ↔ Luckysheet conversion ──────────────────────────────────────
   const convertLuckysheetToUniver = (luckysheetData) => {
     try {
-      const parsed = typeof luckysheetData === 'string'
-        ? JSON.parse(luckysheetData)
-        : luckysheetData;
+      const parsed = typeof luckysheetData === 'string' ? JSON.parse(luckysheetData) : luckysheetData;
 
-      // Проверяем, это уже Univer формат?
       if (parsed && parsed.id && parsed.sheets && !Array.isArray(parsed)) {
         return fixEmptySourceCells(parsed);
       }
 
-      // Конвертируем Luckysheet → Univer
-      if (!Array.isArray(parsed)) {
-        throw new Error('Invalid format');
-      }
+      if (!Array.isArray(parsed)) throw new Error('Invalid format');
 
       const sheets = {};
       parsed.forEach((sheet, index) => {
         const sheetId = sheet.index || `sheet${index}`;
         const cellData = {};
 
-        // Конвертируем celldata[] в cellData{}
         if (sheet.celldata && Array.isArray(sheet.celldata)) {
           sheet.celldata.forEach(cell => {
-            const row = cell.r;
-            const col = cell.c;
-
-            if (!cellData[row]) {
-              cellData[row] = {};
-            }
-
-            cellData[row][col] = {
+            if (!cellData[cell.r]) cellData[cell.r] = {};
+            cellData[cell.r][cell.c] = {
               v: cell.v?.v,
-              t: cell.v?.ct?.t === 's' ? 1 :
-                 cell.v?.ct?.t === 'n' ? 2 : 0,
+              t: cell.v?.ct?.t === 's' ? 1 : cell.v?.ct?.t === 'n' ? 2 : 0,
               ...(cell.v?.f && { f: cell.v.f })
             };
           });
@@ -731,14 +390,8 @@ const SpreadsheetEditor = forwardRef(({
           rowData: {},
           columnData: {},
           mergeData: [],
-          rowHeader: {
-            width: 46,
-            hidden: 0
-          },
-          columnHeader: {
-            height: 20,
-            hidden: 0
-          }
+          rowHeader: { width: 46, hidden: 0 },
+          columnHeader: { height: 20, hidden: 0 }
         };
       });
 
@@ -757,31 +410,58 @@ const SpreadsheetEditor = forwardRef(({
     }
   };
 
-  // Инициализация Univer (newContentOverride — для реинита без перезагрузки страницы)
+  // ─── Grouping: apply hidden state from groups on load ────────────────────
+  /**
+   * After loading data, apply hd:1 flags for collapsed groups so Univer
+   * renders hidden rows/cols correctly without issuing commands.
+   */
+  function applyGroupHiddenToSnapshot(snapshot) {
+    if (!snapshot?.sheets) return snapshot;
+    for (const [, sheet] of Object.entries(snapshot.sheets)) {
+      const rowG = sheet.rowGroupsData || [];
+      const colG = sheet.colGroupsData || [];
+
+      // Reset hd for all rows/cols first (snapshot may be stale)
+      // Then re-apply per collapsed groups
+      // We only set hd:1 for rows/cols that should be hidden.
+      // We don't clear existing hd:1 (they could be manually hidden rows).
+
+      for (const g of rowG) {
+        if (!g.collapsed) continue;
+        if (!sheet.rowData) sheet.rowData = {};
+        for (let r = g.start; r <= g.end; r++) {
+          sheet.rowData[r] = { ...(sheet.rowData[r] || {}), hd: 1 };
+        }
+      }
+      for (const g of colG) {
+        if (!g.collapsed) continue;
+        if (!sheet.columnData) sheet.columnData = {};
+        for (let c = g.start; c <= g.end; c++) {
+          sheet.columnData[c] = { ...(sheet.columnData[c] || {}), hd: 1 };
+        }
+      }
+    }
+    return snapshot;
+  }
+
+  // ─── Initialize Univer ───────────────────────────────────────────────────
   const initializeUniver = (newContentOverride) => {
     if (!containerRef.current) return;
 
-    // Очистка предыдущего экземпляра
     if (univerAPIRef.current) {
-      try {
-        univerAPIRef.current.dispose();
-      } catch (error) {
-        // ignore dispose errors
-      }
+      try { univerAPIRef.current.dispose(); } catch (e) { /* ignore */ }
       univerAPIRef.current = null;
       workbookRef.current = null;
     }
 
-    // Подготовка данных
+    const dataToLoad = newContentOverride !== undefined ? newContentOverride : content;
     let workbookData;
 
-    const dataToLoad = newContentOverride !== undefined ? newContentOverride : content;
     if (dataToLoad && dataToLoad.trim().length > 0) {
       workbookData = convertLuckysheetToUniver(dataToLoad);
     }
 
     if (!workbookData) {
-      // Дефолтная рабочая книга
       workbookData = {
         id: 'workbook',
         name: 'Workbook',
@@ -805,19 +485,16 @@ const SpreadsheetEditor = forwardRef(({
             rowData: {},
             columnData: {},
             mergeData: [],
-            rowHeader: {
-              width: 46,
-              hidden: 0
-            },
-            columnHeader: {
-              height: 20,
-              hidden: 0
-            }
+            rowHeader: { width: 46, hidden: 0 },
+            columnHeader: { height: 20, hidden: 0 }
           }
         },
         sheetOrder: ['sheet-01']
       };
     }
+
+    // Apply hidden state from groups before loading into Univer
+    applyGroupHiddenToSnapshot(workbookData);
 
     try {
       const { univerAPI } = createUniver({
@@ -836,9 +513,7 @@ const SpreadsheetEditor = forwardRef(({
           )
         },
         presets: [
-          UniverSheetsCorePreset({
-            container: containerRef.current
-          }),
+          UniverSheetsCorePreset({ container: containerRef.current }),
           UniverSheetsFilterPreset(),
           UniverSheetsConditionalFormattingPreset(),
           UniverSheetsDataValidationPreset(),
@@ -851,375 +526,764 @@ const SpreadsheetEditor = forwardRef(({
       });
 
       univerAPIRef.current = univerAPI;
-
       const workbook = univerAPI.createUniverSheet(workbookData);
       workbookRef.current = workbook;
 
-      // Регистрация русских названий функций
       registerRussianFormulas(univerAPI);
 
-      // Настройка read-only режима
       if (readOnly) {
         setTimeout(() => {
           try {
-            const permission = workbook.getWorkbookPermission();
-            if (permission && permission.setReadOnly) {
-              permission.setReadOnly();
-            }
-          } catch (err) {
-            // read-only mode not available
-          }
+            const perm = workbook.getWorkbookPermission?.();
+            if (perm?.setReadOnly) perm.setReadOnly();
+          } catch (e) { /* ignore */ }
         }, 500);
       }
 
-      // Подписка на изменения (для автосохранения)
-      if (!readOnly) {
-        univerAPI.addEvent(univerAPI.Event.CommandExecuted, (command) => {
-          // Пропускаем операции просмотра: выделение, скролл, зум (type === 1 = OPERATION)
-          if (command?.type === 1) return;
+      // ── Load groups into state ──
+      const { rowGroups: rg, colGroups: cg } = extractGroupsFromSnapshot(workbookData);
+      allRowGroupsRef.current = rg;
+      allColGroupsRef.current = cg;
+
+      const sheet = workbook.getActiveSheet?.();
+      const sheetId = sheet?.getSheetId?.() || Object.keys(workbookData.sheets)[0];
+      activeSheetIdRef.current = sheetId;
+      setActiveSheetId(sheetId);
+      setRowGroups(rg[sheetId] || []);
+      setColGroups(cg[sheetId] || []);
+
+      // Load rowData/colData for panels
+      const snap = workbook.getSnapshot?.() || workbookData;
+      const { rowData: rd, colData: cd } = getSheetMeta(snap, sheetId);
+      rowDataRef.current = rd;
+      colDataRef.current = cd;
+      setRowData(rd);
+      setColData(cd);
+
+      // ── Univer event subscriptions ──
+      univerAPI.addEvent(univerAPI.Event.CommandExecuted, (command) => {
+        // Auto-save (skip view operations)
+        if (command?.type !== 1) {
           if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = setTimeout(() => saveData(), 8000);
-        });
+          if (!readOnly) saveTimeoutRef.current = setTimeout(() => saveData(), 8000);
+          // Update rowData/colData from snapshot on data changes
+          try {
+            const s = workbookRef.current?.getSnapshot?.();
+            const sid = activeSheetIdRef.current;
+            if (s && sid) {
+              const { rowData: rd2, colData: cd2 } = getSheetMeta(s, sid);
+              rowDataRef.current = rd2;
+              colDataRef.current = cd2;
+              setRowData({ ...rd2 });
+              setColData({ ...cd2 });
+            }
+          } catch (e) { /* ignore */ }
+        }
+
+        // Scroll tracking
+        if (command?.id === 'sheet.operation.set-scroll') {
+          const p = command.params || {};
+          setScrollState({
+            sheetViewStartRow: p.sheetViewStartRow ?? 0,
+            sheetViewStartColumn: p.sheetViewStartColumn ?? 0,
+            offsetY: p.offsetY ?? 0,
+            offsetX: p.offsetX ?? 0,
+          });
+        }
+      });
+
+      // Sheet switch
+      univerAPI.addEvent(univerAPI.Event.ActiveSheetChanged, (params) => {
+        const newSheetId = params?.activeSheet?.getSheetId?.();
+        if (!newSheetId) return;
+        activeSheetIdRef.current = newSheetId;
+        setActiveSheetId(newSheetId);
+        setRowGroups(allRowGroupsRef.current[newSheetId] || []);
+        setColGroups(allColGroupsRef.current[newSheetId] || []);
+        // Reset scroll state
+        setScrollState({ sheetViewStartRow: 0, sheetViewStartColumn: 0, offsetY: 0, offsetX: 0 });
+        // Update rowData/colData
+        try {
+          const s = workbookRef.current?.getSnapshot?.();
+          if (s) {
+            const { rowData: rd2, colData: cd2 } = getSheetMeta(s, newSheetId);
+            rowDataRef.current = rd2;
+            colDataRef.current = cd2;
+            setRowData({ ...rd2 });
+            setColData({ ...cd2 });
+          }
+        } catch (e) { /* ignore */ }
+      });
+
+      // ── Register grouping items in Univer's native context menu (edit mode only) ──
+      if (!readOnly) {
+        try {
+          univerAPI.createSubmenu({ id: 'alfa-grouping', title: 'Группировка', order: 0 })
+            .addSubmenu(
+              univerAPI.createMenu({
+                id: 'alfa-group-rows',
+                title: '↕ Сгруппировать строки',
+                action: () => groupActionsRef.current.handleGroupRows?.(),
+              })
+            )
+            .addSubmenu(
+              univerAPI.createMenu({
+                id: 'alfa-group-cols',
+                title: '↔ Сгруппировать столбцы',
+                action: () => groupActionsRef.current.handleGroupCols?.(),
+              })
+            )
+            .addSeparator()
+            .addSubmenu(
+              univerAPI.createMenu({
+                id: 'alfa-ungroup-rows',
+                title: '✕ Разгруппировать строки',
+                action: () => groupActionsRef.current.handleUngroupRows?.(),
+              })
+            )
+            .addSubmenu(
+              univerAPI.createMenu({
+                id: 'alfa-ungroup-cols',
+                title: '✕ Разгруппировать столбцы',
+                action: () => groupActionsRef.current.handleUngroupCols?.(),
+              })
+            )
+            .appendTo('contextMenu.others');
+        } catch (menuErr) {
+          console.warn('Could not register grouping context menu:', menuErr);
+        }
       }
 
       initializedRef.current = true;
       setIsReady(true);
-
     } catch (error) {
       console.error('❌ Error initializing Univer:', error);
       toast.error('Ошибка инициализации таблицы: ' + error.message);
     }
   };
 
-  // Инициализация при монтировании
   useEffect(() => {
     if (initializedRef.current) return;
-
-    let rafId;
-    let timerId;
-
+    let rafId, timerId;
     rafId = requestAnimationFrame(() => {
       timerId = setTimeout(() => {
         if (!containerRef.current) return;
         initializeUniver();
       }, 100);
     });
-
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       if (timerId) clearTimeout(timerId);
     };
   }, []);
 
-  // Очистка при размонтировании
   useEffect(() => {
     return () => {
       if (univerAPIRef.current) {
-        try {
-          univerAPIRef.current.dispose();
-        } catch (error) {
-          console.error('Error disposing Univer:', error);
-        }
+        try { univerAPIRef.current.dispose(); } catch (e) { /* ignore */ }
       }
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       initializedRef.current = false;
       setIsReady(false);
     };
   }, []);
 
-  // Функция сохранения данных
-  const saveData = () => {
+  // ─── Save ────────────────────────────────────────────────────────────────
+  const saveData = useCallback(() => {
     if (readOnly) return null;
-
     try {
       if (!workbookRef.current) return null;
-
       const snapshot = workbookRef.current.getSnapshot();
 
-      // Фиксируем пустые ячейки-источники перед сохранением, чтобы при следующей
-      // загрузке ссылки на них возвращали "" вместо 0.
+      // Inject group data into snapshot before saving
+      for (const [sheetId, groups] of Object.entries(allRowGroupsRef.current)) {
+        if (snapshot.sheets[sheetId]) snapshot.sheets[sheetId].rowGroupsData = groups;
+      }
+      for (const [sheetId, groups] of Object.entries(allColGroupsRef.current)) {
+        if (snapshot.sheets[sheetId]) snapshot.sheets[sheetId].colGroupsData = groups;
+      }
+
       fixEmptySourceCells(snapshot);
 
       const jsonData = JSON.stringify(snapshot);
-
-      if (onChangeRef.current) {
-        onChangeRef.current(jsonData);
-      }
-
+      if (onChangeRef.current) onChangeRef.current(jsonData);
       contentRef.current = jsonData;
-
       return jsonData;
     } catch (error) {
       console.error('Error saving data:', error);
       toast.error('Ошибка сохранения данных');
       return null;
     }
-  };
+  }, [readOnly]);
 
-  // Экспозиция методов для родительского компонента
   useImperativeHandle(ref, () => ({
-    forceSave: () => {
-      return new Promise((resolve) => {
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-        }
-
-        const savedData = saveData();
-
-        setTimeout(() => {
-          resolve(savedData);
-        }, 100);
-      });
-    },
+    forceSave: () => new Promise((resolve) => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      const saved = saveData();
+      setTimeout(() => resolve(saved), 100);
+    }),
     getData: () => {
       if (readOnly) return contentRef.current;
       try {
         if (!workbookRef.current) return contentRef.current;
         const snapshot = workbookRef.current.getSnapshot();
+        for (const [sid, groups] of Object.entries(allRowGroupsRef.current)) {
+          if (snapshot.sheets[sid]) snapshot.sheets[sid].rowGroupsData = groups;
+        }
+        for (const [sid, groups] of Object.entries(allColGroupsRef.current)) {
+          if (snapshot.sheets[sid]) snapshot.sheets[sid].colGroupsData = groups;
+        }
         return JSON.stringify(snapshot);
-      } catch (error) {
-        console.error('Error getting data:', error);
+      } catch (e) {
         return contentRef.current;
       }
     }
-  }), [readOnly]);
+  }), [readOnly, saveData]);
 
-  // Навигация по таблице — скролл через встроенную команду Univer
+  // ─── Navigation ──────────────────────────────────────────────────────────
   const scrollToRow = useCallback((row) => {
     if (!univerAPIRef.current) return;
     univerAPIRef.current.executeCommand('sheet.command.scroll-to-cell', {
       range: { startRow: row, endRow: row, startColumn: 0, endColumn: 0 },
-      forceTop: true,
-      forceLeft: true
+      forceTop: true, forceLeft: true
     });
   }, []);
 
-  const navigateToTop = useCallback(() => {
-    if (!isReady) return;
-    scrollToRow(0);
-  }, [isReady, scrollToRow]);
+  const navigateToTop = useCallback(() => { if (isReady) scrollToRow(0); }, [isReady, scrollToRow]);
 
   const navigateToBottom = useCallback(() => {
     if (!isReady || !workbookRef.current) return;
     try {
       const sheet = workbookRef.current.getActiveSheet?.();
-      if (!sheet) return;
-
       let lastRow = 0;
-
-      // Пробуем встроенный API Univer
-      if (typeof sheet.getLastRow === 'function') {
+      if (typeof sheet?.getLastRow === 'function') {
         lastRow = sheet.getLastRow();
       } else {
-        // Fallback: ищем максимальный индекс строки в снапшоте
-        const snapshot = workbookRef.current.getSnapshot();
-        const sheetId = sheet.getSheetId?.();
-        const cellData = (sheetId ? snapshot?.sheets?.[sheetId] : Object.values(snapshot?.sheets || {})[0])?.cellData || {};
-        const rows = Object.keys(cellData)
-          .map(Number)
-          .filter(r => !isNaN(r) && Object.keys(cellData[r] || {}).length > 0);
-        if (rows.length > 0) lastRow = Math.max(...rows);
+        const snap = workbookRef.current.getSnapshot();
+        const sid = sheet?.getSheetId?.();
+        const cd = (sid ? snap?.sheets?.[sid] : Object.values(snap?.sheets || {})[0])?.cellData || {};
+        const rows = Object.keys(cd).map(Number).filter(r => !isNaN(r) && Object.keys(cd[r] || {}).length > 0);
+        if (rows.length) lastRow = Math.max(...rows);
       }
-
       scrollToRow(lastRow);
-    } catch (e) {
-      console.warn('Navigate to bottom:', e);
-    }
+    } catch (e) { /* ignore */ }
   }, [isReady, scrollToRow]);
 
-  // Импорт Excel файла
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  // ─── Grouping operations ──────────────────────────────────────────────────
+
+  /** Get current selection range from Univer */
+  const getSelection = useCallback(() => {
+    try {
+      const workbook = workbookRef.current;
+      if (!workbook) return null;
+      const sheet = workbook.getActiveSheet?.();
+      if (!sheet) return null;
+      const sel = sheet.getSelection?.();
+      if (!sel) return null;
+      const range = sel.getActiveRange?.();
+      if (!range) return null;
+      return {
+        startRow: range.getRow?.() ?? 0,
+        endRow: range.getLastRow?.() ?? 0,
+        startColumn: range.getColumn?.() ?? 0,
+        endColumn: range.getLastColumn?.() ?? 0,
+      };
+    } catch (e) {
+      return null;
+    }
+  }, []);
+
+  /** Execute Univer command to hide a range of rows */
+  const hideRows = useCallback(async (start, end) => {
+    if (!univerAPIRef.current || !workbookRef.current) return;
+    const workbook = workbookRef.current;
+    const sheet = workbook.getActiveSheet?.();
+    if (!sheet) return;
+    try {
+      await univerAPIRef.current.executeCommand('sheet.command.set-rows-hidden', {
+        unitId: workbook.getId?.(),
+        subUnitId: sheet.getSheetId?.(),
+        ranges: [{ startRow: start, endRow: end, startColumn: 0, endColumn: 9999 }]
+      });
+    } catch (e) {
+      console.warn('set-rows-hidden failed:', e);
+    }
+  }, []);
+
+  /** Execute Univer command to show a range of rows */
+  const showRows = useCallback(async (start, end) => {
+    if (!univerAPIRef.current || !workbookRef.current) return;
+    const workbook = workbookRef.current;
+    const sheet = workbook.getActiveSheet?.();
+    if (!sheet) return;
+    try {
+      await univerAPIRef.current.executeCommand('sheet.command.set-specific-rows-visible', {
+        unitId: workbook.getId?.(),
+        subUnitId: sheet.getSheetId?.(),
+        ranges: [{ startRow: start, endRow: end, startColumn: 0, endColumn: 9999 }]
+      });
+    } catch (e) {
+      console.warn('set-specific-rows-visible failed:', e);
+    }
+  }, []);
+
+  /** Execute Univer command to hide a range of columns */
+  const hideCols = useCallback(async (start, end) => {
+    if (!univerAPIRef.current || !workbookRef.current) return;
+    const workbook = workbookRef.current;
+    const sheet = workbook.getActiveSheet?.();
+    if (!sheet) return;
+    try {
+      await univerAPIRef.current.executeCommand('sheet.command.set-col-hidden', {
+        unitId: workbook.getId?.(),
+        subUnitId: sheet.getSheetId?.(),
+        ranges: [{ startRow: 0, endRow: 9999, startColumn: start, endColumn: end }]
+      });
+    } catch (e) {
+      console.warn('set-col-hidden failed:', e);
+    }
+  }, []);
+
+  /** Execute Univer command to show a range of columns */
+  const showCols = useCallback(async (start, end) => {
+    if (!univerAPIRef.current || !workbookRef.current) return;
+    const workbook = workbookRef.current;
+    const sheet = workbook.getActiveSheet?.();
+    if (!sheet) return;
+    try {
+      await univerAPIRef.current.executeCommand('sheet.command.set-col-visible-on-cols', {
+        unitId: workbook.getId?.(),
+        subUnitId: sheet.getSheetId?.(),
+        ranges: [{ startRow: 0, endRow: 9999, startColumn: start, endColumn: end }]
+      });
+    } catch (e) {
+      console.warn('set-col-visible-on-cols failed:', e);
+    }
+  }, []);
+
+  /** Save updated groups to all-groups refs and trigger debounced save */
+  const persistGroups = useCallback((newRowGroups, newColGroups, sheetId) => {
+    const sid = sheetId || activeSheetIdRef.current;
+    if (!sid) return;
+
+    const updatedRG = { ...allRowGroupsRef.current };
+    const updatedCG = { ...allColGroupsRef.current };
+
+    if (newRowGroups !== undefined) {
+      if (newRowGroups.length > 0) updatedRG[sid] = newRowGroups;
+      else delete updatedRG[sid];
+    }
+    if (newColGroups !== undefined) {
+      if (newColGroups.length > 0) updatedCG[sid] = newColGroups;
+      else delete updatedCG[sid];
+    }
+
+    allRowGroupsRef.current = updatedRG;
+    allColGroupsRef.current = updatedCG;
+
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => saveData(), 2000);
+  }, [saveData]);
+
+  /** Group selected rows */
+  const handleGroupRows = useCallback(() => {
+    const sel = getSelection();
+    if (!sel) { toast.error('Выберите строки для группировки'); return; }
+    const { startRow, endRow } = sel;
+    if (startRow === endRow && startRow === 0) { toast.error('Выберите несколько строк'); return; }
+
+    const level = findNewGroupLevel(rowGroups, startRow, endRow);
+    const newGroup = { start: startRow, end: endRow, level, collapsed: false };
+    const newGroups = [...rowGroups, newGroup].sort((a, b) => a.level - b.level || a.start - b.start);
+
+    setRowGroups(newGroups);
+    persistGroups(newGroups, undefined);
+    toast.success(`Строки ${startRow + 1}–${endRow + 1} сгруппированы (уровень ${level})`);
+  }, [rowGroups, getSelection, persistGroups]);
+
+  /** Group selected columns */
+  const handleGroupCols = useCallback(() => {
+    const sel = getSelection();
+    if (!sel) { toast.error('Выберите столбцы для группировки'); return; }
+    const { startColumn, endColumn } = sel;
+
+    const level = findNewGroupLevel(colGroups, startColumn, endColumn);
+    const newGroup = { start: startColumn, end: endColumn, level, collapsed: false };
+    const newGroups = [...colGroups, newGroup].sort((a, b) => a.level - b.level || a.start - b.start);
+
+    setColGroups(newGroups);
+    persistGroups(undefined, newGroups);
+    toast.success(`Столбцы сгруппированы (уровень ${level})`);
+  }, [colGroups, getSelection, persistGroups]);
+
+  /** Remove grouping for selected rows */
+  const handleUngroupRows = useCallback(async () => {
+    const sel = getSelection();
+    if (!sel) { toast.error('Выберите строки для разгруппировки'); return; }
+    const { startRow, endRow } = sel;
+
+    // Remove groups that exactly match or are fully contained in selection
+    const removedGroups = rowGroups.filter(g => g.start >= startRow && g.end <= endRow);
+    const newGroups = rowGroups.filter(g => !(g.start >= startRow && g.end <= endRow));
+
+    // Show rows hidden by removed groups (if no other group hides them)
+    for (const g of removedGroups) {
+      if (g.collapsed) {
+        await showRows(g.start, g.end);
+        // Re-collapse any remaining groups that still hide rows in this range
+        for (const other of newGroups) {
+          if (other.collapsed && other.start >= g.start && other.end <= g.end) {
+            await hideRows(other.start, other.end);
+          }
+        }
+      }
+    }
+
+    setRowGroups(newGroups);
+    persistGroups(newGroups, undefined);
+    toast.success('Группировка строк удалена');
+  }, [rowGroups, getSelection, persistGroups, showRows, hideRows]);
+
+  /** Remove grouping for selected columns */
+  const handleUngroupCols = useCallback(async () => {
+    const sel = getSelection();
+    if (!sel) { toast.error('Выберите столбцы для разгруппировки'); return; }
+    const { startColumn, endColumn } = sel;
+
+    const removedGroups = colGroups.filter(g => g.start >= startColumn && g.end <= endColumn);
+    const newGroups = colGroups.filter(g => !(g.start >= startColumn && g.end <= endColumn));
+
+    for (const g of removedGroups) {
+      if (g.collapsed) {
+        await showCols(g.start, g.end);
+        for (const other of newGroups) {
+          if (other.collapsed && other.start >= g.start && other.end <= g.end) {
+            await hideCols(other.start, other.end);
+          }
+        }
+      }
+    }
+
+    setColGroups(newGroups);
+    persistGroups(undefined, newGroups);
+    toast.success('Группировка столбцов удалена');
+  }, [colGroups, getSelection, persistGroups, showCols, hideCols]);
+
+  /** Toggle collapse/expand of a row group */
+  const handleToggleRowGroup = useCallback(async (groupIndex) => {
+    const group = rowGroups[groupIndex];
+    if (!group) return;
+    const newCollapsed = !group.collapsed;
+
+    if (newCollapsed) {
+      await hideRows(group.start, group.end);
+    } else {
+      await showRows(group.start, group.end);
+      // Re-collapse any nested groups that should stay collapsed
+      for (const other of rowGroups) {
+        if (other !== group && other.collapsed &&
+            other.start >= group.start && other.end <= group.end) {
+          await hideRows(other.start, other.end);
+        }
+      }
+    }
+
+    const newGroups = rowGroups.map((g, i) => i === groupIndex ? { ...g, collapsed: newCollapsed } : g);
+    setRowGroups(newGroups);
+    persistGroups(newGroups, undefined);
+
+    // Update rowData after hide/show
+    setTimeout(() => {
+      try {
+        const s = workbookRef.current?.getSnapshot?.();
+        const sid = activeSheetIdRef.current;
+        if (s && sid) {
+          const { rowData: rd } = getSheetMeta(s, sid);
+          rowDataRef.current = rd;
+          setRowData({ ...rd });
+        }
+      } catch (e) { /* ignore */ }
+    }, 100);
+  }, [rowGroups, hideRows, showRows, persistGroups]);
+
+  /** Toggle collapse/expand of a column group */
+  const handleToggleColGroup = useCallback(async (groupIndex) => {
+    const group = colGroups[groupIndex];
+    if (!group) return;
+    const newCollapsed = !group.collapsed;
+
+    if (newCollapsed) {
+      await hideCols(group.start, group.end);
+    } else {
+      await showCols(group.start, group.end);
+      for (const other of colGroups) {
+        if (other !== group && other.collapsed &&
+            other.start >= group.start && other.end <= group.end) {
+          await hideCols(other.start, other.end);
+        }
+      }
+    }
+
+    const newGroups = colGroups.map((g, i) => i === groupIndex ? { ...g, collapsed: newCollapsed } : g);
+    setColGroups(newGroups);
+    persistGroups(undefined, newGroups);
+
+    setTimeout(() => {
+      try {
+        const s = workbookRef.current?.getSnapshot?.();
+        const sid = activeSheetIdRef.current;
+        if (s && sid) {
+          const { colData: cd } = getSheetMeta(s, sid);
+          colDataRef.current = cd;
+          setColData({ ...cd });
+        }
+      } catch (e) { /* ignore */ }
+    }, 100);
+  }, [colGroups, hideCols, showCols, persistGroups]);
+
+  /**
+   * Collapse/expand to a target level (like Excel's 1/2/3 buttons).
+   * Clicking level N: expand all levels < N, collapse all levels >= N.
+   * (In our model, smaller level number = outer group)
+   */
+  const handleLevelClick = useCallback(async (targetLevel, axis) => {
+    const groups = axis === 'row' ? rowGroups : colGroups;
+    const updatedGroups = [...groups];
+
+    for (let i = 0; i < updatedGroups.length; i++) {
+      const g = updatedGroups[i];
+      const shouldCollapse = g.level >= targetLevel;
+      if (g.collapsed === shouldCollapse) continue;
+
+      updatedGroups[i] = { ...g, collapsed: shouldCollapse };
+      if (shouldCollapse) {
+        if (axis === 'row') await hideRows(g.start, g.end);
+        else await hideCols(g.start, g.end);
+      } else {
+        if (axis === 'row') await showRows(g.start, g.end);
+        else await showCols(g.start, g.end);
+      }
+    }
+
+    // Re-collapse groups that should stay hidden (nested within still-collapsed parents)
+    for (let i = 0; i < updatedGroups.length; i++) {
+      const g = updatedGroups[i];
+      if (!g.collapsed) continue;
+      for (let j = 0; j < updatedGroups.length; j++) {
+        if (i === j) continue;
+        const other = updatedGroups[j];
+        if (!other.collapsed && other.start >= g.start && other.end <= g.end) {
+          // nested group inside an expanded parent — leave as collapsed
+        }
+      }
+    }
+
+    if (axis === 'row') {
+      setRowGroups(updatedGroups);
+      persistGroups(updatedGroups, undefined);
+      setTimeout(() => {
+        try {
+          const s = workbookRef.current?.getSnapshot?.();
+          const sid = activeSheetIdRef.current;
+          if (s && sid) { const { rowData: rd } = getSheetMeta(s, sid); rowDataRef.current = rd; setRowData({ ...rd }); }
+        } catch (e) { /* ignore */ }
+      }, 150);
+    } else {
+      setColGroups(updatedGroups);
+      persistGroups(undefined, updatedGroups);
+      setTimeout(() => {
+        try {
+          const s = workbookRef.current?.getSnapshot?.();
+          const sid = activeSheetIdRef.current;
+          if (s && sid) { const { colData: cd } = getSheetMeta(s, sid); colDataRef.current = cd; setColData({ ...cd }); }
+        } catch (e) { /* ignore */ }
+      }, 150);
+    }
+  }, [rowGroups, colGroups, hideRows, showRows, hideCols, showCols, persistGroups]);
+
+  // Keep groupActionsRef in sync so Univer's registered menu items always call the current handlers
+  useEffect(() => {
+    groupActionsRef.current = { handleGroupRows, handleGroupCols, handleUngroupRows, handleUngroupCols };
+  }, [handleGroupRows, handleGroupCols, handleUngroupRows, handleUngroupCols]);
+
+  // ─── Import / Export ──────────────────────────────────────────────────────
+  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileImport = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (!file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
-      toast.error('Поддерживаются только файлы Excel (.xlsx, .xls)');
-      return;
+      toast.error('Поддерживаются только файлы Excel (.xlsx, .xls)'); return;
     }
-
-    if (!pageId) {
-      toast.error('Сначала сохраните страницу');
-      return;
-    }
+    if (!pageId) { toast.error('Сначала сохраните страницу'); return; }
 
     setUploading(true);
     try {
       const formData = new FormData();
       formData.append('file', file);
-
       const { data } = await pages.importXlsx(pageId, formData);
       const newContent = JSON.stringify(data.data);
-
-      // Обновляем content в родительском компоненте
       onChange?.(newContent);
-
       toast.success('Файл импортирован');
-
-      // Реинициализируем Univer на месте — без перезагрузки страницы
       contentRef.current = newContent;
       initializedRef.current = false;
       setIsReady(false);
       initializeUniver(newContent);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Ошибка импорта файла');
-      console.error(error);
     } finally {
       setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  // Экспорт в Excel
   const handleExport = async () => {
-    if (!pageId) {
-      toast.error('Сначала сохраните страницу');
-      return;
-    }
-
+    if (!pageId) { toast.error('Сначала сохраните страницу'); return; }
     setExporting(true);
     try {
-      // Сохраняем текущие изменения
       saveData();
-
-      // Небольшая задержка для сохранения
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Запрос на экспорт
+      await new Promise(r => setTimeout(r, 500));
       const response = await pages.exportXlsx(pageId);
-
-      // Создаем blob и скачиваем
       const blob = new Blob([response.data], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `spreadsheet_${Date.now()}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const a = document.createElement('a');
+      a.href = url; a.download = `spreadsheet_${Date.now()}.xlsx`;
+      document.body.appendChild(a); a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-
       toast.success('Файл экспортирован');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Ошибка экспорта файла');
-      console.error(error);
     } finally {
       setExporting(false);
     }
   };
 
+  // ─── Render ───────────────────────────────────────────────────────────────
+
+  const hasRowGroups = rowGroups.length > 0;
+  const hasColGroups = colGroups.length > 0;
+  const maxRowLevel = hasRowGroups ? Math.max(...rowGroups.map(g => g.level)) : 0;
+  const maxColLevel = hasColGroups ? Math.max(...colGroups.map(g => g.level)) : 0;
+  const rowPanelWidth = maxRowLevel * GROUP_LEVEL_WIDTH;
+  const colPanelHeight = maxColLevel * GROUP_LEVEL_HEIGHT;
+
+  const outerHeight = fullHeight ? '100%' : (readOnly ? '700px' : 'calc(100vh - 300px)');
+  const outerMinHeight = fullHeight ? '0' : '500px';
+
   return (
     <div className="spreadsheet-editor">
       {!readOnly && (
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          hidden
-          onChange={handleFileImport}
-        />
+        <input ref={fileInputRef} type="file" accept=".xlsx,.xls" hidden onChange={handleFileImport} />
       )}
+
+      {/*
+        Outer flex-column wrapper — replaces the old single "univer-container" div.
+        Row group panel sits LEFT of Univer; col group panel sits ABOVE.
+        Univer fills remaining flex space and auto-resizes via internal ResizeObserver.
+      */}
       <div
         className={readOnly ? 'univer-container readonly' : 'univer-container'}
         style={{
           width: '100%',
-          height: fullHeight ? '100%' : (readOnly ? '700px' : 'calc(100vh - 300px)'),
-          minHeight: fullHeight ? '0' : '500px',
-          position: 'relative'
+          height: outerHeight,
+          minHeight: outerMinHeight,
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'relative',
         }}
       >
-        {/* Отдельный контейнер для Univer - React не будет трогать его содержимое */}
-        <div
-          ref={containerRef}
-          style={{
-            width: '100%',
-            height: '100%',
-            position: 'absolute',
-            top: 0,
-            left: 0
-          }}
-        />
-        {/* Кнопки импорта/экспорта — над футером Univer, слева */}
-        {!readOnly && (
-          <div className="spreadsheet-io-buttons">
-            <button
-              className="spreadsheet-io-btn"
-              onClick={handleImportClick}
-              disabled={uploading}
-              title="Импорт Excel (.xlsx)"
-            >
-              {uploading ? <div className="loading-spinner-small" /> : <Upload size={13} />}
-              Импорт
-            </button>
-            <button
-              className="spreadsheet-io-btn"
-              onClick={handleExport}
-              disabled={exporting}
-              title="Экспорт в Excel"
-            >
-              {exporting ? <div className="loading-spinner-small" /> : <Download size={13} />}
-              Экспорт
-            </button>
+        {/* ── Col group panel row (top) ── */}
+        {hasColGroups && isReady && (
+          <div style={{ display: 'flex', flexShrink: 0 }}>
+            {/* Corner: aligns with row-group-panel + Univer row header */}
+            {hasRowGroups && (
+              <div
+                className="sg-corner"
+                style={{ width: rowPanelWidth, height: colPanelHeight, flexShrink: 0 }}
+              />
+            )}
+            <ColGroupPanel
+              groups={colGroups}
+              scrollState={scrollState}
+              colData={colData}
+              panelWidth="100%"
+              onToggle={handleToggleColGroup}
+              onLevelClick={handleLevelClick}
+            />
           </div>
         )}
-        {/* Кнопки навигации — над футером Univer (зум/листы), справа */}
-        {isReady && (
-          <div className="spreadsheet-nav-buttons">
-            <button
-              className="spreadsheet-nav-btn"
-              onClick={navigateToTop}
-              title="В начало таблицы"
-            >
-              <ArrowUp size={13} />
-            </button>
-            <button
-              className="spreadsheet-nav-btn"
-              onClick={navigateToBottom}
-              title="К последней записи"
-            >
-              <ArrowDown size={13} />
-            </button>
+
+        {/* ── Main row: [row group panel] + [Univer] ── */}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+          {/* Row group panel */}
+          {hasRowGroups && isReady && (
+            <RowGroupPanel
+              groups={rowGroups}
+              scrollState={scrollState}
+              rowData={rowData}
+              panelHeight={containerSize.h - (hasColGroups ? colPanelHeight : 0) || 600}
+              onToggle={handleToggleRowGroup}
+              onLevelClick={handleLevelClick}
+            />
+          )}
+
+          {/* Univer canvas wrapper */}
+          <div
+            style={{ flex: 1, position: 'relative', minWidth: 0 }}
+          >
+            <div
+              ref={containerRef}
+              style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}
+            />
+
+            {/* Import/Export buttons */}
+            {!readOnly && (
+              <div className="spreadsheet-io-buttons">
+                <button className="spreadsheet-io-btn" onClick={handleImportClick} disabled={uploading} title="Импорт Excel (.xlsx)">
+                  {uploading ? <div className="loading-spinner-small" /> : <Upload size={13} />}
+                  Импорт
+                </button>
+                <button className="spreadsheet-io-btn" onClick={handleExport} disabled={exporting} title="Экспорт в Excel">
+                  {exporting ? <div className="loading-spinner-small" /> : <Download size={13} />}
+                  Экспорт
+                </button>
+              </div>
+            )}
+
+            {/* Navigation buttons */}
+            {isReady && (
+              <div className="spreadsheet-nav-buttons">
+                <button className="spreadsheet-nav-btn" onClick={navigateToTop} title="В начало">
+                  <ArrowUp size={13} />
+                </button>
+                <button className="spreadsheet-nav-btn" onClick={navigateToBottom} title="К последней записи">
+                  <ArrowDown size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* Loading overlay */}
+            {!isReady && (
+              <div style={{
+                position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: '#fff', zIndex: 1000, pointerEvents: 'none'
+              }}>
+                <div style={{ textAlign: 'center', color: '#666', pointerEvents: 'auto' }}>
+                  <div className="loading-spinner-small" style={{ margin: '0 auto 16px', width: '32px', height: '32px' }} />
+                  <p>Загрузка таблицы...</p>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-        {/* Loading overlay - рендерится отдельно */}
-        {!isReady && (
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: '#fff',
-            zIndex: 1000,
-            pointerEvents: 'none'
-          }}>
-            <div style={{ textAlign: 'center', color: '#666', pointerEvents: 'auto' }}>
-              <div className="loading-spinner-small" style={{
-                margin: '0 auto 16px',
-                width: '32px',
-                height: '32px'
-              }} />
-              <p>Загрузка таблицы...</p>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
 });
 
 SpreadsheetEditor.displayName = 'SpreadsheetEditor';
-
 export default SpreadsheetEditor;
