@@ -1157,6 +1157,7 @@ export async function buildReport({
           effectiveDaysWorked = sDays || 0;
         }
       }
+      basePay = Math.round(basePay);
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Выполненные услуги';
