@@ -360,6 +360,7 @@ function QuickAccessButtons({ onClose }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
+  const canAccessStatistics = isAdmin || user?.canAccessStatistics === true;
 
   // Загружаем количество непрочитанных сообщений
   useEffect(() => {
@@ -384,6 +385,7 @@ function QuickAccessButtons({ onClose }) {
   const isOnKanban = location.pathname.startsWith('/kanban');
   const isOnReviews = location.pathname.startsWith('/reviews');
   const isOnSalary = location.pathname.startsWith('/referral-bonuses');
+  const isOnStatistics = location.pathname.startsWith('/statistics');
 
   const handleClick = (path) => {
     navigate(path);
@@ -461,11 +463,12 @@ function QuickAccessButtons({ onClose }) {
       </button>
 
       <button
-        className="quick-access-btn schedule"
-        onClick={() => handleClick('/schedule')}
-        title="Расписание"
+        className={`quick-access-btn statistics ${isOnStatistics ? 'active' : ''} ${!canAccessStatistics ? 'locked' : ''}`}
+        onClick={() => canAccessStatistics ? handleClick('/statistics') : toast.error('Нет доступа к разделу «Статистика»')}
+        title={canAccessStatistics ? 'Статистика' : 'Статистика (нет доступа)'}
       >
-        <CalendarDays size={20} />
+        <BarChart2 size={20} />
+        {!canAccessStatistics && <Lock size={10} className="quick-access-lock" />}
       </button>
     </div>
   );

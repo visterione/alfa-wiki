@@ -147,6 +147,7 @@ export default function AdminUsers() {
     canEditAnalyses: false,
     canEditServices: false,
     canAccessSalary: false,
+    canAccessStatistics: false,
     canManagePromotions: false,
     adminAccess: {
       pages: false,
@@ -413,6 +414,7 @@ export default function AdminUsers() {
         canEditAnalyses: user.canEditAnalyses || false,
         canEditServices: user.canEditServices || false,
         canAccessSalary: user.canAccessSalary || false,
+        canAccessStatistics: user.canAccessStatistics || false,
         canManagePromotions: user.canManagePromotions || false,
         adminAccess: user.adminAccess || {
           pages: false,
@@ -450,6 +452,7 @@ export default function AdminUsers() {
         canEditAnalyses: false,
         canEditServices: false,
         canAccessSalary: false,
+        canAccessStatistics: false,
         canManagePromotions: false,
         adminAccess: {
           pages: false,
@@ -1247,6 +1250,7 @@ export default function AdminUsers() {
                       { key: 'courses', label: 'Курсы' },
                       { key: 'doctorCards', label: 'Карточки врачей' },
                       { key: 'salary', label: 'Зарплата' },
+                      { key: 'statistics', label: 'Статистика' },
                       { key: 'analyses', label: 'Анализы' },
                       { key: 'promotions', label: 'Акции' },
                     ].map(({ key, label }) => {
@@ -1256,6 +1260,7 @@ export default function AdminUsers() {
                         courses: { get: form.adminAccess.courses, set: v => setForm({...form, adminAccess: {...form.adminAccess, courses: v}}) },
                         doctorCards: { get: form.canEditDoctorCards, set: v => setForm({...form, canEditDoctorCards: v}) },
                         salary: { get: form.canAccessSalary, set: v => setForm({...form, canAccessSalary: v}) },
+                        statistics: { get: form.canAccessStatistics, set: v => setForm({...form, canAccessStatistics: v}) },
                         analyses: { get: form.canEditAnalyses, set: v => setForm({...form, canEditAnalyses: v}) },
                         promotions: { get: form.canManagePromotions, set: v => setForm({...form, canManagePromotions: v}) },
                       };

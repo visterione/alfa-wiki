@@ -31,6 +31,7 @@ import BoardsList from './pages/BoardsList';
 import BoardSettings from './pages/BoardSettings';
 // Referral Bonuses module
 import ReferralBonusesPage from './pages/ReferralBonuses';
+import StatisticsPage from './pages/Statistics';
 // Reviews module
 import ReviewBoardsList from './pages/ReviewBoardsList';
 import ReviewBoard from './pages/ReviewBoard';
@@ -166,6 +167,11 @@ function AppRoutes() {
         {/* МОДУЛЬ: БОНУСЫ ЗА НАПРАВЛЕНИЯ */}
         <Route path="referral-bonuses" element={
           <ProtectedRoute><ReferralBonusesPage /></ProtectedRoute>
+        } />
+
+        {/* СТАТИСТИКА */}
+        <Route path="statistics" element={
+          <ProtectedRoute><StatisticsPage /></ProtectedRoute>
         } />
 
         {/* ДОСТУП К БОНУСАМ ЗА НАПРАВЛЕНИЯ */}
