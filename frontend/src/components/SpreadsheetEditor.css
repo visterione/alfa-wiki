@@ -6,48 +6,44 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.spreadsheet-toolbar {
+/* Кнопки импорта/экспорта — в зоне тулбара Univer, правый верхний угол */
+.spreadsheet-io-buttons {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 20;
   display: flex;
-  gap: 8px;
-  padding: 12px;
-  background: #f8f9fa;
-  border-bottom: 1px solid #e0e0e0;
-  border-radius: 8px 8px 0 0;
+  flex-direction: row;
+  gap: 4px;
+  pointer-events: all;
 }
 
-.spreadsheet-toolbar .btn {
+.spreadsheet-io-btn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 5px;
+  border: 1px solid #d0d0d0;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  font-size: 14px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
+  gap: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.10);
+  color: #444;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
 }
 
-.spreadsheet-toolbar .btn-secondary {
+.spreadsheet-io-btn:hover:not(:disabled) {
   background: #fff;
-  color: #333;
-  border: 1px solid #d0d0d0;
+  border-color: #0066cc;
+  color: #0066cc;
+  box-shadow: 0 1px 6px rgba(0, 60, 180, 0.18);
 }
 
-.spreadsheet-toolbar .btn-secondary:hover:not(:disabled) {
-  background: #f5f5f5;
-  border-color: #999;
-}
-
-.spreadsheet-toolbar .btn-primary {
-  background: #0066cc;
-  color: #fff;
-}
-
-.spreadsheet-toolbar .btn-primary:hover:not(:disabled) {
-  background: #0052a3;
-}
-
-.spreadsheet-toolbar .btn:disabled {
+.spreadsheet-io-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -69,17 +65,11 @@
 /* Univer контейнер */
 .univer-container {
   border: 1px solid #e0e0e0;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
+  border-radius: 8px;
   position: relative;
   /* overflow: hidden убран — обрезал контекстные меню и тултипы Univer */
 }
 
-/* Без тулбара — закруглять сверху тоже */
-.univer-container:first-child {
-  border-top: 1px solid #e0e0e0;
-  border-radius: 8px;
-}
 
 .univer-container.readonly {
   user-select: none;
@@ -133,7 +123,7 @@
 
 /* Стили для печати */
 @media print {
-  .spreadsheet-toolbar,
+  .spreadsheet-io-buttons,
   .spreadsheet-nav-buttons {
     display: none;
   }

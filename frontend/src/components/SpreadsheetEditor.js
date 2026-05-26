@@ -1120,43 +1120,13 @@ const SpreadsheetEditor = forwardRef(({
   return (
     <div className="spreadsheet-editor">
       {!readOnly && (
-        <div className="spreadsheet-toolbar">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleImportClick}
-            disabled={uploading}
-            title="Импорт Excel файла"
-          >
-            {uploading ? (
-              <div className="loading-spinner-small" />
-            ) : (
-              <Upload size={16} />
-            )}
-            Импорт Excel
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            hidden
-            onChange={handleFileImport}
-          />
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleExport}
-            disabled={exporting}
-            title="Экспорт в Excel"
-          >
-            {exporting ? (
-              <div className="loading-spinner-small" />
-            ) : (
-              <Download size={16} />
-            )}
-            Экспорт Excel
-          </button>
-        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          hidden
+          onChange={handleFileImport}
+        />
       )}
       <div
         className={readOnly ? 'univer-container readonly' : 'univer-container'}
@@ -1178,6 +1148,29 @@ const SpreadsheetEditor = forwardRef(({
             left: 0
           }}
         />
+        {/* Кнопки импорта/экспорта — над футером Univer, слева */}
+        {!readOnly && (
+          <div className="spreadsheet-io-buttons">
+            <button
+              className="spreadsheet-io-btn"
+              onClick={handleImportClick}
+              disabled={uploading}
+              title="Импорт Excel (.xlsx)"
+            >
+              {uploading ? <div className="loading-spinner-small" /> : <Upload size={13} />}
+              Импорт
+            </button>
+            <button
+              className="spreadsheet-io-btn"
+              onClick={handleExport}
+              disabled={exporting}
+              title="Экспорт в Excel"
+            >
+              {exporting ? <div className="loading-spinner-small" /> : <Download size={13} />}
+              Экспорт
+            </button>
+          </div>
+        )}
         {/* Кнопки навигации — над футером Univer (зум/листы), справа */}
         {isReady && (
           <div className="spreadsheet-nav-buttons">

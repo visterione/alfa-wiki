@@ -20,12 +20,25 @@ export default function PageEditor() {
   const folderIdFromUrl = searchParams.get('folderId') || null;
 
   const spreadsheetRef = useRef(null);
+  const moreMenuRef = useRef(null);
 
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [allRoles, setAllRoles] = useState([]);
+
+  useEffect(() => {
+    if (!showMoreMenu) return;
+    const handler = (e) => {
+      if (moreMenuRef.current && !moreMenuRef.current.contains(e.target)) {
+        setShowMoreMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showMoreMenu]);
   
   const [form, setForm] = useState({
     title: '',
@@ -186,32 +199,49 @@ export default function PageEditor() {
           <button type="button" className="btn btn-primary editor-header-btn" onClick={() => navigate(-1)}>
             Назад
           </button>
+          <input
+            type="text"
+            className="input editor-header-title"
+            placeholder="Заголовок страницы"
+            value={form.title}
+            onChange={(e) => setForm({ ...form, title: e.target.value })}
+          />
           <div className="editor-header-actions">
-            <button
-              type="button"
-              className="btn btn-primary editor-header-btn"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              Настройки
-            </button>
-            {!isNew && (
-              <>
-                <button
-                  type="button"
-                  className="btn btn-primary editor-header-btn"
-                  onClick={() => setShowHistory(true)}
-                >
-                  Журнал
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary editor-header-btn"
-                  onClick={() => window.open(`/page/${form.slug}`, '_blank')}
-                >
-                  Просмотр
-                </button>
-              </>
-            )}
+            <div className="more-menu-wrapper" ref={moreMenuRef}>
+              <button
+                type="button"
+                className="btn btn-primary editor-header-btn editor-header-btn-more"
+                onClick={() => setShowMoreMenu(!showMoreMenu)}
+              >
+                •••
+              </button>
+              {showMoreMenu && (
+                <div className="more-menu-dropdown">
+                  <button
+                    type="button"
+                    onClick={() => { setShowSettings(!showSettings); setShowMoreMenu(false); }}
+                  >
+                    Настройки
+                  </button>
+                  {!isNew && (
+                    <button
+                      type="button"
+                      onClick={() => { setShowHistory(true); setShowMoreMenu(false); }}
+                    >
+                      Журнал
+                    </button>
+                  )}
+                  {!isNew && (
+                    <button
+                      type="button"
+                      onClick={() => { window.open(`/page/${form.slug}`, '_blank'); setShowMoreMenu(false); }}
+                    >
+                      Просмотр
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button type="submit" className="btn btn-primary editor-header-btn" disabled={saving}>
               {isNew ? 'Создать' : 'Сохранить'}
             </button>
@@ -220,16 +250,6 @@ export default function PageEditor() {
 
         <div className="editor-body">
           <div className="editor-main">
-            <div className="form-group">
-              <input
-                type="text"
-                className="input title-input"
-                placeholder="Заголовок страницы"
-                value={form.title}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-              />
-            </div>
-
             {isNew && (
               <div className="editor-type-tabs">
                 <button
