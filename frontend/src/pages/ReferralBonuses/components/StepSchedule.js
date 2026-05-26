@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useImperativeHandle, u
 import ReactDOM from 'react-dom';
 import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi, rbHolidays as holidaysApi, executorSettings as execSettingsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
+import { useAuth } from '../../../context/AuthContext';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
 
@@ -765,6 +766,7 @@ const btnGhost = {
 
 // ═════════════════════════════════════════════════════════════════════════════
 export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
+  const { isAdmin } = useAuth();
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -833,6 +835,19 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     : [];
 
   const [holidayDates, setHolidayDates] = useState(new Set());
+
+  // Half-period locks — mirrors TabelTable logic.
+  // Computed per-cell using cell's own year/month so neighbor-month cells
+  // (e.g. Apr 27-30 visible while viewing May) are evaluated correctly.
+  const lockToday = new Date(); lockToday.setHours(0, 0, 0, 0);
+  const isCellFrozen = (cell) => {
+    const halfSize = Math.floor(new Date(cell.year, cell.month, 0).getDate() / 2);
+    const fh = lockToday >= new Date(cell.year, cell.month - 1, 16);
+    const sh = lockToday >= new Date(cell.year, cell.month, 1);
+    return cell.day <= halfSize ? fh : sh;
+  };
+  // isCellLocked — actual edit restriction (non-admins only)
+  const isCellLocked = (cell) => !isAdmin && isCellFrozen(cell);
 
   // ── Load dictionaries once ───────────────────────────────────────────────
   useEffect(() => {
@@ -982,7 +997,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const handleDayClick = (cell) => {
     if (!selectedDoctor) return;
     const cellEntries = getCellEntries(cell);
-    if (cellEntries.length > 0) {
+    const locked = isCellLocked(cell);
+    if (cellEntries.length > 0 || locked) {
       setModal({ type: 'day', cell });
     } else {
       setForm(makeBlankForm(cell, doctorClinics));
@@ -1064,6 +1080,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       await schedulesApi.update(modal.editId, {
         clinicId: origEntry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: origEntry.dateTo,
         pattern: updPattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: afterEx,
+        categoryId: origEntry.categoryId || null,
+        cabinetId:  origEntry.cabinetId  || null,
+        roleTitle:  origEntry.roleTitle   || null,
       });
       const res = await schedulesApi.create(newDayPayload);
       setEntries(prev => [
@@ -1075,6 +1094,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       await schedulesApi.update(modal.editId, {
         clinicId: origEntry.clinicId, dateFrom: origEntry.dateFrom, dateTo: addDays(targetDate, -1),
         pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: beforeEx,
+        categoryId: origEntry.categoryId || null,
+        cabinetId:  origEntry.cabinetId  || null,
+        roleTitle:  origEntry.roleTitle   || null,
       });
       const res = await schedulesApi.create(newDayPayload);
       setEntries(prev => [
@@ -1086,6 +1108,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       await schedulesApi.update(modal.editId, {
         clinicId: origEntry.clinicId, dateFrom: origEntry.dateFrom, dateTo: addDays(targetDate, -1),
         pattern: origEntry.pattern, timeFrom: origEntry.timeFrom, timeTo: origEntry.timeTo, exceptions: beforeEx,
+        categoryId: origEntry.categoryId || null,
+        cabinetId:  origEntry.cabinetId  || null,
+        roleTitle:  origEntry.roleTitle   || null,
       });
       const splitPattern = ['two_two', 'custom'].includes(origEntry.pattern.type)
         ? { ...origEntry.pattern, phaseAnchor: origEntry.pattern.phaseAnchor || origEntry.dateFrom }
@@ -1101,6 +1126,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           timeFrom:   origEntry.timeFrom,
           timeTo:     origEntry.timeTo,
           exceptions: afterEx,
+          categoryId: origEntry.categoryId || null,
+          cabinetId:  origEntry.cabinetId  || null,
+          roleTitle:  origEntry.roleTitle   || null,
         }),
       ]);
       setEntries(prev => [
@@ -1229,18 +1257,27 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         await schedulesApi.update(entryId, {
           clinicId: entry.clinicId, dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
           pattern: updPattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: afterEx,
+          categoryId: entry.categoryId || null,
+          cabinetId:  entry.cabinetId  || null,
+          roleTitle:  entry.roleTitle   || null,
         });
         setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateFrom: addDays(targetDate, 1), pattern: updPattern, exceptions: afterEx } : e));
       } else if (entry.dateTo === targetDate) {
         await schedulesApi.update(entryId, {
           clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
           pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: beforeEx,
+          categoryId: entry.categoryId || null,
+          cabinetId:  entry.cabinetId  || null,
+          roleTitle:  entry.roleTitle   || null,
         });
         setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e));
       } else {
         await schedulesApi.update(entryId, {
           clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: addDays(targetDate, -1),
           pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: beforeEx,
+          categoryId: entry.categoryId || null,
+          cabinetId:  entry.cabinetId  || null,
+          roleTitle:  entry.roleTitle   || null,
         });
         const splitPattern = ['two_two', 'custom'].includes(entry.pattern.type)
           ? { ...entry.pattern, phaseAnchor: entry.pattern.phaseAnchor || entry.dateFrom }
@@ -1250,6 +1287,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           dateFrom: addDays(targetDate, 1), dateTo: entry.dateTo,
           pattern: splitPattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo,
           exceptions: afterEx,
+          categoryId: entry.categoryId || null,
+          cabinetId:  entry.cabinetId  || null,
+          roleTitle:  entry.roleTitle   || null,
         });
         setEntries(prev => [
           ...prev.map(e => e.id === entryId ? { ...e, dateTo: addDays(targetDate, -1), exceptions: beforeEx } : e),
@@ -1490,7 +1530,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   }
 
   // Current day entries for day-modal
-  const modalCellEntries = modal?.cell ? getCellEntries(modal.cell) : [];
+  const modalCellEntries  = modal?.cell ? getCellEntries(modal.cell) : [];
+  const modalCellLocked   = modal?.cell ? isCellLocked(modal.cell) : false;
 
   return (
     <div className="rb-panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -1630,6 +1671,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                     const cellEntries = getCellEntries(cell);
                     const tod = isToday(cell);
                     const isHoliday = cell.isCurrentMonth && holidayDates.has(cellDate(cell));
+                    const isLocked  = isCellFrozen(cell);
                     return (
                       <td
                         key={di}
@@ -1639,6 +1681,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                           tod        ? 'rb-schedule-cell-today'   : '',
                           isHoliday  ? 'rb-schedule-cell-holiday' : '',
                         ].filter(Boolean).join(' ')}
+                        style={{ position: 'relative', ...(isLocked ? { background: 'rgba(148,163,184,0.13)' } : {}) }}
                         onClick={() => handleDayClick(cell)}
                       >
                         <span
@@ -1647,6 +1690,17 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         >
                           {cell.day}
                         </span>
+                        {isLocked && (
+                          <span title="Период закрыт для редактирования" style={{
+                            position: 'absolute', bottom: 3, right: 3,
+                            color: '#94a3b8', lineHeight: 1, pointerEvents: 'none',
+                          }}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11">
+                              <rect x="3" y="11" width="18" height="11" rx="2"/>
+                              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                          </span>
+                        )}
                         <div className="rb-schedule-entries">
                           {cellEntries.map(e => {
                             const cancelled = isExcepted(e, cell);
@@ -1968,7 +2022,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       </div>
 
                       {/* Actions */}
-                      {!readOnly && (!isConfirming ? (
+                      {!readOnly && !modalCellLocked && (!isConfirming ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
@@ -2016,7 +2070,16 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               })}
             </div>
 
-            {!readOnly && (
+            {modalCellLocked && (
+              <div style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#64748b', borderTop: '1px solid var(--rb-border)', background: 'rgba(148,163,184,0.08)' }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0 }}>
+                  <rect x="3" y="11" width="18" height="11" rx="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                Период закрыт для редактирования
+              </div>
+            )}
+            {!readOnly && !modalCellLocked && (
             <div className="rb-modal-footer">
               <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openNewForm(modal.cell)}>
                 Создать
