@@ -1028,18 +1028,6 @@ export function TabReputation() {
     return new Date(t.getFullYear(), t.getMonth() + 1, 0).toISOString().split('T')[0];
   });
 
-  const setQuickPeriod = (p) => {
-    const now = new Date();
-    const ranges = {
-      month:   [new Date(now.getFullYear(), now.getMonth(), 1),       new Date(now.getFullYear(), now.getMonth() + 1, 0)],
-      quarter: [new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1), new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3 + 3, 0)],
-      year:    [new Date(now.getFullYear(), 0, 1),                    new Date(now.getFullYear(), 11, 31)],
-    };
-    const [f, t] = ranges[p] || ranges.month;
-    setDateFrom(f.toISOString().split('T')[0]);
-    setDateTo(t.toISOString().split('T')[0]);
-  };
-
   useEffect(() => {
     reviews.getPlatforms()
       .then(res => {
@@ -1230,21 +1218,6 @@ export function TabReputation() {
 
   return (
     <div>
-      {/* Period selector */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-        <span style={{ color: 'var(--rb-text-secondary)' }}>—</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', outline: 'none' }} />
-        {[['month','Месяц'],['quarter','Квартал'],['year','Год']].map(([p, l]) => (
-          <button key={p} onClick={() => setQuickPeriod(p)}
-            style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--rb-border-dark)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>
-            {l}
-          </button>
-        ))}
-      </div>
-
       {/* Summary KPI row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
         <SummaryKpiCard icon={MessageSquare} label="Всего отзывов"  value={totals.total}                         color="#3b82f6" />
