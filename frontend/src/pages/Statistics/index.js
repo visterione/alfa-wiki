@@ -8,7 +8,7 @@ import { useTabSlider } from '../ReferralBonuses/utils/useTabSlider';
 import '../ReferralBonuses/ReferralBonuses.css';
 
 const MAIN_TABS = [
-  { key: 'kpi',         label: 'КПИ / Аналитика' },
+  { key: 'kpi',         label: 'Аналитика' },
   { key: 'directories', label: 'Справочники' },
 ];
 

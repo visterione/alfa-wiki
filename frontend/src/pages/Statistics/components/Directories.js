@@ -12,11 +12,10 @@ import toast from 'react-hot-toast';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DIR_TABS = [
-  { key: 'clinics',    label: 'Филиалы' },
-  { key: 'cabinets',   label: 'Кабинеты' },
-  { key: 'doctors',    label: 'Врачи' },
-  { key: 'equipment',  label: 'Оборудование' },
-  { key: 'reputation', label: 'Репутация' },
+  { key: 'clinics',   label: 'Филиалы' },
+  { key: 'cabinets',  label: 'Кабинеты' },
+  { key: 'doctors',   label: 'Врачи' },
+  { key: 'equipment', label: 'Оборудование' },
 ];
 
 const BOARD_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#14b8a6'];
@@ -116,6 +115,16 @@ function scheduleWeeklyHours(schedule) {
 
 function getClinicColor(clinicId) {
   return DEFAULT_CLINICS.find(x => String(x.id) === String(clinicId))?.color || '#94a3b8';
+}
+
+// Match a review board by name to a DEFAULT_CLINICS entry for consistent brand colors
+function getBoardColor(boardName) {
+  if (!boardName) return '#94a3b8';
+  const lower = boardName.toLowerCase();
+  const match = DEFAULT_CLINICS.find(c =>
+    lower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(lower)
+  );
+  return match?.color || '#94a3b8';
 }
 function getClinicName(clinicId) {
   return DEFAULT_CLINICS.find(x => String(x.id) === String(clinicId))?.name || `Клиника ${clinicId}`;
@@ -934,10 +943,81 @@ function SummaryKpiCard({ icon: Icon, label, value, color }) {
   );
 }
 
-function TabReputation() {
-  const [boards, setBoards]       = useState([]);
-  const [statsMap, setStatsMap]   = useState({});
-  const [loading, setLoading]     = useState(true);
+function NegativeReviewRow({ r }) {
+  const [open, setOpen] = useState(false);
+  const text    = r.reviewText || '';
+  const rating  = r.rating || 0;
+  const date    = r.reviewDate
+    ? new Date(r.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : '';
+
+  return (
+    <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--rb-border)' }}>
+
+      {/* Header: имя | дата | оценка */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '3px 8px', marginBottom: 6 }}>
+        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--rb-text)' }}>
+          {r.patientName || 'Аноним'}
+        </span>
+        {date && <>
+          <span style={{ color: '#cbd5e1' }}>|</span>
+          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{date}</span>
+        </>}
+        <span style={{ color: '#cbd5e1' }}>|</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>{rating}/5</span>
+          <span style={{ display: 'flex', gap: 1 }}>
+            {[1,2,3,4,5].map(n => (
+              <Star key={n} size={12} fill={n <= rating ? '#ef4444' : 'none'} color={n <= rating ? '#ef4444' : '#d1d5db'} />
+            ))}
+          </span>
+        </span>
+      </div>
+
+      {/* Текст отзыва */}
+      {text && (
+        <div
+          onClick={() => text.length > 180 && setOpen(o => !o)}
+          style={{ fontSize: 13, color: 'var(--rb-text)', lineHeight: 1.65, marginBottom: 8, cursor: text.length > 180 ? 'pointer' : 'default' }}
+        >
+          {open ? text : (text.length > 180 ? text.slice(0, 180) + '…' : text)}
+          {!open && text.length > 180 && (
+            <span style={{ marginLeft: 5, fontSize: 11, color: 'var(--rb-primary)' }}>развернуть</span>
+          )}
+        </div>
+      )}
+
+      {/* Footer: площадка | врач | клиника */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '2px 6px' }}>
+        {r.platformName && (
+          <span style={{ fontSize: 11, color: '#64748b', padding: '1px 7px', borderRadius: 4, background: '#f1f5f9', border: '1px solid #e2e8f0' }}>
+            {r.platformName}
+          </span>
+        )}
+        {r.doctorName && <>
+          {r.platformName && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
+          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{r.doctorName}</span>
+        </>}
+        {(r.platformId || r.doctorName) && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.boardColor, display: 'inline-block', flexShrink: 0 }} />
+          <span style={{ fontSize: 11, fontWeight: 600, color: r.boardColor }}>{r.boardName}</span>
+        </span>
+      </div>
+
+    </div>
+  );
+}
+
+export function TabReputation() {
+  const [boards, setBoards]           = useState([]);
+  const [statsMap, setStatsMap]       = useState({});
+  const [loading, setLoading]         = useState(true);
+  const [hiddenLines, setHiddenLines] = useState(new Set());
+  const [negReviews, setNegReviews]   = useState([]);
+  const [loadingNeg, setLoadingNeg]   = useState(false);
+  const [negExpanded, setNegExpanded] = useState(false);
+  const [platformMap, setPlatformMap] = useState({});
 
   const [dateFrom, setDateFrom] = useState(() => {
     const t = new Date();
@@ -961,6 +1041,17 @@ function TabReputation() {
   };
 
   useEffect(() => {
+    reviews.getPlatforms()
+      .then(res => {
+        const list = Array.isArray(res.data) ? res.data : [];
+        const map = {};
+        for (const p of list) map[p.id] = p.name || p.title || p.id;
+        setPlatformMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     setLoading(true);
     reviews.getBoards()
       .then(async res => {
@@ -979,6 +1070,30 @@ function TabReputation() {
       .finally(() => setLoading(false));
   }, [dateFrom, dateTo]);
 
+  // Auto-fetch neg reviews whenever boards or period changes
+  useEffect(() => {
+    if (!boards.length) return;
+    setLoadingNeg(true);
+    setNegReviews([]);
+    setNegExpanded(false);
+    const from = new Date(dateFrom);
+    const to   = new Date(dateTo + 'T23:59:59');
+    Promise.all(
+      boards.map(b =>
+        reviews.getReviews(b.id)
+          .then(res => {
+            const list = Array.isArray(res.data) ? res.data : [];
+            return list
+              .filter(r => r.rating && r.rating <= 3 && r.reviewDate && new Date(r.reviewDate) >= from && new Date(r.reviewDate) <= to)
+              .map(r => ({ ...r, boardName: b.name, boardColor: getBoardColor(b.name), platformName: platformMap[r.platformId] || r.platformId || null }));
+          })
+          .catch(() => [])
+      )
+    ).then(results => {
+      setNegReviews(results.flat().sort((a, b) => new Date(b.reviewDate) - new Date(a.reviewDate)));
+    }).catch(() => {}).finally(() => setLoadingNeg(false));
+  }, [boards, dateFrom, dateTo, platformMap]);
+
   // Aggregate totals
   const totals = useMemo(() => {
     let total = 0, ratingSum = 0, ratingW = 0, finalized = 0, pending = 0;
@@ -995,7 +1110,7 @@ function TabReputation() {
   // Combined trend chart: complete date axis + zero-fill per board
   const { chartData, chartLines } = useMemo(() => {
     const lines = boards.map((b, i) => ({
-      id: b.id, name: b.name, color: BOARD_COLORS[i % BOARD_COLORS.length], dk: `b${i}`,
+      id: b.id, name: b.name, color: getBoardColor(b.name), dk: `b${i}`,
     }));
 
     // Build a lookup: { boardId → { dateKey → total } }
@@ -1061,13 +1176,34 @@ function TabReputation() {
         byName[d.name].ratingSum += (d.avgRating || 0) * (d.count || 0);
         byName[d.name].positive  += d.positive  || 0;
         byName[d.name].negative  += d.negative  || 0;
-        byName[d.name].boardColors.push(BOARD_COLORS[i % BOARD_COLORS.length]);
+        byName[d.name].boardColors.push(getBoardColor(b.name));
       }
     });
     return Object.values(byName)
       .map(d => ({ ...d, avgRating: d.count > 0 ? d.ratingSum / d.count : 0 }))
       .sort((a, b) => b.avgRating - a.avgRating);
   }, [statsMap, boards]);
+
+  // Count negative reviews from stats byRating data
+  const negCount = useMemo(() => {
+    let n = 0;
+    for (const s of Object.values(statsMap)) {
+      if (!s?.byRating) continue;
+      n += (s.byRating[1] || 0) + (s.byRating[2] || 0) + (s.byRating[3] || 0);
+    }
+    return n;
+  }, [statsMap]);
+
+  // Doctor → count from fetched neg reviews
+  const negByDoctor = useMemo(() => {
+    const map = {};
+    for (const r of negReviews) {
+      if (!r.doctorName) continue;
+      map[r.doctorName] = (map[r.doctorName] || 0) + 1;
+    }
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  }, [negReviews]);
+
 
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload?.length) return null;
@@ -1110,18 +1246,16 @@ function TabReputation() {
       </div>
 
       {/* Summary KPI row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
         <SummaryKpiCard icon={MessageSquare} label="Всего отзывов"  value={totals.total}                         color="#3b82f6" />
         <SummaryKpiCard icon={Star}          label="Ср. оценка"     value={totals.avgRating?.toFixed(1) || '—'}  color="#f59e0b" />
-        <SummaryKpiCard icon={CheckCircle}   label="Обработано"     value={totals.finalized}                     color="#10b981" />
-        <SummaryKpiCard icon={Clock}         label="В работе"       value={totals.pending}                       color="#8b5cf6" />
       </div>
 
       {/* Per-clinic cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: 10, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 10, marginBottom: 20 }}>
         {boards.map((b, i) => {
           const s = statsMap[b.id];
-          const color = BOARD_COLORS[i % BOARD_COLORS.length];
+          const color = getBoardColor(b.name);
           const pct = s?.total > 0 ? Math.round(((s.byRating?.[4] || 0) + (s.byRating?.[5] || 0)) / s.total * 100) : null;
           return (
             <div key={b.id} style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--rb-border)', borderTop: `3px solid ${color}`, borderRadius: 'var(--rb-radius)', padding: '12px 14px' }}>
@@ -1146,10 +1280,44 @@ function TabReputation() {
       {/* Combined trend chart */}
       {chartData.length > 0 && (
         <div style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', padding: '16px 20px', marginBottom: 20 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
             <TrendingUp size={16} style={{ color: 'var(--rb-text-secondary)' }} />
             Динамика отзывов по филиалам
           </div>
+
+          {/* Line toggle buttons */}
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+            {chartLines.map(ln => {
+              const hidden = hiddenLines.has(ln.id);
+              return (
+                <button key={ln.id}
+                  onClick={() => setHiddenLines(prev => {
+                    const next = new Set(prev);
+                    if (next.has(ln.id)) next.delete(ln.id); else next.add(ln.id);
+                    return next;
+                  })}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '5px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12,
+                    fontFamily: 'inherit', transition: 'all 0.15s',
+                    border: `2px solid ${ln.color}`,
+                    background: hidden ? '#f8fafc' : ln.color + '18',
+                    color: hidden ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
+                    opacity: hidden ? 0.5 : 1,
+                  }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: hidden ? '#cbd5e1' : ln.color, flexShrink: 0 }} />
+                  {ln.name}
+                </button>
+              );
+            })}
+            {hiddenLines.size > 0 && (
+              <button onClick={() => setHiddenLines(new Set())}
+                style={{ padding: '5px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', border: '1px dashed #94a3b8', background: 'none', color: 'var(--rb-text-secondary)' }}>
+                Показать все
+              </button>
+            )}
+          </div>
+
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.25)" />
@@ -1157,8 +1325,7 @@ function TabReputation() {
                 axisLine={{ stroke: 'rgba(148,163,184,0.3)' }} interval="preserveStartEnd" />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#94a3b8' }} tickLine={false} axisLine={false} width={26} />
               <Tooltip content={<CustomTooltip />} />
-              <Legend iconSize={10} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-              {chartLines.map((ln, i) => (
+              {chartLines.filter(ln => !hiddenLines.has(ln.id)).map((ln, i) => (
                 <Line key={ln.id} type="monotone" dataKey={ln.dk} name={ln.name}
                   stroke={ln.color} strokeWidth={2}
                   strokeDasharray={i % 2 === 1 ? '5 3' : undefined}
@@ -1180,15 +1347,13 @@ function TabReputation() {
             Рейтинг врачей
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="rb-table" style={{ minWidth: 560 }}>
+            <table className="rb-table" style={{ minWidth: 400 }}>
               <thead>
                 <tr>
                   <THCell>#</THCell>
                   <THCell>Врач</THCell>
                   <THCell right>Отзывов</THCell>
                   <THCell right>Ср. оценка</THCell>
-                  <THCell right>Позитивных</THCell>
-                  <THCell right>Негативных</THCell>
                 </tr>
               </thead>
               <tbody>
@@ -1212,13 +1377,56 @@ function TabReputation() {
                         {doc.avgRating.toFixed(1)}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', color: '#10b981', fontWeight: 500 }}>{doc.positive}</td>
-                    <td style={{ textAlign: 'right', color: '#ef4444', fontWeight: 500 }}>{doc.negative}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Negative reviews section */}
+      {(negCount > 0 || loadingNeg) && (
+        <div style={{ background: 'var(--rb-card-bg)', border: '1px solid #fecaca', borderRadius: 'var(--rb-radius)', marginTop: 16, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid #fecaca', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Star size={15} fill="#ef4444" color="#ef4444" />
+            <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)', flex: 1 }}>Негативные отзывы</span>
+            {loadingNeg
+              ? <span className="rb-spinner" style={{ width: 14, height: 14, flexShrink: 0 }} />
+              : <span style={{ background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: 12, borderRadius: 10, padding: '2px 9px', flexShrink: 0 }}>{negReviews.length}</span>
+            }
+          </div>
+
+          {!loadingNeg && negByDoctor.length > 0 && (
+            <div style={{ padding: '8px 20px 10px', borderBottom: '1px solid var(--rb-border)', display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', marginRight: 2 }}>По врачам:</span>
+              {negByDoctor.slice(0, 8).map(([name, cnt]) => (
+                <span key={name} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 10, background: '#fee2e2', color: '#dc2626', fontWeight: 500, whiteSpace: 'nowrap' }}>
+                  {name} ({cnt})
+                </span>
+              ))}
+              {negByDoctor.length > 8 && (
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>+{negByDoctor.length - 8} ещё</span>
+              )}
+            </div>
+          )}
+
+          {!loadingNeg && (
+            <>
+              {negReviews.slice(0, negExpanded ? negReviews.length : 20).map((r, i) => (
+                <NegativeReviewRow key={r.id ?? i} r={r} />
+              ))}
+              {negReviews.length === 0 && (
+                <div style={{ padding: 20, textAlign: 'center', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Нет негативных отзывов за выбранный период</div>
+              )}
+              {!negExpanded && negReviews.length > 20 && (
+                <button onClick={() => setNegExpanded(true)}
+                  style={{ display: 'block', width: '100%', padding: '12px 20px', border: 'none', borderTop: '1px solid var(--rb-border)', background: '#fafafa', cursor: 'pointer', fontFamily: 'inherit', fontSize: 13, color: 'var(--rb-primary)', fontWeight: 500 }}>
+                  Показать ещё {negReviews.length - 20} отзывов
+                </button>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1265,11 +1473,10 @@ export default function Directories({ doctors = [], excelSources = [] }) {
         ))}
       </div>
 
-      {activeTab === 'clinics'    && <TabClinics roomCountByClinic={roomCountByClinic} />}
-      {activeTab === 'cabinets'   && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
-      {activeTab === 'doctors'    && <TabDoctors doctors={doctors} excelSources={excelSources} />}
-      {activeTab === 'equipment'  && <TabEquipment />}
-      {activeTab === 'reputation' && <TabReputation />}
+      {activeTab === 'clinics'   && <TabClinics roomCountByClinic={roomCountByClinic} />}
+      {activeTab === 'cabinets'  && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
+      {activeTab === 'doctors'   && <TabDoctors doctors={doctors} excelSources={excelSources} />}
+      {activeTab === 'equipment' && <TabEquipment />}
     </div>
   );
 }
