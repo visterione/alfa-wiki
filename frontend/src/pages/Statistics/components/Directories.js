@@ -1009,7 +1009,14 @@ function NegativeReviewRow({ r }) {
   );
 }
 
-export function TabReputation() {
+export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
+  const now = new Date();
+  const defaultFrom = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+  const defaultTo   = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+  const dateFrom = dateFromProp || defaultFrom;
+  const dateTo   = dateToProp   || defaultTo;
+
   const [boards, setBoards]           = useState([]);
   const [statsMap, setStatsMap]       = useState({});
   const [loading, setLoading]         = useState(true);
@@ -1018,15 +1025,6 @@ export function TabReputation() {
   const [loadingNeg, setLoadingNeg]   = useState(false);
   const [negExpanded, setNegExpanded] = useState(false);
   const [platformMap, setPlatformMap] = useState({});
-
-  const [dateFrom, setDateFrom] = useState(() => {
-    const t = new Date();
-    return new Date(t.getFullYear(), t.getMonth(), 1).toISOString().split('T')[0];
-  });
-  const [dateTo, setDateTo] = useState(() => {
-    const t = new Date();
-    return new Date(t.getFullYear(), t.getMonth() + 1, 0).toISOString().split('T')[0];
-  });
 
   useEffect(() => {
     reviews.getPlatforms()

@@ -2471,7 +2471,10 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
 
       {/* Репутация — всегда смонтирована, не требует Excel-источников */}
       <div style={{ display: viewMode === 'reputation' ? 'block' : 'none' }}>
-        <TabReputation />
+        <TabReputation
+          dateFrom={periodStart.toISOString().split('T')[0]}
+          dateTo={periodEnd.toISOString().split('T')[0]}
+        />
       </div>
 
       {/* Остальные вкладки */}
