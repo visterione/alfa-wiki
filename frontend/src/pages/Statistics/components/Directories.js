@@ -6,7 +6,7 @@ import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
 import { parseExcelFile, rbMapNewColumns } from '../../ReferralBonuses/utils/excelUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
 import { DEFAULT_CLINICS } from '../../ReferralBonuses/utils/clinicUtils';
-import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 
@@ -83,6 +83,16 @@ function uuidv4() {
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
 }
+function formatApiDate(str) {
+  if (!str) return '';
+  // Already DD.MM.YYYY
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(str)) return str;
+  // YYYY-MM-DD or ISO
+  const d = new Date(str);
+  if (!isNaN(d)) return d.toLocaleDateString('ru-RU');
+  return str;
+}
+
 const fmt     = n => Math.round(n || 0).toLocaleString('ru-RU');
 const fmtRub  = n => fmt(n) + ' ₽';
 
@@ -326,7 +336,7 @@ function TabClinics({ roomCountByClinic }) {
   if (!clinics.length) return <div className="rb-placeholder"><div style={{ fontWeight: 600 }}>Нет данных о клиниках</div></div>;
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
       {clinics.map(c => {
         const cid = String(c.id);
         const m = manualData[cid] || {};
@@ -350,17 +360,33 @@ function TabClinics({ roomCountByClinic }) {
               )}
             </div>
             <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {c.address  && <InfoRow icon={MapPin}    text={c.address} />}
-              {(c.phone || c.mobile) && <InfoRow icon={Phone} text={[c.phone, c.mobile].filter(Boolean).join(' · ')} />}
-              {c.doctor_name && <InfoRow icon={UserRound}  text={c.doctor_name} />}
+              {c.address     && <InfoRow icon={MapPin}    text={c.address} />}
+              {c.legal_address && c.legal_address !== c.address && <InfoRow icon={MapPin} text={`Юр.: ${c.legal_address}`} />}
+              {c.real_address  && c.real_address !== c.address && c.real_address !== c.legal_address && <InfoRow icon={MapPin} text={`Факт.: ${c.real_address}`} />}
+              {(c.phone || c.mobile) && <InfoRow icon={Phone} text={[c.phone && `Тел.: ${c.phone}`, c.mobile && `Моб.: ${c.mobile}`].filter(Boolean).join(' · ')} />}
+              {c.site  && <InfoRow icon={Globe} text={c.site} />}
+              {c.email && <InfoRow icon={Mail}  text={c.email} />}
+              {c.license_number && (
+                <InfoRow icon={FileText} text={`Лицензия № ${c.license_number}${c.license_date ? ` от ${formatApiDate(c.license_date)}` : ''}`} />
+              )}
+              {c.director_name && <InfoRow icon={UserRound} text={`Директор: ${c.director_name}`} />}
+              {c.doctor_name   && <InfoRow icon={UserRound} text={c.doctor_name} />}
+              {(c.inn || c.kpp || c.bin) && (
+                <InfoRow icon={Building2} text={[c.inn && `ИНН: ${c.inn}`, c.kpp && `КПП: ${c.kpp}`, c.bin && `ОГРН: ${c.bin}`].filter(Boolean).join(' · ')} />
+              )}
+              {(c.bank || c.bic || c.account || c.cor_account) && (
+                <InfoRow icon={Landmark} text={[c.bank, c.bic && `БИК: ${c.bic}`, c.account && `Р/с: ${c.account}`, c.cor_account && `К/с: ${c.cor_account}`].filter(Boolean).join(' · ')} />
+              )}
             </div>
             <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <Field label="Площадь (м²)">
-                <input type="text" value={m.area || ''} onChange={e => saveField(c.id, { area: e.target.value })} style={fieldInputStyle} />
-              </Field>
-              <Field label="Аренда / содержание помещения">
-                <input type="text" value={m.rent || ''} onChange={e => saveField(c.id, { rent: e.target.value })} style={fieldInputStyle} />
-              </Field>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <Field label="Площадь (м²)">
+                  <input type="text" value={m.area || ''} onChange={e => saveField(c.id, { area: e.target.value })} style={fieldInputStyle} />
+                </Field>
+                <Field label="Аренда / содержание">
+                  <input type="text" value={m.rent || ''} onChange={e => saveField(c.id, { rent: e.target.value })} style={fieldInputStyle} />
+                </Field>
+              </div>
               <Field label="График работы">
                 <div style={{ border: '1px solid var(--rb-border-dark)', borderRadius: 7, overflow: 'hidden' }}>
                   <button
