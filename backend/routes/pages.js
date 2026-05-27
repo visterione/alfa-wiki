@@ -682,6 +682,94 @@ router.post('/:id/import-xlsx', authenticate, requirePermission('pages', 'write'
   }
 });
 
+// Get spreadsheet data as clean rows/columns for programmatic use (e.g. statistics module)
+router.get('/:id/data', authenticate, async (req, res) => {
+  try {
+    const page = await Page.findByPk(req.params.id);
+
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    if (page.contentType !== 'spreadsheet') {
+      return res.status(400).json({ error: 'Page must be of type spreadsheet' });
+    }
+
+    if (!req.user.isAdmin && page.allowedRoles?.length > 0) {
+      const userRoleIds = req.user.roles?.map(r => r.id) || [];
+      const hasAccess = userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
+      if (!hasAccess) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    }
+
+    const univerData = JSON.parse(page.content || '{}');
+    const sheetOrder = univerData.sheetOrder || Object.keys(univerData.sheets || {});
+
+    const sheets = sheetOrder.map(sheetId => {
+      const sheet = univerData.sheets[sheetId];
+      if (!sheet) return null;
+
+      const cellData = sheet.cellData || {};
+
+      // Строим карту объединённых ячеек: для каждой [row][col] в диапазоне мержа
+      // сохраняем координаты верхней левой ячейки, откуда взять значение
+      const mergeMap = {};
+      (sheet.mergeData || []).forEach(merge => {
+        const { startRow, endRow, startColumn, endColumn } = merge;
+        for (let r = startRow; r <= endRow; r++) {
+          for (let c = startColumn; c <= endColumn; c++) {
+            if (r === startRow && c === startColumn) continue; // сама главная ячейка — пропускаем
+            if (!mergeMap[r]) mergeMap[r] = {};
+            mergeMap[r][c] = { sourceRow: startRow, sourceCol: startColumn };
+          }
+        }
+      });
+
+      // Определяем реальные границы данных
+      const rowIndices = Object.keys(cellData).map(Number);
+      if (rowIndices.length === 0) return { name: sheet.name, rows: [] };
+
+      const maxRow = Math.max(...rowIndices);
+      let maxCol = 0;
+      rowIndices.forEach(r => {
+        const cols = Object.keys(cellData[r] || {}).map(Number);
+        if (cols.length) maxCol = Math.max(maxCol, ...cols);
+      });
+      // Учитываем мержи — они могут расширять диапазон правее/ниже данных
+      (sheet.mergeData || []).forEach(m => {
+        maxCol = Math.max(maxCol, m.endColumn);
+      });
+
+      const rows = [];
+      for (let r = 0; r <= maxRow; r++) {
+        const row = [];
+        for (let c = 0; c <= maxCol; c++) {
+          let value = null;
+
+          // Если ячейка входит в диапазон мержа — берём значение из главной ячейки
+          if (mergeMap[r]?.[c]) {
+            const { sourceRow, sourceCol } = mergeMap[r][c];
+            value = cellData[sourceRow]?.[sourceCol]?.v ?? null;
+          } else {
+            value = cellData[r]?.[c]?.v ?? null;
+          }
+
+          row.push(value);
+        }
+        rows.push(row);
+      }
+
+      return { name: sheet.name, rows };
+    }).filter(Boolean);
+
+    res.json({ pageId: page.id, title: page.title, sheets });
+  } catch (error) {
+    console.error('Get spreadsheet data error:', error);
+    res.status(500).json({ error: 'Failed to extract spreadsheet data' });
+  }
+});
+
 // Export Luckysheet to Excel file
 router.get('/:id/export-xlsx', authenticate, async (req, res) => {
   try {

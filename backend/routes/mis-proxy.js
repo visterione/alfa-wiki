@@ -254,9 +254,7 @@ router.post('/get-clinics', authenticate, async (req, res) => {
   try {
     console.log('🏥 Запрос списка клиник');
 
-    const data = await misRequest('getClinics', {
-      show_all: 1
-    });
+    const data = await misRequest('getClinics', {});
 
     res.json(data);
   } catch (err) {

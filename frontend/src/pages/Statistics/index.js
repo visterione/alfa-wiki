@@ -1,13 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { mis } from '../../services/api';
 import { getSources } from '../ReferralBonuses/utils/excelSources';
 import { rbClinicId } from '../ReferralBonuses/utils/clinicUtils';
 import StepKpi from '../ReferralBonuses/components/StepKpi';
+import Directories from './components/Directories';
+import { useTabSlider } from '../ReferralBonuses/utils/useTabSlider';
 import '../ReferralBonuses/ReferralBonuses.css';
 
+const MAIN_TABS = [
+  { key: 'kpi',         label: 'КПИ / Аналитика' },
+  { key: 'directories', label: 'Справочники' },
+];
+
 export default function StatisticsPage() {
+  const [mainTab, setMainTab] = useState('kpi');
   const [excelSources, setExcelSources] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const { wrapRef, sliderEl } = useTabSlider(mainTab);
 
   useEffect(() => {
     getSources().then(setExcelSources).catch(() => {});
@@ -54,7 +63,27 @@ export default function StatisticsPage() {
 
   return (
     <div className="rb-app">
-      <StepKpi excelSources={excelSources} doctors={doctors} />
+      {/* Top-level tabs */}
+      <div style={{ padding: '12px 20px 0' }}>
+        <div className="rb-clinic-tab-wrap" ref={wrapRef} style={{ marginBottom: 0 }}>
+          {sliderEl}
+          {MAIN_TABS.map(t => (
+            <button
+              key={t.key}
+              className={`rb-clinic-tab${mainTab === t.key ? ' active' : ''}`}
+              onClick={() => setMainTab(t.key)}
+            >{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab content */}
+      <div style={{ display: mainTab === 'kpi' ? 'block' : 'none' }}>
+        <StepKpi excelSources={excelSources} doctors={doctors} />
+      </div>
+      {mainTab === 'directories' && (
+        <Directories doctors={doctors} excelSources={excelSources} />
+      )}
     </div>
   );
 }

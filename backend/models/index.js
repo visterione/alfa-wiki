@@ -2723,6 +2723,21 @@ const MisAppointment = sequelize.define('MisAppointment', {
   ],
 });
 
+// === DIRECTORIES META MODEL (ручные поля для справочника филиалов/кабинетов/врачей) ===
+const DirectoriesMeta = sequelize.define('DirectoriesMeta', {
+  id:         { type: DataTypes.UUID,         defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  entityType: { type: DataTypes.STRING(50),   allowNull: false, field: 'entity_type' },
+  entityId:   { type: DataTypes.STRING(255),  allowNull: false, field: 'entity_id' },
+  data:       { type: DataTypes.JSONB,        allowNull: false, defaultValue: {} },
+}, {
+  tableName: 'directories_meta',
+  timestamps: true,
+  underscored: true,
+  indexes: [
+    { unique: true, fields: ['entity_type', 'entity_id'] },
+  ],
+});
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2825,4 +2840,6 @@ module.exports = {
   RbExcelSource,
   // MIS Appointments cache
   MisAppointment,
+  // Directories manual data
+  DirectoriesMeta,
 };

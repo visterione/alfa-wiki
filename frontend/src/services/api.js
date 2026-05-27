@@ -641,6 +641,7 @@ export const salaryRecords = {
 
 export const mis = {
   getClinics: () => api.get('/mis/clinics'),
+  getClinicsFromMIS: (params) => api.post('/mis/get-clinics', params || {}),
   getDoctors: (data) => api.post('/mis/doctors', data),
   getServices: (params) => api.get('/mis/services', { params }),
   searchServices: (term, clinic_id) => api.post('/mis/search-mis', { term, ...(clinic_id ? { clinic_id } : {}) }),
@@ -649,6 +650,13 @@ export const mis = {
   getServiceCategories: () => api.post('/mis/get-service-categories', {}),
   getServicesByCategory: (categoryId) => api.post('/mis/get-services', { category_id: categoryId, show_children: true }),
   getAppointments: (params) => api.post('/mis/appointments', params),
+};
+
+export const directories = {
+  getAll: (type) => api.get(`/directories/${type}`),
+  save: (type, id, data) => api.put(`/directories/${type}/${id}`, data),
+  create: (type, data) => api.post(`/directories/${type}`, data),
+  remove: (type, id) => api.delete(`/directories/${type}/${id}`),
 };
 
 export const misAppointments = {
