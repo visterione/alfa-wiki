@@ -1473,8 +1473,28 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
   );
 }
 
+// ── Helper: utility stats table cell ─────────────────────────────────────────
+function UtilStatCell({ value, hint, noData }) {
+  if (noData) return (
+    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: '#cbd5e1', fontSize: 12 }}>
+      н/д
+    </td>
+  );
+  if (value === null || value === undefined) return (
+    <td style={{ textAlign: 'right', padding: '7px 12px', border: '1px solid var(--rb-border)', color: '#cbd5e1', fontSize: 12 }}>
+      {DASH}
+    </td>
+  );
+  return (
+    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', padding: '7px 12px', border: '1px solid var(--rb-border)' }}>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>{fmtRub(Math.round(value))}</div>
+      {hint && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{hint}</div>}
+    </td>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
-// UTILITY CATEGORY EDITOR
+// UTILITY CATEGORY EDITOR  (modal overlay)
 // ══════════════════════════════════════════════════════════════════════════════
 function UtilityCatEditor({ cats, onSave, onClose }) {
   const [draft, setDraft]   = useState(() => cats.map(c => ({ ...c, types: c.types.map(t => ({ ...t })) })));
@@ -1511,8 +1531,8 @@ function UtilityCatEditor({ cats, onSave, onClose }) {
     onClose();
   };
 
-  const actBtnSt = (primary) => ({
-    padding: '6px 14px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+  const btnSt = (primary) => ({
+    padding: '7px 18px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
     border: primary ? 'none' : '1px solid var(--rb-border-dark)',
     background: primary ? 'var(--rb-primary)' : '#fff',
     color: primary ? '#fff' : 'var(--rb-text)', fontWeight: primary ? 600 : 400,
@@ -1520,76 +1540,210 @@ function UtilityCatEditor({ cats, onSave, onClose }) {
   });
 
   return (
-    <div style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', marginBottom: 16, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
-        <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>Настройка категорий коммунальных услуг</span>
-        <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
-      </div>
-
-      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 520, overflowY: 'auto' }}>
-        {draft.map((cat, ci) => (
-          <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 10px', background: '#f1f5f9' }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <button onClick={() => moveCat(ci, -1)} disabled={ci === 0}
-                  style={{ border: 'none', background: 'none', cursor: ci === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
-                <button onClick={() => moveCat(ci, 1)} disabled={ci === draft.length - 1}
-                  style={{ border: 'none', background: 'none', cursor: ci === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
-              </div>
-              <input value={cat.label} onChange={e => updateCatLabel(ci, e.target.value)}
-                style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
-              <button onClick={() => deleteCat(ci)}
-                style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 8px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
-                Удалить
-              </button>
-            </div>
-            <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-              {cat.types.map((type, ti) => (
-                <div key={type.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>└</span>
-                  <input value={type.label} onChange={e => updateTypeLabel(ci, ti, e.target.value)}
-                    style={{ ...inlineInputStyle, flex: 1 }} />
-                  <button onClick={() => deleteType(ci, ti)}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 560, maxWidth: '96vw', maxHeight: '88vh', background: '#fff', borderRadius: 14,
+        boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        {/* header */}
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Категории коммунальных услуг</span>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
+        </div>
+        {/* scrollable body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {draft.map((cat, ci) => (
+            <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <button onClick={() => moveCat(ci, -1)} disabled={ci === 0}
+                    style={{ border: 'none', background: 'none', cursor: ci === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
+                  <button onClick={() => moveCat(ci, 1)} disabled={ci === draft.length - 1}
+                    style={{ border: 'none', background: 'none', cursor: ci === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
                 </div>
-              ))}
-              <button onClick={() => addType(ci)}
-                style={{ alignSelf: 'flex-start', marginTop: 2, padding: '3px 10px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
-                + подтип
-              </button>
+                <input value={cat.label} onChange={e => updateCatLabel(ci, e.target.value)}
+                  style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
+                <button onClick={() => deleteCat(ci)}
+                  style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
+                  Удалить
+                </button>
+              </div>
+              <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {cat.types.map((type, ti) => (
+                  <div key={type.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <div style={{ width: 3, alignSelf: 'stretch', background: '#bfdbfe', borderRadius: 2, flexShrink: 0 }} />
+                    <input value={type.label} onChange={e => updateTypeLabel(ci, ti, e.target.value)}
+                      style={{ ...inlineInputStyle, flex: 1 }} />
+                    <button onClick={() => deleteType(ci, ti)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+                  </div>
+                ))}
+                <button onClick={() => addType(ci)}
+                  style={{ alignSelf: 'flex-start', marginTop: 2, padding: '3px 10px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                  + подтип
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
-        <button onClick={addCat}
-          style={{ padding: '7px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
-          + Добавить категорию
-        </button>
+          ))}
+          <button onClick={addCat}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
+            + Добавить категорию
+          </button>
+        </div>
+        {/* footer */}
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
+          <button onClick={onClose} style={btnSt(false)}>Отмена</button>
+          <button onClick={handleSave} disabled={saving} style={btnSt(true)}>
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
       </div>
+    </>
+  );
+}
 
-      <div style={{ padding: '10px 16px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
-        <button onClick={onClose} style={actBtnSt(false)}>Отмена</button>
-        <button onClick={handleSave} disabled={saving} style={actBtnSt(true)}>
-          {saving ? 'Сохранение…' : 'Сохранить'}
-        </button>
+// ══════════════════════════════════════════════════════════════════════════════
+// UTILITY COLUMN GROUP EDITOR  (modal overlay)
+// ══════════════════════════════════════════════════════════════════════════════
+function UtilityColEditor({ colGroups, clinics, onSave, onClose }) {
+  const [draft, setDraft] = useState(() => colGroups.map(g => ({ ...g, items: g.items.map(i => ({ ...i })) })));
+  const [saving, setSaving] = useState(false);
+
+  const assignedIds = useMemo(() => new Set(draft.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id))), [draft]);
+  const unassigned  = clinics.filter(c => !assignedIds.has(String(c.id)));
+
+  const addGroup = () => {
+    const key = `grp_${Date.now()}`;
+    setDraft(d => [...d, { key, label: 'Новая группа', items: [] }]);
+  };
+  const updateGrpLabel = (gi, label) => setDraft(d => d.map((g, i) => i === gi ? { ...g, label } : g));
+  const deleteGroup    = (gi)        => setDraft(d => d.filter((_, i) => i !== gi));
+  const moveGroup      = (gi, dir)   => setDraft(d => {
+    const next = [...d]; const sw = gi + dir;
+    if (sw < 0 || sw >= next.length) return d;
+    [next[gi], next[sw]] = [next[sw], next[gi]]; return next;
+  });
+
+  const addClinic  = (gi, clinicId) => setDraft(d => d.map((g, i) => i === gi
+    ? { ...g, items: [...g.items, { kind: 'clinic', id: String(clinicId) }] } : g));
+  const addPremise = (gi) => setDraft(d => d.map((g, i) => i === gi
+    ? { ...g, items: [...g.items, { kind: 'premise', id: `prem_${Date.now()}`, label: 'Новое помещение' }] } : g));
+  const updateItemLabel = (gi, ii, label) => setDraft(d => d.map((g, i) => i === gi
+    ? { ...g, items: g.items.map((it, j) => j === ii ? { ...it, label } : it) } : g));
+  const removeItem = (gi, ii) => setDraft(d => d.map((g, i) => i === gi
+    ? { ...g, items: g.items.filter((_, j) => j !== ii) } : g));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(draft);
+    setSaving(false);
+    onClose();
+  };
+
+  const btnSt = (primary) => ({
+    padding: '7px 18px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+    border: primary ? 'none' : '1px solid var(--rb-border-dark)',
+    background: primary ? 'var(--rb-primary)' : '#fff',
+    color: primary ? '#fff' : 'var(--rb-text)', fontWeight: primary ? 600 : 400,
+    opacity: saving ? 0.7 : 1,
+  });
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 600, maxWidth: '96vw', maxHeight: '88vh', background: '#fff', borderRadius: 14,
+        boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Группы столбцов (клиники и помещения)</span>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
+        </div>
+        {unassigned.length > 0 && (
+          <div style={{ padding: '8px 20px', background: '#fefce8', borderBottom: '1px solid #fde68a', fontSize: 12, color: '#92400e', flexShrink: 0 }}>
+            Не в группах: {unassigned.map(c => c.title || c.name).join(', ')} — будут показаны отдельно
+          </div>
+        )}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {draft.map((grp, gi) => (
+            <div key={grp.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <button onClick={() => moveGroup(gi, -1)} disabled={gi === 0}
+                    style={{ border: 'none', background: 'none', cursor: gi === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: gi === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
+                  <button onClick={() => moveGroup(gi, 1)} disabled={gi === draft.length - 1}
+                    style={{ border: 'none', background: 'none', cursor: gi === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: gi === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
+                </div>
+                <input value={grp.label} onChange={e => updateGrpLabel(gi, e.target.value)}
+                  style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
+                <button onClick={() => deleteGroup(gi)}
+                  style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
+                  Удалить
+                </button>
+              </div>
+              <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {grp.items.map((item, ii) => (
+                  <div key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <span style={{ fontSize: 14, flexShrink: 0 }}>{item.kind === 'clinic' ? '🏥' : '🏢'}</span>
+                    {item.kind === 'clinic'
+                      ? <span style={{ flex: 1, fontSize: 13 }}>{clinics.find(c => String(c.id) === item.id)?.title || clinics.find(c => String(c.id) === item.id)?.name || item.id}</span>
+                      : <input value={item.label || ''} onChange={e => updateItemLabel(gi, ii, e.target.value)}
+                          style={{ ...inlineInputStyle, flex: 1 }} />
+                    }
+                    <button onClick={() => removeItem(gi, ii)}
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                  {unassigned.length > 0 && (
+                    <select defaultValue="" onChange={e => { if (e.target.value) { addClinic(gi, e.target.value); e.target.value = ''; } }}
+                      style={{ padding: '4px 8px', borderRadius: 6, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                      <option value="">+ клиника</option>
+                      {unassigned.map(c => <option key={c.id} value={c.id}>{c.title || c.name}</option>)}
+                    </select>
+                  )}
+                  <button onClick={() => addPremise(gi)}
+                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                    + помещение
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          <button onClick={addGroup}
+            style={{ padding: '8px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
+            + Добавить группу
+          </button>
+        </div>
+        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
+          <button onClick={onClose} style={btnSt(false)}>Отмена</button>
+          <button onClick={handleSave} disabled={saving} style={btnSt(true)}>
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
 // КОММУНАЛЬНЫЕ РАСХОДЫ
 // ══════════════════════════════════════════════════════════════════════════════
-function TabUtilities() {
+function TabUtilities({ appointments = [] }) {
   const thisYear = new Date().getFullYear();
-  const [year, setYear]                 = useState(thisYear);
-  const [rawData, setRawData]           = useState({});
-  const [loading, setLoading]           = useState(true);
-  const [clinics, setClinics]           = useState([]);
-  const [monthFilter, setMonthFilter]   = useState('');
-  const [catFilter,   setCatFilter]     = useState('');
+  const [year, setYear]                   = useState(thisYear);
+  const [rawData, setRawData]             = useState({});
+  const [loading, setLoading]             = useState(true);
+  const [clinics, setClinics]             = useState([]);
+  const [monthFilter, setMonthFilter]     = useState('');
+  const [catFilter,   setCatFilter]       = useState('');
   const [expandedCats, setExpandedCats]   = useState(new Set());
+  const [expandedGroups, setExpandedGroups] = useState(new Set());
   const [utilCats, setUtilCats]           = useState(UTILITY_CATEGORIES);
+  const [colGroups, setColGroups]         = useState([]);
   const [showCatEditor, setShowCatEditor] = useState(false);
+  const [showColEditor, setShowColEditor] = useState(false);
+  const [clinicMeta, setClinicMeta]       = useState({});
+  const [cabinetMeta, setCabinetMeta]     = useState({});
   const saveTimers = useRef({});
 
   useEffect(() => {
@@ -1597,11 +1751,17 @@ function TabUtilities() {
       mis.getClinicsFromMIS().catch(() => ({ data: { data: [] } })),
       directories.getAll('utility').catch(() => ({ data: {} })),
       directories.getAll('utility_cfg').catch(() => ({ data: {} })),
-    ]).then(([misRes, dirRes, cfgRes]) => {
+      directories.getAll('clinic').catch(() => ({ data: {} })),
+      directories.getAll('cabinet').catch(() => ({ data: {} })),
+    ]).then(([misRes, dirRes, cfgRes, clinicRes, cabinetRes]) => {
       setClinics(Array.isArray(misRes.data?.data) ? misRes.data.data : []);
       setRawData(dirRes.data || {});
       const savedCats = cfgRes.data?.categories?.cats;
       if (Array.isArray(savedCats) && savedCats.length > 0) setUtilCats(savedCats);
+      const savedGrps = cfgRes.data?.col_groups?.groups;
+      if (Array.isArray(savedGrps)) setColGroups(savedGrps);
+      setClinicMeta(clinicRes.data || {});
+      setCabinetMeta(cabinetRes.data || {});
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1623,6 +1783,16 @@ function TabUtilities() {
     try {
       await directories.save('utility_cfg', 'categories', { cats });
       toast.success('Настройки категорий сохранены', { duration: 1500 });
+    } catch {
+      toast.error('Ошибка сохранения');
+    }
+  }, []);
+
+  const saveColGroups = useCallback(async (groups) => {
+    setColGroups(groups);
+    try {
+      await directories.save('utility_cfg', 'col_groups', { groups });
+      toast.success('Настройки столбцов сохранены', { duration: 1500 });
     } catch {
       toast.error('Ошибка сохранения');
     }
@@ -1671,25 +1841,125 @@ function TabUtilities() {
     return qty > 0 ? qty * price : price;
   }, [rawData]);
 
-  const colTotals = useMemo(() => {
+  // Build rendered column groups: configured groups first, then ungrouped clinics as solo groups
+  const renderedGroups = useMemo(() => {
+    const assignedIds = new Set(colGroups.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id)));
+    const ungrouped = clinics
+      .filter(c => !assignedIds.has(String(c.id)))
+      .map(c => ({ key: `auto_${c.id}`, label: c.title || c.name, color: c.color, items: [{ kind: 'clinic', id: String(c.id) }] }));
+    return [...colGroups, ...ungrouped];
+  }, [colGroups, clinics]);
+
+  const toggleGroup = useCallback((key) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Get sum for a cell — supports both clinic ids and premise ids
+  const getItemSum = useCallback((item, monthNum, typeKey) => {
+    if (item.kind === 'clinic') return getSum(`${year}_${monthNum}_${typeKey}_${item.id}`);
+    return getSum(`${year}_${monthNum}_${typeKey}_${item.id}`);
+  }, [getSum, year]);
+
+  const getGrpSum = useCallback((grp, monthNum, typeKey) =>
+    grp.items.reduce((s, item) => s + getItemSum(item, monthNum, typeKey), 0),
+  [getItemSum]);
+
+  const grpTotals = useMemo(() => {
     const t = {};
-    for (const c of clinics) {
-      t[c.id] = 0;
-      for (const m of filteredMonths) {
-        for (const type of filteredTypes) {
-          t[c.id] += getSum(`${year}_${m.num}_${type.key}_${c.id}`);
-        }
-      }
+    for (const grp of renderedGroups) {
+      t[grp.key] = filteredMonths.reduce((ms, m) =>
+        ms + filteredTypes.reduce((ts, type) => ts + getGrpSum(grp, m.num, type.key), 0), 0);
     }
     return t;
-  }, [getSum, clinics, filteredMonths, filteredTypes, year]);
+  }, [renderedGroups, filteredMonths, filteredTypes, getGrpSum]);
 
-  const grandTotal = useMemo(() => Object.values(colTotals).reduce((a, b) => a + b, 0), [colTotals]);
+  const grandTotal = useMemo(() => Object.values(grpTotals).reduce((a, b) => a + b, 0), [grpTotals]);
 
-  const yearRange = useMemo(() => Array.from({ length: 5 }, (_, i) => thisYear - 2 + i), [thisYear]);
+  const yearRange = useMemo(() => Array.from({ length: 7 }, (_, i) => 2022 + i), []);
 
-  const numCols   = 3 + clinics.length * 3;
+  // numCols: 2 (month+service) + per group cols + 1 (total)
+  const numCols = useMemo(() => {
+    let cols = 2;
+    for (const grp of renderedGroups) {
+      if (grp.items.length === 1) cols += 3;
+      else if (expandedGroups.has(grp.key)) cols += 1 + grp.items.length * 3;
+      else cols += 1;
+    }
+    return cols + 1;
+  }, [renderedGroups, expandedGroups]);
   const cellInpSt = { ...inlineInputStyle, width: 80, textAlign: 'right', padding: '3px 6px' };
+
+  // ─── Utility statistics per column group ─────────────────────────────────
+  // weeks_per_month ≈ 365/12/7
+  const WEEKS_PER_MONTH = 365 / 12 / 7;
+
+  const utilStats = useMemo(() => {
+    const periodWeeks = filteredMonths.length * WEEKS_PER_MONTH;
+
+    return renderedGroups.map(grp => {
+      const total = grpTotals[grp.key] || 0;
+
+      // Aggregate across all clinic items in this group (premises have no MIS data)
+      let totalArea     = 0;  // clinic area sum (m²)
+      let totalHours    = 0;  // working hours in period
+      let totalVisits   = 0;  // appointments count in period
+      let totalCabArea  = 0;  // sum of cabinet areas (m²)
+      let hasClinicData = false;
+
+      for (const item of grp.items) {
+        if (item.kind !== 'clinic') continue;
+        hasClinicData = true;
+        const cid = item.id;
+        const meta = clinicMeta[cid] || {};
+
+        // Area
+        const area = parseFloat(meta.area) || 0;
+        totalArea += area;
+
+        // Working hours in period
+        const weeklyHours = scheduleWeeklyHours(meta.schedule || DEFAULT_SCHEDULE);
+        totalHours += weeklyHours * periodWeeks;
+
+        // Visits: appointments matching this clinic in the selected year + filteredMonths
+        for (const a of appointments) {
+          if (a.status_id === 5 || a.status === 'refused') continue;
+          if (String(a.clinic_id) !== String(cid)) continue;
+          const t = parseApptTime(a.time_start);
+          if (!t) continue;
+          if (t.getFullYear() !== year) continue;
+          const m = t.getMonth() + 1; // 1-based
+          if (filteredMonths.some(fm => fm.num === m)) totalVisits++;
+        }
+
+        // Cabinet areas: all entries in cabinetMeta keyed with "${cid}|"
+        for (const [key, cab] of Object.entries(cabinetMeta)) {
+          if (!key.startsWith(`${cid}|`)) continue;
+          const cabArea = parseFloat(cab.area) || 0;
+          totalCabArea += cabArea;
+        }
+      }
+
+      return {
+        key:           grp.key,
+        label:         grp.label,
+        color:         grp.color,
+        total,
+        perSqm:        totalArea     > 0 ? total / totalArea     : null,
+        perHour:       totalHours    > 0 ? total / totalHours    : null,
+        perVisit:      totalVisits   > 0 ? total / totalVisits   : null,
+        perCabSqm:     totalCabArea  > 0 ? total / totalCabArea  : null,
+        hasClinicData,
+        totalArea,
+        totalHours:    Math.round(totalHours),
+        totalVisits,
+        totalCabArea,
+      };
+    });
+  }, [renderedGroups, grpTotals, filteredMonths, clinicMeta, cabinetMeta, appointments, year]);
 
   if (loading) return <Spinner text="Загрузка коммунальных расходов…" />;
 
@@ -1709,37 +1979,80 @@ function TabUtilities() {
     fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', verticalAlign: 'top',
   };
 
-  // Render an editable type detail row (used for single-type cats and expanded sub-rows)
+  // Render qty/price/sum inputs for one item (clinic or premise)
+  const renderItemCells = (item, monthNum, typeKey) => {
+    const dataKey = `${year}_${monthNum}_${typeKey}_${item.id}`;
+    const cell    = rawData[dataKey] || {};
+    const autoSum = (() => { const q = parseNum(cell.qty); const p = parseNum(cell.price); return q > 0 ? q * p : p; })();
+    return [
+      <td key={`${dataKey}_q`} style={{ padding: '3px 6px' }}>
+        <input type="number" min="0" step="any" value={cell.qty ?? ''} placeholder="0"
+          onChange={e => saveCell(dataKey, { qty: e.target.value })} style={cellInpSt} />
+      </td>,
+      <td key={`${dataKey}_p`} style={{ padding: '3px 6px' }}>
+        <input type="number" min="0" step="any" value={cell.price ?? ''} placeholder="0"
+          onChange={e => saveCell(dataKey, { price: e.target.value })} style={cellInpSt} />
+      </td>,
+      <td key={`${dataKey}_s`} style={{ padding: '3px 6px' }}>
+        <input type="number" min="0" step="any" value={cell.sum ?? ''}
+          placeholder={autoSum > 0 ? String(Math.round(autoSum)) : '0'}
+          onChange={e => saveCell(dataKey, { sum: e.target.value })}
+          style={{ ...cellInpSt, background: cell.sum ? '#f0f9ff' : undefined }} />
+      </td>,
+    ];
+  };
+
+  // Render all group cells for a data row
+  // isCatSummary=true → show aggregate totals only (no editable inputs)
+  const renderGroupCells = (monthNum, typeKey, isCatSummary, catTypes) => {
+    return renderedGroups.flatMap(grp => {
+      const isExpanded = expandedGroups.has(grp.key);
+      const isSingle   = grp.items.length === 1;
+
+      if (isSingle && !isCatSummary) {
+        return renderItemCells(grp.items[0], monthNum, typeKey);
+      }
+
+      if (isSingle && isCatSummary) {
+        const total = (catTypes || []).reduce((s, t) => s + getGrpSum(grp, monthNum, t.key), 0);
+        return [
+          <td key={`cgs_${grp.key}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
+          <td key={`cgs_${grp.key}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
+          <td key={`cgs_${grp.key}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', background: total > 0 ? '#f0fdf4' : undefined }}>
+            {total > 0 ? fmtRub(total) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+          </td>,
+        ];
+      }
+
+      // multi-item group
+      const grpTotal = isCatSummary
+        ? (catTypes || []).reduce((s, t) => s + getGrpSum(grp, monthNum, t.key), 0)
+        : getGrpSum(grp, monthNum, typeKey);
+
+      const totalCell = (
+        <td key={`cgm_${grp.key}_tot`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', fontWeight: grpTotal > 0 ? 600 : 400, background: grpTotal > 0 ? '#f0fdf4' : undefined }}>
+          {grpTotal > 0 ? fmtRub(grpTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+        </td>
+      );
+
+      if (!isExpanded || isCatSummary) return [totalCell];
+
+      return [
+        totalCell,
+        ...grp.items.flatMap(item => renderItemCells(item, monthNum, typeKey)),
+      ];
+    });
+  };
+
+  // Render an editable type detail row
   const renderTypeRow = (type, month, isSubRow) => {
-    const rowTotal = clinics.reduce((s, c) => s + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0);
+    const rowTotal = renderedGroups.reduce((s, grp) => s + getGrpSum(grp, month.num, type.key), 0);
     return (
-      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
-        <td style={{ padding: 0, width: 6, borderRight: 'none' }} />
-        <td style={{ fontSize: 12, paddingLeft: isSubRow ? 24 : 12, whiteSpace: 'nowrap' }}>
-          {isSubRow && <span style={{ color: '#94a3b8', marginRight: 6 }}>└</span>}
+      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff', borderLeft: '3px solid #bfdbfe' } : undefined}>
+        <td style={{ fontSize: 12, paddingLeft: isSubRow ? 20 : 12, whiteSpace: 'nowrap', borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }}>
           {type.label}
         </td>
-        {clinics.flatMap(c => {
-          const key  = `${year}_${month.num}_${type.key}_${c.id}`;
-          const cell = rawData[key] || {};
-          const autoSum = (() => { const q = parseNum(cell.qty); const p = parseNum(cell.price); return q > 0 ? q * p : p; })();
-          return [
-            <td key={`${key}_q`} style={{ padding: '3px 6px' }}>
-              <input type="number" min="0" step="any" value={cell.qty ?? ''} placeholder="0"
-                onChange={e => saveCell(key, { qty: e.target.value })} style={cellInpSt} />
-            </td>,
-            <td key={`${key}_p`} style={{ padding: '3px 6px' }}>
-              <input type="number" min="0" step="any" value={cell.price ?? ''} placeholder="0"
-                onChange={e => saveCell(key, { price: e.target.value })} style={cellInpSt} />
-            </td>,
-            <td key={`${key}_s`} style={{ padding: '3px 6px' }}>
-              <input type="number" min="0" step="any" value={cell.sum ?? ''}
-                placeholder={autoSum > 0 ? String(Math.round(autoSum)) : '0'}
-                onChange={e => saveCell(key, { sum: e.target.value })}
-                style={{ ...cellInpSt, background: cell.sum ? '#f0f9ff' : undefined }} />
-            </td>,
-          ];
-        })}
+        {renderGroupCells(month.num, type.key, false, null)}
         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: rowTotal > 0 ? 600 : 400 }}>
           {rowTotal > 0 ? fmtRub(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
         </td>
@@ -1749,7 +2062,7 @@ function TabUtilities() {
 
   return (
     <div>
-      {/* Year tabs */}
+      {/* Year tabs + settings buttons */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Год:</span>
         {yearRange.map(y => (
@@ -1761,12 +2074,15 @@ function TabUtilities() {
             {y}
           </button>
         ))}
-        <button onClick={() => setShowCatEditor(v => !v)}
+        <button onClick={() => setShowCatEditor(true)}
           style={{ marginLeft: 6, padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
-                   border: `1px solid ${showCatEditor ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
-                   background: showCatEditor ? '#eff6ff' : '#fff',
-                   color: showCatEditor ? 'var(--rb-primary)' : 'var(--rb-text-secondary)' }}>
+                   border: '1px solid var(--rb-border-dark)', background: '#fff', color: 'var(--rb-text-secondary)' }}>
           ⚙ Категории
+        </button>
+        <button onClick={() => setShowColEditor(true)}
+          style={{ padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+                   border: '1px solid var(--rb-border-dark)', background: '#fff', color: 'var(--rb-text-secondary)' }}>
+          ⚙ Столбцы
         </button>
         {grandTotal > 0 && (
           <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--rb-primary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -1782,50 +2098,95 @@ function TabUtilities() {
           onClose={() => setShowCatEditor(false)}
         />
       )}
+      {showColEditor && (
+        <UtilityColEditor
+          colGroups={colGroups}
+          clinics={clinics}
+          onSave={saveColGroups}
+          onClose={() => setShowColEditor(false)}
+        />
+      )}
 
-      {/* Table — filters are embedded in the header row */}
+      {/* Table */}
       <div style={{ overflowX: 'auto' }}>
-        <table className="rb-table" style={{ minWidth: 360 + clinics.length * 260 }}>
+        <table className="rb-table" style={{ minWidth: 300 + renderedGroups.reduce((s, g) => s + (g.items.length === 1 ? 260 : expandedGroups.has(g.key) ? 80 + g.items.length * 260 : 120), 0) }}>
           <thead>
+            {/* Row 1: Месяц / Вид услуги (rowSpan=3) + group name headers + Итого (rowSpan=3) */}
             <tr>
-              <th style={thFilterSt}>
+              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top' }}>
                 <div>Месяц</div>
                 <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={miniSelectSt}>
                   <option value="">Все месяцы</option>
                   {MONTHS_RU.map(m => <option key={m.num} value={m.num}>{m.label}</option>)}
                 </select>
               </th>
-              <th style={thFilterSt}>
+              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top' }}>
                 <div>Вид услуги</div>
                 <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={miniSelectSt}>
                   <option value="">Все категории</option>
                   {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
                 </select>
               </th>
-              {clinics.map(c => (
-                <React.Fragment key={c.id}>
-                  <th colSpan={3} style={{ background: '#f0f7ff', padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 12, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${c.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
-                    {c.title || c.name}
+              {renderedGroups.map(grp => {
+                const isSingle   = grp.items.length === 1;
+                const isExpanded = expandedGroups.has(grp.key);
+                const colSpan    = isSingle ? 3 : isExpanded ? 1 + grp.items.length * 3 : 1;
+                const canExpand  = !isSingle;
+                return (
+                  <th key={grp.key} colSpan={colSpan} rowSpan={isSingle ? 3 : 1}
+                    onClick={canExpand ? () => toggleGroup(grp.key) : undefined}
+                    style={{ background: '#f0f7ff', padding: '8px 12px', textAlign: 'center', fontWeight: 700,
+                      fontSize: 12, border: '1px solid var(--rb-border)',
+                      borderLeft: `3px solid ${grp.color || '#94a3b8'}`,
+                      whiteSpace: 'nowrap', cursor: canExpand ? 'pointer' : 'default',
+                      userSelect: 'none', verticalAlign: 'middle' }}>
+                    {canExpand && <span style={{ marginRight: 4, fontSize: 10, color: 'var(--rb-primary)' }}>{isExpanded ? '▼' : '▶'}</span>}
+                    {grp.label}
                   </th>
-                </React.Fragment>
-              ))}
-              <THCell right>Итого</THCell>
+                );
+              })}
+              <th rowSpan={3} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>Итого</th>
             </tr>
+            {/* Row 2: item labels for expanded multi-item groups */}
             <tr>
-              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
-              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
-              {clinics.flatMap(c => [
-                <th key={`h_${c.id}_q`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
-                <th key={`h_${c.id}_p`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
-                <th key={`h_${c.id}_s`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
-              ])}
-              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
+              {renderedGroups.flatMap(grp => {
+                if (grp.items.length === 1) return [];
+                const isExpanded = expandedGroups.has(grp.key);
+                if (!isExpanded) return [<th key={`r2_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Итого ₽</th>];
+                return [
+                  <th key={`r2_${grp.key}_tot`} style={{ background: '#f0f7ff', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Итого ₽</th>,
+                  ...grp.items.map(item => (
+                    <th key={`r2_${grp.key}_${item.id}`} colSpan={3}
+                      style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                      {item.kind === 'clinic'
+                        ? (clinics.find(c => String(c.id) === item.id)?.title || clinics.find(c => String(c.id) === item.id)?.name || item.id)
+                        : (item.label || item.id)}
+                    </th>
+                  )),
+                ];
+              })}
+            </tr>
+            {/* Row 3: Кол-во / Цена / Сумма per leaf column for expanded multi-item groups */}
+            <tr>
+              {renderedGroups.flatMap(grp => {
+                if (grp.items.length === 1) return [];
+                const isExpanded = expandedGroups.has(grp.key);
+                if (!isExpanded) return [];
+                return [
+                  <th key={`r3_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />,
+                  ...grp.items.flatMap(item => [
+                    <th key={`r3_${grp.key}_${item.id}_q`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
+                    <th key={`r3_${grp.key}_${item.id}_p`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
+                    <th key={`r3_${grp.key}_${item.id}_s`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
+                  ]),
+                ];
+              })}
             </tr>
           </thead>
           <tbody>
             {filteredMonths.map(month => {
               const monthTotal = filteredTypes.reduce((s, type) =>
-                s + clinics.reduce((cs, c) => cs + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0), 0);
+                s + renderedGroups.reduce((gs, grp) => gs + getGrpSum(grp, month.num, type.key), 0), 0);
               return (
                 <React.Fragment key={month.num}>
                   <tr>
@@ -1839,37 +2200,24 @@ function TabUtilities() {
                   {catGroups.map(({ cat, types }) => {
                     const isMulti    = types.length > 1;
                     const isExpanded = expandedCats.has(cat.key);
-                    const catTotal   = clinics.reduce((s, c) =>
-                      s + types.reduce((ts, type) => ts + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0), 0);
+                    const catTotal   = renderedGroups.reduce((gs, grp) =>
+                      gs + types.reduce((ts, type) => ts + getGrpSum(grp, month.num, type.key), 0), 0);
 
                     if (!isMulti) {
-                      // Single sub-type: render directly as an editable row
                       return renderTypeRow(types[0], month, false);
                     }
 
-                    // Multi sub-type: collapsible group header + detail rows
                     return (
                       <React.Fragment key={`${month.num}_${cat.key}`}>
                         <tr onClick={() => toggleCat(cat.key)}
                           style={{ cursor: 'pointer', background: isExpanded ? '#f0f7ff' : undefined }}>
-                          <td style={{ padding: '6px 0 6px 8px', width: 6, borderRight: 'none' }}>
-                            <span style={{ fontSize: 10, color: 'var(--rb-primary)', userSelect: 'none' }}>
+                          <td style={{ fontSize: 12, fontWeight: 600, paddingLeft: 10, whiteSpace: 'nowrap' }}>
+                            <span style={{ fontSize: 10, color: 'var(--rb-primary)', marginRight: 5, userSelect: 'none' }}>
                               {isExpanded ? '▼' : '▶'}
                             </span>
-                          </td>
-                          <td style={{ fontSize: 12, fontWeight: 600, paddingLeft: 6, whiteSpace: 'nowrap' }}>
                             {cat.label}
                           </td>
-                          {clinics.flatMap(c => {
-                            const cTotal = types.reduce((s, type) => s + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0);
-                            return [
-                              <td key={`cg_${cat.key}_${c.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
-                              <td key={`cg_${cat.key}_${c.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
-                              <td key={`cg_${cat.key}_${c.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', background: cTotal > 0 ? '#f0fdf4' : undefined }}>
-                                {cTotal > 0 ? fmtRub(cTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
-                              </td>,
-                            ];
-                          })}
+                          {renderGroupCells(month.num, null, true, types)}
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: catTotal > 0 ? 700 : 400, border: '1px solid var(--rb-border)' }}>
                             {catTotal > 0 ? fmtRub(catTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
                           </td>
@@ -1881,24 +2229,90 @@ function TabUtilities() {
                 </React.Fragment>
               );
             })}
+            {/* Totals row */}
             <tr style={{ background: '#f8fafc' }}>
               <td colSpan={2} style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, border: '1px solid var(--rb-border)' }}>
                 Итого за период
               </td>
-              {clinics.flatMap(c => [
-                <td key={`tot_${c.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
-                <td key={`tot_${c.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
-                <td key={`tot_${c.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 13, padding: '10px 10px', border: '1px solid var(--rb-border)' }}>
-                  {colTotals[c.id] > 0 ? fmtRub(colTotals[c.id]) : DASH}
-                </td>,
-              ])}
-              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, padding: '10px 10px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
+              {renderedGroups.flatMap(grp => {
+                const isSingle   = grp.items.length === 1;
+                const isExpanded = expandedGroups.has(grp.key);
+                const tot = grpTotals[grp.key] || 0;
+                const totCell = (
+                  <td key={`tot_${grp.key}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 13, padding: '10px', border: '1px solid var(--rb-border)' }}>
+                    {tot > 0 ? fmtRub(tot) : DASH}
+                  </td>
+                );
+                if (isSingle) return [
+                  <td key={`tot_${grp.key}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
+                  <td key={`tot_${grp.key}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
+                  totCell,
+                ];
+                if (!isExpanded) return [totCell];
+                return [
+                  totCell,
+                  ...grp.items.flatMap(item => {
+                    const itemTot = filteredMonths.reduce((ms, m) =>
+                      ms + filteredTypes.reduce((ts, type) => ts + getItemSum(item, m.num, type.key), 0), 0);
+                    return [
+                      <td key={`tot_${grp.key}_${item.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
+                      <td key={`tot_${grp.key}_${item.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
+                      <td key={`tot_${grp.key}_${item.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 13, padding: '10px', border: '1px solid var(--rb-border)' }}>
+                        {itemTot > 0 ? fmtRub(itemTot) : DASH}
+                      </td>,
+                    ];
+                  }),
+                ];
+              })}
+              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, padding: '10px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
                 {grandTotal > 0 ? fmtRub(grandTotal) : DASH}
               </td>
             </tr>
           </tbody>
         </table>
       </div>
+
+      {/* Utility statistics panel */}
+      {utilStats.some(s => s.total > 0) && (
+        <div style={{ marginTop: 24 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
+            Статистика коммунальных расходов
+            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+              {filteredMonths.length === 12 ? `${year} год` : filteredMonths.map(m => m.label).join(', ')}
+            </span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="rb-table" style={{ minWidth: 640 }}>
+              <thead>
+                <tr>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² каб. ₽</th>
+                </tr>
+              </thead>
+              <tbody>
+                {utilStats.filter(s => s.total > 0).map(s => (
+                  <tr key={s.key}>
+                    <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
+                      {s.label}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
+                      {fmtRub(s.total)}
+                    </td>
+                    <UtilStatCell value={s.perSqm} hint={s.totalArea > 0 ? `${s.totalArea} м²` : null} noData={!s.hasClinicData || s.totalArea === 0} />
+                    <UtilStatCell value={s.perHour} hint={s.totalHours > 0 ? `${s.totalHours} ч` : null} noData={!s.hasClinicData || s.totalHours === 0} />
+                    <UtilStatCell value={s.perVisit} hint={s.totalVisits > 0 ? `${s.totalVisits} визитов` : null} noData={!s.hasClinicData || s.totalVisits === 0} />
+                    <UtilStatCell value={s.perCabSqm} hint={s.totalCabArea > 0 ? `${s.totalCabArea} м²` : null} noData={!s.hasClinicData || s.totalCabArea === 0} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1947,7 +2361,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
       {activeTab === 'cabinets'  && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
       {activeTab === 'doctors'   && <TabDoctors doctors={doctors} excelSources={excelSources} />}
       {activeTab === 'equipment' && <TabEquipment />}
-      {activeTab === 'utilities' && <TabUtilities />}
+      {activeTab === 'utilities' && <TabUtilities appointments={appointments} />}
     </div>
   );
 }
