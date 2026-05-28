@@ -2048,7 +2048,8 @@ function TabUtilities({ appointments = [] }) {
   const renderTypeRow = (type, month, isSubRow) => {
     const rowTotal = renderedGroups.reduce((s, grp) => s + getGrpSum(grp, month.num, type.key), 0);
     return (
-      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff', borderLeft: '3px solid #bfdbfe' } : undefined}>
+      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
+        <td style={{ borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }} />
         <td style={{ fontSize: 12, paddingLeft: isSubRow ? 20 : 12, whiteSpace: 'nowrap', borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }}>
           {type.label}
         </td>
@@ -2211,6 +2212,7 @@ function TabUtilities({ appointments = [] }) {
                       <React.Fragment key={`${month.num}_${cat.key}`}>
                         <tr onClick={() => toggleCat(cat.key)}
                           style={{ cursor: 'pointer', background: isExpanded ? '#f0f7ff' : undefined }}>
+                          <td />
                           <td style={{ fontSize: 12, fontWeight: 600, paddingLeft: 10, whiteSpace: 'nowrap' }}>
                             <span style={{ fontSize: 10, color: 'var(--rb-primary)', marginRight: 5, userSelect: 'none' }}>
                               {isExpanded ? '▼' : '▶'}
