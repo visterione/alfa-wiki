@@ -2478,10 +2478,8 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
         />
       </div>
 
-      {/* Коммунальные — всегда смонтирована, не требует Excel-источников */}
-      <div style={{ display: viewMode === 'utilities' ? 'block' : 'none' }}>
-        <TabUtilitiesAnalytics appointments={appointments} />
-      </div>
+      {/* Коммунальные — монтируется при переходе на вкладку, чтобы всегда загружать свежие данные */}
+      {viewMode === 'utilities' && <TabUtilitiesAnalytics appointments={appointments} periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Остальные вкладки */}
       {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && (

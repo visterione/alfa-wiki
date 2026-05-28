@@ -2207,18 +2207,27 @@ function TabUtilities() {
 // ══════════════════════════════════════════════════════════════════════════════
 // UTILITY ANALYTICS (shown in Аналитика tab of Statistics page)
 // ══════════════════════════════════════════════════════════════════════════════
-export function TabUtilitiesAnalytics({ appointments = [] }) {
-  const thisYear = new Date().getFullYear();
-  const [year, setYear]           = useState(thisYear);
+export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEnd }) {
   const [rawData, setRawData]     = useState({});
   const [loading, setLoading]     = useState(true);
   const [clinics, setClinics]     = useState([]);
-  const [monthFilter, setMonthFilter] = useState('');
-  const [catFilter,   setCatFilter]   = useState('');
+  const [catFilter, setCatFilter] = useState('');
   const [utilCats, setUtilCats]   = useState(UTILITY_CATEGORIES);
   const [colGroups, setColGroups] = useState([]);
   const [clinicMeta, setClinicMeta]   = useState({});
   const [cabinetMeta, setCabinetMeta] = useState({});
+
+  // Derive year and filtered months from the shared period selector
+  const year = useMemo(
+    () => (periodStart || new Date()).getFullYear(),
+    [periodStart]
+  );
+  const filteredMonths = useMemo(() => {
+    if (!periodStart || !periodEnd) return MONTHS_RU;
+    const startM = periodStart.getFullYear() === year ? periodStart.getMonth() + 1 : 1;
+    const endM   = periodEnd.getFullYear()   === year ? periodEnd.getMonth()   + 1 : 12;
+    return MONTHS_RU.filter(m => m.num >= startM && m.num <= endM);
+  }, [periodStart, periodEnd, year]);
 
   useEffect(() => {
     Promise.all([
@@ -2238,13 +2247,6 @@ export function TabUtilitiesAnalytics({ appointments = [] }) {
       setCabinetMeta(cabinetRes.data || {});
     }).finally(() => setLoading(false));
   }, []);
-
-  const yearRange = useMemo(() => Array.from({ length: 7 }, (_, i) => 2022 + i), []);
-
-  const filteredMonths = useMemo(
-    () => monthFilter ? MONTHS_RU.filter(m => m.num === +monthFilter) : MONTHS_RU,
-    [monthFilter]
-  );
 
   const allUtilTypes = useMemo(
     () => utilCats.flatMap(c => c.types.map(t => ({ ...t, catKey: c.key }))),
@@ -2294,7 +2296,7 @@ export function TabUtilitiesAnalytics({ appointments = [] }) {
         hasClinicData = true;
         const cid = item.id;
         const meta = clinicMeta[cid] || {};
-        totalArea += parseFloat(meta.area) || 0;
+        totalArea += parseNum(meta.area);
         totalHours += scheduleWeeklyHours(meta.schedule || DEFAULT_SCHEDULE) * periodWeeks;
         for (const a of appointments) {
           if (a.status_id === 5 || a.status === 'refused') continue;
@@ -2326,7 +2328,7 @@ export function TabUtilitiesAnalytics({ appointments = [] }) {
           ms + filteredTypes.reduce((ts, t) => ts + getSum(`${year}_${m.num}_${t.key}_${cid}`), 0), 0);
         const cabs = Object.entries(cabinetMeta)
           .filter(([k]) => k.startsWith(`${cid}|`))
-          .map(([k, v]) => ({ area: parseFloat(v.area) || 0, name: v.name || v.label || k.split('|')[1] || k }));
+          .map(([k, v]) => ({ area: parseNum(v.area), name: v.name || v.label || k.split('|')[1] || k }));
         const totalArea = cabs.reduce((s, c) => s + c.area, 0);
         for (const cab of cabs) {
           const allocated = totalArea > 0 && clinicTotal > 0 ? clinicTotal * (cab.area / totalArea) : 0;
@@ -2339,30 +2341,14 @@ export function TabUtilitiesAnalytics({ appointments = [] }) {
 
   if (loading) return <Spinner text="Загрузка…" />;
 
-  const miniSelectSt = {
-    padding: '3px 8px', border: '1px solid var(--rb-border)', borderRadius: 5,
-    fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer',
-  };
-
   return (
     <div style={{ padding: '16px 20px' }}>
-      {/* Year + filters */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Год:</span>
-        {yearRange.map(y => (
-          <button key={y} onClick={() => setYear(y)}
-            style={{ padding: '4px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
-                     border: `1px solid ${y === year ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
-                     background: y === year ? 'var(--rb-primary)' : '#fff',
-                     color: y === year ? '#fff' : 'var(--rb-text)', fontWeight: y === year ? 600 : 400 }}>
-            {y}
-          </button>
-        ))}
-        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={miniSelectSt}>
-          <option value="">Все месяцы</option>
-          {MONTHS_RU.map(m => <option key={m.num} value={m.num}>{m.label}</option>)}
-        </select>
-        <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={miniSelectSt}>
+      {/* Category filter */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Категория:</span>
+        <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
+          style={{ padding: '3px 8px', border: '1px solid var(--rb-border)', borderRadius: 5,
+                   fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
           <option value="">Все категории</option>
           {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
