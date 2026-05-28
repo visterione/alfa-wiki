@@ -16,6 +16,7 @@ const DIR_TABS = [
   { key: 'cabinets',  label: 'Кабинеты' },
   { key: 'doctors',   label: 'Врачи' },
   { key: 'equipment', label: 'Оборудование' },
+  { key: 'utilities', label: 'Коммунальные' },
 ];
 
 const BOARD_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#14b8a6'];
@@ -31,6 +32,48 @@ const WEEK_DAYS = [
 ];
 
 const DASH = '—';
+
+const MONTHS_RU = [
+  { num: 1,  label: 'Январь'   }, { num: 2,  label: 'Февраль'  },
+  { num: 3,  label: 'Март'     }, { num: 4,  label: 'Апрель'   },
+  { num: 5,  label: 'Май'      }, { num: 6,  label: 'Июнь'     },
+  { num: 7,  label: 'Июль'     }, { num: 8,  label: 'Август'   },
+  { num: 9,  label: 'Сентябрь' }, { num: 10, label: 'Октябрь'  },
+  { num: 11, label: 'Ноябрь'   }, { num: 12, label: 'Декабрь'  },
+];
+
+const UTILITY_CATEGORIES = [
+  { key: 'electricity', label: 'Электроэнергия',      types: [{ key: 'electricity', label: 'Электроэнергия' }] },
+  { key: 'thermal',     label: 'Тепловая энергия',    types: [{ key: 'thermal',     label: 'Тепловая энергия' }] },
+  { key: 'gas',         label: 'Газ',                 types: [{ key: 'gas',         label: 'Газ' }] },
+  { key: 'water',       label: 'Водоснабжение',       types: [
+    { key: 'water_old_water', label: 'Старый корпус — вода' },
+    { key: 'water_old_neg',   label: 'Старый корпус — негат. воздействие' },
+    { key: 'water_new_water', label: 'Новый корпус — вода' },
+    { key: 'water_new_neg',   label: 'Новый корпус — негат. воздействие' },
+  ]},
+  { key: 'telecom',     label: 'Услуги связи',        types: [
+    { key: 'telecom_rt',  label: 'Ростелеком' },
+    { key: 'telecom_sc',  label: 'Скарлет'    },
+    { key: 'telecom_mtt', label: 'МТТ'        },
+    { key: 'telecom_kf',  label: 'Комфортел'  },
+    { key: 'telecom_mts', label: 'МТС ПАО'    },
+  ]},
+  { key: 'waste',       label: 'Вывоз отходов',       types: [
+    { key: 'waste_med', label: 'Медицинские отходы'  },
+    { key: 'waste_mun', label: 'Коммунальные отходы' },
+  ]},
+  { key: 'communal',    label: 'Коммунальные услуги', types: [
+    { key: 'communal_karp', label: 'Карпенко'       },
+    { key: 'communal_slav', label: 'Славянский дом' },
+  ]},
+  { key: 'security',    label: 'Охрана',              types: [{ key: 'security', label: 'Охрана' }] },
+  { key: 'cleaning',    label: 'Уборка территории',   types: [{ key: 'cleaning', label: 'Уборка территории' }] },
+];
+
+const ALL_UTILITY_TYPES = UTILITY_CATEGORIES.flatMap(c =>
+  c.types.map(t => ({ ...t, catKey: c.key, catLabel: c.label }))
+);
 
 const DEFAULT_SCHEDULE = {
   '1': { on: true,  from: '08:00', to: '20:00' },
@@ -1431,6 +1474,436 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// UTILITY CATEGORY EDITOR
+// ══════════════════════════════════════════════════════════════════════════════
+function UtilityCatEditor({ cats, onSave, onClose }) {
+  const [draft, setDraft]   = useState(() => cats.map(c => ({ ...c, types: c.types.map(t => ({ ...t })) })));
+  const [saving, setSaving] = useState(false);
+
+  const updateCatLabel  = (ci, label) => setDraft(d => d.map((c, i) => i === ci ? { ...c, label } : c));
+  const deleteCat       = (ci)        => setDraft(d => d.filter((_, i) => i !== ci));
+  const updateTypeLabel = (ci, ti, label) => setDraft(d => d.map((c, i) => i === ci
+    ? { ...c, types: c.types.map((t, j) => j === ti ? { ...t, label } : t) } : c));
+  const deleteType = (ci, ti) => setDraft(d => d.map((c, i) => i === ci
+    ? { ...c, types: c.types.filter((_, j) => j !== ti) } : c));
+
+  const moveCat = (ci, dir) => setDraft(d => {
+    const next = [...d]; const swap = ci + dir;
+    if (swap < 0 || swap >= next.length) return d;
+    [next[ci], next[swap]] = [next[swap], next[ci]];
+    return next;
+  });
+
+  const addType = (ci) => {
+    const key = `type_${Date.now()}`;
+    setDraft(d => d.map((c, i) => i === ci ? { ...c, types: [...c.types, { key, label: 'Новый подтип' }] } : c));
+  };
+
+  const addCat = () => {
+    const key = `cat_${Date.now()}`;
+    setDraft(d => [...d, { key, label: 'Новая категория', types: [{ key: `${key}_t0`, label: 'Подтип 1' }] }]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave(draft);
+    setSaving(false);
+    onClose();
+  };
+
+  const actBtnSt = (primary) => ({
+    padding: '6px 14px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+    border: primary ? 'none' : '1px solid var(--rb-border-dark)',
+    background: primary ? 'var(--rb-primary)' : '#fff',
+    color: primary ? '#fff' : 'var(--rb-text)', fontWeight: primary ? 600 : 400,
+    opacity: saving ? 0.7 : 1,
+  });
+
+  return (
+    <div style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', marginBottom: 16, overflow: 'hidden' }}>
+      <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc' }}>
+        <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>Настройка категорий коммунальных услуг</span>
+        <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
+      </div>
+
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 520, overflowY: 'auto' }}>
+        {draft.map((cat, ci) => (
+          <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 10px', background: '#f1f5f9' }}>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <button onClick={() => moveCat(ci, -1)} disabled={ci === 0}
+                  style={{ border: 'none', background: 'none', cursor: ci === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
+                <button onClick={() => moveCat(ci, 1)} disabled={ci === draft.length - 1}
+                  style={{ border: 'none', background: 'none', cursor: ci === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
+              </div>
+              <input value={cat.label} onChange={e => updateCatLabel(ci, e.target.value)}
+                style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
+              <button onClick={() => deleteCat(ci)}
+                style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 8px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
+                Удалить
+              </button>
+            </div>
+            <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {cat.types.map((type, ti) => (
+                <div key={type.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span style={{ color: '#94a3b8', fontSize: 12, flexShrink: 0 }}>└</span>
+                  <input value={type.label} onChange={e => updateTypeLabel(ci, ti, e.target.value)}
+                    style={{ ...inlineInputStyle, flex: 1 }} />
+                  <button onClick={() => deleteType(ci, ti)}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+                </div>
+              ))}
+              <button onClick={() => addType(ci)}
+                style={{ alignSelf: 'flex-start', marginTop: 2, padding: '3px 10px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                + подтип
+              </button>
+            </div>
+          </div>
+        ))}
+        <button onClick={addCat}
+          style={{ padding: '7px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
+          + Добавить категорию
+        </button>
+      </div>
+
+      <div style={{ padding: '10px 16px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#fafafa' }}>
+        <button onClick={onClose} style={actBtnSt(false)}>Отмена</button>
+        <button onClick={handleSave} disabled={saving} style={actBtnSt(true)}>
+          {saving ? 'Сохранение…' : 'Сохранить'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// КОММУНАЛЬНЫЕ РАСХОДЫ
+// ══════════════════════════════════════════════════════════════════════════════
+function TabUtilities() {
+  const thisYear = new Date().getFullYear();
+  const [year, setYear]                 = useState(thisYear);
+  const [rawData, setRawData]           = useState({});
+  const [loading, setLoading]           = useState(true);
+  const [clinics, setClinics]           = useState([]);
+  const [monthFilter, setMonthFilter]   = useState('');
+  const [catFilter,   setCatFilter]     = useState('');
+  const [expandedCats, setExpandedCats]   = useState(new Set());
+  const [utilCats, setUtilCats]           = useState(UTILITY_CATEGORIES);
+  const [showCatEditor, setShowCatEditor] = useState(false);
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    Promise.all([
+      mis.getClinicsFromMIS().catch(() => ({ data: { data: [] } })),
+      directories.getAll('utility').catch(() => ({ data: {} })),
+      directories.getAll('utility_cfg').catch(() => ({ data: {} })),
+    ]).then(([misRes, dirRes, cfgRes]) => {
+      setClinics(Array.isArray(misRes.data?.data) ? misRes.data.data : []);
+      setRawData(dirRes.data || {});
+      const savedCats = cfgRes.data?.categories?.cats;
+      if (Array.isArray(savedCats) && savedCats.length > 0) setUtilCats(savedCats);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const saveCell = useCallback((key, patch) => {
+    clearTimeout(saveTimers.current[key]);
+    setRawData(prev => ({ ...prev, [key]: { ...(prev[key] || {}), ...patch } }));
+    saveTimers.current[key] = setTimeout(async () => {
+      try {
+        await directories.save('utility', encodeURIComponent(key), patch);
+        toast.success('Сохранено', { duration: 1500 });
+      } catch {
+        toast.error('Ошибка сохранения');
+      }
+    }, 800);
+  }, []);
+
+  const saveUtilCats = useCallback(async (cats) => {
+    setUtilCats(cats);
+    try {
+      await directories.save('utility_cfg', 'categories', { cats });
+      toast.success('Настройки категорий сохранены', { duration: 1500 });
+    } catch {
+      toast.error('Ошибка сохранения');
+    }
+  }, []);
+
+  const filteredMonths = useMemo(
+    () => monthFilter ? MONTHS_RU.filter(m => m.num === +monthFilter) : MONTHS_RU,
+    [monthFilter]
+  );
+
+  const allUtilTypes = useMemo(
+    () => utilCats.flatMap(c => c.types.map(t => ({ ...t, catKey: c.key, catLabel: c.label }))),
+    [utilCats]
+  );
+
+  const filteredTypes = useMemo(
+    () => catFilter ? allUtilTypes.filter(t => t.catKey === catFilter) : allUtilTypes,
+    [catFilter, allUtilTypes]
+  );
+
+  // Group filtered types by category, preserving utilCats order
+  const catGroups = useMemo(() => {
+    const groups = [];
+    for (const cat of utilCats) {
+      const types = filteredTypes.filter(t => t.catKey === cat.key);
+      if (types.length > 0) groups.push({ cat, types });
+    }
+    return groups;
+  }, [filteredTypes, utilCats]);
+
+  const toggleCat = useCallback((catKey) => {
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(catKey)) next.delete(catKey); else next.add(catKey);
+      return next;
+    });
+  }, []);
+
+  // Direct sum overrides auto-calculated qty×price
+  const getSum = useCallback((key) => {
+    const c = rawData[key];
+    if (!c) return 0;
+    if (c.sum !== undefined && c.sum !== '') return parseNum(c.sum);
+    const qty   = parseNum(c.qty);
+    const price = parseNum(c.price);
+    return qty > 0 ? qty * price : price;
+  }, [rawData]);
+
+  const colTotals = useMemo(() => {
+    const t = {};
+    for (const c of clinics) {
+      t[c.id] = 0;
+      for (const m of filteredMonths) {
+        for (const type of filteredTypes) {
+          t[c.id] += getSum(`${year}_${m.num}_${type.key}_${c.id}`);
+        }
+      }
+    }
+    return t;
+  }, [getSum, clinics, filteredMonths, filteredTypes, year]);
+
+  const grandTotal = useMemo(() => Object.values(colTotals).reduce((a, b) => a + b, 0), [colTotals]);
+
+  const yearRange = useMemo(() => Array.from({ length: 5 }, (_, i) => thisYear - 2 + i), [thisYear]);
+
+  const numCols   = 3 + clinics.length * 3;
+  const cellInpSt = { ...inlineInputStyle, width: 80, textAlign: 'right', padding: '3px 6px' };
+
+  if (loading) return <Spinner text="Загрузка коммунальных расходов…" />;
+
+  if (!clinics.length) return (
+    <div className="rb-placeholder">
+      <div style={{ fontWeight: 600, fontSize: 15 }}>Нет данных о клиниках</div>
+      <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginTop: 4 }}>Проверьте подключение к МИС</div>
+    </div>
+  );
+
+  const miniSelectSt = {
+    marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
+    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%', display: 'block',
+  };
+  const thFilterSt = {
+    background: '#f8fafc', padding: '7px 10px', textAlign: 'left', fontWeight: 600,
+    fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', verticalAlign: 'top',
+  };
+
+  // Render an editable type detail row (used for single-type cats and expanded sub-rows)
+  const renderTypeRow = (type, month, isSubRow) => {
+    const rowTotal = clinics.reduce((s, c) => s + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0);
+    return (
+      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
+        <td style={{ padding: 0, width: 6, borderRight: 'none' }} />
+        <td style={{ fontSize: 12, paddingLeft: isSubRow ? 24 : 12, whiteSpace: 'nowrap' }}>
+          {isSubRow && <span style={{ color: '#94a3b8', marginRight: 6 }}>└</span>}
+          {type.label}
+        </td>
+        {clinics.flatMap(c => {
+          const key  = `${year}_${month.num}_${type.key}_${c.id}`;
+          const cell = rawData[key] || {};
+          const autoSum = (() => { const q = parseNum(cell.qty); const p = parseNum(cell.price); return q > 0 ? q * p : p; })();
+          return [
+            <td key={`${key}_q`} style={{ padding: '3px 6px' }}>
+              <input type="number" min="0" step="any" value={cell.qty ?? ''} placeholder="0"
+                onChange={e => saveCell(key, { qty: e.target.value })} style={cellInpSt} />
+            </td>,
+            <td key={`${key}_p`} style={{ padding: '3px 6px' }}>
+              <input type="number" min="0" step="any" value={cell.price ?? ''} placeholder="0"
+                onChange={e => saveCell(key, { price: e.target.value })} style={cellInpSt} />
+            </td>,
+            <td key={`${key}_s`} style={{ padding: '3px 6px' }}>
+              <input type="number" min="0" step="any" value={cell.sum ?? ''}
+                placeholder={autoSum > 0 ? String(Math.round(autoSum)) : '0'}
+                onChange={e => saveCell(key, { sum: e.target.value })}
+                style={{ ...cellInpSt, background: cell.sum ? '#f0f9ff' : undefined }} />
+            </td>,
+          ];
+        })}
+        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: rowTotal > 0 ? 600 : 400 }}>
+          {rowTotal > 0 ? fmtRub(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+        </td>
+      </tr>
+    );
+  };
+
+  return (
+    <div>
+      {/* Year tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Год:</span>
+        {yearRange.map(y => (
+          <button key={y} onClick={() => setYear(y)}
+            style={{ padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
+                     border: `1px solid ${y === year ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
+                     background: y === year ? 'var(--rb-primary)' : '#fff',
+                     color: y === year ? '#fff' : 'var(--rb-text)', fontWeight: y === year ? 600 : 400 }}>
+            {y}
+          </button>
+        ))}
+        <button onClick={() => setShowCatEditor(v => !v)}
+          style={{ marginLeft: 6, padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+                   border: `1px solid ${showCatEditor ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
+                   background: showCatEditor ? '#eff6ff' : '#fff',
+                   color: showCatEditor ? 'var(--rb-primary)' : 'var(--rb-text-secondary)' }}>
+          ⚙ Категории
+        </button>
+        {grandTotal > 0 && (
+          <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--rb-primary)', fontVariantNumeric: 'tabular-nums' }}>
+            За период: {fmtRub(grandTotal)}
+          </span>
+        )}
+      </div>
+
+      {showCatEditor && (
+        <UtilityCatEditor
+          cats={utilCats}
+          onSave={saveUtilCats}
+          onClose={() => setShowCatEditor(false)}
+        />
+      )}
+
+      {/* Table — filters are embedded in the header row */}
+      <div style={{ overflowX: 'auto' }}>
+        <table className="rb-table" style={{ minWidth: 360 + clinics.length * 260 }}>
+          <thead>
+            <tr>
+              <th style={thFilterSt}>
+                <div>Месяц</div>
+                <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={miniSelectSt}>
+                  <option value="">Все месяцы</option>
+                  {MONTHS_RU.map(m => <option key={m.num} value={m.num}>{m.label}</option>)}
+                </select>
+              </th>
+              <th style={thFilterSt}>
+                <div>Вид услуги</div>
+                <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={miniSelectSt}>
+                  <option value="">Все категории</option>
+                  {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+              </th>
+              {clinics.map(c => (
+                <React.Fragment key={c.id}>
+                  <th colSpan={3} style={{ background: '#f0f7ff', padding: '8px 12px', textAlign: 'center', fontWeight: 700, fontSize: 12, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${c.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
+                    {c.title || c.name}
+                  </th>
+                </React.Fragment>
+              ))}
+              <THCell right>Итого</THCell>
+            </tr>
+            <tr>
+              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
+              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
+              {clinics.flatMap(c => [
+                <th key={`h_${c.id}_q`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
+                <th key={`h_${c.id}_p`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
+                <th key={`h_${c.id}_s`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
+              ])}
+              <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />
+            </tr>
+          </thead>
+          <tbody>
+            {filteredMonths.map(month => {
+              const monthTotal = filteredTypes.reduce((s, type) =>
+                s + clinics.reduce((cs, c) => cs + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0), 0);
+              return (
+                <React.Fragment key={month.num}>
+                  <tr>
+                    <td colSpan={numCols} style={{ background: '#f1f5f9', fontWeight: 700, fontSize: 12, padding: '7px 14px', border: '1px solid var(--rb-border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>{month.label}</span>
+                        {monthTotal > 0 && <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--rb-primary)' }}>{fmtRub(monthTotal)}</span>}
+                      </div>
+                    </td>
+                  </tr>
+                  {catGroups.map(({ cat, types }) => {
+                    const isMulti    = types.length > 1;
+                    const isExpanded = expandedCats.has(cat.key);
+                    const catTotal   = clinics.reduce((s, c) =>
+                      s + types.reduce((ts, type) => ts + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0), 0);
+
+                    if (!isMulti) {
+                      // Single sub-type: render directly as an editable row
+                      return renderTypeRow(types[0], month, false);
+                    }
+
+                    // Multi sub-type: collapsible group header + detail rows
+                    return (
+                      <React.Fragment key={`${month.num}_${cat.key}`}>
+                        <tr onClick={() => toggleCat(cat.key)}
+                          style={{ cursor: 'pointer', background: isExpanded ? '#f0f7ff' : undefined }}>
+                          <td style={{ padding: '6px 0 6px 8px', width: 6, borderRight: 'none' }}>
+                            <span style={{ fontSize: 10, color: 'var(--rb-primary)', userSelect: 'none' }}>
+                              {isExpanded ? '▼' : '▶'}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 12, fontWeight: 600, paddingLeft: 6, whiteSpace: 'nowrap' }}>
+                            {cat.label}
+                          </td>
+                          {clinics.flatMap(c => {
+                            const cTotal = types.reduce((s, type) => s + getSum(`${year}_${month.num}_${type.key}_${c.id}`), 0);
+                            return [
+                              <td key={`cg_${cat.key}_${c.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
+                              <td key={`cg_${cat.key}_${c.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
+                              <td key={`cg_${cat.key}_${c.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', background: cTotal > 0 ? '#f0fdf4' : undefined }}>
+                                {cTotal > 0 ? fmtRub(cTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+                              </td>,
+                            ];
+                          })}
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: catTotal > 0 ? 700 : 400, border: '1px solid var(--rb-border)' }}>
+                            {catTotal > 0 ? fmtRub(catTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+                          </td>
+                        </tr>
+                        {isExpanded && types.map(type => renderTypeRow(type, month, true))}
+                      </React.Fragment>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
+            <tr style={{ background: '#f8fafc' }}>
+              <td colSpan={2} style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, border: '1px solid var(--rb-border)' }}>
+                Итого за период
+              </td>
+              {clinics.flatMap(c => [
+                <td key={`tot_${c.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
+                <td key={`tot_${c.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
+                <td key={`tot_${c.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 13, padding: '10px 10px', border: '1px solid var(--rb-border)' }}>
+                  {colTotals[c.id] > 0 ? fmtRub(colTotals[c.id]) : DASH}
+                </td>,
+              ])}
+              <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, padding: '10px 10px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
+                {grandTotal > 0 ? fmtRub(grandTotal) : DASH}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Directories({ doctors = [], excelSources = [] }) {
@@ -1474,6 +1947,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
       {activeTab === 'cabinets'  && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
       {activeTab === 'doctors'   && <TabDoctors doctors={doctors} excelSources={excelSources} />}
       {activeTab === 'equipment' && <TabEquipment />}
+      {activeTab === 'utilities' && <TabUtilities />}
     </div>
   );
 }
