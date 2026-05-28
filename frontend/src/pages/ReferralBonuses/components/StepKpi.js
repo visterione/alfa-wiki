@@ -7,7 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { TabReputation } from '../../Statistics/components/Directories';
+import { TabReputation, TabUtilitiesAnalytics } from '../../Statistics/components/Directories';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -72,6 +72,7 @@ const KPI_TABS = [
   { key: 'efficiency', label: 'Эффективность' },
   { key: 'rooms',      label: 'Кабинеты' },
   { key: 'reputation', label: 'Репутация' },
+  { key: 'utilities',  label: 'Коммунальные' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2477,8 +2478,13 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
         />
       </div>
 
+      {/* Коммунальные — всегда смонтирована, не требует Excel-источников */}
+      <div style={{ display: viewMode === 'utilities' ? 'block' : 'none' }}>
+        <TabUtilitiesAnalytics appointments={appointments} />
+      </div>
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

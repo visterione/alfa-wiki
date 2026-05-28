@@ -1730,7 +1730,7 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // КОММУНАЛЬНЫЕ РАСХОДЫ
 // ══════════════════════════════════════════════════════════════════════════════
-function TabUtilities({ appointments = [] }) {
+function TabUtilities() {
   const thisYear = new Date().getFullYear();
   const [year, setYear]                   = useState(thisYear);
   const [rawData, setRawData]             = useState({});
@@ -1744,9 +1744,6 @@ function TabUtilities({ appointments = [] }) {
   const [colGroups, setColGroups]         = useState([]);
   const [showCatEditor, setShowCatEditor] = useState(false);
   const [showColEditor, setShowColEditor] = useState(false);
-  const [clinicMeta, setClinicMeta]       = useState({});
-  const [cabinetMeta, setCabinetMeta]     = useState({});
-  const [utilView, setUtilView]           = useState('table');
   const saveTimers = useRef({});
 
   useEffect(() => {
@@ -1754,17 +1751,13 @@ function TabUtilities({ appointments = [] }) {
       mis.getClinicsFromMIS().catch(() => ({ data: { data: [] } })),
       directories.getAll('utility').catch(() => ({ data: {} })),
       directories.getAll('utility_cfg').catch(() => ({ data: {} })),
-      directories.getAll('clinic').catch(() => ({ data: {} })),
-      directories.getAll('cabinet').catch(() => ({ data: {} })),
-    ]).then(([misRes, dirRes, cfgRes, clinicRes, cabinetRes]) => {
+    ]).then(([misRes, dirRes, cfgRes]) => {
       setClinics(Array.isArray(misRes.data?.data) ? misRes.data.data : []);
       setRawData(dirRes.data || {});
       const savedCats = cfgRes.data?.categories?.cats;
       if (Array.isArray(savedCats) && savedCats.length > 0) setUtilCats(savedCats);
       const savedGrps = cfgRes.data?.col_groups?.groups;
       if (Array.isArray(savedGrps)) setColGroups(savedGrps);
-      setClinicMeta(clinicRes.data || {});
-      setCabinetMeta(cabinetRes.data || {});
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1895,99 +1888,6 @@ function TabUtilities({ appointments = [] }) {
     return cols + 1;
   }, [renderedGroups, expandedGroups]);
   const cellInpSt = { ...inlineInputStyle, width: 80, textAlign: 'right', padding: '3px 6px' };
-
-  // ─── Utility statistics per column group ─────────────────────────────────
-  // weeks_per_month ≈ 365/12/7
-  const WEEKS_PER_MONTH = 365 / 12 / 7;
-
-  const utilStats = useMemo(() => {
-    const periodWeeks = filteredMonths.length * WEEKS_PER_MONTH;
-
-    return renderedGroups.map(grp => {
-      const total = grpTotals[grp.key] || 0;
-
-      // Aggregate across all clinic items in this group (premises have no MIS data)
-      let totalArea     = 0;  // clinic area sum (m²)
-      let totalHours    = 0;  // working hours in period
-      let totalVisits   = 0;  // appointments count in period
-      let totalCabArea  = 0;  // sum of cabinet areas (m²)
-      let hasClinicData = false;
-
-      for (const item of grp.items) {
-        if (item.kind !== 'clinic') continue;
-        hasClinicData = true;
-        const cid = item.id;
-        const meta = clinicMeta[cid] || {};
-
-        // Area
-        const area = parseFloat(meta.area) || 0;
-        totalArea += area;
-
-        // Working hours in period
-        const weeklyHours = scheduleWeeklyHours(meta.schedule || DEFAULT_SCHEDULE);
-        totalHours += weeklyHours * periodWeeks;
-
-        // Visits: appointments matching this clinic in the selected year + filteredMonths
-        for (const a of appointments) {
-          if (a.status_id === 5 || a.status === 'refused') continue;
-          if (String(a.clinic_id) !== String(cid)) continue;
-          const t = parseApptTime(a.time_start);
-          if (!t) continue;
-          if (t.getFullYear() !== year) continue;
-          const m = t.getMonth() + 1; // 1-based
-          if (filteredMonths.some(fm => fm.num === m)) totalVisits++;
-        }
-
-        // Cabinet areas: all entries in cabinetMeta keyed with "${cid}|"
-        for (const [key, cab] of Object.entries(cabinetMeta)) {
-          if (!key.startsWith(`${cid}|`)) continue;
-          const cabArea = parseFloat(cab.area) || 0;
-          totalCabArea += cabArea;
-        }
-      }
-
-      return {
-        key:           grp.key,
-        label:         grp.label,
-        color:         grp.color,
-        total,
-        perSqm:        totalArea     > 0 ? total / totalArea     : null,
-        perHour:       totalHours    > 0 ? total / totalHours    : null,
-        perVisit:      totalVisits   > 0 ? total / totalVisits   : null,
-        hasClinicData,
-        totalArea,
-        totalHours:    Math.round(totalHours),
-        totalVisits,
-      };
-    });
-  }, [renderedGroups, grpTotals, filteredMonths, clinicMeta, appointments, year]);
-
-  // Per-cabinet allocated utility cost: clinic_total × (cab_area / total_clinic_cab_area)
-  const cabChartData = useMemo(() => {
-    const items = [];
-    for (const grp of renderedGroups) {
-      for (const item of grp.items) {
-        if (item.kind !== 'clinic') continue;
-        const cid = item.id;
-        const clinicTotal = filteredMonths.reduce((ms, m) =>
-          ms + filteredTypes.reduce((ts, t) => ts + getSum(`${year}_${m.num}_${t.key}_${cid}`), 0), 0);
-        const cabs = Object.entries(cabinetMeta)
-          .filter(([k]) => k.startsWith(`${cid}|`))
-          .map(([k, v]) => ({
-            id: k,
-            area: parseFloat(v.area) || 0,
-            name: v.name || v.label || k.split('|')[1] || k,
-          }));
-        const totalArea = cabs.reduce((s, c) => s + c.area, 0);
-        for (const cab of cabs) {
-          const allocated = totalArea > 0 && clinicTotal > 0
-            ? clinicTotal * (cab.area / totalArea) : 0;
-          items.push({ name: cab.name, value: allocated, area: cab.area, grpLabel: grp.label, color: grp.color || '#94a3b8' });
-        }
-      }
-    }
-    return items;
-  }, [renderedGroups, filteredMonths, filteredTypes, cabinetMeta, year, getSum]);
 
   if (loading) return <Spinner text="Загрузка коммунальных расходов…" />;
 
@@ -2136,21 +2036,7 @@ function TabUtilities({ appointments = [] }) {
         />
       )}
 
-      {/* Sub-tab nav */}
-      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--rb-border)' }}>
-        {[['table', 'Данные'], ['analytics', 'Аналитика']].map(([key, label]) => (
-          <button key={key} onClick={() => setUtilView(key)}
-            style={{ padding: '7px 20px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
-                     border: 'none', background: 'none', fontWeight: utilView === key ? 700 : 400,
-                     color: utilView === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
-                     borderBottom: utilView === key ? '2px solid var(--rb-primary)' : '2px solid transparent',
-                     marginBottom: -2 }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {utilView === 'table' && <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto' }}>
         <table className="rb-table" style={{ minWidth: 300 + renderedGroups.reduce((s, g) => s + (g.items.length === 1 ? 260 : expandedGroups.has(g.key) ? 80 + g.items.length * 260 : 120), 0) }}>
           <thead>
             {/* Row 1: Месяц / Вид услуги (rowSpan=3) + group name headers + Итого (rowSpan=3) */}
@@ -2313,83 +2199,247 @@ function TabUtilities({ appointments = [] }) {
             </tr>
           </tbody>
         </table>
-      </div>}
+      </div>
+    </div>
+  );
+}
 
-      {/* Analytics tab */}
-      {utilView === 'analytics' && (
-        <div>
-          {utilStats.some(s => s.total > 0) ? (
-            <>
+// ══════════════════════════════════════════════════════════════════════════════
+// UTILITY ANALYTICS (shown in Аналитика tab of Statistics page)
+// ══════════════════════════════════════════════════════════════════════════════
+export function TabUtilitiesAnalytics({ appointments = [] }) {
+  const thisYear = new Date().getFullYear();
+  const [year, setYear]           = useState(thisYear);
+  const [rawData, setRawData]     = useState({});
+  const [loading, setLoading]     = useState(true);
+  const [clinics, setClinics]     = useState([]);
+  const [monthFilter, setMonthFilter] = useState('');
+  const [catFilter,   setCatFilter]   = useState('');
+  const [utilCats, setUtilCats]   = useState(UTILITY_CATEGORIES);
+  const [colGroups, setColGroups] = useState([]);
+  const [clinicMeta, setClinicMeta]   = useState({});
+  const [cabinetMeta, setCabinetMeta] = useState({});
+
+  useEffect(() => {
+    Promise.all([
+      mis.getClinicsFromMIS().catch(() => ({ data: { data: [] } })),
+      directories.getAll('utility').catch(() => ({ data: {} })),
+      directories.getAll('utility_cfg').catch(() => ({ data: {} })),
+      directories.getAll('clinic').catch(() => ({ data: {} })),
+      directories.getAll('cabinet').catch(() => ({ data: {} })),
+    ]).then(([misRes, dirRes, cfgRes, clinicRes, cabinetRes]) => {
+      setClinics(Array.isArray(misRes.data?.data) ? misRes.data.data : []);
+      setRawData(dirRes.data || {});
+      const savedCats = cfgRes.data?.categories?.cats;
+      if (Array.isArray(savedCats) && savedCats.length > 0) setUtilCats(savedCats);
+      const savedGrps = cfgRes.data?.col_groups?.groups;
+      if (Array.isArray(savedGrps)) setColGroups(savedGrps);
+      setClinicMeta(clinicRes.data || {});
+      setCabinetMeta(cabinetRes.data || {});
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const yearRange = useMemo(() => Array.from({ length: 7 }, (_, i) => 2022 + i), []);
+
+  const filteredMonths = useMemo(
+    () => monthFilter ? MONTHS_RU.filter(m => m.num === +monthFilter) : MONTHS_RU,
+    [monthFilter]
+  );
+
+  const allUtilTypes = useMemo(
+    () => utilCats.flatMap(c => c.types.map(t => ({ ...t, catKey: c.key }))),
+    [utilCats]
+  );
+
+  const filteredTypes = useMemo(
+    () => catFilter ? allUtilTypes.filter(t => t.catKey === catFilter) : allUtilTypes,
+    [catFilter, allUtilTypes]
+  );
+
+  const renderedGroups = useMemo(() => {
+    const assignedIds = new Set(colGroups.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id)));
+    const ungrouped = clinics
+      .filter(c => !assignedIds.has(String(c.id)))
+      .map(c => ({ key: `auto_${c.id}`, label: c.title || c.name, color: c.color, items: [{ kind: 'clinic', id: String(c.id) }] }));
+    return [...colGroups, ...ungrouped];
+  }, [colGroups, clinics]);
+
+  const getSum = useCallback((key) => {
+    const c = rawData[key];
+    if (!c) return 0;
+    if (c.sum !== undefined && c.sum !== '') return parseNum(c.sum);
+    const qty = parseNum(c.qty), price = parseNum(c.price);
+    return qty > 0 ? qty * price : price;
+  }, [rawData]);
+
+  const grpTotals = useMemo(() => {
+    const t = {};
+    for (const grp of renderedGroups) {
+      t[grp.key] = filteredMonths.reduce((ms, m) =>
+        ms + filteredTypes.reduce((ts, type) => ts + grp.items.reduce((s, item) =>
+          s + getSum(`${year}_${m.num}_${type.key}_${item.id}`), 0), 0), 0);
+    }
+    return t;
+  }, [renderedGroups, filteredMonths, filteredTypes, year, getSum]);
+
+  const WEEKS_PER_MONTH = 365 / 12 / 7;
+
+  const utilStats = useMemo(() => {
+    const periodWeeks = filteredMonths.length * WEEKS_PER_MONTH;
+    return renderedGroups.map(grp => {
+      const total = grpTotals[grp.key] || 0;
+      let totalArea = 0, totalHours = 0, totalVisits = 0, hasClinicData = false;
+      for (const item of grp.items) {
+        if (item.kind !== 'clinic') continue;
+        hasClinicData = true;
+        const cid = item.id;
+        const meta = clinicMeta[cid] || {};
+        totalArea += parseFloat(meta.area) || 0;
+        totalHours += scheduleWeeklyHours(meta.schedule || DEFAULT_SCHEDULE) * periodWeeks;
+        for (const a of appointments) {
+          if (a.status_id === 5 || a.status === 'refused') continue;
+          if (String(a.clinic_id) !== String(cid)) continue;
+          const t = parseApptTime(a.time_start);
+          if (!t || t.getFullYear() !== year) continue;
+          const m = t.getMonth() + 1;
+          if (filteredMonths.some(fm => fm.num === m)) totalVisits++;
+        }
+      }
+      return {
+        key: grp.key, label: grp.label, color: grp.color, total,
+        perSqm:   totalArea  > 0 ? total / totalArea  : null,
+        perHour:  totalHours > 0 ? total / totalHours : null,
+        perVisit: totalVisits > 0 ? total / totalVisits : null,
+        hasClinicData, totalArea,
+        totalHours: Math.round(totalHours), totalVisits,
+      };
+    });
+  }, [renderedGroups, grpTotals, filteredMonths, clinicMeta, appointments, year]);
+
+  const cabChartData = useMemo(() => {
+    const items = [];
+    for (const grp of renderedGroups) {
+      for (const item of grp.items) {
+        if (item.kind !== 'clinic') continue;
+        const cid = item.id;
+        const clinicTotal = filteredMonths.reduce((ms, m) =>
+          ms + filteredTypes.reduce((ts, t) => ts + getSum(`${year}_${m.num}_${t.key}_${cid}`), 0), 0);
+        const cabs = Object.entries(cabinetMeta)
+          .filter(([k]) => k.startsWith(`${cid}|`))
+          .map(([k, v]) => ({ area: parseFloat(v.area) || 0, name: v.name || v.label || k.split('|')[1] || k }));
+        const totalArea = cabs.reduce((s, c) => s + c.area, 0);
+        for (const cab of cabs) {
+          const allocated = totalArea > 0 && clinicTotal > 0 ? clinicTotal * (cab.area / totalArea) : 0;
+          items.push({ name: cab.name, value: allocated, area: cab.area, grpLabel: grp.label, color: grp.color || '#94a3b8' });
+        }
+      }
+    }
+    return items;
+  }, [renderedGroups, filteredMonths, filteredTypes, cabinetMeta, year, getSum]);
+
+  if (loading) return <Spinner text="Загрузка…" />;
+
+  const miniSelectSt = {
+    padding: '3px 8px', border: '1px solid var(--rb-border)', borderRadius: 5,
+    fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer',
+  };
+
+  return (
+    <div style={{ padding: '16px 20px' }}>
+      {/* Year + filters */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Год:</span>
+        {yearRange.map(y => (
+          <button key={y} onClick={() => setYear(y)}
+            style={{ padding: '4px 12px', borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
+                     border: `1px solid ${y === year ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
+                     background: y === year ? 'var(--rb-primary)' : '#fff',
+                     color: y === year ? '#fff' : 'var(--rb-text)', fontWeight: y === year ? 600 : 400 }}>
+            {y}
+          </button>
+        ))}
+        <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={miniSelectSt}>
+          <option value="">Все месяцы</option>
+          {MONTHS_RU.map(m => <option key={m.num} value={m.num}>{m.label}</option>)}
+        </select>
+        <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={miniSelectSt}>
+          <option value="">Все категории</option>
+          {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+      </div>
+
+      {utilStats.some(s => s.total > 0) ? (
+        <>
+          {/* Stats table */}
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
+            Статистика коммунальных расходов
+            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+              {filteredMonths.length === 12 ? `${year} год` : filteredMonths.map(m => m.label).join(', ')}
+            </span>
+          </div>
+          <div style={{ overflowX: 'auto', marginBottom: 32 }}>
+            <table className="rb-table" style={{ minWidth: 520 }}>
+              <thead>
+                <tr>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
+                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
+                </tr>
+              </thead>
+              <tbody>
+                {utilStats.filter(s => s.total > 0).map(s => (
+                  <tr key={s.key}>
+                    <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
+                      {s.label}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
+                      {fmtRubP(s.total)}
+                    </td>
+                    <UtilStatCell value={s.perSqm} hint={s.totalArea > 0 ? `${s.totalArea} м²` : null} noData={!s.hasClinicData || s.totalArea === 0} />
+                    <UtilStatCell value={s.perHour} hint={s.totalHours > 0 ? `${s.totalHours} ч` : null} noData={!s.hasClinicData || s.totalHours === 0} />
+                    <UtilStatCell value={s.perVisit} hint={s.totalVisits > 0 ? `${s.totalVisits} визитов` : null} noData={!s.hasClinicData || s.totalVisits === 0} />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Per-cabinet bar chart */}
+          {cabChartData.length > 0 && (
+            <div>
               <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
-                Статистика коммунальных расходов
+                Распределение расходов по кабинетам
                 <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
-                  {filteredMonths.length === 12 ? `${year} год` : filteredMonths.map(m => m.label).join(', ')}
+                  пропорционально площади
                 </span>
               </div>
-              <div style={{ overflowX: 'auto', marginBottom: 32 }}>
-                <table className="rb-table" style={{ minWidth: 520 }}>
-                  <thead>
-                    <tr>
-                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
-                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
-                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
-                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
-                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {utilStats.filter(s => s.total > 0).map(s => (
-                      <tr key={s.key}>
-                        <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
-                          {s.label}
-                        </td>
-                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
-                          {fmtRubP(s.total)}
-                        </td>
-                        <UtilStatCell value={s.perSqm} hint={s.totalArea > 0 ? `${s.totalArea} м²` : null} noData={!s.hasClinicData || s.totalArea === 0} />
-                        <UtilStatCell value={s.perHour} hint={s.totalHours > 0 ? `${s.totalHours} ч` : null} noData={!s.hasClinicData || s.totalHours === 0} />
-                        <UtilStatCell value={s.perVisit} hint={s.totalVisits > 0 ? `${s.totalVisits} визитов` : null} noData={!s.hasClinicData || s.totalVisits === 0} />
-                      </tr>
+              <ResponsiveContainer width="100%" height={Math.max(200, cabChartData.length * 32)}>
+                <BarChart data={cabChartData} layout="vertical" margin={{ top: 4, right: 80, left: 8, bottom: 4 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={v => [fmtRubP(v), 'Расходы']}
+                    labelFormatter={(label, payload) => {
+                      const d = payload?.[0]?.payload;
+                      return `${label}${d?.area ? ` · ${d.area} м²` : ''}${d?.grpLabel ? ` · ${d.grpLabel}` : ''}`;
+                    }}
+                  />
+                  <Bar dataKey="value" name="Расходы ₽" radius={[0, 4, 4, 0]}>
+                    {cabChartData.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
                     ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {cabChartData.length > 0 && (
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
-                    Распределение расходов по кабинетам
-                    <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
-                      пропорционально площади
-                    </span>
-                  </div>
-                  <ResponsiveContainer width="100%" height={Math.max(200, cabChartData.length * 32)}>
-                    <BarChart data={cabChartData} layout="vertical" margin={{ top: 4, right: 80, left: 8, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                      <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fontSize: 11 }} />
-                      <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
-                      <Tooltip
-                        formatter={v => [fmtRubP(v), 'Расходы']}
-                        labelFormatter={(label, payload) => {
-                          const d = payload?.[0]?.payload;
-                          return `${label}${d?.area ? ` · ${d.area} м²` : ''}${d?.grpLabel ? ` · ${d.grpLabel}` : ''}`;
-                        }}
-                      />
-                      <Bar dataKey="value" name="Расходы ₽" radius={[0, 4, 4, 0]}>
-                        {cabChartData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
-              Нет данных за выбранный период
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           )}
+        </>
+      ) : (
+        <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+          Нет данных за выбранный период. Введите показания в разделе Справочники → Коммунальные.
         </div>
       )}
     </div>
@@ -2440,7 +2490,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
       {activeTab === 'cabinets'  && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
       {activeTab === 'doctors'   && <TabDoctors doctors={doctors} excelSources={excelSources} />}
       {activeTab === 'equipment' && <TabEquipment />}
-      {activeTab === 'utilities' && <TabUtilities appointments={appointments} />}
+      {activeTab === 'utilities' && <TabUtilities />}
     </div>
   );
 }
