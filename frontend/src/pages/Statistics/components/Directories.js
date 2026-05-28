@@ -7,7 +7,7 @@ import { parseExcelFile, rbMapNewColumns } from '../../ReferralBonuses/utils/exc
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
 import { DEFAULT_CLINICS } from '../../ReferralBonuses/utils/clinicUtils';
 import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -138,6 +138,8 @@ function formatApiDate(str) {
 
 const fmt     = n => Math.round(n || 0).toLocaleString('ru-RU');
 const fmtRub  = n => fmt(n) + ' ₽';
+// Precise money formatter — preserves up to 2 decimal places (no unnecessary zeros)
+const fmtRubP = n => (+(n || 0)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ₽';
 
 function scheduleToLabel(schedule) {
   if (!schedule) return DASH;
@@ -1487,7 +1489,7 @@ function UtilStatCell({ value, hint, noData }) {
   );
   return (
     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', padding: '7px 12px', border: '1px solid var(--rb-border)' }}>
-      <div style={{ fontSize: 13, fontWeight: 600 }}>{fmtRub(Math.round(value))}</div>
+      <div style={{ fontSize: 13, fontWeight: 600 }}>{fmtRubP(value)}</div>
       {hint && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{hint}</div>}
     </td>
   );
@@ -1744,6 +1746,7 @@ function TabUtilities({ appointments = [] }) {
   const [showColEditor, setShowColEditor] = useState(false);
   const [clinicMeta, setClinicMeta]       = useState({});
   const [cabinetMeta, setCabinetMeta]     = useState({});
+  const [utilView, setUtilView]           = useState('table');
   const saveTimers = useRef({});
 
   useEffect(() => {
@@ -1951,15 +1954,40 @@ function TabUtilities({ appointments = [] }) {
         perSqm:        totalArea     > 0 ? total / totalArea     : null,
         perHour:       totalHours    > 0 ? total / totalHours    : null,
         perVisit:      totalVisits   > 0 ? total / totalVisits   : null,
-        perCabSqm:     totalCabArea  > 0 ? total / totalCabArea  : null,
         hasClinicData,
         totalArea,
         totalHours:    Math.round(totalHours),
         totalVisits,
-        totalCabArea,
       };
     });
-  }, [renderedGroups, grpTotals, filteredMonths, clinicMeta, cabinetMeta, appointments, year]);
+  }, [renderedGroups, grpTotals, filteredMonths, clinicMeta, appointments, year]);
+
+  // Per-cabinet allocated utility cost: clinic_total × (cab_area / total_clinic_cab_area)
+  const cabChartData = useMemo(() => {
+    const items = [];
+    for (const grp of renderedGroups) {
+      for (const item of grp.items) {
+        if (item.kind !== 'clinic') continue;
+        const cid = item.id;
+        const clinicTotal = filteredMonths.reduce((ms, m) =>
+          ms + filteredTypes.reduce((ts, t) => ts + getSum(`${year}_${m.num}_${t.key}_${cid}`), 0), 0);
+        const cabs = Object.entries(cabinetMeta)
+          .filter(([k]) => k.startsWith(`${cid}|`))
+          .map(([k, v]) => ({
+            id: k,
+            area: parseFloat(v.area) || 0,
+            name: v.name || v.label || k.split('|')[1] || k,
+          }));
+        const totalArea = cabs.reduce((s, c) => s + c.area, 0);
+        for (const cab of cabs) {
+          const allocated = totalArea > 0 && clinicTotal > 0
+            ? clinicTotal * (cab.area / totalArea) : 0;
+          items.push({ name: cab.name, value: allocated, area: cab.area, grpLabel: grp.label, color: grp.color || '#94a3b8' });
+        }
+      }
+    }
+    return items;
+  }, [renderedGroups, filteredMonths, filteredTypes, cabinetMeta, year, getSum]);
 
   if (loading) return <Spinner text="Загрузка коммунальных расходов…" />;
 
@@ -1995,7 +2023,7 @@ function TabUtilities({ appointments = [] }) {
       </td>,
       <td key={`${dataKey}_s`} style={{ padding: '3px 6px' }}>
         <input type="number" min="0" step="any" value={cell.sum ?? ''}
-          placeholder={autoSum > 0 ? String(Math.round(autoSum)) : '0'}
+          placeholder={autoSum > 0 ? String(+autoSum.toFixed(2)) : '0'}
           onChange={e => saveCell(dataKey, { sum: e.target.value })}
           style={{ ...cellInpSt, background: cell.sum ? '#f0f9ff' : undefined }} />
       </td>,
@@ -2019,7 +2047,7 @@ function TabUtilities({ appointments = [] }) {
           <td key={`cgs_${grp.key}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
           <td key={`cgs_${grp.key}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
           <td key={`cgs_${grp.key}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', background: total > 0 ? '#f0fdf4' : undefined }}>
-            {total > 0 ? fmtRub(total) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+            {total > 0 ? fmtRubP(total) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
           </td>,
         ];
       }
@@ -2031,7 +2059,7 @@ function TabUtilities({ appointments = [] }) {
 
       const totalCell = (
         <td key={`cgm_${grp.key}_tot`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', fontWeight: grpTotal > 0 ? 600 : 400, background: grpTotal > 0 ? '#f0fdf4' : undefined }}>
-          {grpTotal > 0 ? fmtRub(grpTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+          {grpTotal > 0 ? fmtRubP(grpTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
         </td>
       );
 
@@ -2055,7 +2083,7 @@ function TabUtilities({ appointments = [] }) {
         </td>
         {renderGroupCells(month.num, type.key, false, null)}
         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: rowTotal > 0 ? 600 : 400 }}>
-          {rowTotal > 0 ? fmtRub(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
+          {rowTotal > 0 ? fmtRubP(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
         </td>
       </tr>
     );
@@ -2087,7 +2115,7 @@ function TabUtilities({ appointments = [] }) {
         </button>
         {grandTotal > 0 && (
           <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--rb-primary)', fontVariantNumeric: 'tabular-nums' }}>
-            За период: {fmtRub(grandTotal)}
+            За период: {fmtRubP(grandTotal)}
           </span>
         )}
       </div>
@@ -2108,8 +2136,21 @@ function TabUtilities({ appointments = [] }) {
         />
       )}
 
-      {/* Table */}
-      <div style={{ overflowX: 'auto' }}>
+      {/* Sub-tab nav */}
+      <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '2px solid var(--rb-border)' }}>
+        {[['table', 'Данные'], ['analytics', 'Аналитика']].map(([key, label]) => (
+          <button key={key} onClick={() => setUtilView(key)}
+            style={{ padding: '7px 20px', fontFamily: 'inherit', fontSize: 13, cursor: 'pointer',
+                     border: 'none', background: 'none', fontWeight: utilView === key ? 700 : 400,
+                     color: utilView === key ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
+                     borderBottom: utilView === key ? '2px solid var(--rb-primary)' : '2px solid transparent',
+                     marginBottom: -2 }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {utilView === 'table' && <div style={{ overflowX: 'auto' }}>
         <table className="rb-table" style={{ minWidth: 300 + renderedGroups.reduce((s, g) => s + (g.items.length === 1 ? 260 : expandedGroups.has(g.key) ? 80 + g.items.length * 260 : 120), 0) }}>
           <thead>
             {/* Row 1: Месяц / Вид услуги (rowSpan=3) + group name headers + Итого (rowSpan=3) */}
@@ -2260,59 +2301,95 @@ function TabUtilities({ appointments = [] }) {
                       <td key={`tot_${grp.key}_${item.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
                       <td key={`tot_${grp.key}_${item.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
                       <td key={`tot_${grp.key}_${item.id}_s`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 13, padding: '10px', border: '1px solid var(--rb-border)' }}>
-                        {itemTot > 0 ? fmtRub(itemTot) : DASH}
+                        {itemTot > 0 ? fmtRubP(itemTot) : DASH}
                       </td>,
                     ];
                   }),
                 ];
               })}
               <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, padding: '10px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
-                {grandTotal > 0 ? fmtRub(grandTotal) : DASH}
+                {grandTotal > 0 ? fmtRubP(grandTotal) : DASH}
               </td>
             </tr>
           </tbody>
         </table>
-      </div>
+      </div>}
 
-      {/* Utility statistics panel */}
-      {utilStats.some(s => s.total > 0) && (
-        <div style={{ marginTop: 24 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
-            Статистика коммунальных расходов
-            <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
-              {filteredMonths.length === 12 ? `${year} год` : filteredMonths.map(m => m.label).join(', ')}
-            </span>
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="rb-table" style={{ minWidth: 640 }}>
-              <thead>
-                <tr>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
-                  <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² каб. ₽</th>
-                </tr>
-              </thead>
-              <tbody>
-                {utilStats.filter(s => s.total > 0).map(s => (
-                  <tr key={s.key}>
-                    <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
-                      {s.label}
-                    </td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
-                      {fmtRub(s.total)}
-                    </td>
-                    <UtilStatCell value={s.perSqm} hint={s.totalArea > 0 ? `${s.totalArea} м²` : null} noData={!s.hasClinicData || s.totalArea === 0} />
-                    <UtilStatCell value={s.perHour} hint={s.totalHours > 0 ? `${s.totalHours} ч` : null} noData={!s.hasClinicData || s.totalHours === 0} />
-                    <UtilStatCell value={s.perVisit} hint={s.totalVisits > 0 ? `${s.totalVisits} визитов` : null} noData={!s.hasClinicData || s.totalVisits === 0} />
-                    <UtilStatCell value={s.perCabSqm} hint={s.totalCabArea > 0 ? `${s.totalCabArea} м²` : null} noData={!s.hasClinicData || s.totalCabArea === 0} />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {/* Analytics tab */}
+      {utilView === 'analytics' && (
+        <div>
+          {utilStats.some(s => s.total > 0) ? (
+            <>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
+                Статистика коммунальных расходов
+                <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+                  {filteredMonths.length === 12 ? `${year} год` : filteredMonths.map(m => m.label).join(', ')}
+                </span>
+              </div>
+              <div style={{ overflowX: 'auto', marginBottom: 32 }}>
+                <table className="rb-table" style={{ minWidth: 520 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'left', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Подразделение</th>
+                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>Итого ₽</th>
+                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На м² ₽</th>
+                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>В час ₽</th>
+                      <th style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '7px 12px', textAlign: 'right', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap' }}>На визит ₽</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {utilStats.filter(s => s.total > 0).map(s => (
+                      <tr key={s.key}>
+                        <td style={{ padding: '7px 12px', fontWeight: 600, fontSize: 13, border: '1px solid var(--rb-border)', borderLeft: `3px solid ${s.color || '#94a3b8'}`, whiteSpace: 'nowrap' }}>
+                          {s.label}
+                        </td>
+                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700, padding: '7px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
+                          {fmtRubP(s.total)}
+                        </td>
+                        <UtilStatCell value={s.perSqm} hint={s.totalArea > 0 ? `${s.totalArea} м²` : null} noData={!s.hasClinicData || s.totalArea === 0} />
+                        <UtilStatCell value={s.perHour} hint={s.totalHours > 0 ? `${s.totalHours} ч` : null} noData={!s.hasClinicData || s.totalHours === 0} />
+                        <UtilStatCell value={s.perVisit} hint={s.totalVisits > 0 ? `${s.totalVisits} визитов` : null} noData={!s.hasClinicData || s.totalVisits === 0} />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {cabChartData.length > 0 && (
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10, color: 'var(--rb-text)' }}>
+                    Распределение расходов по кабинетам
+                    <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+                      пропорционально площади
+                    </span>
+                  </div>
+                  <ResponsiveContainer width="100%" height={Math.max(200, cabChartData.length * 32)}>
+                    <BarChart data={cabChartData} layout="vertical" margin={{ top: 4, right: 80, left: 8, bottom: 4 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" tickFormatter={v => fmt(v)} tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
+                      <Tooltip
+                        formatter={v => [fmtRubP(v), 'Расходы']}
+                        labelFormatter={(label, payload) => {
+                          const d = payload?.[0]?.payload;
+                          return `${label}${d?.area ? ` · ${d.area} м²` : ''}${d?.grpLabel ? ` · ${d.grpLabel}` : ''}`;
+                        }}
+                      />
+                      <Bar dataKey="value" name="Расходы ₽" radius={[0, 4, 4, 0]}>
+                        {cabChartData.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+              Нет данных за выбранный период
+            </div>
+          )}
         </div>
       )}
     </div>
