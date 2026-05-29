@@ -7,7 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { TabReputation, TabUtilitiesAnalytics } from '../../Statistics/components/Directories';
+import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics } from '../../Statistics/components/Directories';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -66,13 +66,14 @@ function rowsToClinicColor(rs) {
 }
 
 const KPI_TABS = [
-  { key: 'general',    label: 'Общая' },
-  { key: 'patients',   label: 'Пациенты' },
-  { key: 'margin',     label: 'Маржинальность' },
-  { key: 'efficiency', label: 'Эффективность' },
-  { key: 'rooms',      label: 'Кабинеты' },
-  { key: 'reputation', label: 'Репутация' },
-  { key: 'utilities',  label: 'Коммунальные' },
+  { key: 'general',     label: 'Общая' },
+  { key: 'patients',    label: 'Пациенты' },
+  { key: 'margin',      label: 'Маржинальность' },
+  { key: 'efficiency',  label: 'Эффективность' },
+  { key: 'rooms',       label: 'Кабинеты' },
+  { key: 'reputation',  label: 'Репутация' },
+  { key: 'utilities',   label: 'Коммунальные' },
+  { key: 'consumables', label: 'Расходники' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2484,8 +2485,11 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Коммунальные — монтируется при переходе на вкладку, чтобы всегда загружать свежие данные */}
       {viewMode === 'utilities' && <TabUtilitiesAnalytics appointments={appointments} periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Расходники — монтируется при переходе, загружает нормы и считает по Excel */}
+      {viewMode === 'consumables' && <TabConsumablesAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

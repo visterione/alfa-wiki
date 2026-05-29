@@ -13,12 +13,15 @@ import toast from 'react-hot-toast';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DIR_TABS = [
-  { key: 'clinics',   label: 'Филиалы' },
-  { key: 'cabinets',  label: 'Кабинеты' },
-  { key: 'doctors',   label: 'Врачи' },
-  { key: 'equipment', label: 'Оборудование' },
-  { key: 'utilities', label: 'Коммунальные' },
+  { key: 'clinics',     label: 'Филиалы' },
+  { key: 'cabinets',    label: 'Кабинеты' },
+  { key: 'doctors',     label: 'Врачи' },
+  { key: 'equipment',   label: 'Оборудование' },
+  { key: 'utilities',   label: 'Коммунальные' },
+  { key: 'consumables', label: 'Расходники' },
 ];
+
+const CONSUMABLE_UNITS = ['шт', 'пара', 'мл', 'л', 'г', 'кг', 'упак', 'ампула', 'флакон', 'таблетка'];
 
 const BOARD_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#f97316','#14b8a6'];
 
@@ -256,6 +259,78 @@ async function loadDoctorStats(sources) {
     };
   }
   return result;
+}
+
+function normServiceName(str) {
+  return String(str || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+async function loadConsumableStats(sources, norms) {
+  const normByName = {};
+  for (const n of norms) {
+    const k = normServiceName(n.serviceName || '');
+    if (!k) continue;
+    if (!normByName[k]) normByName[k] = [];
+    normByName[k].push(n);
+  }
+
+  const byDoctor = {};
+  for (const src of sources) {
+    try {
+      const file    = await fetchSourceFile(src);
+      const rawRows = await parseExcelFile(file);
+      if (!rawRows.length) continue;
+      const cm = rbMapNewColumns(rawRows);
+      for (const r of rawRows) {
+        const exec    = cm.executor    ? String(r[cm.executor]    || '').trim() : '';
+        const svcName = cm.serviceName ? String(r[cm.serviceName] || '').trim() : '';
+        if (!exec || !svcName) continue;
+        const docKey = nameToKey(exec);
+        if (!docKey) continue;
+        const qty = cm.qty ? (parseNum(r[cm.qty]) || 1) : 1;
+        if (!byDoctor[docKey]) byDoctor[docKey] = { executor: exec, services: {} };
+        const svcKey = normServiceName(svcName);
+        const prev   = byDoctor[docKey].services[svcKey];
+        byDoctor[docKey].services[svcKey] = { name: svcName, qty: (prev?.qty || 0) + qty };
+      }
+    } catch (e) {
+      console.error('[Consumables] source load error', src?.id, e);
+    }
+  }
+
+  const result = [];
+  for (const [docKey, d] of Object.entries(byDoctor)) {
+    const consumableMap = {};
+    const serviceDetails = [];
+    let totalServices = 0;
+
+    for (const [svcKey, svcData] of Object.entries(d.services)) {
+      totalServices += svcData.qty;
+      const matchedNorms = normByName[svcKey] || [];
+      const svcConsumables = matchedNorms.map(n => ({
+        consumableName: n.consumableName,
+        unit:           n.unit,
+        normQty:        n.normQty,
+        unitCost:       n.unitCost || 0,
+        expected:       svcData.qty * n.normQty,
+        expectedCost:   svcData.qty * n.normQty * (n.unitCost || 0),
+      }));
+      for (const sc of svcConsumables) {
+        if (!consumableMap[sc.consumableName]) consumableMap[sc.consumableName] = { expected: 0, expectedCost: 0, unit: sc.unit };
+        consumableMap[sc.consumableName].expected     += sc.expected;
+        consumableMap[sc.consumableName].expectedCost += sc.expectedCost;
+      }
+      if (matchedNorms.length > 0) {
+        serviceDetails.push({ serviceName: svcData.name, qty: svcData.qty, consumables: svcConsumables });
+      }
+    }
+
+    result.push({
+      docKey, executor: d.executor, totalServices, consumables: consumableMap,
+      services: serviceDetails.sort((a, b) => b.qty - a.qty),
+    });
+  }
+  return result.sort((a, b) => b.totalServices - a.totalServices);
 }
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
@@ -1011,6 +1086,356 @@ function TabEquipment() {
   );
 }
 
+// ══════════════════════════════════════════════════════════════════════════════
+// РАСХОДНИКИ (Directories tab)
+// ══════════════════════════════════════════════════════════════════════════════
+function flattenCats(cats, depth) {
+  if (!depth) depth = 0;
+  const result = [];
+  for (const c of (cats || [])) {
+    result.push({ id: c.id, title: ' '.repeat(depth * 3) + c.title, count: c.services_count });
+    if (c.children?.length) result.push(...flattenCats(c.children, depth + 1));
+  }
+  return result;
+}
+
+function TabConsumables() {
+  const [norms, setNorms]               = useState({});
+  const [loading, setLoading]           = useState(true);
+  const [services, setServices]         = useState([]);
+  const [svcsLoading, setSvcsLoading]   = useState(false);
+  const [categories, setCategories]     = useState([]);
+  const [catsLoading, setCatsLoading]   = useState(false);
+  const [clinicFilter, setClinicFilter] = useState('');
+  const [categoryFilter, setCatFilter]  = useState('');
+  const [search, setSearch]             = useState('');
+  const [selectedSvc, setSelectedSvc]   = useState(null);
+  const [showAdd, setShowAdd]           = useState(false);
+  const [form, setForm]                 = useState({ consumableName: '', unit: 'шт', normQty: '', unitCost: '' });
+  const [saving, setSaving]             = useState(false);
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    directories.getAll('consumable_norm')
+      .then(res => setNorms(res.data || {}))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Load categories when clinic selected
+  useEffect(() => {
+    if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
+    setCatsLoading(true);
+    mis.getServiceCategories()
+      .then(res => {
+        const raw = res.data?.data || res.data || [];
+        setCategories(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setCategories([]))
+      .finally(() => setCatsLoading(false));
+  }, [clinicFilter]);
+
+  // Load services when clinic or category changes
+  useEffect(() => {
+    if (!clinicFilter) { setServices([]); return; }
+    setSvcsLoading(true);
+    const loader = categoryFilter
+      ? mis.getServicesByCategory(categoryFilter)
+      : mis.getAllServices(clinicFilter);
+    loader
+      .then(res => {
+        const raw = res.data?.data || res.data || [];
+        setServices(Array.isArray(raw) ? raw : []);
+      })
+      .catch(() => setServices([]))
+      .finally(() => setSvcsLoading(false));
+  }, [clinicFilter, categoryFilter]);
+
+  const flatCats = useMemo(() => flattenCats(categories), [categories]);
+
+  // Count norms per service for current clinic only
+  const normCountByCode = useMemo(() => {
+    const counts = {};
+    for (const n of Object.values(norms)) {
+      if (n.clinicId !== clinicFilter) continue;
+      const k = n.serviceCode || normServiceName(n.serviceName || '');
+      if (k) counts[k] = (counts[k] || 0) + 1;
+    }
+    return counts;
+  }, [norms, clinicFilter]);
+
+  const filteredSvcs = useMemo(() => {
+    if (!search) return services;
+    const q = search.toLowerCase();
+    return services.filter(s =>
+      (s.title || s.name || '').toLowerCase().includes(q) ||
+      (s.code || '').toLowerCase().includes(q)
+    );
+  }, [services, search]);
+
+  // Norms for selected service in current clinic
+  const selectedNorms = useMemo(() => {
+    if (!selectedSvc || !clinicFilter) return [];
+    return Object.entries(norms)
+      .filter(([, n]) =>
+        n.clinicId === clinicFilter &&
+        (n.serviceCode === selectedSvc.code ||
+          normServiceName(n.serviceName || '') === normServiceName(selectedSvc.title))
+      )
+      .map(([id, n]) => ({ id, ...n }))
+      .sort((a, b) => (a.consumableName || '').localeCompare(b.consumableName || '', 'ru'));
+  }, [norms, selectedSvc, clinicFilter]);
+
+  const existingConsumables = useMemo(() =>
+    [...new Set(Object.values(norms).map(n => n.consumableName).filter(Boolean))],
+  [norms]);
+
+  const addNorm = async () => {
+    if (!selectedSvc || !clinicFilter) { toast.error('Выберите медцентр и услугу'); return; }
+    if (!form.consumableName.trim()) { toast.error('Укажите название расходника'); return; }
+    const qty = parseFloat(form.normQty);
+    if (!qty || qty <= 0) { toast.error('Укажите норму > 0'); return; }
+    setSaving(true);
+    try {
+      const id   = uuidv4();
+      const data = {
+        clinicId:       clinicFilter,
+        serviceCode:    selectedSvc.code,
+        serviceName:    selectedSvc.title,
+        consumableName: form.consumableName.trim(),
+        unit:           form.unit,
+        normQty:        qty,
+        unitCost:       parseFloat(form.unitCost) || 0,
+      };
+      await directories.save('consumable_norm', id, data);
+      setNorms(prev => ({ ...prev, [id]: data }));
+      setForm({ consumableName: '', unit: 'шт', normQty: '', unitCost: '' });
+      setShowAdd(false);
+      toast.success('Добавлено');
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setSaving(false); }
+  };
+
+  const removeNorm = async (id) => {
+    try {
+      await directories.remove('consumable_norm', id);
+      setNorms(prev => { const n = { ...prev }; delete n[id]; return n; });
+      toast.success('Удалено', { duration: 1500 });
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
+  const saveNormField = useCallback((id, patch) => {
+    clearTimeout(saveTimers.current[id]);
+    setNorms(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    saveTimers.current[id] = setTimeout(async () => {
+      try { await directories.save('consumable_norm', id, patch); }
+      catch { toast.error('Ошибка сохранения'); }
+    }, 800);
+  }, []);
+
+  if (loading) return <Spinner text="Загрузка расходников…" />;
+
+  const clinicName = DEFAULT_CLINICS.find(c => String(c.id) === clinicFilter)?.name;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+
+      {/* LEFT: Filters + Services list */}
+      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <select value={clinicFilter}
+            onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
+            style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}>
+            <option value="">— Выберите медцентр —</option>
+            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+
+          {clinicFilter && (
+            <select value={categoryFilter}
+              onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
+              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}
+              disabled={catsLoading}>
+              <option value="">Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
+              {flatCats.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.title}{c.count != null ? ` (${c.count})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {clinicFilter && (
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Поиск по коду или названию…"
+              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }} />
+          )}
+          {!svcsLoading && clinicFilter && (
+            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{filteredSvcs.length} услуг</span>
+          )}
+        </div>
+
+        <div style={{ overflowY: 'auto', maxHeight: 560 }}>
+          {svcsLoading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
+              <span className="rb-spinner" style={{ width: 12, height: 12, display: 'inline-block', marginRight: 6 }} />
+              Загрузка…
+            </div>
+          ) : !clinicFilter ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.6 }}>
+              Выберите медцентр<br />для загрузки услуг
+            </div>
+          ) : filteredSvcs.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>Нет услуг</div>
+          ) : filteredSvcs.map(s => {
+            const code  = s.code || String(s.service_id || s.id || '');
+            const title = s.title || s.name || '';
+            const count = normCountByCode[code] || normCountByCode[normServiceName(title)] || 0;
+            const isSel = selectedSvc?.code === code;
+            return (
+              <button key={code}
+                onClick={() => { setSelectedSvc({ code, title }); setShowAdd(false); }}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6,
+                  width: '100%', padding: '7px 12px', border: 'none', borderBottom: '1px solid var(--rb-border)',
+                  background: isSel ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1.4 }}>{title}</div>
+                  {s.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{s.code}</div>}
+                </div>
+                {count > 0 && (
+                  <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: '#1e40af', marginTop: 2 }}>{count}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* RIGHT: Consumables for selected service */}
+      <div>
+        {!clinicFilter ? (
+          <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+            Выберите медцентр и услугу слева
+          </div>
+        ) : !selectedSvc ? (
+          <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+            Выберите услугу из списка слева
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)' }}>{selectedSvc.title}</div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', gap: 10 }}>
+                  {selectedSvc.code && <span>код: {selectedSvc.code}</span>}
+                  {clinicName && <span style={{ color: getClinicColor(clinicFilter), fontWeight: 600 }}>{clinicName}</span>}
+                </div>
+              </div>
+              <button onClick={() => setShowAdd(v => !v)}
+                style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: showAdd ? '#64748b' : 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                {showAdd ? '✕ Отмена' : '+ Расходник'}
+              </button>
+            </div>
+
+            {showAdd && (
+              <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 90px 90px 110px auto', gap: 8, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Расходник *</span>
+                    <input list="cs-cons-list" value={form.consumableName}
+                      onChange={e => setForm(p => ({ ...p, consumableName: e.target.value }))}
+                      placeholder="Название…" style={inlineInputStyle} />
+                    <datalist id="cs-cons-list">
+                      {existingConsumables.map((s, i) => <option key={i} value={s} />)}
+                    </datalist>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Ед.</span>
+                    <select value={form.unit} onChange={e => setForm(p => ({ ...p, unit: e.target.value }))} style={inlineInputStyle}>
+                      {CONSUMABLE_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Норма/1</span>
+                    <input type="number" min="0.01" step="0.01" value={form.normQty}
+                      onChange={e => setForm(p => ({ ...p, normQty: e.target.value }))}
+                      placeholder="0" style={{ ...inlineInputStyle, textAlign: 'right' }} />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>₽ за ед.</span>
+                    <input type="number" min="0" step="0.01" value={form.unitCost}
+                      onChange={e => setForm(p => ({ ...p, unitCost: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') addNorm(); }}
+                      placeholder="0" style={{ ...inlineInputStyle, textAlign: 'right' }} />
+                  </div>
+                  <button onClick={addNorm} disabled={saving}
+                    style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: saving ? '#94a3b8' : '#10b981', color: '#fff', cursor: saving ? 'default' : 'pointer', fontSize: 13, fontFamily: 'inherit', height: 30, flexShrink: 0 }}>
+                    {saving ? '…' : '✓'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selectedNorms.length === 0 ? (
+              <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 8 }}>
+                Нет расходников для этой услуги в данном медцентре — нажмите «+ Расходник»
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table className="rb-table" style={{ minWidth: 500 }}>
+                  <thead>
+                    <tr>
+                      <THCell>Расходник</THCell>
+                      <THCell>Ед.</THCell>
+                      <THCell right>Норма на 1 услугу</THCell>
+                      <THCell right>₽ за ед.</THCell>
+                      <THCell right>Стоим./услугу</THCell>
+                      <THCell></THCell>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedNorms.map(item => {
+                      const cost = parseNum(item.normQty) * parseNum(item.unitCost);
+                      return (
+                        <tr key={item.id}>
+                          <td style={{ fontWeight: 500 }}>{item.consumableName}</td>
+                          <td style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{item.unit}</td>
+                          <td>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <input type="number" min="0.01" step="0.01" value={item.normQty ?? ''}
+                                onChange={e => saveNormField(item.id, { normQty: parseFloat(e.target.value) || 0 })}
+                                style={{ ...inlineInputStyle, width: 70, textAlign: 'right' }} />
+                            </div>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <input type="number" min="0" step="0.01" value={item.unitCost ?? ''}
+                                onChange={e => saveNormField(item.id, { unitCost: parseFloat(e.target.value) || 0 })}
+                                style={{ ...inlineInputStyle, width: 80, textAlign: 'right' }} />
+                            </div>
+                          </td>
+                          <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: cost > 0 ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}>
+                            {cost > 0 ? fmtRubP(cost) : DASH}
+                          </td>
+                          <td style={{ width: 36 }}>
+                            <button onClick={() => removeNorm(item.id)} title="Удалить"
+                              style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>\xd7</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 // ══════════════════════════════════════════════════════════════════════════════
 // РЕПУТАЦИЯ (aggregated from all review boards)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3237,6 +3662,379 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// CONSUMABLES ANALYTICS (shown in Аналитика tab of Statistics page)
+// ══════════════════════════════════════════════════════════════════════════════
+export function TabConsumablesAnalytics({ excelSources = [], periodStart, periodEnd }) {
+  const [norms, setNorms]                 = useState({});
+  const [actuals, setActuals]             = useState({});
+  const [doctorActuals, setDoctorActuals] = useState({});
+  const [loading, setLoading]             = useState(true);
+  const [statsLoading, setStatsLoading]   = useState(false);
+  const [doctorStats, setDoctorStats]     = useState([]);
+  const [expanded, setExpanded]           = useState(new Set());
+  const saveTimers = useRef({});
+
+  const periodKey = useMemo(() =>
+    periodStart
+      ? `${periodStart.getFullYear()}-${String(periodStart.getMonth() + 1).padStart(2, '0')}`
+      : '',
+  [periodStart]);
+
+  useEffect(() => {
+    Promise.all([
+      directories.getAll('consumable_norm').catch(() => ({ data: {} })),
+      directories.getAll('consumable_actual').catch(() => ({ data: {} })),
+      directories.getAll('consumable_actual_doctor').catch(() => ({ data: {} })),
+    ]).then(([normRes, actRes, docActRes]) => {
+      setNorms(normRes.data || {});
+      setActuals(actRes.data || {});
+      setDoctorActuals(docActRes.data || {});
+    }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    const normArr = Object.values(norms).filter(n => n.consumableName && n.serviceName);
+    if (!normArr.length || !excelSources.length || !periodStart || !periodEnd) {
+      setDoctorStats([]); return;
+    }
+    const matched = excelSources.filter(s => {
+      const from = s.dateFrom ? new Date(s.dateFrom) : null;
+      const to   = s.dateTo   ? new Date(s.dateTo)   : null;
+      return from && to && from <= periodEnd && to >= periodStart;
+    });
+    if (!matched.length) { setDoctorStats([]); return; }
+    setStatsLoading(true);
+    loadConsumableStats(matched, normArr)
+      .then(setDoctorStats)
+      .catch(() => {})
+      .finally(() => setStatsLoading(false));
+  }, [excelSources, periodStart, periodEnd, norms]);
+
+  const uniqueConsumables = useMemo(() => {
+    const map = {};
+    for (const n of Object.values(norms)) {
+      if (!n.consumableName) continue;
+      if (!map[n.consumableName]) map[n.consumableName] = { name: n.consumableName, unit: n.unit || 'шт' };
+    }
+    return Object.values(map).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [norms]);
+
+  const expectedTotals = useMemo(() => {
+    const totals = {};
+    for (const doc of doctorStats) {
+      for (const [name, data] of Object.entries(doc.consumables)) {
+        if (!totals[name]) totals[name] = { expected: 0, expectedCost: 0 };
+        totals[name].expected     += data.expected;
+        totals[name].expectedCost += data.expectedCost || 0;
+      }
+    }
+    return totals;
+  }, [doctorStats]);
+
+  const saveActual = useCallback((consumableName, value) => {
+    if (!periodKey) return;
+    const rawKey = `${periodKey}__${consumableName}`;
+    const qty    = parseFloat(value) || 0;
+    clearTimeout(saveTimers.current[rawKey]);
+    setActuals(prev => ({ ...prev, [rawKey]: { qty, consumableName, period: periodKey } }));
+    saveTimers.current[rawKey] = setTimeout(async () => {
+      try {
+        await directories.save('consumable_actual', encodeURIComponent(rawKey), { qty, consumableName, period: periodKey });
+      } catch { toast.error('Ошибка сохранения'); }
+    }, 800);
+  }, [periodKey]);
+
+  const saveActualDoctor = useCallback((docKey, doctorName, consumableName, value) => {
+    if (!periodKey) return;
+    const rawKey = `${periodKey}__${docKey}__${consumableName}`;
+    const qty    = value === '' ? null : (parseFloat(value) || 0);
+    clearTimeout(saveTimers.current[rawKey]);
+    setDoctorActuals(prev => {
+      const next = { ...prev };
+      if (qty === null) { delete next[rawKey]; } else { next[rawKey] = { qty, docKey, doctorName, consumableName, period: periodKey }; }
+      return next;
+    });
+    saveTimers.current[rawKey] = setTimeout(async () => {
+      try {
+        if (qty === null) {
+          await directories.remove('consumable_actual_doctor', encodeURIComponent(rawKey)).catch(() => {});
+        } else {
+          await directories.save('consumable_actual_doctor', encodeURIComponent(rawKey),
+            { qty, docKey, doctorName, consumableName, period: periodKey });
+        }
+      } catch { toast.error('Ошибка сохранения'); }
+    }, 800);
+  }, [periodKey]);
+
+  const toggleExpand = useCallback((key) => {
+    setExpanded(prev => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key); else n.add(key);
+      return n;
+    });
+  }, []);
+
+  if (loading) return <Spinner text="Загрузка расходников…" />;
+
+  if (!Object.keys(norms).length) {
+    return (
+      <div className="rb-placeholder">
+        <div style={{ fontWeight: 600, fontSize: 15 }}>Нормы расходников не заданы</div>
+        <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)', marginTop: 6 }}>
+          Добавьте нормы в разделе <strong>Справочники → Расходники</strong>
+        </div>
+      </div>
+    );
+  }
+
+  const activeCols = uniqueConsumables.filter(c => (expectedTotals[c.name]?.expected || 0) > 0);
+  const hasExpected = activeCols.length > 0;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+      {/* ── Section 1: Summary per consumable ── */}
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--rb-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          Потребление расходников
+          {statsLoading && <span className="rb-spinner" style={{ width: 13, height: 13 }} />}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="rb-table" style={{ minWidth: 560 }}>
+            <thead>
+              <tr>
+                <THCell>Расходник</THCell>
+                <THCell>Ед.</THCell>
+                <THCell right>По норме</THCell>
+                <THCell right>Стоим. по норме</THCell>
+                <THCell right>Фактически</THCell>
+                <THCell right>Отклонение</THCell>
+              </tr>
+            </thead>
+            <tbody>
+              {uniqueConsumables.map(c => {
+                const rawKey       = `${periodKey}__${c.name}`;
+                const actualQty    = actuals[rawKey]?.qty ?? '';
+                const totals       = expectedTotals[c.name] || { expected: 0, expectedCost: 0 };
+                const expected     = totals.expected;
+                const expectedCost = totals.expectedCost;
+                const actual       = parseFloat(String(actualQty)) || 0;
+                const diff         = actual > 0 && expected > 0 ? actual - expected : null;
+                const diffPct      = diff !== null && expected > 0 ? (diff / expected * 100) : null;
+                return (
+                  <tr key={c.name}>
+                    <td style={{ fontWeight: 500 }}>{c.name}</td>
+                    <td style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{c.unit}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                      {statsLoading ? <span style={{ color: 'var(--rb-text-secondary)', fontSize: 12 }}>…</span>
+                        : expected > 0 ? expected.toFixed(1) : DASH}
+                    </td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--rb-text-secondary)' }}>
+                      {expectedCost > 0 ? fmtRubP(expectedCost) : DASH}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <input type="number" min="0" step="0.1"
+                          value={actualQty}
+                          onChange={e => saveActual(c.name, e.target.value)}
+                          placeholder="—"
+                          style={{ ...inlineInputStyle, width: 90, textAlign: 'right' }} />
+                      </div>
+                    </td>
+                    <td style={{
+                      textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                      color: diff === null ? 'var(--rb-text-secondary)' : diff > 0 ? '#ef4444' : '#10b981',
+                    }}>
+                      {diff !== null && diffPct !== null
+                        ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)} (${diffPct > 0 ? '+' : ''}${diffPct.toFixed(0)}%)`
+                        : DASH}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {!periodKey && (
+          <div style={{ marginTop: 8, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            Выберите период выше для ввода фактических значений
+          </div>
+        )}
+      </div>
+
+      {/* ── Section 2: Отклонения по врачам ── */}
+      <div>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12, color: 'var(--rb-text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          Отклонения по врачам
+          {statsLoading && <span className="rb-spinner" style={{ width: 13, height: 13 }} />}
+        </div>
+
+        {!statsLoading && !hasExpected ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+            {!excelSources.length ? 'Нет загруженных источников данных'
+              : !periodStart ? 'Выберите период'
+              : 'Нет совпадений — убедитесь, что названия услуг в нормах совпадают с Excel'}
+          </div>
+        ) : hasExpected && (
+          <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden' }}>
+            {/* Header */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, padding: '8px 14px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <span>Врач</span>
+              <span style={{ textAlign: 'right' }}>Норма → Факт → Откл.</span>
+            </div>
+
+            {doctorStats.filter(d => Object.keys(d.consumables).length > 0).map(doc => {
+              const isOpen       = expanded.has(doc.docKey);
+              const docActiveCons = activeCols.filter(c => (doc.consumables[c.name]?.expected || 0) > 0);
+
+              return (
+                <React.Fragment key={doc.docKey}>
+                  {/* Doctor collapsed row */}
+                  <div
+                    onClick={() => toggleExpand(doc.docKey)}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--rb-border)', background: isOpen ? '#f0f7ff' : '#fff', cursor: 'pointer' }}
+                  >
+                    <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 3, flexShrink: 0, width: 10 }}>
+                      {isOpen ? '▼' : '▶'}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13 }}>{doc.executor}</span>
+                        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{doc.totalServices} услуг</span>
+                      </div>
+                      {/* Per-consumable badges */}
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {docActiveCons.map(c => {
+                          const expected = doc.consumables[c.name]?.expected || 0;
+                          const rawKey   = `${periodKey}__${doc.docKey}__${c.name}`;
+                          const rec      = doctorActuals[rawKey];
+                          const actual   = rec?.qty ?? null;
+                          const diff     = actual !== null ? actual - expected : null;
+                          return (
+                            <span key={c.name} style={{
+                              fontSize: 11, padding: '2px 8px', borderRadius: 5, whiteSpace: 'nowrap',
+                              background: diff === null ? '#f1f5f9' : diff > 0 ? '#fee2e2' : diff < 0 ? '#dcfce7' : '#f1f5f9',
+                              color: diff === null ? 'var(--rb-text-secondary)' : diff > 0 ? '#dc2626' : '#15803d',
+                              border: `1px solid ${diff === null ? '#e2e8f0' : diff > 0 ? '#fecaca' : '#bbf7d0'}`,
+                            }}>
+                              {c.name}: {expected.toFixed(1)}
+                              {actual !== null && ` → ${actual.toFixed(1)} (${diff > 0 ? '+' : ''}${diff.toFixed(1)})`}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Expanded: per-consumable actual inputs + service detail */}
+                  {isOpen && (
+                    <div style={{ background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', padding: '12px 14px 10px 34px' }}>
+                      {/* Actual input cards */}
+                      <div style={{ fontWeight: 600, fontSize: 11, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>
+                        Фактический расход за период
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+                        {docActiveCons.map(c => {
+                          const expected = doc.consumables[c.name]?.expected || 0;
+                          const rawKey   = `${periodKey}__${doc.docKey}__${c.name}`;
+                          const rec      = doctorActuals[rawKey];
+                          const inputVal = rec?.qty ?? '';
+                          const diff     = inputVal !== '' ? parseFloat(inputVal) - expected : null;
+                          return (
+                            <div key={c.name} style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '8px 12px', minWidth: 160 }}>
+                              <div style={{ fontWeight: 600, fontSize: 12, marginBottom: 2 }}>{c.name}</div>
+                              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>
+                                Норма: {expected.toFixed(1)} {c.unit}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Факт:</span>
+                                <input type="number" min="0" step="0.1"
+                                  value={inputVal}
+                                  onChange={e => saveActualDoctor(doc.docKey, doc.executor, c.name, e.target.value)}
+                                  placeholder={expected.toFixed(1)}
+                                  style={{ ...inlineInputStyle, width: 70, textAlign: 'right' }} />
+                                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{c.unit}</span>
+                              </div>
+                              {diff !== null && (
+                                <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: diff > 0 ? '#ef4444' : '#10b981' }}>
+                                  {diff > 0 ? '+' : ''}{diff.toFixed(1)} {c.unit}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Services breakdown */}
+                      {doc.services.length > 0 && (
+                        <details>
+                          <summary style={{ cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', userSelect: 'none', marginBottom: 6 }}>
+                            Детализация по услугам ({doc.services.length})
+                          </summary>
+                          <div style={{ overflowX: 'auto' }}>
+                            <table className="rb-table" style={{ fontSize: 12 }}>
+                              <thead>
+                                <tr>
+                                  <THCell>Услуга</THCell>
+                                  <THCell right>Кол-во</THCell>
+                                  {docActiveCons.map(c => <THCell key={c.name} right>{c.name}</THCell>)}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {doc.services.map(svc => (
+                                  <tr key={svc.serviceName}>
+                                    <td style={{ color: 'var(--rb-text-secondary)', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{svc.serviceName}</td>
+                                    <td style={{ textAlign: 'right' }}>{svc.qty}</td>
+                                    {docActiveCons.map(c => {
+                                      const sc = svc.consumables.find(x => x.consumableName === c.name);
+                                      return <td key={c.name} style={{ textAlign: 'right', color: 'var(--rb-text-secondary)' }}>{sc ? sc.expected.toFixed(1) : DASH}</td>;
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+            {/* ИТОГО row */}
+            <div style={{ padding: '10px 14px', background: '#f8fafc', borderTop: '2px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, fontSize: 12 }}>ИТОГО</span>
+              {activeCols.map(c => {
+                const expected = expectedTotals[c.name]?.expected || 0;
+                let totalActual = 0;
+                let hasAny = false;
+                for (const d of doctorStats) {
+                  const rawKey = `${periodKey}__${d.docKey}__${c.name}`;
+                  const rec = doctorActuals[rawKey];
+                  if (rec?.qty != null) { totalActual += rec.qty; hasAny = true; }
+                }
+                const diff = hasAny ? totalActual - expected : null;
+                return (
+                  <span key={c.name} style={{
+                    fontSize: 11, padding: '3px 10px', borderRadius: 6, fontWeight: 600, whiteSpace: 'nowrap',
+                    background: diff === null ? '#f1f5f9' : diff > 0 ? '#fee2e2' : diff < 0 ? '#dcfce7' : '#f1f5f9',
+                    color: diff === null ? 'var(--rb-text-secondary)' : diff > 0 ? '#dc2626' : '#15803d',
+                    border: `1px solid ${diff === null ? '#e2e8f0' : diff > 0 ? '#fecaca' : '#bbf7d0'}`,
+                  }}>
+                    {c.name}: {expected.toFixed(1)}
+                    {hasAny && ` → ${totalActual.toFixed(1)} (${diff > 0 ? '+' : ''}${diff.toFixed(1)})`}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ══════════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Directories({ doctors = [], excelSources = [] }) {
@@ -3276,11 +4074,12 @@ export default function Directories({ doctors = [], excelSources = [] }) {
         ))}
       </div>
 
-      {activeTab === 'clinics'   && <TabClinics roomCountByClinic={roomCountByClinic} />}
-      {activeTab === 'cabinets'  && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
-      {activeTab === 'doctors'   && <TabDoctors doctors={doctors} excelSources={excelSources} />}
-      {activeTab === 'equipment' && <TabEquipment />}
-      {activeTab === 'utilities' && <TabUtilities />}
+      {activeTab === 'clinics'     && <TabClinics roomCountByClinic={roomCountByClinic} />}
+      {activeTab === 'cabinets'    && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
+      {activeTab === 'doctors'     && <TabDoctors doctors={doctors} excelSources={excelSources} />}
+      {activeTab === 'equipment'   && <TabEquipment />}
+      {activeTab === 'utilities'   && <TabUtilities />}
+      {activeTab === 'consumables' && <TabConsumables />}
     </div>
   );
 }
