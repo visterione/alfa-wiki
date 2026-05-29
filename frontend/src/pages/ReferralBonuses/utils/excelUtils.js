@@ -54,6 +54,7 @@ export function rbMapNewColumns(rows) {
     qty:          ['Количество'],
     discount:     ['Скидка'],
     totalCost:    ['Итоговая стоимость'],
+    invoiceNum:   ['№ счета', '№ Счета', 'Номер счета', 'Номер счёта'],
     patientCard:  ['№ карты пациента'],
     patientName:  ['ФИО пациента', 'Пациент'],
     legalCompanyName: ['Юр. компания', 'Плательщик', 'Наименование плательщика', 'Организация', 'Контрагент'],
@@ -93,6 +94,7 @@ export function rbMapNewColumns(rows) {
     if (!colMap.nurse            && (kl === 'медсестра' || kl === 'медицинская сестра' || kl.includes('медсестр'))) colMap.nurse = k;
     if (!colMap.costPrice        && kl.includes('себестоим')) colMap.costPrice = k;
     if (!colMap.sourceEntry      && kl.includes('источник') && kl.includes('запис')) colMap.sourceEntry = k;
+    if (!colMap.invoiceNum       && (kl.includes('счет') || kl.includes('счёт')) && (kl.includes('№') || kl.includes('номер'))) colMap.invoiceNum = k;
   });
   // Fallbacks
   if (!colMap.date) colMap.date = keys[0];

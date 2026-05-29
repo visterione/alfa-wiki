@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
-import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleDicts, doctorSchedules, rbDoctorHeaders } from '../../../services/api';
+import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleDicts, doctorSchedules } from '../../../services/api';
 import { clearExecCache } from '../utils/reportEngine';
 import { useTabSlider } from '../utils/useTabSlider';
 import { calcScheduleHoursForPeriod } from '../utils/scheduleUtils';
 import MonthYearPicker from './MonthYearPicker';
 
 const DEFAULT_SUGGESTS = {
-  deductions:   ['НДФЛ', 'Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'],
-  materials:    ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'],
-  extras:       ['Дежурство', 'Обучение', 'Сверхурочные', 'Премия', 'Командировка'],
-  extrasNormed: ['Отпускные', 'Увольнение'],
-  normServices: ['Консультация', 'Приём', 'Процедура', 'Операция', 'Диагностика'],
+  deductions:        ['НДФЛ', 'Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'],
+  materials:         ['Расходники', 'Медикаменты', 'Инструменты', 'Перевязочный материал', 'Реагенты'],
+  extras:            ['Дежурство', 'Обучение', 'Сверхурочные', 'Премия', 'Командировка'],
+  extrasNormed:      ['Отпускные', 'Увольнение'],
+  normServices:      ['Консультация', 'Приём', 'Процедура', 'Операция', 'Диагностика'],
+  employmentPlaces:  [],
 };
 
 function execClinicDefault() {
@@ -41,6 +42,8 @@ function execClinicDefault() {
     roleRates: [],
     harmfulness: false,
     holidayDoubleRate: false,
+    tabelNumber: '',
+    employmentPlace: '',
   };
 }
 
@@ -1243,35 +1246,19 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     [doctorRoles, doctorProfessions]
   );
 
-  const [tabelNumber,     setTabelNumber]     = useState('');
-  const [tabelNumSaving,  setTabelNumSaving]  = useState(false);
-  const tabelNumTimer = useRef(null);
+  const [employmentPlaceDropOpen, setEmploymentPlaceDropOpen] = useState(false);
+  const employmentPlaceRef     = useRef(null);
+  const employmentPlaceWrapRef = useRef(null);
 
   useEffect(() => {
-    if (!selectedDoctor) { setTabelNumber(''); return; }
-    rbDoctorHeaders.list()
-      .then(r => {
-        const row = (r.data || []).find(h => h.misUserId === selectedDoctor.id);
-        setTabelNumber(row?.tabelNumber || '');
-      })
-      .catch(() => {});
-  }, [selectedDoctor]);
-
-  const handleTabelNumberChange = (val) => {
-    setTabelNumber(val);
-    clearTimeout(tabelNumTimer.current);
-    tabelNumTimer.current = setTimeout(async () => {
-      if (!selectedDoctor) return;
-      setTabelNumSaving(true);
-      try {
-        await rbDoctorHeaders.upsert(selectedDoctor.id, { tabelNumber: val });
-      } catch {
-        toast.error('Ошибка сохранения табельного номера');
-      } finally {
-        setTabelNumSaving(false);
-      }
-    }, 800);
-  };
+    if (!employmentPlaceDropOpen) return;
+    const close = (e) => {
+      if (employmentPlaceRef.current?.contains(e.target) || employmentPlaceWrapRef.current?.contains(e.target)) return;
+      setEmploymentPlaceDropOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [employmentPlaceDropOpen]);
 
   const [scheduleCategories, setScheduleCategories] = React.useState([]);
   useEffect(() => {
@@ -1296,11 +1283,12 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     referralBonuses.getSuggests().then(res => {
       const data = res.data || {};
       setSuggests({
-        deductions:   data.deductions   || DEFAULT_SUGGESTS.deductions,
-        materials:    data.materials    || DEFAULT_SUGGESTS.materials,
-        extras:       data.extras       || DEFAULT_SUGGESTS.extras,
-        extrasNormed: data.extrasNormed || DEFAULT_SUGGESTS.extrasNormed,
-        normServices: data.normServices || DEFAULT_SUGGESTS.normServices,
+        deductions:       data.deductions       || DEFAULT_SUGGESTS.deductions,
+        materials:        data.materials        || DEFAULT_SUGGESTS.materials,
+        extras:           data.extras           || DEFAULT_SUGGESTS.extras,
+        extrasNormed:     data.extrasNormed     || DEFAULT_SUGGESTS.extrasNormed,
+        normServices:     data.normServices     || DEFAULT_SUGGESTS.normServices,
+        employmentPlaces: data.employmentPlaces || DEFAULT_SUGGESTS.employmentPlaces,
       });
     }).catch(() => {});
   }, []);
@@ -1433,12 +1421,25 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       clearExecCache(selectedDoctor.id);
       setIsDirty(false);
       toast.success('Сохранено');
+      // Update employmentPlaces suggests pool with any new values from saved data
+      const newPlaces = Object.values(toSave.clinicSettings || {})
+        .map(cs => cs.employmentPlace)
+        .filter(Boolean);
+      if (newPlaces.length > 0) {
+        setSuggests(prev => {
+          const merged = [...new Set([...(prev.employmentPlaces || []), ...newPlaces])].sort((a, b) => a.localeCompare(b, 'ru'));
+          if (merged.length === (prev.employmentPlaces || []).length) return prev;
+          const next = { ...prev, employmentPlaces: merged };
+          referralBonuses.saveSuggests(next).catch(() => {});
+          return next;
+        });
+      }
     } catch {
       toast.error('Ошибка сохранения');
     } finally {
       setSaving(false);
     }
-  }, [selectedDoctor, execData, clinics]);
+  }, [selectedDoctor, execData, clinics]); // eslint-disable-line
 
   // ── Clinic tabs ───────────────────────────────────────────────────────────
   const isIpDoctor = (selectedDoctor?.clinics || []).includes('ip');
@@ -1971,20 +1972,73 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               <span>Таб. №</span>
               <input
                 type="text"
-                value={tabelNumber}
-                onChange={e => handleTabelNumberChange(e.target.value)}
+                value={data.tabelNumber || ''}
+                onChange={e => handlePaymentFieldChange('tabelNumber', e.target.value)}
                 placeholder="—"
                 style={{
                   width: 72, height: 26, padding: '0 8px', fontSize: 12,
                   border: '1px solid var(--rb-border-dark)', borderRadius: 6,
                   background: '#fff', color: 'var(--rb-text)', outline: 'none',
-                  opacity: tabelNumSaving ? 0.6 : 1,
                 }}
               />
             </label>
           )}
-          {readOnly && tabelNumber && (
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Таб. №: <b>{tabelNumber}</b></span>
+          {readOnly && data.tabelNumber && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Таб. №: <b>{data.tabelNumber}</b></span>
+          )}
+          {!readOnly && (() => {
+            const epValue = data.employmentPlace || '';
+            const epQ = epValue.trim().toLowerCase();
+            const epSuggests = (suggests.employmentPlaces || []).filter(s =>
+              !epQ || s.toLowerCase().includes(epQ)
+            );
+            return (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                <span>Место трудоустройства</span>
+                <div ref={employmentPlaceRef} style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={epValue}
+                    onChange={e => { handlePaymentFieldChange('employmentPlace', e.target.value); setEmploymentPlaceDropOpen(true); }}
+                    onFocus={() => setEmploymentPlaceDropOpen(true)}
+                    placeholder="—"
+                    style={{
+                      width: 160, height: 26, padding: '0 8px', fontSize: 12,
+                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                    }}
+                  />
+                  {employmentPlaceDropOpen && epSuggests.length > 0 && (
+                    <div ref={employmentPlaceWrapRef} style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 2,
+                      minWidth: 160, maxHeight: 180, overflowY: 'auto',
+                      background: '#fff', border: '1px solid var(--rb-border)',
+                      borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
+                      zIndex: 9999, fontFamily: 'inherit',
+                    }}>
+                      {epSuggests.map(s => (
+                        <div
+                          key={s}
+                          onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('employmentPlace', s); setEmploymentPlaceDropOpen(false); }}
+                          style={{
+                            padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                            color: 'var(--rb-text)',
+                            background: s === epValue ? '#EFF6FF' : 'transparent',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = s === epValue ? '#EFF6FF' : 'transparent'; }}
+                        >
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </label>
+            );
+          })()}
+          {readOnly && data.employmentPlace && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Место труд.: <b>{data.employmentPlace}</b></span>
           )}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>

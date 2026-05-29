@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import * as XLSX from 'xlsx';
 import { mis, directories, reviews } from '../../../services/api';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
@@ -46,11 +47,15 @@ const UTILITY_CATEGORIES = [
   { key: 'electricity', label: 'Электроэнергия',      types: [{ key: 'electricity', label: 'Электроэнергия' }] },
   { key: 'thermal',     label: 'Тепловая энергия',    types: [{ key: 'thermal',     label: 'Тепловая энергия' }] },
   { key: 'gas',         label: 'Газ',                 types: [{ key: 'gas',         label: 'Газ' }] },
-  { key: 'water',       label: 'Водоснабжение',       types: [
-    { key: 'water_old_water', label: 'Старый корпус — вода' },
-    { key: 'water_old_neg',   label: 'Старый корпус — негат. воздействие' },
-    { key: 'water_new_water', label: 'Новый корпус — вода' },
-    { key: 'water_new_neg',   label: 'Новый корпус — негат. воздействие' },
+  { key: 'water', label: 'Водоснабжение', types: [], subcats: [
+    { key: 'water_old', label: 'Старый корпус', types: [
+      { key: 'water_old_water', label: 'Вода' },
+      { key: 'water_old_neg',   label: 'Негативное воздействие' },
+    ]},
+    { key: 'water_new', label: 'Новый корпус', types: [
+      { key: 'water_new_water', label: 'Вода' },
+      { key: 'water_new_neg',   label: 'Негативное воздействие' },
+    ]},
   ]},
   { key: 'telecom',     label: 'Услуги связи',        types: [
     { key: 'telecom_rt',  label: 'Ростелеком' },
@@ -71,8 +76,14 @@ const UTILITY_CATEGORIES = [
   { key: 'cleaning',    label: 'Уборка территории',   types: [{ key: 'cleaning', label: 'Уборка территории' }] },
 ];
 
+// Returns all leaf types from a category (handles 2-level and 3-level hierarchies)
+function getAllTypesFlat(cat) {
+  if (cat.subcats?.length) return cat.subcats.flatMap(sc => sc.types || []);
+  return cat.types || [];
+}
+
 const ALL_UTILITY_TYPES = UTILITY_CATEGORIES.flatMap(c =>
-  c.types.map(t => ({ ...t, catKey: c.key, catLabel: c.label }))
+  getAllTypesFlat(c).map(t => ({ ...t, catKey: c.key, catLabel: c.label }))
 );
 
 const DEFAULT_SCHEDULE = {
@@ -220,13 +231,15 @@ async function loadDoctorStats(sources) {
         if (!exec) continue;
         const key     = nameToKey(exec);
         if (!key) continue;
-        const revenue = parseNum(cm.totalCost ? r[cm.totalCost] : (cm.servicePrice ? r[cm.servicePrice] : 0));
-        const patient = (cm.patientCard ? String(r[cm.patientCard] || '').trim() : '')
-                     || (cm.patientName ? String(r[cm.patientName] || '').trim() : '');
-        if (!byKey[key]) byKey[key] = { executor: exec, appts: 0, revenue: 0, patients: {} };
+        const revenue    = parseNum(cm.totalCost ? r[cm.totalCost] : (cm.servicePrice ? r[cm.servicePrice] : 0));
+        const patient    = (cm.patientCard ? String(r[cm.patientCard] || '').trim() : '')
+                        || (cm.patientName ? String(r[cm.patientName] || '').trim() : '');
+        const invoiceNum = cm.invoiceNum ? String(r[cm.invoiceNum] || '').trim() : '';
+        if (!byKey[key]) byKey[key] = { executor: exec, appts: 0, revenue: 0, patients: {}, invoices: new Set() };
         byKey[key].appts++;
         byKey[key].revenue += revenue;
         if (patient) byKey[key].patients[patient] = (byKey[key].patients[patient] || 0) + 1;
+        if (invoiceNum) byKey[key].invoices.add(invoiceNum);
       }
     } catch (e) {
       console.error('[Directories] source load error', src?.id, e);
@@ -234,10 +247,11 @@ async function loadDoctorStats(sources) {
   }
   const result = {};
   for (const [key, d] of Object.entries(byKey)) {
+    const invoiceCount = d.invoices.size > 0 ? d.invoices.size : d.appts;
     result[key] = {
       appts:          d.appts,
       revenue:        d.revenue,
-      avgCheck:       d.appts > 0 ? d.revenue / d.appts : 0,
+      avgCheck:       invoiceCount > 0 ? d.revenue / invoiceCount : 0,
       repeatPatients: Object.values(d.patients).filter(v => v > 1).length,
     };
   }
@@ -1496,42 +1510,55 @@ function UtilStatCell({ value, hint, noData }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// UTILITY CATEGORY EDITOR  (modal overlay)
+// UTILITY CATEGORY EDITOR  (modal overlay — supports 2 and 3-level hierarchies)
 // ══════════════════════════════════════════════════════════════════════════════
-function UtilityCatEditor({ cats, onSave, onClose }) {
-  const [draft, setDraft]   = useState(() => cats.map(c => ({ ...c, types: c.types.map(t => ({ ...t })) })));
+function UtilityCatEditor({ cats, onSave, onClose, embedded = false }) {
+  const [draft, setDraft]   = useState(() => cats.map(c => ({
+    ...c,
+    types: (c.types || []).map(t => ({ ...t })),
+    subcats: (c.subcats || []).map(sc => ({ ...sc, types: (sc.types || []).map(t => ({ ...t })) })),
+  })));
   const [saving, setSaving] = useState(false);
 
-  const updateCatLabel  = (ci, label) => setDraft(d => d.map((c, i) => i === ci ? { ...c, label } : c));
-  const deleteCat       = (ci)        => setDraft(d => d.filter((_, i) => i !== ci));
-  const updateTypeLabel = (ci, ti, label) => setDraft(d => d.map((c, i) => i === ci
-    ? { ...c, types: c.types.map((t, j) => j === ti ? { ...t, label } : t) } : c));
-  const deleteType = (ci, ti) => setDraft(d => d.map((c, i) => i === ci
-    ? { ...c, types: c.types.filter((_, j) => j !== ti) } : c));
+  const moveCat  = (ci, dir) => setDraft(d => { const n=[...d]; const sw=ci+dir; if(sw<0||sw>=n.length)return d; [n[ci],n[sw]]=[n[sw],n[ci]]; return n; });
+  const deleteCat = ci      => setDraft(d => d.filter((_,i)=>i!==ci));
+  const updateCatLabel = (ci, v) => setDraft(d => d.map((c,i)=>i===ci?{...c,label:v}:c));
 
-  const moveCat = (ci, dir) => setDraft(d => {
-    const next = [...d]; const swap = ci + dir;
-    if (swap < 0 || swap >= next.length) return d;
-    [next[ci], next[swap]] = [next[swap], next[ci]];
-    return next;
-  });
+  const addCat = () => { const k=`cat_${Date.now()}`; setDraft(d=>[...d,{key:k,label:'Новая категория',types:[{key:`${k}_t0`,label:'Подтип 1'}],subcats:[]}]); };
 
-  const addType = (ci) => {
-    const key = `type_${Date.now()}`;
-    setDraft(d => d.map((c, i) => i === ci ? { ...c, types: [...c.types, { key, label: 'Новый подтип' }] } : c));
+  // Flat type ops (when category has no subcats)
+  const updateTypeLabel = (ci,ti,v) => setDraft(d=>d.map((c,i)=>i===ci?{...c,types:c.types.map((t,j)=>j===ti?{...t,label:v}:t)}:c));
+  const updateTypeUnit  = (ci,ti,v) => setDraft(d=>d.map((c,i)=>i===ci?{...c,types:c.types.map((t,j)=>j===ti?{...t,unit:v}:t)}:c));
+  const deleteType      = (ci,ti)   => setDraft(d=>d.map((c,i)=>i===ci?{...c,types:c.types.filter((_,j)=>j!==ti)}:c));
+  const moveType        = (ci,ti,dir)=>setDraft(d=>d.map((c,i)=>{if(i!==ci)return c;const n=[...c.types];const sw=ti+dir;if(sw<0||sw>=n.length)return c;[n[ti],n[sw]]=[n[sw],n[ti]];return{...c,types:n};}));
+  const addType         = (ci)      => { const k=`type_${Date.now()}`; setDraft(d=>d.map((c,i)=>i===ci?{...c,types:[...c.types,{key:k,label:'Новый подтип'}]}:c)); };
+
+  // Subcategory ops
+  const addSubcat = (ci) => { const k=`sc_${Date.now()}`; setDraft(d=>d.map((c,i)=>i===ci?{...c,types:[],subcats:[...(c.subcats||[]),{key:k,label:'Новая подкатегория',types:[{key:`${k}_t0`,label:'Подтип 1'}]}]}:c)); };
+  const deleteSubcat      = (ci,si)      => setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).filter((_,j)=>j!==si)}:c));
+  const updateSubcatLabel = (ci,si,v)    => setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).map((sc,j)=>j===si?{...sc,label:v}:sc)}:c));
+  const moveSubcat        = (ci,si,dir)  => setDraft(d=>d.map((c,i)=>{if(i!==ci)return c;const n=[...(c.subcats||[])];const sw=si+dir;if(sw<0||sw>=n.length)return c;[n[si],n[sw]]=[n[sw],n[si]];return{...c,subcats:n};}));
+  // Subcat type ops
+  const addSubcatType         = (ci,si)         => { const k=`type_${Date.now()}`; setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).map((sc,j)=>j===si?{...sc,types:[...sc.types,{key:k,label:'Новый подтип'}]}:sc)}:c)); };
+  const deleteSubcatType      = (ci,si,ti)       => setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).map((sc,j)=>j===si?{...sc,types:sc.types.filter((_,k)=>k!==ti)}:sc)}:c));
+  const updateSubcatTypeLabel = (ci,si,ti,v)     => setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).map((sc,j)=>j===si?{...sc,types:sc.types.map((t,k)=>k===ti?{...t,label:v}:t)}:sc)}:c));
+  const updateSubcatTypeUnit  = (ci,si,ti,v)     => setDraft(d=>d.map((c,i)=>i===ci?{...c,subcats:(c.subcats||[]).map((sc,j)=>j===si?{...sc,types:sc.types.map((t,k)=>k===ti?{...t,unit:v}:t)}:sc)}:c));
+  const moveSubcatType        = (ci,si,ti,dir)   => setDraft(d=>d.map((c,i)=>{if(i!==ci)return c;return{...c,subcats:(c.subcats||[]).map((sc,j)=>{if(j!==si)return sc;const n=[...sc.types];const sw=ti+dir;if(sw<0||sw>=n.length)return sc;[n[ti],n[sw]]=[n[sw],n[ti]];return{...sc,types:n};})}}));
+
+  // Convert flat ↔ hierarchical
+  const convertToHierarchical = (ci) => {
+    const k = `sc_${Date.now()}`;
+    setDraft(d => d.map((c,i) => i===ci ? {...c, subcats:[{key:k,label:'Группа 1',types:[...c.types]}], types:[]} : c));
+  };
+  const convertToFlat = (ci) => {
+    setDraft(d => d.map((c,i) => {
+      if(i!==ci)return c;
+      const flat = (c.subcats||[]).flatMap(sc => sc.types||[]);
+      return {...c, types:flat, subcats:[]};
+    }));
   };
 
-  const addCat = () => {
-    const key = `cat_${Date.now()}`;
-    setDraft(d => [...d, { key, label: 'Новая категория', types: [{ key: `${key}_t0`, label: 'Подтип 1' }] }]);
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    await onSave(draft);
-    setSaving(false);
-    onClose();
-  };
+  const handleSave = async () => { setSaving(true); await onSave(draft); setSaving(false); onClose(); };
 
   const btnSt = (primary) => ({
     padding: '7px 18px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
@@ -1541,60 +1568,132 @@ function UtilityCatEditor({ cats, onSave, onClose }) {
     opacity: saving ? 0.7 : 1,
   });
 
+  const mvBtn = (onClick, disabled, label) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ border:'none',background:'none',cursor:disabled?'default':'pointer',fontSize:9,lineHeight:1.2,padding:'1px 4px',color:disabled?'#cbd5e1':'var(--rb-text-secondary)' }}>
+      {label}
+    </button>
+  );
+
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />
-      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        width: 560, maxWidth: '96vw', maxHeight: '88vh', background: '#fff', borderRadius: 14,
-        boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
-        {/* header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Категории коммунальных услуг</span>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
-        </div>
-        {/* scrollable body */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {draft.map((cat, ci) => (
-            <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <button onClick={() => moveCat(ci, -1)} disabled={ci === 0}
-                    style={{ border: 'none', background: 'none', cursor: ci === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
-                  <button onClick={() => moveCat(ci, 1)} disabled={ci === draft.length - 1}
-                    style={{ border: 'none', background: 'none', cursor: ci === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: ci === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
-                </div>
-                <input value={cat.label} onChange={e => updateCatLabel(ci, e.target.value)}
-                  style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
-                <button onClick={() => deleteCat(ci)}
-                  style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
-                  Удалить
-                </button>
-              </div>
-              <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {cat.types.map((type, ti) => (
-                  <div key={type.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <div style={{ width: 3, alignSelf: 'stretch', background: '#bfdbfe', borderRadius: 2, flexShrink: 0 }} />
-                    <input value={type.label} onChange={e => updateTypeLabel(ci, ti, e.target.value)}
-                      style={{ ...inlineInputStyle, flex: 1 }} />
-                    <button onClick={() => deleteType(ci, ti)}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+      {!embedded && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />}
+      <div style={embedded
+        ? {}
+        : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            width: 600, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        {!embedded && (
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Категории коммунальных услуг</span>
+            <button onClick={onClose} style={{ border:'none',background:'none',cursor:'pointer',fontSize:22,color:'var(--rb-text-secondary)',lineHeight:1,padding:'0 4px' }}>×</button>
+          </div>
+        )}
+        <div style={embedded
+          ? { padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }
+          : { flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {draft.map((cat, ci) => {
+            const hasSubcats = (cat.subcats||[]).length > 0;
+            return (
+              <div key={cat.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+                {/* Category header */}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
+                  <div style={{ display:'flex',flexDirection:'column' }}>
+                    {mvBtn(() => moveCat(ci,-1), ci===0, '▲')}
+                    {mvBtn(() => moveCat(ci,1), ci===draft.length-1, '▼')}
                   </div>
-                ))}
-                <button onClick={() => addType(ci)}
-                  style={{ alignSelf: 'flex-start', marginTop: 2, padding: '3px 10px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
-                  + подтип
-                </button>
+                  <input value={cat.label} onChange={e => updateCatLabel(ci, e.target.value)}
+                    style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
+                  <button onClick={() => hasSubcats ? convertToFlat(ci) : convertToHierarchical(ci)}
+                    title={hasSubcats ? 'Сделать плоской (убрать подкатегории)' : 'Добавить уровень подкатегорий'}
+                    style={{ border:'1px solid #bfdbfe',background:'#eff6ff',cursor:'pointer',borderRadius:6,padding:'3px 8px',fontSize:11,color:'#1e40af',fontFamily:'inherit',flexShrink:0,whiteSpace:'nowrap' }}>
+                    {hasSubcats ? '⊟ Плоско' : '⊞ Уровни'}
+                  </button>
+                  <button onClick={() => deleteCat(ci)}
+                    style={{ border:'1px solid #fecaca',background:'#fff',cursor:'pointer',borderRadius:6,padding:'3px 10px',fontSize:12,color:'#ef4444',fontFamily:'inherit',flexShrink:0 }}>
+                    Удалить
+                  </button>
+                </div>
+
+                {hasSubcats ? (
+                  /* ── 3-level: subcategories ── */
+                  <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {(cat.subcats||[]).map((sc, si) => (
+                      <div key={sc.key} style={{ border:'1px solid #e2e8f0',borderRadius:8,overflow:'hidden' }}>
+                        <div style={{ display:'flex',gap:6,alignItems:'center',padding:'6px 10px',background:'#f8fafc' }}>
+                          <div style={{ display:'flex',flexDirection:'column' }}>
+                            {mvBtn(() => moveSubcat(ci,si,-1), si===0, '▲')}
+                            {mvBtn(() => moveSubcat(ci,si,1), si===(cat.subcats||[]).length-1, '▼')}
+                          </div>
+                          <div style={{ width:3,alignSelf:'stretch',background:'#93c5fd',borderRadius:2,flexShrink:0 }} />
+                          <input value={sc.label} onChange={e => updateSubcatLabel(ci,si,e.target.value)}
+                            style={{ ...inlineInputStyle, flex:1, fontWeight:600, fontSize:12 }} />
+                          <button onClick={() => deleteSubcat(ci,si)}
+                            style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                        </div>
+                        <div style={{ padding:'6px 12px',display:'flex',flexDirection:'column',gap:4 }}>
+                          {(sc.types||[]).map((type,ti) => (
+                            <div key={type.key} style={{ display:'flex',gap:6,alignItems:'center' }}>
+                              <div style={{ display:'flex',flexDirection:'column' }}>
+                                {mvBtn(() => moveSubcatType(ci,si,ti,-1), ti===0, '▲')}
+                                {mvBtn(() => moveSubcatType(ci,si,ti,1), ti===(sc.types||[]).length-1, '▼')}
+                              </div>
+                              <div style={{ width:3,alignSelf:'stretch',background:'#bfdbfe',borderRadius:2,flexShrink:0 }} />
+                              <input value={type.label} onChange={e => updateSubcatTypeLabel(ci,si,ti,e.target.value)}
+                                style={{ ...inlineInputStyle, flex:1, fontSize:12 }} />
+                              <input value={type.unit||''} onChange={e => updateSubcatTypeUnit(ci,si,ti,e.target.value)}
+                                placeholder="ед." title="Единица измерения" style={{ ...inlineInputStyle, width:55, fontSize:12 }} />
+                              <button onClick={() => deleteSubcatType(ci,si,ti)}
+                                style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                            </div>
+                          ))}
+                          <button onClick={() => addSubcatType(ci,si)}
+                            style={{ alignSelf:'flex-start',marginTop:2,padding:'2px 8px',borderRadius:5,border:'1px dashed #94a3b8',background:'none',cursor:'pointer',fontSize:11,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
+                            + подтип
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => addSubcat(ci)}
+                      style={{ alignSelf:'flex-start',padding:'3px 10px',borderRadius:5,border:'1px dashed #93c5fd',background:'#eff6ff',cursor:'pointer',fontSize:12,color:'#1e40af',fontFamily:'inherit' }}>
+                      + подкатегорию
+                    </button>
+                  </div>
+                ) : (
+                  /* ── 2-level: flat types ── */
+                  <div style={{ padding:'8px 14px',display:'flex',flexDirection:'column',gap:5 }}>
+                    {(cat.types||[]).map((type,ti) => (
+                      <div key={type.key} style={{ display:'flex',gap:6,alignItems:'center' }}>
+                        <div style={{ display:'flex',flexDirection:'column' }}>
+                          {mvBtn(() => moveType(ci,ti,-1), ti===0, '▲')}
+                          {mvBtn(() => moveType(ci,ti,1), ti===(cat.types||[]).length-1, '▼')}
+                        </div>
+                        <div style={{ width:3,alignSelf:'stretch',background:'#bfdbfe',borderRadius:2,flexShrink:0 }} />
+                        <input value={type.label} onChange={e => updateTypeLabel(ci,ti,e.target.value)}
+                          style={{ ...inlineInputStyle, flex:1 }} />
+                        <input value={type.unit||''} onChange={e => updateTypeUnit(ci,ti,e.target.value)}
+                          placeholder="ед." title="Единица измерения" style={{ ...inlineInputStyle, width:55 }} />
+                        <button onClick={() => deleteType(ci,ti)}
+                          style={{ border:'none',background:'none',cursor:'pointer',fontSize:18,color:'#94a3b8',lineHeight:1,padding:'0 4px',flexShrink:0 }}>×</button>
+                      </div>
+                    ))}
+                    <button onClick={() => addType(ci)}
+                      style={{ alignSelf:'flex-start',marginTop:2,padding:'3px 10px',borderRadius:5,border:'1px dashed #94a3b8',background:'none',cursor:'pointer',fontSize:12,color:'var(--rb-text-secondary)',fontFamily:'inherit' }}>
+                      + подтип
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
           <button onClick={addCat}
-            style={{ padding: '8px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
+            style={{ padding:'8px 14px',borderRadius:8,border:'1px dashed var(--rb-primary)',background:'none',cursor:'pointer',fontSize:13,color:'var(--rb-primary)',fontFamily:'inherit',fontWeight:500 }}>
             + Добавить категорию
           </button>
         </div>
-        {/* footer */}
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
-          <button onClick={onClose} style={btnSt(false)}>Отмена</button>
+        <div style={{ padding:'12px 20px',borderTop:'1px solid var(--rb-border)',display:'flex',gap:8,justifyContent:'flex-end',
+          ...(embedded ? {} : { flexShrink: 0 }) }}>
+          {!embedded && <button onClick={onClose} style={btnSt(false)}>Отмена</button>}
           <button onClick={handleSave} disabled={saving} style={btnSt(true)}>
             {saving ? 'Сохранение…' : 'Сохранить'}
           </button>
@@ -1605,39 +1704,91 @@ function UtilityCatEditor({ cats, onSave, onClose }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// UTILITY COLUMN GROUP EDITOR  (modal overlay)
+// UTILITY COLUMN GROUP EDITOR  — unified ordered list (groups + solo clinics)
 // ══════════════════════════════════════════════════════════════════════════════
-function UtilityColEditor({ colGroups, clinics, onSave, onClose }) {
-  const [draft, setDraft] = useState(() => colGroups.map(g => ({ ...g, items: g.items.map(i => ({ ...i })) })));
+function UtilityColEditor({ colGroups, clinics, onSave, onClose, embedded = false }) {
   const [saving, setSaving] = useState(false);
 
-  const assignedIds = useMemo(() => new Set(draft.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id))), [draft]);
-  const unassigned  = clinics.filter(c => !assignedIds.has(String(c.id)));
-
-  const addGroup = () => {
-    const key = `grp_${Date.now()}`;
-    setDraft(d => [...d, { key, label: 'Новая группа', items: [] }]);
-  };
-  const updateGrpLabel = (gi, label) => setDraft(d => d.map((g, i) => i === gi ? { ...g, label } : g));
-  const deleteGroup    = (gi)        => setDraft(d => d.filter((_, i) => i !== gi));
-  const moveGroup      = (gi, dir)   => setDraft(d => {
-    const next = [...d]; const sw = gi + dir;
-    if (sw < 0 || sw >= next.length) return d;
-    [next[gi], next[sw]] = [next[sw], next[gi]]; return next;
+  // Unified list: items are either { kind:'group', key, label, color, items[] }
+  //                               or { kind:'solo',  key, label, color, clinicId }
+  const [unified, setUnified] = useState(() => {
+    const groups = colGroups.map(g => ({ kind: 'group', ...g, items: g.items.map(i => ({ ...i })) }));
+    const assignedIds = new Set(colGroups.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id)));
+    const soloAll = clinics.filter(c => !assignedIds.has(String(c.id)));
+    const savedOrder = colGroups.__standaloneOrder || [];
+    const ordered = [
+      ...savedOrder.map(id => soloAll.find(c => String(c.id) === id)).filter(Boolean),
+      ...soloAll.filter(c => !savedOrder.includes(String(c.id))),
+    ];
+    const solos = ordered.map(c => ({ kind: 'solo', key: `s_${c.id}`, clinicId: String(c.id), label: c.title || c.name, color: c.color }));
+    return [...groups, ...solos];
   });
 
-  const addClinic  = (gi, clinicId) => setDraft(d => d.map((g, i) => i === gi
-    ? { ...g, items: [...g.items, { kind: 'clinic', id: String(clinicId) }] } : g));
-  const addPremise = (gi) => setDraft(d => d.map((g, i) => i === gi
-    ? { ...g, items: [...g.items, { kind: 'premise', id: `prem_${Date.now()}`, label: 'Новое помещение' }] } : g));
-  const updateItemLabel = (gi, ii, label) => setDraft(d => d.map((g, i) => i === gi
-    ? { ...g, items: g.items.map((it, j) => j === ii ? { ...it, label } : it) } : g));
-  const removeItem = (gi, ii) => setDraft(d => d.map((g, i) => i === gi
-    ? { ...g, items: g.items.filter((_, j) => j !== ii) } : g));
+  const assignedInGroups = useMemo(() =>
+    new Set(unified.filter(u => u.kind === 'group').flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id))),
+  [unified]);
+
+  // Clinics available to add to groups (those in solos or not yet in list)
+  const availableForGroups = clinics.filter(c => !assignedInGroups.has(String(c.id)));
+
+  const move = (ui, dir) => setUnified(prev => {
+    const next = [...prev]; const sw = ui + dir;
+    if (sw < 0 || sw >= next.length) return prev;
+    [next[ui], next[sw]] = [next[sw], next[ui]]; return next;
+  });
+
+  const addGroup = () => setUnified(prev => [...prev, { kind: 'group', key: `grp_${Date.now()}`, label: 'Новая группа', items: [] }]);
+
+  const deleteUnified = (ui) => setUnified(prev => {
+    const item = prev[ui];
+    if (item.kind === 'solo') return prev.filter((_, i) => i !== ui);
+    // Group deleted: release its clinics back as solos at end
+    const newSolos = item.items.filter(it => it.kind === 'clinic').map(it => {
+      const c = clinics.find(cl => String(cl.id) === it.id);
+      return c ? { kind: 'solo', key: `s_${c.id}`, clinicId: String(c.id), label: c.title || c.name, color: c.color } : null;
+    }).filter(Boolean);
+    return [...prev.filter((_, i) => i !== ui), ...newSolos];
+  });
+
+  const updateGroupLabel = (ui, label) => setUnified(prev => prev.map((item, i) => i === ui ? { ...item, label } : item));
+
+  const addClinicToGroup = (ui, clinicId) => setUnified(prev => {
+    // Remove solo entry if present, add clinic to group
+    const soloIdx = prev.findIndex(it => it.kind === 'solo' && it.clinicId === clinicId);
+    const next = prev.filter((_, i) => i !== soloIdx);
+    const adjUi = soloIdx >= 0 && soloIdx < ui ? ui - 1 : ui;
+    return next.map((item, i) => i === adjUi ? { ...item, items: [...item.items, { kind: 'clinic', id: clinicId }] } : item);
+  });
+
+  const addPremiseToGroup = (ui) => setUnified(prev => prev.map((item, i) =>
+    i === ui ? { ...item, items: [...item.items, { kind: 'premise', id: `prem_${Date.now()}`, label: 'Новое помещение' }] } : item));
+
+  const updateItemLabel = (ui, ii, label) => setUnified(prev => prev.map((item, i) =>
+    i === ui ? { ...item, items: item.items.map((it, j) => j === ii ? { ...it, label } : it) } : item));
+
+  const removeFromGroup = (ui, ii) => setUnified(prev => {
+    const grp = prev[ui]; const removed = grp.items[ii];
+    const newGrp = { ...grp, items: grp.items.filter((_, j) => j !== ii) };
+    const next = prev.map((item, i) => i === ui ? newGrp : item);
+    if (removed.kind === 'clinic') {
+      const c = clinics.find(cl => String(cl.id) === removed.id);
+      if (c) next.push({ kind: 'solo', key: `s_${c.id}`, clinicId: String(c.id), label: c.title || c.name, color: c.color });
+    }
+    return next;
+  });
+
+  const moveGroupItem = (ui, ii, dir) => setUnified(prev => prev.map((item, i) => {
+    if (i !== ui) return item;
+    const items = [...item.items]; const sw = ii + dir;
+    if (sw < 0 || sw >= items.length) return item;
+    [items[ii], items[sw]] = [items[sw], items[ii]]; return { ...item, items };
+  }));
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(draft);
+    const groups = unified.filter(u => u.kind === 'group').map(({ kind, ...rest }) => rest);
+    const soOrder = unified.filter(u => u.kind === 'solo').map(u => u.clinicId);
+    await onSave(groups, soOrder);
     setSaving(false);
     onClose();
   };
@@ -1649,77 +1800,404 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose }) {
     color: primary ? '#fff' : 'var(--rb-text)', fontWeight: primary ? 600 : 400,
     opacity: saving ? 0.7 : 1,
   });
+  const mvBtn = (onClick, disabled, label) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ border:'none',background:'none',cursor:disabled?'default':'pointer',fontSize:9,lineHeight:1.2,padding:'1px 4px',color:disabled?'#cbd5e1':'var(--rb-text-secondary)' }}>
+      {label}
+    </button>
+  );
 
   return (
     <>
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />
-      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-        width: 600, maxWidth: '96vw', maxHeight: '88vh', background: '#fff', borderRadius: 14,
-        boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-          <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Группы столбцов (клиники и помещения)</span>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
-        </div>
-        {unassigned.length > 0 && (
-          <div style={{ padding: '8px 20px', background: '#fefce8', borderBottom: '1px solid #fde68a', fontSize: 12, color: '#92400e', flexShrink: 0 }}>
-            Не в группах: {unassigned.map(c => c.title || c.name).join(', ')} — будут показаны отдельно
+      {!embedded && <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000 }} />}
+      <div style={embedded
+        ? {}
+        : { position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            width: 600, maxWidth: '96vw', maxHeight: '88vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+            boxShadow: '0 24px 64px rgba(0,0,0,0.28)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        {!embedded && (
+          <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--rb-border)', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Порядок столбцов</span>
+            <button onClick={onClose} style={{ border:'none',background:'none',cursor:'pointer',fontSize:22,color:'var(--rb-text-secondary)',lineHeight:1 }}>×</button>
           </div>
         )}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {draft.map((grp, gi) => (
-            <div key={grp.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px', background: '#f1f5f9' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  <button onClick={() => moveGroup(gi, -1)} disabled={gi === 0}
-                    style={{ border: 'none', background: 'none', cursor: gi === 0 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: gi === 0 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▲</button>
-                  <button onClick={() => moveGroup(gi, 1)} disabled={gi === draft.length - 1}
-                    style={{ border: 'none', background: 'none', cursor: gi === draft.length - 1 ? 'default' : 'pointer', fontSize: 9, lineHeight: 1.2, padding: '1px 5px', color: gi === draft.length - 1 ? '#cbd5e1' : 'var(--rb-text-secondary)' }}>▼</button>
-                </div>
-                <input value={grp.label} onChange={e => updateGrpLabel(gi, e.target.value)}
-                  style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
-                <button onClick={() => deleteGroup(gi)}
-                  style={{ border: '1px solid #fecaca', background: '#fff', cursor: 'pointer', borderRadius: 6, padding: '3px 10px', fontSize: 12, color: '#ef4444', fontFamily: 'inherit', flexShrink: 0 }}>
-                  Удалить
-                </button>
-              </div>
-              <div style={{ padding: '8px 14px', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                {grp.items.map((item, ii) => (
-                  <div key={item.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <span style={{ fontSize: 14, flexShrink: 0 }}>{item.kind === 'clinic' ? '🏥' : '🏢'}</span>
-                    {item.kind === 'clinic'
-                      ? <span style={{ flex: 1, fontSize: 13 }}>{clinics.find(c => String(c.id) === item.id)?.title || clinics.find(c => String(c.id) === item.id)?.name || item.id}</span>
-                      : <input value={item.label || ''} onChange={e => updateItemLabel(gi, ii, e.target.value)}
-                          style={{ ...inlineInputStyle, flex: 1 }} />
-                    }
-                    <button onClick={() => removeItem(gi, ii)}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: '#94a3b8', lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
+        <div style={embedded
+          ? { padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }
+          : { flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+            Перетащите ▲▼ для изменения порядка. Отдельная клиника — одиночный столбец; группа — объединённый.
+          </div>
+          {unified.map((item, ui) => {
+            const isFirst = ui === 0, isLast = ui === unified.length - 1;
+            if (item.kind === 'solo') {
+              const clinic = clinics.find(c => String(c.id) === item.clinicId);
+              return (
+                <div key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: '#fafcff', border: '1px solid #e2e8f0', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {mvBtn(() => move(ui, -1), isFirst, '▲')}
+                    {mvBtn(() => move(ui, 1), isLast, '▼')}
                   </div>
-                ))}
-                <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
-                  {unassigned.length > 0 && (
-                    <select defaultValue="" onChange={e => { if (e.target.value) { addClinic(gi, e.target.value); e.target.value = ''; } }}
-                      style={{ padding: '4px 8px', borderRadius: 6, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
-                      <option value="">+ клиника</option>
-                      {unassigned.map(c => <option key={c.id} value={c.id}>{c.title || c.name}</option>)}
-                    </select>
-                  )}
-                  <button onClick={() => addPremise(gi)}
-                    style={{ padding: '4px 10px', borderRadius: 6, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
-                    + помещение
+                  <div style={{ width: 4, height: 18, borderRadius: 2, background: item.color || '#94a3b8', flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, flex: 1 }}>🏥 {clinic?.title || clinic?.name || item.label}</span>
+                  <button onClick={() => deleteUnified(ui)}
+                    style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#cbd5e1',padding:'0 2px',lineHeight:1 }}>×</button>
+                </div>
+              );
+            }
+            // Group item
+            return (
+              <div key={item.key} style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden' }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 10px', background: '#f1f5f9' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {mvBtn(() => move(ui, -1), isFirst, '▲')}
+                    {mvBtn(() => move(ui, 1), isLast, '▼')}
+                  </div>
+                  <span style={{ fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>⊞</span>
+                  <input value={item.label} onChange={e => updateGroupLabel(ui, e.target.value)}
+                    style={{ ...inlineInputStyle, flex: 1, fontWeight: 600, fontSize: 13 }} />
+                  <button onClick={() => deleteUnified(ui)}
+                    style={{ border:'1px solid #fecaca',background:'#fff',cursor:'pointer',borderRadius:6,padding:'2px 8px',fontSize:12,color:'#ef4444',fontFamily:'inherit',flexShrink:0 }}>
+                    Удалить
                   </button>
                 </div>
+                <div style={{ padding: '6px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {item.items.map((it, ii) => (
+                    <div key={it.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        {mvBtn(() => moveGroupItem(ui, ii, -1), ii === 0, '▲')}
+                        {mvBtn(() => moveGroupItem(ui, ii, 1), ii === item.items.length - 1, '▼')}
+                      </div>
+                      <span style={{ fontSize: 13, flexShrink: 0 }}>{it.kind === 'clinic' ? '🏥' : '🏢'}</span>
+                      {it.kind === 'clinic'
+                        ? <span style={{ flex: 1, fontSize: 12 }}>{clinics.find(c => String(c.id) === it.id)?.title || clinics.find(c => String(c.id) === it.id)?.name || it.id}</span>
+                        : <input value={it.label || ''} onChange={e => updateItemLabel(ui, ii, e.target.value)} style={{ ...inlineInputStyle, flex: 1, fontSize: 12 }} />
+                      }
+                      <button onClick={() => removeFromGroup(ui, ii)}
+                        style={{ border:'none',background:'none',cursor:'pointer',fontSize:16,color:'#94a3b8',lineHeight:1,padding:'0 2px',flexShrink:0 }}>×</button>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                    {availableForGroups.length > 0 && (
+                      <select defaultValue="" onChange={e => { if (e.target.value) { addClinicToGroup(ui, e.target.value); e.target.value = ''; } }}
+                        style={{ padding: '3px 7px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                        <option value="">+ клиника</option>
+                        {availableForGroups.map(c => <option key={c.id} value={c.id}>{c.title || c.name}</option>)}
+                      </select>
+                    )}
+                    <button onClick={() => addPremiseToGroup(ui)}
+                      style={{ padding: '3px 8px', borderRadius: 5, border: '1px dashed #94a3b8', background: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+                      + помещение
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           <button onClick={addGroup}
-            style={{ padding: '8px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 13, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
+            style={{ marginTop: 4, padding: '7px 14px', borderRadius: 8, border: '1px dashed var(--rb-primary)', background: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--rb-primary)', fontFamily: 'inherit', fontWeight: 500 }}>
             + Добавить группу
           </button>
         </div>
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end', flexShrink: 0 }}>
-          <button onClick={onClose} style={btnSt(false)}>Отмена</button>
+        <div style={{ padding: '10px 16px', borderTop: '1px solid var(--rb-border)', display: 'flex', gap: 8, justifyContent: 'flex-end',
+          ...(embedded ? {} : { flexShrink: 0 }) }}>
+          {!embedded && <button onClick={onClose} style={btnSt(false)}>Отмена</button>}
           <button onClick={handleSave} disabled={saving} style={btnSt(true)}>
             {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// UNIFIED SETTINGS MODAL  (categories + column groups in one tabbed dialog)
+// ══════════════════════════════════════════════════════════════════════════════
+function UtilitySettingsModal({ utilCats, colGroups, clinics, onSaveCats, onSaveCols, onClose }) {
+  const [tab, setTab] = useState('cats');
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000 }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: 660, maxWidth: '97vw', maxHeight: '90vh', overflow: 'hidden', background: '#fff', borderRadius: 14,
+        boxShadow: '0 24px 64px rgba(0,0,0,0.3)', zIndex: 1001, display: 'flex', flexDirection: 'column' }}>
+        {/* Header with tabs */}
+        <div style={{ padding: '14px 20px 0', borderBottom: '1px solid var(--rb-border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>Настройки таблицы</span>
+            <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 22, color: 'var(--rb-text-secondary)', lineHeight: 1, padding: '0 4px' }}>×</button>
+          </div>
+          <div style={{ display: 'flex', gap: 0, marginBottom: -1 }}>
+            {[['cats', 'Категории услуг'], ['cols', 'Группы столбцов']].map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)}
+                style={{ padding: '7px 18px', fontSize: 13, fontFamily: 'inherit', cursor: 'pointer',
+                  border: 'none', borderBottom: tab === k ? '2px solid var(--rb-primary)' : '2px solid transparent',
+                  background: 'none', color: tab === k ? 'var(--rb-primary)' : 'var(--rb-text-secondary)',
+                  fontWeight: tab === k ? 600 : 400, transition: 'color 0.15s' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Tabbed content — simple scroll, no flex gymnastics */}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          {tab === 'cats' && (
+            <UtilityCatEditor cats={utilCats} onSave={onSaveCats} onClose={() => {}} embedded />
+          )}
+          {tab === 'cols' && (
+            <UtilityColEditor colGroups={colGroups} clinics={clinics} onSave={onSaveCols} onClose={() => {}} embedded />
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Column visibility panel ────────────────────────────────────────────────
+function ColumnFilterPanel({ groups, hiddenGroups, onChange, onClose }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 260, maxHeight: '80vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Видимые столбцы</span>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {groups.map(grp => {
+            const hidden = hiddenGroups.has(grp.key);
+            const visible = !hidden;
+            return (
+              <div key={grp.key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '5px 0', userSelect: 'none' }}
+                onClick={() => {
+                  const next = new Set(hiddenGroups);
+                  if (hidden) next.delete(grp.key); else next.add(grp.key);
+                  onChange(next);
+                }}>
+                <div style={{ width: 16, height: 16, border: `2px solid ${visible ? 'var(--rb-primary)' : '#cbd5e1'}`,
+                  borderRadius: 3, background: visible ? 'var(--rb-primary)' : '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {visible && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
+                </div>
+                <div style={{ width: 4, height: 16, borderRadius: 2, background: grp.color || '#94a3b8', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: hidden ? '#94a3b8' : 'var(--rb-text)', textDecoration: hidden ? 'line-through' : 'none' }}>
+                  {grp.label}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, borderTop: '1px solid var(--rb-border)', paddingTop: 10 }}>
+          <button onClick={() => onChange(new Set())}
+            style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Показать все
+          </button>
+          <button onClick={onClose}
+            style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 14px', borderRadius: 6, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+            Готово
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Month filter panel ─────────────────────────────────────────────────────
+function MonthFilterPanel({ selectedPeriods, onChange, onClose }) {
+  const yearRange = useMemo(() => Array.from({ length: 7 }, (_, i) => 2022 + i), []);
+  const isYearFull    = y => MONTHS_RU.every(m => selectedPeriods.has(`${y}_${m.num}`));
+  const isYearPartial = y => MONTHS_RU.some(m => selectedPeriods.has(`${y}_${m.num}`));
+
+  const togglePeriod = (y, monthNum) => {
+    const k = `${y}_${monthNum}`;
+    const next = new Set(selectedPeriods);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    if (next.size > 0) onChange(next);
+  };
+
+  const toggleYear = y => {
+    const full = isYearFull(y);
+    const next = new Set(selectedPeriods);
+    MONTHS_RU.forEach(m => { const k = `${y}_${m.num}`; full ? next.delete(k) : next.add(k); });
+    if (next.size > 0) onChange(next);
+  };
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 340, maxHeight: '82vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Выбор периода</span>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>×</button>
+        </div>
+        {yearRange.map(y => {
+          const full = isYearFull(y);
+          const partial = !full && isYearPartial(y);
+          return (
+            <div key={y} style={{ marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, cursor: 'pointer', userSelect: 'none' }}
+                onClick={() => toggleYear(y)}>
+                <div style={{ width: 16, height: 16, border: `2px solid ${full || partial ? 'var(--rb-primary)' : '#cbd5e1'}`,
+                  borderRadius: 3, background: full ? 'var(--rb-primary)' : '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  {full    && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                  {partial && <span style={{ color: 'var(--rb-primary)', fontSize: 12, lineHeight: 1 }}>—</span>}
+                </div>
+                <span style={{ fontWeight: 600, fontSize: 13 }}>{y}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, paddingLeft: 24 }}>
+                {MONTHS_RU.map(m => {
+                  const sel = selectedPeriods.has(`${y}_${m.num}`);
+                  return (
+                    <button key={m.num} onClick={() => togglePeriod(y, m.num)}
+                      style={{ padding: '4px 4px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit',
+                        border: `1px solid ${sel ? 'var(--rb-primary)' : 'var(--rb-border)'}`,
+                        background: sel ? 'var(--rb-primary)' : '#fff',
+                        color: sel ? '#fff' : 'var(--rb-text)', fontWeight: sel ? 600 : 400 }}>
+                      {m.label.slice(0, 3)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12, borderTop: '1px solid var(--rb-border)', paddingTop: 10 }}>
+          <button onClick={() => {
+            const cy = new Date().getFullYear();
+            const next = new Set(); MONTHS_RU.forEach(m => next.add(`${cy}_${m.num}`)); onChange(next);
+          }} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+            Текущий год
+          </button>
+          <button onClick={onClose}
+            style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 14px', borderRadius: 6, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+            Применить
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Type filter panel ──────────────────────────────────────────────────────
+function TypeFilterPanel({ utilCats, selectedTypeKeys, onChange, onClose }) {
+  const allTypeKeys = useMemo(() => utilCats.flatMap(c => getAllTypesFlat(c).map(t => t.key)), [utilCats]);
+  const isAll     = selectedTypeKeys === null;
+  const isTypeSel = k => isAll || selectedTypeKeys.has(k);
+  const isCatFull = cat => getAllTypesFlat(cat).every(t => isTypeSel(t.key));
+  const isCatPart = cat => !isCatFull(cat) && getAllTypesFlat(cat).some(t => isTypeSel(t.key));
+  const isScFull  = sc => (sc.types || []).every(t => isTypeSel(t.key));
+  const isScPart  = sc => !isScFull(sc) && (sc.types || []).some(t => isTypeSel(t.key));
+
+  const applySet = next => {
+    if (next.size === 0 || next.size === allTypeKeys.length) onChange(null);
+    else onChange(next);
+  };
+
+  const toggleType = typeKey => {
+    if (isAll) { applySet(new Set(allTypeKeys.filter(k => k !== typeKey))); return; }
+    const next = new Set(selectedTypeKeys);
+    if (next.has(typeKey)) next.delete(typeKey); else next.add(typeKey);
+    applySet(next);
+  };
+
+  const toggleGroup = keys => {
+    const allSel = keys.every(k => isTypeSel(k));
+    let next;
+    if (isAll) { next = allSel ? new Set(allTypeKeys.filter(k => !keys.includes(k))) : null; }
+    else { next = new Set(selectedTypeKeys); if (allSel) keys.forEach(k => next.delete(k)); else keys.forEach(k => next.add(k)); }
+    if (next !== null) applySet(next);
+  };
+
+  // Unified checkbox component — same bold style for all levels
+  const Chk = ({ checked, partial, label, onClick, indent = 0 }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '3px 0', paddingLeft: indent, userSelect: 'none' }}
+      onClick={onClick}>
+      <div style={{ width: 16, height: 16, border: `2px solid ${checked || partial ? 'var(--rb-primary)' : '#cbd5e1'}`,
+        borderRadius: 3, background: checked ? 'var(--rb-primary)' : '#fff', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {checked && <span style={{ color: '#fff', fontSize: 10, fontWeight: 700 }}>✓</span>}
+        {partial && <span style={{ color: 'var(--rb-primary)', fontSize: 12, fontWeight: 700 }}>—</span>}
+      </div>
+      <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-text)' }}>{label}</span>
+    </div>
+  );
+  const TypeChk = ({ typeKey, label, indent }) => {
+    const sel = isTypeSel(typeKey);
+    return <Chk checked={sel} partial={false} label={label} indent={indent} onClick={() => toggleType(typeKey)} />;
+  };
+  const CatChk = ({ full, part, label, onClick }) => (
+    <Chk checked={full} partial={part} label={label} indent={0} onClick={onClick} />
+  );
+  const SubcatChk = ({ full, part, label, onClick }) => (
+    <Chk checked={full} partial={part} label={label} indent={0} onClick={onClick} />
+  );
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.3)' }} />
+      <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.2)', zIndex: 501, padding: 16, minWidth: 300, maxHeight: '84vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>Виды услуг</span>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--rb-text-secondary)', lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '4px 0 8px', borderBottom: '1px solid var(--rb-border)', marginBottom: 8 }}
+          onClick={() => onChange(null)}>
+          <div style={{ width: 16, height: 16, border: `2px solid ${isAll ? 'var(--rb-primary)' : '#cbd5e1'}`,
+            borderRadius: 3, background: isAll ? 'var(--rb-primary)' : '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {isAll && <span style={{ color: '#fff', fontSize: 10 }}>✓</span>}
+          </div>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>Все категории</span>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {utilCats.map(cat => {
+            const flatTypes = getAllTypesFlat(cat);
+            const catKeys   = flatTypes.map(t => t.key);
+            const full = isCatFull(cat), part = isCatPart(cat);
+            return (
+              <div key={cat.key} style={{ paddingBottom: 4, borderBottom: '1px solid #f1f5f9', marginBottom: 2 }}>
+                <CatChk full={full} part={part} label={cat.label} onClick={() => toggleGroup(catKeys)} />
+                {cat.subcats?.length ? (
+                  // 3-level: category → subcategory → types
+                  <div style={{ paddingLeft: 10, display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>
+                    {cat.subcats.map(sc => {
+                      const scKeys = (sc.types || []).map(t => t.key);
+                      const scFull = isScFull(sc), scPart = isScPart(sc);
+                      return (
+                        <div key={sc.key}>
+                          <SubcatChk full={scFull} part={scPart} label={sc.label} onClick={() => toggleGroup(scKeys)} />
+                          <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 1, marginTop: 1 }}>
+                            {(sc.types || []).map(type => (
+                              <TypeChk key={type.key} typeKey={type.key} label={type.label} indent={0} />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : flatTypes.length > 1 && (
+                  // 2-level: category → types (flat)
+                  <div style={{ paddingLeft: 24, display: 'flex', flexDirection: 'column', gap: 1, marginTop: 2 }}>
+                    {flatTypes.map(type => (
+                      <TypeChk key={type.key} typeKey={type.key} label={type.label} indent={0} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12, borderTop: '1px solid var(--rb-border)', paddingTop: 10 }}>
+          <button onClick={onClose}
+            style={{ fontSize: 12, padding: '4px 14px', borderRadius: 6, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>
+            Применить
           </button>
         </div>
       </div>
@@ -1732,18 +2210,28 @@ function UtilityColEditor({ colGroups, clinics, onSave, onClose }) {
 // ══════════════════════════════════════════════════════════════════════════════
 function TabUtilities() {
   const thisYear = new Date().getFullYear();
-  const [year, setYear]                   = useState(thisYear);
-  const [rawData, setRawData]             = useState({});
-  const [loading, setLoading]             = useState(true);
-  const [clinics, setClinics]             = useState([]);
-  const [monthFilter, setMonthFilter]     = useState('');
-  const [catFilter,   setCatFilter]       = useState('');
-  const [expandedCats, setExpandedCats]   = useState(new Set());
-  const [expandedGroups, setExpandedGroups] = useState(new Set());
-  const [utilCats, setUtilCats]           = useState(UTILITY_CATEGORIES);
-  const [colGroups, setColGroups]         = useState([]);
-  const [showCatEditor, setShowCatEditor] = useState(false);
-  const [showColEditor, setShowColEditor] = useState(false);
+
+  // selectedPeriods: Set of "YYYY_M" strings (multi-year month selection)
+  const [selectedPeriods, setSelectedPeriods] = useState(() => {
+    const s = new Set(); MONTHS_RU.forEach(m => s.add(`${thisYear}_${m.num}`)); return s;
+  });
+  // null = all types selected; Set<string> = explicit set of type keys
+  const [selectedTypeKeys, setSelectedTypeKeys] = useState(null);
+  const [showMonthPanel,  setShowMonthPanel]  = useState(false);
+  const [showTypePanel,   setShowTypePanel]   = useState(false);
+
+  const [rawData, setRawData]               = useState({});
+  const [loading, setLoading]               = useState(true);
+  const [clinics, setClinics]               = useState([]);
+  const [expandedCats,    setExpandedCats]    = useState(new Set());
+  const [expandedSubcats, setExpandedSubcats] = useState(new Set());
+  const [expandedGroups,  setExpandedGroups]  = useState(new Set());
+  const [utilCats, setUtilCats]             = useState(UTILITY_CATEGORIES);
+  const [colGroups, setColGroups]                 = useState([]);
+  const [standaloneOrder, setStandaloneOrder]     = useState([]);
+  const [showSettings, setShowSettings]           = useState(false);
+  const [hiddenGroups, setHiddenGroups]           = useState(new Set());
+  const [showColFilter, setShowColFilter]         = useState(false);
   const saveTimers = useRef({});
 
   useEffect(() => {
@@ -1758,6 +2246,8 @@ function TabUtilities() {
       if (Array.isArray(savedCats) && savedCats.length > 0) setUtilCats(savedCats);
       const savedGrps = cfgRes.data?.col_groups?.groups;
       if (Array.isArray(savedGrps)) setColGroups(savedGrps);
+      const savedSO = cfgRes.data?.col_groups?.standaloneOrder;
+      if (Array.isArray(savedSO)) setStandaloneOrder(savedSO);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -1784,47 +2274,59 @@ function TabUtilities() {
     }
   }, []);
 
-  const saveColGroups = useCallback(async (groups) => {
+  const saveColGroups = useCallback(async (groups, soOrder) => {
     setColGroups(groups);
+    if (soOrder !== undefined) setStandaloneOrder(soOrder);
     try {
-      await directories.save('utility_cfg', 'col_groups', { groups });
+      await directories.save('utility_cfg', 'col_groups', { groups, standaloneOrder: soOrder ?? standaloneOrder });
       toast.success('Настройки столбцов сохранены', { duration: 1500 });
     } catch {
       toast.error('Ошибка сохранения');
     }
-  }, []);
+  }, [standaloneOrder]);
 
-  const filteredMonths = useMemo(
-    () => monthFilter ? MONTHS_RU.filter(m => m.num === +monthFilter) : MONTHS_RU,
-    [monthFilter]
-  );
+  // Sorted array of { year, monthNum } from selectedPeriods
+  const filteredPeriods = useMemo(() =>
+    [...selectedPeriods]
+      .map(p => { const i = p.indexOf('_'); return { year: +p.slice(0, i), monthNum: +p.slice(i + 1) }; })
+      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.monthNum - b.monthNum),
+  [selectedPeriods]);
 
   const allUtilTypes = useMemo(
-    () => utilCats.flatMap(c => c.types.map(t => ({ ...t, catKey: c.key, catLabel: c.label }))),
+    () => utilCats.flatMap(c => getAllTypesFlat(c).map(t => ({ ...t, catKey: c.key, catLabel: c.label }))),
     [utilCats]
   );
 
   const filteredTypes = useMemo(
-    () => catFilter ? allUtilTypes.filter(t => t.catKey === catFilter) : allUtilTypes,
-    [catFilter, allUtilTypes]
+    () => selectedTypeKeys === null ? allUtilTypes : allUtilTypes.filter(t => selectedTypeKeys.has(t.key)),
+    [selectedTypeKeys, allUtilTypes]
   );
 
-  // Group filtered types by category, preserving utilCats order
+  // Group filtered types by category, preserving utilCats order; includes subcats for 3-level
   const catGroups = useMemo(() => {
     const groups = [];
     for (const cat of utilCats) {
-      const types = filteredTypes.filter(t => t.catKey === cat.key);
-      if (types.length > 0) groups.push({ cat, types });
+      const flatTypes = getAllTypesFlat(cat);
+      const types = filteredTypes.filter(t => flatTypes.some(ft => ft.key === t.key));
+      if (types.length === 0) continue;
+      if (cat.subcats?.length) {
+        const subcats = cat.subcats
+          .map(sc => ({ ...sc, visTypes: (sc.types||[]).filter(t => filteredTypes.some(ft => ft.key === t.key)) }))
+          .filter(sc => sc.visTypes.length > 0);
+        groups.push({ cat, types, subcats });
+      } else {
+        groups.push({ cat, types, subcats: null });
+      }
     }
     return groups;
   }, [filteredTypes, utilCats]);
 
   const toggleCat = useCallback((catKey) => {
-    setExpandedCats(prev => {
-      const next = new Set(prev);
-      if (next.has(catKey)) next.delete(catKey); else next.add(catKey);
-      return next;
-    });
+    setExpandedCats(prev => { const next=new Set(prev); if(next.has(catKey))next.delete(catKey);else next.add(catKey); return next; });
+  }, []);
+
+  const toggleSubcat = useCallback((scKey) => {
+    setExpandedSubcats(prev => { const next=new Set(prev); if(next.has(scKey))next.delete(scKey);else next.add(scKey); return next; });
   }, []);
 
   // Direct sum overrides auto-calculated qty×price
@@ -1837,14 +2339,23 @@ function TabUtilities() {
     return qty > 0 ? qty * price : price;
   }, [rawData]);
 
-  // Build rendered column groups: configured groups first, then ungrouped clinics as solo groups
+  // Build rendered column groups: configured groups first, then ungrouped clinics in user-defined order
   const renderedGroups = useMemo(() => {
     const assignedIds = new Set(colGroups.flatMap(g => g.items.filter(i => i.kind === 'clinic').map(i => i.id)));
-    const ungrouped = clinics
-      .filter(c => !assignedIds.has(String(c.id)))
-      .map(c => ({ key: `auto_${c.id}`, label: c.title || c.name, color: c.color, items: [{ kind: 'clinic', id: String(c.id) }] }));
+    const ungroupedAll = clinics.filter(c => !assignedIds.has(String(c.id)));
+    const ordered = [
+      ...standaloneOrder.map(id => ungroupedAll.find(c => String(c.id) === id)).filter(Boolean),
+      ...ungroupedAll.filter(c => !standaloneOrder.includes(String(c.id))),
+    ];
+    const ungrouped = ordered.map(c => ({ key: `auto_${c.id}`, label: c.title || c.name, color: c.color, items: [{ kind: 'clinic', id: String(c.id) }] }));
     return [...colGroups, ...ungrouped];
-  }, [colGroups, clinics]);
+  }, [colGroups, clinics, standaloneOrder]);
+
+  // Groups visible in the table (user can hide without deleting)
+  const visibleGroups = useMemo(
+    () => renderedGroups.filter(g => !hiddenGroups.has(g.key)),
+    [renderedGroups, hiddenGroups]
+  );
 
   const toggleGroup = useCallback((key) => {
     setExpandedGroups(prev => {
@@ -1854,40 +2365,265 @@ function TabUtilities() {
     });
   }, []);
 
-  // Get sum for a cell — supports both clinic ids and premise ids
-  const getItemSum = useCallback((item, monthNum, typeKey) => {
-    if (item.kind === 'clinic') return getSum(`${year}_${monthNum}_${typeKey}_${item.id}`);
-    return getSum(`${year}_${monthNum}_${typeKey}_${item.id}`);
-  }, [getSum, year]);
+  const getItemSum = useCallback((item, pYear, monthNum, typeKey) =>
+    getSum(`${pYear}_${monthNum}_${typeKey}_${item.id}`),
+  [getSum]);
 
-  const getGrpSum = useCallback((grp, monthNum, typeKey) =>
-    grp.items.reduce((s, item) => s + getItemSum(item, monthNum, typeKey), 0),
+  const getGrpSum = useCallback((grp, pYear, monthNum, typeKey) =>
+    grp.items.reduce((s, item) => s + getItemSum(item, pYear, monthNum, typeKey), 0),
   [getItemSum]);
 
   const grpTotals = useMemo(() => {
     const t = {};
     for (const grp of renderedGroups) {
-      t[grp.key] = filteredMonths.reduce((ms, m) =>
-        ms + filteredTypes.reduce((ts, type) => ts + getGrpSum(grp, m.num, type.key), 0), 0);
+      t[grp.key] = filteredPeriods.reduce((ps, { year: pYear, monthNum }) =>
+        ps + filteredTypes.reduce((ts, type) => ts + getGrpSum(grp, pYear, monthNum, type.key), 0), 0);
     }
     return t;
-  }, [renderedGroups, filteredMonths, filteredTypes, getGrpSum]);
+  }, [renderedGroups, filteredPeriods, filteredTypes, getGrpSum]);
 
   const grandTotal = useMemo(() => Object.values(grpTotals).reduce((a, b) => a + b, 0), [grpTotals]);
 
-  const yearRange = useMemo(() => Array.from({ length: 7 }, (_, i) => 2022 + i), []);
-
-  // numCols: 2 (month+service) + per group cols + 1 (total)
+  // numCols: 2 (period+service) + per group cols + 1 (total)
   const numCols = useMemo(() => {
     let cols = 2;
-    for (const grp of renderedGroups) {
+    for (const grp of visibleGroups) {
       if (grp.items.length === 1) cols += 3;
       else if (expandedGroups.has(grp.key)) cols += 1 + grp.items.length * 3;
       else cols += 1;
     }
     return cols + 1;
-  }, [renderedGroups, expandedGroups]);
+  }, [visibleGroups, expandedGroups]);
   const cellInpSt = { ...inlineInputStyle, width: 80, textAlign: 'right', padding: '3px 6px' };
+
+  // ── Export ───────────────────────────────────────────────────────────────
+  // Leaf-column list (no headers — headers built per-exporter with merges/rowspan)
+  const buildExportCols = useCallback(() => {
+    const cols = [{ kind: 'service' }];
+    for (const grp of visibleGroups) {
+      const isExpanded = expandedGroups.has(grp.key);
+      if (grp.items.length === 1) {
+        cols.push({ kind: 'qty',      grpKey: grp.key, itemId: grp.items[0].id });
+        cols.push({ kind: 'price',    grpKey: grp.key, itemId: grp.items[0].id });
+        cols.push({ kind: 'item_sum', grpKey: grp.key, itemId: grp.items[0].id });
+      } else if (!isExpanded) {
+        cols.push({ kind: 'grp_sum', grpKey: grp.key });
+      } else {
+        grp.items.forEach(item => {
+          cols.push({ kind: 'qty',      grpKey: grp.key, itemId: item.id });
+          cols.push({ kind: 'price',    grpKey: grp.key, itemId: item.id });
+          cols.push({ kind: 'item_sum', grpKey: grp.key, itemId: item.id });
+        });
+        cols.push({ kind: 'grp_sum', grpKey: grp.key }); // Итого — в конце группы
+      }
+    }
+    cols.push({ kind: 'total' });
+    return cols;
+  }, [visibleGroups, expandedGroups]);
+
+  const buildExportRows = useCallback((cols) => {
+    const rows = [];
+    const outlineLevels = [];
+
+    const getCellVal = (col, pYear, monthNum, typeKey, isAggr, aggrTypes) => {
+      const dKey = (id) => `${pYear}_${monthNum}_${typeKey}_${id}`;
+      if (col.kind === 'total') {
+        if (isAggr) return aggrTypes.reduce((s, t) =>
+          s + visibleGroups.reduce((gs, g) => gs + g.items.reduce((is, it) => is + getSum(`${pYear}_${monthNum}_${t.key}_${it.id}`), 0), 0), 0) || '';
+        return visibleGroups.reduce((gs, g) => gs + g.items.reduce((is, it) => is + getSum(dKey(it.id)), 0), 0) || '';
+      }
+      if (col.kind === 'grp_sum') {
+        const grp = visibleGroups.find(g => g.key === col.grpKey);
+        if (!grp) return '';
+        if (isAggr) return aggrTypes.reduce((s, t) => s + grp.items.reduce((is, it) => is + getSum(`${pYear}_${monthNum}_${t.key}_${it.id}`), 0), 0) || '';
+        return grp.items.reduce((s, it) => s + getSum(dKey(it.id)), 0) || '';
+      }
+      if (isAggr) return '';
+      const grp = visibleGroups.find(g => g.key === col.grpKey);
+      const item = grp?.items.find(it => it.id === col.itemId);
+      if (!item) return '';
+      const c = rawData[dKey(item.id)] || {};
+      if (col.kind === 'qty')      return parseNum(c.qty)   || '';
+      if (col.kind === 'price')    return parseNum(c.price) || '';
+      if (col.kind === 'item_sum') return getSum(dKey(item.id)) || '';
+      return '';
+    };
+
+    const makeRow = (label, typeKey, isAggr, aggrTypes, pYear, monthNum) =>
+      [label, ...cols.slice(1).map(col => getCellVal(col, pYear, monthNum, typeKey, isAggr, aggrTypes))];
+
+    for (const { year: pYear, monthNum } of filteredPeriods) {
+      const m = MONTHS_RU.find(x => x.num === monthNum);
+      const pLabel = `${m?.label ?? monthNum} ${pYear}`;
+      if (filteredPeriods.length > 1) {
+        rows.push([pLabel, ...new Array(cols.length - 1).fill('')]);
+        outlineLevels.push(0);
+      }
+      for (const { cat, types, subcats } of catGroups) {
+        const allTypes = subcats?.length ? subcats.flatMap(sc => sc.visTypes) : types;
+        if (allTypes.length > 1) {
+          rows.push(makeRow(cat.label, null, true, allTypes, pYear, monthNum));
+          outlineLevels.push(1);
+        }
+        if (subcats?.length) {
+          for (const subcat of subcats) {
+            if (!subcat.visTypes.length) continue;
+            if (subcat.visTypes.length > 1) {
+              rows.push(makeRow(`  ${subcat.label}`, null, true, subcat.visTypes, pYear, monthNum));
+              outlineLevels.push(2);
+            }
+            for (const type of subcat.visTypes) {
+              const unit   = allUtilTypes.find(t => t.key === type.key)?.unit;
+              const indent = subcat.visTypes.length > 1 ? '    ' : '  ';
+              rows.push(makeRow(`${indent}${type.label}${unit ? ` (${unit})` : ''}`, type.key, false, null, pYear, monthNum));
+              outlineLevels.push(3);
+            }
+          }
+        } else {
+          for (const type of types) {
+            const unit   = allUtilTypes.find(t => t.key === type.key)?.unit;
+            const indent = allTypes.length > 1 ? '  ' : '';
+            rows.push(makeRow(`${indent}${type.label}${unit ? ` (${unit})` : ''}`, type.key, false, null, pYear, monthNum));
+            outlineLevels.push(allTypes.length > 1 ? 2 : 1);
+          }
+        }
+      }
+    }
+    rows.push(['Итого за период', ...cols.slice(1).map(col => {
+      if (col.kind === 'total')   return grandTotal            || '';
+      if (col.kind === 'grp_sum') return grpTotals[col.grpKey] || '';
+      return '';
+    })]);
+    outlineLevels.push(0);
+    return { rows, outlineLevels };
+  }, [filteredPeriods, catGroups, visibleGroups, getSum, rawData, grpTotals, grandTotal, allUtilTypes]);
+
+  const exportToXLSX = useCallback(() => {
+    const cols = buildExportCols();
+    const { rows, outlineLevels } = buildExportRows(cols);
+
+    // 3-row header: row0=group names, row1=item names, row2=Кол-во/Цена/Сумма
+    const h1 = new Array(cols.length).fill('');
+    const h2 = new Array(cols.length).fill('');
+    const h3 = new Array(cols.length).fill('');
+    const merges = [];
+
+    h1[0] = 'Вид услуги';
+    merges.push({ s: { r: 0, c: 0 }, e: { r: 2, c: 0 } });
+
+    let ci = 1;
+    for (const grp of visibleGroups) {
+      const isExpanded = expandedGroups.has(grp.key);
+      if (grp.items.length === 1) {
+        h1[ci] = grp.label;
+        merges.push({ s: { r: 0, c: ci }, e: { r: 1, c: ci + 2 } }); // группа spans rows 0-1
+        h3[ci] = 'Кол-во'; h3[ci + 1] = 'Цена'; h3[ci + 2] = 'Сумма';
+        ci += 3;
+      } else if (!isExpanded) {
+        h1[ci] = grp.label;
+        merges.push({ s: { r: 0, c: ci }, e: { r: 2, c: ci } }); // spans все 3 строки
+        ci += 1;
+      } else {
+        const grpSpan = grp.items.length * 3 + 1;
+        h1[ci] = grp.label;
+        merges.push({ s: { r: 0, c: ci }, e: { r: 0, c: ci + grpSpan - 1 } }); // row0: имя группы
+        let ic = ci;
+        for (const item of grp.items) {
+          const lbl = item.kind === 'clinic'
+            ? (clinics.find(c => String(c.id) === item.id)?.title || item.id)
+            : (item.label || item.id);
+          h2[ic] = lbl;
+          merges.push({ s: { r: 1, c: ic }, e: { r: 1, c: ic + 2 } }); // имя помещения spans 3 cols
+          h3[ic] = 'Кол-во'; h3[ic + 1] = 'Цена'; h3[ic + 2] = 'Сумма';
+          ic += 3;
+        }
+        h2[ic] = 'Итого';
+        merges.push({ s: { r: 1, c: ic }, e: { r: 2, c: ic } }); // Итого spans rows 1-2
+        ci += grpSpan;
+      }
+    }
+    const lastC = cols.length - 1;
+    h1[lastC] = 'Итого';
+    merges.push({ s: { r: 0, c: lastC }, e: { r: 2, c: lastC } });
+
+    const allRows = [h1, h2, h3, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(allRows);
+    ws['!merges'] = merges;
+    ws['!cols'] = cols.map((col, i) => ({
+      wch: i === 0 ? 34 : col.kind === 'qty' || col.kind === 'price' ? 10 : col.kind === 'item_sum' ? 12 : 14,
+    }));
+    if (!ws['!views']) ws['!views'] = [];
+    ws['!views'][0] = { state: 'frozen', xSplit: 0, ySplit: 3, topLeftCell: 'A4', activeCell: 'A4', sqref: 'A4' };
+    ws['!rows'] = [{ hpt: 22 }, { hpt: 18 }, { hpt: 15 }, ...outlineLevels.map(l => ({ level: l }))];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Коммунальные');
+    XLSX.writeFile(wb, `коммунальные_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }, [buildExportCols, buildExportRows, visibleGroups, expandedGroups, clinics]);
+
+  const exportToPDF = useCallback(() => {
+    const cols = buildExportCols();
+    const { rows, outlineLevels } = buildExportRows(cols);
+    const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fmtN = v => typeof v === 'number' && v !== 0
+      ? v.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : (v || '');
+
+    // Row 1: group names
+    let hdr = '<tr><th rowspan="3" style="text-align:left;min-width:130px">Вид услуги</th>';
+    for (const grp of visibleGroups) {
+      const isExpanded = expandedGroups.has(grp.key);
+      if (grp.items.length === 1)
+        hdr += `<th colspan="3" rowspan="2">${esc(grp.label)}</th>`;
+      else if (!isExpanded)
+        hdr += `<th rowspan="3">${esc(grp.label)}</th>`;
+      else
+        hdr += `<th colspan="${grp.items.length * 3 + 1}">${esc(grp.label)}</th>`;
+    }
+    hdr += '<th rowspan="3">Итого</th></tr>';
+
+    // Row 2: item names for expanded multi-item groups
+    hdr += '<tr>';
+    for (const grp of visibleGroups) {
+      if (!expandedGroups.has(grp.key) || grp.items.length === 1) continue;
+      for (const item of grp.items) {
+        const lbl = item.kind === 'clinic'
+          ? (clinics.find(c => String(c.id) === item.id)?.title || item.id)
+          : (item.label || item.id);
+        hdr += `<th colspan="3">${esc(lbl)}</th>`;
+      }
+      hdr += '<th rowspan="2">Итого</th>';
+    }
+    hdr += '</tr>';
+
+    // Row 3: Кол-во / Цена / Сумма
+    hdr += '<tr>';
+    for (const grp of visibleGroups) {
+      const isExpanded = expandedGroups.has(grp.key);
+      if (grp.items.length > 1 && !isExpanded) continue; // collapsed: rowspan=3 already set
+      const n = isExpanded ? grp.items.length : 1;
+      for (let i = 0; i < n; i++) hdr += '<th>Кол-во</th><th>Цена</th><th>Сумма</th>';
+      // Итого for expanded already has rowspan=2 from row 2 — skip
+    }
+    hdr += '</tr>';
+
+    let body = '';
+    rows.forEach((row, ri) => {
+      const isTotal = ri === rows.length - 1;
+      const lvl = outlineLevels[ri] ?? 1;
+      const cls = isTotal ? 'tot' : lvl === 0 ? 'per' : lvl === 1 ? 'cat' : lvl === 2 ? 'sub' : 'typ';
+      body += `<tr class="${cls}">`;
+      row.forEach((cell, ci) => {
+        const isNum = ci > 0 && cell !== '' && cell !== undefined && cell !== null;
+        body += `<td${isNum && cell ? ' class="num"' : ''}>${isNum ? fmtN(cell) : esc(String(cell ?? ''))}</td>`;
+      });
+      body += '</tr>';
+    });
+
+    const css = 'body{font-family:Arial,sans-serif;font-size:9px;margin:8px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:3px 5px;white-space:nowrap}th{background:#d4e6f5;font-weight:700;text-align:center}tr.per td{background:#e6ecf5;font-weight:700;font-size:10px}tr.cat td{background:#edf2fb;font-weight:700}tr.sub td{background:#f4f8fd;font-weight:600}tr.typ td{background:#fff}tr.tot td{background:#ddf0e4;font-weight:700}td.num{text-align:right}@media print{@page{margin:6mm;size:landscape}}';
+    const html = `<html><head><meta charset="utf-8"><title>Коммунальные</title><style>${css}</style></head><body><h3 style="margin:0 0 6px;font-size:12px">Коммунальные расходы</h3><table><thead>${hdr}</thead><tbody>${body}</tbody></table></body></html>`;
+    const w = window.open('', '_blank', 'width=1200,height=700');
+    if (w) { w.document.write(html); w.document.close(); w.print(); }
+  }, [buildExportCols, buildExportRows, visibleGroups, expandedGroups, clinics]);
 
   if (loading) return <Spinner text="Загрузка коммунальных расходов…" />;
 
@@ -1898,24 +2634,29 @@ function TabUtilities() {
     </div>
   );
 
-  const miniSelectSt = {
-    marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
-    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%', display: 'block',
-  };
   const thFilterSt = {
     background: '#f8fafc', padding: '7px 10px', textAlign: 'left', fontWeight: 600,
     fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', verticalAlign: 'top',
   };
 
-  // Render qty/price/sum inputs for one item (clinic or premise)
-  const renderItemCells = (item, monthNum, typeKey) => {
-    const dataKey = `${year}_${monthNum}_${typeKey}_${item.id}`;
-    const cell    = rawData[dataKey] || {};
-    const autoSum = (() => { const q = parseNum(cell.qty); const p = parseNum(cell.price); return q > 0 ? q * p : p; })();
+  const renderItemCells = (item, pYear, monthNum, typeKey) => {
+    const dataKey  = `${pYear}_${monthNum}_${typeKey}_${item.id}`;
+    const cell     = rawData[dataKey] || {};
+    const autoSum  = (() => { const q = parseNum(cell.qty); const p = parseNum(cell.price); return q > 0 ? q * p : p; })();
+    const typeUnit = allUtilTypes.find(t => t.key === typeKey)?.unit || '';
     return [
       <td key={`${dataKey}_q`} style={{ padding: '3px 6px' }}>
-        <input type="number" min="0" step="any" value={cell.qty ?? ''} placeholder="0"
-          onChange={e => saveCell(dataKey, { qty: e.target.value })} style={cellInpSt} />
+        <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
+          <input type="number" min="0" step="any" value={cell.qty ?? ''} placeholder="0"
+            onChange={e => saveCell(dataKey, { qty: e.target.value })}
+            style={{ ...cellInpSt, paddingRight: typeUnit ? `${Math.max(typeUnit.length * 6 + 8, 28)}px` : cellInpSt.paddingRight }} />
+          {typeUnit && (
+            <span style={{ position: 'absolute', right: 5, top: '50%', transform: 'translateY(-50%)',
+              fontSize: 10, color: '#94a3b8', pointerEvents: 'none', userSelect: 'none', lineHeight: 1, whiteSpace: 'nowrap' }}>
+              {typeUnit}
+            </span>
+          )}
+        </div>
       </td>,
       <td key={`${dataKey}_p`} style={{ padding: '3px 6px' }}>
         <input type="number" min="0" step="any" value={cell.price ?? ''} placeholder="0"
@@ -1930,19 +2671,17 @@ function TabUtilities() {
     ];
   };
 
-  // Render all group cells for a data row
-  // isCatSummary=true → show aggregate totals only (no editable inputs)
-  const renderGroupCells = (monthNum, typeKey, isCatSummary, catTypes) => {
-    return renderedGroups.flatMap(grp => {
+  const renderGroupCells = (pYear, monthNum, typeKey, isCatSummary, catTypes) => {
+    return visibleGroups.flatMap(grp => {
       const isExpanded = expandedGroups.has(grp.key);
       const isSingle   = grp.items.length === 1;
 
       if (isSingle && !isCatSummary) {
-        return renderItemCells(grp.items[0], monthNum, typeKey);
+        return renderItemCells(grp.items[0], pYear, monthNum, typeKey);
       }
 
       if (isSingle && isCatSummary) {
-        const total = (catTypes || []).reduce((s, t) => s + getGrpSum(grp, monthNum, t.key), 0);
+        const total = (catTypes || []).reduce((s, t) => s + getGrpSum(grp, pYear, monthNum, t.key), 0);
         return [
           <td key={`cgs_${grp.key}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
           <td key={`cgs_${grp.key}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
@@ -1954,8 +2693,8 @@ function TabUtilities() {
 
       // multi-item group
       const grpTotal = isCatSummary
-        ? (catTypes || []).reduce((s, t) => s + getGrpSum(grp, monthNum, t.key), 0)
-        : getGrpSum(grp, monthNum, typeKey);
+        ? (catTypes || []).reduce((s, t) => s + getGrpSum(grp, pYear, monthNum, t.key), 0)
+        : getGrpSum(grp, pYear, monthNum, typeKey);
 
       const totalCell = (
         <td key={`cgm_${grp.key}_tot`} style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', border: '1px solid var(--rb-border)', fontWeight: grpTotal > 0 ? 600 : 400, background: grpTotal > 0 ? '#f0fdf4' : undefined }}>
@@ -1966,22 +2705,21 @@ function TabUtilities() {
       if (!isExpanded || isCatSummary) return [totalCell];
 
       return [
+        ...grp.items.flatMap(item => renderItemCells(item, pYear, monthNum, typeKey)),
         totalCell,
-        ...grp.items.flatMap(item => renderItemCells(item, monthNum, typeKey)),
       ];
     });
   };
 
-  // Render an editable type detail row
-  const renderTypeRow = (type, month, isSubRow) => {
-    const rowTotal = renderedGroups.reduce((s, grp) => s + getGrpSum(grp, month.num, type.key), 0);
+  const renderTypeRow = (type, pYear, monthNum, isSubRow) => {
+    const rowTotal = visibleGroups.reduce((s, grp) => s + getGrpSum(grp, pYear, monthNum, type.key), 0);
     return (
-      <tr key={`${month.num}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
+      <tr key={`${pYear}_${monthNum}_${type.key}`} style={isSubRow ? { background: '#fafcff' } : undefined}>
         <td style={{ borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }} />
         <td style={{ fontSize: 12, paddingLeft: isSubRow ? 20 : 12, whiteSpace: 'nowrap', borderLeft: isSubRow ? '3px solid #bfdbfe' : undefined }}>
           {type.label}
         </td>
-        {renderGroupCells(month.num, type.key, false, null)}
+        {renderGroupCells(pYear, monthNum, type.key, false, null)}
         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: rowTotal > 0 ? 600 : 400 }}>
           {rowTotal > 0 ? fmtRubP(rowTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
         </td>
@@ -1991,71 +2729,81 @@ function TabUtilities() {
 
   return (
     <div>
-      {/* Year tabs + settings buttons */}
-      <div style={{ display: 'flex', gap: 4, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Год:</span>
-        {yearRange.map(y => (
-          <button key={y} onClick={() => setYear(y)}
-            style={{ padding: '5px 14px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 13,
-                     border: `1px solid ${y === year ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
-                     background: y === year ? 'var(--rb-primary)' : '#fff',
-                     color: y === year ? '#fff' : 'var(--rb-text)', fontWeight: y === year ? 600 : 400 }}>
-            {y}
-          </button>
-        ))}
-        <button onClick={() => setShowCatEditor(true)}
-          style={{ marginLeft: 6, padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
-                   border: '1px solid var(--rb-border-dark)', background: '#fff', color: 'var(--rb-text-secondary)' }}>
-          ⚙ Категории
-        </button>
-        <button onClick={() => setShowColEditor(true)}
-          style={{ padding: '5px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: 12,
-                   border: '1px solid var(--rb-border-dark)', background: '#fff', color: 'var(--rb-text-secondary)' }}>
-          ⚙ Столбцы
-        </button>
+      {/* Toolbar: export buttons + period total */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         {grandTotal > 0 && (
-          <span style={{ marginLeft: 'auto', fontSize: 13, fontWeight: 600, color: 'var(--rb-primary)', fontVariantNumeric: 'tabular-nums' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--rb-primary)', fontVariantNumeric: 'tabular-nums', marginRight: 4 }}>
             За период: {fmtRubP(grandTotal)}
           </span>
         )}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginRight: 2, userSelect: 'none' }}>Экспорт</span>
+          <button onClick={exportToXLSX}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7,
+                     cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
+                     border: 'none', background: '#16a34a', color: '#fff',
+                     boxShadow: '0 1px 3px rgba(22,163,74,0.4)' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
+              <line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>
+            </svg>
+            XLSX
+          </button>
+          <button onClick={exportToPDF}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '6px 14px', borderRadius: 7,
+                     cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, fontWeight: 700, letterSpacing: '0.02em',
+                     border: 'none', background: '#dc2626', color: '#fff',
+                     boxShadow: '0 1px 3px rgba(220,38,38,0.4)' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+              <path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/>
+              <line x1="9" y1="9" x2="15" y2="9"/>
+            </svg>
+            PDF
+          </button>
+        </div>
       </div>
 
-      {showCatEditor && (
-        <UtilityCatEditor
-          cats={utilCats}
-          onSave={saveUtilCats}
-          onClose={() => setShowCatEditor(false)}
+      {showSettings && (
+        <UtilitySettingsModal
+          utilCats={utilCats} colGroups={colGroups} clinics={clinics}
+          onSaveCats={saveUtilCats} onSaveCols={saveColGroups}
+          onClose={() => setShowSettings(false)}
         />
       )}
-      {showColEditor && (
-        <UtilityColEditor
-          colGroups={colGroups}
-          clinics={clinics}
-          onSave={saveColGroups}
-          onClose={() => setShowColEditor(false)}
-        />
+      {showMonthPanel && (
+        <MonthFilterPanel selectedPeriods={selectedPeriods} onChange={setSelectedPeriods} onClose={() => setShowMonthPanel(false)} />
+      )}
+      {showTypePanel && (
+        <TypeFilterPanel utilCats={utilCats} selectedTypeKeys={selectedTypeKeys} onChange={setSelectedTypeKeys} onClose={() => setShowTypePanel(false)} />
+      )}
+      {showColFilter && (
+        <ColumnFilterPanel groups={renderedGroups} hiddenGroups={hiddenGroups} onChange={setHiddenGroups} onClose={() => setShowColFilter(false)} />
       )}
 
       <div style={{ overflowX: 'auto' }}>
-        <table className="rb-table" style={{ minWidth: 300 + renderedGroups.reduce((s, g) => s + (g.items.length === 1 ? 260 : expandedGroups.has(g.key) ? 80 + g.items.length * 260 : 120), 0) }}>
+        <table className="rb-table" style={{ minWidth: 300 + visibleGroups.reduce((s, g) => s + (g.items.length === 1 ? 260 : expandedGroups.has(g.key) ? 80 + g.items.length * 260 : 120), 0) }}>
           <thead>
-            {/* Row 1: Месяц / Вид услуги (rowSpan=3) + group name headers + Итого (rowSpan=3) */}
+            {/* Row 1: Период / Вид услуги (rowSpan=3) + group name headers + Итого (rowSpan=3) */}
             <tr>
-              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top' }}>
-                <div>Месяц</div>
-                <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)} style={miniSelectSt}>
-                  <option value="">Все месяцы</option>
-                  {MONTHS_RU.map(m => <option key={m.num} value={m.num}>{m.label}</option>)}
-                </select>
+              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top', minWidth: 120 }}>
+                <div>Период</div>
+                <button onClick={() => setShowMonthPanel(true)}
+                  style={{ marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
+                    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%',
+                    textAlign: 'left', color: selectedPeriods.size > 0 ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'block' }}>
+                  {selectedPeriods.size} мес. ▾
+                </button>
               </th>
-              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top' }}>
+              <th rowSpan={3} style={{ ...thFilterSt, verticalAlign: 'top', minWidth: 140 }}>
                 <div>Вид услуги</div>
-                <select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={miniSelectSt}>
-                  <option value="">Все категории</option>
-                  {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                </select>
+                <button onClick={() => setShowTypePanel(true)}
+                  style={{ marginTop: 4, padding: '3px 6px', border: '1px solid var(--rb-border)', borderRadius: 5,
+                    fontSize: 11, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', width: '100%',
+                    textAlign: 'left', color: selectedTypeKeys !== null ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', display: 'block' }}>
+                  {selectedTypeKeys === null ? 'Все' : `${selectedTypeKeys.size} выбрано`} ▾
+                </button>
               </th>
-              {renderedGroups.map(grp => {
+              {visibleGroups.map(grp => {
                 const isSingle   = grp.items.length === 1;
                 const isExpanded = expandedGroups.has(grp.key);
                 const colSpan    = isSingle ? 3 : isExpanded ? 1 + grp.items.length * 3 : 1;
@@ -2073,16 +2821,36 @@ function TabUtilities() {
                   </th>
                 );
               })}
-              <th rowSpan={3} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>Итого</th>
+              <th rowSpan={3} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '6px 10px', textAlign: 'right', fontWeight: 600, fontSize: 12, whiteSpace: 'nowrap', verticalAlign: 'middle' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 5 }}>
+                  <span>Итого</span>
+                  {/* Column visibility toggle */}
+                  <button onClick={() => setShowColFilter(true)}
+                    title={hiddenGroups.size > 0 ? `Скрыто ${hiddenGroups.size} стол.` : 'Видимость столбцов'}
+                    style={{ width: 22, height: 22, border: `1px solid ${hiddenGroups.size > 0 ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 5,
+                      background: hiddenGroups.size > 0 ? '#eff6ff' : '#fff', cursor: 'pointer', fontSize: 11, lineHeight: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: hiddenGroups.size > 0 ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', padding: 0, flexShrink: 0 }}>
+                    ⊞
+                  </button>
+                  {/* Settings gear */}
+                  <button onClick={() => setShowSettings(true)} title="Настройки таблицы"
+                    style={{ width: 22, height: 22, border: '1px solid var(--rb-border)', borderRadius: 5,
+                      background: '#fff', cursor: 'pointer', fontSize: 13, lineHeight: 1,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'var(--rb-text-secondary)', padding: 0, flexShrink: 0 }}>
+                    ⚙
+                  </button>
+                </div>
+              </th>
             </tr>
             {/* Row 2: item labels for expanded multi-item groups */}
             <tr>
-              {renderedGroups.flatMap(grp => {
+              {visibleGroups.flatMap(grp => {
                 if (grp.items.length === 1) return [];
                 const isExpanded = expandedGroups.has(grp.key);
                 if (!isExpanded) return [<th key={`r2_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>Итого ₽</th>];
                 return [
-                  <th key={`r2_${grp.key}_tot`} style={{ background: '#f0f7ff', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Итого ₽</th>,
                   ...grp.items.map(item => (
                     <th key={`r2_${grp.key}_${item.id}`} colSpan={3}
                       style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, textAlign: 'center', fontWeight: 600, whiteSpace: 'nowrap' }}>
@@ -2091,52 +2859,59 @@ function TabUtilities() {
                         : (item.label || item.id)}
                     </th>
                   )),
+                  <th key={`r2_${grp.key}_tot`} style={{ background: '#f0f7ff', border: '1px solid var(--rb-border)', padding: '4px 8px', fontSize: 11, fontWeight: 600, textAlign: 'center' }}>Итого ₽</th>,
                 ];
               })}
             </tr>
             {/* Row 3: Кол-во / Цена / Сумма per leaf column for expanded multi-item groups */}
             <tr>
-              {renderedGroups.flatMap(grp => {
+              {visibleGroups.flatMap(grp => {
                 if (grp.items.length === 1) return [];
                 const isExpanded = expandedGroups.has(grp.key);
                 if (!isExpanded) return [];
                 return [
-                  <th key={`r3_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />,
                   ...grp.items.flatMap(item => [
                     <th key={`r3_${grp.key}_${item.id}_q`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Кол-во</th>,
                     <th key={`r3_${grp.key}_${item.id}_p`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Цена ₽</th>,
                     <th key={`r3_${grp.key}_${item.id}_s`} style={{ background: '#f8fafc', padding: '5px 8px', fontSize: 11, border: '1px solid var(--rb-border)', textAlign: 'right', fontWeight: 600, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Сумма ₽</th>,
                   ]),
+                  <th key={`r3_${grp.key}_tot`} style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', padding: '4px 8px' }} />,
                 ];
               })}
             </tr>
           </thead>
           <tbody>
-            {filteredMonths.map(month => {
+            {filteredPeriods.length === 0 ? (
+              <tr>
+                <td colSpan={numCols} style={{ textAlign: 'center', padding: '30px', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+                  Выберите хотя бы один период
+                </td>
+              </tr>
+            ) : filteredPeriods.map(({ year: pYear, monthNum }) => {
+              const month = MONTHS_RU.find(m => m.num === monthNum);
+              const periodLabel = `${month.label} ${pYear}`;
               const monthTotal = filteredTypes.reduce((s, type) =>
-                s + renderedGroups.reduce((gs, grp) => gs + getGrpSum(grp, month.num, type.key), 0), 0);
+                s + visibleGroups.reduce((gs, grp) => gs + getGrpSum(grp, pYear, monthNum, type.key), 0), 0);
               return (
-                <React.Fragment key={month.num}>
+                <React.Fragment key={`${pYear}_${monthNum}`}>
                   <tr>
                     <td colSpan={numCols} style={{ background: '#f1f5f9', fontWeight: 700, fontSize: 12, padding: '7px 14px', border: '1px solid var(--rb-border)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{month.label}</span>
+                        <span>{periodLabel}</span>
                         {monthTotal > 0 && <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--rb-primary)' }}>{fmtRub(monthTotal)}</span>}
                       </div>
                     </td>
                   </tr>
-                  {catGroups.map(({ cat, types }) => {
+                  {catGroups.map(({ cat, types, subcats }) => {
                     const isMulti    = types.length > 1;
                     const isExpanded = expandedCats.has(cat.key);
-                    const catTotal   = renderedGroups.reduce((gs, grp) =>
-                      gs + types.reduce((ts, type) => ts + getGrpSum(grp, month.num, type.key), 0), 0);
+                    const catTotal   = visibleGroups.reduce((gs, grp) =>
+                      gs + types.reduce((ts, type) => ts + getGrpSum(grp, pYear, monthNum, type.key), 0), 0);
 
-                    if (!isMulti) {
-                      return renderTypeRow(types[0], month, false);
-                    }
+                    if (!isMulti && !subcats?.length) return renderTypeRow(types[0], pYear, monthNum, false);
 
                     return (
-                      <React.Fragment key={`${month.num}_${cat.key}`}>
+                      <React.Fragment key={`${pYear}_${monthNum}_${cat.key}`}>
                         <tr onClick={() => toggleCat(cat.key)}
                           style={{ cursor: 'pointer', background: isExpanded ? '#f0f7ff' : undefined }}>
                           <td />
@@ -2146,12 +2921,37 @@ function TabUtilities() {
                             </span>
                             {cat.label}
                           </td>
-                          {renderGroupCells(month.num, null, true, types)}
+                          {renderGroupCells(pYear, monthNum, null, true, types)}
                           <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontSize: 12, padding: '4px 10px', fontWeight: catTotal > 0 ? 700 : 400, border: '1px solid var(--rb-border)' }}>
                             {catTotal > 0 ? fmtRub(catTotal) : <span style={{ color: '#cbd5e1' }}>{DASH}</span>}
                           </td>
                         </tr>
-                        {isExpanded && types.map(type => renderTypeRow(type, month, true))}
+                        {isExpanded && (subcats?.length ? (
+                          subcats.map(sc => {
+                            const scKey = `${cat.key}_${sc.key}`;
+                            const isScExp = expandedSubcats.has(scKey);
+                            const scTotal = visibleGroups.reduce((gs,grp) =>
+                              gs + sc.visTypes.reduce((ts,t)=>ts+getGrpSum(grp,pYear,monthNum,t.key),0), 0);
+                            return (
+                              <React.Fragment key={`${pYear}_${monthNum}_${scKey}`}>
+                                <tr onClick={() => toggleSubcat(scKey)} style={{ cursor:'pointer', background: isScExp ? '#f5f9ff' : '#fafcff' }}>
+                                  <td />
+                                  <td style={{ fontSize:12,fontWeight:600,paddingLeft:24,whiteSpace:'nowrap',borderLeft:'3px solid #93c5fd' }}>
+                                    <span style={{ fontSize:10,color:'#3b82f6',marginRight:4,userSelect:'none' }}>{isScExp?'▼':'▶'}</span>
+                                    {sc.label}
+                                  </td>
+                                  {renderGroupCells(pYear,monthNum,null,true,sc.visTypes)}
+                                  <td style={{ textAlign:'right',fontVariantNumeric:'tabular-nums',fontSize:12,padding:'4px 10px',fontWeight:scTotal>0?600:400,border:'1px solid var(--rb-border)' }}>
+                                    {scTotal > 0 ? fmtRubP(scTotal) : <span style={{ color:'#cbd5e1' }}>{DASH}</span>}
+                                  </td>
+                                </tr>
+                                {isScExp && sc.visTypes.map(type => renderTypeRow(type, pYear, monthNum, true))}
+                              </React.Fragment>
+                            );
+                          })
+                        ) : (
+                          types.map(type => renderTypeRow(type, pYear, monthNum, true))
+                        ))}
                       </React.Fragment>
                     );
                   })}
@@ -2163,7 +2963,7 @@ function TabUtilities() {
               <td colSpan={2} style={{ padding: '10px 14px', fontWeight: 700, fontSize: 13, border: '1px solid var(--rb-border)' }}>
                 Итого за период
               </td>
-              {renderedGroups.flatMap(grp => {
+              {visibleGroups.flatMap(grp => {
                 const isSingle   = grp.items.length === 1;
                 const isExpanded = expandedGroups.has(grp.key);
                 const tot = grpTotals[grp.key] || 0;
@@ -2179,10 +2979,9 @@ function TabUtilities() {
                 ];
                 if (!isExpanded) return [totCell];
                 return [
-                  totCell,
                   ...grp.items.flatMap(item => {
-                    const itemTot = filteredMonths.reduce((ms, m) =>
-                      ms + filteredTypes.reduce((ts, type) => ts + getItemSum(item, m.num, type.key), 0), 0);
+                    const itemTot = filteredPeriods.reduce((ps, { year: pYear, monthNum }) =>
+                      ps + filteredTypes.reduce((ts, type) => ts + getItemSum(item, pYear, monthNum, type.key), 0), 0);
                     return [
                       <td key={`tot_${grp.key}_${item.id}_q`} style={{ border: '1px solid var(--rb-border)' }} />,
                       <td key={`tot_${grp.key}_${item.id}_p`} style={{ border: '1px solid var(--rb-border)' }} />,
@@ -2191,6 +2990,7 @@ function TabUtilities() {
                       </td>,
                     ];
                   }),
+                  totCell,
                 ];
               })}
               <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 700, fontSize: 14, padding: '10px', border: '1px solid var(--rb-border)', color: 'var(--rb-primary)' }}>
@@ -2216,12 +3016,9 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
   const [colGroups, setColGroups] = useState([]);
   const [clinicMeta, setClinicMeta]   = useState({});
   const [cabinetMeta, setCabinetMeta] = useState({});
+  const [refreshKey, setRefreshKey]   = useState(0);
 
-  // Derive year and filtered months from the shared period selector
-  const year = useMemo(
-    () => (periodStart || new Date()).getFullYear(),
-    [periodStart]
-  );
+  const year = useMemo(() => (periodStart || new Date()).getFullYear(), [periodStart]);
   const filteredMonths = useMemo(() => {
     if (!periodStart || !periodEnd) return MONTHS_RU;
     const startM = periodStart.getFullYear() === year ? periodStart.getMonth() + 1 : 1;
@@ -2230,6 +3027,7 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
   }, [periodStart, periodEnd, year]);
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
       mis.getClinicsFromMIS().catch(() => ({ data: { data: [] } })),
       directories.getAll('utility').catch(() => ({ data: {} })),
@@ -2246,10 +3044,10 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
       setClinicMeta(clinicRes.data || {});
       setCabinetMeta(cabinetRes.data || {});
     }).finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]); // refreshKey forces re-fetch on demand
 
   const allUtilTypes = useMemo(
-    () => utilCats.flatMap(c => c.types.map(t => ({ ...t, catKey: c.key }))),
+    () => utilCats.flatMap(c => getAllTypesFlat(c).map(t => ({ ...t, catKey: c.key }))),
     [utilCats]
   );
 
@@ -2336,15 +3134,15 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
         }
       }
     }
-    return items;
+    return items.sort((a, b) => b.value - a.value);
   }, [renderedGroups, filteredMonths, filteredTypes, cabinetMeta, year, getSum]);
 
   if (loading) return <Spinner text="Загрузка…" />;
 
   return (
     <div style={{ padding: '16px 20px' }}>
-      {/* Category filter */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+      {/* Category filter + refresh */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Категория:</span>
         <select value={catFilter} onChange={e => setCatFilter(e.target.value)}
           style={{ padding: '3px 8px', border: '1px solid var(--rb-border)', borderRadius: 5,
@@ -2352,6 +3150,12 @@ export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEn
           <option value="">Все категории</option>
           {utilCats.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
         </select>
+        <button onClick={() => setRefreshKey(k => k + 1)}
+          title="Обновить данные"
+          style={{ padding: '3px 10px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff',
+                   cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', color: 'var(--rb-text-secondary)' }}>
+          ↻ Обновить
+        </button>
       </div>
 
       {utilStats.some(s => s.total > 0) ? (

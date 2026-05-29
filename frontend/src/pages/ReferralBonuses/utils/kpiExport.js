@@ -56,7 +56,9 @@ function groupByMulti(rows, fn) {
 function rev_pat(rows) {
   const revenue  = rows.reduce((s, r) => s + r.totalCost, 0);
   const patients = new Set(rows.map(getPatientKey).filter(Boolean)).size;
-  return { revenue, patients, avgCheck: patients ? revenue / patients : 0 };
+  const invoices = new Set(rows.map(r => r.invoiceNum).filter(Boolean));
+  const checkCount = invoices.size > 0 ? invoices.size : rows.length;
+  return { revenue, patients, avgCheck: checkCount > 0 ? revenue / checkCount : 0 };
 }
 function buildPatientMap(rows) {
   const m = new Map();

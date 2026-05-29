@@ -162,6 +162,7 @@ function parseRow(rawRow, cm) {
     patientCard:  cm.patientCard  ? String(rawRow[cm.patientCard]  || '').trim()          : '',
     patientName:  cm.patientName  ? String(rawRow[cm.patientName]  || '').trim()          : '',
     sourceEntry:  cm.sourceEntry  ? String(rawRow[cm.sourceEntry]  || '').trim()          : '',
+    invoiceNum:   cm.invoiceNum   ? String(rawRow[cm.invoiceNum]   || '').trim()          : '',
     categories,
     isVip: categories.includes('vip'),
     hasLK: categories.some(c => c.includes('лк пациент')),
@@ -261,7 +262,9 @@ function groupByMulti(rows, keysFn) {
 function revenueAndPatients(rows) {
   const revenue  = rows.reduce((s, r) => s + r.totalCost, 0);
   const patients = new Set(rows.map(getPatientKey).filter(Boolean)).size;
-  return { revenue, patients, avgCheck: patients ? revenue / patients : 0 };
+  const invoices = new Set(rows.map(r => r.invoiceNum).filter(Boolean));
+  const checkCount = invoices.size > 0 ? invoices.size : rows.length;
+  return { revenue, patients, avgCheck: checkCount > 0 ? revenue / checkCount : 0 };
 }
 
 // Строит цепочки направлений по специальностям (ЛОР → КТ → Хирург → ...)
