@@ -19,6 +19,7 @@ const DIR_TABS = [
   { key: 'equipment',   label: 'Оборудование' },
   { key: 'utilities',   label: 'Коммунальные' },
   { key: 'consumables', label: 'Расходники' },
+  { key: 'marketing',   label: 'Маркетинг' },
 ];
 
 const CONSUMABLE_UNITS = ['шт', 'пара', 'мл', 'л', 'г', 'кг', 'упак', 'ампула', 'флакон', 'таблетка'];
@@ -934,11 +935,221 @@ function TabDoctors({ doctors, excelSources }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ОБОРУДОВАНИЕ
 // ══════════════════════════════════════════════════════════════════════════════
+function EquipServiceBindings({ equipItem, onClose }) {
+  const [bindings, setBindings]       = useState({});
+  const [loadingB, setLoadingB]       = useState(true);
+  const [svcSearch, setSvcSearch]     = useState('');
+  const [svcResults, setSvcResults]   = useState([]);
+  const [svcLoading, setSvcLoading]   = useState(false);
+  const [addingValues, setAddingValues] = useState({});
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    setLoadingB(true);
+    directories.getAll('equipment_service_binding')
+      .then(res => {
+        const all = res.data || {};
+        const filtered = {};
+        for (const [id, b] of Object.entries(all)) {
+          if (b.equipmentId === equipItem.id) filtered[id] = b;
+        }
+        setBindings(filtered);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingB(false));
+  }, [equipItem.id]);
+
+  const myBindings = useMemo(() =>
+    Object.entries(bindings).map(([id, b]) => ({ id, ...b }))
+      .sort((a, b) => (a.serviceName || '').localeCompare(b.serviceName || '', 'ru')),
+  [bindings]);
+
+  const boundCodes = useMemo(() => new Set(myBindings.map(b => b.serviceCode)), [myBindings]);
+
+  const searchSvcs = useCallback(async (term) => {
+    if (!term.trim() || !equipItem.clinicId) return;
+    setSvcLoading(true);
+    try {
+      const res = await mis.searchServices(term, equipItem.clinicId);
+      const raw = res.data?.data || res.data || [];
+      setSvcResults(Array.isArray(raw) ? raw.slice(0, 40) : []);
+    } catch { setSvcResults([]); }
+    finally { setSvcLoading(false); }
+  }, [equipItem.clinicId]);
+
+  const handleSearchKey = (e) => {
+    if (e.key === 'Enter') searchSvcs(svcSearch);
+  };
+
+  const addBinding = async (svc) => {
+    const code  = svc.code || String(svc.service_id || svc.id || '');
+    const title = svc.title || svc.name || '';
+    if (!code) return;
+    const id   = uuidv4();
+    const data = {
+      equipmentId:       equipItem.id,
+      clinicId:          equipItem.clinicId,
+      room:              equipItem.room || '',
+      serviceCode:       code,
+      serviceName:       title,
+      paybackPerService: 0,
+    };
+    try {
+      await directories.save('equipment_service_binding', id, data);
+      setBindings(prev => ({ ...prev, [id]: data }));
+      toast.success('Услуга привязана', { duration: 1500 });
+    } catch { toast.error('Ошибка сохранения'); }
+  };
+
+  const removeBinding = async (id) => {
+    try {
+      await directories.remove('equipment_service_binding', id);
+      setBindings(prev => { const n = { ...prev }; delete n[id]; return n; });
+      toast.success('Удалено', { duration: 1500 });
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
+  const savePayback = useCallback((id, val) => {
+    const num = parseNum(val);
+    setBindings(prev => ({ ...prev, [id]: { ...prev[id], paybackPerService: num } }));
+    clearTimeout(saveTimers.current[id]);
+    saveTimers.current[id] = setTimeout(async () => {
+      try { await directories.save('equipment_service_binding', id, { paybackPerService: num }); }
+      catch { toast.error('Ошибка сохранения'); }
+    }, 800);
+  }, []);
+
+  return (
+    <div style={{ marginTop: 12, border: '1px solid var(--rb-border-dark)', borderRadius: 10, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: '#f0f9ff', borderBottom: '1px solid var(--rb-border-dark)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--rb-text)' }}>Привязка услуг — {equipItem.name}</span>
+          {equipItem.room && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginLeft: 8 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: getClinicColor(equipItem.clinicId), display: 'inline-block', marginRight: 4, verticalAlign: 'middle' }} />
+              {equipItem.room}
+            </span>
+          )}
+        </div>
+        <button onClick={onClose}
+          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 18, color: 'var(--rb-text-secondary)', padding: '0 4px', lineHeight: 1 }}>×</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 0 }}>
+        {/* LEFT: search panel */}
+        <div style={{ borderRight: '1px solid var(--rb-border)', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#fafafa', display: 'flex', gap: 6 }}>
+            <input
+              value={svcSearch}
+              onChange={e => setSvcSearch(e.target.value)}
+              onKeyDown={handleSearchKey}
+              placeholder="Поиск услуги по названию…"
+              style={{ ...inlineInputStyle, flex: 1 }}
+            />
+            <button onClick={() => searchSvcs(svcSearch)} disabled={svcLoading}
+              style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: svcLoading ? 'default' : 'pointer', fontSize: 12, fontFamily: 'inherit', flexShrink: 0 }}>
+              {svcLoading ? '…' : 'Найти'}
+            </button>
+          </div>
+          <div style={{ overflowY: 'auto', maxHeight: 340 }}>
+            {!equipItem.clinicId && (
+              <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
+                У оборудования не указан филиал
+              </div>
+            )}
+            {equipItem.clinicId && svcResults.length === 0 && !svcLoading && (
+              <div style={{ padding: '24px 12px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.6 }}>
+                Введите название услуги<br />и нажмите «Найти»
+              </div>
+            )}
+            {svcResults.map(svc => {
+              const code  = svc.code || String(svc.service_id || svc.id || '');
+              const title = svc.title || svc.name || '';
+              const bound = boundCodes.has(code);
+              return (
+                <div key={code} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--rb-border)', background: bound ? '#f0fdf4' : '#fff' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: 'var(--rb-text)', lineHeight: 1.4 }}>{title}</div>
+                    {svc.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{svc.code}</div>}
+                  </div>
+                  {bound ? (
+                    <span style={{ fontSize: 10, color: '#16a34a', flexShrink: 0, fontWeight: 600, marginTop: 2 }}>✓ добавлено</span>
+                  ) : (
+                    <button onClick={() => addBinding(svc)}
+                      style={{ flexShrink: 0, padding: '2px 8px', borderRadius: 5, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>
+                      + Привязать
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* RIGHT: bound services */}
+        <div style={{ padding: '12px 14px', overflowY: 'auto', maxHeight: 380 }}>
+          {loadingB ? (
+            <div style={{ textAlign: 'center', padding: '30px 0', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Загрузка…</div>
+          ) : myBindings.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 8 }}>
+              Нет привязанных услуг — найдите и добавьте услуги слева
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 8, fontWeight: 600 }}>
+                {myBindings.length} {myBindings.length === 1 ? 'услуга' : myBindings.length < 5 ? 'услуги' : 'услуг'} привязано
+              </div>
+              <table className="rb-table" style={{ width: '100%' }}>
+                <thead>
+                  <tr>
+                    <THCell>Услуга</THCell>
+                    <THCell>Код</THCell>
+                    <THCell right>₽ / 1 услугу</THCell>
+                    <THCell></THCell>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myBindings.map(b => (
+                    <tr key={b.id}>
+                      <td style={{ fontSize: 12 }}>{b.serviceName}</td>
+                      <td style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{b.serviceCode || DASH}</td>
+                      <td>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={addingValues[b.id] ?? (b.paybackPerService || '')}
+                            onChange={e => {
+                              setAddingValues(p => ({ ...p, [b.id]: e.target.value }));
+                              savePayback(b.id, e.target.value);
+                            }}
+                            placeholder="0"
+                            style={{ ...inlineInputStyle, width: 100, textAlign: 'right' }}
+                          />
+                        </div>
+                      </td>
+                      <td style={{ width: 36 }}>
+                        <button onClick={() => removeBinding(b.id)} title="Удалить"
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>×</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TabEquipment() {
   const [equipment, setEquipment] = useState({});
   const [loading, setLoading]     = useState(true);
   const [clinicFilter, setClinicFilter] = useState('');
   const [search, setSearch]       = useState('');
+  const [bindingCounts, setBindingCounts] = useState({});
+  const [expandedId, setExpandedId] = useState(null);
   const saveTimers = useRef({});
 
   useEffect(() => {
@@ -946,6 +1157,18 @@ function TabEquipment() {
       .then(res => setEquipment(res.data || {}))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    directories.getAll('equipment_service_binding')
+      .then(res => {
+        const counts = {};
+        for (const b of Object.values(res.data || {})) {
+          if (b.equipmentId) counts[b.equipmentId] = (counts[b.equipmentId] || 0) + 1;
+        }
+        setBindingCounts(counts);
+      })
+      .catch(() => {});
   }, []);
 
   const items = useMemo(() =>
@@ -979,6 +1202,8 @@ function TabEquipment() {
 
   if (loading) return <Spinner text="Загрузка оборудования…" />;
 
+  const expandedItem = expandedId ? items.find(i => i.id === expandedId) : null;
+
   return (
     <div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -1004,7 +1229,7 @@ function TabEquipment() {
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table className="rb-table" style={{ minWidth: 1200 }}>
+          <table className="rb-table" style={{ minWidth: 900 }}>
             <thead>
               <tr>
                 <THCell>Название</THCell>
@@ -1013,21 +1238,17 @@ function TabEquipment() {
                 <THCell>Дата установки</THCell>
                 <THCell right>Стоимость покупки (₽)</THCell>
                 <THCell right>Срок исп. (мес)</THCell>
-                <THCell right>Аморт./мес (₽)</THCell>
                 <THCell right>Обслуж./мес (₽)</THCell>
                 <THCell right>Ремонты (₽)</THCell>
-                <THCell right>Часы работы</THCell>
-                <THCell right>Простой (ч)</THCell>
-                <THCell>Окупаемость</THCell>
+                <THCell>Услуги</THCell>
               </tr>
             </thead>
             <tbody>
               {filtered.map(item => {
-                const purchaseCost  = parseNum(item.purchaseCost);
-                const usefulLife    = parseNum(item.usefulLife);
-                const autoDeprec    = purchaseCost > 0 && usefulLife > 0 ? Math.round(purchaseCost / usefulLife) : null;
+                const svcCount   = bindingCounts[item.id] || 0;
+                const isExpanded = expandedId === item.id;
                 return (
-                  <tr key={item.id}>
+                  <tr key={item.id} style={isExpanded ? { background: '#f0f9ff' } : {}}>
                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{item.name}</td>
                     <td style={{ fontSize: 12 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1049,13 +1270,6 @@ function TabEquipment() {
                         placeholder="0" style={{ ...inlineInputStyle, width: 70, textAlign: 'right' }} />
                     </td>
                     <td>
-                      <input type="number" min="0" value={item.monthlyDeprec ?? ''}
-                        onChange={e => saveField(item.id, { monthlyDeprec: e.target.value })}
-                        placeholder={autoDeprec != null ? autoDeprec.toLocaleString('ru-RU') : '0'}
-                        title={autoDeprec != null ? `Авто: ${autoDeprec.toLocaleString('ru-RU')} ₽ (покупка / срок)` : ''}
-                        style={{ ...inlineInputStyle, width: 110, textAlign: 'right' }} />
-                    </td>
-                    <td>
                       <input type="number" min="0" value={item.maintenance ?? ''} onChange={e => saveField(item.id, { maintenance: e.target.value })}
                         placeholder="0" style={{ ...inlineInputStyle, width: 100, textAlign: 'right' }} />
                     </td>
@@ -1063,17 +1277,21 @@ function TabEquipment() {
                       <input type="number" min="0" value={item.repairs ?? ''} onChange={e => saveField(item.id, { repairs: e.target.value })}
                         placeholder="0" style={{ ...inlineInputStyle, width: 100, textAlign: 'right' }} />
                     </td>
-                    <td>
-                      <input type="number" min="0" value={item.workingHours ?? ''} onChange={e => saveField(item.id, { workingHours: e.target.value })}
-                        placeholder="0" style={{ ...inlineInputStyle, width: 80, textAlign: 'right' }} />
-                    </td>
-                    <td>
-                      <input type="number" min="0" value={item.downtime ?? ''} onChange={e => saveField(item.id, { downtime: e.target.value })}
-                        placeholder="0" style={{ ...inlineInputStyle, width: 80, textAlign: 'right' }} />
-                    </td>
-                    <td>
-                      <input type="text" value={item.payback || ''} onChange={e => saveField(item.id, { payback: e.target.value })}
-                        placeholder={DASH} style={{ ...inlineInputStyle, width: 120 }} />
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <button
+                        onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                        title="Привязать услуги"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '3px 10px', borderRadius: 6, border: '1px solid',
+                          borderColor: isExpanded ? 'var(--rb-primary)' : (svcCount > 0 ? '#bfdbfe' : 'var(--rb-border-dark)'),
+                          background: isExpanded ? '#eff6ff' : (svcCount > 0 ? '#dbeafe' : '#fff'),
+                          color: isExpanded ? 'var(--rb-primary)' : (svcCount > 0 ? '#1e40af' : 'var(--rb-text-secondary)'),
+                          cursor: 'pointer', fontSize: 11, fontFamily: 'inherit', fontWeight: svcCount > 0 ? 700 : 400,
+                        }}
+                      >
+                        {svcCount > 0 ? `${svcCount} усл.` : '+ Услуги'}
+                      </button>
                     </td>
                   </tr>
                 );
@@ -1081,6 +1299,13 @@ function TabEquipment() {
             </tbody>
           </table>
         </div>
+      )}
+      {expandedItem && (
+        <EquipServiceBindings
+          key={expandedId}
+          equipItem={expandedItem}
+          onClose={() => setExpandedId(null)}
+        />
       )}
     </div>
   );
@@ -3430,6 +3655,234 @@ function TabUtilities() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// EQUIPMENT ANALYTICS (shown in Аналитика/Кабинеты, read-only)
+// ══════════════════════════════════════════════════════════════════════════════
+export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
+  const [equipment,      setEquipment]      = useState({});
+  const [bindings,       setBindings]       = useState({});
+  const [clinicMeta,     setClinicMeta]     = useState({});
+  const [consumableNorms,setConsumableNorms]= useState({});
+  const [loading,        setLoading]        = useState(true);
+  const [clinicFilter,   setClinicFilter]   = useState('');
+
+  useEffect(() => {
+    Promise.all([
+      directories.getAll('equipment').catch(() => ({ data: {} })),
+      directories.getAll('equipment_service_binding').catch(() => ({ data: {} })),
+      directories.getAll('clinic').catch(() => ({ data: {} })),
+      directories.getAll('consumable_norm').catch(() => ({ data: {} })),
+    ]).then(([eqRes, bRes, clRes, cnRes]) => {
+      setEquipment(eqRes.data || {});
+      setBindings(bRes.data || {});
+      setClinicMeta(clRes.data || {});
+      setConsumableNorms(cnRes.data || {});
+    }).finally(() => setLoading(false));
+  }, []);
+
+  const items = useMemo(() =>
+    Object.entries(equipment)
+      .map(([id, data]) => ({ id, ...data }))
+      .sort((a, b) =>
+        (a.clinicId || '').localeCompare(b.clinicId || '') ||
+        (a.room || '').localeCompare(b.room || '', 'ru') ||
+        (a.name || '').localeCompare(b.name || '', 'ru')
+      ),
+  [equipment]);
+
+  // Bindings grouped by equipmentId
+  const bindingsByEquip = useMemo(() => {
+    const m = {};
+    for (const b of Object.values(bindings)) {
+      if (!b.equipmentId) continue;
+      if (!m[b.equipmentId]) m[b.equipmentId] = [];
+      m[b.equipmentId].push(b);
+    }
+    return m;
+  }, [bindings]);
+
+  // Consumable norms indexed by "clinicId|serviceCode" for fast lookup
+  const normsByClinicService = useMemo(() => {
+    const m = {};
+    for (const n of Object.values(consumableNorms)) {
+      const key = `${n.clinicId}|${n.serviceCode || normServiceName(n.serviceName || '')}`;
+      if (!m[key]) m[key] = [];
+      m[key].push(n);
+    }
+    return m;
+  }, [consumableNorms]);
+
+  const clinicOptions = useMemo(() => {
+    const ids = [...new Set(items.map(i => i.clinicId).filter(Boolean))];
+    return ids.map(id => ({ id, name: getClinicName(id) })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  }, [items]);
+
+  const filtered = clinicFilter ? items.filter(i => i.clinicId === clinicFilter) : items;
+
+  if (loading) return <Spinner text="Загрузка оборудования…" />;
+  if (items.length === 0) return null;
+
+  const now = new Date();
+
+  return (
+    <div style={{ marginTop: 32 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, fontSize: 15, color: 'var(--rb-text)' }}>Оборудование</div>
+        <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
+          style={{ padding: '5px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer' }}>
+          <option value="">Все филиалы</option>
+          {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{filtered.length} ед.</span>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table className="rb-table" style={{ minWidth: 1050 }}>
+          <thead>
+            <tr>
+              <THCell>Название</THCell>
+              <THCell>Кабинет</THCell>
+              <THCell>Филиал</THCell>
+              <THCell>Дата установки</THCell>
+              <THCell right>Стоимость покупки</THCell>
+              <THCell right title="Отработано / Срок службы (мес)">Срок (мес)</THCell>
+              <THCell right>Аморт./мес</THCell>
+              <THCell right>Аморт./1 услугу</THCell>
+              <THCell right>Часы/мес</THCell>
+              <THCell right>Обслуж./мес</THCell>
+              <THCell right>Ремонты (∑)</THCell>
+              <THCell right>Расходы/мес</THCell>
+              <THCell right>Расходники</THCell>
+              <THCell right>Окупаемость</THCell>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(item => {
+              const purchaseCost = parseNum(item.purchaseCost);
+              const usefulLife   = parseNum(item.usefulLife);
+              const maintenance  = parseNum(item.maintenance);
+              const repairs      = parseNum(item.repairs);
+
+              // Амортизация = покупка / срок
+              const amortPerMonth = purchaseCost > 0 && usefulLife > 0
+                ? purchaseCost / usefulLife : 0;
+
+              // Месяцев в эксплуатации от даты установки
+              let monthsElapsed = null;
+              if (item.installDate) {
+                const inst = new Date(item.installDate);
+                if (!isNaN(inst)) {
+                  monthsElapsed = (now.getFullYear() - inst.getFullYear()) * 12
+                    + (now.getMonth() - inst.getMonth());
+                  if (monthsElapsed < 0) monthsElapsed = 0;
+                }
+              }
+
+              // Часы в месяц из графика филиала, fallback — DEFAULT_SCHEDULE
+              const clinicScheduleData = clinicMeta[String(item.clinicId)] || {};
+              const clinicSchedule = (
+                typeof clinicScheduleData.schedule === 'object' &&
+                clinicScheduleData.schedule !== null &&
+                !Array.isArray(clinicScheduleData.schedule)
+              ) ? clinicScheduleData.schedule : DEFAULT_SCHEDULE;
+              const weeklyHrs  = scheduleWeeklyHours(clinicSchedule);
+              const monthlyHrs = +(weeklyHrs * (52 / 12)).toFixed(1);
+
+              // Расходы/мес = амортизация + обслуживание
+              const totalPerMonth = amortPerMonth + maintenance;
+
+              // Расходники через цепочку: оборудование → услуги (bindings) → расходники (norms)
+              const myBindings = bindingsByEquip[item.id] || [];
+              const consumableSet = new Set();
+              for (const b of myBindings) {
+                const key = `${item.clinicId}|${b.serviceCode || normServiceName(b.serviceName || '')}`;
+                const norms = normsByClinicService[key] || [];
+                for (const n of norms) {
+                  if (n.consumableName) consumableSet.add(n.consumableName);
+                }
+              }
+              const consumableCount = consumableSet.size;
+
+              // Окупаемость: покупка / (расходы/мес)
+              const paybackMonths = totalPerMonth > 0 && purchaseCost > 0
+                ? Math.ceil(purchaseCost / totalPerMonth) : null;
+
+              return (
+                <tr key={item.id}>
+                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{item.name}</td>
+                  <td style={{ fontSize: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 4, height: 16, borderRadius: 2, background: getClinicColor(item.clinicId), flexShrink: 0, display: 'inline-block' }} />
+                      {item.room || DASH}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                    {item.clinicId ? getClinicName(item.clinicId) : DASH}
+                  </td>
+                  <td style={{ fontSize: 12 }}>{item.installDate ? formatApiDate(item.installDate) : DASH}</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {purchaseCost > 0 ? fmtRub(purchaseCost) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+                    title={monthsElapsed !== null && usefulLife > 0
+                      ? `Отработано ${monthsElapsed} мес. из ${usefulLife}`
+                      : undefined}>
+                    {usefulLife > 0 ? (
+                      <span>
+                        {monthsElapsed !== null
+                          ? <span style={{ color: monthsElapsed >= usefulLife ? '#ef4444' : 'var(--rb-text)' }}>{monthsElapsed}</span>
+                          : <span style={{ color: 'var(--rb-text-secondary)' }}>{DASH}</span>
+                        }
+                        <span style={{ color: 'var(--rb-text-secondary)' }}>/{usefulLife}</span>
+                      </span>
+                    ) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {amortPerMonth > 0 ? fmtRub(amortPerMonth) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {amortPerMonth > 0 && myBindings.length > 0
+                      ? fmtRubP(amortPerMonth / myBindings.length)
+                      : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {monthlyHrs > 0 ? monthlyHrs + ' ч' : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {maintenance > 0 ? fmtRub(maintenance) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {repairs > 0 ? fmtRub(repairs) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 500, color: totalPerMonth > 0 ? '#ef4444' : 'var(--rb-text-secondary)' }}>
+                    {totalPerMonth > 0 ? fmtRub(totalPerMonth) : DASH}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {consumableCount > 0 ? (
+                      <span title={[...consumableSet].join(', ')} style={{ cursor: 'default' }}>
+                        {consumableCount} вид{consumableCount === 1 ? '' : consumableCount < 5 ? 'а' : 'ов'}
+                      </span>
+                    ) : (myBindings.length > 0 ? (
+                      <span style={{ color: 'var(--rb-text-secondary)', fontSize: 11 }}>нет норм</span>
+                    ) : DASH)}
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {paybackMonths != null ? (
+                      <span title="Стоимость покупки / (Аморт.+Обслуж.) в мес.">
+                        {paybackMonths} мес.
+                      </span>
+                    ) : DASH}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // UTILITY ANALYTICS (shown in Аналитика tab of Statistics page)
 // ══════════════════════════════════════════════════════════════════════════════
 export function TabUtilitiesAnalytics({ appointments = [], periodStart, periodEnd }) {
@@ -4035,6 +4488,613 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
   );
 }
 // ══════════════════════════════════════════════════════════════════════════════
+// МАРКЕТИНГ — вспомогательный CategoryDropdown
+// ══════════════════════════════════════════════════════════════════════════════
+function MarketingCategoryDropdown({ onSelect }) {
+  const [open, setOpen]               = useState(false);
+  const [categories, setCategories]   = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [selectedLabel, setSelectedLabel] = useState('');
+  const [query, setQuery]             = useState('');
+  const [dropPos, setDropPos]         = useState({ top: 0, left: 0, width: 0 });
+  const btnRef  = useRef();
+  const dropRef = useRef();
+  const inputRef = useRef();
+
+  useEffect(() => {
+    const handleClick = (e) => {
+      if (btnRef.current && !btnRef.current.contains(e.target) &&
+          dropRef.current && !dropRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const loadCats = useCallback(async () => {
+    if (categories !== null) return;
+    setLoading(true);
+    try {
+      const res  = await mis.getServiceCategories();
+      const data = res.data?.data || res.data || [];
+      setCategories(Array.isArray(data) ? data : []);
+    } catch {
+      setCategories([]);
+      toast.error('Ошибка загрузки категорий');
+    } finally { setLoading(false); }
+  }, [categories]);
+
+  const handleToggle = () => {
+    const next = !open;
+    if (next && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setDropPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setOpen(next);
+    if (next) { setQuery(''); loadCats(); setTimeout(() => inputRef.current?.focus(), 50); }
+  };
+
+  const handleSelect = (cat) => { setSelectedLabel(cat.title); setOpen(false); setQuery(''); onSelect(cat); };
+
+  function renderCats(cats, level = 0) {
+    return cats.map(cat => (
+      <React.Fragment key={cat.id}>
+        <div className="rb-cat-dropdown-item" data-level={level}
+          style={{ paddingLeft: 12 + level * 12, padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--rb-border)' }}
+          onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+          onMouseLeave={e => e.currentTarget.style.background = ''}
+          onClick={() => handleSelect(cat)}>
+          {cat.title} {cat.services_count != null ? `(${cat.services_count})` : ''}
+        </div>
+        {cat.children?.length > 0 && renderCats(cat.children, level + 1)}
+      </React.Fragment>
+    ));
+  }
+
+  const q = query.trim().toLowerCase();
+  const flatMatches = q && categories
+    ? (function flatAll(cats) { const r = []; for (const c of cats) { r.push(c); if (c.children?.length) r.push(...flatAll(c.children)); } return r; })(categories).filter(c => c.title.toLowerCase().includes(q))
+    : null;
+
+  return (
+    <div style={{ position: 'relative', marginBottom: 10 }}>
+      <button ref={btnRef} type="button" onClick={handleToggle}
+        style={{ width: '100%', padding: '8px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, background: '#fff', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, textAlign: 'left', color: selectedLabel ? 'var(--rb-text)' : 'var(--rb-text-secondary)', fontFamily: 'inherit' }}>
+        <span>{selectedLabel || 'Выберите категорию…'}</span>
+        <svg viewBox="0 0 20 20" fill="currentColor" style={{ width: 16, height: 16, flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform 0.15s' }}>
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/>
+        </svg>
+      </button>
+      {open && (
+        <div ref={dropRef} style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: Math.max(dropPos.width, 320), border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,0.14)', zIndex: 9999, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '6px 8px', borderBottom: '1px solid var(--rb-border)' }}>
+            <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Поиск категории…"
+              style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+            {loading && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Загрузка…</div>}
+            {!loading && categories?.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Нет категорий</div>}
+            {!loading && flatMatches?.length === 0 && <div style={{ padding: '10px 12px', fontSize: 13, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>}
+            {!loading && flatMatches && flatMatches.map(cat => (
+              <div key={cat.id} style={{ paddingLeft: 12, padding: '7px 12px', cursor: 'pointer', fontSize: 13, borderBottom: '1px solid var(--rb-border)' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f0f7ff'}
+                onMouseLeave={e => e.currentTarget.style.background = ''}
+                onClick={() => handleSelect(cat)}>
+                {cat.title} {cat.services_count != null ? `(${cat.services_count})` : ''}
+              </div>
+            ))}
+            {!loading && !flatMatches && categories?.length > 0 && renderCats(categories)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// МАРКЕТИНГ
+// ══════════════════════════════════════════════════════════════════════════════
+function TabMarketing() {
+  const [settings, setSettings]         = useState({});
+  const [loading, setLoading]           = useState(true);
+  const [mode, setMode]                 = useState('services'); // 'services' | 'category'
+  const [clinicFilter, setClinicFilter] = useState('');
+
+  // ── «По услугам» mode state ──
+  const [categoryFilter, setCatFilter]  = useState('');
+  const [categories, setCategories]     = useState([]);
+  const [catsLoading, setCatsLoading]   = useState(false);
+  const [services, setServices]         = useState([]);
+  const [svcsLoading, setSvcsLoading]   = useState(false);
+  const [search, setSearch]             = useState('');
+  const [selectedSvc, setSelectedSvc]   = useState(null);
+  const [valueType, setValueType]       = useState('percent');
+  const [value, setValue]               = useState('');
+  const [saving, setSaving]             = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+
+  // ── «По категории» mode state ──
+  const [catSvcs, setCatSvcs]           = useState([]);
+  const [catSvcsLoading, setCatSvcsLoading] = useState(false);
+  const [catBulkType, setCatBulkType]   = useState('percent');
+  const [catBulkValue, setCatBulkValue] = useState('');
+  const [catExcluded, setCatExcluded]   = useState(new Set());
+  const [catFilter, setCatFilter2]      = useState('');
+  const [catSaving, setCatSaving]       = useState(false);
+
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    directories.getAll('marketing_service')
+      .then(res => setSettings(res.data || {}))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ── «По услугам»: load categories when clinic changes ──
+  useEffect(() => {
+    if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
+    setCatsLoading(true);
+    mis.getServiceCategories()
+      .then(res => { const raw = res.data?.data || res.data || []; setCategories(Array.isArray(raw) ? raw : []); })
+      .catch(() => setCategories([]))
+      .finally(() => setCatsLoading(false));
+  }, [clinicFilter]);
+
+  // ── «По услугам»: load services ──
+  useEffect(() => {
+    if (!clinicFilter || mode !== 'services') { setServices([]); return; }
+    setSvcsLoading(true);
+    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter) : mis.getAllServices(clinicFilter);
+    loader
+      .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
+      .catch(() => setServices([]))
+      .finally(() => setSvcsLoading(false));
+  }, [clinicFilter, categoryFilter, mode]);
+
+  useEffect(() => { setSelectedSvc(null); setShowEditForm(false); setCatSvcs([]); setCatBulkValue(''); setCatExcluded(new Set()); setCatFilter2(''); }, [clinicFilter]);
+
+  const flatCats  = useMemo(() => flattenCats(categories), [categories]);
+
+  const settingByCode = useMemo(() => {
+    const map = {};
+    for (const [id, s] of Object.entries(settings)) {
+      if (s.clinicId !== clinicFilter) continue;
+      if (s.serviceCode) map[s.serviceCode] = { id, ...s };
+    }
+    return map;
+  }, [settings, clinicFilter]);
+
+  const filteredSvcs = useMemo(() => {
+    if (!search) return services;
+    const q = search.toLowerCase();
+    return services.filter(s => (s.title || s.name || '').toLowerCase().includes(q) || (s.code || '').toLowerCase().includes(q));
+  }, [services, search]);
+
+  // ── Handlers: «По услугам» ──
+  const handleSelect = (svc) => {
+    const code = svc.code || String(svc.service_id || svc.id || '');
+    setSelectedSvc({ code, title: svc.title || svc.name || '', price: svc.price });
+    setShowEditForm(false);
+    const existing = settingByCode[code];
+    if (existing) { setValue(String(existing.value)); setValueType(existing.valueType === 'rub' ? 'rub' : 'percent'); }
+    else { setValue(''); setValueType('percent'); }
+  };
+
+  const handleSave = async () => {
+    if (!selectedSvc || !clinicFilter) return;
+    const val = parseFloat(value);
+    if (isNaN(val) || val < 0) { toast.error('Введите корректное значение'); return; }
+    setSaving(true);
+    try {
+      const existing = settingByCode[selectedSvc.code];
+      const id   = existing?.id || uuidv4();
+      const data = { clinicId: clinicFilter, serviceCode: selectedSvc.code, serviceName: selectedSvc.title, value: val, valueType };
+      await directories.save('marketing_service', id, data);
+      setSettings(prev => ({ ...prev, [id]: data }));
+      setShowEditForm(false);
+      toast.success('Сохранено', { duration: 1500 });
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setSaving(false); }
+  };
+
+  const handleRemove = async (id) => {
+    try {
+      await directories.remove('marketing_service', id);
+      setSettings(prev => { const n = { ...prev }; delete n[id]; return n; });
+      if (selectedSvc && settingByCode[selectedSvc.code]?.id === id) { setValue(''); setShowEditForm(false); }
+      toast.success('Удалено', { duration: 1500 });
+    } catch { toast.error('Ошибка удаления'); }
+  };
+
+  const saveInline = useCallback((id, patch) => {
+    clearTimeout(saveTimers.current[id]);
+    setSettings(prev => ({ ...prev, [id]: { ...prev[id], ...patch } }));
+    saveTimers.current[id] = setTimeout(async () => {
+      try { await directories.save('marketing_service', id, patch); }
+      catch { toast.error('Ошибка сохранения'); }
+    }, 800);
+  }, []);
+
+  // ── Handlers: «По категории» ──
+  const handleCatSelect = useCallback(async (cat) => {
+    setCatSvcs([]); setCatBulkValue(''); setCatExcluded(new Set()); setCatFilter2('');
+    setCatSvcsLoading(true);
+    try {
+      const res  = await mis.getServicesByCategory(cat.id);
+      const data = res.data?.data || res.data || [];
+      setCatSvcs(Array.isArray(data) ? data : []);
+    } catch { setCatSvcs([]); toast.error('Ошибка загрузки услуг категории'); }
+    finally { setCatSvcsLoading(false); }
+  }, []);
+
+  const toggleCatExclude = (code) => {
+    setCatExcluded(prev => { const next = new Set(prev); if (next.has(code)) next.delete(code); else next.add(code); return next; });
+  };
+
+  const handleApplyCategory = async () => {
+    if (!clinicFilter) { toast.error('Выберите медцентр'); return; }
+    const val = parseFloat(catBulkValue);
+    if (isNaN(val) || val < 0) { toast.error('Укажите ставку'); return; }
+    const active = catSvcs.filter(s => !catExcluded.has(s.code || String(s.service_id || '')));
+    if (!active.length) { toast.error('Нет выбранных услуг'); return; }
+    setCatSaving(true);
+    try {
+      const updates = {};
+      for (const svc of active) {
+        const code = svc.code || String(svc.service_id || '');
+        const id   = settingByCode[code]?.id || uuidv4();
+        const data = { clinicId: clinicFilter, serviceCode: code, serviceName: svc.title || '', value: val, valueType: catBulkType };
+        await directories.save('marketing_service', id, data);
+        updates[id] = data;
+      }
+      setSettings(prev => ({ ...prev, ...updates }));
+      toast.success(`Применено к ${active.length} услуг${active.length === 1 ? 'е' : active.length < 5 ? 'ам' : 'ам'}`);
+      setCatBulkValue('');
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setCatSaving(false); }
+  };
+
+  const fmtVal    = (s) => s.valueType === 'rub' ? `${s.value} ₽` : `${s.value}%`;
+  const clinicName = DEFAULT_CLINICS.find(c => String(c.id) === clinicFilter)?.name;
+
+  // ── Category mode: filtered visible list — must be before any early return ──
+  const catFilteredSvcs = useMemo(() => {
+    if (!catFilter) return catSvcs;
+    const q = catFilter.toLowerCase();
+    return catSvcs.filter(s => (s.title || '').toLowerCase().includes(q) || (s.code || String(s.service_id || '')).toLowerCase().includes(q));
+  }, [catSvcs, catFilter]);
+
+  if (loading) return <Spinner text="Загрузка маркетинга…" />;
+
+  const currentSetting = selectedSvc ? settingByCode[selectedSvc.code] : null;
+
+  return (
+    <div>
+      {/* ── Режим-переключатель ── */}
+      <div className="rb-tabs" style={{ marginBottom: 16 }}>
+        <button className={`rb-tab-btn${mode === 'services' ? ' active' : ''}`}
+          onClick={() => { setMode('services'); setSelectedSvc(null); }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          По услугам
+        </button>
+        <button className={`rb-tab-btn${mode === 'category' ? ' active' : ''}`}
+          onClick={() => { setMode('category'); setSelectedSvc(null); }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          По категории
+        </button>
+      </div>
+
+      {/* ── Выбор медцентра (общий для обоих режимов) ── */}
+      <div style={{ marginBottom: 14 }}>
+        <select value={clinicFilter}
+          onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
+          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', minWidth: 220 }}>
+          <option value="">— Выберите медцентр —</option>
+          {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {clinicFilter && (
+          <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            {Object.values(settings).filter(s => s.clinicId === clinicFilter).length} ставок назначено
+          </span>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════
+          РЕЖИМ: По услугам
+      ══════════════════════════════════════════════ */}
+      {mode === 'services' && (
+        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 16, alignItems: 'start' }}>
+
+          {/* LEFT: категория + поиск + список услуг */}
+          <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {clinicFilter && (
+                <select value={categoryFilter}
+                  onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
+                  style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }} disabled={catsLoading}>
+                  <option value="">Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
+                  {flatCats.map(c => <option key={c.id} value={c.id}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
+                </select>
+              )}
+              {clinicFilter && (
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Поиск по коду или названию…"
+                  style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }} />
+              )}
+              {!svcsLoading && clinicFilter && (
+                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{filteredSvcs.length} услуг</span>
+              )}
+            </div>
+            <div style={{ overflowY: 'auto', maxHeight: 560 }}>
+              {svcsLoading ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
+                  <span className="rb-spinner" style={{ width: 12, height: 12, display: 'inline-block', marginRight: 6 }} />Загрузка…
+                </div>
+              ) : !clinicFilter ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.6 }}>
+                  Выберите медцентр<br />для загрузки услуг
+                </div>
+              ) : filteredSvcs.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>Нет услуг</div>
+              ) : filteredSvcs.map(s => {
+                const code  = s.code || String(s.service_id || s.id || '');
+                const title = s.title || s.name || '';
+                const hasSetting = !!settingByCode[code];
+                const isSel = selectedSvc?.code === code;
+                return (
+                  <button key={code} onClick={() => handleSelect(s)}
+                    style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, width: '100%', padding: '7px 12px', border: 'none', borderBottom: '1px solid var(--rb-border)', background: isSel ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1.4 }}>{title}</div>
+                      {s.code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{s.code}</div>}
+                    </div>
+                    {hasSetting && (
+                      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: isSel ? '#bfdbfe' : '#dbeafe', color: '#1e40af', marginTop: 2 }}>
+                        {fmtVal(settingByCode[code])}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* RIGHT: деталь выбранной услуги */}
+          <div>
+            {!clinicFilter ? (
+              <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+                Выберите медцентр и услугу слева
+              </div>
+            ) : !selectedSvc ? (
+              /* Сводная таблица */
+              Object.values(settings).filter(s => s.clinicId === clinicFilter).length > 0 ? (
+                <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden' }}>
+                  <div style={{ padding: '10px 14px', background: '#f8fafc', borderBottom: '1px solid var(--rb-border)', fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>
+                    Назначенные ставки — {clinicName}
+                  </div>
+                  <table className="rb-table" style={{ minWidth: 400 }}>
+                    <thead><tr><THCell>Услуга</THCell><THCell>Код</THCell><THCell right>Ставка</THCell><THCell right>Тип</THCell><THCell></THCell></tr></thead>
+                    <tbody>
+                      {Object.entries(settings)
+                        .filter(([, s]) => s.clinicId === clinicFilter)
+                        .sort(([, a], [, b]) => (a.serviceName || '').localeCompare(b.serviceName || '', 'ru'))
+                        .map(([id, s]) => (
+                          <tr key={id}>
+                            <td style={{ fontSize: 12 }}>{s.serviceName || s.serviceCode}</td>
+                            <td style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{s.serviceCode}</td>
+                            <td><div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <input type="number" min="0" step="0.01" value={s.value ?? ''} onChange={e => saveInline(id, { value: parseFloat(e.target.value) || 0 })} style={{ ...inlineInputStyle, width: 80, textAlign: 'right' }} />
+                            </div></td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', border: '1px solid var(--rb-border-dark)', borderRadius: 6, overflow: 'hidden' }}>
+                                <button onClick={() => saveInline(id, { valueType: 'percent' })} style={{ padding: '3px 8px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: s.valueType !== 'rub' ? 'var(--rb-primary)' : '#fff', color: s.valueType !== 'rub' ? '#fff' : 'var(--rb-text-secondary)' }}>%</button>
+                                <button onClick={() => saveInline(id, { valueType: 'rub' })} style={{ padding: '3px 8px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', background: s.valueType === 'rub' ? 'var(--rb-primary)' : '#fff', color: s.valueType === 'rub' ? '#fff' : 'var(--rb-text-secondary)' }}>₽</button>
+                              </div>
+                            </td>
+                            <td style={{ width: 36 }}>
+                              <button onClick={() => handleRemove(id)} title="Удалить" style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '2px 6px', color: '#94a3b8', fontSize: 16, lineHeight: 1 }}>×</button>
+                            </td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+                  Выберите услугу слева, чтобы назначить маркетинговую ставку
+                </div>
+              )
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)' }}>{selectedSvc.title}</div>
+                    <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2, display: 'flex', gap: 10 }}>
+                      {selectedSvc.code && <span>код: {selectedSvc.code}</span>}
+                      {selectedSvc.price != null && <span>цена: {parseFloat(selectedSvc.price).toLocaleString('ru-RU')} ₽</span>}
+                      {clinicName && <span style={{ color: getClinicColor(clinicFilter), fontWeight: 600 }}>{clinicName}</span>}
+                    </div>
+                  </div>
+                  {!showEditForm && (
+                    <button onClick={() => setShowEditForm(true)}
+                      style={{ padding: '6px 14px', borderRadius: 7, border: 'none', background: 'var(--rb-primary)', color: '#fff', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit', fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                      {currentSetting ? '✎ Изменить' : '+ Назначить'}
+                    </button>
+                  )}
+                </div>
+
+                {showEditForm && (
+                  <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '14px 16px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>Маркетинговая ставка</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'inline-flex', border: '1px solid var(--rb-border-dark)', borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
+                        <button onClick={() => setValueType('percent')} style={{ padding: '7px 14px', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: valueType === 'percent' ? 'var(--rb-primary)' : '#fff', color: valueType === 'percent' ? '#fff' : 'var(--rb-text-secondary)' }}>%</button>
+                        <button onClick={() => setValueType('rub')} style={{ padding: '7px 14px', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: valueType === 'rub' ? 'var(--rb-primary)' : '#fff', color: valueType === 'rub' ? '#fff' : 'var(--rb-text-secondary)' }}>₽</button>
+                      </div>
+                      <input type="number" min="0" step="any" value={value} onChange={e => setValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') setShowEditForm(false); }}
+                        placeholder={valueType === 'percent' ? 'Например: 10' : 'Например: 500'}
+                        style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
+                      <button onClick={handleSave} disabled={saving}
+                        style={{ padding: '7px 16px', borderRadius: 7, border: 'none', background: saving ? '#94a3b8' : '#10b981', color: '#fff', cursor: saving ? 'default' : 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 500, flexShrink: 0 }}>
+                        {saving ? '…' : 'Сохранить'}
+                      </button>
+                      <button onClick={() => setShowEditForm(false)}
+                        style={{ padding: '7px 12px', borderRadius: 7, border: '1px solid var(--rb-border)', background: '#fff', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
+                        Отмена
+                      </button>
+                    </div>
+                    {valueType === 'percent' && selectedSvc.price != null && value && !isNaN(parseFloat(value)) && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                        С каждой услуги уйдёт на маркетинг: <strong style={{ color: 'var(--rb-text)' }}>
+                          {(parseFloat(selectedSvc.price) * parseFloat(value) / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {currentSetting ? (
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 12, color: '#15803d', fontWeight: 600, marginBottom: 2 }}>Текущая ставка</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--rb-text)' }}>{fmtVal(currentSetting)}</div>
+                      {currentSetting.valueType !== 'rub' && selectedSvc.price != null && (
+                        <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 2 }}>
+                          ≈ {(parseFloat(selectedSvc.price) * currentSetting.value / 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽ с услуги
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => handleRemove(currentSetting.id)} title="Удалить"
+                      style={{ border: 'none', background: 'none', cursor: 'pointer', padding: '4px 8px', color: '#94a3b8', fontSize: 18, lineHeight: 1 }}>×</button>
+                  </div>
+                ) : !showEditForm && (
+                  <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 8 }}>
+                    Ставка не назначена — нажмите «+ Назначить»
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════
+          РЕЖИМ: По категории (массовое назначение)
+      ══════════════════════════════════════════════ */}
+      {mode === 'category' && (
+        <div>
+          {!clinicFilter ? (
+            <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+              Выберите медцентр выше
+            </div>
+          ) : (
+            <div>
+              <MarketingCategoryDropdown onSelect={handleCatSelect} />
+
+              {catSvcsLoading && (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+                  <span className="rb-spinner" style={{ width: 14, height: 14, display: 'inline-block', marginRight: 8 }} />Загрузка услуг…
+                </div>
+              )}
+
+              {!catSvcsLoading && catSvcs.length > 0 && (() => {
+                const allCodes      = catSvcs.map(s => s.code || String(s.service_id || ''));
+                const selectedCount = catSvcs.length - catExcluded.size;
+                return (
+                  <>
+                    {/* Форма массового назначения */}
+                    <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border-dark)', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 10 }}>
+                        Маркетинговая ставка для выбранных услуг
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'inline-flex', border: '1px solid var(--rb-border-dark)', borderRadius: 7, overflow: 'hidden', flexShrink: 0 }}>
+                          <button onClick={() => { setCatBulkType('percent'); setCatBulkValue(''); }}
+                            style={{ padding: '7px 14px', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: catBulkType === 'percent' ? 'var(--rb-primary)' : '#fff', color: catBulkType === 'percent' ? '#fff' : 'var(--rb-text-secondary)' }}>%</button>
+                          <button onClick={() => { setCatBulkType('rub'); setCatBulkValue(''); }}
+                            style={{ padding: '7px 14px', border: 'none', fontSize: 13, fontWeight: 600, cursor: 'pointer', background: catBulkType === 'rub' ? 'var(--rb-primary)' : '#fff', color: catBulkType === 'rub' ? '#fff' : 'var(--rb-text-secondary)' }}>₽</button>
+                        </div>
+                        <input type="number" min="0" step="any" value={catBulkValue} onChange={e => setCatBulkValue(e.target.value)}
+                          placeholder={catBulkType === 'percent' ? 'Например: 10' : 'Например: 500'}
+                          style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none', fontFamily: 'inherit' }} />
+                        <button onClick={handleApplyCategory} disabled={catSaving}
+                          style={{ padding: '7px 18px', borderRadius: 7, border: 'none', background: catSaving ? '#94a3b8' : '#10b981', color: '#fff', cursor: catSaving ? 'default' : 'pointer', fontSize: 13, fontFamily: 'inherit', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                          {catSaving ? <><span className="rb-spinner" style={{ width: 12, height: 12, display: 'inline-block', marginRight: 6 }} />Сохранение…</> : `Применить к ${selectedCount}`}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Список услуг с тоглами */}
+                    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8 }}>
+                      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', borderRadius: '8px 8px 0 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <input value={catFilter} onChange={e => setCatFilter2(e.target.value)}
+                          placeholder="Найти услугу в категории…"
+                          style={{ width: '100%', padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+                            Выбрано: <b>{selectedCount}</b> из {catSvcs.length}
+                            {catFilter && ` (показано ${catFilteredSvcs.length})`}
+                          </span>
+                          <button type="button"
+                            onClick={() => catExcluded.size === catSvcs.length ? setCatExcluded(new Set()) : setCatExcluded(new Set(allCodes))}
+                            style={{ fontSize: 11, color: 'var(--rb-primary)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+                            {catExcluded.size === catSvcs.length ? 'Выбрать все' : 'Снять все'}
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                        {catFilteredSvcs.length === 0 && (
+                          <div style={{ padding: '12px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Ничего не найдено</div>
+                        )}
+                        {catFilteredSvcs.map((svc, i) => {
+                          const code     = svc.code || String(svc.service_id || '');
+                          const excluded = catExcluded.has(code);
+                          const existing = settingByCode[code];
+                          return (
+                            <div key={code || i}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px', borderBottom: '1px solid var(--rb-border)', cursor: 'pointer', opacity: excluded ? 0.5 : 1 }}
+                              onClick={() => toggleCatExclude(code)}>
+                              {/* Toggle */}
+                              <div style={{ width: 32, height: 18, borderRadius: 9, background: excluded ? '#cbd5e1' : 'var(--rb-primary)', position: 'relative', transition: 'background 0.18s', flexShrink: 0 }}>
+                                <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#fff', position: 'absolute', top: 2, left: excluded ? 2 : 16, transition: 'left 0.18s', boxShadow: '0 1px 3px rgba(0,0,0,0.18)' }} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{code}</span>
+                                <span style={{ fontSize: 12, color: 'var(--rb-text)' }}>{svc.title}</span>
+                              </div>
+                              {existing && !excluded && (
+                                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 5px', borderRadius: 8, background: '#dbeafe', color: '#1e40af', flexShrink: 0 }}>
+                                  {fmtVal(existing)}
+                                </span>
+                              )}
+                              {svc.price != null && (
+                                <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{parseFloat(svc.price).toLocaleString('ru-RU')} ₽</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {!catSvcsLoading && catSvcs.length === 0 && (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+                  Выберите категорию выше для загрузки услуг
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Directories({ doctors = [], excelSources = [] }) {
@@ -4080,6 +5140,7 @@ export default function Directories({ doctors = [], excelSources = [] }) {
       {activeTab === 'equipment'   && <TabEquipment />}
       {activeTab === 'utilities'   && <TabUtilities />}
       {activeTab === 'consumables' && <TabConsumables />}
+      {activeTab === 'marketing'   && <TabMarketing />}
     </div>
   );
 }

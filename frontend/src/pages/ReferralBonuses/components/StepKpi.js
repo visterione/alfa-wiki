@@ -7,7 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics } from '../../Statistics/components/Directories';
+import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics } from '../../Statistics/components/Directories';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -2473,6 +2473,8 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       <div style={{ display: viewMode === 'rooms' ? 'block' : 'none' }}>
         <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} rows={rows} doctors={doctors} />
       </div>
+      {/* Оборудование — условный рендер, чтобы данные перезагружались при переходе на вкладку */}
+      {viewMode === 'rooms' && <TabEquipmentAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Репутация — всегда смонтирована, не требует Excel-источников */}
       <div style={{ display: viewMode === 'reputation' ? 'block' : 'none' }}>

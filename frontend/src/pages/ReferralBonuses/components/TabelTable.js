@@ -97,7 +97,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
   // Half-period edit locks (non-admins only)
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const firstHalfLocked  = !isAdmin && today >= new Date(year, month - 1, 16);
-  const secondHalfLocked = !isAdmin && today >= new Date(year, month, 1);
+  const secondHalfLocked = !isAdmin && today >= new Date(year, month, 3);
 
   // Effective per-half readOnly flags
   const readOnly1 = readOnly || firstHalfLocked;
