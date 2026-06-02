@@ -157,6 +157,16 @@ export async function buildReport({
   holidayDates = null,     // Set<string> of "YYYY-MM-DD" public holidays — hours on these days count x2
 }) {
   const doctorName = doctor.name;
+  const doctorClinicIds = new Set((doctor.clinics || []).map(String));
+  if (execSettings?.clinicSettings && doctorClinicIds.size > 0) {
+    const clinicSettings = {};
+    Object.entries(execSettings.clinicSettings || {}).forEach(([clinicId, settings]) => {
+      if (clinicId === 'global' || doctorClinicIds.has(String(clinicId))) {
+        clinicSettings[clinicId] = settings;
+      }
+    });
+    execSettings = { ...execSettings, clinicSettings };
+  }
 
   // If doctor has no percent clinics — Excel rows are not required (normed/hourly/salary calculate from settings)
   const _clinicPayTypes = execSettings

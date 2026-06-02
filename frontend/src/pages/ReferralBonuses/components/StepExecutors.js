@@ -1380,6 +1380,22 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   }, [selectedDoctor]);
 
   // ── Helpers ───────────────────────────────────────────────────────────────
+  const realDoctorClinicIds = React.useMemo(
+    () => new Set((selectedDoctor?.clinics || []).map(String)),
+    [selectedDoctor]
+  );
+
+  const sanitizeClinicSettings = useCallback((data) => {
+    const source = data?.clinicSettings || {};
+    const clinicSettings = { global: source.global || execClinicDefault() };
+    Object.entries(source).forEach(([clinicId, settings]) => {
+      if (clinicId === 'global' || realDoctorClinicIds.has(String(clinicId))) {
+        clinicSettings[clinicId] = settings;
+      }
+    });
+    return { ...(data || execDefault()), clinicSettings };
+  }, [realDoctorClinicIds]);
+
   const getClinicData = useCallback((clinicId = activeClinic, data = execData) => {
     const cs = data.clinicSettings || {};
     if (!cs[clinicId]) {
@@ -1413,7 +1429,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     if (!selectedDoctor) return;
     setSaving(true);
     try {
-      const toSave = dataOverride || execData;
+      const toSave = sanitizeClinicSettings(dataOverride || execData);
       const clinicNames = Object.fromEntries(
         (clinics || []).map(c => [String(c.id), c.name]).filter(([, n]) => n)
       );
@@ -1447,8 +1463,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     { id: 'global', label: 'Общие', color: 'var(--rb-primary)' },
     ...(clinics || []).filter(c => {
       if (isIpDoctor && String(c.id) !== 'ip') return false;
-      const cs = execData.clinicSettings || {};
-      return cs[String(c.id)] || (selectedDoctor?.clinics || []).includes(String(c.id));
+      return realDoctorClinicIds.has(String(c.id));
     }).map(c => ({ id: String(c.id), label: c.name, color: c.color })),
   ];
 

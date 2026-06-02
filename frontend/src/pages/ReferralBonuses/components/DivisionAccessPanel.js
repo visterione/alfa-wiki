@@ -175,6 +175,9 @@ export default function DivisionAccessPanel({
     for (const doctorId of actualDoctorIds) {
       try {
         const doctor = doctors.find(d => d.id === doctorId);
+        if (rateClinic !== 'global' && !(doctor?.clinics || []).map(String).includes(String(rateClinic))) {
+          continue;
+        }
         const res = await execSettingsApi.get(doctorId);
         const raw = res.data;
         const settings = (raw && Object.keys(raw).length && raw.clinicSettings)
