@@ -1,11 +1,21 @@
 // EditorExtensions.js - Кастомные расширения TipTap для Editor и ContentRenderer
 import { Node } from '@tiptap/core';
-import { ReactNodeViewRenderer, NodeViewWrapper } from '@tiptap/react';
+import { ReactNodeViewRenderer, NodeViewWrapper, EditorContent, useEditor } from '@tiptap/react';
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import StarterKit from '@tiptap/starter-kit';
 import Blockquote from '@tiptap/extension-blockquote';
 import TipTapTableCell from '@tiptap/extension-table-cell';
 import TipTapTableHeader from '@tiptap/extension-table-header';
 import TiptapImage from '@tiptap/extension-image';
+import Underline from '@tiptap/extension-underline';
+import TextAlign from '@tiptap/extension-text-align';
+import Highlight from '@tiptap/extension-highlight';
+import Link from '@tiptap/extension-link';
+import TextStyle from '@tiptap/extension-text-style';
+import Color from '@tiptap/extension-color';
+import Subscript from '@tiptap/extension-subscript';
+import Superscript from '@tiptap/extension-superscript';
+import FontFamily from '@tiptap/extension-font-family';
 import { Plus, Trash2, Paintbrush } from 'lucide-react';
 import { BASE_URL } from '../services/api';
 
@@ -657,8 +667,8 @@ function computeGridMap(rows) {
 /** Парсит <table> HTML → { rows, header, colWidths, widthMode } */
 function parseHtmlTable(html) {
   const empty = { rows: [
-    [{ text: '', bg: '', colSpan: 1, rowSpan: 1 }, { text: '', bg: '', colSpan: 1, rowSpan: 1 }],
-    [{ text: '', bg: '', colSpan: 1, rowSpan: 1 }, { text: '', bg: '', colSpan: 1, rowSpan: 1 }],
+    [{ html: '', bg: '', colSpan: 1, rowSpan: 1 }, { html: '', bg: '', colSpan: 1, rowSpan: 1 }],
+    [{ html: '', bg: '', colSpan: 1, rowSpan: 1 }, { html: '', bg: '', colSpan: 1, rowSpan: 1 }],
   ], header: true, colWidths: [], widthMode: 'full' };
   if (!html) return empty;
   const div = document.createElement('div');
@@ -679,7 +689,7 @@ function parseHtmlTable(html) {
   const header = allRows.length > 0 && allRows[0].querySelector('th') !== null;
   const rows = allRows.map(tr =>
     Array.from(tr.querySelectorAll('td, th')).map(cell => ({
-      text: cell.innerText ?? cell.textContent ?? '',
+      html: cell.innerHTML || '',
       bg: cell.getAttribute('data-background-color') || cell.style.backgroundColor || '',
       colSpan: Math.max(1, parseInt(cell.getAttribute('colspan') || '1')),
       rowSpan: Math.max(1, parseInt(cell.getAttribute('rowspan') || '1')),
@@ -711,13 +721,66 @@ function serializeToHtml(rows, header, colWidths, widthMode) {
       if ((cell.colSpan || 1) > 1) attrs.push(`colspan="${cell.colSpan}"`);
       if ((cell.rowSpan || 1) > 1) attrs.push(`rowspan="${cell.rowSpan}"`);
       const attrStr = attrs.length ? ' ' + attrs.join(' ') : '';
-      const text = (cell.text ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return `<${tag}${attrStr}>${text}</${tag}>`;
+      return `<${tag}${attrStr}>${cell.html || ''}</${tag}>`;
     });
     return `<tr>${tds.join('')}</tr>`;
   });
 
   return `<table data-width-mode="${mode}" style="${tableStyle}">${colgroup}${trs.join('')}</table>`;
+}
+
+const cellEditorExtensions = [
+  StarterKit.configure({
+    blockquote: false,
+    horizontalRule: false,
+  }),
+  CustomBlockquote,
+  Underline,
+  TextAlign.configure({ types: ['heading', 'paragraph'] }),
+  Highlight.configure({ multicolor: true }),
+  Link.configure({
+    openOnClick: false,
+    HTMLAttributes: {
+      target: '_blank',
+      rel: 'noopener noreferrer',
+    },
+  }),
+  TextStyle,
+  Color,
+  Subscript,
+  Superscript,
+  FontFamily,
+];
+
+function InteractiveTableCellEditor({ html, rowIdx, cellIdx, onChange, onFocus }) {
+  const editor = useEditor({
+    extensions: cellEditorExtensions,
+    content: html || '',
+    editorProps: {
+      attributes: {
+        class: 'itable-cell-prosemirror',
+      },
+    },
+    onFocus: ({ editor }) => {
+      onFocus?.(editor);
+      window.dispatchEvent(new CustomEvent('interactive-table-cell-focus', { detail: { editor } }));
+    },
+    onUpdate: ({ editor }) => {
+      onChange(rowIdx, cellIdx, editor.getHTML());
+    },
+  });
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const nextHtml = html || '';
+    if (editor.getHTML() !== nextHtml) {
+      editor.commands.setContent(nextHtml, false);
+    }
+  }, [editor, html]);
+
+  if (!editor) return null;
+
+  return <EditorContent editor={editor} className="itable-cell-tiptap" />;
 }
 
 // ── Компонент редактируемой таблицы ─────────────────────────────────────────
@@ -743,8 +806,8 @@ function InteractiveTableComponent({ node, updateAttributes }) {
   useEffect(() => { colWidthsRef.current = colWidths; }, [colWidths]);
   useEffect(() => { widthModeRef.current = widthMode; }, [widthMode]);
 
-  // Рефы на textarea по `${rowIdx},${cellIdx}`
-  const textareaRefs = useRef({});
+  // Рефы на редакторы ячеек по `${rowIdx},${cellIdx}`
+  const cellEditorRefs = useRef({});
 
   // Рефы на контейнер для измерений при ресайзе
   const tableElRef = useRef(null);
@@ -766,15 +829,6 @@ function InteractiveTableComponent({ node, updateAttributes }) {
     setColWidths(p.colWidths);
     setWidthMode(p.widthMode);
   }, [node.attrs.tableHtml]);
-
-  // Авто-высота textarea: подстраиваем при монтировании и после изменения rows (undo/redo)
-  useEffect(() => {
-    Object.values(textareaRefs.current).forEach(el => {
-      if (!el) return;
-      el.style.height = 'auto';
-      el.style.height = el.scrollHeight + 'px';
-    });
-  }, [rows]);
 
   // Закрыть color-picker при клике вне
   useEffect(() => {
@@ -835,8 +889,10 @@ function InteractiveTableComponent({ node, updateAttributes }) {
   }, [updateAttributes]);
 
   const focusCell = (ri, ci) => {
-    const el = textareaRefs.current[`${ri},${ci}`];
-    if (el) { el.focus(); el.selectionStart = el.selectionEnd = el.value.length; }
+    const cellEditor = cellEditorRefs.current[`${ri},${ci}`];
+    if (cellEditor && !cellEditor.isDestroyed) {
+      cellEditor.chain().focus('end').run();
+    }
   };
 
   // ── Операции со строками/столбцами ──────────────────────────────────────
@@ -848,7 +904,7 @@ function InteractiveTableComponent({ node, updateAttributes }) {
 
   const addRow = (after) => {
     const idx = targetRowIdx();
-    const newRow = Array.from({ length: gridMap.numCols }, () => ({ text: '', bg: '', colSpan: 1, rowSpan: 1 }));
+    const newRow = Array.from({ length: gridMap.numCols }, () => ({ html: '', bg: '', colSpan: 1, rowSpan: 1 }));
     const nr = [...rows];
     nr.splice(after ? idx + 1 : idx, 0, newRow);
     setRows(nr);
@@ -894,7 +950,7 @@ function InteractiveTableComponent({ node, updateAttributes }) {
           break;
         }
       }
-      newRow.splice(insertAt, 0, { text: '', bg: '', colSpan: 1, rowSpan: 1 });
+      newRow.splice(insertAt, 0, { html: '', bg: '', colSpan: 1, rowSpan: 1 });
       return newRow;
     });
     const ncw = [...colWidths]; ncw.splice(insertGridC, 0, null);
@@ -1013,7 +1069,7 @@ function InteractiveTableComponent({ node, updateAttributes }) {
     nr[rowIdx][cellIdx] = { ...cell, colSpan: 1, rowSpan: 1 };
     // Вставить cs-1 ячеек справа в той же строке
     for (let dc = cs - 1; dc >= 1; dc--) {
-      nr[rowIdx].splice(cellIdx + 1, 0, { text: '', bg: '', colSpan: 1, rowSpan: 1 });
+    nr[rowIdx].splice(cellIdx + 1, 0, { html: '', bg: '', colSpan: 1, rowSpan: 1 });
     }
     // Вставить cs ячеек в нижних строках (для rowspan)
     for (let dr = 1; dr < rs; dr++) {
@@ -1026,7 +1082,7 @@ function InteractiveTableComponent({ node, updateAttributes }) {
         if (pos && pos.gridC >= anchorGridC) { insertAt = ci2; break; }
       }
       for (let dc = 0; dc < cs; dc++) {
-        nr[ri].splice(insertAt + dc, 0, { text: '', bg: '', colSpan: 1, rowSpan: 1 });
+        nr[ri].splice(insertAt + dc, 0, { html: '', bg: '', colSpan: 1, rowSpan: 1 });
       }
     }
     setRows(nr);
@@ -1079,9 +1135,9 @@ function InteractiveTableComponent({ node, updateAttributes }) {
 
   // ── Обновление текста ячейки ────────────────────────────────────────────
 
-  const updateCell = (ri, ci, text) => {
+  const updateCellHtml = (ri, ci, html) => {
     const nr = rows.map((row, r) =>
-      row.map((cell, c) => r === ri && c === ci ? { ...cell, text } : cell)
+      row.map((cell, c) => r === ri && c === ci ? { ...cell, html } : cell)
     );
     setRows(nr);
     save(nr, header, colWidths, widthMode);
@@ -1222,18 +1278,7 @@ function InteractiveTableComponent({ node, updateAttributes }) {
                         isDraggingRef.current = true;
                         setIsDragging(true);
                       }}
-                    >
-                      <textarea
-                        ref={el => {
-                          if (el) textareaRefs.current[`${rowIdx},${cellIdx}`] = el;
-                          else delete textareaRefs.current[`${rowIdx},${cellIdx}`];
-                        }}
-                        className="itable-input"
-                        value={cell.text}
-                        rows={1}
-                        onChange={e => updateCell(rowIdx, cellIdx, e.target.value)}
-                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
-                        onKeyDown={e => {
+                      onKeyDown={e => {
                           if (e.key === 'Tab') {
                             e.preventDefault();
                             const nextGC = gridC + (cell.colSpan || 1);
@@ -1246,6 +1291,15 @@ function InteractiveTableComponent({ node, updateAttributes }) {
                               focusCell(nxtInfo.rowIdx, nxtInfo.cellIdx);
                             }
                           }
+                        }}
+                    >
+                      <InteractiveTableCellEditor
+                        html={cell.html || ''}
+                        rowIdx={rowIdx}
+                        cellIdx={cellIdx}
+                        onChange={updateCellHtml}
+                        onFocus={cellEditor => {
+                          cellEditorRefs.current[`${rowIdx},${cellIdx}`] = cellEditor;
                         }}
                       />
                       {/* Ручка ресайза колонки */}

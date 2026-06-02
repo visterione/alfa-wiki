@@ -31,11 +31,52 @@ import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './Editor.css';
 
+const escapeHtml = (value) => String(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#039;');
+
+const getStructuralPasteHtml = (text) => {
+  const normalized = text.replace(/\r\n?/g, '\n');
+  const lines = normalized.split('\n');
+  const nonEmptyLines = lines.map(line => line.trim()).filter(Boolean);
+
+  if (nonEmptyLines.length < 2) {
+    return null;
+  }
+
+  const bulletPattern = /^\s*[-*•]\s+/;
+  const orderedPattern = /^\s*\d+[\.)]\s+/;
+  const allBullets = nonEmptyLines.every(line => bulletPattern.test(line));
+  const allOrdered = nonEmptyLines.every(line => orderedPattern.test(line));
+
+  if (allBullets || allOrdered) {
+    const tag = allOrdered ? 'ol' : 'ul';
+    const markerPattern = allOrdered ? orderedPattern : bulletPattern;
+    const items = nonEmptyLines
+      .map(line => `<li><p>${escapeHtml(line.replace(markerPattern, '').trim())}</p></li>`)
+      .join('');
+
+    return `<${tag}>${items}</${tag}>`;
+  }
+
+  return lines
+    .map(line => line.trim()
+      ? `<p>${escapeHtml(line.trim())}</p>`
+      : '<p></p>'
+    )
+    .join('');
+};
+
 // Расширение для обработки вставки изображений
 const ImagePasteHandler = Extension.create({
   name: 'imagePasteHandler',
 
   addProseMirrorPlugins() {
+    const editor = this.editor;
+
     return [
       new Plugin({
         key: new PluginKey('imagePasteHandler'),
@@ -97,55 +138,66 @@ const ImagePasteHandler = Extension.create({
               const base64Images = doc.querySelectorAll('img[src^="data:image"]');
 
               if (base64Images.length === 0) {
-                // Нет base64 изображений — разрешаем TipTap обработать вставку стандартно
-                console.log('No base64 images, letting TipTap handle paste normally');
-                return false;
-              }
+                // Нет base64 изображений — ниже дадим шанс обработчику plain text
+                // сохранить многострочную структуру, иначе TipTap обработает вставку сам.
+                console.log('No base64 images, checking text structure');
+              } else {
+                // Есть base64 изображения — блокируем стандартную вставку и загружаем их
+                event.preventDefault();
+                console.log(`Found ${base64Images.length} base64 images, uploading to server`);
 
-              // Есть base64 изображения — блокируем стандартную вставку и загружаем их
-              event.preventDefault();
-              console.log(`Found ${base64Images.length} base64 images, uploading to server`);
+                base64Images.forEach((img) => {
+                  const base64Data = img.src;
+                  console.log('Processing base64 image, length:', base64Data.length);
 
-              base64Images.forEach((img) => {
-                const base64Data = img.src;
-                console.log('Processing base64 image, length:', base64Data.length);
+                  // Конвертируем base64 в Blob
+                  fetch(base64Data)
+                    .then(res => res.blob())
+                    .then(blob => {
+                      console.log('Blob created, size:', blob.size);
 
-                // Конвертируем base64 в Blob
-                fetch(base64Data)
-                  .then(res => res.blob())
-                  .then(blob => {
-                    console.log('Blob created, size:', blob.size);
-
-                    if (blob.size > 10 * 1024 * 1024) {
-                      toast.error('Максимальный размер изображения 10MB');
-                      return;
-                    }
-
-                    // Создаем File из Blob
-                    const file = new File([blob], 'pasted-image.png', { type: blob.type });
-
-                    // Загружаем на сервер
-                    toast.promise(
-                      media.upload(file).then(({ data }) => {
-                        const imageUrl = `${BASE_URL}/${data.path}`;
-                        console.log('Base64 image uploaded, URL:', imageUrl);
-                        const { schema, tr } = view.state;
-                        const node = schema.nodes.image.create({ src: imageUrl });
-                        const transaction = tr.replaceSelectionWith(node);
-                        view.dispatch(transaction);
-                      }),
-                      {
-                        loading: 'Загрузка изображения...',
-                        success: 'Изображение загружено',
-                        error: 'Ошибка загрузки изображения',
+                      if (blob.size > 10 * 1024 * 1024) {
+                        toast.error('Максимальный размер изображения 10MB');
+                        return;
                       }
-                    );
-                  })
-                  .catch(error => {
-                    console.error('Error processing base64 image:', error);
-                  });
-              });
 
+                      // Создаем File из Blob
+                      const file = new File([blob], 'pasted-image.png', { type: blob.type });
+
+                      // Загружаем на сервер
+                      toast.promise(
+                        media.upload(file).then(({ data }) => {
+                          const imageUrl = `${BASE_URL}/${data.path}`;
+                          console.log('Base64 image uploaded, URL:', imageUrl);
+                          const { schema, tr } = view.state;
+                          const node = schema.nodes.image.create({ src: imageUrl });
+                          const transaction = tr.replaceSelectionWith(node);
+                          view.dispatch(transaction);
+                        }),
+                        {
+                          loading: 'Загрузка изображения...',
+                          success: 'Изображение загружено',
+                          error: 'Ошибка загрузки изображения',
+                        }
+                      );
+                    })
+                    .catch(error => {
+                      console.error('Error processing base64 image:', error);
+                    });
+                });
+
+                return true;
+              }
+            }
+
+            const text = event.clipboardData?.getData('text/plain') || '';
+            const html = event.clipboardData?.getData('text/html') || '';
+            const hasStructuralHtml = /<\/?(p|div|br|ul|ol|li|table|tr|td|th|h[1-6]|blockquote|pre)\b/i.test(html);
+            const structuralTextHtml = getStructuralPasteHtml(text);
+
+            if (structuralTextHtml && (!html || !hasStructuralHtml)) {
+              event.preventDefault();
+              editor.chain().focus().insertContent(structuralTextHtml).run();
               return true;
             }
 
@@ -1243,6 +1295,7 @@ function TableBubbleMenu({ editor }) {
 function MenuBar({ editor }) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [activeCellEditor, setActiveCellEditor] = useState(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const highlightButtonRef = useRef(null);
@@ -1251,19 +1304,41 @@ function MenuBar({ editor }) {
   const emojiButtonRef = useRef(null);
   const blockquoteButtonRef = useRef(null);
 
+  useEffect(() => {
+    const handleCellFocus = (event) => {
+      setActiveCellEditor(event.detail?.editor || null);
+    };
+
+    const handleMouseDown = (event) => {
+      const target = event.target;
+      if (target.closest?.('.itable-cell-tiptap') || target.closest?.('.editor-menu')) return;
+      setActiveCellEditor(null);
+    };
+
+    window.addEventListener('interactive-table-cell-focus', handleCellFocus);
+    document.addEventListener('mousedown', handleMouseDown);
+
+    return () => {
+      window.removeEventListener('interactive-table-cell-focus', handleCellFocus);
+      document.removeEventListener('mousedown', handleMouseDown);
+    };
+  }, []);
+
+  const formatEditor = activeCellEditor && !activeCellEditor.isDestroyed ? activeCellEditor : editor;
+
   const setLink = useCallback(() => {
-    const previousUrl = editor.getAttributes('link').href;
+    const previousUrl = formatEditor.getAttributes('link').href;
     const url = window.prompt('URL:', previousUrl);
 
     if (url === null) return;
 
     if (url === '') {
-      editor.chain().focus().extendMarkRange('link').unsetLink().run();
+      formatEditor.chain().focus().extendMarkRange('link').unsetLink().run();
       return;
     }
 
-    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-  }, [editor]);
+    formatEditor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+  }, [formatEditor]);
 
   const addImage = useCallback(() => {
     imageInputRef.current?.click();
@@ -1355,16 +1430,16 @@ function MenuBar({ editor }) {
           className="editor-select"
           onChange={(e) => {
             const val = e.target.value;
-            if (val === 'p') editor.chain().focus().setParagraph().run();
-            else editor.chain().focus().toggleHeading({ level: parseInt(val) }).run();
+            if (val === 'p') formatEditor.chain().focus().setParagraph().run();
+            else formatEditor.chain().focus().toggleHeading({ level: parseInt(val) }).run();
           }}
           value={
-            editor.isActive('heading', { level: 1 }) ? '1' :
-            editor.isActive('heading', { level: 2 }) ? '2' :
-            editor.isActive('heading', { level: 3 }) ? '3' :
-            editor.isActive('heading', { level: 4 }) ? '4' :
-            editor.isActive('heading', { level: 5 }) ? '5' :
-            editor.isActive('heading', { level: 6 }) ? '6' : 'p'
+            formatEditor.isActive('heading', { level: 1 }) ? '1' :
+            formatEditor.isActive('heading', { level: 2 }) ? '2' :
+            formatEditor.isActive('heading', { level: 3 }) ? '3' :
+            formatEditor.isActive('heading', { level: 4 }) ? '4' :
+            formatEditor.isActive('heading', { level: 5 }) ? '5' :
+            formatEditor.isActive('heading', { level: 6 }) ? '6' : 'p'
           }
         >
           <option value="p">Обычный текст</option>
@@ -1378,22 +1453,22 @@ function MenuBar({ editor }) {
       </div>
 
       <div className="editor-menu-group">
-        <FontFamilyDropdown editor={editor} buttonRef={fontFamilyButtonRef} />
+        <FontFamilyDropdown editor={formatEditor} buttonRef={fontFamilyButtonRef} />
       </div>
 
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title="Жирный">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleBold().run()} isActive={formatEditor.isActive('bold')} title="Жирный">
           <Bold size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} title="Курсив">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleItalic().run()} isActive={formatEditor.isActive('italic')} title="Курсив">
           <Italic size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title="Подчеркнутый">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleUnderline().run()} isActive={formatEditor.isActive('underline')} title="Подчеркнутый">
           <UnderlineIcon size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Зачеркнутый">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleStrike().run()} isActive={formatEditor.isActive('strike')} title="Зачеркнутый">
           <Strikethrough size={16} />
         </MenuButton>
       </div>
@@ -1402,7 +1477,7 @@ function MenuBar({ editor }) {
 
       <div className="editor-menu-group">
         <ColorDropdown 
-          editor={editor} 
+          editor={formatEditor} 
           type="highlight" 
           buttonRef={highlightButtonRef}
           icon={Highlighter}
@@ -1410,7 +1485,7 @@ function MenuBar({ editor }) {
           colors={highlightColors}
         />
         <ColorDropdown 
-          editor={editor} 
+          editor={formatEditor} 
           type="color" 
           buttonRef={colorButtonRef}
           icon={Palette}
@@ -1422,16 +1497,16 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={() => editor.chain().focus().setTextAlign('left').run()} isActive={editor.isActive({ textAlign: 'left' })} title="По левому краю">
+        <MenuButton onClick={() => formatEditor.chain().focus().setTextAlign('left').run()} isActive={formatEditor.isActive({ textAlign: 'left' })} title="По левому краю">
           <AlignLeft size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().setTextAlign('center').run()} isActive={editor.isActive({ textAlign: 'center' })} title="По центру">
+        <MenuButton onClick={() => formatEditor.chain().focus().setTextAlign('center').run()} isActive={formatEditor.isActive({ textAlign: 'center' })} title="По центру">
           <AlignCenter size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().setTextAlign('right').run()} isActive={editor.isActive({ textAlign: 'right' })} title="По правому краю">
+        <MenuButton onClick={() => formatEditor.chain().focus().setTextAlign('right').run()} isActive={formatEditor.isActive({ textAlign: 'right' })} title="По правому краю">
           <AlignRight size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} isActive={editor.isActive({ textAlign: 'justify' })} title="По ширине">
+        <MenuButton onClick={() => formatEditor.chain().focus().setTextAlign('justify').run()} isActive={formatEditor.isActive({ textAlign: 'justify' })} title="По ширине">
           <AlignJustify size={16} />
         </MenuButton>
       </div>
@@ -1439,17 +1514,17 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')} title="Маркированный список">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleBulletList().run()} isActive={formatEditor.isActive('bulletList')} title="Маркированный список">
           <List size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} title="Нумерованный список">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleOrderedList().run()} isActive={formatEditor.isActive('orderedList')} title="Нумерованный список">
           <ListOrdered size={16} />
         </MenuButton>
-        <BlockquoteDropdown editor={editor} buttonRef={blockquoteButtonRef} />
-        <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} isActive={editor.isActive('codeBlock')} title="Код">
+        <BlockquoteDropdown editor={formatEditor} buttonRef={blockquoteButtonRef} />
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleCodeBlock().run()} isActive={formatEditor.isActive('codeBlock')} title="Код">
           <Code size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Разделитель">
+        <MenuButton onClick={() => formatEditor.chain().focus().setHorizontalRule().run()} disabled={formatEditor !== editor} title="Разделитель">
           <Minus size={16} />
         </MenuButton>
       </div>
@@ -1457,10 +1532,10 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={() => editor.chain().focus().toggleSubscript().run()} isActive={editor.isActive('subscript')} title="Подстрочный">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleSubscript().run()} isActive={formatEditor.isActive('subscript')} title="Подстрочный">
           <SubIcon size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().toggleSuperscript().run()} isActive={editor.isActive('superscript')} title="Надстрочный">
+        <MenuButton onClick={() => formatEditor.chain().focus().toggleSuperscript().run()} isActive={formatEditor.isActive('superscript')} title="Надстрочный">
           <SupIcon size={16} />
         </MenuButton>
       </div>
@@ -1468,8 +1543,8 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <EmojiDropdown editor={editor} buttonRef={emojiButtonRef} />
-        <MenuButton onClick={setLink} isActive={editor.isActive('link')} title="Ссылка">
+        <EmojiDropdown editor={formatEditor} buttonRef={emojiButtonRef} />
+        <MenuButton onClick={setLink} isActive={formatEditor.isActive('link')} title="Ссылка">
           <LinkIcon size={16} />
         </MenuButton>
         <MenuButton onClick={addImage} disabled={uploadingImage} title={uploadingImage ? "Загрузка..." : "Изображение"}>
@@ -1506,10 +1581,10 @@ function MenuBar({ editor }) {
       <MenuDivider />
 
       <div className="editor-menu-group">
-        <MenuButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Отменить">
+        <MenuButton onClick={() => formatEditor.chain().focus().undo().run()} disabled={!formatEditor.can().undo()} title="Отменить">
           <Undo size={16} />
         </MenuButton>
-        <MenuButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Повторить">
+        <MenuButton onClick={() => formatEditor.chain().focus().redo().run()} disabled={!formatEditor.can().redo()} title="Повторить">
           <Redo size={16} />
         </MenuButton>
       </div>
@@ -1541,6 +1616,11 @@ export default function Editor({ content, onChange, placeholder = 'Начнит�
       Placeholder.configure({ placeholder })
     ],
     content,
+    editorProps: {
+      attributes: {
+        class: 'wiki-editor-prosemirror',
+      },
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       console.log('=== Editor onUpdate ===');

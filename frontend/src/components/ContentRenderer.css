@@ -7,6 +7,7 @@
 .content-renderer .ProseMirror {
   outline: none;
   padding: 0;
+  line-height: inherit;
 }
 
 /* Убираем возможность редактирования */
@@ -20,9 +21,12 @@
 }
 
 
-/* Скрываем trailing break в режиме просмотра */
-.content-renderer .ProseMirror .ProseMirror-trailingBreak {
-  display: none;
+.content-renderer .ProseMirror p:empty::before {
+  content: "\00a0";
+}
+
+.content-renderer .ProseMirror li > p {
+  margin: 0.15em 0;
 }
 
 /* Стили для видео в режиме просмотра */
