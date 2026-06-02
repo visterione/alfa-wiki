@@ -1308,9 +1308,13 @@ export async function buildReport({
     const harmfulnessDeduction = !!clinicSettings.harmfulness ? basePay * 0.04 : 0;
 
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
+    const includePerformedServices = pt === 'percent' || includePerformedBonus;
     const effectiveReferralBonusTotal = clinicSettings.includeReferralBonuses !== false ? referralBonusTotal : 0;
     const effectiveReferralCostTotal  = clinicSettings.includeReferralDeductions !== false ? referralCostTotal : 0;
-    const preFinalSalary = basePay + holidaySurchargeTotal + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + assistanceIncomeTotal + anesthesiologistIncomeTotal + nurseIncomeTotal - effectiveReferralCostTotal;
+    const effectiveAssistanceIncomeTotal = includePerformedServices ? assistanceIncomeTotal : 0;
+    const effectiveAnesthesiologistIncomeTotal = includePerformedServices ? anesthesiologistIncomeTotal : 0;
+    const effectiveNurseIncomeTotal = includePerformedServices ? nurseIncomeTotal : 0;
+    const preFinalSalary = basePay + holidaySurchargeTotal + effectiveReferralBonusTotal + (includePerformedBonus ? performedBonusTotal : 0) + extrasTotal + effectiveAssistanceIncomeTotal + effectiveAnesthesiologistIncomeTotal + effectiveNurseIncomeTotal - effectiveReferralCostTotal;
     const finalDeductionsTotal = finalDeductions.reduce((s, d) => s + calcItemRub(d, preFinalSalary), 0);
     const finalMaterialsTotal  = finalMaterials.reduce((s, m) => s + calcItemRub(m, preFinalSalary), 0);
     const svcMatBreakdown = [];
@@ -1396,12 +1400,18 @@ export async function buildReport({
       performedServicesSum, deductionPerService, totalServiceCount,
       referralCostTotal: effectiveReferralCostTotal,
       referralCostItems, executorSections,
-      assistancePaidTotal, assistanceSections,
-      assistanceIncomeTotal, assistanceIncomeSections,
-      anesthesiologistPaidTotal, anesthesiologistSections,
-      anesthesiologistIncomeTotal, anesthesiologistIncomeSections,
-      nursePaidTotal, nurseSections,
-      nurseIncomeTotal, nurseIncomeSections,
+      assistancePaidTotal: includePerformedServices ? assistancePaidTotal : 0,
+      assistanceSections: includePerformedServices ? assistanceSections : [],
+      assistanceIncomeTotal: effectiveAssistanceIncomeTotal,
+      assistanceIncomeSections: includePerformedServices ? assistanceIncomeSections : [],
+      anesthesiologistPaidTotal: includePerformedServices ? anesthesiologistPaidTotal : 0,
+      anesthesiologistSections: includePerformedServices ? anesthesiologistSections : [],
+      anesthesiologistIncomeTotal: effectiveAnesthesiologistIncomeTotal,
+      anesthesiologistIncomeSections: includePerformedServices ? anesthesiologistIncomeSections : [],
+      nursePaidTotal: includePerformedServices ? nursePaidTotal : 0,
+      nurseSections: includePerformedServices ? nurseSections : [],
+      nurseIncomeTotal: effectiveNurseIncomeTotal,
+      nurseIncomeSections: includePerformedServices ? nurseIncomeSections : [],
       finalSalary,
       advance: clinicSettings.advance || 0,
       paymentMethod: clinicSettings.paymentMethod,
@@ -1441,9 +1451,9 @@ export async function buildReport({
         + effectiveReferralBonusTotal
         + (pt !== 'percent' && !!clinicSettings.plusPercent ? performedBonusTotal : 0)
         + extrasTotal
-        + assistanceIncomeTotal
-        + anesthesiologistIncomeTotal
-        + nurseIncomeTotal;
+        + effectiveAssistanceIncomeTotal
+        + effectiveAnesthesiologistIncomeTotal
+        + effectiveNurseIncomeTotal;
     }
 
     clinicReports.push({
