@@ -191,6 +191,15 @@ function patchMonthlyValue(data, mapField, monthKey, value) {
   return { [mapField]: { ...(data?.[mapField] || {}), [monthKey]: value } };
 }
 
+function parseLocalDate(value, endOfDay = false) {
+  if (!value) return null;
+  if (value instanceof Date) return isNaN(value) ? null : value;
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3], endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0);
+  const d = new Date(value);
+  return isNaN(d) ? null : d;
+}
+
 function scheduleToLabel(schedule) {
   if (!schedule) return DASH;
   const enabled = WEEK_DAYS.filter(d => schedule[d.key]?.on);
@@ -251,26 +260,17 @@ function getReviewDoctorName(review) {
   return value ? String(value).trim() : '';
 }
 
-// Find the most recent period that has sources and return matching sources + label.
-// Falls back to the latest available period if current month has no data.
-function findLatestPeriodSources(sources) {
-  if (!sources.length) return { matched: [], label: '' };
-  let latestTo = null;
-  for (const s of sources) {
-    const to = s.dateTo ? new Date(s.dateTo) : null;
-    if (to && (!latestTo || to > latestTo)) latestTo = to;
-  }
-  if (!latestTo) return { matched: sources, label: '' };
-  const year  = latestTo.getFullYear();
-  const month = latestTo.getMonth(); // 0-indexed
-  const start = new Date(year, month, 1);
-  const end   = new Date(year, month + 1, 0, 23, 59, 59);
+function findMonthPeriodSources(sources, monthKey) {
+  if (!sources.length) return { matched: [], label: monthKeyToLabel(monthKey) };
+  const { dateFrom, dateTo } = monthKeyToRange(monthKey);
+  const start = parseLocalDate(dateFrom);
+  const end = parseLocalDate(dateTo, true);
   const matched = sources.filter(s => {
-    const from = s.dateFrom ? new Date(s.dateFrom) : null;
-    const to   = s.dateTo   ? new Date(s.dateTo)   : null;
+    const from = parseLocalDate(s.dateFrom);
+    const to   = parseLocalDate(s.dateTo, true);
     return from && to && from <= end && to >= start;
   });
-  return { matched: matched.length ? matched : sources, label: `${MONTH_NAMES_RU[month]} ${year}` };
+  return { matched, label: monthKeyToLabel(monthKey) };
 }
 
 async function loadDoctorStats(sources) {
@@ -850,18 +850,22 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
       .finally(() => setSalaryLoading(false));
   }, []);
 
-  // Load doctor stats from the most recent available Excel period — no KPI tab needed
+  // Load doctor stats for the month selected in directories.
   useEffect(() => {
-    if (!excelSources.length) { setStatsLoading(false); return; }
-    const { matched, label } = findLatestPeriodSources(excelSources);
-    if (!matched.length) { setStatsLoading(false); return; }
-    setStatsLoading(true);
+    const { matched, label } = findMonthPeriodSources(excelSources, monthKey);
     setStatsPeriodLabel(label);
+    if (!matched.length) {
+      setDoctorStats({});
+      setStatsLoading(false);
+      return;
+    }
+    setStatsLoading(true);
+    setDoctorStats({});
     loadDoctorStats(matched)
       .then(stats => setDoctorStats(stats))
-      .catch(() => {})
+      .catch(() => setDoctorStats({}))
       .finally(() => setStatsLoading(false));
-  }, [excelSources]);
+  }, [excelSources, monthKey]);
 
   // Врач role but NOT КабинетыИРабота
   const docDoctors = useMemo(
