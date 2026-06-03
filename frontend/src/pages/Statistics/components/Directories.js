@@ -156,6 +156,27 @@ const fmtRub  = n => fmt(n) + ' ₽';
 // Precise money formatter — preserves up to 2 decimal places (no unnecessary zeros)
 const fmtRubP = n => (+(n || 0)).toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' ₽';
 
+function monthKeyFromDate(date) {
+  const d = date instanceof Date && !isNaN(date) ? date : new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthKeyToLabel(key) {
+  const [year, month] = String(key || '').split('-').map(Number);
+  if (!year || !month) return '';
+  return `${MONTHS_RU[month - 1]?.label || month} ${year}`;
+}
+
+function getMonthlyValue(data, mapField, legacyField, monthKey) {
+  const byMonth = data?.[mapField];
+  if (byMonth && Object.prototype.hasOwnProperty.call(byMonth, monthKey)) return byMonth[monthKey];
+  return data?.[legacyField] ?? '';
+}
+
+function patchMonthlyValue(data, mapField, monthKey, value) {
+  return { [mapField]: { ...(data?.[mapField] || {}), [monthKey]: value } };
+}
+
 function scheduleToLabel(schedule) {
   if (!schedule) return DASH;
   const enabled = WEEK_DAYS.filter(d => schedule[d.key]?.on);
@@ -456,7 +477,7 @@ function WeeklyScheduleEditor({ value, onChange }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ФИЛИАЛЫ
 // ══════════════════════════════════════════════════════════════════════════════
-function TabClinics({ roomCountByClinic }) {
+function TabClinics({ roomCountByClinic, monthKey }) {
   const [clinics, setClinics] = useState([]);
   const [manualData, setManualData] = useState({});
   const [loading, setLoading] = useState(true);
@@ -491,6 +512,7 @@ function TabClinics({ roomCountByClinic }) {
       {clinics.map(c => {
         const cid = String(c.id);
         const m = manualData[cid] || {};
+        const rentValue = getMonthlyValue(m, 'rentByMonth', 'rent', monthKey);
         const schedule = (typeof m.schedule === 'object' && m.schedule !== null && !Array.isArray(m.schedule))
           ? m.schedule : DEFAULT_SCHEDULE;
         const isSchedOpen = !!expandedSchedule[cid];
@@ -535,7 +557,7 @@ function TabClinics({ roomCountByClinic }) {
                   <input type="text" value={m.area || ''} onChange={e => saveField(c.id, { area: e.target.value })} style={fieldInputStyle} />
                 </Field>
                 <Field label="Аренда / содержание">
-                  <input type="text" value={m.rent || ''} onChange={e => saveField(c.id, { rent: e.target.value })} style={fieldInputStyle} />
+                  <input type="text" value={rentValue} onChange={e => saveField(c.id, patchMonthlyValue(m, 'rentByMonth', monthKey, e.target.value))} style={fieldInputStyle} />
                 </Field>
               </div>
               <Field label="График работы">
@@ -795,22 +817,31 @@ function TabCabinets({ appointments, loadingAppts, doctors }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // ВРАЧИ (stats loaded independently from Excel sources)
 // ══════════════════════════════════════════════════════════════════════════════
-function TabDoctors({ doctors, excelSources }) {
+function TabDoctors({ doctors, excelSources, monthKey }) {
   const [manualData, setManualData] = useState({});
   const [loadingMeta, setLoadingMeta] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [doctorStats, setDoctorStats] = useState({});
+  const [salaryRows, setSalaryRows] = useState([]);
+  const [salaryLoading, setSalaryLoading] = useState(true);
   const [statsPeriodLabel, setStatsPeriodLabel] = useState('');
   const [search, setSearch] = useState('');
   const [clinicFilter, setClinicFilter] = useState('');
-  const saveTimers = useRef({});
 
-  // Load manual data (hour rates)
+  // Load legacy manual data only for compatibility with existing records.
   useEffect(() => {
     directories.getAll('doctor')
       .then(res => setManualData(res.data || {}))
       .catch(() => {})
       .finally(() => setLoadingMeta(false));
+  }, []);
+
+  useEffect(() => {
+    setSalaryLoading(true);
+    salaryRecords.getAll()
+      .then(res => setSalaryRows(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setSalaryRows([]))
+      .finally(() => setSalaryLoading(false));
   }, []);
 
   // Load doctor stats from the most recent available Excel period — no KPI tab needed
@@ -849,14 +880,25 @@ function TabDoctors({ doctors, excelSources }) {
     return true;
   });
 
-  const saveHourRate = useCallback((doctorId, value) => {
-    clearTimeout(saveTimers.current[doctorId]);
-    setManualData(prev => ({ ...prev, [doctorId]: { ...(prev[doctorId] || {}), hourRate: value } }));
-    saveTimers.current[doctorId] = setTimeout(async () => {
-      try { await directories.save('doctor', doctorId, { hourRate: value }); toast.success('Сохранено', { duration: 1500 }); }
-      catch { toast.error('Ошибка сохранения'); }
-    }, 800);
-  }, []);
+  const hourRateByDoctor = useMemo(() => {
+    const result = {};
+    for (const rec of salaryRows) {
+      if (!rec.dateFrom) continue;
+      if (monthKeyFromDate(new Date(rec.dateFrom)) !== monthKey) continue;
+      const clinicReports = rec.reportData?.clinicReports || [];
+      let salaryTotal = 0;
+      let hoursTotal = 0;
+      for (const cr of clinicReports) {
+        const sal = cr.salary || {};
+        salaryTotal += parseNum(sal.finalSalary);
+        hoursTotal += parseNum(sal.hoursWorked) || parseNum(sal.normTotalHours) || 0;
+      }
+      if (salaryTotal > 0 && hoursTotal > 0) {
+        result[String(rec.misUserId)] = salaryTotal / hoursTotal;
+      }
+    }
+    return result;
+  }, [salaryRows, monthKey]);
 
   return (
     <div>
@@ -879,6 +921,11 @@ function TabDoctors({ doctors, excelSources }) {
             Статистика: {statsPeriodLabel}
           </span>
         )}
+        {salaryLoading && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            <span className="rb-spinner" style={{ width: 12, height: 12 }} /> Зарплаты…
+          </span>
+        )}
         {!statsLoading && !excelSources.length && (
           <span style={{ fontSize: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '4px 10px' }}>
             Нет загруженных источников данных
@@ -893,7 +940,7 @@ function TabDoctors({ doctors, excelSources }) {
               <THCell>ФИО врача</THCell>
               <THCell>Специальности</THCell>
               <THCell>Филиалы</THCell>
-              <THCell>Стоимость часа (₽)</THCell>
+              <THCell right>Стоимость часа (₽)</THCell>
               <THCell right>Приёмов</THCell>
               <THCell right>Выручка</THCell>
               <THCell right>Средний чек</THCell>
@@ -902,9 +949,9 @@ function TabDoctors({ doctors, excelSources }) {
           </thead>
           <tbody>
             {filtered.map(doc => {
-              const meta = manualData[doc.id] || {};
               const dk   = nameToKey(doc.name);
               const st   = doctorStats[dk];
+              const hourRate = hourRateByDoctor[String(doc.id)];
               return (
                 <tr key={doc.id}>
                   <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{doc.name}</td>
@@ -921,11 +968,8 @@ function TabDoctors({ doctors, excelSources }) {
                       {!(doc.clinics || []).length && <span style={{ color: 'var(--rb-text-secondary)', fontSize: 12 }}>{DASH}</span>}
                     </div>
                   </td>
-                  <td>
-                    {loadingMeta ? <span style={{ color: 'var(--rb-text-secondary)', fontSize: 12 }}>…</span> : (
-                      <input type="number" value={meta.hourRate || ''} onChange={e => saveHourRate(doc.id, e.target.value)}
-                        placeholder="0" style={{ ...inlineInputStyle, width: 90, textAlign: 'right' }} />
-                    )}
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: hourRate > 0 ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}>
+                    {loadingMeta || salaryLoading ? '…' : (hourRate > 0 ? fmtRubP(hourRate) : DASH)}
                   </td>
                   <StatCell value={st?.appts ?? null} formatter={v => v.toLocaleString('ru-RU')} />
                   <StatCell value={st?.revenue ?? null} formatter={fmtRub} />
@@ -1159,7 +1203,7 @@ function EquipServiceBindings({ equipItem, onClose }) {
   );
 }
 
-function TabEquipment() {
+function TabEquipment({ monthKey }) {
   const [equipment, setEquipment] = useState({});
   const [loading, setLoading]     = useState(true);
   const [clinicFilter, setClinicFilter] = useState('');
@@ -1263,6 +1307,8 @@ function TabEquipment() {
               {filtered.map(item => {
                 const svcCount   = bindingCounts[item.id] || 0;
                 const isExpanded = expandedId === item.id;
+                const maintenanceValue = getMonthlyValue(item, 'maintenanceByMonth', 'maintenance', monthKey);
+                const repairsValue = getMonthlyValue(item, 'repairsByMonth', 'repairs', monthKey);
                 return (
                   <tr key={item.id} style={isExpanded ? { background: '#f0f9ff' } : {}}>
                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{item.name}</td>
@@ -1286,11 +1332,11 @@ function TabEquipment() {
                         placeholder="0" style={{ ...inlineInputStyle, width: 70, textAlign: 'right' }} />
                     </td>
                     <td>
-                      <input type="number" min="0" value={item.maintenance ?? ''} onChange={e => saveField(item.id, { maintenance: e.target.value })}
+                      <input type="number" min="0" value={maintenanceValue} onChange={e => saveField(item.id, patchMonthlyValue(item, 'maintenanceByMonth', monthKey, e.target.value))}
                         placeholder="0" style={{ ...inlineInputStyle, width: 100, textAlign: 'right' }} />
                     </td>
                     <td>
-                      <input type="number" min="0" value={item.repairs ?? ''} onChange={e => saveField(item.id, { repairs: e.target.value })}
+                      <input type="number" min="0" value={repairsValue} onChange={e => saveField(item.id, patchMonthlyValue(item, 'repairsByMonth', monthKey, e.target.value))}
                         placeholder="0" style={{ ...inlineInputStyle, width: 100, textAlign: 'right' }} />
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -3832,6 +3878,7 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
   if (items.length === 0) return null;
 
   const now = new Date();
+  const selectedMonthKey = monthKeyFromDate(periodStart || now);
 
   return (
     <div style={{ marginTop: 32 }}>
@@ -3869,8 +3916,8 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
             {filtered.map(item => {
               const purchaseCost = parseNum(item.purchaseCost);
               const usefulLife   = parseNum(item.usefulLife);
-              const maintenance  = parseNum(item.maintenance);
-              const repairs      = parseNum(item.repairs);
+              const maintenance  = parseNum(getMonthlyValue(item, 'maintenanceByMonth', 'maintenance', selectedMonthKey));
+              const repairs      = parseNum(getMonthlyValue(item, 'repairsByMonth', 'repairs', selectedMonthKey));
 
               // Амортизация = покупка / срок
               const amortPerMonth = purchaseCost > 0 && usefulLife > 0
@@ -4834,8 +4881,9 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
 
   const adminExpenses = useMemo(() => {
     if (!clinicFilter || !selectedSvc) return 0;
+    const selectedMonthKey = monthKeyFromDate(periodStart || new Date());
     const meta = clinicMeta[String(clinicFilter)] || {};
-    const rent = parseNum(meta.rent);
+    const rent = parseNum(getMonthlyValue(meta, 'rentByMonth', 'rent', selectedMonthKey));
     const schedule = (
       typeof meta.schedule === 'object' &&
       meta.schedule !== null &&
@@ -4845,13 +4893,14 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     const durationMinutes = parseNum(selectedSvc.durationMinutes);
     if (rent <= 0 || monthlyHours <= 0 || durationMinutes <= 0) return 0;
     return rent / monthlyHours * (durationMinutes / 60);
-  }, [clinicFilter, selectedSvc, clinicMeta]);
+  }, [clinicFilter, selectedSvc, clinicMeta, periodStart]);
 
   const autoParts = useMemo(() => {
     if (!clinicFilter || !selectedSvc) return { consumables: 0, equipment: 0, marketing: 0 };
     const serviceCode = selectedSvc.code || '';
     const serviceNameKey = normServiceName(selectedSvc.title);
     const price = parseNum(selectedSvc.price);
+    const selectedMonthKey = monthKeyFromDate(periodStart || new Date());
 
     const consumables = Object.values(norms)
       .filter(n =>
@@ -4872,7 +4921,11 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
 
     const equipmentFund = Object.entries(equipment)
       .filter(([id]) => boundEquipmentIds.has(id))
-      .reduce((sum, [, item]) => sum + parseNum(item.maintenance) + parseNum(item.repairs), 0);
+      .reduce((sum, [, item]) =>
+        sum +
+        parseNum(getMonthlyValue(item, 'maintenanceByMonth', 'maintenance', selectedMonthKey)) +
+        parseNum(getMonthlyValue(item, 'repairsByMonth', 'repairs', selectedMonthKey)),
+      0);
     const equipmentCost = equipmentFund > 0 && serviceVolume > 0 ? equipmentFund / serviceVolume : 0;
 
     const marketingSetting = Object.values(marketing).find(m =>
@@ -4887,7 +4940,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       : 0;
 
     return { consumables, equipment: equipmentCost, marketing: marketingValue };
-  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing]);
+  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing, periodStart]);
 
   const costParts = useMemo(() => ({
     consumables: autoParts.consumables,
@@ -5740,6 +5793,7 @@ function TabMarketing() {
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Directories({ doctors = [], excelSources = [] }) {
   const [activeTab, setActiveTab] = useState('clinics');
+  const [monthKey, setMonthKey] = useState(() => monthKeyFromDate(new Date()));
   const { wrapRef, sliderEl } = useTabSlider(activeTab);
 
   const [appointments, setAppointments] = useState([]);
@@ -5774,11 +5828,21 @@ export default function Directories({ doctors = [], excelSources = [] }) {
           <button key={t.key} className={`rb-clinic-tab${activeTab === t.key ? ' active' : ''}`} onClick={() => setActiveTab(t.key)}>{t.label}</button>
         ))}
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Месяц данных:</span>
+        <input
+          type="month"
+          value={monthKey}
+          onChange={e => setMonthKey(e.target.value || monthKeyFromDate(new Date()))}
+          style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff' }}
+        />
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{monthKeyToLabel(monthKey)}</span>
+      </div>
 
-      {activeTab === 'clinics'     && <TabClinics roomCountByClinic={roomCountByClinic} />}
+      {activeTab === 'clinics'     && <TabClinics roomCountByClinic={roomCountByClinic} monthKey={monthKey} />}
       {activeTab === 'cabinets'    && <TabCabinets appointments={appointments} loadingAppts={loadingAppts} doctors={doctors} />}
-      {activeTab === 'doctors'     && <TabDoctors doctors={doctors} excelSources={excelSources} />}
-      {activeTab === 'equipment'   && <TabEquipment />}
+      {activeTab === 'doctors'     && <TabDoctors doctors={doctors} excelSources={excelSources} monthKey={monthKey} />}
+      {activeTab === 'equipment'   && <TabEquipment monthKey={monthKey} />}
       {activeTab === 'utilities'   && <TabUtilities />}
       {activeTab === 'consumables' && <TabConsumables />}
       {activeTab === 'marketing'   && <TabMarketing />}
