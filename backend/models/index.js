@@ -2443,6 +2443,33 @@ const Promotion = sequelize.define('Promotion', {
   ]
 });
 
+// === AMBULANCE REPORT ENTRY MODEL ===
+const AmbulanceReportEntry = sequelize.define('AmbulanceReportEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  entryType: {
+    type: DataTypes.ENUM('calls', 'refusals', 'caddy', 'patientCalls'),
+    allowNull: false
+  },
+  seqNumber: { type: DataTypes.INTEGER, allowNull: true },
+  entryDate: { type: DataTypes.DATEONLY, allowNull: true },
+  entryTime: { type: DataTypes.STRING(5), allowNull: true },
+  patientName: { type: DataTypes.STRING(255), allowNull: true },
+  sourceCallId: { type: DataTypes.UUID, allowNull: true },
+  searchText: { type: DataTypes.TEXT, allowNull: true },
+  data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'ambulance_report_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['entryType'] },
+    { fields: ['entryDate'] },
+    { fields: ['patientName'] },
+    { fields: ['sourceCallId'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === PARTNER SERVICE CACHE MODEL ===
 const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -2816,6 +2843,8 @@ module.exports = {
   BotUpdate,
   // Promotions module
   Promotion,
+  // Ambulance reports module
+  AmbulanceReportEntry,
   // Partner services cache
   PartnerServiceCache,
   // Schedule dictionaries

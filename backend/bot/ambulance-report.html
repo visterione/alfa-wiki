@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчётность скорой помощи</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --amb-primary: #2563eb;
+  --amb-primary-hover: #1d4ed8;
+  --amb-bg: #f8fafc;
+  --amb-card: #fff;
+  --amb-border: #e5e7eb;
+  --amb-border-dark: #cbd5e1;
+  --amb-text: #111827;
+  --amb-muted: #64748b;
+  --amb-success: #16a34a;
+  --amb-danger: #dc2626;
+  --amb-warning: #d97706;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--amb-bg);
+  color: var(--amb-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+#ambulance-app { max-width: 1480px; margin: 0 auto; padding: 16px 20px 20px; }
+.amb-topbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--amb-border); }
+.amb-actions { display: flex; gap: 8px; padding-bottom: 8px; flex-shrink: 0; }
+.amb-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 38px; padding: 9px 14px; border: 1px solid transparent; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.amb-btn-primary { background: var(--amb-primary); color: #fff; }
+.amb-btn-primary:hover { background: var(--amb-primary-hover); }
+.amb-btn-secondary { background: #fff; color: #334155; border-color: var(--amb-border-dark); }
+.amb-btn-secondary:hover { background: #f1f5f9; }
+.amb-btn-danger { background: #fee2e2; color: var(--amb-danger); }
+.amb-btn-danger:hover { background: #fecaca; }
+.amb-btn-success { background: var(--amb-success); color: #fff; }
+.amb-btn-success:hover { background: #15803d; }
+.amb-btn-icon { width: 34px; min-height: 34px; padding: 0; }
+.amb-btn svg { width: 17px; height: 17px; }
+.amb-tabs {
+  display: flex; gap: 4px; margin-bottom: 0;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.amb-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--amb-muted);
+  padding: 12px 14px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.amb-tab:hover { background: #f1f5f9; color: var(--amb-text); }
+.amb-tab.active { color: var(--amb-primary); border-bottom-color: var(--amb-primary); background: #eff6ff; }
+.amb-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
+.amb-panel { background: var(--amb-card); border: 1px solid var(--amb-border); border-radius: 8px; overflow: hidden; }
+.amb-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 13px 16px; border-bottom: 1px solid var(--amb-border); background: #f8fafc;
+}
+.amb-panel-title { margin: 0; font-size: 15px; font-weight: 700; }
+.amb-panel-subtitle { color: var(--amb-muted); font-size: 12px; }
+.amb-form { padding: 16px; }
+.amb-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; }
+.amb-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
+.amb-field.full { grid-column: 1 / -1; }
+.amb-field label { font-size: 12px; font-weight: 600; color: #475569; }
+.amb-required { color: var(--amb-danger); }
+.amb-input, .amb-select, .amb-textarea {
+  width: 100%; border: 1px solid var(--amb-border-dark); border-radius: 8px; background: #fff;
+  color: var(--amb-text); padding: 9px 11px; min-height: 38px; outline: none; font-size: 13px;
+}
+.amb-textarea { min-height: 78px; resize: vertical; line-height: 1.4; }
+.amb-input:focus, .amb-select:focus, .amb-textarea:focus {
+  border-color: var(--amb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+}
+.amb-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.amb-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--amb-border); flex-wrap: wrap; }
+.amb-filters { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+.amb-filter { min-width: 150px; max-width: 220px; }
+.amb-search { min-width: 220px; flex: 1; }
+.amb-table-wrap { overflow: auto; max-height: calc(100vh - 310px); }
+.amb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.amb-table th {
+  position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #334155; text-align: left;
+  padding: 10px 12px; border-bottom: 1px solid var(--amb-border); font-weight: 700; white-space: nowrap;
+}
+.amb-table td { padding: 10px 12px; border-bottom: 1px solid var(--amb-border); vertical-align: top; }
+.amb-table tr:hover td { background: #f8fafc; }
+.amb-table .center { text-align: center; }
+.amb-actions-cell { display: flex; gap: 6px; justify-content: center; }
+.amb-empty { text-align: center; color: var(--amb-muted); padding: 34px 12px !important; }
+.amb-status { display: inline-flex; align-items: center; gap: 6px; color: var(--amb-muted); font-size: 12px; }
+.amb-status.api { color: var(--amb-success); }
+.amb-status.error { color: var(--amb-danger); }
+.amb-status.loading { color: var(--amb-primary); }
+.amb-pagination {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px; border-top: 1px solid var(--amb-border); background: #f8fafc; flex-wrap: wrap;
+}
+.amb-pagination-controls { display: flex; align-items: center; gap: 8px; }
+.amb-page-size { width: 86px; }
+.amb-toast {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1000; padding: 12px 14px;
+  border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  font-size: 13px; font-weight: 600;
+}
+.amb-toast.success { background: var(--amb-success); }
+.amb-toast.error { background: var(--amb-danger); }
+@media (max-width: 1050px) {
+  .amb-topbar { align-items: stretch; flex-direction: column; }
+  .amb-actions { justify-content: flex-end; }
+  .amb-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  .amb-table-wrap { max-height: none; }
+}
+@media (max-width: 720px) {
+  #ambulance-app { padding: 14px; }
+  .amb-grid { grid-template-columns: 1fr; }
+  .amb-filter, .amb-search { min-width: 100%; max-width: none; }
+  .amb-actions { justify-content: flex-start; }
+}
+</style>
+</head>
+<body>
+<div id="ambulance-app">
+  <div class="amb-topbar">
+    <div class="amb-tabs" id="amb-tabs"></div>
+    <div class="amb-actions">
+      <button class="amb-btn amb-btn-secondary amb-btn-icon" onclick="ambApp.reload()" title="Обновить" aria-label="Обновить">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
+      </button>
+      <button class="amb-btn amb-btn-secondary amb-btn-icon" onclick="ambApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="amb-btn amb-btn-success amb-btn-icon" onclick="ambApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="amb-btn amb-btn-danger amb-btn-icon" onclick="ambApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+      </button>
+      <input type="file" id="amb-import-file" accept=".xlsx,.xls" style="display:none" onchange="ambApp.importExcel(this.files[0])">
+    </div>
+  </div>
+
+  <div class="amb-layout">
+    <section class="amb-panel">
+      <div class="amb-panel-head">
+        <div>
+          <h2 class="amb-panel-title" id="amb-form-title">Новая запись</h2>
+          <div class="amb-panel-subtitle" id="amb-form-subtitle">Заполните поля и сохраните</div>
+        </div>
+        <span class="amb-status" id="amb-storage-status">Загрузка...</span>
+      </div>
+      <form class="amb-form" id="amb-form" onsubmit="ambApp.save(event)"></form>
+    </section>
+
+    <section class="amb-panel">
+      <div class="amb-toolbar">
+        <div class="amb-filters">
+          <input class="amb-input amb-search" id="amb-search" placeholder="Поиск по таблице" oninput="ambApp.onSearchChange()">
+          <input class="amb-input amb-filter" id="amb-date-from" type="date" onchange="ambApp.filtersChanged()">
+          <input class="amb-input amb-filter" id="amb-date-to" type="date" onchange="ambApp.filtersChanged()">
+        </div>
+        <button class="amb-btn amb-btn-secondary" onclick="ambApp.clearFilters()" type="button">Сбросить</button>
+      </div>
+      <div class="amb-table-wrap">
+        <table class="amb-table">
+          <thead id="amb-table-head"></thead>
+          <tbody id="amb-table-body"></tbody>
+        </table>
+      </div>
+      <div class="amb-pagination">
+        <div class="amb-status" id="amb-page-info">0 записей</div>
+        <div class="amb-pagination-controls">
+          <button class="amb-btn amb-btn-secondary amb-btn-icon" type="button" onclick="ambApp.prevPage()" title="Назад">‹</button>
+          <select class="amb-select amb-page-size" id="amb-page-size" onchange="ambApp.changePageSize(this.value)">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <button class="amb-btn amb-btn-secondary amb-btn-icon" type="button" onclick="ambApp.nextPage()" title="Вперёд">›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+window.ambApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/ambulance-reports';
+  var activeTab = 'calls';
+  var records = [];
+  var sourceCalls = [];
+  var editingId = '';
+  var pagination = { page: 1, pageSize: 50, total: 0 };
+  var searchTimer = null;
+
+  var tabs = [
+    { id: 'calls', title: 'Вызовы' },
+    { id: 'refusals', title: 'Отказы' },
+    { id: 'caddy', title: 'Caddy' },
+    { id: 'patientCalls', title: 'Звонки пациентам' }
+  ];
+
+  var configs = {
+    calls: {
+      title: 'Вызовы',
+      numbered: true,
+      fields: [
+        { name: 'seqNumber', label: '№', type: 'number', readonly: true },
+        { name: 'callDate', label: 'Дата вызова', type: 'date', required: true },
+        { name: 'callTime', label: 'Время вызова', type: 'time' },
+        { name: 'patientName', label: 'ФИО пациента', type: 'text', required: true },
+        { name: 'address', label: 'Адрес', type: 'text', full: true },
+        { name: 'brigadeNumber', label: '№ бригады', type: 'text' },
+        { name: 'amount', label: 'Сумма', type: 'number', step: '0.01' },
+        { name: 'waitingTime', label: 'Время ожидания', type: 'text' },
+        { name: 'comment', label: 'Комментарий', type: 'textarea', full: true }
+      ]
+    },
+    refusals: {
+      title: 'Отказы',
+      numbered: true,
+      fields: [
+        { name: 'seqNumber', label: '№', type: 'number', readonly: true },
+        { name: 'refusalDate', label: 'Дата', type: 'date', required: true },
+        { name: 'callTime', label: 'Время звонка', type: 'time' },
+        { name: 'reason', label: 'Причина отказа', type: 'textarea', full: true },
+        { name: 'refusalDelay', label: 'Время через которое отказались', type: 'text' },
+        { name: 'localVisitor', label: 'Местные приезжие', type: 'select', options: ['', 'Местные', 'Приезжие'] }
+      ]
+    },
+    caddy: {
+      title: 'Caddy',
+      numbered: false,
+      fields: [
+        { name: 'caddyDate', label: 'Дата', type: 'date', required: true },
+        { name: 'caddyTime', label: 'Время', type: 'time' },
+        { name: 'carNumber', label: 'Номер машины', type: 'text' },
+        { name: 'reason', label: 'Причина вызова', type: 'textarea', full: true },
+        { name: 'medCenter', label: 'Медцентр', type: 'text' }
+      ]
+    },
+    patientCalls: {
+      title: 'Звонки пациентам',
+      numbered: false,
+      prefillFromCalls: true,
+      fields: [
+        { name: 'sourceCallId', label: 'Предзаполнить из вызова', type: 'call-select', full: true },
+        { name: 'comment', label: 'Комментарий', type: 'textarea', full: true },
+        { name: 'patientCallDate', label: 'Дата', type: 'date' },
+        { name: 'callDate', label: 'Дата вызова', type: 'date' },
+        { name: 'patientName', label: 'Пациент', type: 'text' },
+        { name: 'diagnosis', label: 'Диагноз', type: 'text' },
+        { name: 'direction', label: 'Направление', type: 'text' },
+        { name: 'doctorName', label: 'ФИО врача', type: 'text' },
+        { name: 'examination', label: 'Обследование', type: 'text' },
+        { name: 'phone', label: 'Номер телефона', type: 'tel' },
+        { name: 'registrarMark', label: 'Регистратура отметка о записи', type: 'text', full: true }
+      ]
+    }
+  };
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() {
+      if (controller) controller.abort();
+    }, options.timeout || 12000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Ошибка API'); });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('API не ответил за 12 секунд');
+      throw e;
+    });
+  }
+
+  function uploadApi(path, formData, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() {
+      if (controller) controller.abort();
+    }, options.timeout || 120000);
+    return fetch(API_URL + path, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + getToken()
+      },
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Ошибка API'); });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Импорт не ответил за 120 секунд');
+      throw e;
+    });
+  }
+
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function formatValue(value) {
+    return value == null || value === '' ? '-' : escapeHtml(value);
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'amb-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2600);
+  }
+
+  function normalizeRows(rows) {
+    return rows.map(function(row) {
+      return {
+        id: row.id,
+        entryType: row.entryType,
+        seqNumber: row.seqNumber,
+        data: row.data || {},
+        createdAt: row.createdAt || new Date().toISOString(),
+        updatedAt: row.updatedAt || row.createdAt || new Date().toISOString()
+      };
+    });
+  }
+
+  function currentRows() {
+    return records.filter(function(r) { return r.entryType === activeTab; });
+  }
+
+  function getDateValue(row) {
+    var cfg = configs[row.entryType];
+    var dateField = cfg.fields.find(function(f) { return f.type === 'date'; });
+    return dateField ? row.data[dateField.name] : '';
+  }
+
+  function nextNumber(type, date, excludeId) {
+    var params = '?type=' + encodeURIComponent(type) + '&date=' + encodeURIComponent(date || today());
+    if (excludeId) params += '&excludeId=' + encodeURIComponent(excludeId);
+    return api('/next-number' + params).then(function(res) {
+      return res.nextNumber || '';
+    });
+  }
+
+  function renderTabs() {
+    document.getElementById('amb-tabs').innerHTML = tabs.map(function(tab) {
+      return '<button type="button" class="amb-tab' + (tab.id === activeTab ? ' active' : '') + '" onclick="ambApp.switchTab(\'' + tab.id + '\')">' +
+        escapeHtml(tab.title) + '</button>';
+    }).join('');
+  }
+
+  function renderStatus() {
+    var el = document.getElementById('amb-storage-status');
+    el.className = 'amb-status api';
+    el.textContent = 'БД';
+  }
+
+  function setStatus(text, type) {
+    var el = document.getElementById('amb-storage-status');
+    el.className = 'amb-status ' + (type || '');
+    el.textContent = text;
+  }
+
+  function renderForm(data) {
+    data = data || {};
+    var cfg = configs[activeTab];
+    var rows = cfg.fields.map(function(field) {
+      var dateFieldForNumber = cfg.fields.find(function(f) { return f.type === 'date'; });
+      var value = field.name === 'seqNumber'
+        ? (data.seqNumber || '')
+        : (data[field.name] || '');
+      var required = field.required ? ' required' : '';
+      var readonly = field.readonly ? ' readonly' : '';
+      var cls = 'amb-field' + (field.full || field.type === 'textarea' ? ' full' : '');
+      var label = '<label for="amb-' + field.name + '">' + escapeHtml(field.label) + (field.required ? ' <span class="amb-required">*</span>' : '') + '</label>';
+      var input = '';
+
+      if (field.type === 'textarea') {
+        input = '<textarea class="amb-textarea" id="amb-' + field.name + '" name="' + field.name + '"' + required + '>' + escapeHtml(value) + '</textarea>';
+      } else if (field.type === 'select') {
+        input = '<select class="amb-select" id="amb-' + field.name + '" name="' + field.name + '"' + required + '>' +
+          field.options.map(function(opt) {
+            return '<option value="' + escapeHtml(opt) + '"' + (String(value) === opt ? ' selected' : '') + '>' + escapeHtml(opt || 'Выберите...') + '</option>';
+          }).join('') + '</select>';
+      } else if (field.type === 'call-select') {
+        input = '<select class="amb-select" id="amb-sourceCallId" name="sourceCallId" disabled>' +
+          '<option value="">Предзаполнение отключено</option>' +
+          '</select>';
+      } else {
+        var step = field.step ? ' step="' + field.step + '"' : '';
+        input = '<input class="amb-input" id="amb-' + field.name + '" name="' + field.name + '" type="' + field.type + '" value="' + escapeHtml(value) + '"' + required + readonly + step + '>';
+      }
+
+      return '<div class="' + cls + '">' + label + input + '</div>';
+    }).join('');
+
+    document.getElementById('amb-form-title').textContent = editingId ? 'Редактировать: ' + cfg.title : 'Новая запись: ' + cfg.title;
+    document.getElementById('amb-form-subtitle').textContent = cfg.numbered ? 'Номер считается отдельно за каждый день' : 'Данные попадут в отдельный лист Excel';
+    document.getElementById('amb-form').innerHTML =
+      '<div class="amb-grid">' + rows + '</div>' +
+      '<div class="amb-form-actions">' +
+        '<button class="amb-btn amb-btn-primary" type="submit">' + (editingId ? 'Сохранить изменения' : 'Добавить запись') + '</button>' +
+        '<button class="amb-btn amb-btn-secondary" type="button" onclick="ambApp.resetForm()">Очистить</button>' +
+      '</div>';
+
+    setDefaultDateAndNumber();
+  }
+
+  function setDefaultDateAndNumber() {
+    var cfg = configs[activeTab];
+    var dateField = cfg.fields.find(function(f) { return f.type === 'date'; });
+    if (dateField && !document.getElementById('amb-' + dateField.name).value) {
+      document.getElementById('amb-' + dateField.name).value = today();
+    }
+    if (cfg.numbered) {
+      var dateInput = document.getElementById('amb-' + dateField.name);
+      var numberInput = document.getElementById('amb-seqNumber');
+      var update = function() {
+        if (editingId && numberInput.value) return;
+        numberInput.value = '';
+        nextNumber(activeTab, dateInput.value, editingId)
+          .then(function(num) { numberInput.value = num; })
+          .catch(function() { numberInput.value = ''; });
+      };
+      dateInput.addEventListener('change', update);
+      if (!editingId) update();
+    }
+  }
+
+  function collectForm() {
+    var form = document.getElementById('amb-form');
+    var data = {};
+    configs[activeTab].fields.forEach(function(field) {
+      if (field.name === 'seqNumber') return;
+      var el = form.elements[field.name];
+      if (!el) return;
+      data[field.name] = el.value;
+    });
+    var seq = form.elements.seqNumber ? Number(form.elements.seqNumber.value) : null;
+    return { entryType: activeTab, seqNumber: seq, data: data };
+  }
+
+  function renderTable() {
+    var cfg = configs[activeTab];
+    var rows = currentRows();
+
+    document.getElementById('amb-table-head').innerHTML = '<tr>' +
+      cfg.fields.filter(function(f) { return f.type !== 'call-select'; }).map(function(f) {
+        return '<th>' + escapeHtml(f.label) + '</th>';
+      }).join('') +
+      '<th class="center">Действия</th></tr>';
+
+    if (!rows.length) {
+      document.getElementById('amb-table-body').innerHTML = '<tr><td class="amb-empty" colspan="' + (cfg.fields.filter(function(f) { return f.type !== 'call-select'; }).length + 1) + '">Нет данных</td></tr>';
+      renderPagination();
+      return;
+    }
+
+    document.getElementById('amb-table-body').innerHTML = rows.map(function(row) {
+      return '<tr>' +
+        cfg.fields.filter(function(f) { return f.type !== 'call-select'; }).map(function(field) {
+          var val = field.name === 'seqNumber' ? row.seqNumber : (row.data || {})[field.name];
+          return '<td' + (field.name === 'seqNumber' ? ' class="center"' : '') + '>' + formatValue(val) + '</td>';
+        }).join('') +
+        '<td class="center"><div class="amb-actions-cell">' +
+          '<button class="amb-btn amb-btn-secondary amb-btn-icon" type="button" onclick="ambApp.edit(\'' + row.id + '\')" title="Редактировать">✎</button>' +
+          '<button class="amb-btn amb-btn-danger amb-btn-icon" type="button" onclick="ambApp.remove(\'' + row.id + '\')" title="Удалить">×</button>' +
+        '</div></td></tr>';
+    }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    var start = pagination.total ? ((pagination.page - 1) * pagination.pageSize + 1) : 0;
+    var end = Math.min(pagination.page * pagination.pageSize, pagination.total);
+    document.getElementById('amb-page-info').textContent =
+      'Показано ' + start + '-' + end + ' из ' + pagination.total + ' | страница ' + pagination.page + ' из ' + totalPages;
+    document.getElementById('amb-page-size').value = String(pagination.pageSize);
+  }
+
+  function renderAll() {
+    renderTabs();
+    renderStatus();
+    renderTable();
+  }
+
+  function loadFromApi() {
+    var params = new URLSearchParams();
+    var from = document.getElementById('amb-date-from').value;
+    var to = document.getElementById('amb-date-to').value;
+    var search = document.getElementById('amb-search').value.trim();
+    params.set('type', activeTab);
+    params.set('page', pagination.page);
+    params.set('limit', pagination.pageSize);
+    if (from) params.set('dateFrom', from);
+    if (to) params.set('dateTo', to);
+    if (search) params.set('search', search);
+    return api('?' + params.toString()).then(function(res) {
+      records = normalizeRows(res.rows || []);
+      pagination.total = res.total || 0;
+      pagination.page = res.page || pagination.page;
+      pagination.pageSize = res.limit || pagination.pageSize;
+      renderAll();
+    });
+  }
+
+  function reload() {
+    setStatus('Загрузка...', 'loading');
+    var callsPromise = Promise.resolve();
+
+    callsPromise.then(loadFromApi).catch(function(e) {
+      records = [];
+      pagination.total = 0;
+      renderAll();
+      setStatus('БД недоступна', 'error');
+      showToast('Не удалось загрузить данные из БД: ' + e.message, 'error');
+    });
+  }
+
+  function switchTab(tab) {
+    activeTab = tab;
+    editingId = '';
+    pagination.page = 1;
+    renderForm();
+    reload();
+  }
+
+  function resetForm() {
+    editingId = '';
+    renderForm();
+  }
+
+  function save(event) {
+    event.preventDefault();
+    var payload = collectForm();
+    var request = editingId
+      ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+      : api('', { method: 'POST', body: JSON.stringify(payload) });
+    request.then(function() {
+      showToast('Запись сохранена', 'success');
+      resetForm();
+      reload();
+    }).catch(function(e) {
+      showToast('Ошибка сохранения в БД: ' + e.message, 'error');
+    });
+  }
+
+  function edit(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    activeTab = row.entryType;
+    editingId = row.id;
+    renderTabs();
+    renderForm(Object.assign({}, row.data, { seqNumber: row.seqNumber }));
+    renderTable();
+    document.querySelector('.amb-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function remove(id) {
+    if (!confirm('Удалить запись?')) return;
+    api('/' + id, { method: 'DELETE' }).then(function() {
+      showToast('Удалено', 'success');
+      reload();
+    }).catch(function(e) { showToast('Ошибка удаления из БД: ' + e.message, 'error'); });
+  }
+
+  function prefillPatientCall(callId) {
+    var call = sourceCalls.find(function(r) { return r.id === callId; });
+    if (!call) return;
+    var data = call.data || {};
+    var dateEl = document.getElementById('amb-callDate');
+    var patientEl = document.getElementById('amb-patientName');
+    if (dateEl) dateEl.value = data.callDate || '';
+    if (patientEl) patientEl.value = data.patientName || '';
+  }
+
+  function clearFilters() {
+    document.getElementById('amb-search').value = '';
+    document.getElementById('amb-date-from').value = '';
+    document.getElementById('amb-date-to').value = '';
+    pagination.page = 1;
+    reload();
+  }
+
+  function exportExcel() {
+    if (!window.ExcelJS) {
+      showToast('Библиотека ExcelJS не загружена', 'error');
+      return;
+    }
+    var params = new URLSearchParams();
+    var from = document.getElementById('amb-date-from').value;
+    var to = document.getElementById('amb-date-to').value;
+    if (from) params.set('dateFrom', from);
+    if (to) params.set('dateTo', to);
+    showToast('Готовлю Excel...', 'success');
+    api('/export-data' + (params.toString() ? '?' + params.toString() : '')).then(function(exportRows) {
+      buildExcel(normalizeRows(exportRows || []));
+    }).catch(function(e) {
+      showToast('Ошибка экспорта: ' + e.message, 'error');
+    });
+  }
+
+  function openImport() {
+    document.getElementById('amb-import-file').click();
+  }
+
+  function importExcel(file) {
+    if (!file) return;
+    if (!confirm('Импортировать данные из Excel? Записи будут добавлены в БД.')) {
+      document.getElementById('amb-import-file').value = '';
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', file);
+    setStatus('Импорт...', 'loading');
+    uploadApi('/import', formData).then(function(result) {
+      document.getElementById('amb-import-file').value = '';
+      var calls = result.byType && result.byType.calls ? result.byType.calls : null;
+      var details = calls ? ' | Вызовы: ' + calls.inserted + '/' + calls.parsed : '';
+      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0) + details, 'success');
+      pagination.page = 1;
+      reload();
+    }).catch(function(e) {
+      document.getElementById('amb-import-file').value = '';
+      setStatus('БД', 'api');
+      showToast('Ошибка импорта: ' + e.message, 'error');
+    });
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить все данные отчётности скорой помощи?')) return;
+    var answer = prompt('Для подтверждения введите УДАЛИТЬ');
+    if (answer !== 'УДАЛИТЬ') {
+      showToast('Очистка отменена', 'error');
+      return;
+    }
+    setStatus('Очистка...', 'loading');
+    api('', { method: 'DELETE' }).then(function(result) {
+      editingId = '';
+      pagination.page = 1;
+      records = [];
+      sourceCalls = [];
+      renderForm();
+      reload();
+      showToast('Удалено записей: ' + (result.deleted || 0), 'success');
+    }).catch(function(e) {
+      setStatus('БД', 'api');
+      showToast('Ошибка очистки: ' + e.message, 'error');
+    });
+  }
+
+  function buildExcel(exportRows) {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Alfa Wiki';
+    wb.created = new Date();
+
+    tabs.forEach(function(tab) {
+      var cfg = configs[tab.id];
+      var fields = cfg.fields.filter(function(f) { return f.type !== 'call-select'; });
+      var ws = wb.addWorksheet(cfg.title);
+      ws.addRow(fields.map(function(f) { return f.label; }));
+      exportRows.filter(function(r) { return r.entryType === tab.id; }).forEach(function(row) {
+        ws.addRow(fields.map(function(f) {
+          return f.name === 'seqNumber' ? (row.seqNumber || '') : ((row.data || {})[f.name] || '');
+        }));
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+      ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.columns.forEach(function(col) {
+        var max = 12;
+        col.eachCell({ includeEmpty: true }, function(cell) {
+          max = Math.max(max, String(cell.value || '').length + 2);
+        });
+        col.width = Math.min(max, 34);
+      });
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Отчетность_скорой_' + today() + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Excel сформирован', 'success');
+    });
+  }
+
+  function onSearchChange() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+      pagination.page = 1;
+      reload();
+    }, 350);
+  }
+
+  function filtersChanged() {
+    pagination.page = 1;
+    reload();
+  }
+
+  function prevPage() {
+    if (pagination.page <= 1) return;
+    pagination.page -= 1;
+    reload();
+  }
+
+  function nextPage() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    if (pagination.page >= totalPages) return;
+    pagination.page += 1;
+    reload();
+  }
+
+  function changePageSize(value) {
+    pagination.pageSize = Number(value) || 50;
+    pagination.page = 1;
+    reload();
+  }
+
+  function init() {
+    renderTabs();
+    renderForm();
+    reload();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    switchTab: switchTab,
+    resetForm: resetForm,
+    save: save,
+    edit: edit,
+    remove: remove,
+    reload: reload,
+    prefillPatientCall: prefillPatientCall,
+    clearFilters: clearFilters,
+    onSearchChange: onSearchChange,
+    filtersChanged: filtersChanged,
+    exportExcel: exportExcel,
+    clearAllData: clearAllData,
+    openImport: openImport,
+    importExcel: importExcel,
+    prevPage: prevPage,
+    nextPage: nextPage,
+    changePageSize: changePageSize
+  };
+})();
+</script>
+</body>
+</html>

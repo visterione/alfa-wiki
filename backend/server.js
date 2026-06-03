@@ -64,6 +64,7 @@ const rbDoctorHeadersRoutes      = require('./routes/rb-doctor-headers');
 const rbActivityLogRoutes        = require('./routes/rb-activity-log');
 const misAppointmentsRoutes      = require('./routes/mis-appointments');
 const directoriesRoutes          = require('./routes/directories');
+const ambulanceReportsRoutes     = require('./routes/ambulance-reports');
 
 const app = express();
 const server = http.createServer(app);
@@ -255,6 +256,7 @@ app.use('/api/rb-activity-log',     rbActivityLogRoutes);
 app.use('/api/rb-excel-sources',    rbExcelSourcesRoutes);
 app.use('/api/mis-appointments',    misAppointmentsRoutes);
 app.use('/api/directories',         directoriesRoutes);
+app.use('/api/ambulance-reports',   ambulanceReportsRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})

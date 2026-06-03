@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { mis, directories, reviews } from '../../../services/api';
+import { mis, directories, reviews, salaryRecords } from '../../../services/api';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
 import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
@@ -4484,6 +4484,484 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SERVICE COST ANALYTICS (shown in Аналитика tab of Statistics page)
+// ══════════════════════════════════════════════════════════════════════════════
+export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
+  const [costings, setCostings]       = useState({});
+  const [norms, setNorms]             = useState({});
+  const [bindings, setBindings]       = useState({});
+  const [marketing, setMarketing]     = useState({});
+  const [utilityRaw, setUtilityRaw]   = useState({});
+  const [utilityCfg, setUtilityCfg]   = useState({});
+  const [salaryRows, setSalaryRows]   = useState([]);
+  const [periodAppointments, setPeriodAppointments] = useState([]);
+  const [loading, setLoading]         = useState(true);
+  const [clinicFilter, setClinicFilter] = useState('');
+  const [categories, setCategories]   = useState([]);
+  const [categoryFilter, setCatFilter]= useState('');
+  const [services, setServices]       = useState([]);
+  const [catsLoading, setCatsLoading] = useState(false);
+  const [svcsLoading, setSvcsLoading] = useState(false);
+  const [search, setSearch]           = useState('');
+  const [selectedSvc, setSelectedSvc] = useState(null);
+  const saveTimers = useRef({});
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      directories.getAll('service_costing').catch(() => ({ data: {} })),
+      directories.getAll('consumable_norm').catch(() => ({ data: {} })),
+      directories.getAll('equipment_service_binding').catch(() => ({ data: {} })),
+      directories.getAll('marketing_service').catch(() => ({ data: {} })),
+      directories.getAll('utility').catch(() => ({ data: {} })),
+      directories.getAll('utility_cfg').catch(() => ({ data: {} })),
+      salaryRecords.getAll().catch(() => ({ data: [] })),
+      periodStart && periodEnd
+        ? fetchAppointmentsFromDB(periodStart, periodEnd).catch(() => [])
+        : Promise.resolve([]),
+    ]).then(([costRes, normRes, bindRes, marketingRes, utilRes, utilCfgRes, salaryRes, apptsRes]) => {
+      setCostings(costRes.data || {});
+      setNorms(normRes.data || {});
+      setBindings(bindRes.data || {});
+      setMarketing(marketingRes.data || {});
+      setUtilityRaw(utilRes.data || {});
+      setUtilityCfg(utilCfgRes.data || {});
+      setSalaryRows(Array.isArray(salaryRes.data) ? salaryRes.data : []);
+      setPeriodAppointments(Array.isArray(apptsRes) ? apptsRes : []);
+    }).finally(() => setLoading(false));
+  }, [periodStart, periodEnd]);
+
+  useEffect(() => {
+    if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
+    setCatsLoading(true);
+    mis.getServiceCategories()
+      .then(res => { const raw = res.data?.data || res.data || []; setCategories(Array.isArray(raw) ? raw : []); })
+      .catch(() => setCategories([]))
+      .finally(() => setCatsLoading(false));
+  }, [clinicFilter]);
+
+  useEffect(() => {
+    if (!clinicFilter) { setServices([]); return; }
+    setSvcsLoading(true);
+    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter) : mis.getAllServices(clinicFilter);
+    loader
+      .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
+      .catch(() => setServices([]))
+      .finally(() => setSvcsLoading(false));
+  }, [clinicFilter, categoryFilter]);
+
+  const flatCats = useMemo(() => flattenCats(categories), [categories]);
+
+  const filteredSvcs = useMemo(() => {
+    if (!search) return services;
+    const q = search.toLowerCase();
+    return services.filter(s =>
+      (s.title || s.name || '').toLowerCase().includes(q) ||
+      (s.code || '').toLowerCase().includes(q)
+    );
+  }, [services, search]);
+
+  const currentKey = useMemo(() => {
+    if (!clinicFilter || !selectedSvc) return '';
+    return `${clinicFilter}__${selectedSvc.code || normServiceName(selectedSvc.title)}`;
+  }, [clinicFilter, selectedSvc]);
+
+  const currentCosting = currentKey ? costings[currentKey] || {} : {};
+
+  const utilityPerVisit = useMemo(() => {
+    if (!clinicFilter || !periodStart || !periodEnd) return { value: 0, visits: 0, source: '' };
+
+    const utilCats = Array.isArray(utilityCfg?.categories?.cats) && utilityCfg.categories.cats.length
+      ? utilityCfg.categories.cats
+      : UTILITY_CATEGORIES;
+    const colGroups = Array.isArray(utilityCfg?.col_groups?.groups) ? utilityCfg.col_groups.groups : [];
+    const allTypes = utilCats.flatMap(c => getAllTypesFlat(c).map(t => ({ ...t, catKey: c.key })));
+    const months = [];
+    const cur = new Date(periodStart.getFullYear(), periodStart.getMonth(), 1);
+    const end = new Date(periodEnd.getFullYear(), periodEnd.getMonth(), 1);
+    while (cur <= end) {
+      months.push({ year: cur.getFullYear(), month: cur.getMonth() + 1 });
+      cur.setMonth(cur.getMonth() + 1);
+    }
+
+    const groupsWithClinic = colGroups.filter(g =>
+      (g.items || []).some(i => i.kind === 'clinic' && String(i.id) === String(clinicFilter))
+    );
+    const targetGroups = groupsWithClinic.length
+      ? groupsWithClinic
+      : [{ key: `clinic_${clinicFilter}`, label: getClinicName(clinicFilter), items: [{ kind: 'clinic', id: String(clinicFilter) }] }];
+
+    const getSum = (key) => {
+      const c = utilityRaw[key];
+      if (!c) return 0;
+      if (c.sum !== undefined && c.sum !== '') return parseNum(c.sum);
+      const qty = parseNum(c.qty), price = parseNum(c.price);
+      return qty > 0 ? qty * price : price;
+    };
+
+    let total = 0;
+    const clinicIds = new Set();
+    for (const grp of targetGroups) {
+      for (const item of (grp.items || [])) {
+        if (item.kind !== 'clinic') continue;
+        clinicIds.add(String(item.id));
+        for (const m of months) {
+          for (const type of allTypes) {
+            total += getSum(`${m.year}_${m.month}_${type.key}_${item.id}`);
+          }
+        }
+      }
+    }
+
+    let visits = 0;
+    for (const a of periodAppointments) {
+      if (a.status_id === 5 || a.status === 'refused') continue;
+      if (clinicIds.has(String(a.clinic_id || ''))) visits++;
+    }
+
+    return {
+      value: total > 0 && visits > 0 ? total / visits : 0,
+      visits,
+      source: groupsWithClinic.length ? targetGroups.map(g => g.label).join(', ') : getClinicName(clinicFilter),
+    };
+  }, [clinicFilter, periodStart, periodEnd, utilityCfg, utilityRaw, periodAppointments]);
+
+  const doctorPayStats = useMemo(() => {
+    if (!clinicFilter || !selectedSvc || !periodStart || !periodEnd) return { value: 0, doctors: [] };
+    const serviceCode = selectedSvc.code || '';
+    const serviceNameKey = normServiceName(selectedSvc.title);
+
+    const serviceMatches = (s) =>
+      (serviceCode && s.code && normServiceName(s.code) === normServiceName(serviceCode)) ||
+      normServiceName(s.name || s.serviceName || '') === serviceNameKey;
+
+    const overlapsPeriod = (record) => {
+      if (!record.dateFrom && !record.dateTo) return true;
+      const from = record.dateFrom ? new Date(record.dateFrom) : null;
+      const to = record.dateTo ? new Date(record.dateTo) : from;
+      if (from && from > periodEnd) return false;
+      if (to && to < periodStart) return false;
+      return true;
+    };
+
+    const byDoctor = {};
+    for (const rec of salaryRows.filter(overlapsPeriod)) {
+      const clinicReports = rec.reportData?.clinicReports || [];
+      for (const cr of clinicReports) {
+        if (String(cr.clinicId || '') !== String(clinicFilter)) continue;
+        const sal = cr.salary || {};
+        const sections = [
+          ...(sal.performedSections || []),
+          ...(sal.basePerformedSections || []),
+          ...(cr.performedSections || []),
+        ];
+        if (!sections.some(serviceMatches)) continue;
+        const totalServices = parseNum(sal.totalServiceCount)
+          || sections.reduce((sum, s) => sum + (parseNum(s.count) || 1), 0);
+        const salaryTotal = parseNum(sal.finalSalary);
+        if (salaryTotal <= 0 || totalServices <= 0) continue;
+        const key = rec.misUserId || rec.doctorName;
+        if (!byDoctor[key]) byDoctor[key] = { name: rec.doctorName || key, salary: 0, services: 0 };
+        byDoctor[key].salary += salaryTotal;
+        byDoctor[key].services += totalServices;
+      }
+    }
+
+    const doctors = Object.values(byDoctor)
+      .map(d => ({ ...d, avg: d.services > 0 ? d.salary / d.services : 0 }))
+      .filter(d => d.avg > 0)
+      .sort((a, b) => b.avg - a.avg);
+    const value = doctors.length ? doctors.reduce((sum, d) => sum + d.avg, 0) / doctors.length : 0;
+    return { value, doctors };
+  }, [clinicFilter, selectedSvc, periodStart, periodEnd, salaryRows]);
+
+  const autoParts = useMemo(() => {
+    if (!clinicFilter || !selectedSvc) return { consumables: 0, equipment: 0, marketing: 0 };
+    const serviceCode = selectedSvc.code || '';
+    const serviceNameKey = normServiceName(selectedSvc.title);
+    const price = parseNum(selectedSvc.price);
+
+    const consumables = Object.values(norms)
+      .filter(n =>
+        n.clinicId === clinicFilter &&
+        ((serviceCode && n.serviceCode === serviceCode) ||
+          normServiceName(n.serviceName || '') === serviceNameKey)
+      )
+      .reduce((sum, n) => sum + parseNum(n.normQty) * parseNum(n.unitCost), 0);
+
+    const equipment = Object.values(bindings)
+      .filter(b =>
+        b.clinicId === clinicFilter &&
+        ((serviceCode && b.serviceCode === serviceCode) ||
+          normServiceName(b.serviceName || '') === serviceNameKey)
+      )
+      .reduce((sum, b) => sum + parseNum(b.paybackPerService), 0);
+
+    const marketingSetting = Object.values(marketing).find(m =>
+      m.clinicId === clinicFilter &&
+      ((serviceCode && m.serviceCode === serviceCode) ||
+        normServiceName(m.serviceName || '') === serviceNameKey)
+    );
+    const marketingValue = marketingSetting
+      ? (marketingSetting.valueType === 'rub'
+          ? parseNum(marketingSetting.value)
+          : price * parseNum(marketingSetting.value) / 100)
+      : 0;
+
+    return { consumables, equipment, marketing: marketingValue };
+  }, [clinicFilter, selectedSvc, norms, bindings, marketing]);
+
+  const costParts = useMemo(() => ({
+    consumables: currentCosting.consumables === '' || currentCosting.consumables == null ? autoParts.consumables : parseNum(currentCosting.consumables),
+    doctorPay:   doctorPayStats.value,
+    equipment:   currentCosting.equipment   === '' || currentCosting.equipment   == null ? autoParts.equipment   : parseNum(currentCosting.equipment),
+    utilities:   utilityPerVisit.value,
+    marketing:   currentCosting.marketing   === '' || currentCosting.marketing   == null ? autoParts.marketing   : parseNum(currentCosting.marketing),
+  }), [currentCosting, autoParts, doctorPayStats.value, utilityPerVisit.value]);
+
+  const totals = useMemo(() => {
+    const price = parseNum(selectedSvc?.price);
+    const fullCost = costParts.consumables + costParts.doctorPay + costParts.equipment + costParts.utilities + costParts.marketing;
+    const profit = price - fullCost;
+    const margin = price > 0 ? profit / price * 100 : null;
+    return { price, fullCost, profit, margin };
+  }, [selectedSvc, costParts]);
+
+  const saveCostField = useCallback((field, value) => {
+    if (!currentKey || !selectedSvc || !clinicFilter) return;
+    const patch = {
+      clinicId: clinicFilter,
+      serviceCode: selectedSvc.code,
+      serviceName: selectedSvc.title,
+      servicePrice: parseNum(selectedSvc.price),
+      [field]: value === '' ? '' : parseNum(value),
+    };
+    setCostings(prev => ({ ...prev, [currentKey]: { ...(prev[currentKey] || {}), ...patch } }));
+    clearTimeout(saveTimers.current[currentKey + field]);
+    saveTimers.current[currentKey + field] = setTimeout(async () => {
+      try { await directories.save('service_costing', encodeURIComponent(currentKey), patch); }
+      catch { toast.error('Ошибка сохранения себестоимости'); }
+    }, 700);
+  }, [currentKey, selectedSvc, clinicFilter]);
+
+  const applyAutoField = useCallback((field, value) => {
+    saveCostField(field, value);
+    toast.success('Значение подставлено', { duration: 1200 });
+  }, [saveCostField]);
+
+  if (loading) return <Spinner text="Загрузка себестоимости…" />;
+
+  const clinicName = clinicFilter ? getClinicName(clinicFilter) : '';
+  const partRows = [
+    { key: 'consumables', label: 'Расходники', auto: autoParts.consumables },
+    { key: 'doctorPay',   label: 'Оплата врача', auto: doctorPayStats.value, readonly: true },
+    { key: 'equipment',   label: 'Оборудование', auto: autoParts.equipment },
+    { key: 'utilities',   label: 'Коммунальные', auto: utilityPerVisit.value, readonly: true },
+    { key: 'marketing',   label: 'Маркетинг', auto: autoParts.marketing },
+  ];
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <select value={clinicFilter}
+            onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
+            style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}>
+            <option value="">— Выберите медцентр —</option>
+            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {clinicFilter && (
+            <select value={categoryFilter}
+              onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
+              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}
+              disabled={catsLoading}>
+              <option value="">Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
+              {flatCats.map(c => <option key={c.id} value={c.id}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
+            </select>
+          )}
+          {clinicFilter && (
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Поиск по коду или названию…"
+              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }} />
+          )}
+          {!svcsLoading && clinicFilter && (
+            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{filteredSvcs.length} услуг</span>
+          )}
+        </div>
+
+        <div style={{ overflowY: 'auto', maxHeight: 620 }}>
+          {svcsLoading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
+              <span className="rb-spinner" style={{ width: 12, height: 12, display: 'inline-block', marginRight: 6 }} />
+              Загрузка…
+            </div>
+          ) : !clinicFilter ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.6 }}>
+              Выберите медцентр<br />для загрузки услуг
+            </div>
+          ) : filteredSvcs.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>Нет услуг</div>
+          ) : filteredSvcs.map(s => {
+            const code  = s.code || String(s.service_id || s.id || '');
+            const title = s.title || s.name || '';
+            const isSel = selectedSvc?.code === code;
+            return (
+              <button key={code || title}
+                onClick={() => setSelectedSvc({ code, title, price: s.price })}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
+                  width: '100%', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--rb-border)',
+                  background: isSel ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1.4 }}>{title}</div>
+                  {code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{code}</div>}
+                </div>
+                {s.price != null && (
+                  <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(parseNum(s.price))}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {!clinicFilter || !selectedSvc ? (
+        <div style={{ padding: '60px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13, border: '1px dashed var(--rb-border)', borderRadius: 'var(--rb-radius)' }}>
+          {clinicFilter ? 'Выберите услугу слева' : 'Выберите медцентр и услугу слева'}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--rb-text)' }}>{selectedSvc.title}</div>
+              <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {selectedSvc.code && <span>код: {selectedSvc.code}</span>}
+                <span style={{ color: getClinicColor(clinicFilter), fontWeight: 600 }}>{clinicName}</span>
+                <span>стоимость: <strong style={{ color: 'var(--rb-text)' }}>{fmtRubP(totals.price)}</strong></span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: 10 }}>
+            <SummaryKpiCard icon={FileText} label="Полная себестоимость" value={fmtRubP(totals.fullCost)} color="#6366f1" />
+            <SummaryKpiCard icon={TrendingUp} label="Прибыль" value={fmtRubP(totals.profit)} color={totals.profit >= 0 ? '#16a34a' : '#dc2626'} />
+            <SummaryKpiCard icon={CheckCircle} label="Маржинальность" value={totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`} color={totals.profit >= 0 ? '#0ea5e9' : '#dc2626'} />
+            <SummaryKpiCard icon={Clock} label="Цена услуги" value={fmtRubP(totals.price)} color="#f59e0b" />
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="rb-table" style={{ minWidth: 760 }}>
+              <thead>
+                <tr>
+                  <THCell>Компонент</THCell>
+                  <THCell right>Значение</THCell>
+                  <THCell right>Авто из справочников</THCell>
+                  <THCell right>Доля в цене</THCell>
+                </tr>
+              </thead>
+              <tbody>
+                {partRows.map(part => {
+                  const value = costParts[part.key] || 0;
+                  const hasAuto = part.auto != null && part.auto > 0;
+                  const inputValue = part.readonly
+                    ? value
+                    : (currentCosting[part.key] ?? (part.auto != null ? part.auto : ''));
+                  return (
+                    <tr key={part.key}>
+                      <td style={{ fontWeight: 600 }}>{part.label}</td>
+                      <td>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <input type="number" min="0" step="0.01"
+                            value={inputValue}
+                            onChange={e => !part.readonly && saveCostField(part.key, e.target.value)}
+                            readOnly={part.readonly}
+                            placeholder="0"
+                            style={{ ...inlineInputStyle, width: 120, textAlign: 'right', background: part.readonly ? '#f8fafc' : '#fafafa', color: part.readonly ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }} />
+                        </div>
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: hasAuto ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}>
+                        {part.readonly ? (
+                          hasAuto ? fmtRubP(part.auto) : DASH
+                        ) : hasAuto ? (
+                          <button onClick={() => applyAutoField(part.key, part.auto)}
+                            style={{ border: 'none', background: 'none', padding: 0, color: 'var(--rb-primary)', cursor: 'pointer', font: 'inherit', fontSize: 12 }}>
+                            {fmtRubP(part.auto)}
+                          </button>
+                        ) : DASH}
+                      </td>
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totals.price > 0 ? 'var(--rb-text-secondary)' : '#94a3b8' }}>
+                        {totals.price > 0 ? `${(value / totals.price * 100).toFixed(1)}%` : DASH}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr style={{ background: '#f8fafc' }}>
+                  <td style={{ fontWeight: 700 }}>Полная себестоимость</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--rb-text-secondary)' }}>сумма 5 пунктов</td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{totals.price > 0 ? `${(totals.fullCost / totals.price * 100).toFixed(1)}%` : DASH}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 700 }}>Прибыль</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmtRubP(totals.profit)}</td>
+                  <td style={{ textAlign: 'right', color: 'var(--rb-text-secondary)' }}>стоимость услуги − себестоимость</td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
+            Расходники, оборудование и маркетинг подтягиваются из одноимённых справочников. Оплата врача считается по сохранённым зарплатным листам, коммунальные — по расходам на 1 визит из аналитики коммунальных.
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 12px', background: '#fff' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Оплата врача</div>
+              {doctorPayStats.doctors.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {doctorPayStats.doctors.map(d => (
+                    <div key={d.name} style={{ display: 'flex', gap: 8, justifyContent: 'space-between', fontSize: 12 }}>
+                      <span style={{ color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
+                      <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                        {fmtRubP(d.salary)} / {fmt(d.services)} = <strong>{fmtRubP(d.avg)}</strong>
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: '1px solid var(--rb-border)', marginTop: 4, paddingTop: 6, fontSize: 12, textAlign: 'right' }}>
+                    Среднее арифметическое: <strong>{fmtRubP(doctorPayStats.value)}</strong>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
+                  Нет сохранённых зарплатных листов за выбранный период, где эта услуга выполнена врачом в выбранном медцентре.
+                </div>
+              )}
+            </div>
+
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 12px', background: '#fff' }}>
+              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Коммунальные</div>
+              {utilityPerVisit.value > 0 ? (
+                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.6 }}>
+                  Источник: <strong style={{ color: 'var(--rb-text)' }}>{utilityPerVisit.source}</strong><br />
+                  Визитов за период: <strong style={{ color: 'var(--rb-text)' }}>{fmt(utilityPerVisit.visits)}</strong><br />
+                  На 1 визит: <strong style={{ color: 'var(--rb-text)' }}>{fmtRubP(utilityPerVisit.value)}</strong>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
+                  Нет коммунальных расходов или визитов за выбранный период для выбранного медцентра.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
