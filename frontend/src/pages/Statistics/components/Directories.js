@@ -200,6 +200,22 @@ function getClinicName(clinicId) {
   return DEFAULT_CLINICS.find(x => String(x.id) === String(clinicId))?.name || `Клиника ${clinicId}`;
 }
 
+function getReviewDoctorName(review) {
+  const candidates = [
+    review?.doctorName,
+    review?.doctor_name,
+    review?.doctor?.name,
+    review?.doctor?.fullName,
+    review?.doctor?.full_name,
+    review?.attendingDoctor,
+    review?.attending_doctor,
+    review?.attendingDoctorName,
+    review?.attending_doctor_name,
+  ];
+  const value = candidates.find(v => String(v || '').trim());
+  return value ? String(value).trim() : '';
+}
+
 // Find the most recent period that has sources and return matching sources + label.
 // Falls back to the latest available period if current month has no data.
 function findLatestPeriodSources(sources) {
@@ -1682,6 +1698,7 @@ function NegativeReviewRow({ r }) {
   const [open, setOpen] = useState(false);
   const text    = r.reviewText || '';
   const rating  = r.rating || 0;
+  const doctorName = getReviewDoctorName(r);
   const date    = r.reviewDate
     ? new Date(r.reviewDate).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : '';
@@ -1729,11 +1746,13 @@ function NegativeReviewRow({ r }) {
             {r.platformName}
           </span>
         )}
-        {r.doctorName && <>
+        {doctorName && <>
           {r.platformName && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
-          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{r.doctorName}</span>
+          <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+            Лечащий врач: <span style={{ fontWeight: 600, color: 'var(--rb-text)' }}>{doctorName}</span>
+          </span>
         </>}
-        {(r.platformId || r.doctorName) && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
+        {(r.platformId || doctorName) && <span style={{ fontSize: 11, color: '#cbd5e1' }}>|</span>}
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: r.boardColor, display: 'inline-block', flexShrink: 0 }} />
           <span style={{ fontSize: 11, fontWeight: 600, color: r.boardColor }}>{r.boardName}</span>
@@ -1760,6 +1779,8 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
   const [loadingNeg, setLoadingNeg]   = useState(false);
   const [negExpanded, setNegExpanded] = useState(false);
   const [platformMap, setPlatformMap] = useState({});
+  const [doctorBoardFilter, setDoctorBoardFilter] = useState('');
+  const [doctorSort, setDoctorSort] = useState({ key: 'avgRating', dir: 'desc' });
 
   useEffect(() => {
     reviews.getPlatforms()
@@ -1806,7 +1827,13 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
             const list = Array.isArray(res.data) ? res.data : [];
             return list
               .filter(r => r.rating && r.rating <= 3 && r.reviewDate && new Date(r.reviewDate) >= from && new Date(r.reviewDate) <= to)
-              .map(r => ({ ...r, boardName: b.name, boardColor: getBoardColor(b.name), platformName: platformMap[r.platformId] || r.platformId || null }));
+              .map(r => ({
+                ...r,
+                doctorName: getReviewDoctorName(r),
+                boardName: b.name,
+                boardColor: getBoardColor(b.name),
+                platformName: r.platform?.name || platformMap[r.platformId] || r.platformId || null,
+              }));
           })
           .catch(() => [])
       )
@@ -1892,18 +1919,66 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
       if (!s?.topDoctors) return;
       for (const d of s.topDoctors) {
         if (!d.name) continue;
-        if (!byName[d.name]) byName[d.name] = { name: d.name, count: 0, ratingSum: 0, positive: 0, negative: 0, boardColors: [] };
+        if (!byName[d.name]) byName[d.name] = { name: d.name, count: 0, ratingSum: 0, positive: 0, negative: 0, boards: [], boardColors: [] };
         byName[d.name].count     += d.count    || 0;
         byName[d.name].ratingSum += (d.avgRating || 0) * (d.count || 0);
         byName[d.name].positive  += d.positive  || 0;
         byName[d.name].negative  += d.negative  || 0;
+        byName[d.name].boards.push({ id: b.id, name: b.name, color: getBoardColor(b.name), count: d.count || 0 });
         byName[d.name].boardColors.push(getBoardColor(b.name));
       }
     });
     return Object.values(byName)
-      .map(d => ({ ...d, avgRating: d.count > 0 ? d.ratingSum / d.count : 0 }))
-      .sort((a, b) => b.avgRating - a.avgRating);
+      .map(d => ({ ...d, avgRating: d.count > 0 ? d.ratingSum / d.count : 0 }));
   }, [statsMap, boards]);
+
+  const filteredDoctors = useMemo(() => {
+    const dir = doctorSort.dir === 'asc' ? 1 : -1;
+    return allDoctors
+      .filter(d => !doctorBoardFilter || d.boards.some(b => String(b.id) === String(doctorBoardFilter)))
+      .sort((a, b) => {
+        if (doctorSort.key === 'name') return a.name.localeCompare(b.name, 'ru') * dir;
+        const av = a[doctorSort.key] ?? 0;
+        const bv = b[doctorSort.key] ?? 0;
+        return (av - bv) * dir;
+      });
+  }, [allDoctors, doctorBoardFilter, doctorSort]);
+
+  const setDoctorSortKey = useCallback((key) => {
+    setDoctorSort(prev => ({
+      key,
+      dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc',
+    }));
+  }, []);
+
+  const SortButton = ({ sortKey, children, right }) => {
+    const active = doctorSort.key === sortKey;
+    return (
+      <button
+        type="button"
+        onClick={() => setDoctorSortKey(sortKey)}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          font: 'inherit',
+          fontWeight: 600,
+          color: active ? 'var(--rb-primary)' : 'inherit',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: right ? 'flex-end' : 'flex-start',
+          gap: 4,
+          width: '100%',
+        }}
+      >
+        {children}
+        <span style={{ fontSize: 10, color: active ? 'var(--rb-primary)' : '#94a3b8' }}>
+          {active ? (doctorSort.dir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    );
+  };
 
   // Count negative reviews from stats byRating data
   const negCount = useMemo(() => {
@@ -1919,8 +1994,9 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
   const negByDoctor = useMemo(() => {
     const map = {};
     for (const r of negReviews) {
-      if (!r.doctorName) continue;
-      map[r.doctorName] = (map[r.doctorName] || 0) + 1;
+      const doctorName = getReviewDoctorName(r);
+      if (!doctorName) continue;
+      map[doctorName] = (map[doctorName] || 0) + 1;
     }
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [negReviews]);
@@ -2048,22 +2124,37 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
       {/* Combined doctor rating table */}
       {allDoctors.length > 0 && (
         <div style={{ background: 'var(--rb-card-bg)', border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', padding: '16px 20px' }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <UserRound size={16} style={{ color: 'var(--rb-text-secondary)' }} />
-            Рейтинг врачей
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+            <div style={{ fontWeight: 600, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 180 }}>
+              <UserRound size={16} style={{ color: 'var(--rb-text-secondary)' }} />
+              Рейтинг врачей
+            </div>
+            <select
+              value={doctorBoardFilter}
+              onChange={e => setDoctorBoardFilter(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', background: '#fff', cursor: 'pointer', maxWidth: 260 }}
+            >
+              <option value="">Все медцентры</option>
+              {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+              {filteredDoctors.length} из {allDoctors.length}
+            </span>
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table className="rb-table" style={{ minWidth: 400 }}>
+            <table className="rb-table" style={{ minWidth: 560 }}>
               <thead>
                 <tr>
                   <THCell>#</THCell>
-                  <THCell>Врач</THCell>
-                  <THCell right>Отзывов</THCell>
-                  <THCell right>Ср. оценка</THCell>
+                  <THCell><SortButton sortKey="name">Врач</SortButton></THCell>
+                  <THCell>Медцентры</THCell>
+                  <THCell right><SortButton sortKey="count" right>Отзывов</SortButton></THCell>
+                  <THCell right><SortButton sortKey="negative" right>Негатив</SortButton></THCell>
+                  <THCell right><SortButton sortKey="avgRating" right>Ср. оценка</SortButton></THCell>
                 </tr>
               </thead>
               <tbody>
-                {allDoctors.map((doc, i) => (
+                {filteredDoctors.map((doc, i) => (
                   <tr key={doc.name}>
                     <td style={{ color: 'var(--rb-text-secondary)', fontSize: 12, width: 36 }}>{i + 1}</td>
                     <td style={{ fontWeight: 500 }}>
@@ -2076,7 +2167,19 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
                         {doc.name}
                       </div>
                     </td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                        {doc.boards.map(b => (
+                          <span key={b.id} style={{ fontSize: 11, padding: '2px 7px', borderRadius: 12, background: b.color + '18', color: b.color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {b.name}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{doc.count}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: doc.negative > 0 ? '#dc2626' : 'var(--rb-text-secondary)', fontWeight: doc.negative > 0 ? 600 : 400 }}>
+                      {doc.negative}
+                    </td>
                     <td style={{ textAlign: 'right' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}>
                         <Star size={12} fill="#f59e0b" color="#f59e0b" />
@@ -2085,6 +2188,13 @@ export function TabReputation({ dateFrom: dateFromProp, dateTo: dateToProp }) {
                     </td>
                   </tr>
                 ))}
+                {filteredDoctors.length === 0 && (
+                  <tr>
+                    <td colSpan={6} style={{ textAlign: 'center', padding: '28px 20px', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+                      Нет врачей по выбранному медцентру
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
