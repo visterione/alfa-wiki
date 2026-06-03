@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { mis, directories, reviews, salaryRecords } from '../../../services/api';
+import { mis, directories, reviews, salaryRecords, doctorSchedules } from '../../../services/api';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
 import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
 import { parseExcelFile, rbMapNewColumns } from '../../ReferralBonuses/utils/excelUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
+import { calcScheduleHoursForPeriod } from '../../ReferralBonuses/utils/scheduleUtils';
 import { DEFAULT_CLINICS } from '../../ReferralBonuses/utils/clinicUtils';
 import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
@@ -165,6 +166,19 @@ function monthKeyToLabel(key) {
   const [year, month] = String(key || '').split('-').map(Number);
   if (!year || !month) return '';
   return `${MONTHS_RU[month - 1]?.label || month} ${year}`;
+}
+
+function monthKeyToRange(key) {
+  const [rawYear, rawMonth] = String(key || monthKeyFromDate(new Date())).split('-').map(Number);
+  const now = new Date();
+  const year = rawYear || now.getFullYear();
+  const month = rawMonth || now.getMonth() + 1;
+  const lastDay = new Date(year, month, 0).getDate();
+  const mm = String(month).padStart(2, '0');
+  return {
+    dateFrom: `${year}-${mm}-01`,
+    dateTo: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+  };
 }
 
 function getMonthlyValue(data, mapField, legacyField, monthKey) {
@@ -818,23 +832,15 @@ function TabCabinets({ appointments, loadingAppts, doctors }) {
 // ВРАЧИ (stats loaded independently from Excel sources)
 // ══════════════════════════════════════════════════════════════════════════════
 function TabDoctors({ doctors, excelSources, monthKey }) {
-  const [manualData, setManualData] = useState({});
-  const [loadingMeta, setLoadingMeta] = useState(true);
   const [statsLoading, setStatsLoading] = useState(true);
   const [doctorStats, setDoctorStats] = useState({});
   const [salaryRows, setSalaryRows] = useState([]);
   const [salaryLoading, setSalaryLoading] = useState(true);
+  const [scheduleByDoctor, setScheduleByDoctor] = useState({});
+  const [schedulesLoading, setSchedulesLoading] = useState(true);
   const [statsPeriodLabel, setStatsPeriodLabel] = useState('');
   const [search, setSearch] = useState('');
   const [clinicFilter, setClinicFilter] = useState('');
-
-  // Load legacy manual data only for compatibility with existing records.
-  useEffect(() => {
-    directories.getAll('doctor')
-      .then(res => setManualData(res.data || {}))
-      .catch(() => {})
-      .finally(() => setLoadingMeta(false));
-  }, []);
 
   useEffect(() => {
     setSalaryLoading(true);
@@ -871,6 +877,32 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
     return ids.map(id => ({ id, name: getClinicName(id) })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [docDoctors]);
 
+  useEffect(() => {
+    let alive = true;
+    if (!docDoctors.length) {
+      setScheduleByDoctor({});
+      setSchedulesLoading(false);
+      return () => { alive = false; };
+    }
+
+    setSchedulesLoading(true);
+    Promise.all(docDoctors.map(doc => {
+      const id = String(doc.misUserId || doc.id);
+      return doctorSchedules.list(id)
+        .then(res => [id, Array.isArray(res.data) ? res.data : []])
+        .catch(() => [id, []]);
+    }))
+      .then(entries => {
+        if (!alive) return;
+        setScheduleByDoctor(Object.fromEntries(entries));
+      })
+      .finally(() => {
+        if (alive) setSchedulesLoading(false);
+      });
+
+    return () => { alive = false; };
+  }, [docDoctors]);
+
   const filtered = docDoctors.filter(d => {
     if (search) {
       const q = search.toLowerCase();
@@ -881,24 +913,33 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
   });
 
   const hourRateByDoctor = useMemo(() => {
-    const result = {};
+    const salaryByDoctor = {};
+    const { dateFrom, dateTo } = monthKeyToRange(monthKey);
+
     for (const rec of salaryRows) {
       if (!rec.dateFrom) continue;
       if (monthKeyFromDate(new Date(rec.dateFrom)) !== monthKey) continue;
       const clinicReports = rec.reportData?.clinicReports || [];
       let salaryTotal = 0;
-      let hoursTotal = 0;
       for (const cr of clinicReports) {
         const sal = cr.salary || {};
         salaryTotal += parseNum(sal.finalSalary);
-        hoursTotal += parseNum(sal.hoursWorked) || parseNum(sal.normTotalHours) || 0;
       }
-      if (salaryTotal > 0 && hoursTotal > 0) {
-        result[String(rec.misUserId)] = salaryTotal / hoursTotal;
+      if (salaryTotal > 0) {
+        const key = String(rec.misUserId);
+        salaryByDoctor[key] = (salaryByDoctor[key] || 0) + salaryTotal;
       }
     }
+
+    const result = {};
+    for (const [misUserId, salaryTotal] of Object.entries(salaryByDoctor)) {
+      const entries = scheduleByDoctor[misUserId] || [];
+      const hoursTotal = calcScheduleHoursForPeriod(entries, dateFrom, dateTo).total;
+      if (salaryTotal > 0 && hoursTotal > 0) result[misUserId] = salaryTotal / hoursTotal;
+    }
+
     return result;
-  }, [salaryRows, monthKey]);
+  }, [salaryRows, scheduleByDoctor, monthKey]);
 
   return (
     <div>
@@ -921,9 +962,9 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
             Статистика: {statsPeriodLabel}
           </span>
         )}
-        {salaryLoading && (
+        {(salaryLoading || schedulesLoading) && (
           <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-            <span className="rb-spinner" style={{ width: 12, height: 12 }} /> Зарплаты…
+            <span className="rb-spinner" style={{ width: 12, height: 12 }} /> Зарплаты/расписание…
           </span>
         )}
         {!statsLoading && !excelSources.length && (
@@ -969,7 +1010,7 @@ function TabDoctors({ doctors, excelSources, monthKey }) {
                     </div>
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: hourRate > 0 ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}>
-                    {loadingMeta || salaryLoading ? '…' : (hourRate > 0 ? fmtRubP(hourRate) : DASH)}
+                    {salaryLoading || schedulesLoading ? '…' : (hourRate > 0 ? fmtRubP(hourRate) : DASH)}
                   </td>
                   <StatCell value={st?.appts ?? null} formatter={v => v.toLocaleString('ru-RU')} />
                   <StatCell value={st?.revenue ?? null} formatter={fmtRub} />
