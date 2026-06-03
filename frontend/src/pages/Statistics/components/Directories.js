@@ -4974,6 +4974,25 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       0);
     const equipmentMaintenanceCost = equipmentFund > 0 && serviceVolume > 0 ? equipmentFund / serviceVolume : 0;
 
+    const apptMatchesService = (appt) => {
+      const apptCode = appt.service_code || appt.serviceCode || appt.service_id || appt.serviceId || appt.code || '';
+      const apptName = appt.service_name || appt.serviceName || appt.service || appt.title || appt.name || '';
+      return (serviceCode && apptCode && normServiceName(apptCode) === normServiceName(serviceCode)) ||
+        (apptName && normServiceName(apptName) === serviceNameKey);
+    };
+    const appointmentsHaveService = periodAppointments.some(a =>
+      a.service_code || a.serviceCode || a.service_id || a.serviceId || a.service_name || a.serviceName || a.service || a.title || a.name
+    );
+    const getEquipmentServiceVolume = (item) => {
+      if (!appointmentsHaveService) return serviceVolume;
+      return periodAppointments.reduce((sum, appt) => {
+        if (appt.status_id === 5 || appt.status === 'refused') return sum;
+        if (String(appt.clinic_id || '') !== String(item.clinicId || clinicFilter)) return sum;
+        if (String(appt.room || '').trim() !== String(item.room || '').trim()) return sum;
+        return apptMatchesService(appt) ? sum + 1 : sum;
+      }, 0);
+    };
+
     const amortizationValues = [...boundEquipmentIds]
       .map(id => {
         const item = equipment[id];
@@ -4981,9 +5000,9 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
         const purchaseCost = parseNum(item.purchaseCost);
         const usefulLife = parseNum(item.usefulLife);
         const amortPerMonth = purchaseCost > 0 && usefulLife > 0 ? purchaseCost / usefulLife : 0;
-        const equipmentBindingsCount = allBindings.filter(b => b.equipmentId === id).length;
-        return amortPerMonth > 0 && equipmentBindingsCount > 0
-          ? amortPerMonth / equipmentBindingsCount
+        const equipmentServiceVolume = getEquipmentServiceVolume(item);
+        return amortPerMonth > 0 && equipmentServiceVolume > 0
+          ? amortPerMonth / equipmentServiceVolume
           : 0;
       })
       .filter(v => v > 0);
@@ -5004,7 +5023,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       : 0;
 
     return { consumables, equipment: equipmentCost, marketing: marketingValue };
-  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing, periodStart]);
+  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing, periodStart, periodAppointments]);
 
   const costParts = useMemo(() => ({
     consumables: autoParts.consumables,
