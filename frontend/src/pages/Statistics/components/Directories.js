@@ -4955,7 +4955,8 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       )
       .reduce((sum, n) => sum + parseNum(n.normQty) * parseNum(n.unitCost), 0);
 
-    const boundEquipmentIds = new Set(Object.values(bindings)
+    const allBindings = Object.values(bindings);
+    const boundEquipmentIds = new Set(allBindings
       .filter(b =>
         b.clinicId === clinicFilter &&
         ((serviceCode && b.serviceCode === serviceCode) ||
@@ -4971,7 +4972,25 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
         parseNum(getMonthlyValue(item, 'maintenanceByMonth', 'maintenance', selectedMonthKey)) +
         parseNum(getMonthlyValue(item, 'repairsByMonth', 'repairs', selectedMonthKey)),
       0);
-    const equipmentCost = equipmentFund > 0 && serviceVolume > 0 ? equipmentFund / serviceVolume : 0;
+    const equipmentMaintenanceCost = equipmentFund > 0 && serviceVolume > 0 ? equipmentFund / serviceVolume : 0;
+
+    const amortizationValues = [...boundEquipmentIds]
+      .map(id => {
+        const item = equipment[id];
+        if (!item) return 0;
+        const purchaseCost = parseNum(item.purchaseCost);
+        const usefulLife = parseNum(item.usefulLife);
+        const amortPerMonth = purchaseCost > 0 && usefulLife > 0 ? purchaseCost / usefulLife : 0;
+        const equipmentBindingsCount = allBindings.filter(b => b.equipmentId === id).length;
+        return amortPerMonth > 0 && equipmentBindingsCount > 0
+          ? amortPerMonth / equipmentBindingsCount
+          : 0;
+      })
+      .filter(v => v > 0);
+    const avgAmortizationPerService = amortizationValues.length
+      ? amortizationValues.reduce((sum, v) => sum + v, 0) / amortizationValues.length
+      : 0;
+    const equipmentCost = equipmentMaintenanceCost + avgAmortizationPerService;
 
     const marketingSetting = Object.values(marketing).find(m =>
       m.clinicId === clinicFilter &&
