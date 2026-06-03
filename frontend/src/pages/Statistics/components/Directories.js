@@ -4607,6 +4607,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
   const [marketing, setMarketing]     = useState({});
   const [utilityRaw, setUtilityRaw]   = useState({});
   const [utilityCfg, setUtilityCfg]   = useState({});
+  const [clinicMeta, setClinicMeta]   = useState({});
   const [salaryRows, setSalaryRows]   = useState([]);
   const [periodAppointments, setPeriodAppointments] = useState([]);
   const [loading, setLoading]         = useState(true);
@@ -4627,16 +4628,18 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       directories.getAll('marketing_service').catch(() => ({ data: {} })),
       directories.getAll('utility').catch(() => ({ data: {} })),
       directories.getAll('utility_cfg').catch(() => ({ data: {} })),
+      directories.getAll('clinic').catch(() => ({ data: {} })),
       salaryRecords.getAll().catch(() => ({ data: [] })),
       periodStart && periodEnd
         ? fetchAppointmentsFromDB(periodStart, periodEnd).catch(() => [])
         : Promise.resolve([]),
-    ]).then(([normRes, bindRes, marketingRes, utilRes, utilCfgRes, salaryRes, apptsRes]) => {
+    ]).then(([normRes, bindRes, marketingRes, utilRes, utilCfgRes, clinicRes, salaryRes, apptsRes]) => {
       setNorms(normRes.data || {});
       setBindings(bindRes.data || {});
       setMarketing(marketingRes.data || {});
       setUtilityRaw(utilRes.data || {});
       setUtilityCfg(utilCfgRes.data || {});
+      setClinicMeta(clinicRes.data || {});
       setSalaryRows(Array.isArray(salaryRes.data) ? salaryRes.data : []);
       setPeriodAppointments(Array.isArray(apptsRes) ? apptsRes : []);
     }).finally(() => setLoading(false));
@@ -4671,6 +4674,17 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       (s.code || '').toLowerCase().includes(q)
     );
   }, [services, search]);
+
+  const getServiceDurationMinutes = useCallback((svc) => {
+    const raw = svc.duration ?? svc.duration_minutes ?? svc.durationMinutes ?? svc.service_duration ??
+      svc.serviceDuration ?? svc.time ?? svc.minutes ?? svc.duration_min ?? svc.durationMin;
+    if (raw == null || raw === '') return 0;
+    if (typeof raw === 'number') return raw;
+    const str = String(raw).trim();
+    const timeMatch = str.match(/^(\d{1,2}):(\d{2})$/);
+    if (timeMatch) return parseNum(timeMatch[1]) * 60 + parseNum(timeMatch[2]);
+    return parseNum(str);
+  }, []);
 
   const utilityPerVisit = useMemo(() => {
     if (!clinicFilter || !periodStart || !periodEnd) return { value: 0, visits: 0, source: '' };
@@ -4780,6 +4794,21 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     return { value, doctors };
   }, [clinicFilter, selectedSvc, periodStart, periodEnd, salaryRows]);
 
+  const adminExpenses = useMemo(() => {
+    if (!clinicFilter || !selectedSvc) return 0;
+    const meta = clinicMeta[String(clinicFilter)] || {};
+    const rent = parseNum(meta.rent);
+    const schedule = (
+      typeof meta.schedule === 'object' &&
+      meta.schedule !== null &&
+      !Array.isArray(meta.schedule)
+    ) ? meta.schedule : DEFAULT_SCHEDULE;
+    const monthlyHours = scheduleWeeklyHours(schedule) * (52 / 12);
+    const durationMinutes = parseNum(selectedSvc.durationMinutes);
+    if (rent <= 0 || monthlyHours <= 0 || durationMinutes <= 0) return 0;
+    return rent / monthlyHours * (durationMinutes / 60);
+  }, [clinicFilter, selectedSvc, clinicMeta]);
+
   const autoParts = useMemo(() => {
     if (!clinicFilter || !selectedSvc) return { consumables: 0, equipment: 0, marketing: 0 };
     const serviceCode = selectedSvc.code || '';
@@ -4822,11 +4851,12 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     equipment:   autoParts.equipment,
     utilities:   utilityPerVisit.value,
     marketing:   autoParts.marketing,
-  }), [autoParts, doctorPayStats.value, utilityPerVisit.value]);
+    adminExpenses,
+  }), [autoParts, doctorPayStats.value, utilityPerVisit.value, adminExpenses]);
 
   const totals = useMemo(() => {
     const price = parseNum(selectedSvc?.price);
-    const fullCost = costParts.consumables + costParts.doctorPay + costParts.equipment + costParts.utilities + costParts.marketing;
+    const fullCost = costParts.consumables + costParts.doctorPay + costParts.equipment + costParts.utilities + costParts.marketing + costParts.adminExpenses;
     const profit = price - fullCost;
     const margin = price > 0 ? profit / price * 100 : null;
     return { price, fullCost, profit, margin };
@@ -4841,6 +4871,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     { key: 'equipment',   label: 'Оборудование', color: '#f59e0b' },
     { key: 'utilities',   label: 'Коммунальные', color: '#06b6d4' },
     { key: 'marketing',   label: 'Маркетинг', color: '#ec4899' },
+    { key: 'adminExpenses', label: 'Админ. расходы', color: '#8b5cf6' },
   ];
   const pieRows = [
     ...partRows.map(part => ({
@@ -4904,7 +4935,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
             const isSel = selectedSvc?.code === code;
             return (
               <button key={code || title}
-                onClick={() => setSelectedSvc({ code, title, price: s.price })}
+                onClick={() => setSelectedSvc({ code, title, price: s.price, durationMinutes: getServiceDurationMinutes(s) })}
                 style={{
                   display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
                   width: '100%', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--rb-border)',

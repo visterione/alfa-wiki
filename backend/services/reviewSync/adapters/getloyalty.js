@@ -200,14 +200,15 @@ async function fetchReviews(credentials, options = {}) {
         : new Date(r.created_at);
 
       const rawText = stripHtml(r.text || '');
-      const { doctorName, cleanText } = extractDoctor(rawText);
+      const extracted = extractDoctor(rawText);
+      const doctorName = getDoctorNameFromPayload(r) || extracted.doctorName;
 
       results.push({
         externalId:   `gl_${r.id}`,
         externalUrl:  r.review_link || null,
         authorName:   r.user_name || 'Аноним',
         rating:       r.rating ? Math.min(5, Math.max(1, Math.round(r.rating))) : null,
-        text:         cleanText,
+        text:         extracted.cleanText,
         date:         reviewDate,
         platformName: sourceMap[r.source_hash_key] || null,
         doctorName,
@@ -264,6 +265,33 @@ async function testConnection(credentials) {
 
 function stripHtml(str) {
   return str.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function getDoctorNameFromPayload(review) {
+  const candidates = [
+    review.doctor_name,
+    review.doctorName,
+    review.doctor?.name,
+    review.doctor?.full_name,
+    review.doctor?.fullName,
+    review.specialist_name,
+    review.specialistName,
+    review.specialist?.name,
+    review.employee_name,
+    review.employeeName,
+    review.employee?.name,
+    review.person_name,
+    review.personName,
+    review.person?.name,
+    review.worker_name,
+    review.workerName,
+    review.worker?.name,
+    review.master_name,
+    review.masterName,
+    review.master?.name,
+  ];
+  const value = candidates.find(v => String(v || '').trim());
+  return value ? String(value).trim() : null;
 }
 
 /**

@@ -66,7 +66,7 @@ async function fetchReviews(credentials, options = {}) {
         text: [r.text, r.comment, r.plus, r.minus].filter(Boolean).join('\n').trim() || '',
         date: reviewDate,
         platformName: 'НаПоправку',
-        doctorName: r.doctor?.name || r.doctor_name || null
+        doctorName: getDoctorName(r)
       });
     }
 
@@ -76,6 +76,24 @@ async function fetchReviews(credentials, options = {}) {
   }
 
   return results;
+}
+
+function getDoctorName(review) {
+  const candidates = [
+    review.doctor?.name,
+    review.doctor?.full_name,
+    review.doctor?.fullName,
+    review.doctor_name,
+    review.doctorName,
+    review.specialist?.name,
+    review.specialist_name,
+    review.specialistName,
+    review.employee?.name,
+    review.employee_name,
+    review.employeeName,
+  ];
+  const value = candidates.find(v => String(v || '').trim());
+  return value ? String(value).trim() : null;
 }
 
 /**

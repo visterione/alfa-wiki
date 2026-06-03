@@ -52,7 +52,12 @@ async function syncConfig(config) {
       where: { externalId: raw.externalId, boardId: config.boardId },
       paranoid: false
     });
-    if (existing) continue;
+    if (existing) {
+      if (!existing.doctorName && raw.doctorName) {
+        await existing.update({ doctorName: raw.doctorName });
+      }
+      continue;
+    }
 
     const platformId = await getPlatformId(raw.platformName);
 
