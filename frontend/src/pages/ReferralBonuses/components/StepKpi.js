@@ -2475,7 +2475,7 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
         <TabRooms periodStart={periodStart} periodEnd={periodEnd} onAppointmentsLoaded={setAppointments} rows={rows} doctors={doctors} />
       </div>
       {/* Оборудование — условный рендер, чтобы данные перезагружались при переходе на вкладку */}
-      {viewMode === 'rooms' && <TabEquipmentAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
+      {viewMode === 'rooms' && <TabEquipmentAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Репутация — всегда смонтирована, не требует Excel-источников */}
       <div style={{ display: viewMode === 'reputation' ? 'block' : 'none' }}>
@@ -2492,7 +2492,7 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {viewMode === 'consumables' && <TabConsumablesAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Себестоимость — детализация стоимости услуги по медцентрам */}
-      {viewMode === 'serviceCost' && <TabServiceCostAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
+      {viewMode === 'serviceCost' && <TabServiceCostAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Остальные вкладки */}
       {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && (

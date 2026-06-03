@@ -4,10 +4,10 @@ import { mis, directories, reviews, salaryRecords, doctorSchedules } from '../..
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
 import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
-import { parseExcelFile, rbMapNewColumns } from '../../ReferralBonuses/utils/excelUtils';
+import { parseExcelFile, rbMapNewColumns, rbParseDate } from '../../ReferralBonuses/utils/excelUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
 import { calcScheduleHoursForPeriod } from '../../ReferralBonuses/utils/scheduleUtils';
-import { DEFAULT_CLINICS } from '../../ReferralBonuses/utils/clinicUtils';
+import { DEFAULT_CLINICS, rbMatchClinicId } from '../../ReferralBonuses/utils/clinicUtils';
 import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
@@ -313,8 +313,60 @@ async function loadDoctorStats(sources) {
   return result;
 }
 
+async function loadExcelServiceRows(sources, periodStart, periodEnd) {
+  if (!sources?.length || !periodStart || !periodEnd) return [];
+  const matched = sources.filter(s => {
+    const from = parseLocalDate(s.dateFrom);
+    const to = parseLocalDate(s.dateTo, true);
+    return from && to && from <= periodEnd && to >= periodStart;
+  });
+
+  const rows = [];
+  for (const src of matched) {
+    try {
+      const file = await fetchSourceFile(src);
+      const rawRows = await parseExcelFile(file);
+      if (!rawRows.length) continue;
+      const cm = rbMapNewColumns(rawRows);
+      for (const r of rawRows) {
+        const rowDate = cm.date ? rbParseDate(r[cm.date]) : null;
+        if (rowDate && (rowDate < periodStart || rowDate > periodEnd)) continue;
+        const clinicRaw = cm.clinic ? String(r[cm.clinic] || '').trim() : '';
+        const clinicId = rbMatchClinicId(clinicRaw) ||
+          DEFAULT_CLINICS.find(c => clinicRaw.toLowerCase().includes(c.name.toLowerCase()))?.id ||
+          '';
+        rows.push({
+          clinicId: String(clinicId || ''),
+          cabinet: cm.cabinet ? String(r[cm.cabinet] || '').trim() : '',
+          serviceCode: cm.serviceCode ? String(r[cm.serviceCode] || '').trim() : '',
+          serviceName: cm.serviceName ? String(r[cm.serviceName] || '').trim() : '',
+          qty: cm.qty ? (parseNum(r[cm.qty]) || 1) : 1,
+        });
+      }
+    } catch (e) {
+      console.error('[Directories] excel service rows load error', src?.id, e);
+    }
+  }
+  return rows;
+}
+
 function normServiceName(str) {
   return String(str || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function normCabinetValue(value) {
+  return String(value || '')
+    .replace(/[\u0000-\u001F\u007F-\u009F\u00AD\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function cabinetMatches(a, b) {
+  const left = normCabinetValue(a);
+  const right = normCabinetValue(b);
+  return Boolean(left && right && left === right);
 }
 
 async function loadConsumableStats(sources, norms) {
@@ -3858,12 +3910,14 @@ function TabUtilities() {
 // ══════════════════════════════════════════════════════════════════════════════
 // EQUIPMENT ANALYTICS (shown in Аналитика/Кабинеты, read-only)
 // ══════════════════════════════════════════════════════════════════════════════
-export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
+export function TabEquipmentAnalytics({ excelSources = [], periodStart, periodEnd }) {
   const [equipment,      setEquipment]      = useState({});
   const [bindings,       setBindings]       = useState({});
   const [clinicMeta,     setClinicMeta]     = useState({});
   const [consumableNorms,setConsumableNorms]= useState({});
+  const [excelServiceRows,setExcelServiceRows]= useState([]);
   const [loading,        setLoading]        = useState(true);
+  const [excelRowsLoading,setExcelRowsLoading]= useState(false);
   const [clinicFilter,   setClinicFilter]   = useState('');
 
   useEffect(() => {
@@ -3879,6 +3933,16 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
       setConsumableNorms(cnRes.data || {});
     }).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    setExcelRowsLoading(true);
+    loadExcelServiceRows(excelSources, periodStart, periodEnd)
+      .then(rows => { if (alive) setExcelServiceRows(rows); })
+      .catch(() => { if (alive) setExcelServiceRows([]); })
+      .finally(() => { if (alive) setExcelRowsLoading(false); });
+    return () => { alive = false; };
+  }, [excelSources, periodStart, periodEnd]);
 
   const items = useMemo(() =>
     Object.entries(equipment)
@@ -3919,6 +3983,27 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
 
   const filtered = clinicFilter ? items.filter(i => i.clinicId === clinicFilter) : items;
 
+  const equipmentServiceVolumes = useMemo(() => {
+    const result = {};
+    for (const item of items) {
+      const myBindings = bindingsByEquip[item.id] || [];
+      if (!myBindings.length || !item.room) {
+        result[item.id] = 0;
+        continue;
+      }
+      result[item.id] = excelServiceRows.reduce((sum, row) => {
+        if (String(row.clinicId || '') !== String(item.clinicId || '')) return sum;
+        if (!cabinetMatches(item.room, row.cabinet)) return sum;
+        const matched = myBindings.some(b =>
+          (b.serviceCode && row.serviceCode && normServiceName(b.serviceCode) === normServiceName(row.serviceCode)) ||
+          (b.serviceName && row.serviceName && normServiceName(b.serviceName) === normServiceName(row.serviceName))
+        );
+        return matched ? sum + (parseNum(row.qty) || 1) : sum;
+      }, 0);
+    }
+    return result;
+  }, [items, bindingsByEquip, excelServiceRows]);
+
   if (loading) return <Spinner text="Загрузка оборудования…" />;
   if (items.length === 0) return null;
 
@@ -3935,6 +4020,11 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
           {clinicOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>{filtered.length} ед.</span>
+        {excelRowsLoading && (
+          <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+            <span className="rb-spinner" style={{ width: 12, height: 12 }} /> Excel…
+          </span>
+        )}
       </div>
 
       <div style={{ overflowX: 'auto' }}>
@@ -3994,6 +4084,7 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
 
               // Расходники через цепочку: оборудование → услуги (bindings) → расходники (norms)
               const myBindings = bindingsByEquip[item.id] || [];
+              const equipmentServiceVolume = equipmentServiceVolumes[item.id] || 0;
               const consumableSet = new Set();
               for (const b of myBindings) {
                 const key = `${item.clinicId}|${b.serviceCode || normServiceName(b.serviceName || '')}`;
@@ -4042,8 +4133,8 @@ export function TabEquipmentAnalytics({ periodStart, periodEnd }) {
                     {amortPerMonth > 0 ? fmtRub(amortPerMonth) : DASH}
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-                    {amortPerMonth > 0 && myBindings.length > 0
-                      ? fmtRubP(amortPerMonth / myBindings.length)
+                    {amortPerMonth > 0 && equipmentServiceVolume > 0
+                      ? fmtRubP(amortPerMonth / equipmentServiceVolume)
                       : DASH}
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -4693,7 +4784,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
 // ══════════════════════════════════════════════════════════════════════════════
 // SERVICE COST ANALYTICS (shown in Аналитика tab of Statistics page)
 // ══════════════════════════════════════════════════════════════════════════════
-export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
+export function TabServiceCostAnalytics({ excelSources = [], periodStart, periodEnd }) {
   const [norms, setNorms]             = useState({});
   const [bindings, setBindings]       = useState({});
   const [equipment, setEquipment]     = useState({});
@@ -4703,6 +4794,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
   const [clinicMeta, setClinicMeta]   = useState({});
   const [salaryRows, setSalaryRows]   = useState([]);
   const [periodAppointments, setPeriodAppointments] = useState([]);
+  const [excelServiceRows, setExcelServiceRows] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [clinicFilter, setClinicFilter] = useState('');
   const [categories, setCategories]   = useState([]);
@@ -4739,6 +4831,14 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       setPeriodAppointments(Array.isArray(apptsRes) ? apptsRes : []);
     }).finally(() => setLoading(false));
   }, [periodStart, periodEnd]);
+
+  useEffect(() => {
+    let alive = true;
+    loadExcelServiceRows(excelSources, periodStart, periodEnd)
+      .then(rows => { if (alive) setExcelServiceRows(rows); })
+      .catch(() => { if (alive) setExcelServiceRows([]); });
+    return () => { alive = false; };
+  }, [excelSources, periodStart, periodEnd]);
 
   useEffect(() => {
     if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
@@ -4980,10 +5080,20 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       return (serviceCode && apptCode && normServiceName(apptCode) === normServiceName(serviceCode)) ||
         (apptName && normServiceName(apptName) === serviceNameKey);
     };
+    const excelRowMatchesService = (row) =>
+      (serviceCode && row.serviceCode && normServiceName(row.serviceCode) === normServiceName(serviceCode)) ||
+      (row.serviceName && serviceNameKey && normServiceName(row.serviceName) === serviceNameKey);
     const appointmentsHaveService = periodAppointments.some(a =>
       a.service_code || a.serviceCode || a.service_id || a.serviceId || a.service_name || a.serviceName || a.service || a.title || a.name
     );
     const getEquipmentServiceVolume = (item) => {
+      const excelVolume = excelServiceRows.reduce((sum, row) => {
+        if (String(row.clinicId || '') !== String(item.clinicId || clinicFilter)) return sum;
+        if (!cabinetMatches(item.room, row.cabinet)) return sum;
+        return excelRowMatchesService(row) ? sum + (parseNum(row.qty) || 1) : sum;
+      }, 0);
+      if (excelVolume > 0) return excelVolume;
+
       if (!appointmentsHaveService) return serviceVolume;
       return periodAppointments.reduce((sum, appt) => {
         if (appt.status_id === 5 || appt.status === 'refused') return sum;
@@ -5023,7 +5133,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       : 0;
 
     return { consumables, equipment: equipmentCost, marketing: marketingValue };
-  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing, periodStart, periodAppointments]);
+  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing, periodStart, periodAppointments, excelServiceRows]);
 
   const costParts = useMemo(() => ({
     consumables: autoParts.consumables,
