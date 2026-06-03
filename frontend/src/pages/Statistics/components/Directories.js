@@ -481,9 +481,9 @@ function InfoRow({ icon: Icon, text }) {
   );
 }
 
-function THCell({ children, right }) {
+function THCell({ children, right, center }) {
   return (
-    <th style={{ background: '#f8fafc', padding: '10px 12px', textAlign: right ? 'right' : 'left', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
+    <th style={{ background: '#f8fafc', padding: '10px 12px', textAlign: center ? 'center' : right ? 'right' : 'left', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap' }}>
       {children}
     </th>
   );
@@ -5179,46 +5179,55 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
   ].filter(item => item.value > 0);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, alignItems: 'start' }}>
-      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '380px 1fr', gap: 20, alignItems: 'start' }}>
+      <div style={{ border: '1px solid var(--rb-border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: '#fff', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
+        <div style={{ padding: '14px 14px 12px', background: '#2563eb', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Медцентр</div>
           <select value={clinicFilter}
             onChange={e => { setClinicFilter(e.target.value); setSelectedSvc(null); setCatFilter(''); setSearch(''); }}
-            style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}>
-            <option value="">— Выберите медцентр —</option>
-            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            style={{ width: '100%', padding: '7px 10px', fontSize: 12, border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontFamily: 'inherit', outline: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}>
+            <option value="" style={{ background: '#1e3a8a', color: '#fff' }}>— Выберите —</option>
+            {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id} style={{ background: '#1e3a8a', color: '#fff' }}>{c.name}</option>)}
           </select>
           {clinicFilter && (
-            <select value={categoryFilter}
-              onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
-              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }}
-              disabled={catsLoading}>
-              <option value="">Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
-              {flatCats.map(c => <option key={c.id} value={c.id}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
-            </select>
-          )}
-          {clinicFilter && (
-            <input value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="Поиск по коду или названию…"
-              style={{ ...inlineInputStyle, width: '100%', boxSizing: 'border-box' }} />
-          )}
-          {!svcsLoading && clinicFilter && (
-            <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)' }}>{filteredSvcs.length} услуг</span>
+            <>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>Категория</div>
+              <select value={categoryFilter}
+                onChange={e => { setCatFilter(e.target.value); setSelectedSvc(null); setSearch(''); }}
+                style={{ width: '100%', padding: '7px 10px', fontSize: 12, border: '1px solid rgba(255,255,255,0.25)', borderRadius: 7, fontFamily: 'inherit', outline: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', boxSizing: 'border-box', cursor: 'pointer' }}
+                disabled={catsLoading}>
+                <option value="" style={{ background: '#1e3a8a', color: '#fff' }}>Все категории{catsLoading ? ' (загрузка…)' : ''}</option>
+                {flatCats.map(c => <option key={c.id} value={c.id} style={{ background: '#1e3a8a', color: '#fff' }}>{c.title}{c.count != null ? ` (${c.count})` : ''}</option>)}
+              </select>
+            </>
           )}
         </div>
 
-        <div style={{ overflowY: 'auto', maxHeight: 620 }}>
+        {clinicFilter && (
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--rb-border)', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Поиск по коду или названию…"
+              style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 12, fontFamily: 'inherit', outline: 'none', color: 'var(--rb-text)' }} />
+            {!svcsLoading && (
+              <span style={{ fontSize: 10, color: 'var(--rb-text-secondary)', flexShrink: 0, background: '#e2e8f0', borderRadius: 10, padding: '1px 7px' }}>{filteredSvcs.length}</span>
+            )}
+          </div>
+        )}
+
+        <div style={{ overflowY: 'auto', maxHeight: 560, flex: 1 }}>
           {svcsLoading ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
-              <span className="rb-spinner" style={{ width: 12, height: 12, display: 'inline-block', marginRight: 6 }} />
-              Загрузка…
+            <div style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>
+              <span className="rb-spinner" style={{ width: 16, height: 16, display: 'inline-block', marginBottom: 8 }} />
+              <div>Загрузка услуг…</div>
             </div>
           ) : !clinicFilter ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.6 }}>
+            <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12, lineHeight: 1.8 }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>🏥</div>
               Выберите медцентр<br />для загрузки услуг
             </div>
           ) : filteredSvcs.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>Нет услуг</div>
+            <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 12 }}>Нет услуг</div>
           ) : filteredSvcs.map(s => {
             const code  = s.code || String(s.service_id || s.id || '');
             const title = s.title || s.name || '';
@@ -5227,17 +5236,22 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
               <button key={code || title}
                 onClick={() => setSelectedSvc({ code, title, price: s.price, durationMinutes: getServiceDurationMinutes(s) })}
                 style={{
-                  display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8,
-                  width: '100%', padding: '8px 12px', border: 'none', borderBottom: '1px solid var(--rb-border)',
-                  background: isSel ? '#eff6ff' : '#fff', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  display: 'flex', alignItems: 'flex-start', gap: 0,
+                  width: '100%', padding: 0, border: 'none', borderBottom: '1px solid var(--rb-border)',
+                  background: isSel ? '#eff6ff' : 'transparent', cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  position: 'relative',
                 }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1.4 }}>{title}</div>
-                  {code && <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', marginTop: 1 }}>{code}</div>}
+                <span style={{ width: 3, flexShrink: 0, alignSelf: 'stretch', background: isSel ? 'var(--rb-primary)' : 'transparent', borderRadius: '0 2px 2px 0' }} />
+                <div style={{ flex: 1, minWidth: 0, padding: '9px 10px 9px 9px', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text)', lineHeight: 1.4, fontWeight: isSel ? 600 : 400 }}>
+                      {code && <span style={{ marginRight: 5 }}>{code}</span>}{title}
+                    </div>
+                  </div>
+                  {s.price != null && (
+                    <span style={{ flexShrink: 0, fontSize: 11, color: isSel ? 'var(--rb-primary)' : 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums', fontWeight: isSel ? 600 : 400 }}>{fmtRubP(parseNum(s.price))}</span>
+                  )}
                 </div>
-                {s.price != null && (
-                  <span style={{ flexShrink: 0, fontSize: 11, color: 'var(--rb-text-secondary)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(parseNum(s.price))}</span>
-                )}
               </button>
             );
           })}
@@ -5250,14 +5264,21 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 16, color: 'var(--rb-text)' }}>{selectedSvc.title}</div>
-              <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginTop: 4, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {selectedSvc.code && <span>код: {selectedSvc.code}</span>}
-                <span style={{ color: getClinicColor(clinicFilter), fontWeight: 600 }}>{clinicName}</span>
-                <span>стоимость: <strong style={{ color: 'var(--rb-text)' }}>{fmtRubP(totals.price)}</strong></span>
+          <div style={{ display: 'flex', alignItems: 'stretch', border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', overflow: 'hidden' }}>
+            <span style={{ width: 5, flexShrink: 0, background: getClinicColor(clinicFilter) }} />
+            <div style={{ flex: 1, minWidth: 0, padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' }}>
+                {selectedSvc.code && (
+                  <span style={{ flexShrink: 0, fontWeight: 700, fontSize: 15, color: 'var(--rb-text)', fontVariantNumeric: 'tabular-nums' }}>{selectedSvc.code}</span>
+                )}
+                <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedSvc.title}</span>
+                {selectedSvc.durationMinutes > 0 && (
+                  <span style={{ flexShrink: 0, fontWeight: 400, fontSize: 15, color: 'var(--rb-text-secondary)' }}>({Math.round(selectedSvc.durationMinutes)} мин)</span>
+                )}
               </div>
+              {totals.price > 0 && (
+                <span style={{ flexShrink: 0, fontWeight: 700, fontSize: 15, color: 'var(--rb-text)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.price)}</span>
+              )}
             </div>
           </div>
 
@@ -5316,7 +5337,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
                 {pieRows.map(item => (
                   <div key={item.name} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 10, fontSize: 13 }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
-                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                      <span style={{ width: 3, height: 16, borderRadius: 2, background: item.color, flexShrink: 0 }} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
                     </span>
                     <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtRubP(item.value)}</span>
@@ -5328,12 +5349,12 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <table className="rb-table" style={{ minWidth: 520 }}>
+            <table className="rb-table rb-table-plain" style={{ minWidth: 520 }}>
               <thead>
                 <tr>
-                  <THCell>Компонент</THCell>
-                  <THCell right>Значение</THCell>
-                  <THCell right>Доля в цене</THCell>
+                  <THCell center>Компонент</THCell>
+                  <THCell center>Сумма</THCell>
+                  <THCell center>Доля</THCell>
                 </tr>
               </thead>
               <tbody>
@@ -5343,28 +5364,28 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
                     <tr key={part.key}>
                       <td style={{ fontWeight: 600 }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: part.color, flexShrink: 0 }} />
+                          <span style={{ width: 3, height: 16, borderRadius: 2, background: part.color, flexShrink: 0 }} />
                           {part.label}
                         </span>
                       </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                         {value > 0 ? fmtRubP(value) : DASH}
                       </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totals.price > 0 ? 'var(--rb-text-secondary)' : '#94a3b8' }}>
+                      <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums', color: totals.price > 0 ? 'var(--rb-text-secondary)' : '#94a3b8' }}>
                         {totals.price > 0 ? `${(value / totals.price * 100).toFixed(1)}%` : DASH}
                       </td>
                     </tr>
                   );
                 })}
-                <tr style={{ background: '#f8fafc' }}>
+                <tr>
                   <td style={{ fontWeight: 700 }}>Полная себестоимость</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</td>
-                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{totals.price > 0 ? `${(totals.fullCost / totals.price * 100).toFixed(1)}%` : DASH}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</td>
+                  <td style={{ textAlign: 'center', fontVariantNumeric: 'tabular-nums' }}>{totals.price > 0 ? `${(totals.fullCost / totals.price * 100).toFixed(1)}%` : DASH}</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: 700 }}>Прибыль</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmtRubP(totals.profit)}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 700, color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmtRubP(totals.profit)}</td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`}</td>
                 </tr>
               </tbody>
             </table>

@@ -2348,115 +2348,88 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       )}
 
       {/* Панель выбора периода */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        {/* Режим периода */}
-        <div style={{ display: 'flex', gap: 3 }}>
-          {PERIOD_MODES.map(m => (
-            <button
-              key={m.key}
-              onClick={() => setPeriodMode(m.key)}
-              style={{
-                padding: '6px 12px', fontSize: 12, borderRadius: 7, cursor: 'pointer', fontFamily: 'inherit',
-                border: '1px solid var(--rb-border-dark)',
-                background: periodMode === m.key ? 'var(--rb-primary)' : '#fff',
-                color: periodMode === m.key ? '#fff' : 'var(--rb-text)',
-                fontWeight: periodMode === m.key ? 600 : 400,
-              }}
-            >{m.label}</button>
-          ))}
-        </div>
+      {(() => {
+        const selStyle = { height: 32, padding: '0 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)', cursor: 'pointer', outline: 'none' };
+        const divider  = <span style={{ width: 1, height: 20, background: 'var(--rb-border)', flexShrink: 0, alignSelf: 'center' }} />;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, flexWrap: 'wrap', background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10, padding: '8px 12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
 
-        {/* Год */}
-        <select
-          value={selYear}
-          onChange={e => setSelYear(Number(e.target.value))}
-          style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
-        >
-          {availYears.map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+            {/* Режим периода — segmented */}
+            <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2 }}>
+              {PERIOD_MODES.map(m => (
+                <button key={m.key} onClick={() => setPeriodMode(m.key)} style={{
+                  padding: '4px 11px', fontSize: 12, borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', border: 'none',
+                  background: periodMode === m.key ? '#fff' : 'transparent',
+                  color: periodMode === m.key ? 'var(--rb-text)' : 'var(--rb-text-secondary)',
+                  fontWeight: periodMode === m.key ? 600 : 400,
+                  boxShadow: periodMode === m.key ? '0 1px 3px rgba(0,0,0,0.12)' : 'none',
+                }}>{m.label}</button>
+              ))}
+            </div>
 
-        {/* Месяц */}
-        {periodMode === 'month' && (
-          <select
-            value={selMonth}
-            onChange={e => setSelMonth(Number(e.target.value))}
-            style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
-          >
-            {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-          </select>
-        )}
+            {divider}
 
-        {/* Квартал */}
-        {periodMode === 'quarter' && (
-          <select
-            value={selQuarter}
-            onChange={e => setSelQuarter(Number(e.target.value))}
-            style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
-          >
-            {QUARTERS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
-          </select>
-        )}
-
-        {/* Диапазон */}
-        {periodMode === 'range' && (
-          <>
-            <select
-              value={selFromMonth}
-              onChange={e => setSelFromMonth(Number(e.target.value))}
-              style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
-            >
-              {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+            {/* Год */}
+            <select value={selYear} onChange={e => setSelYear(Number(e.target.value))} style={selStyle}>
+              {availYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
-            <span style={{ fontSize: 13, color: 'var(--rb-text)' }}>—</span>
-            <select
-              value={selToMonth}
-              onChange={e => setSelToMonth(Number(e.target.value))}
-              style={{ padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, fontSize: 13, fontFamily: 'inherit', background: '#fff', color: 'var(--rb-text)' }}
-            >
-              {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-            </select>
-          </>
-        )}
 
-        {loading && (
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-            <span className="rb-spinner" style={{ width: 13, height: 13 }} />
-            Загрузка…
-          </span>
-        )}
+            {/* Месяц */}
+            {periodMode === 'month' && (
+              <select value={selMonth} onChange={e => setSelMonth(Number(e.target.value))} style={selStyle}>
+                {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+              </select>
+            )}
 
-        {!loading && loaded && (
-          <>
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-              {rows.length.toLocaleString('ru-RU')} строк · {fmt(uniquePatientsCount)} пациентов
-              {prevRows.length > 0 && <span style={{ marginLeft: 8, color: '#94a3b8' }}>+ пред. период</span>}
-            </span>
-            <button
-              onClick={loadData}
-              title="Обновить данные"
-              style={{ padding: '3px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, background: '#fff', cursor: 'pointer', fontSize: 13, color: 'var(--rb-text-secondary)', fontFamily: 'inherit', lineHeight: 1 }}
-            >↻</button>
-            <button
-              onClick={() => setPdfConfigOpen(true)}
-              disabled={pdfExporting}
-              title="Экспорт в PDF"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                padding: '4px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                background: pdfExporting ? '#f1f5f9' : '#fff',
-                cursor: pdfExporting ? 'default' : 'pointer',
-                fontSize: 12, color: pdfExporting ? '#94a3b8' : 'var(--rb-text)',
-                fontFamily: 'inherit', lineHeight: 1,
-              }}
-            >
-              {pdfExporting
-                ? <><span className="rb-spinner" style={{ width: 11, height: 11 }} /> PDF…</>
-                : '↓ PDF'
-              }
-            </button>
-          </>
-        )}
-      </div>
+            {/* Квартал */}
+            {periodMode === 'quarter' && (
+              <select value={selQuarter} onChange={e => setSelQuarter(Number(e.target.value))} style={selStyle}>
+                {QUARTERS.map(q => <option key={q.value} value={q.value}>{q.label}</option>)}
+              </select>
+            )}
+
+            {/* Диапазон */}
+            {periodMode === 'range' && (
+              <>
+                <select value={selFromMonth} onChange={e => setSelFromMonth(Number(e.target.value))} style={selStyle}>
+                  {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                </select>
+                <span style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>—</span>
+                <select value={selToMonth} onChange={e => setSelToMonth(Number(e.target.value))} style={selStyle}>
+                  {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                </select>
+              </>
+            )}
+
+            {/* Spacer */}
+            <span style={{ flex: 1 }} />
+
+            {/* Загрузка */}
+            {loading && (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                <span className="rb-spinner" style={{ width: 13, height: 13 }} />
+                Загрузка…
+              </span>
+            )}
+
+            {/* Статистика + кнопки */}
+            {!loading && loaded && (
+              <>
+                <button onClick={loadData} title="Обновить данные" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: '#fff', cursor: 'pointer', color: 'var(--rb-text-secondary)', flexShrink: 0 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+                </button>
+                <button onClick={() => setPdfConfigOpen(true)} disabled={pdfExporting} title="Экспорт в PDF" style={{ display: 'flex', alignItems: 'center', gap: 6, height: 32, padding: '0 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, background: pdfExporting ? '#f8fafc' : '#fff', cursor: pdfExporting ? 'default' : 'pointer', fontSize: 12, fontWeight: 500, color: pdfExporting ? '#94a3b8' : 'var(--rb-text)', fontFamily: 'inherit', flexShrink: 0, opacity: pdfExporting ? 0.7 : 1 }}>
+                  {pdfExporting
+                    ? <><span className="rb-spinner" style={{ width: 11, height: 11 }} /> PDF…</>
+                    : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> PDF</>
+                  }
+                </button>
+              </>
+            )}
+          </div>
+        );
+      })()}
+
 
       {/* Под-вкладки — всегда видны */}
       <div className="rb-clinic-tab-wrap" ref={tabRef} style={{ marginBottom: 20 }}>
