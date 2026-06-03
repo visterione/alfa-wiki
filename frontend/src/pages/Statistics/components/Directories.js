@@ -8,7 +8,7 @@ import { parseExcelFile, rbMapNewColumns } from '../../ReferralBonuses/utils/exc
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
 import { DEFAULT_CLINICS } from '../../ReferralBonuses/utils/clinicUtils';
 import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -4492,7 +4492,6 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
 // SERVICE COST ANALYTICS (shown in Аналитика tab of Statistics page)
 // ══════════════════════════════════════════════════════════════════════════════
 export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
-  const [costings, setCostings]       = useState({});
   const [norms, setNorms]             = useState({});
   const [bindings, setBindings]       = useState({});
   const [marketing, setMarketing]     = useState({});
@@ -4509,12 +4508,10 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
   const [svcsLoading, setSvcsLoading] = useState(false);
   const [search, setSearch]           = useState('');
   const [selectedSvc, setSelectedSvc] = useState(null);
-  const saveTimers = useRef({});
 
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      directories.getAll('service_costing').catch(() => ({ data: {} })),
       directories.getAll('consumable_norm').catch(() => ({ data: {} })),
       directories.getAll('equipment_service_binding').catch(() => ({ data: {} })),
       directories.getAll('marketing_service').catch(() => ({ data: {} })),
@@ -4524,8 +4521,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       periodStart && periodEnd
         ? fetchAppointmentsFromDB(periodStart, periodEnd).catch(() => [])
         : Promise.resolve([]),
-    ]).then(([costRes, normRes, bindRes, marketingRes, utilRes, utilCfgRes, salaryRes, apptsRes]) => {
-      setCostings(costRes.data || {});
+    ]).then(([normRes, bindRes, marketingRes, utilRes, utilCfgRes, salaryRes, apptsRes]) => {
       setNorms(normRes.data || {});
       setBindings(bindRes.data || {});
       setMarketing(marketingRes.data || {});
@@ -4565,13 +4561,6 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       (s.code || '').toLowerCase().includes(q)
     );
   }, [services, search]);
-
-  const currentKey = useMemo(() => {
-    if (!clinicFilter || !selectedSvc) return '';
-    return `${clinicFilter}__${selectedSvc.code || normServiceName(selectedSvc.title)}`;
-  }, [clinicFilter, selectedSvc]);
-
-  const currentCosting = currentKey ? costings[currentKey] || {} : {};
 
   const utilityPerVisit = useMemo(() => {
     if (!clinicFilter || !periodStart || !periodEnd) return { value: 0, visits: 0, source: '' };
@@ -4717,12 +4706,12 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
   }, [clinicFilter, selectedSvc, norms, bindings, marketing]);
 
   const costParts = useMemo(() => ({
-    consumables: currentCosting.consumables === '' || currentCosting.consumables == null ? autoParts.consumables : parseNum(currentCosting.consumables),
+    consumables: autoParts.consumables,
     doctorPay:   doctorPayStats.value,
-    equipment:   currentCosting.equipment   === '' || currentCosting.equipment   == null ? autoParts.equipment   : parseNum(currentCosting.equipment),
+    equipment:   autoParts.equipment,
     utilities:   utilityPerVisit.value,
-    marketing:   currentCosting.marketing   === '' || currentCosting.marketing   == null ? autoParts.marketing   : parseNum(currentCosting.marketing),
-  }), [currentCosting, autoParts, doctorPayStats.value, utilityPerVisit.value]);
+    marketing:   autoParts.marketing,
+  }), [autoParts, doctorPayStats.value, utilityPerVisit.value]);
 
   const totals = useMemo(() => {
     const price = parseNum(selectedSvc?.price);
@@ -4732,38 +4721,30 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     return { price, fullCost, profit, margin };
   }, [selectedSvc, costParts]);
 
-  const saveCostField = useCallback((field, value) => {
-    if (!currentKey || !selectedSvc || !clinicFilter) return;
-    const patch = {
-      clinicId: clinicFilter,
-      serviceCode: selectedSvc.code,
-      serviceName: selectedSvc.title,
-      servicePrice: parseNum(selectedSvc.price),
-      [field]: value === '' ? '' : parseNum(value),
-    };
-    setCostings(prev => ({ ...prev, [currentKey]: { ...(prev[currentKey] || {}), ...patch } }));
-    clearTimeout(saveTimers.current[currentKey + field]);
-    saveTimers.current[currentKey + field] = setTimeout(async () => {
-      try { await directories.save('service_costing', encodeURIComponent(currentKey), patch); }
-      catch { toast.error('Ошибка сохранения себестоимости'); }
-    }, 700);
-  }, [currentKey, selectedSvc, clinicFilter]);
-
-  const applyAutoField = useCallback((field, value) => {
-    saveCostField(field, value);
-    toast.success('Значение подставлено', { duration: 1200 });
-  }, [saveCostField]);
-
   if (loading) return <Spinner text="Загрузка себестоимости…" />;
 
   const clinicName = clinicFilter ? getClinicName(clinicFilter) : '';
   const partRows = [
-    { key: 'consumables', label: 'Расходники', auto: autoParts.consumables },
-    { key: 'doctorPay',   label: 'Оплата врача', auto: doctorPayStats.value, readonly: true },
-    { key: 'equipment',   label: 'Оборудование', auto: autoParts.equipment },
-    { key: 'utilities',   label: 'Коммунальные', auto: utilityPerVisit.value, readonly: true },
-    { key: 'marketing',   label: 'Маркетинг', auto: autoParts.marketing },
+    { key: 'consumables', label: 'Расходники', color: '#3b82f6' },
+    { key: 'doctorPay',   label: 'Оплата врача', color: '#10b981' },
+    { key: 'equipment',   label: 'Оборудование', color: '#f59e0b' },
+    { key: 'utilities',   label: 'Коммунальные', color: '#06b6d4' },
+    { key: 'marketing',   label: 'Маркетинг', color: '#ec4899' },
   ];
+  const pieRows = [
+    ...partRows.map(part => ({
+      name: part.label,
+      value: costParts[part.key] || 0,
+      color: part.color,
+      pct: totals.price > 0 ? (costParts[part.key] || 0) / totals.price * 100 : 0,
+    })),
+    ...(totals.profit > 0 ? [{
+      name: 'Прибыль',
+      value: totals.profit,
+      color: '#84cc16',
+      pct: totals.price > 0 ? totals.profit / totals.price * 100 : 0,
+    }] : []),
+  ].filter(item => item.value > 0);
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, alignItems: 'start' }}>
@@ -4848,52 +4829,94 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(150px, 1fr))', gap: 10 }}>
-            <SummaryKpiCard icon={FileText} label="Полная себестоимость" value={fmtRubP(totals.fullCost)} color="#6366f1" />
-            <SummaryKpiCard icon={TrendingUp} label="Прибыль" value={fmtRubP(totals.profit)} color={totals.profit >= 0 ? '#16a34a' : '#dc2626'} />
-            <SummaryKpiCard icon={CheckCircle} label="Маржинальность" value={totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`} color={totals.profit >= 0 ? '#0ea5e9' : '#dc2626'} />
-            <SummaryKpiCard icon={Clock} label="Цена услуги" value={fmtRubP(totals.price)} color="#f59e0b" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 430px) 1fr', gap: 14, alignItems: 'stretch' }}>
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', padding: '12px 14px' }}>
+              <div style={{ height: 260 }}>
+                {totals.price > 0 && pieRows.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieRows}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={96}
+                        paddingAngle={1}
+                        labelLine={false}
+                        label={({ payload }) => payload?.pct >= 2 ? `${payload.pct.toFixed(1)}%` : ''}
+                      >
+                        {pieRows.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(v, name, item) => [`${fmtRubP(v)} · ${item.payload.pct.toFixed(1)}%`, name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
+                    Нет данных для диаграммы
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, background: '#fff', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(150px, 1fr))', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Полная себестоимость</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--rb-text)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Прибыль</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: totals.profit >= 0 ? '#16a34a' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.profit)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Маржинальность</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: totals.profit >= 0 ? '#16a34a' : '#dc2626', fontVariantNumeric: 'tabular-nums' }}>{totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Цена услуги</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--rb-text)', fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.price)}</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 2 }}>
+                {pieRows.map(item => (
+                  <div key={item.name} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: 10, fontSize: 13 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+                      <span style={{ width: 9, height: 9, borderRadius: '50%', background: item.color, flexShrink: 0 }} />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                    </span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>{fmtRubP(item.value)}</span>
+                    <span style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--rb-text-secondary)', minWidth: 50, textAlign: 'right' }}>{item.pct.toFixed(1)}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div style={{ overflowX: 'auto' }}>
-            <table className="rb-table" style={{ minWidth: 760 }}>
+            <table className="rb-table" style={{ minWidth: 520 }}>
               <thead>
                 <tr>
                   <THCell>Компонент</THCell>
                   <THCell right>Значение</THCell>
-                  <THCell right>Авто из справочников</THCell>
                   <THCell right>Доля в цене</THCell>
                 </tr>
               </thead>
               <tbody>
                 {partRows.map(part => {
                   const value = costParts[part.key] || 0;
-                  const hasAuto = part.auto != null && part.auto > 0;
-                  const inputValue = part.readonly
-                    ? value
-                    : (currentCosting[part.key] ?? (part.auto != null ? part.auto : ''));
                   return (
                     <tr key={part.key}>
-                      <td style={{ fontWeight: 600 }}>{part.label}</td>
-                      <td>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                          <input type="number" min="0" step="0.01"
-                            value={inputValue}
-                            onChange={e => !part.readonly && saveCostField(part.key, e.target.value)}
-                            readOnly={part.readonly}
-                            placeholder="0"
-                            style={{ ...inlineInputStyle, width: 120, textAlign: 'right', background: part.readonly ? '#f8fafc' : '#fafafa', color: part.readonly ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }} />
-                        </div>
+                      <td style={{ fontWeight: 600 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+                          <span style={{ width: 9, height: 9, borderRadius: '50%', background: part.color, flexShrink: 0 }} />
+                          {part.label}
+                        </span>
                       </td>
-                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: hasAuto ? 'var(--rb-text)' : 'var(--rb-text-secondary)' }}>
-                        {part.readonly ? (
-                          hasAuto ? fmtRubP(part.auto) : DASH
-                        ) : hasAuto ? (
-                          <button onClick={() => applyAutoField(part.key, part.auto)}
-                            style={{ border: 'none', background: 'none', padding: 0, color: 'var(--rb-primary)', cursor: 'pointer', font: 'inherit', fontSize: 12 }}>
-                            {fmtRubP(part.auto)}
-                          </button>
-                        ) : DASH}
+                      <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                        {value > 0 ? fmtRubP(value) : DASH}
                       </td>
                       <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: totals.price > 0 ? 'var(--rb-text-secondary)' : '#94a3b8' }}>
                         {totals.price > 0 ? `${(value / totals.price * 100).toFixed(1)}%` : DASH}
@@ -4904,61 +4927,15 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
                 <tr style={{ background: '#f8fafc' }}>
                   <td style={{ fontWeight: 700 }}>Полная себестоимость</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtRubP(totals.fullCost)}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--rb-text-secondary)' }}>сумма 5 пунктов</td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{totals.price > 0 ? `${(totals.fullCost / totals.price * 100).toFixed(1)}%` : DASH}</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: 700 }}>Прибыль</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{fmtRubP(totals.profit)}</td>
-                  <td style={{ textAlign: 'right', color: 'var(--rb-text-secondary)' }}>стоимость услуги − себестоимость</td>
                   <td style={{ textAlign: 'right', fontWeight: 700, color: totals.profit >= 0 ? '#16a34a' : '#dc2626' }}>{totals.margin == null ? DASH : `${totals.margin.toFixed(1)}%`}</td>
                 </tr>
               </tbody>
             </table>
-          </div>
-
-          <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
-            Расходники, оборудование и маркетинг подтягиваются из одноимённых справочников. Оплата врача считается по сохранённым зарплатным листам, коммунальные — по расходам на 1 визит из аналитики коммунальных.
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 12px', background: '#fff' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Оплата врача</div>
-              {doctorPayStats.doctors.length ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  {doctorPayStats.doctors.map(d => (
-                    <div key={d.name} style={{ display: 'flex', gap: 8, justifyContent: 'space-between', fontSize: 12 }}>
-                      <span style={{ color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
-                      <span style={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                        {fmtRubP(d.salary)} / {fmt(d.services)} = <strong>{fmtRubP(d.avg)}</strong>
-                      </span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop: '1px solid var(--rb-border)', marginTop: 4, paddingTop: 6, fontSize: 12, textAlign: 'right' }}>
-                    Среднее арифметическое: <strong>{fmtRubP(doctorPayStats.value)}</strong>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
-                  Нет сохранённых зарплатных листов за выбранный период, где эта услуга выполнена врачом в выбранном медцентре.
-                </div>
-              )}
-            </div>
-
-            <div style={{ border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 12px', background: '#fff' }}>
-              <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>Коммунальные</div>
-              {utilityPerVisit.value > 0 ? (
-                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.6 }}>
-                  Источник: <strong style={{ color: 'var(--rb-text)' }}>{utilityPerVisit.source}</strong><br />
-                  Визитов за период: <strong style={{ color: 'var(--rb-text)' }}>{fmt(utilityPerVisit.visits)}</strong><br />
-                  На 1 визит: <strong style={{ color: 'var(--rb-text)' }}>{fmtRubP(utilityPerVisit.value)}</strong>
-                </div>
-              ) : (
-                <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', lineHeight: 1.5 }}>
-                  Нет коммунальных расходов или визитов за выбранный период для выбранного медцентра.
-                </div>
-              )}
-            </div>
           </div>
         </div>
       )}
