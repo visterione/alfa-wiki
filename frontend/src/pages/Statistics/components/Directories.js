@@ -4604,6 +4604,7 @@ export function TabConsumablesAnalytics({ excelSources = [], periodStart, period
 export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
   const [norms, setNorms]             = useState({});
   const [bindings, setBindings]       = useState({});
+  const [equipment, setEquipment]     = useState({});
   const [marketing, setMarketing]     = useState({});
   const [utilityRaw, setUtilityRaw]   = useState({});
   const [utilityCfg, setUtilityCfg]   = useState({});
@@ -4625,6 +4626,7 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
     Promise.all([
       directories.getAll('consumable_norm').catch(() => ({ data: {} })),
       directories.getAll('equipment_service_binding').catch(() => ({ data: {} })),
+      directories.getAll('equipment').catch(() => ({ data: {} })),
       directories.getAll('marketing_service').catch(() => ({ data: {} })),
       directories.getAll('utility').catch(() => ({ data: {} })),
       directories.getAll('utility_cfg').catch(() => ({ data: {} })),
@@ -4633,9 +4635,10 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       periodStart && periodEnd
         ? fetchAppointmentsFromDB(periodStart, periodEnd).catch(() => [])
         : Promise.resolve([]),
-    ]).then(([normRes, bindRes, marketingRes, utilRes, utilCfgRes, clinicRes, salaryRes, apptsRes]) => {
+    ]).then(([normRes, bindRes, equipRes, marketingRes, utilRes, utilCfgRes, clinicRes, salaryRes, apptsRes]) => {
       setNorms(normRes.data || {});
       setBindings(bindRes.data || {});
+      setEquipment(equipRes.data || {});
       setMarketing(marketingRes.data || {});
       setUtilityRaw(utilRes.data || {});
       setUtilityCfg(utilCfgRes.data || {});
@@ -4768,11 +4771,11 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       for (const cr of clinicReports) {
         if (String(cr.clinicId || '') !== String(clinicFilter)) continue;
         const sal = cr.salary || {};
-        const sections = [
+        const salarySections = [
           ...(sal.performedSections || []),
           ...(sal.basePerformedSections || []),
-          ...(cr.performedSections || []),
-        ].filter(serviceMatches);
+        ];
+        const sections = (salarySections.length ? salarySections : (cr.performedSections || [])).filter(serviceMatches);
         if (!sections.length) continue;
 
         const bonusTotal = sections.reduce((sum, s) => sum + parseNum(s.bonusAmount), 0);
@@ -4792,6 +4795,41 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       .sort((a, b) => b.avg - a.avg);
     const value = doctors.length ? doctors.reduce((sum, d) => sum + d.avg, 0) / doctors.length : 0;
     return { value, doctors };
+  }, [clinicFilter, selectedSvc, periodStart, periodEnd, salaryRows]);
+
+  const serviceVolume = useMemo(() => {
+    if (!clinicFilter || !selectedSvc || !periodStart || !periodEnd) return 0;
+    const serviceCode = selectedSvc.code || '';
+    const serviceNameKey = normServiceName(selectedSvc.title);
+
+    const serviceMatches = (s) =>
+      (serviceCode && s.code && normServiceName(s.code) === normServiceName(serviceCode)) ||
+      normServiceName(s.name || s.serviceName || '') === serviceNameKey;
+
+    const overlapsPeriod = (record) => {
+      if (!record.dateFrom && !record.dateTo) return true;
+      const from = record.dateFrom ? new Date(record.dateFrom) : null;
+      const to = record.dateTo ? new Date(record.dateTo) : from;
+      if (from && from > periodEnd) return false;
+      if (to && to < periodStart) return false;
+      return true;
+    };
+
+    let total = 0;
+    for (const rec of salaryRows.filter(overlapsPeriod)) {
+      const clinicReports = rec.reportData?.clinicReports || [];
+      for (const cr of clinicReports) {
+        if (String(cr.clinicId || '') !== String(clinicFilter)) continue;
+        const sal = cr.salary || {};
+        const salarySections = [
+          ...(sal.performedSections || []),
+          ...(sal.basePerformedSections || []),
+        ];
+        const sections = (salarySections.length ? salarySections : (cr.performedSections || [])).filter(serviceMatches);
+        total += sections.reduce((sum, s) => sum + (parseNum(s.count) || 1), 0);
+      }
+    }
+    return total;
   }, [clinicFilter, selectedSvc, periodStart, periodEnd, salaryRows]);
 
   const adminExpenses = useMemo(() => {
@@ -4823,13 +4861,19 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
       )
       .reduce((sum, n) => sum + parseNum(n.normQty) * parseNum(n.unitCost), 0);
 
-    const equipment = Object.values(bindings)
+    const boundEquipmentIds = new Set(Object.values(bindings)
       .filter(b =>
         b.clinicId === clinicFilter &&
         ((serviceCode && b.serviceCode === serviceCode) ||
           normServiceName(b.serviceName || '') === serviceNameKey)
       )
-      .reduce((sum, b) => sum + parseNum(b.paybackPerService), 0);
+      .map(b => b.equipmentId)
+      .filter(Boolean));
+
+    const equipmentFund = Object.entries(equipment)
+      .filter(([id]) => boundEquipmentIds.has(id))
+      .reduce((sum, [, item]) => sum + parseNum(item.maintenance) + parseNum(item.repairs), 0);
+    const equipmentCost = equipmentFund > 0 && serviceVolume > 0 ? equipmentFund / serviceVolume : 0;
 
     const marketingSetting = Object.values(marketing).find(m =>
       m.clinicId === clinicFilter &&
@@ -4842,8 +4886,8 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
           : price * parseNum(marketingSetting.value) / 100)
       : 0;
 
-    return { consumables, equipment, marketing: marketingValue };
-  }, [clinicFilter, selectedSvc, norms, bindings, marketing]);
+    return { consumables, equipment: equipmentCost, marketing: marketingValue };
+  }, [clinicFilter, selectedSvc, norms, bindings, equipment, serviceVolume, marketing]);
 
   const costParts = useMemo(() => ({
     consumables: autoParts.consumables,
