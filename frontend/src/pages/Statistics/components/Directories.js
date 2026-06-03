@@ -4648,21 +4648,22 @@ export function TabServiceCostAnalytics({ periodStart, periodEnd }) {
           ...(sal.performedSections || []),
           ...(sal.basePerformedSections || []),
           ...(cr.performedSections || []),
-        ];
-        if (!sections.some(serviceMatches)) continue;
-        const totalServices = parseNum(sal.totalServiceCount)
-          || sections.reduce((sum, s) => sum + (parseNum(s.count) || 1), 0);
-        const salaryTotal = parseNum(sal.finalSalary);
-        if (salaryTotal <= 0 || totalServices <= 0) continue;
+        ].filter(serviceMatches);
+        if (!sections.length) continue;
+
+        const bonusTotal = sections.reduce((sum, s) => sum + parseNum(s.bonusAmount), 0);
+        const serviceCount = sections.reduce((sum, s) => sum + (parseNum(s.count) || 1), 0);
+        if (bonusTotal <= 0 || serviceCount <= 0) continue;
+
         const key = rec.misUserId || rec.doctorName;
-        if (!byDoctor[key]) byDoctor[key] = { name: rec.doctorName || key, salary: 0, services: 0 };
-        byDoctor[key].salary += salaryTotal;
-        byDoctor[key].services += totalServices;
+        if (!byDoctor[key]) byDoctor[key] = { name: rec.doctorName || key, bonus: 0, services: 0 };
+        byDoctor[key].bonus += bonusTotal;
+        byDoctor[key].services += serviceCount;
       }
     }
 
     const doctors = Object.values(byDoctor)
-      .map(d => ({ ...d, avg: d.services > 0 ? d.salary / d.services : 0 }))
+      .map(d => ({ ...d, avg: d.services > 0 ? d.bonus / d.services : 0 }))
       .filter(d => d.avg > 0)
       .sort((a, b) => b.avg - a.avg);
     const value = doctors.length ? doctors.reduce((sum, d) => sum + d.avg, 0) / doctors.length : 0;
