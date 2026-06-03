@@ -281,7 +281,7 @@ function groupByClinic(arr) {
   return Object.values(map);
 }
 
-function MissingSection({ label, items, kind, forms, onFormChange, onSave, saving, canEdit }) {
+function MissingSection({ label, items, kind, forms, onFormChange, onSave, saving, canEdit, savedKeys }) {
   if (!items.length) return null;
   return (
     <>
@@ -293,6 +293,7 @@ function MissingSection({ label, items, kind, forms, onFormChange, onSave, savin
             const key = `${kind}|${s.code}|${String(s.clinicId ?? '')}`;
             const form = forms?.[key] || { type: 'pct', value: '' };
             const isSaving = !!saving?.[key];
+            const isSaved = !!savedKeys?.has(key);
             return (
               <div key={i} style={{ paddingLeft: clinicLabel ? 12 : 0, marginBottom: canEdit ? 7 : 2 }}>
                 <div style={{ fontSize: 12, color: '#78350f', marginBottom: canEdit ? 4 : 0 }}>
@@ -300,24 +301,29 @@ function MissingSection({ label, items, kind, forms, onFormChange, onSave, savin
                 </div>
                 {canEdit && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ display: 'flex', border: '1px solid #f59e0b', borderRadius: 4, overflow: 'hidden', flexShrink: 0, fontSize: 11 }}>
-                      <button onClick={() => onFormChange(key, 'type', 'pct')} style={{ padding: '2px 8px', background: form.type === 'pct' ? '#fbbf24' : '#fff', border: 'none', cursor: 'pointer', color: '#92400e', fontWeight: form.type === 'pct' ? 700 : 400, fontFamily: 'inherit' }}>%</button>
-                      <button onClick={() => onFormChange(key, 'type', 'rub')} style={{ padding: '2px 8px', background: form.type === 'rub' ? '#fbbf24' : '#fff', border: 'none', borderLeft: '1px solid #f59e0b', cursor: 'pointer', color: '#92400e', fontWeight: form.type === 'rub' ? 700 : 400, fontFamily: 'inherit' }}>₽</button>
+                    <div style={{ display: 'flex', border: '1px solid #f59e0b', borderRadius: 4, overflow: 'hidden', flexShrink: 0, fontSize: 11, opacity: isSaved ? 0.5 : 1 }}>
+                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'pct')} style={{ padding: '2px 8px', background: form.type === 'pct' ? '#fbbf24' : '#fff', border: 'none', cursor: isSaved ? 'default' : 'pointer', color: '#92400e', fontWeight: form.type === 'pct' ? 700 : 400, fontFamily: 'inherit' }}>%</button>
+                      <button onClick={() => !isSaved && onFormChange(key, 'type', 'rub')} style={{ padding: '2px 8px', background: form.type === 'rub' ? '#fbbf24' : '#fff', border: 'none', borderLeft: '1px solid #f59e0b', cursor: isSaved ? 'default' : 'pointer', color: '#92400e', fontWeight: form.type === 'rub' ? 700 : 400, fontFamily: 'inherit' }}>₽</button>
                     </div>
                     <input
                       type="number" min="0" step="0.1"
                       value={form.value}
-                      onChange={e => onFormChange(key, 'value', e.target.value)}
+                      onChange={e => !isSaved && onFormChange(key, 'value', e.target.value)}
                       placeholder={form.type === 'pct' ? '%' : '₽'}
-                      style={{ width: 72, padding: '3px 7px', fontSize: 11, border: '1px solid #f59e0b', borderRadius: 4, outline: 'none', fontFamily: 'inherit' }}
+                      disabled={isSaved}
+                      style={{ width: 72, padding: '3px 7px', fontSize: 11, border: '1px solid #f59e0b', borderRadius: 4, outline: 'none', fontFamily: 'inherit', opacity: isSaved ? 0.6 : 1 }}
                     />
-                    <button
-                      onClick={() => onSave(s, kind, key)}
-                      disabled={isSaving || !form.value}
-                      style={{ padding: '3px 12px', fontSize: 11, background: form.value && !isSaving ? '#d97706' : '#e5e7eb', color: form.value && !isSaving ? '#fff' : '#9ca3af', border: 'none', borderRadius: 4, cursor: form.value && !isSaving ? 'pointer' : 'default', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
-                    >
-                      {isSaving ? 'Сохранение...' : 'Сохранить'}
-                    </button>
+                    {isSaved ? (
+                      <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, whiteSpace: 'nowrap' }}>✓ Сохранено</span>
+                    ) : (
+                      <button
+                        onClick={() => onSave(s, kind, key)}
+                        disabled={isSaving || !form.value}
+                        style={{ padding: '3px 12px', fontSize: 11, background: form.value && !isSaving ? '#d97706' : '#e5e7eb', color: form.value && !isSaving ? '#fff' : '#9ca3af', border: 'none', borderRadius: 4, cursor: form.value && !isSaving ? 'pointer' : 'default', whiteSpace: 'nowrap', fontFamily: 'inherit' }}
+                      >
+                        {isSaving ? 'Сохранение...' : 'Сохранить'}
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -333,6 +339,7 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
   const [expanded, setExpanded] = useState(false);
   const [forms, setForms] = useState({});
   const [saving, setSaving] = useState({});
+  const [savedKeys, setSavedKeys] = useState(new Set());
 
   const { missingPerformed, missingReferral } = collectMissingBonuses(clinicReports);
   if (!missingPerformed.length && !missingReferral.length) return null;
@@ -354,7 +361,7 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
         await psbApi.save({ misUserId: doctor.id, doctorName: doctor.name, clinicId: dbClinicId, serviceCode: item.code, serviceName: item.name, bonusPercent: form.type === 'pct' ? val : null, bonusRub: form.type === 'rub' ? val : null });
       }
       toast.success('Бонус сохранён');
-      if (onSaved) onSaved();
+      setSavedKeys(prev => new Set([...prev, key]));
     } catch {
       toast.error('Ошибка сохранения');
     } finally {
@@ -381,8 +388,17 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
       </div>
       {expanded && (
         <div style={{ padding: '0 14px 12px', borderTop: '1px solid #fde68a' }}>
-          <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} kind="performed" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} />
-          <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} kind="referral" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} />
+          <MissingSection label="Выполненные услуги (нет в «Услуги»)" items={missingPerformed} kind="performed" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} savedKeys={savedKeys} />
+          <MissingSection label="Направления (нет в «Направления»)" items={missingReferral} kind="referral" forms={forms} onFormChange={onFormChange} onSave={onSave} saving={saving} canEdit={!!canEdit && !!doctor} savedKeys={savedKeys} />
+          {savedKeys.size > 0 && onSaved && (
+            <button
+              onClick={onSaved}
+              style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6, padding: '5px 14px', fontSize: 12, background: '#d97706', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.02"/></svg>
+              Пересчитать отчёт
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -776,6 +792,8 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
   // 'auto' = loaded from source, 'manual' = user picked, null = empty/ready for auto-load
   const autoSrcRef = useRef(null);
   const [sourceConflict, setSourceConflict] = useState(null);
+  const bulkRunParamsRef = useRef(null); // saved after each bulk run for single-doctor rerun
+  const [rerunningIds, setRerunningIds] = useState(new Set());
 
   // Auto-load Excel from saved sources when period changes
   useEffect(() => {
@@ -816,7 +834,50 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     autoSrcRef.current = 'manual';
   };
 
+  const rerunSingleDoctor = useCallback(async (doctor) => {
+    const params = bulkRunParamsRef.current;
+    if (!params) return;
+    const { rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates } = params;
+    setRerunningIds(prev => new Set([...prev, doctor.id]));
+    try {
+      const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
+        rbApi.getByDoctor(doctor.id),
+        psbApi.getByDoctor(doctor.id),
+        loadExecSettings(doctor.id, doctor.roles),
+        schedulesApi.list(doctor.misUserId || doctor.id).catch(() => ({ data: [] })),
+      ]);
+      const referralBonuses    = Array.isArray(rbRes.data)   ? rbRes.data   : [];
+      const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
+      const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
+      const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
+        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+      );
+      const result = await buildReport({
+        rows, colMap, doctor,
+        referralBonuses, performedDbBonuses, execSettings,
+        dateFrom: dateFrom || null, dateTo: dateTo || null,
+        allDoctors: doctors, savedAssistanceIncome,
+        interim, normedOnly: isNormed && !uploadedFile,
+        corpIncludedKeys,
+        scheduleEntries,
+        holidayDates,
+      });
+      if (filterClinic) {
+        result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
+      }
+      setBulkResults(prev => prev.map(r =>
+        r.doctor.id === doctor.id ? { ...r, ...result, dateFrom, dateTo, error: null } : r
+      ));
+      toast.success(`${doctor.name}: данные обновлены`);
+    } catch (e) {
+      toast.error('Ошибка пересчёта: ' + (e.message || ''));
+    } finally {
+      setRerunningIds(prev => { const next = new Set(prev); next.delete(doctor.id); return next; });
+    }
+  }, [dateFrom, dateTo, doctors, filterClinic, interim, uploadedFile]); // eslint-disable-line
+
   const runBulk = async ({ rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates }) => {
+    bulkRunParamsRef.current = { rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates };
     const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
     const results = [];
     for (let i = 0; i < doctorList.length; i++) {
@@ -1122,6 +1183,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
               const isOpen     = expanded.has(r.doctor.id);
               const hasClinics = r.clinicReports?.length > 0;
               const { missingPerformed: bmp, missingReferral: bmr } = hasClinics && !r.error ? collectMissingBonuses(r.clinicReports) : { missingPerformed: [], missingReferral: [] };
+              const isRerunning = rerunningIds.has(r.doctor.id);
               const total      = (r.clinicReports || []).reduce((s, cr) => {
                 const sal = cr.salary;
                 if (!sal) return s;
@@ -1129,10 +1191,10 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                 return s + (sal.finalSalary || 0) - (sal.ndflTotal || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - extraT;
               }, 0);
               return (
-                <div key={r.doctor.id} style={{ marginBottom: 6, border: '1px solid var(--rb-border)', borderRadius: 8, overflow: 'hidden' }}>
+                <div key={r.doctor.id} style={{ marginBottom: 6, border: `1px solid ${isRerunning ? 'var(--rb-primary)' : 'var(--rb-border)'}`, borderRadius: 8, overflow: 'hidden' }}>
                   <div
-                    onClick={() => hasClinics && toggleExpanded(r.doctor.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: r.error ? '#FEF2F2' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics ? 'pointer' : 'default', userSelect: 'none' }}
+                    onClick={() => !isRerunning && hasClinics && toggleExpanded(r.doctor.id)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: isRerunning ? '#eff6ff' : r.error ? '#FEF2F2' : (isOpen ? '#F0FDF4' : '#FAFAFA'), cursor: hasClinics && !isRerunning ? 'pointer' : 'default', userSelect: 'none' }}
                   >
                     {/* Clinic colour bars */}
                     <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
@@ -1141,7 +1203,10 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                       ))}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.doctor.name}</div>
+                      <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {r.doctor.name}
+                        {isRerunning && <span className="rb-spinner" style={{ width: 12, height: 12, flexShrink: 0 }} />}
+                      </div>
                       {r.error
                         ? <div style={{ fontSize: 11, color: 'var(--rb-danger)' }}>Ошибка: {r.error}</div>
                         : hasClinics
@@ -1178,9 +1243,10 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                     )}
                   </div>
                   {isOpen && hasClinics && (
-                    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--rb-border)' }}>
+                    <div style={{ padding: '16px 16px 16px', borderTop: '1px solid var(--rb-border)' }}>
+                      <MissingBonusBanner clinicReports={r.clinicReports} doctor={r.doctor} canEdit={!readOnly} onSaved={() => rerunSingleDoctor(r.doctor)} />
                       {r.clinicReports.map((cr, cidx) => (
-                        <div key={cidx} style={{ marginTop: 16, ...(cidx > 0 ? { borderTop: '2px dashed var(--rb-border)', paddingTop: 16 } : {}) }}>
+                        <div key={cidx} style={{ ...(cidx > 0 ? { marginTop: 16, borderTop: '2px dashed var(--rb-border)', paddingTop: 16 } : {}) }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: `${cr.clinicColor}18`, border: `2px solid ${cr.clinicColor}`, borderRadius: 8 }}>
                             <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: cr.clinicColor, flexShrink: 0 }} />
                             <div className="rb-report-title" style={{ color: cr.clinicColor }}>{cr.clinicLabel}</div>
