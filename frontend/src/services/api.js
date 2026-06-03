@@ -648,7 +648,11 @@ export const mis = {
   getDoctorInfo: (userId) => api.post('/mis/doctor-info', { userId }),
   getServicesByIds: (serviceIds) => api.post('/mis/services', { service_ids: serviceIds, show_all: true }),
   getServiceCategories: () => api.post('/mis/get-service-categories', {}),
-  getServicesByCategory: (categoryId) => api.post('/mis/get-services', { category_id: categoryId, show_children: true }),
+  getServicesByCategory: (categoryId, clinicId) => api.post('/mis/get-services', {
+    category_id: categoryId,
+    show_children: true,
+    ...(clinicId ? { clinic_id: clinicId } : {})
+  }),
   getAllServices: (clinicId) => api.post('/mis/all-services', clinicId ? { clinic_id: clinicId } : {}),
   getAppointments: (params) => api.post('/mis/appointments', params),
 };

@@ -26,6 +26,61 @@ const misRequest = async (endpoint, params = {}) => {
   return response.data;
 };
 
+function getCategoryChildren(category) {
+  return Array.isArray(category?.children) ? category.children : [];
+}
+
+function getServiceKey(service) {
+  return String(service?.service_id || service?.id || service?.code || service?.sub_code || service?.title || '').trim();
+}
+
+function dedupeServices(services) {
+  const result = [];
+  const seen = new Set();
+  for (const service of services) {
+    const key = getServiceKey(service);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(service);
+  }
+  return result;
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchCategoryServices(category, clinicId) {
+  const params = {
+    category_id: category.id,
+    show_children: true,
+    show_all: 1
+  };
+  if (clinicId) params.clinic_id = clinicId;
+
+  try {
+    const data = await misRequest('getServices', params);
+    if (Number(data?.error) === 0 && Array.isArray(data?.data)) return data.data;
+  } catch (err) {
+    console.warn('⚠️ Не удалось загрузить категорию целиком:', category.id, err.code || err.message);
+  }
+
+  const children = getCategoryChildren(category);
+  if (!children.length) return [];
+
+  const parts = await mapWithConcurrency(children, 4, child => fetchCategoryServices(child, clinicId));
+  return parts.flat();
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ВРАЧИ
 // ═══════════════════════════════════════════════════════════════
@@ -231,18 +286,28 @@ router.post('/services', authenticate, async (req, res) => {
   }
 });
 
-// Получить все услуги (без фильтра по категории или врачу)
-// Используется для глобального списка при назначении бонусов
+// Получить все услуги через дерево категорий.
+// Прямой getServices с большим limit в МИС обрезает прейскурант, поэтому грузим
+// так же, как массовые операции по категориям, и затем дедуплицируем услуги.
 router.post('/all-services', authenticate, async (req, res) => {
   try {
     const { clinic_id } = req.body;
     console.log('📋 Запрос всех услуг МИС', clinic_id ? `clinic_id=${clinic_id}` : '');
 
-    const params = { show_all: 1, limit: 5000 };
-    if (clinic_id) params.clinic_id = clinic_id;
+    const categoriesData = await misRequest('getServiceCategories', {});
+    if (Number(categoriesData?.error) !== 0 || !Array.isArray(categoriesData?.data)) {
+      return res.json({ error: 1, data: [], desc: 'Не удалось получить категории услуг' });
+    }
 
-    const data = await misRequest('getServices', params);
-    res.json(data);
+    const chunks = await mapWithConcurrency(
+      categoriesData.data,
+      4,
+      category => fetchCategoryServices(category, clinic_id)
+    );
+    const services = dedupeServices(chunks.flat());
+
+    console.log(`✅ Загружен полный прейскурант МИС: ${services.length} услуг`);
+    res.json({ error: 0, data: services });
   } catch (err) {
     console.error('❌ Ошибка /mis/all-services:', err.message);
     res.status(500).json({ error: 1, data: { code: 'SERVER_ERROR', desc: 'Ошибка при запросе всех услуг' } });

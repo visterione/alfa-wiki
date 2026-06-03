@@ -1524,7 +1524,7 @@ function TabConsumables() {
     if (!clinicFilter) { setServices([]); return; }
     setSvcsLoading(true);
     const loader = categoryFilter
-      ? mis.getServicesByCategory(categoryFilter)
+      ? mis.getServicesByCategory(categoryFilter, clinicFilter)
       : mis.getAllServices(clinicFilter);
     loader
       .then(res => {
@@ -4852,7 +4852,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
   useEffect(() => {
     if (!clinicFilter) { setServices([]); return; }
     setSvcsLoading(true);
-    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter) : mis.getAllServices(clinicFilter);
+    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter, clinicFilter) : mis.getAllServices(clinicFilter);
     loader
       .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
       .catch(() => setServices([]))
@@ -5532,7 +5532,7 @@ function TabMarketing() {
   useEffect(() => {
     if (!clinicFilter || mode !== 'services') { setServices([]); return; }
     setSvcsLoading(true);
-    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter) : mis.getAllServices(clinicFilter);
+    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter, clinicFilter) : mis.getAllServices(clinicFilter);
     loader
       .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
       .catch(() => setServices([]))
@@ -5608,12 +5608,12 @@ function TabMarketing() {
     setCatSvcs([]); setCatBulkValue(''); setCatExcluded(new Set()); setCatFilter2('');
     setCatSvcsLoading(true);
     try {
-      const res  = await mis.getServicesByCategory(cat.id);
+      const res  = await mis.getServicesByCategory(cat.id, clinicFilter);
       const data = res.data?.data || res.data || [];
       setCatSvcs(Array.isArray(data) ? data : []);
     } catch { setCatSvcs([]); toast.error('Ошибка загрузки услуг категории'); }
     finally { setCatSvcsLoading(false); }
-  }, []);
+  }, [clinicFilter]);
 
   const toggleCatExclude = (code) => {
     setCatExcluded(prev => { const next = new Set(prev); if (next.has(code)) next.delete(code); else next.add(code); return next; });
