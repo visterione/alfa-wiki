@@ -770,10 +770,20 @@ function InteractiveTableCellEditor({ html, rowIdx, cellIdx, onChange, onFocus }
     },
   });
 
+  // Register the editor in cellEditorRefs as soon as it's available (not only on focus),
+  // so that focusCell() can find it even for cells never focused before.
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) onFocus?.(editor);
+  }, [editor]); // eslint-disable-line
+
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
     const nextHtml = html || '';
-    if (editor.getHTML() !== nextHtml) {
+    // TipTap returns '<p></p>' for empty content; treat it as equivalent to ''
+    // to avoid calling setContent on every render and resetting the cursor.
+    const currentHtml = editor.getHTML();
+    const normalizedCurrent = currentHtml === '<p></p>' ? '' : currentHtml;
+    if (normalizedCurrent !== nextHtml) {
       editor.commands.setContent(nextHtml, false);
     }
   }, [editor, html]);
@@ -1277,6 +1287,18 @@ function InteractiveTableComponent({ node, updateAttributes }) {
                         setSelFocus({ r: gridR, c: gridC });
                         isDraggingRef.current = true;
                         setIsDragging(true);
+                      }}
+                      onClick={e => {
+                        if (e.target.classList.contains('itable-resize-handle')) return;
+                        if (!e.shiftKey) {
+                          // If the click didn't naturally focus the cell's ProseMirror
+                          // (common for empty cells where there's no text to click on),
+                          // focus it explicitly so the outer editor doesn't keep NodeSelection.
+                          const ed = cellEditorRefs.current[`${rowIdx},${cellIdx}`];
+                          if (ed && !ed.isDestroyed && ed.isEmpty) {
+                            ed.commands.focus();
+                          }
+                        }
                       }}
                       onKeyDown={e => {
                           if (e.key === 'Tab') {

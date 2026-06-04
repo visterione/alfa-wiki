@@ -1085,7 +1085,11 @@
 
 /* TipTap контент внутри ячейки */
 .itable-cell-tiptap {
-  flex: 1;
+  display: block;
+  width: 100%;
+  /* Stretch to fill the full cell height so clicking anywhere in the cell
+     lands on the ProseMirror element, not on the bare <td> background. */
+  height: 100%;
 }
 
 .itable-cell-tiptap .ProseMirror {
