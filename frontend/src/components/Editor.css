@@ -959,7 +959,10 @@
   vertical-align: top;
   position: relative;
   transition: background 0.1s;
+  /* height:1px lets children use height:100% to fill the actual row height */
+  height: 1px;
 }
+
 
 .itable-cell--selected {
   background-color: rgba(59, 130, 246, 0.10) !important;
@@ -1087,8 +1090,6 @@
 .itable-cell-tiptap {
   display: block;
   width: 100%;
-  /* Stretch to fill the full cell height so clicking anywhere in the cell
-     lands on the ProseMirror element, not on the bare <td> background. */
   height: 100%;
 }
 

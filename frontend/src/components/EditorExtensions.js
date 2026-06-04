@@ -1287,16 +1287,17 @@ function InteractiveTableComponent({ node, updateAttributes }) {
                         setSelFocus({ r: gridR, c: gridC });
                         isDraggingRef.current = true;
                         setIsDragging(true);
-                      }}
-                      onClick={e => {
-                        if (e.target.classList.contains('itable-resize-handle')) return;
-                        if (!e.shiftKey) {
-                          // If the click didn't naturally focus the cell's ProseMirror
-                          // (common for empty cells where there's no text to click on),
-                          // focus it explicitly so the outer editor doesn't keep NodeSelection.
+                        // If the click didn't land on the cell editor's ProseMirror element
+                        // (e.g. clicked on the bare <td> background below the content),
+                        // the browser would give focus to the outer ProseMirror (nearest
+                        // contentEditable ancestor), leaving the table with NodeSelection.
+                        // Calling preventDefault here stops that, and we manually focus
+                        // the cell editor so keystrokes go there instead of deleting the table.
+                        if (!e.target.closest('.ProseMirror')) {
+                          e.preventDefault();
                           const ed = cellEditorRefs.current[`${rowIdx},${cellIdx}`];
-                          if (ed && !ed.isDestroyed && ed.isEmpty) {
-                            ed.commands.focus();
+                          if (ed && !ed.isDestroyed) {
+                            requestAnimationFrame(() => ed.commands.focus());
                           }
                         }
                       }}
