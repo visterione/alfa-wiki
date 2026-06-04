@@ -60,39 +60,55 @@ button, input, textarea, select { font-family: inherit; }
 .amb-tab:hover { background: #f1f5f9; color: var(--amb-text); }
 .amb-tab.active { color: var(--amb-primary); border-bottom-color: var(--amb-primary); background: #eff6ff; }
 .amb-layout { display: grid; grid-template-columns: 1fr; gap: 16px; align-items: start; }
-.amb-panel { background: var(--amb-card); border: 1px solid var(--amb-border); border-radius: 8px; overflow: hidden; }
+.amb-panel {
+  background: var(--amb-card); border: 1px solid var(--amb-border); border-radius: 12px;
+  overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
 .amb-panel-head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 13px 16px; border-bottom: 1px solid var(--amb-border); background: #f8fafc;
+  padding: 14px 18px; border-bottom: 1px solid var(--amb-border);
+  background: linear-gradient(135deg, #f0f5ff 0%, #f8fafc 100%);
+  border-left: 3px solid var(--amb-primary);
 }
-.amb-panel-title { margin: 0; font-size: 15px; font-weight: 700; }
+.amb-panel-title { margin: 0; font-size: 14px; font-weight: 700; color: var(--amb-primary); letter-spacing: -.01em; }
 .amb-panel-subtitle { color: var(--amb-muted); font-size: 12px; }
-.amb-form { padding: 16px; }
-.amb-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 12px; }
-.amb-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
+.amb-form { padding: 18px; }
+.amb-grid { display: grid; grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 14px; }
+.amb-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0; min-width: 0; }
 .amb-field.full { grid-column: 1 / -1; }
-.amb-field label { font-size: 12px; font-weight: 600; color: #475569; }
+.amb-field label {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .06em;
+}
 .amb-required { color: var(--amb-danger); }
 .amb-input, .amb-select, .amb-textarea {
   width: 100%; border: 1px solid var(--amb-border-dark); border-radius: 8px; background: #fff;
-  color: var(--amb-text); padding: 9px 11px; min-height: 38px; outline: none; font-size: 13px;
+  color: var(--amb-text); padding: 8px 10px; min-height: 36px; outline: none; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
 }
-.amb-textarea { min-height: 78px; resize: vertical; line-height: 1.4; }
+.amb-textarea { min-height: 72px; resize: vertical; line-height: 1.4; }
 .amb-input:focus, .amb-select:focus, .amb-textarea:focus {
-  border-color: var(--amb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+  border-color: var(--amb-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1);
 }
-.amb-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.amb-input[readonly] { background: #f8fafc; color: var(--amb-muted); }
+.amb-form-actions {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px;
+  padding-top: 14px; border-top: 1px solid var(--amb-border);
+}
 .amb-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--amb-border); flex-wrap: wrap; }
 .amb-filters { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
 .amb-filter { min-width: 150px; max-width: 220px; }
 .amb-search { min-width: 220px; flex: 1; }
 .amb-table-wrap { overflow: auto; max-height: calc(100vh - 310px); }
-.amb-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.amb-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 .amb-table th {
   position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #334155; text-align: left;
-  padding: 10px 12px; border-bottom: 1px solid var(--amb-border); font-weight: 700; white-space: nowrap;
+  padding: 6px 8px; border-bottom: 1px solid var(--amb-border); font-weight: 700; white-space: nowrap;
 }
-.amb-table td { padding: 10px 12px; border-bottom: 1px solid var(--amb-border); vertical-align: top; }
+.amb-table td { padding: 5px 8px; border-bottom: 1px solid var(--amb-border); vertical-align: top; }
+.amb-car-red { color: #dc2626; font-weight: 600; }
+.amb-car-green { color: #16a34a; font-weight: 600; }
+.amb-car-blue { color: #2563eb; font-weight: 600; }
 .amb-table tr:hover td { background: #f8fafc; }
 .amb-table .center { text-align: center; }
 .amb-actions-cell { display: flex; gap: 6px; justify-content: center; }
@@ -136,13 +152,13 @@ button, input, textarea, select { font-family: inherit; }
       <button class="amb-btn amb-btn-secondary amb-btn-icon" onclick="ambApp.reload()" title="Обновить" aria-label="Обновить">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
       </button>
-      <button class="amb-btn amb-btn-secondary amb-btn-icon" onclick="ambApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel">
+      <button id="amb-btn-import" class="amb-btn amb-btn-secondary amb-btn-icon" onclick="ambApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel" style="display:none">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
       </button>
       <button class="amb-btn amb-btn-success amb-btn-icon" onclick="ambApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
       </button>
-      <button class="amb-btn amb-btn-danger amb-btn-icon" onclick="ambApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные">
+      <button id="amb-btn-delete-all" class="amb-btn amb-btn-danger amb-btn-icon" onclick="ambApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные" style="display:none">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
       </button>
       <input type="file" id="amb-import-file" accept=".xlsx,.xls" style="display:none" onchange="ambApp.importExcel(this.files[0])">
@@ -152,11 +168,8 @@ button, input, textarea, select { font-family: inherit; }
   <div class="amb-layout">
     <section class="amb-panel">
       <div class="amb-panel-head">
-        <div>
-          <h2 class="amb-panel-title" id="amb-form-title">Новая запись</h2>
-          <div class="amb-panel-subtitle" id="amb-form-subtitle">Заполните поля и сохраните</div>
-        </div>
-        <span class="amb-status" id="amb-storage-status">Загрузка...</span>
+        <h2 class="amb-panel-title" id="amb-form-title">Новая запись</h2>
+        <span class="amb-status" id="amb-storage-status"></span>
       </div>
       <form class="amb-form" id="amb-form" onsubmit="ambApp.save(event)"></form>
     </section>
@@ -165,8 +178,6 @@ button, input, textarea, select { font-family: inherit; }
       <div class="amb-toolbar">
         <div class="amb-filters">
           <input class="amb-input amb-search" id="amb-search" placeholder="Поиск по таблице" oninput="ambApp.onSearchChange()">
-          <input class="amb-input amb-filter" id="amb-date-from" type="date" onchange="ambApp.filtersChanged()">
-          <input class="amb-input amb-filter" id="amb-date-to" type="date" onchange="ambApp.filtersChanged()">
         </div>
         <button class="amb-btn amb-btn-secondary" onclick="ambApp.clearFilters()" type="button">Сбросить</button>
       </div>
@@ -201,6 +212,8 @@ window.ambApp = (function() {
   var editingId = '';
   var pagination = { page: 1, pageSize: 50, total: 0 };
   var searchTimer = null;
+  var CAR_COLORS = { 'г/н 908': 'amb-car-red', 'г/н 991': 'amb-car-green', 'г/н 053': 'amb-car-blue' };
+  var CAR_EXCEL_COLORS = { 'г/н 908': 'FFDC2626', 'г/н 991': 'FF16A34A', 'г/н 053': 'FF2563EB' };
 
   var tabs = [
     { id: 'calls', title: 'Вызовы' },
@@ -243,17 +256,15 @@ window.ambApp = (function() {
       fields: [
         { name: 'caddyDate', label: 'Дата', type: 'date', required: true },
         { name: 'caddyTime', label: 'Время', type: 'time' },
-        { name: 'carNumber', label: 'Номер машины', type: 'text' },
+        { name: 'carNumber', label: 'Номер машины', type: 'text', datalist: ['г/н 908', 'г/н 991', 'г/н 053'] },
         { name: 'reason', label: 'Причина вызова', type: 'textarea', full: true },
-        { name: 'medCenter', label: 'Медцентр', type: 'text' }
+        { name: 'medCenter', label: 'Медцентр', type: 'text', datalist: ['Альфа', 'Альфа Дети', 'Альфа Линия', 'Альфа Проф', 'Альфа Смайл', '3К', 'Сукко'] }
       ]
     },
     patientCalls: {
       title: 'Звонки пациентам',
       numbered: false,
-      prefillFromCalls: true,
       fields: [
-        { name: 'sourceCallId', label: 'Предзаполнить из вызова', type: 'call-select', full: true },
         { name: 'comment', label: 'Комментарий', type: 'textarea', full: true },
         { name: 'patientCallDate', label: 'Дата', type: 'date' },
         { name: 'callDate', label: 'Дата вызова', type: 'date' },
@@ -386,8 +397,8 @@ window.ambApp = (function() {
 
   function renderStatus() {
     var el = document.getElementById('amb-storage-status');
-    el.className = 'amb-status api';
-    el.textContent = 'БД';
+    el.className = 'amb-status';
+    el.textContent = '';
   }
 
   function setStatus(text, type) {
@@ -417,20 +428,25 @@ window.ambApp = (function() {
           field.options.map(function(opt) {
             return '<option value="' + escapeHtml(opt) + '"' + (String(value) === opt ? ' selected' : '') + '>' + escapeHtml(opt || 'Выберите...') + '</option>';
           }).join('') + '</select>';
-      } else if (field.type === 'call-select') {
-        input = '<select class="amb-select" id="amb-sourceCallId" name="sourceCallId" disabled>' +
-          '<option value="">Предзаполнение отключено</option>' +
-          '</select>';
       } else {
         var step = field.step ? ' step="' + field.step + '"' : '';
-        input = '<input class="amb-input" id="amb-' + field.name + '" name="' + field.name + '" type="' + field.type + '" value="' + escapeHtml(value) + '"' + required + readonly + step + '>';
+        var inputType = field.type;
+        if (field.type === 'date' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+          inputType = 'text';
+        }
+        var listAttr = field.datalist ? ' list="amb-dl-' + field.name + '"' : '';
+        input = '<input class="amb-input" id="amb-' + field.name + '" name="' + field.name + '" type="' + inputType + '" value="' + escapeHtml(value) + '"' + required + readonly + step + listAttr + '>';
+        if (field.datalist) {
+          input += '<datalist id="amb-dl-' + field.name + '">' +
+            field.datalist.map(function(opt) { return '<option value="' + escapeHtml(opt) + '">'; }).join('') +
+            '</datalist>';
+        }
       }
 
       return '<div class="' + cls + '">' + label + input + '</div>';
     }).join('');
 
-    document.getElementById('amb-form-title').textContent = editingId ? 'Редактировать: ' + cfg.title : 'Новая запись: ' + cfg.title;
-    document.getElementById('amb-form-subtitle').textContent = cfg.numbered ? 'Номер считается отдельно за каждый день' : 'Данные попадут в отдельный лист Excel';
+    document.getElementById('amb-form-title').textContent = editingId ? 'Редактировать' : cfg.title;
     document.getElementById('amb-form').innerHTML =
       '<div class="amb-grid">' + rows + '</div>' +
       '<div class="amb-form-actions">' +
@@ -495,7 +511,12 @@ window.ambApp = (function() {
       return '<tr>' +
         cfg.fields.filter(function(f) { return f.type !== 'call-select'; }).map(function(field) {
           var val = field.name === 'seqNumber' ? row.seqNumber : (row.data || {})[field.name];
-          return '<td' + (field.name === 'seqNumber' ? ' class="center"' : '') + '>' + formatValue(val) + '</td>';
+          var tdCls = field.name === 'seqNumber' ? 'center' : '';
+          if (activeTab === 'caddy' && field.name === 'carNumber') {
+            var carCls = CAR_COLORS[String(val || '').trim()];
+            if (carCls) tdCls = carCls;
+          }
+          return '<td' + (tdCls ? ' class="' + tdCls + '"' : '') + '>' + formatValue(val) + '</td>';
         }).join('') +
         '<td class="center"><div class="amb-actions-cell">' +
           '<button class="amb-btn amb-btn-secondary amb-btn-icon" type="button" onclick="ambApp.edit(\'' + row.id + '\')" title="Редактировать">✎</button>' +
@@ -522,14 +543,10 @@ window.ambApp = (function() {
 
   function loadFromApi() {
     var params = new URLSearchParams();
-    var from = document.getElementById('amb-date-from').value;
-    var to = document.getElementById('amb-date-to').value;
     var search = document.getElementById('amb-search').value.trim();
     params.set('type', activeTab);
     params.set('page', pagination.page);
     params.set('limit', pagination.pageSize);
-    if (from) params.set('dateFrom', from);
-    if (to) params.set('dateTo', to);
     if (search) params.set('search', search);
     return api('?' + params.toString()).then(function(res) {
       records = normalizeRows(res.rows || []);
@@ -569,13 +586,33 @@ window.ambApp = (function() {
   function save(event) {
     event.preventDefault();
     var payload = collectForm();
+    var isNewCall = !editingId && activeTab === 'calls';
     var request = editingId
       ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
       : api('', { method: 'POST', body: JSON.stringify(payload) });
-    request.then(function() {
+    request.then(function(savedRow) {
       showToast('Запись сохранена', 'success');
       resetForm();
       reload();
+      if (isNewCall && payload.data.patientName) {
+        api('', { method: 'POST', body: JSON.stringify({
+          entryType: 'patientCalls',
+          seqNumber: null,
+          data: {
+            sourceCallId: savedRow && savedRow.id ? savedRow.id : null,
+            callDate: payload.data.callDate || '',
+            patientName: payload.data.patientName || '',
+            patientCallDate: '',
+            comment: '',
+            diagnosis: '',
+            direction: '',
+            doctorName: '',
+            examination: '',
+            phone: '',
+            registrarMark: ''
+          }
+        }) }).catch(function() {});
+      }
     }).catch(function(e) {
       showToast('Ошибка сохранения в БД: ' + e.message, 'error');
     });
@@ -600,20 +637,9 @@ window.ambApp = (function() {
     }).catch(function(e) { showToast('Ошибка удаления из БД: ' + e.message, 'error'); });
   }
 
-  function prefillPatientCall(callId) {
-    var call = sourceCalls.find(function(r) { return r.id === callId; });
-    if (!call) return;
-    var data = call.data || {};
-    var dateEl = document.getElementById('amb-callDate');
-    var patientEl = document.getElementById('amb-patientName');
-    if (dateEl) dateEl.value = data.callDate || '';
-    if (patientEl) patientEl.value = data.patientName || '';
-  }
 
   function clearFilters() {
     document.getElementById('amb-search').value = '';
-    document.getElementById('amb-date-from').value = '';
-    document.getElementById('amb-date-to').value = '';
     pagination.page = 1;
     reload();
   }
@@ -623,13 +649,8 @@ window.ambApp = (function() {
       showToast('Библиотека ExcelJS не загружена', 'error');
       return;
     }
-    var params = new URLSearchParams();
-    var from = document.getElementById('amb-date-from').value;
-    var to = document.getElementById('amb-date-to').value;
-    if (from) params.set('dateFrom', from);
-    if (to) params.set('dateTo', to);
     showToast('Готовлю Excel...', 'success');
-    api('/export-data' + (params.toString() ? '?' + params.toString() : '')).then(function(exportRows) {
+    api('/export-data').then(function(exportRows) {
       buildExcel(normalizeRows(exportRows || []));
     }).catch(function(e) {
       showToast('Ошибка экспорта: ' + e.message, 'error');
@@ -653,7 +674,8 @@ window.ambApp = (function() {
       document.getElementById('amb-import-file').value = '';
       var calls = result.byType && result.byType.calls ? result.byType.calls : null;
       var details = calls ? ' | Вызовы: ' + calls.inserted + '/' + calls.parsed : '';
-      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0) + details, 'success');
+      var sheets = result.sheetNames && result.sheetNames.length ? ' | Листов: ' + result.sheetNames.length : '';
+      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0) + details + sheets, 'success');
       pagination.page = 1;
       reload();
     }).catch(function(e) {
@@ -695,10 +717,21 @@ window.ambApp = (function() {
       var fields = cfg.fields.filter(function(f) { return f.type !== 'call-select'; });
       var ws = wb.addWorksheet(cfg.title);
       ws.addRow(fields.map(function(f) { return f.label; }));
+      var prevSeq = null;
       exportRows.filter(function(r) { return r.entryType === tab.id; }).forEach(function(row) {
+        var currSeq = row.seqNumber != null ? Number(row.seqNumber) : null;
+        if (prevSeq != null && currSeq != null && currSeq < prevSeq) ws.addRow([]);
         ws.addRow(fields.map(function(f) {
           return f.name === 'seqNumber' ? (row.seqNumber || '') : ((row.data || {})[f.name] || '');
         }));
+        if (currSeq != null) prevSeq = currSeq;
+      });
+      var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+      var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+      ws.eachRow(function(row, rowNumber) {
+        row.eachCell({ includeEmpty: true }, function(cell) {
+          cell.border = border;
+        });
       });
       ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
       ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
@@ -711,6 +744,21 @@ window.ambApp = (function() {
         });
         col.width = Math.min(max, 34);
       });
+
+      if (tab.id === 'caddy') {
+        var carNumColIdx = -1;
+        for (var fi = 0; fi < fields.length; fi++) {
+          if (fields[fi].name === 'carNumber') { carNumColIdx = fi; break; }
+        }
+        if (carNumColIdx >= 0) {
+          ws.eachRow(function(exRow, rowNumber) {
+            if (rowNumber === 1) return;
+            var exCell = exRow.getCell(carNumColIdx + 1);
+            var argb = CAR_EXCEL_COLORS[String(exCell.value || '').trim()];
+            if (argb) exCell.font = { color: { argb: argb }, bold: true };
+          });
+        }
+      }
     });
 
     wb.xlsx.writeBuffer().then(function(buffer) {
@@ -761,6 +809,14 @@ window.ambApp = (function() {
     renderTabs();
     renderForm();
     reload();
+    api('/whoami').then(function(info) {
+      if (info.isAdmin) {
+        document.getElementById('amb-btn-import').style.display = '';
+        document.getElementById('amb-btn-delete-all').style.display = '';
+      }
+    }).catch(function(e) {
+      console.warn('[ambulance] whoami failed:', e && e.message);
+    });
   }
 
   if (document.readyState === 'loading') {
@@ -776,7 +832,6 @@ window.ambApp = (function() {
     edit: edit,
     remove: remove,
     reload: reload,
-    prefillPatientCall: prefillPatientCall,
     clearFilters: clearFilters,
     onSearchChange: onSearchChange,
     filtersChanged: filtersChanged,

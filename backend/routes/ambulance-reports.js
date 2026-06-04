@@ -28,8 +28,9 @@ function normalizeEntry(entryType, body, userId) {
   const data = body.data && typeof body.data === 'object' ? body.data : body;
   const dateField = DATE_FIELDS[entryType];
   const timeField = TIME_FIELDS[entryType];
-  const searchText = Object.values(data)
-    .filter(v => v !== null && v !== undefined)
+  const searchText = Object.entries(data)
+    .filter(([k, v]) => !k.startsWith('_') && v !== null && v !== undefined)
+    .map(([, v]) => v)
     .join(' ')
     .trim();
 
@@ -154,21 +155,24 @@ function normalizeLookup(value) {
     .replace(/[^a-zа-я0-9]/g, '');
 }
 
-function getSheet(workbook, names, excludedNames) {
+function getSheets(workbook, names, excludedNames) {
   const keys = names.map(normalizeLookup).filter(Boolean);
   const excluded = (excludedNames || []).map(normalizeLookup).filter(Boolean);
-  const normalized = workbook.SheetNames.map(name => ({ name, key: normalizeLookup(name) }))
-    .filter(sheet => !excluded.some(ex => sheet.key.includes(ex)));
-  const exact = normalized.find(sheet => keys.some(key => sheet.key === key));
-  if (exact) return workbook.Sheets[exact.name];
-  const found = normalized.find(sheet => keys.some(key => sheet.key.includes(key)));
-  return found ? workbook.Sheets[found.name] : null;
+  const matched = workbook.SheetNames
+    .filter(name => {
+      const key = normalizeLookup(name);
+      if (excluded.some(ex => key.includes(ex))) return false;
+      return keys.some(k => key === k || key.includes(k));
+    })
+    .map(name => workbook.Sheets[name]);
+  return matched;
 }
 
-function sheetRows(workbook, names, excludedNames) {
-  const sheet = getSheet(workbook, names, excludedNames);
-  if (!sheet) return [];
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+// Returns an array of row-arrays, one per matching sheet, so each sheet
+// can be parsed with its own header row.
+function sheetRowsList(workbook, names, excludedNames) {
+  const sheets = getSheets(workbook, names, excludedNames);
+  return sheets.map(sheet => XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true }));
 }
 
 function looksLikeHeaderRow(row, aliases) {
@@ -204,7 +208,12 @@ function cell(row, index, aliases, fallbackIndex) {
 
 function importDateValue(value) {
   if (isDatePlaceholder(value)) return cleanText(value);
-  return normalizeDate(value) || cleanText(value);
+  // Only normalize Excel-native date types (serial numbers, Date objects).
+  // Text cells are stored verbatim — free-form dates entered by hand are unpredictable.
+  if (value instanceof Date || typeof value === 'number') {
+    return normalizeDate(value) || '';
+  }
+  return cleanText(value);
 }
 
 function toPayload(entryType, seqNumber, data, userId) {
@@ -244,7 +253,7 @@ function sanitizeImportPayload(row) {
 
 function stableDataForDuplicate(data) {
   return Object.keys(data || {})
-    .filter(key => key !== 'sourceCallId')
+    .filter(key => key !== 'sourceCallId' && key !== '_source')
     .sort()
     .reduce((acc, key) => {
       acc[key] = data[key] === null || data[key] === undefined ? '' : String(data[key]).trim();
@@ -350,7 +359,7 @@ async function insertImportRows(rows) {
           FROM ambulance_report_entries existing
           WHERE existing."entryType" = v."entryType"
             AND COALESCE(existing."seqNumber", -2147483648) = COALESCE(CAST(v."seqNumber" AS integer), -2147483648)
-            AND (existing.data - 'sourceCallId') = (v.data - 'sourceCallId')
+            AND (existing.data - 'sourceCallId' - '_source') = (v.data - 'sourceCallId' - '_source')
         )
         ON CONFLICT DO NOTHING
         RETURNING id, "entryType"
@@ -367,88 +376,126 @@ function patientKey(date, patientName) {
   return `${date}|${String(patientName).trim().toLowerCase().replace(/\s+/g, ' ')}`;
 }
 
+const IMPORT_COLUMNS = {
+  calls: [
+    { aliases: ['№', 'Номер'], field: 'seqNumber', isSeq: true },
+    { aliases: ['Дата', 'Дата вызова'], field: 'callDate' },
+    { aliases: ['Время вызова', 'Время'], field: 'callTime' },
+    { aliases: ['ФИО пациента', 'Пациент'], field: 'patientName' },
+    { aliases: ['Адрес'], field: 'address' },
+    { aliases: ['№ бригады', 'Номер бригады'], field: 'brigadeNumber' },
+    { aliases: ['Сумма'], field: 'amount' },
+    { aliases: ['Время ожидания'], field: 'waitingTime' },
+    { aliases: ['Комментарий'], field: 'comment' }
+  ],
+  refusals: [
+    { aliases: ['№', 'Номер'], field: 'seqNumber', isSeq: true },
+    { aliases: ['Дата'], field: 'refusalDate' },
+    { aliases: ['Время звонка', 'Время'], field: 'callTime' },
+    { aliases: ['Причина отказа'], field: 'reason' },
+    { aliases: ['Время через которое отказались'], field: 'refusalDelay' },
+    { aliases: ['Местные/приезжие', 'Местные приезжие'], field: 'localVisitor' }
+  ],
+  caddy: [
+    { aliases: ['Дата'], field: 'caddyDate' },
+    { aliases: ['Время вызова', 'Время'], field: 'caddyTime' },
+    { aliases: ['Номер машины'], field: 'carNumber' },
+    { aliases: ['Причина вызова'], field: 'reason' },
+    { aliases: ['Наименование МЦ', 'Медцентр', 'МЦ'], field: 'medCenter' }
+  ],
+  patientCalls: [
+    { aliases: ['Комментарий'], field: 'comment' },
+    { aliases: ['Дата'], field: 'patientCallDate' },
+    { aliases: ['Дата вызова'], field: 'callDate' },
+    { aliases: ['Пациент', 'ФИО пациента'], field: 'patientName' },
+    { aliases: ['Диагноз'], field: 'diagnosis' },
+    { aliases: ['Направления', 'Направление'], field: 'direction' },
+    { aliases: ['Фио врача', 'ФИО врача'], field: 'doctorName' },
+    { aliases: ['Обследования', 'Обследование'], field: 'examination' },
+    { aliases: ['Номер телефона пациента', 'Номер телефона', 'Телефон'], field: 'phone' },
+    { aliases: ['Регистратура отметка о записи'], field: 'registrarMark' }
+  ]
+};
+
+function resolveColumnIndex(headerRow, aliases) {
+  const normalizedAliases = aliases.map(normalizeLookup);
+  const headerKeys = headerRow.map(h => normalizeLookup(h));
+  // exact match first, then fuzzy
+  for (const alias of normalizedAliases) {
+    const idx = headerKeys.findIndex(k => k === alias);
+    if (idx !== -1) return idx;
+  }
+  for (const alias of normalizedAliases) {
+    const idx = headerKeys.findIndex(k => k.includes(alias) || alias.includes(k));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
+
 function parseImportWorkbook(workbook, userId) {
   const imported = [];
   const counts = { calls: 0, refusals: 0, caddy: 0, patientCalls: 0 };
-  const callIdsByPatient = new Map();
 
-  const callRows = sheetRows(workbook, ['Вызов', 'Вызовы', 'Звонки'], ['пациент']);
-  const callAliases = ['№', 'Номер', 'Дата', 'Дата вызова', 'Время вызова', 'ФИО пациента', 'Адрес', '№ бригады', 'Сумма', 'Комментарий', 'Время ожидания'];
-  const callHeader = headerIndex(callRows);
-  dataRows(callRows, callAliases).forEach(row => {
-    const data = {
-      callDate: importDateValue(cell(row, callHeader, ['Дата', 'Дата вызова'], 1)),
-      callTime: normalizeTime(cell(row, callHeader, ['Время вызова', 'Время'], 2)),
-      patientName: cleanText(cell(row, callHeader, ['ФИО пациента', 'Пациент'], 3)),
-      address: cleanText(cell(row, callHeader, ['Адрес'], 4)),
-      brigadeNumber: cleanText(cell(row, callHeader, ['№ бригады', 'Номер бригады'], 5)),
-      amount: cleanText(cell(row, callHeader, ['Сумма'], 6)),
-      comment: cleanText(cell(row, callHeader, ['Комментарий'], 7)),
-      waitingTime: cleanText(cell(row, callHeader, ['Время ожидания'], 8))
-    };
-    if (!hasAnyText([data.callDate, data.callTime, data.patientName, data.address, data.brigadeNumber, data.amount, data.comment, data.waitingTime])) return;
-    const payload = toPayload('calls', cleanNumber(cell(row, callHeader, ['№', 'Номер'], 0)), data, userId);
-    payload.id = randomUUID();
-    const key = patientKey(normalizeDate(data.callDate), data.patientName);
-    if (key && !callIdsByPatient.has(key)) callIdsByPatient.set(key, payload.id);
-    imported.push(payload);
-    counts.calls++;
-  });
+  const sheetMappings = [
+    { names: ['Вызов', 'Вызовы', 'Звонки'], excludedNames: ['пациент'], type: 'calls' },
+    { names: ['Отказ', 'Отказы'], excludedNames: [], type: 'refusals' },
+    { names: ['Caddy'], excludedNames: [], type: 'caddy' },
+    { names: ['Звонки пациентам'], excludedNames: [], type: 'patientCalls' }
+  ];
 
-  const refusalRows = sheetRows(workbook, ['Отказ', 'Отказы']);
-  const refusalAliases = ['№', 'Номер', 'Дата', 'Время звонка', 'Причина отказа', 'Время через которое отказались', 'Местные/приезжие'];
-  const refusalHeader = headerIndex(refusalRows);
-  dataRows(refusalRows, refusalAliases).forEach(row => {
-    const data = {
-      refusalDate: importDateValue(cell(row, refusalHeader, ['Дата'], 1)),
-      callTime: normalizeTime(cell(row, refusalHeader, ['Время звонка', 'Время'], 2)),
-      reason: cleanText(cell(row, refusalHeader, ['Причина отказа'], 3)),
-      refusalDelay: cleanText(cell(row, refusalHeader, ['Время через которое отказались'], 4)),
-      localVisitor: cleanText(cell(row, refusalHeader, ['Местные/приезжие', 'Местные приезжие'], 5))
-    };
-    if (!hasAnyText([data.refusalDate, data.callTime, data.reason, data.refusalDelay, data.localVisitor])) return;
-    imported.push(toPayload('refusals', cleanNumber(cell(row, refusalHeader, ['№', 'Номер'], 0)), data, userId));
-    counts.refusals++;
-  });
+  for (const { names, excludedNames, type } of sheetMappings) {
+    const sheets = getSheets(workbook, names, excludedNames);
+    const columns = IMPORT_COLUMNS[type];
 
-  const caddyRows = sheetRows(workbook, ['Caddy']);
-  const caddyAliases = ['Дата', 'Время вызова', 'Номер машины', 'Причина вызова', 'Наименование МЦ', 'Медцентр'];
-  const caddyHeader = headerIndex(caddyRows);
-  dataRows(caddyRows, caddyAliases).forEach(row => {
-    const data = {
-      caddyDate: importDateValue(cell(row, caddyHeader, ['Дата'], 0)),
-      caddyTime: normalizeTime(cell(row, caddyHeader, ['Время вызова', 'Время'], 1)),
-      carNumber: cleanText(cell(row, caddyHeader, ['Номер машины'], 2)),
-      reason: cleanText(cell(row, caddyHeader, ['Причина вызова'], 3)),
-      medCenter: cleanText(cell(row, caddyHeader, ['Наименование МЦ', 'Медцентр', 'МЦ'], 4))
-    };
-    if (!hasAnyText([data.caddyDate, data.caddyTime, data.carNumber, data.reason, data.medCenter])) return;
-    imported.push(toPayload('caddy', null, data, userId));
-    counts.caddy++;
-  });
+    for (const sheet of sheets) {
+      // raw: false — everything as formatted display text, no Date objects or raw numbers
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+      if (!rows.length) continue;
 
-  const patientCallRows = sheetRows(workbook, ['Звонки пациентам']);
-  const patientCallAliases = ['Комментарий', 'Дата', 'Дата вызова', 'Пациент', 'Диагноз', 'Направления', 'Фио врача', 'Обследования', 'Номер телефона пациента', 'Регистратура отметка о записи'];
-  const patientCallHeader = headerIndex(patientCallRows);
-  dataRows(patientCallRows, patientCallAliases).forEach(row => {
-    const data = {
-      comment: cleanText(cell(row, patientCallHeader, ['Комментарий'], 0)),
-      patientCallDate: importDateValue(cell(row, patientCallHeader, ['Дата'], 1)),
-      callDate: importDateValue(cell(row, patientCallHeader, ['Дата вызова'], 2)),
-      patientName: cleanText(cell(row, patientCallHeader, ['Пациент', 'ФИО пациента'], 3)),
-      diagnosis: cleanText(cell(row, patientCallHeader, ['Диагноз'], 4)),
-      direction: cleanText(cell(row, patientCallHeader, ['Направления', 'Направление'], 5)),
-      doctorName: cleanText(cell(row, patientCallHeader, ['Фио врача', 'ФИО врача'], 6)),
-      examination: cleanText(cell(row, patientCallHeader, ['Обследования', 'Обследование'], 7)),
-      phone: cleanText(cell(row, patientCallHeader, ['Номер телефона пациента', 'Номер телефона', 'Телефон'], 8)),
-      registrarMark: cleanText(cell(row, patientCallHeader, ['Регистратура отметка о записи'], 9))
-    };
-    if (!hasAnyText([data.comment, data.patientCallDate, data.callDate, data.patientName, data.diagnosis, data.direction, data.doctorName, data.examination, data.phone, data.registrarMark])) return;
-    const key = patientKey(normalizeDate(data.callDate), data.patientName);
-    if (key && callIdsByPatient.has(key)) data.sourceCallId = callIdsByPatient.get(key);
-    imported.push(toPayload('patientCalls', null, data, userId));
-    counts.patientCalls++;
-  });
+      const headerRow = rows[0] || [];
+      // Resolve which column index each field maps to
+      const colIndexes = columns.map(col => resolveColumnIndex(headerRow, col.aliases));
+
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (isEmptyRow(row)) continue;
+
+        const data = {};
+        let seqNumber = null;
+        columns.forEach((col, ci) => {
+          const idx = colIndexes[ci];
+          const raw = idx !== -1 ? row[idx] : undefined;
+          const val = raw !== null && raw !== undefined ? String(raw).trim() : '';
+          if (col.isSeq) {
+            const n = Number(val);
+            seqNumber = Number.isFinite(n) && n > 0 ? n : null;
+          } else {
+            data[col.field] = val;
+          }
+        });
+
+        const searchText = Object.entries(data)
+          .filter(([k, v]) => !k.startsWith('_') && v !== '')
+          .map(([, v]) => v)
+          .join(' ');
+
+        data._source = 'import';
+        imported.push({
+          id: randomUUID(),
+          entryType: type,
+          seqNumber,
+          entryDate: null,
+          entryTime: null,
+          patientName: data.patientName || null,
+          sourceCallId: null,
+          searchText,
+          data,
+          createdBy: userId || null
+        });
+        counts[type]++;
+      }
+    }
+  }
 
   return { imported, counts };
 }
@@ -540,6 +587,10 @@ router.get('/export-data', authenticate, async (req, res) => {
   }
 });
 
+router.get('/whoami', authenticate, (req, res) => {
+  res.json({ isAdmin: !!req.user.isAdmin });
+});
+
 router.get('/available-calls', authenticate, async (req, res) => {
   try {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 200, 1), 500);
@@ -547,6 +598,7 @@ router.get('/available-calls', authenticate, async (req, res) => {
       SELECT c.*
       FROM ambulance_report_entries c
       WHERE c."entryType" = 'calls'
+        AND (c.data->>'_source' IS NULL OR c.data->>'_source' != 'import')
         AND NOT EXISTS (
           SELECT 1
           FROM ambulance_report_entries pc
@@ -583,23 +635,25 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
   try {
     if (!req.file) return res.status(400).json({ error: 'Файл не загружен' });
 
-    const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const sheetNames = workbook.SheetNames;
+    console.log('[Import] Листы файла:', sheetNames);
+
     const parsed = parseImportWorkbook(workbook, req.user?.id || null);
+    console.log('[Import] Распарсено строк:', parsed.imported.length, 'по типам:', parsed.counts);
+    parsed.imported.forEach((row, i) => {
+      const d = row.data || {};
+      const dateKey = Object.keys(d).find(k => k.toLowerCase().includes('date'));
+      console.log(`[Import] #${i + 1} type=${row.entryType} seq=${row.seqNumber} date=${dateKey ? d[dateKey] : '?'} patient=${row.patientName}`);
+    });
+
     const deduped = dedupeImportRows(parsed.imported.map(sanitizeImportPayload));
+    if (deduped.duplicates > 0) console.log('[Import] Дублей внутри файла:', deduped.duplicates);
     const imported = deduped.rows;
     const counts = parsed.counts;
 
     if (!imported.length) {
-      return res.status(400).json({ error: 'Не найдено строк для импорта' });
-    }
-
-    const badDateRow = imported.find(row => row.entryDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(row.entryDate)));
-    if (badDateRow) {
-      return res.status(400).json({
-        error: 'В файле найдена некорректная дата',
-        entryType: badDateRow.entryType,
-        data: badDateRow.data
-      });
+      return res.status(400).json({ error: 'Не найдено строк для импорта', sheetNames });
     }
 
     const byType = ENTRY_TYPES.reduce((acc, type) => {
@@ -619,7 +673,8 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
       if (!typeRows.length) continue;
       const typeInserted = await insertImportRows(typeRows);
       byType[type].inserted = typeInserted;
-      byType[type].skipped = Math.max((counts[type] || 0) - typeInserted, 0);
+      byType[type].skipped = Math.max(typeRows.length - typeInserted, 0);
+      console.log(`[Import] ${type}: уникальных=${typeRows.length}, вставлено=${typeInserted}, пропущено как дубли БД=${typeRows.length - typeInserted}`);
       inserted += typeInserted;
     }
 
@@ -631,7 +686,8 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
       skipped: parsed.imported.length - inserted,
       duplicatesInFile: deduped.duplicates,
       counts,
-      byType
+      byType,
+      sheetNames
     });
   } catch (err) {
     console.error('POST /api/ambulance-reports/import error:', err);
