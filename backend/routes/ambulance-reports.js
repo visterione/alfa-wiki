@@ -23,6 +23,12 @@ const TIME_FIELDS = {
   caddy: 'caddyTime',
   patientCalls: ''
 };
+const DATE_DATA_FIELDS = {
+  calls: ['callDate'],
+  refusals: ['refusalDate'],
+  caddy: ['caddyDate'],
+  patientCalls: ['patientCallDate', 'callDate']
+};
 
 function normalizeEntry(entryType, body, userId) {
   const data = body.data && typeof body.data === 'object' ? body.data : body;
@@ -68,6 +74,12 @@ function excelDateToJSDate(serial) {
 function dateToIso(date) {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
   return date.toISOString().slice(0, 10);
+}
+
+function isoToDMY(iso) {
+  if (!isValidIsoDate(iso)) return '';
+  const [year, month, day] = iso.split('-');
+  return `${day}.${month}.${year}`;
 }
 
 function isValidIsoDate(value) {
@@ -702,6 +714,69 @@ router.delete('/', authenticate, async (_req, res) => {
   } catch (err) {
     console.error('DELETE /api/ambulance-reports error:', err);
     res.status(500).json({ error: 'Ошибка очистки данных' });
+  }
+});
+
+router.post('/normalize-dates', authenticate, async (req, res) => {
+  if (!req.user?.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
+  const dryRun = req.query.dryRun === 'true';
+
+  try {
+    const allRows = await AmbulanceReportEntry.findAll();
+    let updated = 0;
+    let fieldsChanged = 0;
+    let fieldsParseFailed = 0;
+    let fieldsUnchanged = 0;
+    const samples = [];
+
+    for (const row of allRows) {
+      const dateFields = DATE_DATA_FIELDS[row.entryType] || [];
+      const data = { ...(row.data || {}) };
+      let rowChanged = false;
+
+      for (const field of dateFields) {
+        const current = data[field];
+        if (current === null || current === undefined) continue;
+        const currentStr = String(current).trim();
+        if (!currentStr) continue;
+
+        const iso = normalizeDate(currentStr);
+        if (!iso) {
+          fieldsParseFailed++;
+          continue;
+        }
+
+        const dmy = isoToDMY(iso);
+        if (!dmy || dmy === currentStr) {
+          fieldsUnchanged++;
+          continue;
+        }
+
+        if (samples.length < 30) {
+          samples.push({ id: row.id, type: row.entryType, field, from: currentStr, to: dmy });
+        }
+        data[field] = dmy;
+        rowChanged = true;
+        fieldsChanged++;
+      }
+
+      if (rowChanged) {
+        updated++;
+        if (!dryRun) {
+          const searchText = Object.entries(data)
+            .filter(([k, v]) => !k.startsWith('_') && v !== null && v !== undefined)
+            .map(([, v]) => v)
+            .join(' ')
+            .trim();
+          await row.update({ data, searchText });
+        }
+      }
+    }
+
+    res.json({ success: true, dryRun, updated, fieldsChanged, fieldsUnchanged, fieldsParseFailed, samples });
+  } catch (err) {
+    console.error('POST /api/ambulance-reports/normalize-dates error:', err);
+    res.status(500).json({ error: 'Ошибка нормализации дат' });
   }
 });
 
