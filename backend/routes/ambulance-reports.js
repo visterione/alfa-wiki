@@ -31,9 +31,23 @@ const DATE_DATA_FIELDS = {
 };
 
 function normalizeEntry(entryType, body, userId) {
-  const data = body.data && typeof body.data === 'object' ? body.data : body;
+  const rawData = body.data && typeof body.data === 'object' ? body.data : body;
   const dateField = DATE_FIELDS[entryType];
   const timeField = TIME_FIELDS[entryType];
+
+  // entryDate (DB date column) — читаем из сырых данных до нормализации, чтобы сохранить ISO
+  const rawEntryDate = rawData[dateField] || rawData.callDate || body.entryDate || null;
+
+  // Нормализуем дата-поля в data к формату ДД.ММ.ГГГГ для отображения
+  const data = { ...rawData };
+  for (const field of DATE_DATA_FIELDS[entryType] || []) {
+    const val = data[field];
+    if (val) {
+      const iso = normalizeDate(String(val).trim());
+      if (iso) data[field] = isoToDMY(iso);
+    }
+  }
+
   const searchText = Object.entries(data)
     .filter(([k, v]) => !k.startsWith('_') && v !== null && v !== undefined)
     .map(([, v]) => v)
@@ -45,10 +59,10 @@ function normalizeEntry(entryType, body, userId) {
     seqNumber: NUMBERED_TYPES.includes(entryType) && body.seqNumber
       ? Number(body.seqNumber)
       : null,
-    entryDate: data[dateField] || data.callDate || body.entryDate || null,
-    entryTime: timeField ? (data[timeField] || body.entryTime || null) : null,
+    entryDate: rawEntryDate ? (normalizeDate(String(rawEntryDate).trim()) || null) : null,
+    entryTime: timeField ? (rawData[timeField] || body.entryTime || null) : null,
     patientName: data.patientName || data.patient || body.patientName || null,
-    sourceCallId: entryType === 'patientCalls' && data.sourceCallId ? data.sourceCallId : null,
+    sourceCallId: entryType === 'patientCalls' && rawData.sourceCallId ? rawData.sourceCallId : null,
     searchText,
     data,
     createdBy: userId || null

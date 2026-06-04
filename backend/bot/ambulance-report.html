@@ -336,6 +336,71 @@ window.ambApp = (function() {
     return new Date().toISOString().slice(0, 10);
   }
 
+  function todayDMY() {
+    var d = new Date();
+    return String(d.getDate()).padStart(2, '0') + '.' +
+           String(d.getMonth() + 1).padStart(2, '0') + '.' +
+           d.getFullYear();
+  }
+
+  function dmyToISO(val) {
+    var m = String(val || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    return m ? m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0') : String(val || '');
+  }
+
+  function focusNextFormInput(el) {
+    var inputs = Array.from(document.querySelectorAll(
+      '#amb-form input.amb-input:not([readonly]), #amb-form select.amb-select, #amb-form textarea.amb-textarea'
+    ));
+    var idx = inputs.indexOf(el);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  }
+
+  function attachDateMask(el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (['Tab','Backspace','Delete','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    el.addEventListener('input', function() {
+      var caretBefore = this.selectionStart;
+      var digitsBefore = (this.value.substring(0, caretBefore).match(/\d/g) || []).length;
+      var digits = this.value.replace(/\D/g, '').substring(0, 8);
+      var f = digits.length > 4
+        ? digits.slice(0,2) + '.' + digits.slice(2,4) + '.' + digits.slice(4)
+        : digits.length > 2 ? digits.slice(0,2) + '.' + digits.slice(2) : digits;
+      this.value = f;
+      var n = 0, c = 0;
+      while (n < f.length && c < digitsBefore) { if (/\d/.test(f[n])) c++; n++; }
+      this.setSelectionRange(n, n);
+      if (digits.length >= 8) focusNextFormInput(this);
+    });
+  }
+
+  function attachTimeMask(el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (['Tab','Backspace','Delete','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    el.addEventListener('input', function() {
+      var caretBefore = this.selectionStart;
+      var digitsBefore = (this.value.substring(0, caretBefore).match(/\d/g) || []).length;
+      var digits = this.value.replace(/\D/g, '').substring(0, 4);
+      var f = digits.length > 2 ? digits.slice(0,2) + ':' + digits.slice(2) : digits;
+      this.value = f;
+      var n = 0, c = 0;
+      while (n < f.length && c < digitsBefore) { if (/\d/.test(f[n])) c++; n++; }
+      this.setSelectionRange(n, n);
+      if (digits.length >= 4) focusNextFormInput(this);
+    });
+  }
+
+  function attachMasks() {
+    document.querySelectorAll('#amb-form [data-mask="date"]').forEach(attachDateMask);
+    document.querySelectorAll('#amb-form [data-mask="time"]').forEach(attachTimeMask);
+  }
+
   function escapeHtml(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -431,11 +496,16 @@ window.ambApp = (function() {
       } else {
         var step = field.step ? ' step="' + field.step + '"' : '';
         var inputType = field.type;
-        if (field.type === 'date' && value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        var extraAttr = '';
+        if (field.type === 'date') {
           inputType = 'text';
+          extraAttr = ' data-mask="date" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off"';
+        } else if (field.type === 'time') {
+          inputType = 'text';
+          extraAttr = ' data-mask="time" placeholder="ЧЧ:ММ" maxlength="5" autocomplete="off"';
         }
         var listAttr = field.datalist ? ' list="amb-dl-' + field.name + '"' : '';
-        input = '<input class="amb-input" id="amb-' + field.name + '" name="' + field.name + '" type="' + inputType + '" value="' + escapeHtml(value) + '"' + required + readonly + step + listAttr + '>';
+        input = '<input class="amb-input" id="amb-' + field.name + '" name="' + field.name + '" type="' + inputType + '" value="' + escapeHtml(value) + '"' + required + readonly + step + extraAttr + listAttr + '>';
         if (field.datalist) {
           input += '<datalist id="amb-dl-' + field.name + '">' +
             field.datalist.map(function(opt) { return '<option value="' + escapeHtml(opt) + '">'; }).join('') +
@@ -454,6 +524,7 @@ window.ambApp = (function() {
         '<button class="amb-btn amb-btn-secondary" type="button" onclick="ambApp.resetForm()">Очистить</button>' +
       '</div>';
 
+    attachMasks();
     setDefaultDateAndNumber();
   }
 
@@ -461,7 +532,7 @@ window.ambApp = (function() {
     var cfg = configs[activeTab];
     var dateField = cfg.fields.find(function(f) { return f.type === 'date'; });
     if (dateField && !document.getElementById('amb-' + dateField.name).value) {
-      document.getElementById('amb-' + dateField.name).value = today();
+      document.getElementById('amb-' + dateField.name).value = todayDMY();
     }
     if (cfg.numbered) {
       var dateInput = document.getElementById('amb-' + dateField.name);
@@ -469,7 +540,7 @@ window.ambApp = (function() {
       var update = function() {
         if (editingId && numberInput.value) return;
         numberInput.value = '';
-        nextNumber(activeTab, dateInput.value, editingId)
+        nextNumber(activeTab, dmyToISO(dateInput.value) || today(), editingId)
           .then(function(num) { numberInput.value = num; })
           .catch(function() { numberInput.value = ''; });
       };
