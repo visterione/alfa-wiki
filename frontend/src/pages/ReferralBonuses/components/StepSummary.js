@@ -50,7 +50,9 @@ function getNdflAmount(salary) {
 
 function getDeductionsTotal(salary) {
   if (!salary) return 0;
-  const total = parseFloat(salary.finalDeductionsTotal || 0);
+  const dedsTotal = parseFloat(salary.finalDeductionsTotal || 0);
+  const matsTotal = parseFloat(salary.finalMaterialsTotal || 0);
+  const total = dedsTotal + matsTotal;
   // If НДФЛ is stored inside deductions array (legacy format), subtract it to avoid
   // double-counting with the separately displayed "Сумма НДФЛ"
   const ndflInList = (salary.deductions || []).find(d => (d.name || '').trim() === 'НДФЛ');
