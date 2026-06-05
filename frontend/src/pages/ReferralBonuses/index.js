@@ -178,6 +178,12 @@ export default function ReferralBonusesPage() {
   // ── Selected doctor ──
   const [selectedDoctor, setSelectedDoctor] = useState(null);
 
+  // ── Disabled clinics per doctor (doctorId → string[]) ──
+  const [disabledClinicsMap, setDisabledClinicsMap] = useState({});
+  const handleDisabledClinicsChange = useCallback((doctorId, disabledClinics) => {
+    setDisabledClinicsMap(prev => ({ ...prev, [doctorId]: (disabledClinics || []).map(String) }));
+  }, []);
+
   // ── Report mode (step 4) ──
   const [reportMode, setReportMode] = useState('individual'); // 'individual' | 'bulk'
   const [bulkSelectedIds, setBulkSelectedIds] = useState(new Set());
@@ -300,7 +306,10 @@ export default function ReferralBonusesPage() {
   const filteredDoctors = visibleDoctors.filter(d => {
     if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (filterClinic && !d.clinics.includes(String(filterClinic))) return false;
+    if (filterClinic) {
+      const effectiveClinics = d.clinics.filter(c => !(disabledClinicsMap[d.id] || []).includes(String(c)));
+      if (!effectiveClinics.includes(String(filterClinic))) return false;
+    }
     if (filterRole && !d.roles.includes(filterRole)) return false;
     if (filterProfession && !d.professions.some(p => rbProfessionTitle(p) === filterProfession)) return false;
     return true;
@@ -599,6 +608,7 @@ export default function ReferralBonusesPage() {
     excelSources,
     onSourcesChange: reloadExcelSources,
     currentUserName: user?.displayName || user?.username || '',
+    onDisabledClinicsChange: handleDisabledClinicsChange,
   };
 
   // Steps 2 and 6 use 3 sub-keys instead of a single key
@@ -964,6 +974,7 @@ export default function ReferralBonusesPage() {
               bonusCounts={bonusCounts}
               getClinicColor={getClinicColor}
               getClinicName={getClinicName}
+              disabledClinicsMap={disabledClinicsMap}
               currentStep={currentStep}
               bulkMode={currentStep === 5 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
               bulkSelectedIds={bulkSelectedIds}
@@ -1004,6 +1015,7 @@ function DoctorsList({
   filterProfession, setFilterProfession,
   allProfessions, bonusCounts,
   getClinicColor, getClinicName,
+  disabledClinicsMap,
   currentStep,
   bulkMode, bulkSelectedIds, setBulkSelectedIds,
   compareMode, pinnedForCompare, togglePinCompare,
@@ -1208,7 +1220,7 @@ function DoctorsList({
               )}
               <div className="rb-doctor-info">
                 <div className="rb-doctor-badges">
-                  {d.clinics.slice(0, 6).map(cId => (
+                  {d.clinics.filter(cId => !(disabledClinicsMap[d.id] || []).includes(String(cId))).slice(0, 6).map(cId => (
                     <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId), ...(cId === 'ip' ? { width: 'auto', padding: '2px 6px' } : {}) }}>
                       {getClinicName(cId)}
                     </span>

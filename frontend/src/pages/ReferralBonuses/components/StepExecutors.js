@@ -1209,7 +1209,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey, onDisabledClinicsChange }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
@@ -1311,6 +1311,12 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   useEffect(() => {
     onDirtyChange?.(isDirty);
   }, [isDirty]); // eslint-disable-line
+
+  // Notify parent when disabled clinics change (for rb-panel chip filtering)
+  useEffect(() => {
+    if (!selectedDoctor) return;
+    onDisabledClinicsChange?.(selectedDoctor.id, execData.disabledClinics || []);
+  }, [selectedDoctor?.id, execData.disabledClinics]); // eslint-disable-line
 
   // ── Load ──────────────────────────────────────────────────────────────────
   useEffect(() => {
