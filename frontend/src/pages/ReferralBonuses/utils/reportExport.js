@@ -524,51 +524,151 @@ export function buildSingleWorkbook(reportData, cashPayments) {
 
 // ─── Build bulk workbook (returns ExcelJS.Workbook) ───────────────────────────
 // bulkResults: [{doctor, clinicReports, periodLabel, dateFrom, dateTo}]
+
+const _CLINIC_COMPANY = {
+  'Альфа': 'Престиж', 'Кидс': 'Престиж', 'Линия': 'Престиж',
+  'Проф': 'Проф',
+  'Смайл': 'Лаб Групп', '3К': 'Лаб Групп',
+  'Сукко': 'Алекс',
+  'ИП Микаелян': 'ИП Микаелян',
+};
+const _COMPANY_SORT_ORDER = ['Престиж', 'Лаб Групп', 'Проф', 'Алекс', 'ИП Микаелян'];
+const _COMPANY_FILL = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEEF2FF' } };
+
+function _getCompanyName(clinicLabel) {
+  if (!clinicLabel) return 'Прочие';
+  const lc = String(clinicLabel).toLowerCase().trim();
+  for (const [key, co] of Object.entries(_CLINIC_COMPANY)) {
+    if (lc.includes(key.toLowerCase())) return co;
+  }
+  return clinicLabel;
+}
+
 export function buildBulkWorkbook(bulkResults) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'alfa-wiki';
   const { fontTitle, fontBold, fontNormal, fillHeader, allBorders } = _makeStyles();
 
-  // Summary sheet
+  // Summary sheet with company grouping
+  // Columns: Врач, Компания/Клиника, Период, Часы работы, Начислено, Основная ЗП, Аванс, Отпускные, НДФЛ, К доплате
   const summaryWs = wb.addWorksheet('Сводка');
-  // Columns: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
-  summaryWs.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }, { width: 14 }, { width: 16 }, { width: 16 }, { width: 24 }, { width: 24 }];
-  const hdr = summaryWs.addRow(['Врач', 'Клиника', 'Период', 'Начислено, руб', 'Часы работы', 'НДФЛ', 'Вредность', 'Начислено, руб', 'Выплата после вредности']);
+  summaryWs.properties.outlineLevelRow = 1;
+  summaryWs.properties.outlineProperties = { summaryBelow: false, summaryRight: false };
+  summaryWs.columns = [
+    { width: 40 }, { width: 22 }, { width: 18 },
+    { width: 12 }, { width: 18 }, { width: 16 }, { width: 14 },
+    { width: 16 }, { width: 14 }, { width: 16 },
+  ];
+  const hdr = summaryWs.addRow([
+    'Врач', 'Компания / Клиника', 'Период',
+    'Часы работы', 'Начислено, руб', 'Основная ЗП', 'Аванс',
+    'Отпускные', 'НДФЛ', 'К доплате',
+  ]);
   hdr.eachCell({ includeEmpty: true }, (cell, c) => {
-    if (c <= 9) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; }
+    if (c <= 10) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center', wrapText: true }; }
   });
+
+  const _applyNumFmt = (row, bold) => {
+    const f = bold ? fontBold : fontNormal;
+    [5, 6, 7, 8, 9, 10].forEach(c => { row.getCell(c).numFmt = '#,##0.00'; row.getCell(c).font = f; });
+  };
 
   for (const r of bulkResults) {
     if (r.error || !r.clinicReports?.length) {
-      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), r.periodLabel || '', '', '', '', '', '', '']);
+      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), r.periodLabel || '', '', '', '', '', '', '', '']);
       eRow.getCell(2).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
       continue;
     }
     const doctorName = r.doctor?.name || 'Врач';
+
+    // Compute per-clinic values and group by company
+    const companyMap = new Map();
     r.clinicReports.forEach(cr => {
       const sal = cr.salary || {};
-      const extraTot = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
-      const pt = sal.payType || '';
+      const extraTot    = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+      const pt          = sal.payType || '';
       const hoursWorked = pt === 'hourly' ? (parseFloat(sal.hoursWorked) || 0) :
                           pt === 'normed' ? (parseFloat(sal.normTotalHours) || 0) : 0;
-      const ndfl = parseFloat((sal.ndflTotal || 0).toFixed(2));
-      const harmfulness = parseFloat((sal.harmfulnessDeduction || 0).toFixed(2));
-      const nachleno = parseFloat(((sal.finalSalary || 0) + harmfulness).toFixed(2));
-      // remainder без вредности — показывается в "Выплата после вредности" (через обычный расчёт)
-      const afterHarmfulness = parseFloat(((sal.finalSalary || 0) - (sal.advance || 0) - (sal.mainPayment || 0) - extraTot).toFixed(2));
-      // Остаток к доплате включает вредность
-      const remainder = parseFloat((afterHarmfulness + harmfulness).toFixed(2));
-      // Order: Врач, Клиника, Период, Начислено, Часы работы, НДФЛ, Вредность, Остаток к доплате, Выплата после вредности
-      const row = summaryWs.addRow([doctorName, cr.clinicLabel || '—', r.periodLabel || '', nachleno, hoursWorked || '', ndfl || '', harmfulness || '', remainder, afterHarmfulness]);
-      row.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 9) { cell.font = fontNormal; cell.border = allBorders; } });
-      row.getCell(4).numFmt = '#,##0.00';
-      row.getCell(4).font = { ...fontNormal, color: { argb: nachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
-      row.getCell(6).numFmt = '#,##0.00';
-      row.getCell(7).numFmt = '#,##0.00';
-      row.getCell(8).numFmt = '#,##0.00';
-      row.getCell(8).font = { ...fontNormal, color: { argb: remainder >= 0 ? 'FF166534' : 'FFCC0000' } };
-      row.getCell(9).numFmt = '#,##0.00';
+      const nachleno    = parseFloat(((sal.finalSalary || 0) + (sal.harmfulnessDeduction || 0)).toFixed(2));
+      const mainSalary  = parseFloat(((sal.mainPayment || 0) + extraTot).toFixed(2));
+      const advance     = parseFloat((sal.advance || 0).toFixed(2));
+      const vacationPay = parseFloat(((sal.extraPayments || [])
+        .filter(ep => (ep.label || '').trim() === 'Отпускные')
+        .reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0)).toFixed(2));
+      const ndfl        = parseFloat((sal.ndflTotal || 0).toFixed(2));
+      const normPremium = parseFloat((sal.normPremiumAmount || 0).toFixed(2));
+      const kDoplat     = parseFloat((nachleno - ndfl - advance - mainSalary - normPremium).toFixed(2));
+      const co = _getCompanyName(cr.clinicLabel);
+      if (!companyMap.has(co)) companyMap.set(co, []);
+      companyMap.get(co).push({ cr, hoursWorked, nachleno, mainSalary, advance, vacationPay, ndfl, kDoplat });
     });
+
+    // Sort companies in canonical order
+    const sortedCompanies = [...companyMap.keys()].sort((a, b) => {
+      const ai = _COMPANY_SORT_ORDER.indexOf(a);
+      const bi = _COMPANY_SORT_ORDER.indexOf(b);
+      if (ai === -1 && bi === -1) return a.localeCompare(b, 'ru');
+      if (ai === -1) return 1;
+      if (bi === -1) return -1;
+      return ai - bi;
+    });
+
+    let isFirstCompany = true;
+    for (const companyName of sortedCompanies) {
+      const items = companyMap.get(companyName);
+      const sumKey = key => items.reduce((s, i) => s + (i[key] || 0), 0);
+      const compHours       = sumKey('hoursWorked');
+      const compNachleno    = parseFloat(sumKey('nachleno').toFixed(2));
+      const compMainSalary  = parseFloat(sumKey('mainSalary').toFixed(2));
+      const compAdvance     = parseFloat(sumKey('advance').toFixed(2));
+      const compVacationPay = parseFloat(sumKey('vacationPay').toFixed(2));
+      const compNdfl        = parseFloat(sumKey('ndfl').toFixed(2));
+      const compKDoplat     = parseFloat(sumKey('kDoplat').toFixed(2));
+
+      // Company summary row (always visible, outlineLevel 0)
+      const coRow = summaryWs.addRow([
+        isFirstCompany ? doctorName : '',
+        companyName,
+        r.periodLabel || '',
+        compHours || '',
+        compNachleno,
+        compMainSalary || '',
+        compAdvance || '',
+        compVacationPay || '',
+        compNdfl || '',
+        compKDoplat,
+      ]);
+      coRow.eachCell({ includeEmpty: true }, (cell, c) => {
+        if (c <= 10) { cell.font = fontBold; cell.border = allBorders; cell.fill = _COMPANY_FILL; }
+      });
+      _applyNumFmt(coRow, true);
+      coRow.getCell(5).font  = { ...fontBold, color: { argb: compNachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
+      coRow.getCell(10).font = { ...fontBold, color: { argb: compKDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
+
+      // Clinic detail rows (hidden by default, outlineLevel 1 — expandable)
+      for (const { cr, hoursWorked, nachleno, mainSalary, advance, vacationPay, ndfl, kDoplat } of items) {
+        const detRow = summaryWs.addRow([
+          '',
+          `  ${cr.clinicLabel || '—'}`,
+          r.periodLabel || '',
+          hoursWorked || '',
+          nachleno,
+          mainSalary || '',
+          advance || '',
+          vacationPay || '',
+          ndfl || '',
+          kDoplat,
+        ]);
+        detRow.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 10) { cell.font = fontNormal; cell.border = allBorders; } });
+        _applyNumFmt(detRow, false);
+        detRow.getCell(5).font  = { ...fontNormal, color: { argb: nachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
+        detRow.getCell(10).font = { ...fontNormal, color: { argb: kDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
+        detRow.outlineLevel = 1;
+        detRow.hidden = true;
+      }
+
+      isFirstCompany = false;
+    }
   }
 
   const usedSheetNames = new Set(['Сводка']);

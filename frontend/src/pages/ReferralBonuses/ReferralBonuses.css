@@ -508,6 +508,13 @@
 .rb-clinic-tab.active { background: var(--rb-primary); color: white; }
 .rb-clinic-tab:hover:not(.active) { background: #f1f5f9; color: var(--rb-text); }
 .rb-clinic-tab-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.rb-clinic-tab.clinic-disabled { opacity: 0.55; }
+.rb-clinic-tab.clinic-disabled:not(.active) { color: var(--rb-text-secondary); text-decoration: line-through; }
+.rb-clinic-tab-toggle { display: inline-flex; align-items: center; margin-left: 3px; opacity: 0.4; transition: opacity 0.15s; cursor: pointer; }
+.rb-clinic-tab:hover .rb-clinic-tab-toggle { opacity: 0.8; }
+.rb-clinic-tab.clinic-disabled .rb-clinic-tab-toggle { opacity: 0.85; color: #dc2626; }
+.rb-clinic-tab.active .rb-clinic-tab-toggle { opacity: 0.65; }
+.rb-clinic-tab.active.clinic-disabled .rb-clinic-tab-toggle { opacity: 1; }
 
 /* Pay type selector */
 .rb-paytype-toggle { display: flex; border: 1px solid var(--rb-border-dark); border-radius: 8px; overflow: hidden; margin-bottom: 12px; }

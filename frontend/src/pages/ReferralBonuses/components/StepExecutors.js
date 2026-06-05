@@ -48,7 +48,7 @@ function execClinicDefault() {
 }
 
 function execDefault() {
-  return { assistants: [], clinicSettings: { global: execClinicDefault() } };
+  return { assistants: [], disabledClinics: [], clinicSettings: { global: execClinicDefault() } };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -1393,7 +1393,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         clinicSettings[clinicId] = settings;
       }
     });
-    return { ...(data || execDefault()), clinicSettings };
+    const disabledClinics = (data?.disabledClinics || []).filter(id => realDoctorClinicIds.has(String(id)));
+    return { ...(data || execDefault()), clinicSettings, disabledClinics };
   }, [realDoctorClinicIds]);
 
   const getClinicData = useCallback((clinicId = activeClinic, data = execData) => {
@@ -1491,6 +1492,19 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       return prev;
     });
   };
+
+  // ── Disable/enable clinic for reports ────────────────────────────────────
+  const handleToggleDisableClinic = useCallback((clinicId) => {
+    setExecData(prev => {
+      const disabled = prev.disabledClinics || [];
+      const isDisabled = disabled.includes(clinicId);
+      const newDisabled = isDisabled
+        ? disabled.filter(id => id !== clinicId)
+        : [...disabled, clinicId];
+      return { ...prev, disabledClinics: newDisabled };
+    });
+    setIsDirty(true);
+  }, []);
 
   // ── Payment section ───────────────────────────────────────────────────────
   const data = getClinicData();
@@ -2084,15 +2098,38 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       {clinicTabs.length > 1 && (
         <div className="rb-clinic-tab-wrap" ref={clinicTabRef} style={{ marginTop: 12, marginLeft: 12, marginRight: 12 }}>
           {clinicSlider}
-          {clinicTabs.map(tab => (
-            <button
-              key={tab.id}
-              className={`rb-clinic-tab${activeClinic === tab.id ? ' active' : ''}`}
-              onClick={() => handleSwitchClinic(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {clinicTabs.map(tab => {
+            const isClinicDisabled = tab.id !== 'global' && (execData.disabledClinics || []).includes(tab.id);
+            return (
+              <button
+                key={tab.id}
+                className={`rb-clinic-tab${activeClinic === tab.id ? ' active' : ''}${isClinicDisabled ? ' clinic-disabled' : ''}`}
+                onClick={() => handleSwitchClinic(tab.id)}
+                title={isClinicDisabled ? `${tab.label} — отключена, не включается в отчёты` : tab.label}
+              >
+                {tab.label}
+                {tab.id !== 'global' && !readOnly && (
+                  <span
+                    className="rb-clinic-tab-toggle"
+                    onClick={e => { e.stopPropagation(); handleToggleDisableClinic(tab.id); }}
+                    title={isClinicDisabled ? 'Включить клинику в отчёты' : 'Исключить клинику из отчётов'}
+                  >
+                    {isClinicDisabled ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    )}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 

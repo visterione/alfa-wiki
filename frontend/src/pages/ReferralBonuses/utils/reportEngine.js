@@ -158,6 +158,7 @@ export async function buildReport({
 }) {
   const doctorName = doctor.name;
   const doctorClinicIds = new Set((doctor.clinics || []).map(String));
+  const disabledClinicIds = new Set((execSettings?.disabledClinics || []).map(String));
   if (execSettings?.clinicSettings && doctorClinicIds.size > 0) {
     const clinicSettings = {};
     Object.entries(execSettings.clinicSettings || {}).forEach(([clinicId, settings]) => {
@@ -284,6 +285,7 @@ export async function buildReport({
   const byClinic = {};
   const orphanReferrerRows = [];
   Object.entries(rawByClinic).forEach(([clinicId, group]) => {
+    if (disabledClinicIds.has(String(clinicId))) return;
     const hasExecRows = group.rows.some(r =>
       colMap.executor && rbNamesMatch(doctorName, r[colMap.executor] || '')
     );
@@ -299,6 +301,7 @@ export async function buildReport({
       const cs = execSettings?.clinicSettings || {};
       const noExcelClinicIds = Object.keys(cs).filter(cid => {
         if (cid === 'global') return false;
+        if (disabledClinicIds.has(String(cid))) return false;
         const pt = cs[cid].payType || 'salary'; // default matches execClinicDefault
         return pt === 'normed' || pt === 'hourly' || pt === 'salary';
       });
@@ -311,7 +314,9 @@ export async function buildReport({
         byClinic['unknown'] = { id: 'unknown', label: 'Расчёт', rows: [] };
       }
     } else {
-      Object.assign(byClinic, rawByClinic);
+      Object.entries(rawByClinic).forEach(([clinicId, group]) => {
+        if (!disabledClinicIds.has(String(clinicId))) byClinic[clinicId] = group;
+      });
     }
   } else if (orphanReferrerRows.length) {
     byClinic[Object.keys(byClinic)[0]].rows.push(...orphanReferrerRows);

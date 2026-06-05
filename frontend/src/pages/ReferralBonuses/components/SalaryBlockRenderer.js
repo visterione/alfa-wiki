@@ -608,7 +608,10 @@ export default function SalaryBlock({ salary }) {
         const extraTotal = extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
         const deductionsWithoutNdfl = adjustedFinalDeductionsTotal + (finalMaterialsTotal || 0) + (svcMatFinalTotal || 0);
         const totalUderzhano = deductionsWithoutNdfl + effectiveNdflTotal;
-        const hasBreakdown = (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0 || totalUderzhano > 0;
+        const vacationPayTotal = (extraPayments || [])
+          .filter(ep => (ep.label || '').trim() === 'Отпускные')
+          .reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
+        const hasBreakdown = (mainPayment || 0) > 0 || (advance || 0) > 0 || normPremiumAmount > 0 || extraPayments.length > 0 || totalUderzhano > 0 || vacationPayTotal > 0;
         // Для старых записей finalSalary уже учитывает НДФЛ — восстанавливаем gross для корректного отображения
         const displayFinalSalary = (finalSalary || 0) + (ndflFromList ? ndflFromListAmount : 0);
         const grossDisplayFinalSalary = displayFinalSalary + deductionsWithoutNdfl + (harmfulnessDeduction || 0);
@@ -673,6 +676,14 @@ export default function SalaryBlock({ salary }) {
                     <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Премия</div>
                   </div>
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(normPremiumAmount)}</div>
+                </div>
+              )}
+              {vacationPayTotal > 0 && (
+                <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
+                  <div className="rb-salary-row-body">
+                    <div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Отпускные</div>
+                  </div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(vacationPayTotal)}</div>
                 </div>
               )}
             </div>

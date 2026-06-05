@@ -889,6 +889,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         }, 0);
         const totalNdfl = filtered.reduce((s, r) => s + getNdflAmount(r.cr?.salary), 0);
         const totalDeductions = filtered.reduce((s, r) => s + getDeductionsTotal(r.cr?.salary), 0);
+        const totalVacationPay = filtered.reduce((s, r) => {
+          return s + (r.cr?.salary?.extraPayments || [])
+            .filter(ep => (ep.label || '').trim() === 'Отпускные')
+            .reduce((es, ep) => es + (parseFloat(ep.amount) || 0), 0);
+        }, 0);
         const totalCashPaid = (() => {
           const seen = new Set();
           return filtered.reduce((s, { rec }) => {
@@ -917,6 +922,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
             </div>
+            {totalVacationPay > 0 && (
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма Отпускных</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#0369a1' }}>{fmtRub(totalVacationPay)}</div>
+              </div>
+            )}
             {totalNdfl > 0 && (
               <div>
                 <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма НДФЛ</div>
