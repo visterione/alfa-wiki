@@ -183,6 +183,11 @@ export default function ReferralBonusesPage() {
   const handleDisabledClinicsChange = useCallback((doctorId, disabledClinics) => {
     setDisabledClinicsMap(prev => ({ ...prev, [doctorId]: (disabledClinics || []).map(String) }));
   }, []);
+  useEffect(() => {
+    execSettingsApi.getAllDisabledClinics()
+      .then(res => { if (res.data && Object.keys(res.data).length) setDisabledClinicsMap(res.data); })
+      .catch(() => {});
+  }, []); // eslint-disable-line
 
   // ── Report mode (step 4) ──
   const [reportMode, setReportMode] = useState('individual'); // 'individual' | 'bulk'

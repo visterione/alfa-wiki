@@ -618,6 +618,7 @@ export const executorSettings = {
   get: (misUserId) => api.get('/executor-settings', { params: { misUserId } }),
   save: (data) => api.post('/executor-settings', data),
   resetAll: () => api.post('/executor-settings/reset-all'),
+  getAllDisabledClinics: () => api.get('/executor-settings/disabled-clinics'),
 };
 
 export const cashPayments = {

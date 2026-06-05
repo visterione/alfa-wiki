@@ -18,6 +18,24 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/executor-settings/disabled-clinics — returns { [misUserId]: string[] } for all doctors
+router.get('/disabled-clinics', authenticate, async (req, res) => {
+  try {
+    const all = await ExecutorSettings.findAll({ attributes: ['misUserId', 'settings'] });
+    const result = {};
+    all.forEach(record => {
+      const dc = record.settings?.disabledClinics;
+      if (Array.isArray(dc) && dc.length > 0) {
+        result[record.misUserId] = dc.map(String);
+      }
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Get disabled clinics error:', err);
+    res.status(500).json({ error: 'Ошибка получения данных' });
+  }
+});
+
 // POST /api/executor-settings
 router.post('/', authenticate, async (req, res) => {
   try {
