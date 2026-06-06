@@ -663,11 +663,11 @@ export default function SalaryBlock({ salary }) {
                   <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub(advance)}</div>
                 </div>
               )}
-              {((mainPayment || 0) + extraTotal) > 0 && (
+              {((mainPayment || 0) + extraTotal - vacationPayTotal) > 0 && (
                 <div className="rb-salary-row" style={{ background: '#f8fafc', alignItems: 'center' }}>
                   <div className="rb-salary-row-body"><div className="rb-salary-row-label" style={{ color: 'var(--rb-text-secondary)' }}>Основная ЗП</div></div>
                   <div style={{ width: 60, textAlign: 'right', fontSize: 13, color: 'var(--rb-text-secondary)', flexShrink: 0 }}>{mainPaymentMethod ? fmtMethod(mainPaymentMethod) : ''}</div>
-                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub((mainPayment || 0) + extraTotal)}</div>
+                  <div className="rb-salary-row-value" style={{ color: 'var(--rb-text-secondary)' }}>{fmtRub((mainPayment || 0) + extraTotal - vacationPayTotal)}</div>
                 </div>
               )}
               {normPremiumAmount > 0 && (
