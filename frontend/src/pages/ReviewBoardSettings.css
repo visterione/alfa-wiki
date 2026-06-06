@@ -1222,7 +1222,7 @@
 /* Per-column member checklist */
 .column-members-checklist {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
   margin-top: 4px;
 }
@@ -1271,6 +1271,33 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Строка участника: чекбокс-чип + поле подписи */
+.column-member-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.column-member-label-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  padding: 3px 8px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #111827);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.column-member-label-input:focus {
+  border-color: var(--primary-color, #6366f1);
+}
+.column-member-label-input::placeholder {
+  color: var(--text-secondary, #9ca3af);
 }
 
 /* ============================================================

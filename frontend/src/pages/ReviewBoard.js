@@ -201,6 +201,15 @@ const ReviewBoard = () => {
     setTimeout(() => setHighlightedReviewId(null), 3000);
   }, [board, reviewsList]); // eslint-disable-line
 
+  // Сокращает полное имя до формата "Фамилия И. О."
+  const abbreviateName = (fullName) => {
+    if (!fullName) return fullName;
+    const parts = fullName.trim().split(/\s+/);
+    if (parts.length <= 1) return fullName;
+    const [lastName, ...rest] = parts;
+    return `${lastName} ${rest.map(p => p[0] + '.').join(' ')}`;
+  };
+
   // Определяет первичного ответственного из числа участников доски
   const getPrimaryAssigneeId = (review) => {
     if (!review.assigneeIds || review.assigneeIds.length === 0) return null;
@@ -1004,7 +1013,12 @@ const ReviewBoard = () => {
                                       <User size={13} />
                                     )}
                                   </div>
-                                  <span className="person-section-name">{member.displayName || member.username}</span>
+                                  <div className="person-section-nameblock">
+                                    <span className="person-section-name">{abbreviateName(member.displayName || member.username)}</span>
+                                    {board?.columnSettings?.[column.id]?.userLabels?.[member.id] && (
+                                      <span className="person-section-label">{board.columnSettings[column.id].userLabels[member.id]}</span>
+                                    )}
+                                  </div>
                                   <span className="person-section-count">{memberCards.length}</span>
                                   {memberCards.length > 0 && (
                                     <ChevronDown
@@ -1046,7 +1060,9 @@ const ReviewBoard = () => {
                                   <div className="person-section-avatar unassigned-avatar">
                                     <UsersIcon size={14} />
                                   </div>
-                                  <span className="person-section-name">Без назначения</span>
+                                  <div className="person-section-nameblock">
+                                    <span className="person-section-name">Без назначения</span>
+                                  </div>
                                   <span className="person-section-count">{unassigned.length}</span>
                                   <ChevronDown
                                     size={13}

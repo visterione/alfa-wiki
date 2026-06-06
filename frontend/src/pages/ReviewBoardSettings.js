@@ -220,6 +220,19 @@ const ReviewBoardSettings = () => {
   const getColumnVisibleUserIds = (statusId) =>
     columnSettings[statusId]?.visibleUserIds || [];
 
+  const getColumnUserLabel = (statusId, userId) =>
+    columnSettings[statusId]?.userLabels?.[userId] || '';
+
+  const setColumnUserLabel = (statusId, userId, label) => {
+    setColumnSettings(prev => ({
+      ...prev,
+      [statusId]: {
+        ...prev[statusId],
+        userLabels: { ...(prev[statusId]?.userLabels || {}), [userId]: label }
+      }
+    }));
+  };
+
   // ── Sync handlers ─────────────────────────────────────────────────────────
 
   const getSyncEdit = (provider) => syncEdits[provider] || {};
@@ -805,24 +818,37 @@ const ReviewBoardSettings = () => {
                         </div>
                         {status.id !== 'new' && status.id !== 'final' && colBoardMembers.length > 0 && (
                           <div className="form-group">
-                            <label>Видимые участники <span className="label-hint">(пусто = все)</span></label>
+                            <label>Участники <span className="label-hint">(пусто = все; можно добавить подсказку под именем)</span></label>
                             <div className="column-members-checklist">
-                              {colBoardMembers.map(m => (
-                                <label key={m.id} className="column-member-check">
-                                  <input
-                                    type="checkbox"
-                                    checked={visibleIds.includes(m.id)}
-                                    onChange={() => toggleColumnUser(status.id, m.id)}
-                                  />
-                                  <div className="column-member-avatar">
-                                    {getAvatarUrl(m.avatar)
-                                      ? <img src={getAvatarUrl(m.avatar)} alt="" />
-                                      : <User size={12} />
-                                    }
+                              {colBoardMembers.map(m => {
+                                const isChecked = visibleIds.includes(m.id);
+                                return (
+                                  <div key={m.id} className="column-member-row">
+                                    <label className="column-member-check">
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => toggleColumnUser(status.id, m.id)}
+                                      />
+                                      <div className="column-member-avatar">
+                                        {getAvatarUrl(m.avatar)
+                                          ? <img src={getAvatarUrl(m.avatar)} alt="" />
+                                          : <User size={12} />
+                                        }
+                                      </div>
+                                      <span>{m.displayName || m.username}</span>
+                                    </label>
+                                    <input
+                                      className="column-member-label-input"
+                                      type="text"
+                                      placeholder="Подпись под именем..."
+                                      maxLength={60}
+                                      value={getColumnUserLabel(status.id, m.id)}
+                                      onChange={e => setColumnUserLabel(status.id, m.id, e.target.value)}
+                                    />
                                   </div>
-                                  <span>{m.displayName || m.username}</span>
-                                </label>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         )}
