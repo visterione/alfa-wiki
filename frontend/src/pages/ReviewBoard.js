@@ -233,18 +233,12 @@ const ReviewBoard = () => {
     applyFilters(reviewsList.filter(r => r.status === columnId))
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // Участники колонки: фильтруем по columnSettings, текущий пользователь всегда первый
+  // Участники колонки: фильтруем по columnSettings, текущий пользователь первый если включён
   const getColumnMembers = (columnId) => {
     const visibleIds = board?.columnSettings?.[columnId]?.visibleUserIds;
     let members = boardMembers;
     if (visibleIds && visibleIds.length > 0) {
-      let filtered = boardMembers.filter(m => visibleIds.includes(m.id));
-      // Текущий пользователь всегда виден даже если не в фильтре
-      const currentMember = boardMembers.find(m => m.id === user?.id);
-      if (currentMember && !filtered.find(m => m.id === user?.id)) {
-        filtered = [currentMember, ...filtered];
-      }
-      members = filtered;
+      members = boardMembers.filter(m => visibleIds.includes(m.id));
     }
     return [...members].sort((a, b) => {
       if (a.id === user?.id) return -1;
