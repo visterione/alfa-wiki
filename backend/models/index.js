@@ -1966,6 +1966,11 @@ const ReviewBoard = sequelize.define('ReviewBoard', {
     type: DataTypes.JSONB,
     defaultValue: {},
     comment: 'Кастомные названия столбцов Kanban { statusId: label }'
+  },
+  columnSettings: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Настройки столбцов Kanban { statusId: { visibleUserIds: [] } } — пустой массив = показывать всех'
   }
 }, {
   tableName: 'review_boards',

@@ -47,7 +47,7 @@ const isTransitionAllowedByWorkflow = (workflowConfig, fromStatus, toStatus, rev
     if (reviewCondition === 'negative' && review.rating >= RATING_THRESHOLD) continue;
     return true;
   }
-  return false;
+  return null;
 };
 
 const ReviewBoard = () => {
@@ -109,6 +109,9 @@ const ReviewBoard = () => {
 
   // Board members (users with any board role) — для секций Kanban
   const [boardMembers, setBoardMembers] = useState([]);
+
+  // Состояние свёрнутости секций: { 'columnId-memberId': boolean }
+  const [collapsedSections, setCollapsedSections] = useState({});
 
   // Assignee picker (при нескольких кандидатах из workflow)
   const [pickerState, setPickerState] = useState(null);
@@ -221,11 +224,62 @@ const ReviewBoard = () => {
     applyFilters(reviewsList.filter(r => r.status === columnId))
       .sort((a, b) => a.sortOrder - b.sortOrder);
 
-  // Карточки конкретной секции (assigneeId — ID участника или null = без назначения)
+  // Участники колонки: фильтруем по columnSettings, текущий пользователь всегда первый
+  const getColumnMembers = (columnId) => {
+    const visibleIds = board?.columnSettings?.[columnId]?.visibleUserIds;
+    let members = boardMembers;
+    if (visibleIds && visibleIds.length > 0) {
+      let filtered = boardMembers.filter(m => visibleIds.includes(m.id));
+      // Текущий пользователь всегда виден даже если не в фильтре
+      const currentMember = boardMembers.find(m => m.id === user?.id);
+      if (currentMember && !filtered.find(m => m.id === user?.id)) {
+        filtered = [currentMember, ...filtered];
+      }
+      members = filtered;
+    }
+    return [...members].sort((a, b) => {
+      if (a.id === user?.id) return -1;
+      if (b.id === user?.id) return 1;
+      return 0;
+    });
+  };
+
+  // IDs участников, явно заданных для колонки (для корректного роутинга отзывов в "Без назначения")
+  const getColumnVisibleMemberIds = (columnId) => {
+    const members = getColumnMembers(columnId);
+    return new Set(members.map(m => m.id));
+  };
+
+  // Карточки секции участника
   const getReviewsBySection = (columnId, assigneeId) =>
     applyFilters(reviewsList.filter(r => r.status === columnId))
       .filter(r => getPrimaryAssigneeId(r) === assigneeId)
       .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Карточки "без назначения" — включает отзывы без assignee И с assignee вне видимых участников колонки
+  const getUnassignedReviews = (columnId) => {
+    const visibleMemberIds = getColumnVisibleMemberIds(columnId);
+    return applyFilters(reviewsList.filter(r => r.status === columnId))
+      .filter(r => {
+        const primaryId = getPrimaryAssigneeId(r);
+        return primaryId === null || !visibleMemberIds.has(primaryId);
+      })
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  };
+
+  // Управление сворачиванием секций
+  const toggleSection = (columnId, memberId) => {
+    const key = `${columnId}-${memberId}`;
+    setCollapsedSections(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const COLLAPSED_PREVIEW = 3;
+
+  const isSectionCollapsed = (columnId, memberId) => {
+    const key = `${columnId}-${memberId}`;
+    if (key in collapsedSections) return collapsedSections[key];
+    return true; // по умолчанию все свёрнуты
+  };
 
 
   // Вычислить кандидатов на назначение из workflow-сценариев (frontend-оценка)
@@ -825,7 +879,10 @@ const ReviewBoard = () => {
         <div className="review-board-columns">
           {REVIEW_STATUSES.map(column => {
             // Секции только для промежуточных колонок (не new, не final)
+            const columnMembers = getColumnMembers(column.id);
             const useSections = boardMembers.length > 0 && column.id !== 'final' && column.id !== 'new';
+            // Явно настроенные пользователи для этой колонки (показываем секцию даже если 0 карточек)
+            const configuredIds = new Set(board?.columnSettings?.[column.id]?.visibleUserIds || []);
 
             // final принимает только позитивные отзывы — разрешаем дроп,
             // но блокируем негативные в handleDragEnd
@@ -920,12 +977,27 @@ const ReviewBoard = () => {
                     >
                       {useSections ? (
                         <div className="column-sections">
-                          {boardMembers.map(member => {
+                          {columnMembers.map(member => {
                             const memberCards = getReviewsBySection(column.id, member.id);
+                            // Скрываем секцию только если:
+                            // — у участника 0 карточек И он не настроен явно для этой колонки И он не текущий пользователь
+                            const isExplicitlyConfigured = configuredIds.has(member.id);
+                            const isCurrentUser = member.id === user?.id;
+                            if (memberCards.length === 0 && !isExplicitlyConfigured && !isCurrentUser) return null;
+                            const isCollapsed = isSectionCollapsed(column.id, member.id);
+                            const visibleCards = isCollapsed ? memberCards.slice(0, COLLAPSED_PREVIEW) : memberCards;
+                            const hasMore = isCollapsed && memberCards.length > COLLAPSED_PREVIEW;
                             return (
                               <div key={member.id} className="person-section">
-                                <div className="person-section-header" style={member.id ? { cursor: 'pointer' } : {}} onClick={member.id ? (e) => { e.stopPropagation(); navigate(`/users/${member.id}`); } : undefined}>
-                                  <div className="person-section-avatar">
+                                <div
+                                  className="person-section-header person-section-header--toggle"
+                                  onClick={() => toggleSection(column.id, member.id)}
+                                >
+                                  <div
+                                    className="person-section-avatar"
+                                    title="Открыть профиль"
+                                    onClick={(e) => { e.stopPropagation(); navigate(`/users/${member.id}`); }}
+                                  >
                                     {getAvatarUrl(member.avatar) ? (
                                       <img src={getAvatarUrl(member.avatar)} alt="" />
                                     ) : (
@@ -934,31 +1006,69 @@ const ReviewBoard = () => {
                                   </div>
                                   <span className="person-section-name">{member.displayName || member.username}</span>
                                   <span className="person-section-count">{memberCards.length}</span>
+                                  {memberCards.length > 0 && (
+                                    <ChevronDown
+                                      size={13}
+                                      className={`section-chevron ${isCollapsed ? '' : 'section-chevron--open'}`}
+                                    />
+                                  )}
+                                </div>
+                                {memberCards.length > 0 && (
+                                  <div className="section-cards">
+                                    {visibleCards.map(review =>
+                                      renderCard(review, allCards.findIndex(c => c.id === review.id))
+                                    )}
+                                    {hasMore && (
+                                      <div
+                                        className="section-show-more"
+                                        onClick={() => toggleSection(column.id, member.id)}
+                                      >
+                                        ещё {memberCards.length - COLLAPSED_PREVIEW}...
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {(() => {
+                            const unassigned = getUnassignedReviews(column.id);
+                            if (unassigned.length === 0) return null;
+                            const isCollapsed = isSectionCollapsed(column.id, 'unassigned');
+                            const visibleUnassigned = isCollapsed ? unassigned.slice(0, COLLAPSED_PREVIEW) : unassigned;
+                            const hasMoreUnassigned = isCollapsed && unassigned.length > COLLAPSED_PREVIEW;
+                            return (
+                              <div className="person-section unassigned-section">
+                                <div
+                                  className="person-section-header person-section-header--toggle"
+                                  onClick={() => toggleSection(column.id, 'unassigned')}
+                                >
+                                  <div className="person-section-avatar unassigned-avatar">
+                                    <UsersIcon size={14} />
+                                  </div>
+                                  <span className="person-section-name">Без назначения</span>
+                                  <span className="person-section-count">{unassigned.length}</span>
+                                  <ChevronDown
+                                    size={13}
+                                    className={`section-chevron ${isCollapsed ? '' : 'section-chevron--open'}`}
+                                  />
                                 </div>
                                 <div className="section-cards">
-                                  {memberCards.map(review =>
+                                  {visibleUnassigned.map(review =>
                                     renderCard(review, allCards.findIndex(c => c.id === review.id))
+                                  )}
+                                  {hasMoreUnassigned && (
+                                    <div
+                                      className="section-show-more"
+                                      onClick={() => toggleSection(column.id, 'unassigned')}
+                                    >
+                                      ещё {unassigned.length - COLLAPSED_PREVIEW}...
+                                    </div>
                                   )}
                                 </div>
                               </div>
                             );
-                          })}
-                          <div className="person-section unassigned-section">
-                            <div className="person-section-header">
-                              <div className="person-section-avatar unassigned-avatar">
-                                <UsersIcon size={14} />
-                              </div>
-                              <span className="person-section-name">Без назначения</span>
-                              <span className="person-section-count">
-                                {getReviewsBySection(column.id, null).length}
-                              </span>
-                            </div>
-                            <div className="section-cards">
-                              {getReviewsBySection(column.id, null).map(review =>
-                                renderCard(review, allCards.findIndex(c => c.id === review.id))
-                              )}
-                            </div>
-                          </div>
+                          })()}
                         </div>
                       ) : (
                         allCards.map((review, index) => renderCard(review, index))

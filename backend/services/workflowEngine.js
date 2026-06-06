@@ -8,6 +8,7 @@
  */
 
 const { ReviewBoardRole } = require('../models');
+const { getStatusById } = require('../config/reviewStatuses');
 
 // ─── Получить сценарии ─────────────────────────────────────────────────────
 
@@ -84,15 +85,16 @@ async function executeAction(node, review, board, notificationService) {
   if (type === 'actionNotify' && notificationService) {
     const userIds = data.userIds || [];
     const notifType = data.notificationType || 'statusChange';
+    const currentStatusLabel = getStatusById(review.status)?.label || review.status;
 
     for (const userId of userIds) {
       try {
         switch (notifType) {
           case 'newReview':
-            await notificationService.sendReviewCreatedNotification(userId, review, board, null, review.rating < RATING_THRESHOLD);
+            await notificationService.sendReviewCreatedNotification(userId, review, board, review.creator || null, review.rating < RATING_THRESHOLD);
             break;
           case 'statusChange':
-            await notificationService.sendReviewStatusChangedNotification(userId, review, '—', review.status, null, false);
+            await notificationService.sendReviewStatusChangedNotification(userId, review, '—', currentStatusLabel, null, false);
             break;
           case 'assignment':
             await notificationService.sendReviewAssignedNotification(userId, review, board, null);
@@ -104,7 +106,7 @@ async function executeAction(node, review, board, notificationService) {
             await notificationService.sendReviewArchivedNotification(userId, review, null);
             break;
           default:
-            await notificationService.sendReviewCreatedNotification(userId, review, board, null, review.rating < RATING_THRESHOLD);
+            await notificationService.sendReviewCreatedNotification(userId, review, board, review.creator || null, review.rating < RATING_THRESHOLD);
         }
       } catch (e) {
         console.error(`[WorkflowEngine] notify(${notifType}) userId=${userId}:`, e.message);

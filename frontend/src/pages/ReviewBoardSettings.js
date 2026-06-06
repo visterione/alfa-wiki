@@ -50,8 +50,9 @@ const ReviewBoardSettings = () => {
   const [workflowConfig, setWorkflowConfig] = useState({ nodes: [], edges: [] });
   const [workflowSaving, setWorkflowSaving] = useState(false);
 
-  // Custom column names
+  // Custom column names + per-column visible users
   const [columnNames, setColumnNames] = useState({});
+  const [columnSettings, setColumnSettings] = useState({});
   const [columnNamesSaving, setColumnNamesSaving] = useState(false);
 
   useEffect(() => {
@@ -81,6 +82,9 @@ const ReviewBoardSettings = () => {
 
       const cn = settingsRes.data?.columnNames;
       if (cn) setColumnNames(cn);
+
+      const cs = settingsRes.data?.columnSettings;
+      if (cs) setColumnSettings(cs);
 
       if (boardData.userRole !== 'owner' && !user.isAdmin) {
         toast.error('Только владелец может редактировать настройки');
@@ -194,14 +198,27 @@ const ReviewBoardSettings = () => {
   const handleSaveColumnNames = async () => {
     try {
       setColumnNamesSaving(true);
-      await reviews.updateBoardSettings(boardId, { columnNames });
-      toast.success('Названия столбцов сохранены');
+      await reviews.updateBoardSettings(boardId, { columnNames, columnSettings });
+      toast.success('Настройки столбцов сохранены');
     } catch (err) {
       toast.error('Ошибка при сохранении');
     } finally {
       setColumnNamesSaving(false);
     }
   };
+
+  const toggleColumnUser = (statusId, userId) => {
+    setColumnSettings(prev => {
+      const current = prev[statusId]?.visibleUserIds || [];
+      const updated = current.includes(userId)
+        ? current.filter(id => id !== userId)
+        : [...current, userId];
+      return { ...prev, [statusId]: { ...prev[statusId], visibleUserIds: updated } };
+    });
+  };
+
+  const getColumnVisibleUserIds = (statusId) =>
+    columnSettings[statusId]?.visibleUserIds || [];
 
   // ── Sync handlers ─────────────────────────────────────────────────────────
 
@@ -751,42 +768,80 @@ const ReviewBoardSettings = () => {
         })()}
 
         {/* Columns Tab */}
-        {activeTab === 'columns' && (
-          <div className="settings-section">
-            <h2>Названия столбцов Kanban</h2>
-            <p className="section-description">
-              Задайте кастомные названия для столбцов этой доски. Оставьте поле пустым, чтобы использовать название по умолчанию.
-            </p>
-            <div className="column-names-list">
-              {REVIEW_STATUSES.map(status => (
-                <div className="form-group column-name-row" key={status.id}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span
-                      className="column-name-dot"
-                      style={{ background: status.color }}
-                    />
-                    {status.label}
-                  </label>
-                  <input
-                    type="text"
-                    value={columnNames[status.id] || ''}
-                    onChange={e => setColumnNames(prev => ({ ...prev, [status.id]: e.target.value }))}
-                    placeholder={status.label}
-                    maxLength={60}
-                  />
-                </div>
-              ))}
+        {activeTab === 'columns' && (() => {
+          // Участники доски: владелец + редакторы
+          const colBoardMembers = [];
+          if (board?.owner) colBoardMembers.push(board.owner);
+          permissions.filter(p => p.role === 'editor' && p.user).forEach(p => {
+            if (!colBoardMembers.find(m => m.id === p.user.id)) colBoardMembers.push(p.user);
+          });
+
+          return (
+            <div className="settings-section">
+              <h2>Настройки столбцов Kanban</h2>
+              <p className="section-description">
+                Задайте кастомные названия и выберите, кто из участников отображается в каждом столбце.
+                Если никто не выбран — показываются все участники доски.
+              </p>
+              <div className="column-names-list">
+                {REVIEW_STATUSES.map(status => {
+                  const visibleIds = getColumnVisibleUserIds(status.id);
+                  return (
+                    <div className="column-settings-block" key={status.id}>
+                      <div className="column-settings-header">
+                        <span className="column-name-dot" style={{ background: status.color }} />
+                        <span className="column-settings-title">{status.label}</span>
+                      </div>
+                      <div className="column-settings-body">
+                        <div className="form-group column-name-row">
+                          <label>Название</label>
+                          <input
+                            type="text"
+                            value={columnNames[status.id] || ''}
+                            onChange={e => setColumnNames(prev => ({ ...prev, [status.id]: e.target.value }))}
+                            placeholder={status.label}
+                            maxLength={60}
+                          />
+                        </div>
+                        {status.id !== 'new' && status.id !== 'final' && colBoardMembers.length > 0 && (
+                          <div className="form-group">
+                            <label>Видимые участники <span className="label-hint">(пусто = все)</span></label>
+                            <div className="column-members-checklist">
+                              {colBoardMembers.map(m => (
+                                <label key={m.id} className="column-member-check">
+                                  <input
+                                    type="checkbox"
+                                    checked={visibleIds.includes(m.id)}
+                                    onChange={() => toggleColumnUser(status.id, m.id)}
+                                  />
+                                  <div className="column-member-avatar">
+                                    {getAvatarUrl(m.avatar)
+                                      ? <img src={getAvatarUrl(m.avatar)} alt="" />
+                                      : <User size={12} />
+                                    }
+                                  </div>
+                                  <span>{m.displayName || m.username}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button
+                className="btn-save"
+                onClick={handleSaveColumnNames}
+                disabled={columnNamesSaving}
+              >
+                <Save size={16} />
+                {columnNamesSaving ? 'Сохранение...' : 'Сохранить настройки столбцов'}
+              </button>
             </div>
-            <button
-              className="btn-save"
-              onClick={handleSaveColumnNames}
-              disabled={columnNamesSaving}
-            >
-              <Save size={16} />
-              {columnNamesSaving ? 'Сохранение...' : 'Сохранить названия'}
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Workflow Tab */}
         {activeTab === 'workflow' && (

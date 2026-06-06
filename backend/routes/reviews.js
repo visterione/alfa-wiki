@@ -113,7 +113,8 @@ function isTransitionAllowedByWorkflow(workflowConfig, fromStatus, toStatus, rev
     if (reviewCondition === 'negative' && review.rating >= RATING_THRESHOLD) continue;
     return true;
   }
-  return false;
+  // Переход не описан ни одним триггером — не блокируем, просто нет автоматизации
+  return null;
 }
 
 /**
@@ -837,6 +838,7 @@ router.get('/boards/:id/settings', authenticate, async (req, res) => {
       notificationSettings: board.notificationSettings,
       workflowConfig: board.workflowConfig || { nodes: [], edges: [] },
       columnNames: board.columnNames || {},
+      columnSettings: board.columnSettings || {},
       availableRoles: REVIEW_ROLES
     });
   } catch (error) {
@@ -860,17 +862,19 @@ router.put('/boards/:id/settings', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Только владелец может изменять настройки' });
     }
 
-    const { notificationSettings, workflowConfig, columnNames } = req.body;
+    const { notificationSettings, workflowConfig, columnNames, columnSettings } = req.body;
     const updateData = {};
     if (notificationSettings !== undefined) updateData.notificationSettings = notificationSettings;
     if (workflowConfig !== undefined) updateData.workflowConfig = workflowConfig;
     if (columnNames !== undefined) updateData.columnNames = columnNames;
+    if (columnSettings !== undefined) updateData.columnSettings = columnSettings;
     await board.update(updateData);
 
     res.json({
       notificationSettings: board.notificationSettings,
       workflowConfig: board.workflowConfig,
-      columnNames: board.columnNames
+      columnNames: board.columnNames,
+      columnSettings: board.columnSettings
     });
   } catch (error) {
     console.error('Error updating settings:', error);

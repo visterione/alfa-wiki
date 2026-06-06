@@ -296,6 +296,41 @@
   user-select: none;
 }
 
+/* Кликабельный заголовок (toggle collapse) */
+.person-section-header--toggle {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.person-section-header--toggle:hover {
+  background: var(--bg-secondary);
+}
+
+
+/* Ссылка "ещё N..." в свёрнутой секции */
+.section-show-more {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 4px 8px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.12s;
+}
+.section-show-more:hover {
+  color: var(--primary-color, #6366f1);
+}
+
+/* Шеврон сворачивания */
+.section-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+  transform: rotate(-90deg);
+}
+.section-chevron--open {
+  transform: rotate(0deg);
+}
+
 .person-section-avatar {
   width: 22px;
   height: 22px;
@@ -340,7 +375,6 @@
 /* Область для карточек внутри секции */
 .section-cards {
   padding: 0.375rem;
-  min-height: 56px; /* чтобы пустая секция была видна */
   transition: background 0.15s;
 }
 

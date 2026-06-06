@@ -344,11 +344,12 @@ async function sendWelcomeMessage(userId) {
  */
 async function sendReviewCreatedNotification(userId, review, board, creator, isNegative = false) {
   const prefix = isNegative ? '📝 Новый отрицательный отзыв' : '📝 Новый положительный отзыв';
+  const creatorName = creator?.displayName || creator?.username || 'Автоматически';
   const messageText = `${prefix}\n\n` +
     `Пациент: ${review.patientName}\n` +
     `Доска: ${board.name}\n` +
     `Оценка: ${'⭐'.repeat(review.rating)}\n` +
-    `Создал: ${creator.displayName || creator.username}\n\n` +
+    `Создал: ${creatorName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;
 
   const metadata = {
@@ -365,11 +366,12 @@ async function sendReviewCreatedNotification(userId, review, board, creator, isN
  */
 async function sendReviewStatusChangedNotification(userId, review, oldStatusLabel, newStatusLabel, changer, isAssignee = false) {
   const prefix = isAssignee ? '👤 Ваша задача изменила статус' : '🔄 Изменен статус отзыва';
+  const changerName = changer?.displayName || changer?.username || 'Автоматически';
 
   const messageText = `${prefix}\n\n` +
     `Пациент: ${review.patientName}\n` +
     `${oldStatusLabel} → ${newStatusLabel}\n` +
-    `Изменил: ${changer.displayName || changer.username}\n\n` +
+    `Изменил: ${changerName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
@@ -388,11 +390,12 @@ async function sendReviewStatusChangedNotification(userId, review, oldStatusLabe
  */
 async function sendReviewAssignedNotification(userId, review, board, assigner) {
   const statusLabel = getStatusById(review.status)?.label || review.status;
+  const assignerName = assigner?.displayName || assigner?.username || 'Автоматически';
   const messageText = `👤 Вам назначен отзыв для обработки\n\n` +
     `Пациент: ${review.patientName}\n` +
     `Доска: ${board.name}\n` +
     `Статус: ${statusLabel}\n` +
-    `Назначил: ${assigner.displayName || assigner.username}\n\n` +
+    `Назначил: ${assignerName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${board.id}?review=${review.id})`;
 
   const metadata = {
@@ -429,10 +432,11 @@ async function sendReviewCommentNotification(userId, review, comment, commenter,
  * Отправка уведомления о завершении работы по отзыву (workComplete)
  */
 async function sendReviewWorkCompleteNotification(userId, review, decisionCategory, finalizer) {
+  const finalizerName = finalizer?.displayName || finalizer?.username || 'Автоматически';
   const messageText = `🏁 Работа по отзыву завершена\n\n` +
     `Пациент: ${review.patientName}\n` +
-    `Решение: ${decisionCategory}\n` +
-    `Завершил: ${finalizer.displayName || finalizer.username}\n\n` +
+    `Решение: ${decisionCategory || '—'}\n` +
+    `Завершил: ${finalizerName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
@@ -448,9 +452,10 @@ async function sendReviewWorkCompleteNotification(userId, review, decisionCatego
  * Отправка уведомления об архивации отзыва (archiveReview)
  */
 async function sendReviewArchivedNotification(userId, review, archivedBy) {
+  const archivedByName = archivedBy?.displayName || archivedBy?.username || 'Автоматически';
   const messageText = `📦 Отзыв перемещён в архив\n\n` +
     `Пациент: ${review.patientName}\n` +
-    `Архивировал: ${archivedBy.displayName || archivedBy.username}\n\n` +
+    `Архивировал: ${archivedByName}\n\n` +
     `[Открыть отзыв →](/reviews/board/${review.boardId}?review=${review.id})`;
 
   const metadata = {
