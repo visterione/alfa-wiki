@@ -125,7 +125,7 @@ function TriggerStatusChangeNode({ data, selected }) {
 }
 
 function ActionAssignNode({ data, selected }) {
-  const label = data.userNames?.join(', ') || (data.userIds?.length ? `${data.userIds.length} польз.` : '—');
+  const label = data.userNames?.[0] || (data.userIds?.[0] ? '1 пользователь' : '—');
   return (
     <NodeWrapper color="#7c3aed" selected={selected}>
       <Handle type="target" position={Position.Left} className="wf-handle" />
@@ -160,8 +160,9 @@ function ActionMoveNode({ data, selected }) {
 
 // Уведомить — терминальный нод, только входящий коннектор
 function ActionNotifyNode({ data, selected }) {
-  const count = data.userIds?.length || 0;
   const typeLabel = NOTIFICATION_TYPES.find(t => t.id === data.notificationType)?.label || '—';
+  const isChain = (data.notifyMode || 'fixed') === 'chain_assignees';
+  const recipientLabel = isChain ? 'Назначенным в цепочке' : (data.userIds?.length > 0 ? `${data.userIds.length} польз.` : '—');
   return (
     <NodeWrapper color="#db2777" selected={selected}>
       <Handle type="target" position={Position.Left} className="wf-handle" />
@@ -170,7 +171,7 @@ function ActionNotifyNode({ data, selected }) {
       </div>
       <div className="wf-node__body">
         <div className="wf-node__prop">Тип: <strong>{typeLabel}</strong></div>
-        <div className="wf-node__prop">Кому: <strong>{count > 0 ? `${count} польз.` : '—'}</strong></div>
+        <div className="wf-node__prop">Кому: <strong>{recipientLabel}</strong></div>
       </div>
       {/* нет Handle source — терминальный нод */}
     </NodeWrapper>
@@ -276,19 +277,26 @@ function NodeConfigPanel({ node, boardMembers, onUpdate, onDelete, onClose }) {
 
         {node.type === 'actionAssign' && (
           <div className="wf-config__field">
-            <label>Назначить пользователям</label>
+            <label>Назначить ответственного</label>
             <div className="wf-config__checklist">
               {boardMembers.length > 0
-                ? boardMembers.map(m => (
-                    <label key={m.id} className="wf-config__check">
-                      <input
-                        type="checkbox"
-                        checked={(data.userIds || []).includes(m.id)}
-                        onChange={() => toggleUserId(m.id, m.displayName || m.username)}
-                      />
-                      {m.displayName || m.username}
-                    </label>
-                  ))
+                ? boardMembers.map(m => {
+                    const isSelected = (data.userIds || [])[0] === m.id;
+                    return (
+                      <label key={m.id} className="wf-config__check">
+                        <input
+                          type="radio"
+                          name={`assign-${node.id}`}
+                          checked={isSelected}
+                          onChange={() => {
+                            const updated = { ...data, userIds: [m.id], userNames: [m.displayName || m.username] };
+                            onUpdate(node.id, updated);
+                          }}
+                        />
+                        {m.displayName || m.username}
+                      </label>
+                    );
+                  })
                 : <span className="wf-config__hint">Нет участников доски</span>
               }
             </div>
@@ -319,23 +327,38 @@ function NodeConfigPanel({ node, boardMembers, onUpdate, onDelete, onClose }) {
               </select>
             </div>
             <div className="wf-config__field">
-              <label>Получатели</label>
-              <div className="wf-config__checklist">
-                {boardMembers.length > 0
-                  ? boardMembers.map(m => (
-                      <label key={m.id} className="wf-config__check">
-                        <input
-                          type="checkbox"
-                          checked={(data.userIds || []).includes(m.id)}
-                          onChange={() => toggleUserId(m.id, m.displayName || m.username)}
-                        />
-                        {m.displayName || m.username}
-                      </label>
-                    ))
-                  : <span className="wf-config__hint">Нет участников доски</span>
-                }
-              </div>
+              <label>Кому отправить</label>
+              <select
+                value={data.notifyMode || 'fixed'}
+                onChange={e => update('notifyMode', e.target.value)}
+              >
+                <option value="chain_assignees">Назначенным в этой цепочке</option>
+                <option value="fixed">Фиксированный список</option>
+              </select>
+              {(data.notifyMode || 'fixed') === 'chain_assignees' && (
+                <span className="wf-config__hint">Уведомление придёт тем, кого назначила нода «Назначить» в этой цепочке</span>
+              )}
             </div>
+            {(data.notifyMode || 'fixed') === 'fixed' && (
+              <div className="wf-config__field">
+                <label>Получатели</label>
+                <div className="wf-config__checklist">
+                  {boardMembers.length > 0
+                    ? boardMembers.map(m => (
+                        <label key={m.id} className="wf-config__check">
+                          <input
+                            type="checkbox"
+                            checked={(data.userIds || []).includes(m.id)}
+                            onChange={() => toggleUserId(m.id, m.displayName || m.username)}
+                          />
+                          {m.displayName || m.username}
+                        </label>
+                      ))
+                    : <span className="wf-config__hint">Нет участников доски</span>
+                  }
+                </div>
+              </div>
+            )}
           </>
         )}
 

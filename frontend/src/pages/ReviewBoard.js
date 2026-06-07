@@ -105,7 +105,7 @@ const ReviewBoard = () => {
   // Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState('');
-  const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const [selectedAssignee, setSelectedAssignee] = useState(null);
 
   // Board members (users with any board role) — для секций Kanban
   const [boardMembers, setBoardMembers] = useState([]);
@@ -382,7 +382,7 @@ const ReviewBoard = () => {
         if (r.id !== draggableId) return r;
         const update = { ...r, status: newStatus, sortOrder: newSortOrder };
         if (chosenAssigneeId) {
-          update.assigneeIds = Array.from(new Set([...(r.assigneeIds || []), chosenAssigneeId]));
+          update.assigneeIds = [chosenAssigneeId];
         }
         return update;
       })
@@ -390,7 +390,7 @@ const ReviewBoard = () => {
     try {
       await reviews.moveReview(draggableId, newStatus, newSortOrder);
       if (chosenAssigneeId) {
-        await reviews.assignReview(draggableId, [chosenAssigneeId]);
+        await reviews.assignReview(draggableId, chosenAssigneeId);
       }
       toast.success('Отзыв перемещён');
       loadData();
@@ -633,22 +633,14 @@ const ReviewBoard = () => {
   // Assignment
   const handleAssign = async () => {
     try {
-      const response = await reviews.assignReview(selectedReview.id, selectedAssignees);
+      const response = await reviews.assignReview(selectedReview.id, selectedAssignee);
       setReviewsList(prev => prev.map(r => r.id === selectedReview.id ? response.data : r));
       setShowAssignModal(false);
-      toast.success('Ответственные назначены');
+      toast.success(selectedAssignee ? 'Ответственный назначен' : 'Назначение снято');
     } catch (err) {
       console.error('Error assigning:', err);
       toast.error('Ошибка при назначении');
     }
-  };
-
-  const toggleAssignee = (userId) => {
-    setSelectedAssignees(prev =>
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
   };
 
   // Archive review
@@ -1364,7 +1356,7 @@ const ReviewBoard = () => {
                     <div className="section-header">
                       <h4>Назначенные</h4>
                       <button className="btn-assign" onClick={() => {
-                        setSelectedAssignees(selectedReview.assigneeIds || []);
+                        setSelectedAssignee(selectedReview.assigneeIds?.[0] || null);
                         setShowAssignModal(true);
                       }}>
                         <UsersIcon size={14} />
@@ -1612,7 +1604,7 @@ const ReviewBoard = () => {
         <div className="modal-overlay" onClick={() => setShowAssignModal(false)}>
           <div className="modal-content assign-modal" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <h2>Назначить ответственных</h2>
+              <h2>Назначить ответственного</h2>
               <button className="btn-close" onClick={() => setShowAssignModal(false)}>
                 <X size={20} />
               </button>
@@ -1630,30 +1622,39 @@ const ReviewBoard = () => {
               </div>
 
               <div className="users-list">
-                {boardMembers
+                {/* Опция "Снять назначение" */}
+                <div
+                  className={`user-item ${selectedAssignee === null ? 'user-item--selected' : ''}`}
+                  onClick={() => setSelectedAssignee(null)}
+                >
+                  <div className="user-info">
+                    <div className="avatar-placeholder"><User size={14} /></div>
+                    <span style={{ color: 'var(--text-secondary)' }}>Без назначения</span>
+                  </div>
+                  {selectedAssignee === null && <Check size={16} style={{ color: 'var(--primary-color, #6366f1)', flexShrink: 0 }} />}
+                </div>
+                {getColumnMembers(selectedReview?.status)
                   .filter(u => {
                     const search = assigneeSearch.toLowerCase();
                     return (u.displayName || '').toLowerCase().includes(search) ||
                       (u.username || '').toLowerCase().includes(search);
                   })
                   .map(u => (
-                    <label key={u.id} className="user-item">
+                    <div
+                      key={u.id}
+                      className={`user-item ${selectedAssignee === u.id ? 'user-item--selected' : ''}`}
+                      onClick={() => setSelectedAssignee(u.id)}
+                    >
                       <div className="user-info">
                         {getAvatarUrl(u.avatar) ? (
                           <img src={getAvatarUrl(u.avatar)} alt="" />
                         ) : (
-                          <div className="avatar-placeholder">
-                            <User size={14} />
-                          </div>
+                          <div className="avatar-placeholder"><User size={14} /></div>
                         )}
                         <span>{u.displayName || u.username}</span>
                       </div>
-                      <input
-                        type="checkbox"
-                        checked={selectedAssignees.includes(u.id)}
-                        onChange={() => toggleAssignee(u.id)}
-                      />
-                    </label>
+                      {selectedAssignee === u.id && <Check size={16} style={{ color: 'var(--primary-color, #6366f1)', flexShrink: 0 }} />}
+                    </div>
                   ))}
               </div>
             </div>
@@ -1663,7 +1664,7 @@ const ReviewBoard = () => {
                 Отмена
               </button>
               <button className="btn-submit" onClick={handleAssign}>
-                Назначить ({selectedAssignees.length})
+                {selectedAssignee ? 'Назначить' : 'Снять назначение'}
               </button>
             </div>
           </div>

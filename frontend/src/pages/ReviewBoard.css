@@ -1568,6 +1568,13 @@
   background: var(--bg-secondary);
 }
 
+.user-item--selected {
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 8%, var(--bg-primary));
+}
+.user-item--selected:hover {
+  background: color-mix(in srgb, var(--primary-color, #6366f1) 12%, var(--bg-primary));
+}
+
 .user-info {
   display: flex;
   align-items: center;

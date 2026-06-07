@@ -48,17 +48,18 @@ function matchesTrigger(node, event, review, extraData) {
 
 // ─── Выполнение action-нодов ───────────────────────────────────────────────
 
-async function executeAction(node, review, board, notificationService) {
+// chainContext накапливает assignedUserIds в процессе BFS-обхода цепочки
+async function executeAction(node, review, board, notificationService, chainContext) {
   const { type, data = {} } = node;
 
-  // Назначить (только userIds, без ролей)
+  // Назначить (один ответственный — заменяет предыдущего)
   if (type === 'actionAssign') {
-    const userIds = data.userIds || [];
-    if (userIds.length > 0) {
-      const current = review.assigneeIds || [];
-      const merged = Array.from(new Set([...current, ...userIds]));
-      await review.update({ assigneeIds: merged });
-      console.log(`[WorkflowEngine] actionAssign: review ${review.id} → users`, userIds);
+    const userId = data.userIds?.[0] || null;
+    const userIds = userId ? [userId] : [];
+    if (userId) {
+      await review.update({ assigneeIds: userIds });
+      console.log(`[WorkflowEngine] actionAssign: review ${review.id} → user`, userId);
+      chainContext.assignedUserIds.add(userId);
 
       if (notificationService) {
         for (const userId of userIds) {
@@ -81,11 +82,16 @@ async function executeAction(node, review, board, notificationService) {
     }
   }
 
-  // Уведомить (с типом уведомления)
+  // Уведомить
   if (type === 'actionNotify' && notificationService) {
-    const userIds = data.userIds || [];
     const notifType = data.notificationType || 'statusChange';
     const currentStatusLabel = getStatusById(review.status)?.label || review.status;
+
+    // notifyMode: 'chain_assignees' — уведомить тех, кого назначили в этой цепочке
+    // notifyMode: 'fixed' (или не задан) — фиксированный список userIds
+    const userIds = data.notifyMode === 'chain_assignees'
+      ? Array.from(chainContext.assignedUserIds)
+      : (data.userIds || []);
 
     for (const userId of userIds) {
       try {
@@ -126,6 +132,7 @@ async function executeScenario(scenario, event, review, board, notificationServi
   );
 
   for (const trigger of matchedTriggers) {
+    const chainContext = { assignedUserIds: new Set() };
     const visited = new Set();
     const queue = [trigger.id];
     while (queue.length > 0) {
@@ -135,7 +142,7 @@ async function executeScenario(scenario, event, review, board, notificationServi
       const node = nodes.find(n => n.id === nodeId);
       if (!node) continue;
       if (node.type.startsWith('action')) {
-        await executeAction(node, review, board, notificationService);
+        await executeAction(node, review, board, notificationService, chainContext);
       }
       edges.filter(e => e.source === nodeId).forEach(e => queue.push(e.target));
     }

@@ -1624,38 +1624,29 @@ router.post('/:id/assign', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Нет прав на назначение' });
     }
 
-    const { assigneeIds } = req.body;
-    if (!Array.isArray(assigneeIds)) {
-      return res.status(400).json({ error: 'assigneeIds должен быть массивом' });
-    }
+    // Принимаем assigneeId (одиночный) — хранится как массив из 0 или 1 элемента
+    const { assigneeId } = req.body;
+    const assigneeIds = assigneeId ? [assigneeId] : [];
 
     await review.update({ assigneeIds });
 
     // Добавляем запись в историю
     const assignees = await getUsersData(assigneeIds);
-    const assigneeNames = assignees.map(a => a.displayName || a.username).join(', ');
+    const assigneeName = assignees[0]
+      ? (assignees[0].displayName || assignees[0].username)
+      : 'Снято назначение';
 
     await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.ASSIGNMENT, {
-      newValue: assigneeNames || 'Нет назначенных'
+      newValue: assigneeName
     });
 
-    // Отправляем уведомления назначенным
-    if (assigneeIds.length > 0) {
+    // Уведомляем назначенного
+    if (assigneeId && assigneeId !== req.user.id) {
       try {
         const notificationService = require('../services/notificationService');
-
-        console.log(`[ReviewNotif] assign: sending to assignees:`, assigneeIds);
-        for (const userId of assigneeIds) {
-          if (userId !== req.user.id) {
-            try {
-              await notificationService.sendReviewAssignedNotification(userId, review, review.board, req.user);
-            } catch (e) {
-              console.error(`[ReviewNotif] assign failed for userId=${userId}:`, e.message, e.stack);
-            }
-          }
-        }
+        await notificationService.sendReviewAssignedNotification(assigneeId, review, review.board, req.user);
       } catch (notifError) {
-        console.error('[ReviewNotif] assign setup error:', notifError.message, notifError.stack);
+        console.error('[ReviewNotif] assign error:', notifError.message);
       }
     }
 
