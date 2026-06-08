@@ -172,7 +172,7 @@ export default function ReferralBonusesPage() {
   // ── Filters (left panel) ──
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClinic, setFilterClinic] = useState('');
-  const [filterRole, setFilterRole] = useState('');
+  const [filterRole, setFilterRole] = useState([]);
   const [filterProfession, setFilterProfession] = useState('');
 
   // ── Selected doctor ──
@@ -315,7 +315,7 @@ export default function ReferralBonusesPage() {
       const effectiveClinics = d.clinics.filter(c => !(disabledClinicsMap[d.id] || []).includes(String(c)));
       if (!effectiveClinics.includes(String(filterClinic))) return false;
     }
-    if (filterRole && !d.roles.includes(filterRole)) return false;
+    if (filterRole.length && !d.roles.some(r => filterRole.includes(r))) return false;
     if (filterProfession && !d.professions.some(p => rbProfessionTitle(p) === filterProfession)) return false;
     return true;
   });
@@ -1141,6 +1141,7 @@ function DoctorsList({
             { value: '', label: 'Все должности' },
             ...allRoles.map(r => ({ value: r, label: r })),
           ]}
+          multiSelect
         />
         <SearchableSelect
           value={filterProfession}

@@ -60,7 +60,11 @@
 .rb-ss-wrap.open .rb-ss-trigger { border-color: var(--rb-primary); box-shadow: 0 0 0 3px rgba(0,122,255,0.12); }
 .rb-ss-wrap.open .rb-ss-trigger svg { transform: rotate(180deg); }
 .rb-ss-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rb-ss-dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid var(--rb-border-dark); border-radius: 8px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.13); z-index: 300; overflow: hidden; }
+@keyframes rb-ss-drop-in {
+  from { opacity: 0; transform: translateY(-5px) scaleY(0.97); }
+  to   { opacity: 1; transform: translateY(0)  scaleY(1); }
+}
+.rb-ss-dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid var(--rb-border-dark); border-radius: 8px; background: #fff; box-shadow: 0 6px 20px rgba(0,0,0,0.13); z-index: 300; overflow: hidden; transform-origin: top center; animation: rb-ss-drop-in 0.15s ease; }
 .rb-ss-search-wrap { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-bottom: 1px solid var(--rb-border); background: #f8fafc; }
 .rb-ss-search-wrap > svg { width: 13px; height: 13px; color: var(--rb-text-secondary); flex-shrink: 0; }
 .rb-ss-search { border: none; outline: none; font-size: 13px; font-family: inherit; background: transparent; flex: 1; min-width: 0; color: var(--rb-text); }
@@ -74,6 +78,8 @@
 .rb-ss-item-all:hover { background: #f8fafc; }
 .rb-ss-item-all.selected { background: transparent; color: var(--rb-text-secondary); font-weight: 400; }
 .rb-ss-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--rb-text-secondary); font-style: italic; }
+.rb-ss-checkbox { width: 14px; height: 14px; border: 1.5px solid var(--rb-border-dark); border-radius: 3px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: #fff; transition: background 0.12s, border-color 0.12s; }
+.rb-ss-item.selected .rb-ss-checkbox { border-color: var(--rb-primary); background: var(--rb-primary); color: #fff; }
 
 /* Legacy rb-select (used in other components) */
 .rb-select { width: 100%; padding: 7px 10px; border: 1px solid var(--rb-border-dark); border-radius: 8px; font-size: 13px; font-family: inherit; background: white; outline: none; }
