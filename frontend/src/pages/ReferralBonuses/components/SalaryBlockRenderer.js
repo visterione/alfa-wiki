@@ -169,7 +169,9 @@ export default function SalaryBlock({ salary }) {
   const hasRoleNurse        = (nurseIncomeTotal || 0) > 0;
   const hasPerformedBlock   = hasRoleDoctor || hasRoleAssistant || hasRoleAnesthesiologist || hasRoleNurse;
   const hasHarmfulness      = (harmfulnessDeduction || 0) > 0;
-  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasHarmfulness;
+  // Показываем листок даже при нулевом окладе, если есть аванс/основная ЗП/НДФЛ
+  const hasPaymentInfo      = (advance || 0) > 0 || (mainPayment || 0) > 0 || effectiveNdflTotal > 0 || extraPayments.length > 0;
+  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasHarmfulness || hasPaymentInfo;
 
   if (!hasAny) return null;
 
