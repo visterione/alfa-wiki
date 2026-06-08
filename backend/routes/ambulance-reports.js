@@ -804,6 +804,15 @@ router.post('/', authenticate, async (req, res) => {
       payload.seqNumber = await getNextNumber(entryType, payload.entryDate);
     }
 
+    if (NUMBERED_TYPES.includes(entryType) && payload.seqNumber && payload.entryDate) {
+      const conflict = await AmbulanceReportEntry.findOne({
+        where: { entryType, entryDate: payload.entryDate, seqNumber: payload.seqNumber }
+      });
+      if (conflict) {
+        return res.status(409).json({ error: `Номер ${payload.seqNumber} уже занят для этой даты` });
+      }
+    }
+
     const row = await AmbulanceReportEntry.create(payload);
     res.status(201).json(row);
   } catch (err) {
@@ -823,6 +832,15 @@ router.put('/:id', authenticate, async (req, res) => {
     const payload = normalizeEntry(entryType, req.body, row.createdBy);
     if (NUMBERED_TYPES.includes(entryType) && !payload.seqNumber) {
       payload.seqNumber = await getNextNumber(entryType, payload.entryDate, row.id);
+    }
+
+    if (NUMBERED_TYPES.includes(entryType) && payload.seqNumber && payload.entryDate) {
+      const conflict = await AmbulanceReportEntry.findOne({
+        where: { entryType, entryDate: payload.entryDate, seqNumber: payload.seqNumber, id: { [Op.ne]: row.id } }
+      });
+      if (conflict) {
+        return res.status(409).json({ error: `Номер ${payload.seqNumber} уже занят для этой даты` });
+      }
     }
 
     await row.update(payload);
