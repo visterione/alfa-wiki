@@ -172,7 +172,7 @@ export default function ReferralBonusesPage() {
   // ── Filters (left panel) ──
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClinic, setFilterClinic] = useState('');
-  const [filterRole, setFilterRole] = useState([]);
+  const [filterRole, setFilterRole] = useState('');
   const [filterProfession, setFilterProfession] = useState('');
 
   // ── Selected doctor ──
@@ -248,9 +248,59 @@ export default function ReferralBonusesPage() {
       .catch(() => {});
   }, []);
 
-  // ── Load doctors from MIS ──
+  // ── Load doctors from MIS (с кешированием в sessionStorage) ──
   useEffect(() => {
-    setDoctorsLoading(true);
+    const CACHE_KEY = 'rb_doctors_v1';
+    const normalizeDoctors = (rawList) => rawList.map(d => {
+      let professions = [];
+      if (Array.isArray(d.professions) && d.professions.length > 0) {
+        professions = d.professions;
+      } else if (d.profession_titles) {
+        professions = String(d.profession_titles).split(',').map(s => s.trim()).filter(Boolean);
+      } else if (d.profession) {
+        professions = [d.profession];
+      }
+      let rawClinics = d.clinics || d.clinic || d.clinic_ids || [];
+      if (!Array.isArray(rawClinics)) {
+        rawClinics = String(rawClinics).split(',').map(x => x.trim()).filter(Boolean);
+      }
+      let roles = [];
+      if (d.role_titles) {
+        roles = String(d.role_titles).split(',').map(s => s.trim()).filter(Boolean);
+      } else if (Array.isArray(d.role_names) && d.role_names.length > 0) {
+        roles = d.role_names;
+      } else if (d.role) {
+        roles = [d.role];
+      }
+      const mappedClinics = rawClinics.map(rbClinicId);
+      if (roles.includes('Сотрудник call-центра') && !mappedClinics.includes('ip')) {
+        mappedClinics.push('ip');
+      }
+      if (mappedClinics.includes('ip')) {
+        mappedClinics.splice(0, mappedClinics.length, 'ip');
+      }
+      return {
+        id: String(d.id),
+        name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
+        professions,
+        roles,
+        clinics: mappedClinics,
+      };
+    });
+
+    // Показываем закешированные данные мгновенно
+    try {
+      const raw = sessionStorage.getItem(CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached) && cached.length) {
+          setDoctors(cached);
+          setDoctorsLoading(false);
+        }
+      }
+    } catch {}
+
+    // Всегда подгружаем свежие данные в фоне
     setDoctorsError(null);
     mis.getDoctors({ show_all: true })
       .then(res => {
@@ -259,43 +309,9 @@ export default function ReferralBonusesPage() {
           setDoctorsError('Не удалось загрузить врачей');
           return;
         }
-        const normalized = data.data.map(d => {
-          let professions = [];
-          if (Array.isArray(d.professions) && d.professions.length > 0) {
-            professions = d.professions;
-          } else if (d.profession_titles) {
-            professions = String(d.profession_titles).split(',').map(s => s.trim()).filter(Boolean);
-          } else if (d.profession) {
-            professions = [d.profession];
-          }
-          let rawClinics = d.clinics || d.clinic || d.clinic_ids || [];
-          if (!Array.isArray(rawClinics)) {
-            rawClinics = String(rawClinics).split(',').map(x => x.trim()).filter(Boolean);
-          }
-          let roles = [];
-          if (d.role_titles) {
-            roles = String(d.role_titles).split(',').map(s => s.trim()).filter(Boolean);
-          } else if (Array.isArray(d.role_names) && d.role_names.length > 0) {
-            roles = d.role_names;
-          } else if (d.role) {
-            roles = [d.role];
-          }
-          const mappedClinics = rawClinics.map(rbClinicId);
-          if (roles.includes('Сотрудник call-центра') && !mappedClinics.includes('ip')) {
-            mappedClinics.push('ip');
-          }
-          if (mappedClinics.includes('ip')) {
-            mappedClinics.splice(0, mappedClinics.length, 'ip');
-          }
-          return {
-            id: String(d.id),
-            name: d.name || [d.last_name, d.first_name, d.middle_name].filter(Boolean).join(' '),
-            professions,
-            roles,
-            clinics: mappedClinics,
-          };
-        });
+        const normalized = normalizeDoctors(data.data);
         setDoctors(normalized);
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(normalized)); } catch {}
       })
       .catch(err => {
         console.error('rbLoadDoctors error:', err);
@@ -315,7 +331,7 @@ export default function ReferralBonusesPage() {
       const effectiveClinics = d.clinics.filter(c => !(disabledClinicsMap[d.id] || []).includes(String(c)));
       if (!effectiveClinics.includes(String(filterClinic))) return false;
     }
-    if (filterRole.length && !d.roles.some(r => filterRole.includes(r))) return false;
+    if (filterRole && !d.roles.includes(filterRole)) return false;
     if (filterProfession && !d.professions.some(p => rbProfessionTitle(p) === filterProfession)) return false;
     return true;
   });
@@ -1141,7 +1157,6 @@ function DoctorsList({
             { value: '', label: 'Все должности' },
             ...allRoles.map(r => ({ value: r, label: r })),
           ]}
-          multiSelect
         />
         <SearchableSelect
           value={filterProfession}

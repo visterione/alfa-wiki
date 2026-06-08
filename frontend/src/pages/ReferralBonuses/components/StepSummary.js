@@ -93,8 +93,8 @@ const fmtDate = s => {
 // ── Toggle ────────────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange }) {
   return (
-    <div onClick={onChange} style={{ width: 28, height: 16, borderRadius: 8, background: checked ? 'var(--rb-primary)' : '#d1d5db', cursor: 'pointer', flexShrink: 0, position: 'relative' }}>
-      <div style={{ position: 'absolute', top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+    <div onClick={onChange} style={{ width: 28, height: 16, borderRadius: 8, background: checked ? 'var(--rb-primary)' : '#d1d5db', cursor: 'pointer', flexShrink: 0, position: 'relative', transition: 'background .15s' }}>
+      <div style={{ position: 'absolute', top: 2, left: checked ? 14 : 2, width: 12, height: 12, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.2)', transition: 'left .15s' }} />
     </div>
   );
 }
@@ -1065,7 +1065,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 </th>
                 {/* Специальность */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
-                  <SpecialtyFilter options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} />
+                  <MultiSelect options={allSpecialties} value={filterSpecialties} onChange={setFilterSpecialties} placeholder="Все" />
                 </th>
                 {/* Дата */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
