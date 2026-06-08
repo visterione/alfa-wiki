@@ -69,12 +69,12 @@ function normalizeEntry(entryType, body, userId) {
   };
 }
 
-async function getNextNumber(entryType, entryDate, excludeId) {
-  if (!NUMBERED_TYPES.includes(entryType) || !entryDate) return null;
-  const where = { entryType, entryDate };
+async function getNextNumber(entryType, excludeId) {
+  if (!NUMBERED_TYPES.includes(entryType)) return 1;
+  const where = { entryType, seqNumber: { [Op.not]: null } };
   if (excludeId) where.id = { [Op.ne]: excludeId };
-  const max = await AmbulanceReportEntry.max('seqNumber', { where });
-  return (Number(max) || 0) + 1;
+  const last = await AmbulanceReportEntry.findOne({ where, order: [['createdAt', 'DESC']] });
+  return last ? (Number(last.seqNumber) || 0) + 1 : 1;
 }
 
 function isEmptyRow(row) {
@@ -647,9 +647,9 @@ router.get('/available-calls', authenticate, async (req, res) => {
 
 router.get('/next-number', authenticate, async (req, res) => {
   try {
-    const { type, date, excludeId } = req.query;
+    const { type, excludeId } = req.query;
     if (!ENTRY_TYPES.includes(type)) return res.status(400).json({ error: 'Неверный тип вкладки' });
-    const nextNumber = await getNextNumber(type, date, excludeId);
+    const nextNumber = await getNextNumber(type, excludeId);
     res.json({ nextNumber });
   } catch (err) {
     console.error('GET /api/ambulance-reports/next-number error:', err);
@@ -801,16 +801,7 @@ router.post('/', authenticate, async (req, res) => {
 
     const payload = normalizeEntry(entryType, req.body, req.user?.id);
     if (NUMBERED_TYPES.includes(entryType) && !payload.seqNumber) {
-      payload.seqNumber = await getNextNumber(entryType, payload.entryDate);
-    }
-
-    if (NUMBERED_TYPES.includes(entryType) && payload.seqNumber && payload.entryDate) {
-      const conflict = await AmbulanceReportEntry.findOne({
-        where: { entryType, entryDate: payload.entryDate, seqNumber: payload.seqNumber }
-      });
-      if (conflict) {
-        return res.status(409).json({ error: `Номер ${payload.seqNumber} уже занят для этой даты` });
-      }
+      payload.seqNumber = await getNextNumber(entryType);
     }
 
     const row = await AmbulanceReportEntry.create(payload);
@@ -831,16 +822,7 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const payload = normalizeEntry(entryType, req.body, row.createdBy);
     if (NUMBERED_TYPES.includes(entryType) && !payload.seqNumber) {
-      payload.seqNumber = await getNextNumber(entryType, payload.entryDate, row.id);
-    }
-
-    if (NUMBERED_TYPES.includes(entryType) && payload.seqNumber && payload.entryDate) {
-      const conflict = await AmbulanceReportEntry.findOne({
-        where: { entryType, entryDate: payload.entryDate, seqNumber: payload.seqNumber, id: { [Op.ne]: row.id } }
-      });
-      if (conflict) {
-        return res.status(409).json({ error: `Номер ${payload.seqNumber} уже занят для этой даты` });
-      }
+      payload.seqNumber = await getNextNumber(entryType, row.id);
     }
 
     await row.update(payload);
