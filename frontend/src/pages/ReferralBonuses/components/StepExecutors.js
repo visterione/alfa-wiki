@@ -1329,17 +1329,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       performedServiceBonuses.getByDoctor(selectedDoctor.id).catch(() => ({ data: [] })),
     ]).then(([settingsRes, bonusRes]) => {
       const raw = settingsRes.data;
-      const isHarmfulRole = (selectedDoctor.roles || []).some(r => r === 'Врач' || r === 'Медсестра');
-      const applyHarmfulness = (execDataObj) => {
-        if (!isHarmfulRole) return execDataObj;
-        const cs = { ...(execDataObj.clinicSettings || {}) };
-        Object.keys(cs).forEach(key => {
-          if (!cs[key].harmfulnessSet && !cs[key].harmfulness) cs[key] = { ...cs[key], harmfulness: true };
-        });
-        return { ...execDataObj, clinicSettings: cs };
-      };
       if (!raw || !Object.keys(raw).length) {
-        setExecData(applyHarmfulness(execDefault()));
+        setExecData(execDefault());
       } else if (!raw.clinicSettings) {
         // Old format migration
         const global = execClinicDefault();
@@ -1350,9 +1341,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         global.fixedSalary = raw.wage || raw.payment || 0;
         global.advance     = raw.advance || 0;
         global.paymentMethod = raw.method || 'card';
-        setExecData(applyHarmfulness({ clinicSettings: { global } }));
+        setExecData({ clinicSettings: { global } });
       } else {
-        setExecData(applyHarmfulness(raw));
+        setExecData(raw);
       }
       const bonuses = Array.isArray(bonusRes.data) ? bonusRes.data : [];
       const seen = new Set();
@@ -1541,11 +1532,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   };
 
   const handlePaymentFieldChange = (field, val) => {
-    if (field === 'harmfulness') {
-      updateClinicData({ harmfulness: val, harmfulnessSet: true });
-    } else {
-      updateClinicData({ [field]: val });
-    }
+    updateClinicData({ [field]: val });
     setIsDirty(true);
   };
 
@@ -1590,11 +1577,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   const handleToggleIncludeReferralDeductionsLock = () => {
     updateClinicData({ lockedIncludeReferralDeductions: !data.lockedIncludeReferralDeductions });
-    setIsDirty(true);
-  };
-
-  const handleToggleHarmfulnessLock = () => {
-    updateClinicData({ lockedHarmfulness: !data.lockedHarmfulness });
     setIsDirty(true);
   };
 
@@ -2533,16 +2515,6 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 title="Добавить взыскание"
               >+</button>
             )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 0 8px' }}>
-            <label className="rb-toggle-item" style={data.lockedHarmfulness ? { pointerEvents: 'none', opacity: 0.65 } : {}}>
-              <span className="rb-toggle-switch">
-                <input type="checkbox" checked={!!data.harmfulness} onChange={e => handlePaymentFieldChange('harmfulness', e.target.checked)} disabled={!!data.lockedHarmfulness} />
-                <span className="rb-toggle-slider" />
-              </span>
-              <span className="rb-toggle-label">Вредность</span>
-            </label>
-            {!readOnly && <LockBtn locked={!!data.lockedHarmfulness} onClick={handleToggleHarmfulnessLock} />}
           </div>
           <div style={{ marginBottom: 8 }}>
             <ItemsList items={data.deductions || []} section="deductions" onDelete={handleDeleteItem} onUpdate={handleUpdateItem} readOnly={readOnly} />

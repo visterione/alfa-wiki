@@ -408,7 +408,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             includeReferralBonuses: true, includeReferralDeductions: true,
             includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
             deductions: [], materials: [], serviceMaterials: [],
-            extras: [], normServices: [], harmfulness: false,
+            extras: [], normServices: [],
           },
         },
       };
@@ -459,7 +459,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             includeReferralBonuses: true, includeReferralDeductions: true,
             includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
             deductions: [], materials: [], serviceMaterials: [],
-            extras: [], normServices: [], harmfulness: false,
+            extras: [], normServices: [],
           },
         },
       };

@@ -420,7 +420,7 @@ export default function ReferralBonusesPage() {
               includeReferralBonuses: true, includeReferralDeductions: true,
               includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
               deductions: [], materials: [], serviceMaterials: [],
-              extras: [], normServices: [], harmfulness: false,
+              extras: [], normServices: [],
             },
           },
         };

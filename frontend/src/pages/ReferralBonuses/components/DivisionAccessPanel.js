@@ -11,7 +11,7 @@ const execClinicDefault = () => ({
   extraPayments: [], includeReferralBonuses: true, includeReferralDeductions: true,
   includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
   deductions: [], materials: [], serviceMaterials: [], extras: [],
-  normServices: [], roleRates: [], harmfulness: false,
+  normServices: [], roleRates: [],
 });
 
 const PERM_OPTIONS = [

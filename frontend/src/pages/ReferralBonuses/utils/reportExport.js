@@ -126,10 +126,6 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       }
     }
 
-    // Надбавка за вредность
-    if ((sal.harmfulnessDeduction || 0) > 0)
-      addSalRow('Надбавка за вредность 4%', sal.harmfulnessDeduction, '+');
-
     // Бонусы за направления
     if ((sal.referralBonuses || 0) > 0) {
       addSalRow('Бонусы за направления', sal.referralBonuses, '+', (sal.referralSections || []).length > 0);
@@ -368,11 +364,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     const _extraTotal = _extraPayments.reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
     const _ndflTotal = sal.ndflTotal || 0;
     const _deductionsWithoutNdfl = (sal.finalDeductionsTotal || 0) + (sal.finalMaterialsTotal || 0) + (sal.svcMatFinalTotal || 0);
-    const _harmfulness = sal.harmfulnessDeduction || 0;
-    const _grossFinalSalary = (sal.finalSalary || 0) + _deductionsWithoutNdfl + _harmfulness;
+    const _grossFinalSalary = (sal.finalSalary || 0) + _deductionsWithoutNdfl;
     const _totalUderzhano = _deductionsWithoutNdfl + _ndflTotal;
     const _hasBreakdown = (sal.advance || 0) > 0 || (sal.mainPayment || 0) > 0 || (sal.normPremiumAmount || 0) > 0 || _extraTotal > 0 || _totalUderzhano > 0;
-    const _remainder = (sal.finalSalary || 0) + _harmfulness - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
+    const _remainder = (sal.finalSalary || 0) - _ndflTotal - (sal.advance || 0) - (sal.mainPayment || 0) - (sal.normPremiumAmount || 0) - _extraTotal;
 
     const addPayRow = (label, method, value) => {
       const row = ws.addRow([label, '', '', method ? (method === 'cash' ? 'наличные' : 'карта') : '', '', parseFloat((value || 0).toFixed(2))]);
@@ -399,7 +394,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     };
 
     if (!_hasBreakdown) {
-      addTotalBlock('Начислено', (sal.finalSalary || 0) + (sal.harmfulnessDeduction || 0));
+      addTotalBlock('Начислено', sal.finalSalary || 0);
     } else {
       addSalRow('Начислено', _grossFinalSalary, _grossFinalSalary >= 0 ? '+' : '-');
       if (_totalUderzhano > 0) {
@@ -509,7 +504,7 @@ export function buildSingleWorkbook(reportData, cashPayments) {
     ? clinicReports.reduce((s, cr) => {
         const sal = cr.salary || {};
         const extraTot = (sal.extraPayments || []).reduce((es, ep) => es + (parseFloat(ep.amount) || 0), 0);
-        return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.harmfulnessDeduction || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTot;
+        return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTot;
       }, 0)
     : null;
 
@@ -589,7 +584,7 @@ export function buildBulkWorkbook(bulkResults) {
       const pt          = sal.payType || '';
       const hoursWorked = pt === 'hourly' ? (parseFloat(sal.hoursWorked) || 0) :
                           pt === 'normed' ? (parseFloat(sal.normTotalHours) || 0) : 0;
-      const nachleno    = parseFloat(((sal.finalSalary || 0) + (sal.harmfulnessDeduction || 0)).toFixed(2));
+      const nachleno    = parseFloat((sal.finalSalary || 0).toFixed(2));
       const mainSalary  = parseFloat(((sal.mainPayment || 0) + extraTot).toFixed(2));
       const advance     = parseFloat((sal.advance || 0).toFixed(2));
       const vacationPay = parseFloat(((sal.extraPayments || [])

@@ -133,9 +133,6 @@ function buildLeftRows(salary, periodCell) {
     }
   }
 
-  if ((salary.harmfulnessDeduction || 0) > 0)
-    rows.push({ label: 'Надбавка за вредные условия труда', period: periodCell, days: daysStr, hours: hoursStr, paid: hoursStr, sum: salary.harmfulnessDeduction });
-
   const holBreakdown = salary.holidaySurchargeBreakdown || [];
   if (holBreakdown.length > 0) {
     for (const hRow of holBreakdown) {
@@ -166,7 +163,6 @@ function buildRightRows(salary, periodCell) {
   const rows = [];
 
   // ── Взыскания: individual final-deduction items ──
-  const harmAmt   = parseFloat(salary.harmfulnessDeduction) || 0;
   const finalDeds = (salary.deductions || []).filter(d => d.deductionType === 'final');
   if (finalDeds.length > 0) {
     // preFinalSalary needed to resolve percent-based deductions
@@ -179,7 +175,7 @@ function buildRightRows(salary, periodCell) {
       if (rub > 0) rows.push({ label: d.name || 'Взыскание', period: periodCell, sum: rub });
     }
   } else {
-    const deductionsAmt = Math.max(0, (parseFloat(salary.finalDeductionsTotal) || 0) - harmAmt);
+    const deductionsAmt = Math.max(0, parseFloat(salary.finalDeductionsTotal) || 0);
     if (deductionsAmt > 0)
       rows.push({ label: 'Взыскания', period: periodCell, sum: deductionsAmt });
   }
@@ -307,7 +303,7 @@ function buildPayslipContent({ clinicId, clinicLabel, salary, doctorName, tabelN
         body: [
           [
             { text: `${doctorName}${tabelNumber ? ` (${tabelNumber})` : ''}`, style: 'hdrName' },
-            { text: `Начислено: ${fmt2((salary.finalSalary || 0) + (salary.harmfulnessDeduction || 0) + (salary.finalDeductionsTotal || 0) + (salary.finalMaterialsTotal || 0) + (salary.svcMatFinalTotal || 0))} ₽`, style: 'hdrPay' },
+            { text: `Начислено: ${fmt2((salary.finalSalary || 0) + (salary.finalDeductionsTotal || 0) + (salary.finalMaterialsTotal || 0) + (salary.svcMatFinalTotal || 0))} ₽`, style: 'hdrPay' },
           ],
           [
             { text: orgName ? `Организация: ${orgName}` : 'Организация:', style: 'hdrInfo' },

@@ -32,7 +32,6 @@ export function execClinicDefault() {
     serviceMaterials: [],
     extras: [],
     normServices: [],
-    harmfulness: false,
   };
 }
 
@@ -50,18 +49,6 @@ const _execCache = {};
 export function clearExecCache(misUserId) {
   if (misUserId) delete _execCache[misUserId];
   else Object.keys(_execCache).forEach(k => delete _execCache[k]);
-}
-
-const HARMFUL_ROLES = ['Врач', 'Медсестра'];
-
-function applyHarmfulnessDefault(execDataObj, roles) {
-  if (!roles || !roles.some(r => HARMFUL_ROLES.includes(r))) return execDataObj;
-  const cs = { ...(execDataObj.clinicSettings || {}) };
-  let modified = false;
-  Object.keys(cs).forEach(key => {
-    if (!cs[key].harmfulnessSet && !cs[key].harmfulness) { cs[key] = { ...cs[key], harmfulness: true }; modified = true; }
-  });
-  return modified ? { ...execDataObj, clinicSettings: cs } : execDataObj;
 }
 
 export async function loadExecSettings(misUserId, roles) {
@@ -89,7 +76,7 @@ export async function loadExecSettings(misUserId, roles) {
       _execCache[misUserId] = { clinicSettings: { global: execClinicDefault() } };
     }
   }
-  return applyHarmfulnessDefault(_execCache[misUserId], roles);
+  return _execCache[misUserId];
 }
 
 // ── Core calculation engine ────────────────────────────────────────────────────
@@ -1313,7 +1300,7 @@ export async function buildReport({
       }
     }
 
-    const harmfulnessDeduction = !!clinicSettings.harmfulness ? basePay * 0.04 : 0;
+    const harmfulnessDeduction = 0;
 
     const includePerformedBonus = pt !== 'percent' && !!clinicSettings.plusPercent;
     const includePerformedServices = pt === 'percent' || includePerformedBonus;

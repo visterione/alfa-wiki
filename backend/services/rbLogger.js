@@ -70,7 +70,7 @@ const SCALAR_LABELS = {
   paymentMethod:     'Способ выплаты аванса',
   mainPaymentMethod: 'Способ основной выплаты',
   plusPercent:       'Плюс процент',
-  harmfulness:       'Вредность',
+
   includeReferralBonuses:    'Включать направит. бонусы',
   includeReferralDeductions: 'Включать направит. удержания',
   includeCorpInvoices:       'Включать корп. счета',
