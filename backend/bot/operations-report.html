@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт операционных</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --op-primary: #7c3aed;
+  --op-primary-hover: #6d28d9;
+  --op-bg: #f8fafc;
+  --op-card: #fff;
+  --op-border: #e5e7eb;
+  --op-border-dark: #cbd5e1;
+  --op-text: #111827;
+  --op-muted: #64748b;
+  --op-success: #16a34a;
+  --op-danger: #dc2626;
+  --op-warning: #d97706;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--op-bg);
+  color: var(--op-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+#operations-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+.op-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--op-border);
+  padding-bottom: 8px; flex-wrap: wrap;
+}
+.op-topbar-title { font-size: 15px; font-weight: 700; color: var(--op-primary); }
+.op-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.op-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.op-btn-primary { background: var(--op-primary); color: #fff; }
+.op-btn-primary:hover { background: var(--op-primary-hover); }
+.op-btn-secondary { background: #fff; color: #334155; border-color: var(--op-border-dark); }
+.op-btn-secondary:hover { background: #f1f5f9; }
+.op-btn-danger { background: #fee2e2; color: var(--op-danger); }
+.op-btn-danger:hover { background: #fecaca; }
+.op-btn-success { background: var(--op-success); color: #fff; }
+.op-btn-success:hover { background: #15803d; }
+.op-btn-icon { width: 34px; min-height: 34px; padding: 0; }
+.op-btn svg { width: 16px; height: 16px; }
+.op-layout { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+.op-panel {
+  background: var(--op-card); border: 1px solid var(--op-border); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.op-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--op-border);
+  background: linear-gradient(135deg, #f5f3ff 0%, #f8fafc 100%);
+  border-left: 3px solid var(--op-primary);
+}
+.op-panel-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--op-primary); letter-spacing: -.01em; }
+.op-form { padding: 13px; }
+.op-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 10px; }
+.op-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 0; min-width: 0; }
+.op-field.full { grid-column: 1 / -1; }
+.op-field label {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.op-required { color: var(--op-danger); }
+.op-input, .op-select, .op-textarea {
+  width: 100%; border: 1px solid var(--op-border-dark); border-radius: 7px; background: #fff;
+  color: var(--op-text); padding: 6px 9px; min-height: 32px; outline: none; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.op-textarea { min-height: 58px; resize: vertical; line-height: 1.4; }
+.op-input:focus, .op-select:focus, .op-textarea:focus {
+  border-color: var(--op-primary); box-shadow: 0 0 0 3px rgba(124,58,237,.1);
+}
+.op-form-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--op-border);
+}
+.op-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--op-border); flex-wrap: wrap; }
+.op-filters { display: flex; gap: 7px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.op-search { min-width: 130px; flex: 1; }
+.op-table-wrap { overflow: auto; max-height: calc(100vh - 260px); min-height: 120px; }
+.op-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.op-table th {
+  position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #334155; text-align: left;
+  padding: 5px 7px; border-bottom: 1px solid var(--op-border); font-weight: 700; white-space: nowrap;
+}
+.op-table td { padding: 4px 7px; border-bottom: 1px solid var(--op-border); vertical-align: top; }
+.op-table tr:hover td { background: #f8fafc; }
+.op-table .center { text-align: center; }
+.op-table .right { text-align: right; }
+.op-actions-cell { display: flex; gap: 5px; justify-content: center; }
+.op-table th.col-actions,
+.op-table td.col-actions { position: sticky; right: 0; box-shadow: -2px 0 5px rgba(0,0,0,.07); }
+.op-table th.col-actions { z-index: 3; }
+.op-table td.col-actions { background: #fff; z-index: 2; }
+.op-table tr:hover td.col-actions { background: #f8fafc; }
+.op-empty { text-align: center; color: var(--op-muted); padding: 28px 12px !important; }
+.op-status { display: inline-flex; align-items: center; gap: 5px; color: var(--op-muted); font-size: 12px; }
+.op-status.error { color: var(--op-danger); }
+.op-status.loading { color: var(--op-primary); }
+.op-pagination {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 13px; border-top: 1px solid var(--op-border); background: #f8fafc; flex-wrap: wrap;
+}
+.op-pagination-controls { display: flex; align-items: center; gap: 6px; }
+.op-page-size { width: 80px; }
+.op-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 13px;
+  border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  font-size: 13px; font-weight: 600;
+}
+.op-toast.success { background: var(--op-success); }
+.op-toast.error { background: var(--op-danger); }
+@media (max-width: 640px) {
+  #operations-app { padding: 8px 10px 12px; }
+  .op-actions { justify-content: flex-start; width: 100%; }
+  .op-search { min-width: 100%; }
+  .op-table-wrap { max-height: none; }
+  .op-form { padding: 11px; }
+}
+</style>
+</head>
+<body>
+<div id="operations-app">
+  <div class="op-topbar">
+    <span class="op-topbar-title">Отчёт операционных</span>
+    <div class="op-actions">
+      <button class="op-btn op-btn-secondary op-btn-icon" onclick="opApp.reload()" title="Обновить" aria-label="Обновить">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
+      </button>
+      <button id="op-btn-import" class="op-btn op-btn-secondary op-btn-icon" onclick="opApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="op-btn op-btn-success op-btn-icon" onclick="opApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button id="op-btn-delete-all" class="op-btn op-btn-danger op-btn-icon" onclick="opApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+      </button>
+      <input type="file" id="op-import-file" accept=".xlsx,.xls" style="display:none" onchange="opApp.importExcel(this.files[0])">
+    </div>
+  </div>
+
+  <div class="op-layout">
+    <section class="op-panel">
+      <div class="op-panel-head">
+        <h2 class="op-panel-title" id="op-form-title">Новая запись</h2>
+        <span class="op-status" id="op-storage-status"></span>
+      </div>
+      <form class="op-form" id="op-form" onsubmit="opApp.save(event)">
+        <div class="op-grid">
+          <div class="op-field full">
+            <label for="op-serviceName">Название <span class="op-required">*</span></label>
+            <input class="op-input" id="op-serviceName" name="serviceName" type="text" required placeholder="Название услуги">
+          </div>
+          <div class="op-field">
+            <label for="op-patientCount">Кол-во пациентов</label>
+            <input class="op-input" id="op-patientCount" name="patientCount" type="number" min="0" placeholder="0">
+          </div>
+          <div class="op-field">
+            <label for="op-serviceCount">Кол-во услуг</label>
+            <input class="op-input" id="op-serviceCount" name="serviceCount" type="number" min="0" placeholder="0">
+          </div>
+          <div class="op-field">
+            <label for="op-amount">Сумма</label>
+            <input class="op-input" id="op-amount" name="amount" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="op-field">
+            <label for="op-reportDate">Дата <span class="op-required">*</span></label>
+            <input class="op-input" id="op-reportDate" name="reportDate" type="text" data-mask="date" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off" required>
+          </div>
+        </div>
+        <div class="op-form-actions">
+          <button class="op-btn op-btn-primary" type="submit" id="op-submit-btn">Добавить запись</button>
+          <button class="op-btn op-btn-secondary" type="button" onclick="opApp.resetForm()">Очистить</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="op-panel">
+      <div class="op-toolbar">
+        <div class="op-filters">
+          <input class="op-input op-search" id="op-search" placeholder="Поиск по таблице" oninput="opApp.onSearchChange()">
+        </div>
+        <button class="op-btn op-btn-secondary" onclick="opApp.clearFilters()" type="button">Сбросить</button>
+      </div>
+      <div class="op-table-wrap">
+        <table class="op-table">
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th class="center">Кол-во пациентов</th>
+              <th class="center">Кол-во услуг</th>
+              <th class="right">Сумма</th>
+              <th>Дата</th>
+              <th class="center col-actions">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="op-table-body"></tbody>
+        </table>
+      </div>
+      <div class="op-pagination">
+        <div class="op-status" id="op-page-info">0 записей</div>
+        <div class="op-pagination-controls">
+          <button class="op-btn op-btn-secondary op-btn-icon" type="button" onclick="opApp.prevPage()" title="Назад">‹</button>
+          <select class="op-select op-page-size" id="op-page-size" onchange="opApp.changePageSize(this.value)">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <button class="op-btn op-btn-secondary op-btn-icon" type="button" onclick="opApp.nextPage()" title="Вперёд">›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+window.opApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/operations-reports';
+  var records = [];
+  var editingId = '';
+  var pagination = { page: 1, pageSize: 50, total: 0 };
+  var searchTimer = null;
+
+  var FIELDS = [
+    { name: 'serviceName',   label: 'Название' },
+    { name: 'patientCount',  label: 'Кол-во пациентов' },
+    { name: 'serviceCount',  label: 'Кол-во услуг' },
+    { name: 'amount',        label: 'Сумма' },
+    { name: 'reportDate',    label: 'Дата' }
+  ];
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 12000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил за 12 секунд');
+      throw e;
+    });
+  }
+
+  function uploadApi(path, formData, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 120000);
+    return fetch(API_URL + path, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Импорт не ответил за 120 секунд');
+      throw e;
+    });
+  }
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+
+  function todayDMY() {
+    var d = new Date();
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+  }
+
+  function dmyToISO(val) {
+    var m = String(val || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    return m ? m[3] + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0') : String(val || '');
+  }
+
+  function focusNextInput(el) {
+    var inputs = Array.from(document.querySelectorAll('#op-form input.op-input, #op-form select.op-select, #op-form textarea.op-textarea'));
+    var idx = inputs.indexOf(el);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  }
+
+  function attachDateMask(el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (['Tab','Backspace','Delete','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    el.addEventListener('input', function() {
+      var caretBefore = this.selectionStart;
+      var digitsBefore = (this.value.substring(0, caretBefore).match(/\d/g) || []).length;
+      var digits = this.value.replace(/\D/g,'').substring(0, 8);
+      var f = digits.length > 4
+        ? digits.slice(0,2) + '.' + digits.slice(2,4) + '.' + digits.slice(4)
+        : digits.length > 2 ? digits.slice(0,2) + '.' + digits.slice(2) : digits;
+      this.value = f;
+      var n = 0, c = 0;
+      while (n < f.length && c < digitsBefore) { if (/\d/.test(f[n])) c++; n++; }
+      this.setSelectionRange(n, n);
+      if (digits.length >= 8) focusNextInput(this);
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+
+  function formatValue(value) {
+    return value == null || value === '' ? '-' : escapeHtml(value);
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'op-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2600);
+  }
+
+  function setStatus(text, type) {
+    var el = document.getElementById('op-storage-status');
+    el.className = 'op-status ' + (type || '');
+    el.textContent = text;
+  }
+
+  function collectForm() {
+    return {
+      serviceName:  document.getElementById('op-serviceName').value.trim(),
+      patientCount: document.getElementById('op-patientCount').value,
+      serviceCount: document.getElementById('op-serviceCount').value,
+      amount:       document.getElementById('op-amount').value,
+      reportDate:   document.getElementById('op-reportDate').value.trim()
+    };
+  }
+
+  function fillForm(data) {
+    document.getElementById('op-serviceName').value  = data.serviceName  || '';
+    document.getElementById('op-patientCount').value = data.patientCount != null ? data.patientCount : '';
+    document.getElementById('op-serviceCount').value = data.serviceCount != null ? data.serviceCount : '';
+    document.getElementById('op-amount').value       = data.amount       != null ? data.amount       : '';
+    document.getElementById('op-reportDate').value   = data.reportDate   || '';
+  }
+
+  function resetForm() {
+    editingId = '';
+    document.getElementById('op-form').reset();
+    document.getElementById('op-reportDate').value = todayDMY();
+    document.getElementById('op-form-title').textContent = 'Новая запись';
+    document.getElementById('op-submit-btn').textContent = 'Добавить запись';
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById('op-table-body');
+    if (!records.length) {
+      tbody.innerHTML = '<tr><td class="op-empty" colspan="6">Нет данных</td></tr>';
+      renderPagination();
+      return;
+    }
+    tbody.innerHTML = records.map(function(row) {
+      var d = row.data || {};
+      return '<tr>' +
+        '<td>' + formatValue(d.serviceName) + '</td>' +
+        '<td class="center">' + formatValue(d.patientCount) + '</td>' +
+        '<td class="center">' + formatValue(d.serviceCount) + '</td>' +
+        '<td class="right">' + formatValue(d.amount) + '</td>' +
+        '<td>' + formatValue(d.reportDate) + '</td>' +
+        '<td class="center col-actions"><div class="op-actions-cell">' +
+          '<button class="op-btn op-btn-secondary op-btn-icon" type="button" onclick="opApp.edit(\'' + escapeHtml(row.id) + '\')" title="Редактировать">✎</button>' +
+          '<button class="op-btn op-btn-danger op-btn-icon" type="button" onclick="opApp.remove(\'' + escapeHtml(row.id) + '\')" title="Удалить">×</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    var start = pagination.total ? ((pagination.page - 1) * pagination.pageSize + 1) : 0;
+    var end = Math.min(pagination.page * pagination.pageSize, pagination.total);
+    document.getElementById('op-page-info').textContent =
+      'Показано ' + start + '-' + end + ' из ' + pagination.total + ' | страница ' + pagination.page + ' из ' + totalPages;
+    document.getElementById('op-page-size').value = String(pagination.pageSize);
+  }
+
+  function loadFromApi() {
+    var params = new URLSearchParams();
+    var search = document.getElementById('op-search').value.trim();
+    params.set('page', pagination.page);
+    params.set('limit', pagination.pageSize);
+    if (search) params.set('search', search);
+    return api('?' + params.toString()).then(function(res) {
+      records = (res.rows || []).map(function(r) {
+        return { id: r.id, data: r.data || {} };
+      });
+      pagination.total = res.total || 0;
+      pagination.page = res.page || pagination.page;
+      pagination.pageSize = res.limit || pagination.pageSize;
+      renderTable();
+    });
+  }
+
+  function reload() {
+    setStatus('Загрузка...', 'loading');
+    loadFromApi().then(function() {
+      setStatus('', '');
+    }).catch(function(e) {
+      records = [];
+      pagination.total = 0;
+      renderTable();
+      setStatus('БД недоступна', 'error');
+      showToast('Не удалось загрузить данные: ' + e.message, 'error');
+    });
+  }
+
+  function save(event) {
+    event.preventDefault();
+    var data = collectForm();
+    var payload = { entryType: 'operations', data: data };
+    var request = editingId
+      ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+      : api('', { method: 'POST', body: JSON.stringify(payload) });
+    request.then(function() {
+      showToast('Запись сохранена', 'success');
+      resetForm();
+      reload();
+    }).catch(function(e) {
+      showToast('Ошибка сохранения: ' + e.message, 'error');
+    });
+  }
+
+  function edit(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    editingId = row.id;
+    fillForm(row.data || {});
+    document.getElementById('op-form-title').textContent = 'Редактировать';
+    document.getElementById('op-submit-btn').textContent = 'Сохранить изменения';
+    document.querySelector('.op-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function remove(id) {
+    if (!confirm('Удалить запись?')) return;
+    api('/' + id, { method: 'DELETE' }).then(function() {
+      showToast('Удалено', 'success');
+      reload();
+    }).catch(function(e) { showToast('Ошибка удаления: ' + e.message, 'error'); });
+  }
+
+  function clearFilters() {
+    document.getElementById('op-search').value = '';
+    pagination.page = 1;
+    reload();
+  }
+
+  function onSearchChange() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() { pagination.page = 1; reload(); }, 350);
+  }
+
+  function prevPage() {
+    if (pagination.page <= 1) return;
+    pagination.page -= 1;
+    reload();
+  }
+
+  function nextPage() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    if (pagination.page >= totalPages) return;
+    pagination.page += 1;
+    reload();
+  }
+
+  function changePageSize(value) {
+    pagination.pageSize = Number(value) || 50;
+    pagination.page = 1;
+    reload();
+  }
+
+  function exportExcel() {
+    if (!window.ExcelJS) { showToast('Библиотека ExcelJS не загружена', 'error'); return; }
+    showToast('Готовлю Excel...', 'success');
+    api('/export-data').then(function(exportRows) {
+      buildExcel(exportRows || []);
+    }).catch(function(e) {
+      showToast('Ошибка экспорта: ' + e.message, 'error');
+    });
+  }
+
+  var MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  function parseMonthKey(dateStr) {
+    var m = String(dateStr || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) return m[3] + '-' + m[2].padStart(2,'0');
+    m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return m[1] + '-' + m[2];
+    return 'unknown';
+  }
+
+  function monthKeyToLabel(key) {
+    var parts = key.split('-');
+    if (parts.length === 2) {
+      var monthIdx = parseInt(parts[1], 10) - 1;
+      var year = parts[0];
+      if (monthIdx >= 0 && monthIdx < 12) return MONTH_NAMES[monthIdx] + ' ' + year;
+    }
+    return key;
+  }
+
+  function buildExcel(exportRows) {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Alfa Wiki';
+    wb.created = new Date();
+
+    var byMonth = {};
+    var monthOrder = [];
+    exportRows.forEach(function(row) {
+      var key = parseMonthKey((row.data || {}).reportDate);
+      if (!byMonth[key]) { byMonth[key] = []; monthOrder.push(key); }
+      byMonth[key].push(row);
+    });
+
+    if (!monthOrder.length) monthOrder.push('unknown');
+
+    monthOrder.forEach(function(key) {
+      var rows = byMonth[key] || [];
+      var label = monthKeyToLabel(key);
+      var ws = wb.addWorksheet(label);
+
+      ws.addRow(FIELDS.map(function(f) { return f.label; }));
+
+      var prevDate = null;
+      rows.forEach(function(row) {
+        var d = row.data || {};
+        var currDate = d.reportDate || '';
+        if (prevDate !== null && currDate !== prevDate) ws.addRow([]);
+        ws.addRow([
+          d.serviceName  || '',
+          d.patientCount != null ? Number(d.patientCount) : '',
+          d.serviceCount != null ? Number(d.serviceCount) : '',
+          d.amount       != null ? Number(d.amount)       : '',
+          d.reportDate   || ''
+        ]);
+        prevDate = currDate;
+      });
+
+      var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+      var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+      ws.eachRow(function(row, rowNumber) {
+        row.eachCell({ includeEmpty: true }, function(cell) { cell.border = border; });
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7C3AED' } };
+      ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.columns.forEach(function(col) {
+        var max = 12;
+        col.eachCell({ includeEmpty: true }, function(cell) {
+          max = Math.max(max, String(cell.value || '').length + 2);
+        });
+        col.width = Math.min(max, 40);
+      });
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Отчет_операционных_' + today() + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Excel сформирован', 'success');
+    });
+  }
+
+  function openImport() {
+    document.getElementById('op-import-file').click();
+  }
+
+  function importExcel(file) {
+    if (!file) return;
+    if (!confirm('Импортировать данные из Excel? Записи будут добавлены в БД.')) {
+      document.getElementById('op-import-file').value = '';
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', file);
+    setStatus('Импорт...', 'loading');
+    uploadApi('/import', formData).then(function(result) {
+      document.getElementById('op-import-file').value = '';
+      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0), 'success');
+      pagination.page = 1;
+      reload();
+    }).catch(function(e) {
+      document.getElementById('op-import-file').value = '';
+      setStatus('', '');
+      showToast('Ошибка импорта: ' + e.message, 'error');
+    });
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить все данные отчёта операционных?')) return;
+    var answer = prompt('Для подтверждения введите УДАЛИТЬ');
+    if (answer !== 'УДАЛИТЬ') { showToast('Очистка отменена', 'error'); return; }
+    setStatus('Очистка...', 'loading');
+    api('', { method: 'DELETE' }).then(function(result) {
+      editingId = '';
+      pagination.page = 1;
+      records = [];
+      resetForm();
+      reload();
+      showToast('Удалено записей: ' + (result.deleted || 0), 'success');
+    }).catch(function(e) {
+      setStatus('', '');
+      showToast('Ошибка очистки: ' + e.message, 'error');
+    });
+  }
+
+  function init() {
+    attachDateMask(document.getElementById('op-reportDate'));
+    document.getElementById('op-reportDate').value = todayDMY();
+    reload();
+    api('/whoami').then(function(info) {
+      if (info.isAdmin) {
+        document.getElementById('op-btn-import').style.display = '';
+        document.getElementById('op-btn-delete-all').style.display = '';
+      }
+    }).catch(function(e) {
+      console.warn('[operations] whoami failed:', e && e.message);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    save: save,
+    edit: edit,
+    remove: remove,
+    reload: reload,
+    resetForm: resetForm,
+    clearFilters: clearFilters,
+    onSearchChange: onSearchChange,
+    exportExcel: exportExcel,
+    openImport: openImport,
+    importExcel: importExcel,
+    clearAllData: clearAllData,
+    prevPage: prevPage,
+    nextPage: nextPage,
+    changePageSize: changePageSize
+  };
+})();
+</script>
+</body>
+</html>

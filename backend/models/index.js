@@ -2475,6 +2475,22 @@ const AmbulanceReportEntry = sequelize.define('AmbulanceReportEntry', {
   ]
 });
 
+// === OPERATIONS REPORT MODEL ===
+const OperationsReportEntry = sequelize.define('OperationsReportEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  entryDate: { type: DataTypes.DATEONLY, allowNull: true },
+  searchText: { type: DataTypes.TEXT, allowNull: true },
+  data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'operations_report_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['entryDate'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === PARTNER SERVICE CACHE MODEL ===
 const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -2876,4 +2892,6 @@ module.exports = {
   MisAppointment,
   // Directories manual data
   DirectoriesMeta,
+  // Operations reports module
+  OperationsReportEntry,
 };
