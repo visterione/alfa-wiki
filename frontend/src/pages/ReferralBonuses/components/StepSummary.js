@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import toast from 'react-hot-toast';
 import ExcelJS from 'exceljs';
 import { salaryRecords, executorSettings as execSettingsApi, cashPayments as cashPaymentsApi } from '../../../services/api';
@@ -104,8 +105,12 @@ function MultiSelect({ options, value, onChange, placeholder, renderLabel, rende
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const btnRef = useRef(null);
   const ref = useRef(null);
+  const dropdownRef = useRef(null);
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const h = e => {
+      if (ref.current?.contains(e.target) || dropdownRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -126,18 +131,19 @@ function MultiSelect({ options, value, onChange, placeholder, renderLabel, rende
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
         <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
       </button>
-      {open && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+      {open && ReactDOM.createPortal(
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
           {value.length > 0 && (
             <div onClick={() => onChange([])} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
           )}
           {options.map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={e => e.preventDefault()}>
-              <Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} />
+            <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => toggle(opt)}>
+              <span onClick={e => e.stopPropagation()}><Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} /></span>
               {renderOption ? renderOption(opt) : opt}
-            </label>
+            </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -150,9 +156,13 @@ function SpecialtyFilter({ options, value, onChange }) {
   const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
   const ref = useRef(null);
   const btnRef = useRef(null);
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const h = e => {
+      if (ref.current?.contains(e.target) || dropdownRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
@@ -195,94 +205,154 @@ function SpecialtyFilter({ options, value, onChange }) {
           setOpen(v => !v);
         }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: '#6b7280', fontSize: 10, lineHeight: 1 }}>▾</button>
       </div>
-      {open && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+      {open && ReactDOM.createPortal(
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
           {value.length > 0 && (
             <div onClick={() => { onChange([]); setText(''); }} style={{ padding: '6px 10px', fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', fontWeight: 500 }}>Сбросить</div>
           )}
           {filtered.map(opt => (
-            <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={e => e.preventDefault()}>
-              <Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} />
+            <div key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', fontSize: 12, cursor: 'pointer' }} onClick={() => toggle(opt)}>
+              <span onClick={e => e.stopPropagation()}><Toggle checked={value.includes(opt)} onChange={() => toggle(opt)} /></span>
               {opt}
-            </label>
+            </div>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
 }
 
-// ── Date filter: text input (мм.гггг) + dropdown picker ───────────────────────
-function DateFilter({ year, month, onYear, onMonth, allYears }) {
+// ── Autocomplete input ────────────────────────────────────────────────────────
+function AutocompleteInput({ value, onChange, suggestions, placeholder, inputStyle }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const [text, setText] = useState('');
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const inputRef = useRef(null);
   const ref = useRef(null);
-  const btnRef = useRef(null);
+
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  // Sync text when external values change
-  useEffect(() => {
-    if (!month && !year) { setText(''); return; }
-    const m = month ? String(month).padStart(2, '0') : '';
-    const y = year ? String(year) : '';
-    setText(m && y ? `${m}.${y}` : m || y);
-  }, [month, year]);
+  const matches = value
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()) && s.toLowerCase() !== value.toLowerCase())
+    : [];
 
-  const handleText = e => {
-    const v = e.target.value;
-    setText(v);
-    // Parse мм.гггг or гггг or мм
-    const full = v.match(/^(\d{1,2})\.(\d{4})$/);
-    if (full) { onMonth(parseInt(full[1], 10)); onYear(parseInt(full[2], 10)); return; }
-    const justYear = v.match(/^(\d{4})$/);
-    if (justYear) { onYear(parseInt(justYear[1], 10)); onMonth(''); return; }
-    if (!v) { onMonth(''); onYear(''); }
+  const updatePos = () => {
+    if (!inputRef.current) return;
+    const r = inputRef.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 2, left: r.left, width: r.width });
   };
 
-  const months = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
-  const active = !!(year || month);
+  const handleChange = e => {
+    onChange(e.target.value);
+    updatePos();
+    setOpen(true);
+  };
 
   return (
-    <div ref={ref} style={{ position: 'relative', width: '100%' }}>
-      <div style={{ display: 'flex', gap: 2 }}>
-        <input
-          value={text}
-          onChange={handleText}
-          placeholder="мм.гггг"
-          style={{ flex: 1, minWidth: 0, padding: '4px 6px', border: `1px solid ${active ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: active ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }}
-        />
-        <button ref={btnRef} onClick={() => {
-          if (!open && btnRef.current) {
-            const r = btnRef.current.getBoundingClientRect();
-            setPos({ top: r.bottom + 2, left: r.right - 200 });
-          }
-          setOpen(v => !v);
-        }} style={{ flexShrink: 0, padding: '4px 5px', border: `1px solid ${open ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, background: open ? '#eff6ff' : '#f9fafb', cursor: 'pointer', color: '#6b7280', fontSize: 10, lineHeight: 1 }}>▾</button>
-      </div>
-      {open && (
-        <div style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: 200, background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999, padding: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <select value={year} onChange={e => { onYear(e.target.value); }} style={{ flex: 1, padding: '3px 4px', border: '1px solid #d1d5db', borderRadius: 4, fontSize: 12 }}>
-              <option value="">Год</option>
-              {allYears.map(y => <option key={y} value={y}>{y}</option>)}
-            </select>
-            {(year || month) && <button onClick={() => { onYear(''); onMonth(''); setText(''); setOpen(false); }} style={{ marginLeft: 6, fontSize: 11, color: 'var(--rb-primary)', background: 'none', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Сбросить</button>}
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
-            {months.map((m, i) => {
-              const idx = i + 1;
-              const sel = String(month) === String(idx);
-              return (
-                <button key={idx} onClick={() => { onMonth(idx); setOpen(false); }} style={{ padding: '4px 2px', fontSize: 11, border: `1px solid ${sel ? 'var(--rb-primary)' : '#e5e7eb'}`, borderRadius: 4, background: sel ? 'var(--rb-primary)' : '#fff', color: sel ? '#fff' : '#374151', cursor: 'pointer', fontWeight: sel ? 600 : 400 }}>{m}</button>
-              );
-            })}
-          </div>
-        </div>
+    <div ref={ref} style={{ width: '100%' }}>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={handleChange}
+        onFocus={() => { if (matches.length > 0) { updatePos(); setOpen(true); } }}
+        placeholder={placeholder}
+        style={inputStyle}
+      />
+      {open && matches.length > 0 && ReactDOM.createPortal(
+        <div style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, maxHeight: 220, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999 }}>
+          {matches.map(s => (
+            <div
+              key={s}
+              onMouseDown={e => { e.preventDefault(); onChange(s); setOpen(false); }}
+              style={{ padding: '6px 10px', fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f3f4f6'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = ''; }}
+            >
+              {s}
+            </div>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ── Period multi-select: выбор нескольких месяцев/лет ────────────────────────
+const MONTHS_SHORT = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+
+function PeriodMultiFilter({ value, onChange, allYears }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+  const ref = useRef(null);
+  const btnRef = useRef(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    const h = e => {
+      if (ref.current?.contains(e.target) || dropdownRef.current?.contains(e.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+
+  const toggle = period =>
+    onChange(value.includes(period) ? value.filter(p => p !== period) : [...value, period]);
+
+  const handleOpen = () => {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 2, left: r.left, width: Math.max(r.width, 260) });
+    }
+    setOpen(v => !v);
+  };
+
+  // все годы: из загруженных данных + из уже выбранных
+  const selectedYears = [...new Set(value.map(p => parseInt(p.split('-')[0], 10)))];
+  const years = [...new Set([...allYears, ...selectedYears])].sort((a, b) => b - a);
+
+  const displayLabel = value.length === 0
+    ? 'Все периоды'
+    : value.length === 1
+      ? (() => { const [y, m] = value[0].split('-'); return `${MONTHS_SHORT[parseInt(m,10)-1]} ${y}`; })()
+      : `${value.length} периода`;
+
+  return (
+    <div ref={ref} style={{ width: '100%' }}>
+      <button ref={btnRef} onClick={handleOpen} style={{ width: '100%', padding: '4px 7px', border: `1px solid ${value.length ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, background: value.length ? '#eff6ff' : '#fff', color: value.length ? 'var(--rb-primary)' : '#374151', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, textAlign: 'left', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayLabel}</span>
+        <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" style={{ flexShrink: 0, transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }}><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd"/></svg>
+      </button>
+      {open && ReactDOM.createPortal(
+        <div ref={dropdownRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width, maxHeight: 420, overflowY: 'auto', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, boxShadow: '0 4px 14px rgba(0,0,0,0.12)', zIndex: 9999, padding: 10 }}>
+          {value.length > 0 && (
+            <div onClick={() => onChange([])} style={{ padding: '4px 2px', marginBottom: 8, fontSize: 11, color: 'var(--rb-primary)', cursor: 'pointer', fontWeight: 500, borderBottom: '1px solid #f3f4f6', paddingBottom: 8 }}>
+              Сбросить ({value.length})
+            </div>
+          )}
+          {years.map(year => (
+            <div key={year} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 5 }}>{year}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 3 }}>
+                {MONTHS_SHORT.map((m, i) => {
+                  const period = `${year}-${String(i + 1).padStart(2, '0')}`;
+                  const sel = value.includes(period);
+                  return (
+                    <button key={period} onClick={() => toggle(period)} style={{ padding: '4px 2px', fontSize: 11, border: `1px solid ${sel ? 'var(--rb-primary)' : '#e5e7eb'}`, borderRadius: 4, background: sel ? 'var(--rb-primary)' : '#fff', color: sel ? '#fff' : '#374151', cursor: 'pointer', fontWeight: sel ? 600 : 400, fontFamily: 'inherit' }}>
+                      {m}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -451,16 +521,21 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [searchName, setSearchName]           = useState('');
   const [filterClinics, setFilterClinics]     = useState([]);
   const [filterSpecialties, setFilterSpecialties] = useState([]);
-  const [filterYear, setFilterYear]           = useState('');
-  const [filterMonth, setFilterMonth]         = useState('');
+  const [filterPeriods, setFilterPeriods]     = useState([]); // ['2025-01', '2026-02']
   const [sortBy, setSortBy]                   = useState('date_desc');
+  const [dataLoaded, setDataLoaded]           = useState(false);
+  const [committedFilters, setCommittedFilters] = useState({ searchName: '', filterClinics: [], filterSpecialties: [], filterPeriods: [] });
 
-  useEffect(() => {
+  const loadData = () => {
+    setCommittedFilters({ searchName, filterClinics, filterSpecialties, filterPeriods });
     setLoading(true);
-    salaryRecords.getAll()
+    const params = {};
+    if (filterPeriods.length > 0) params.periods = filterPeriods.join(',');
+    salaryRecords.getAll(params)
       .then(res => {
         const list = Array.isArray(res.data) ? res.data : [];
         setRecords(list);
+        setDataLoaded(true);
         const done = {};
         const cashDone = {};
         const comments = {};
@@ -474,12 +549,11 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         setRecalcDone(done);
         setCashOverpayDone(cashDone);
         setCommentsMap(comments);
-        // Загружаем кассу отдельно — не критично если упадёт
         cashPaymentsApi.getAll()
           .then(cpRes => {
             const cpList = Array.isArray(cpRes.data) ? cpRes.data : [];
             const cpMap = {};
-            const standaloneByUser = {}; // misUserId → standalone payments (без salaryRecordId)
+            const standaloneByUser = {};
             cpList.forEach(p => {
               if (p.salaryRecordId) {
                 if (!cpMap[p.salaryRecordId]) cpMap[p.salaryRecordId] = [];
@@ -489,7 +563,6 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 standaloneByUser[p.misUserId].push(p);
               }
             });
-            // Сопоставляем standalone выплаты с записями зарплат по misUserId + период
             const matchedPaymentIds = new Set();
             list.forEach(rec => {
               const userPayments = standaloneByUser[String(rec.misUserId)];
@@ -513,7 +586,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       })
       .catch(() => toast.error('Ошибка загрузки сводки'))
       .finally(() => setLoading(false));
-  }, []);
+  };
 
   const getDoctorSpecialty = (misUserId) => {
     const doc = doctors.find(d => d.id === String(misUserId));
@@ -546,12 +619,23 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   // ── Unique specialties for filter ────────────────────────────────────────────
   const allSpecialties = useMemo(() => {
     const set = new Set();
-    allRows.forEach(({ rec }) => {
-      const s = getDoctorSpecialty(rec.misUserId);
-      if (s && s !== '—') s.split(', ').forEach(sp => set.add(sp.trim()));
-    });
+    if (allRows.length > 0) {
+      allRows.forEach(({ rec }) => {
+        const s = getDoctorSpecialty(rec.misUserId);
+        if (s && s !== '—') s.split(', ').forEach(sp => set.add(sp.trim()));
+      });
+    } else {
+      // до первой загрузки — берём роли из списка врачей
+      doctors.forEach(d => (d.roles || []).filter(Boolean).forEach(r => set.add(r)));
+    }
     return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
   }, [allRows, doctors]);
+
+  // ── Unique doctor names for autocomplete ─────────────────────────────────────
+  const allDoctorNames = useMemo(() => {
+    const set = new Set(records.map(r => r.doctorName).filter(Boolean));
+    return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [records]);
 
   // ── Unique years for filter ───────────────────────────────────────────────────
   const allYears = useMemo(() => {
@@ -559,29 +643,30 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     allRows.forEach(({ rec }) => {
       if (rec.dateFrom) set.add(new Date(rec.dateFrom).getFullYear());
     });
+    const cur = new Date().getFullYear();
+    if (set.size === 0) return [cur - 1, cur, cur + 1];
     return [...set].sort((a, b) => b - a);
   }, [allRows]);
 
-  // ── Filter & sort ────────────────────────────────────────────────────────────
+  // ── Filter & sort (применяются только по committedFilters — снимок на момент нажатия «Загрузить») ──
   const filtered = useMemo(() => {
-    const yr  = filterYear  ? parseInt(filterYear,  10) : null;
-    const mon = filterMonth ? parseInt(filterMonth, 10) : null;
-    const clinicNames = filterClinics.length > 0
-      ? new Set(filterClinics.map(id => { const c = clinics.find(c => String(c.id) === String(id)); return c?.name; }).filter(Boolean))
+    const { searchName: sn, filterClinics: fc, filterSpecialties: fs, filterPeriods: fp } = committedFilters;
+    const clinicNames = fc.length > 0
+      ? new Set(fc.map(id => { const c = clinics.find(c => String(c.id) === String(id)); return c?.name; }).filter(Boolean))
       : null;
 
     return allRows
       .filter(row => {
-        if (searchName && !row.rec.doctorName?.toLowerCase().includes(searchName.toLowerCase())) return false;
+        if (sn && !row.rec.doctorName?.toLowerCase().includes(sn.toLowerCase())) return false;
         if (clinicNames && !clinicNames.has(row.clinicName)) return false;
-        if (filterSpecialties.length > 0) {
+        if (fs.length > 0) {
           const sp = getDoctorSpecialty(row.rec.misUserId).split(', ').map(s => s.trim());
-          if (!filterSpecialties.some(fs => sp.includes(fs))) return false;
+          if (!fs.some(f => sp.includes(f))) return false;
         }
-        if ((yr !== null || mon !== null) && row.rec.dateFrom) {
+        if (fp.length > 0 && row.rec.dateFrom) {
           const d = new Date(row.rec.dateFrom);
-          if (yr  !== null && d.getFullYear()  !== yr)        return false;
-          if (mon !== null && d.getMonth() + 1 !== mon)       return false;
+          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          if (!fp.includes(key)) return false;
         }
         return true;
       })
@@ -593,7 +678,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         if (sortBy === 'salary_asc')   return parseFloat(a.cr?.salary?.finalSalary || 0) - parseFloat(b.cr?.salary?.finalSalary || 0);
         return new Date(b.rec.dateFrom || 0) - new Date(a.rec.dateFrom || 0); // date_desc
       });
-  }, [allRows, searchName, filterClinics, filterSpecialties, filterYear, filterMonth, clinics, sortBy]);
+  }, [allRows, committedFilters, clinics, sortBy]);
 
   // Вспомогательная функция: получить карту кассовых выплат (свежий запрос)
   const fetchCashMap = async () => {
@@ -857,25 +942,10 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   };
 
   // ── Render ───────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
-        <span className="rb-spinner" /> Загрузка сводки...
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
 
-      {/* ── Toolbar ── */}
-
-      {/* ── Table ── */}
-      {records.length === 0 ? (
-        <div style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
-          История зарплат пуста. Сохраните расчёт во вкладке «Отчёт».
-        </div>
-      ) : (() => {
+      {(() => {
         const totalSalary  = filtered.reduce((s, r) => {
           const sal = r.cr?.salary || {};
           return s + parseFloat(sal.finalSalary || 0) + parseFloat(sal.finalDeductionsTotal || 0) + parseFloat(sal.finalMaterialsTotal || 0) + parseFloat(sal.svcMatFinalTotal || 0);
@@ -906,58 +976,35 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         })();
         return (
         <>
-        {/* ── Totals footer ── */}
-        {filtered.length > 0 && <div style={{ borderBottom: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-            Итого ({filtered.length} строк)
+        {/* ── Totals bar — всегда виден ── */}
+        <div style={{ borderBottom: '2px solid var(--rb-border)', background: '#f8fafc', padding: '12px 20px', display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center', flexShrink: 0, minHeight: 56 }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap' }}>
+            Сводка
           </span>
-          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', flex: 1 }}>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма зарплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e40af' }}>{fmtRub(totalSalary)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма авансов</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#92400e' }}>{fmtRub(filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0))}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма основных зарплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#166534' }}>{fmtRub(totalBase)}</div>
-            </div>
-            {totalVacationPay > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма Отпускных</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#0369a1' }}>{fmtRub(totalVacationPay)}</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', flex: 1, justifyContent: 'space-between' }}>
+            {[
+              { label: 'Зарплаты',      value: totalSalary,      color: '#1e40af' },
+              { label: 'Авансы',        value: filtered.reduce((s, r) => s + parseFloat(r.cr?.salary?.advance || 0), 0), color: '#92400e' },
+              { label: 'Осн. зарплата', value: totalBase,        color: '#166534' },
+              { label: 'Отпускные',     value: totalVacationPay, color: '#0369a1' },
+              { label: 'НДФЛ',          value: totalNdfl,        color: '#dc2626', prefix: '−' },
+              { label: 'Взыскания',     value: totalDeductions,  color: '#dc2626', prefix: '−' },
+              { label: 'Переплаты',     value: totalOverpay,     color: '#dc2626' },
+              { label: 'Касса',         value: totalCashPaid,    color: 'var(--rb-text-secondary)', prefix: '−' },
+            ].map(({ label, value, color, prefix }) => (
+              <div key={label}>
+                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2, whiteSpace: 'nowrap' }}>{label}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: dataLoaded ? color : '#d1d5db' }}>
+                  {dataLoaded ? `${prefix || ''}${fmtRub(value)}` : '—'}
+                </div>
               </div>
-            )}
-            {totalNdfl > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма НДФЛ</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>−{fmtRub(totalNdfl)}</div>
-              </div>
-            )}
-            {totalDeductions > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма взысканий</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>−{fmtRub(totalDeductions)}</div>
-              </div>
-            )}
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма переплат</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#dc2626' }}>{fmtRub(totalOverpay)}</div>
-            </div>
-            {totalCashPaid > 0 && (
-              <div>
-                <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginBottom: 2 }}>Сумма по кассе</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--rb-text-secondary)' }}>−{fmtRub(totalCashPaid)}</div>
-              </div>
-            )}
+            ))}
           </div>
           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <SummaryBtn onClick={handleExport} disabled={exporting} loading={exporting} label="Excel" />
-            <SummaryBtn onClick={handlePayoutExport} disabled={exportingPayout} loading={exportingPayout} label="Выплата" />
+            <SummaryBtn onClick={handleExport} disabled={exporting || !dataLoaded || filtered.length === 0} loading={exporting} label="Excel" />
+            <SummaryBtn onClick={handlePayoutExport} disabled={exportingPayout || !dataLoaded || filtered.length === 0} loading={exportingPayout} label="Выплата" />
           </div>
-        </div>}
+        </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <table className="rb-summary-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -986,12 +1033,28 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                     </th>
                   );
                 })}
-                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 28, borderBottom: '1px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
+                <th style={{ position: 'sticky', top: 0, zIndex: 2, background: '#f1f5f9', width: 36, borderBottom: '1px solid var(--rb-border)', textAlign: 'center', padding: '0 4px' }}>
+                  <button
+                    onClick={loadData}
+                    title="Загрузить данные"
+                    style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid #cbd5e1', background: '#e2e8f0', color: '#475569', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
+                      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                  </button>
+                </th>
               </tr>
               <tr onClick={e => e.stopPropagation()} style={{ background: '#fff' }}>
                 {/* ФИО */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
-                  <input value={searchName} onChange={e => setSearchName(e.target.value)} placeholder="Поиск..." style={{ width: '100%', padding: '4px 7px', border: '1px solid #d1d5db', borderRadius: 5, fontSize: 12, fontFamily: 'inherit', background: searchName ? '#eff6ff' : '#fff', borderColor: searchName ? 'var(--rb-primary)' : '#d1d5db', outline: 'none', boxSizing: 'border-box' }} />
+                  <AutocompleteInput
+                    value={searchName}
+                    onChange={setSearchName}
+                    suggestions={allDoctorNames}
+                    placeholder="Поиск..."
+                    inputStyle={{ width: '100%', padding: '4px 7px', border: `1px solid ${searchName ? 'var(--rb-primary)' : '#d1d5db'}`, borderRadius: 5, fontSize: 12, fontFamily: 'inherit', background: searchName ? '#eff6ff' : '#fff', outline: 'none', boxSizing: 'border-box' }}
+                  />
                 </th>
                 {/* Медцентр */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
@@ -1006,9 +1069,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                 </th>
                 {/* Дата */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', padding: '4px 6px', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }}>
-                  <DateFilter year={filterYear} month={filterMonth} onYear={setFilterYear} onMonth={setFilterMonth} allYears={allYears} />
+                  <PeriodMultiFilter value={filterPeriods} onChange={setFilterPeriods} allYears={allYears} />
                 </th>
-                {/* НДФЛ, Зарплата, Комментарий, кнопка — пусто */}
+                {/* НДФЛ, Зарплата, Комментарий — пусто */}
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
                 <th style={{ position: 'sticky', top: 41, zIndex: 2, background: '#fff', borderBottom: '2px solid var(--rb-border)', borderRight: '1px solid #c8d3e0' }} />
@@ -1016,7 +1079,22 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)' }}>
+                    <span className="rb-spinner" style={{ display: 'inline-block', marginRight: 8 }} /> Загрузка сводки...
+                  </td>
+                </tr>
+              ) : !dataLoaded ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: 60, textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14, lineHeight: 2 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="36" height="36" style={{ opacity: 0.25, display: 'block', margin: '0 auto 12px' }}>
+                      <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>
+                    </svg>
+                    Задайте фильтры и нажмите «Загрузить»
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} style={{ padding: 40, textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
                     Нет записей по заданному фильтру.

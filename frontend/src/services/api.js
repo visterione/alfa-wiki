@@ -631,7 +631,7 @@ export const cashPayments = {
 
 export const salaryRecords = {
   getByDoctor: (misUserId) => api.get('/salary-records', { params: { misUserId } }),
-  getAll: () => api.get('/salary-records/all'),
+  getAll: (params) => api.get('/salary-records/all', params ? { params } : undefined),
   find: (misUserId, dateFrom) => api.get('/salary-records/find', { params: { misUserId, dateFrom } }),
   getAssistanceIncome: (params) => api.get('/salary-records/assistance-income', { params }),
   create: (data) => api.post('/salary-records', data),

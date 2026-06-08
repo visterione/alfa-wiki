@@ -360,16 +360,19 @@ export async function buildReport({
           : Array.isArray(doctor.role_names) ? doctor.role_names
           : doctor.role ? [doctor.role] : [];
 
-        // Load norms by role
-        const roleRes = await roleNormsApi.get(year, month);
+        const [roleRes, res, allCatsRes, catNormRes] = await Promise.all([
+          roleNormsApi.get(year, month),
+          hourNormsApi.get(year, month),
+          rbScheduleDicts.listCategories().catch(() => ({ data: [] })),
+          categoryNormsApi.get(year, month),
+        ]);
+
         const roleNormsData = roleRes.data || [];
         for (const roleTitle of doctorRoles) {
           const norm = roleNormsData.find(n => n.roleTitle === roleTitle);
           if (norm && norm.normHours != null) _normsByRole[roleTitle] = parseFloat(norm.normHours);
         }
 
-        // Load norms by profession/specialty
-        const res = await hourNormsApi.get(year, month);
         const norms = res.data || [];
         for (const p of (doctor.professions || [])) {
           const profTitle = rbProfessionTitle(p);
@@ -379,14 +382,10 @@ export async function buildReport({
           }
         }
 
-        // Load all category labels regardless of norms
-        const allCatsRes = await rbScheduleDicts.listCategories().catch(() => ({ data: [] }));
         for (const c of (allCatsRes.data || [])) {
           if (c.id && c.name) _categoryLabels[c.id] = c.name;
         }
 
-        // Load norms by schedule category
-        const catNormRes = await categoryNormsApi.get(year, month);
         for (const n of (catNormRes.data || [])) {
           if (n.categoryId && n.normHours != null) {
             _normsByCategory[n.categoryId] = parseFloat(n.normHours);
@@ -624,47 +623,30 @@ export async function buildReport({
     const anesthesiologistPayments = {};
     const nursePayments = {};
 
-    // Pre-load own settings for each unique anesthesiologist name in rows
+    // Pre-load own settings for each unique anesthesiologist/assistant/nurse in parallel
     const anestSettingsCache = {};
-    if (colMap.anesthesiologist) {
-      const anestNames = [...new Set(
-        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.anesthesiologist])).filter(Boolean)
-      )];
-      for (const name of anestNames) {
-        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
-        if (doc) {
-          try { anestSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
-        }
-      }
-    }
-
-    // Pre-load settings for each unique assistant name
-    const asstSettingsCache = {};
-    if (colMap.assistant) {
-      const asstNames = [...new Set(
-        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.assistant])).filter(Boolean)
-      )];
-      for (const name of asstNames) {
-        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
-        if (doc) {
-          try { asstSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
-        }
-      }
-    }
-
-    // Pre-load settings for each unique nurse name
+    const asstSettingsCache  = {};
     const nurseSettingsCache = {};
-    if (colMap.nurse) {
-      const nurseNames = [...new Set(
-        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.nurse])).filter(Boolean)
-      )];
-      for (const name of nurseNames) {
+    await Promise.all([
+      ...(colMap.anesthesiologist ? [...new Set(
+        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.anesthesiologist])).filter(Boolean)
+      )].map(async name => {
         const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
-        if (doc) {
-          try { nurseSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
-        }
-      }
-    }
+        if (doc) try { anestSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+      }) : []),
+      ...(colMap.assistant ? [...new Set(
+        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.assistant])).filter(Boolean)
+      )].map(async name => {
+        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
+        if (doc) try { asstSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+      }) : []),
+      ...(colMap.nurse ? [...new Set(
+        rows.filter(rbRowInDateRange).flatMap(r => splitPersonNames(r[colMap.nurse])).filter(Boolean)
+      )].map(async name => {
+        const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, name));
+        if (doc) try { nurseSettingsCache[name] = await loadExecSettings(doc.id); } catch {}
+      }) : []),
+    ]);
 
     const performedSections = Object.values(perfByService).map(s => {
       let bonusAmount = 0;
@@ -907,15 +889,18 @@ export async function buildReport({
           byExec[execName][cId2].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, _raw: r });
         });
 
+        const _asstIncExecCache = {};
+        await Promise.all(Object.keys(byExec).map(async execName => {
+          const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          if (doc) try { _asstIncExecCache[execName] = await loadExecSettings(doc.id); } catch {}
+        }));
+
         for (const [execName, byClinicMap2] of Object.entries(byExec)) {
           let secTotal = 0;
           const svcBreakdown2 = {};
 
-          // Настройки основного врача (исполнителя)
-          const execDoc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-          if (!execDoc) continue;
-          let execData2;
-          try { execData2 = await loadExecSettings(execDoc.id); } catch { continue; }
+          const execData2 = _asstIncExecCache[execName];
+          if (!execData2) continue;
           for (const [cId3, cRows3] of Object.entries(byClinicMap2)) {
             const eCS = rbGetClinicSettings(execData2, cId3);
             const filteredRows3 = cRows3.filter(r2 => !_roleCorpExclude(r2._raw, eCS));
@@ -995,10 +980,14 @@ export async function buildReport({
           byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, svcSpec: svcSpec2, cId: cId2, _raw: r });
         });
 
+        const _anestIncExecCache = {};
+        await Promise.all(Object.keys(byExec).map(async execName => {
+          const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          if (doc) try { _anestIncExecCache[execName] = await loadExecSettings(doc.id); } catch {}
+        }));
+
         for (const [execName, svcRows] of Object.entries(byExec)) {
-          const execDoc2 = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-          let execData2Anest = null;
-          try { if (execDoc2) execData2Anest = await loadExecSettings(execDoc2.id); } catch {}
+          const execData2Anest = _anestIncExecCache[execName] ?? null;
 
           let secTotal = 0;
           const svcBreakdown2 = {};
@@ -1061,10 +1050,14 @@ export async function buildReport({
           byExec[execName].push({ cost: cost2, svcCode: svcCode2, svcName: svcName2, cId: cId2, _raw: r });
         });
 
+        const _nurseIncExecCache = {};
+        await Promise.all(Object.keys(byExec).map(async execName => {
+          const doc = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
+          if (doc) try { _nurseIncExecCache[execName] = await loadExecSettings(doc.id); } catch {}
+        }));
+
         for (const [execName, svcRows] of Object.entries(byExec)) {
-          const execDoc2 = (allDoctors || []).find(d => rbNamesMatch(d.name, execName));
-          let execData2Nurse = null;
-          try { if (execDoc2) execData2Nurse = await loadExecSettings(execDoc2.id); } catch {}
+          const execData2Nurse = _nurseIncExecCache[execName] ?? null;
 
           let secTotal = 0;
           const svcBreakdown2 = {};

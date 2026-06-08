@@ -425,6 +425,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
 
   // 'auto' = loaded from source, 'manual' = user picked, null = empty/ready for auto-load
   const autoSrcRef = useRef(null);
+  const parsedExcelRef = useRef(null); // { file, rows, colMap } — кеш последнего парсинга
   const [sourceConflict, setSourceConflict] = useState(null); // array of matching sources | null
 
   // Auto-load Excel from saved sources when period changes
@@ -526,8 +527,13 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
 
       let rows = [], colMap = {};
       if (uploadedFile) {
-        rows   = await parseExcelFile(uploadedFile);
-        colMap = rbMapNewColumns(rows);
+        if (parsedExcelRef.current?.file === uploadedFile) {
+          ({ rows, colMap } = parsedExcelRef.current);
+        } else {
+          rows   = await parseExcelFile(uploadedFile);
+          colMap = rbMapNewColumns(rows);
+          parsedExcelRef.current = { file: uploadedFile, rows, colMap };
+        }
         if (!colMap.cabinet && Array.isArray(pbRes.data) && pbRes.data.some(b => b.cabinetId && b.cabinetId !== '')) {
           toast.error('В файле не найдена колонка «Кабинет» — бонусы по кабинетам не могут быть применены.', { duration: 7000 });
         }
@@ -726,8 +732,8 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       )}
       <DropZone
         uploadedFile={uploadedFile}
-        onSelect={f => { autoSrcRef.current = 'manual'; setUploadedFile(f); setReportData(null); setError(''); }}
-        onClear={() => { autoSrcRef.current = null; setUploadedFile(null); setReportData(null); }}
+        onSelect={f => { autoSrcRef.current = 'manual'; parsedExcelRef.current = null; setUploadedFile(f); setReportData(null); setError(''); }}
+        onClear={() => { autoSrcRef.current = null; parsedExcelRef.current = null; setUploadedFile(null); setReportData(null); }}
         compact={!!reportData}
         onDms={corpRecalcState ? () => setCorpModalState({ corpRows: corpRecalcState.corpRows, colMap: corpRecalcState.colMap, pendingData: corpRecalcState.pendingData, isRecalc: true }) : null}
       />
@@ -876,13 +882,15 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
     }
   }, [dateFrom, dateTo, doctors, filterClinic, interim, uploadedFile]); // eslint-disable-line
 
+  const BULK_CONCURRENCY = 4;
+
   const runBulk = async ({ rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates }) => {
     bulkRunParamsRef.current = { rows, colMap, savedAssistanceIncome, corpIncludedKeys, holidayDates };
     const doctorList = doctors.filter(d => bulkSelectedIds.has(d.id));
-    const results = [];
-    for (let i = 0; i < doctorList.length; i++) {
-      const doctor = doctorList[i];
-      setProgress({ current: i + 1, total: doctorList.length, currentName: doctor.name });
+    const results = new Array(doctorList.length);
+    let completedCount = 0;
+
+    const processOne = async (doctor, idx) => {
       try {
         const [rbRes, pbRes, execSettings, schedRes] = await Promise.all([
           rbApi.getByDoctor(doctor.id),
@@ -909,11 +917,19 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         if (filterClinic) {
           result.clinicReports = result.clinicReports.filter(cr => String(cr.clinicId) === String(filterClinic));
         }
-        results.push({ doctor, ...result, dateFrom, dateTo, error: null });
+        results[idx] = { doctor, ...result, dateFrom, dateTo, error: null };
       } catch (e) {
-        results.push({ doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' });
+        results[idx] = { doctor, clinicReports: [], grandTotal: 0, periodLabel: '', dateFrom, dateTo, error: e.message || 'Ошибка' };
       }
+      completedCount++;
+      setProgress({ current: completedCount, total: doctorList.length, currentName: doctor.name });
+    };
+
+    for (let i = 0; i < doctorList.length; i += BULK_CONCURRENCY) {
+      const batch = doctorList.slice(i, i + BULK_CONCURRENCY);
+      await Promise.all(batch.map((doctor, batchIdx) => processOne(doctor, i + batchIdx)));
     }
+
     setBulkResults(results);
     setGenerating(false);
     const ok  = results.filter(r => !r.error).length;

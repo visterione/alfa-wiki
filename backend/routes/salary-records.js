@@ -40,10 +40,29 @@ router.get('/find', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/salary-records/all
+// GET /api/salary-records/all?periods=2025-01,2026-02
 router.get('/all', authenticate, async (req, res) => {
   try {
+    const { periods } = req.query;
+    const where = {};
+
+    if (periods) {
+      const pad = n => String(n).padStart(2, '0');
+      const periodRange = p => {
+        const [y, m] = p.split('-').map(Number);
+        const lastDay = new Date(y, m, 0).getDate(); // day 0 of next month = last day of this month
+        return { dateFrom: { [Op.between]: [`${y}-${pad(m)}-01`, `${y}-${pad(m)}-${pad(lastDay)}`] } };
+      };
+      const list = String(periods).split(',').map(p => p.trim()).filter(Boolean);
+      if (list.length === 1) {
+        where.dateFrom = periodRange(list[0]).dateFrom;
+      } else if (list.length > 1) {
+        where[Op.or] = list.map(periodRange);
+      }
+    }
+
     const records = await SalaryRecord.findAll({
+      where,
       order: [['dateFrom', 'DESC']],
       attributes: {
         exclude: ['excelData'],
