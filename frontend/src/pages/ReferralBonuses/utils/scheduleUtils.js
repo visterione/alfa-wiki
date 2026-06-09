@@ -26,6 +26,14 @@ export function isDayScheduled(entry, year, month, day) {
   const { pattern } = entry;
   const dow = d.getDay() === 0 ? 6 : d.getDay() - 1; // 0=Mon … 6=Sun
 
+  // Weekday filter: applies to all patterns except 'weekdays' (which already IS the day filter)
+  if (pattern.type !== 'weekdays') {
+    const allowed = pattern.allowedWeekdays;
+    if (allowed && allowed.length > 0 && allowed.length < 7) {
+      if (!allowed.includes(dow)) return false;
+    }
+  }
+
   switch (pattern.type) {
     case 'daily':    return true;
     case 'workdays': return dow <= 4;
