@@ -1457,10 +1457,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   // ── Clinic tabs ───────────────────────────────────────────────────────────
   const isIpDoctor = (selectedDoctor?.clinics || []).includes('ip');
+  const isIpOnlyDoctor = (selectedDoctor?.clinics || []).every(c => c === 'ip');
+  const REFERRAL_CLINIC_ID = '8';
+  const doctorHasOtherClinics = Array.from(realDoctorClinicIds).some(id => id !== REFERRAL_CLINIC_ID);
   const clinicTabs = [
     { id: 'global', label: 'Общие', color: 'var(--rb-primary)' },
     ...(clinics || []).filter(c => {
-      if (isIpDoctor && String(c.id) !== 'ip') return false;
+      if (isIpOnlyDoctor && String(c.id) !== 'ip') return false;
+      if (String(c.id) === REFERRAL_CLINIC_ID && doctorHasOtherClinics) return false;
       return realDoctorClinicIds.has(String(c.id));
     }).map(c => ({ id: String(c.id), label: c.name, color: c.color })),
   ];

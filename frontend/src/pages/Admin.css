@@ -2165,6 +2165,148 @@
   transition: color var(--transition-fast);
 }
 
+/* === PERMISSION TREE (права пользователя в AdminUsers) === */
+.perm-tree-group { margin-bottom: 6px; }
+
+.perm-tree-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.perm-tree-header:hover { background: rgba(0, 0, 0, 0.05); }
+
+.perm-tree-label {
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perm-tree-children {
+  position: relative;
+  margin-left: 10px;
+  padding-left: 16px;
+  padding-top: 2px;
+  margin-bottom: 4px;
+}
+
+/* Дочерние элементы заблокированы: доступ на верхнем уровне выключен */
+.perm-tree-children--disabled {
+  opacity: 0.38;
+  pointer-events: none;
+}
+
+/* Продолжение родительского ствола сквозь раскрытый дочерний блок */
+.perm-tree-children > .perm-tree-children:not(.perm-tree-children--last) {
+  margin-bottom: 0;
+  padding-bottom: 4px;
+}
+.perm-tree-children > .perm-tree-children:not(.perm-tree-children--last)::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: -1px;
+  bottom: -1px;
+  width: 1.5px;
+  background: var(--border);
+  pointer-events: none;
+}
+
+/* Каждый узел рисует свой сегмент вертикали + горизонтальный отросток */
+.perm-tree-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 10px;
+  padding: 4px 0;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+/* Вертикальный сегмент ствола: перекрывается на 1px сверху/снизу,
+   чтобы линии соседних элементов сливались без субпиксельных зазоров */
+.perm-tree-item::before {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: -1px;
+  bottom: -1px;
+  width: 1.5px;
+  background: var(--border);
+  pointer-events: none;
+}
+
+/* Последний элемент (по DOM или JS-класс): ствол только до середины (└─ форма) */
+.perm-tree-item:last-child::before,
+.perm-tree-item--last::before {
+  top: -1px;
+  bottom: 50%;
+}
+
+/* Горизонтальный отросток (─) */
+.perm-tree-item::after {
+  content: '';
+  position: absolute;
+  left: -9px;
+  top: 50%;
+  width: 9px;
+  height: 1.5px;
+  background: var(--border);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.perm-tree-item-label {
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding-left: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perm-tree-expand-btn {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s, color 0.12s;
+}
+.perm-tree-expand-btn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Форсируем тумблер к правому краю во всех вложениях дерева */
+.perm-tree-item .admin-toggle-track,
+.perm-tree-header .admin-toggle-track {
+  margin-left: auto;
+}
+
 /* Sidebar visibility icon */
 .sidebar-visibility-icon {
   display: flex;

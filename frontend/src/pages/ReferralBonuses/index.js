@@ -276,7 +276,9 @@ export default function ReferralBonusesPage() {
       if (roles.includes('Сотрудник call-центра') && !mappedClinics.includes('ip')) {
         mappedClinics.push('ip');
       }
-      if (mappedClinics.includes('ip')) {
+      // Exclusive 'ip' only if call-center is the sole role; with other roles — hybrid (all clinics + ip)
+      const isOnlyCallCenter = roles.every(r => r === 'Сотрудник call-центра');
+      if (mappedClinics.includes('ip') && isOnlyCallCenter) {
         mappedClinics.splice(0, mappedClinics.length, 'ip');
       }
       return {
@@ -1058,11 +1060,16 @@ function DoctorsList({
 
   const pinCount = pinnedForCompare.length;
 
-  // Step 4 (Направления) shows all doctors; all other steps hide Направители clinic (ID 8) and role "Направитель"
+  // Step 4 (Направления) shows all doctors.
+  // All other steps hide employees where Направители (ID 8) is their ONLY clinic.
+  // Employees who also have other clinics are shown, but their Направители chip and salary tab are hidden.
   const REFERRAL_CLINIC_ID = '8';
-  const isReferrer = d => d.clinics.includes(REFERRAL_CLINIC_ID) || d.roles.includes('Направитель');
-  const displayDoctors = currentStep === 4 ? doctors : doctors.filter(d => !isReferrer(d));
-  const displayAllDoctors = currentStep === 4 ? allDoctors : allDoctors.filter(d => !isReferrer(d));
+  const hasOnlyReferralClinic = d => {
+    const otherClinics = d.clinics.filter(c => String(c) !== REFERRAL_CLINIC_ID);
+    return otherClinics.length === 0 && (d.clinics.some(c => String(c) === REFERRAL_CLINIC_ID) || d.roles.includes('Направитель'));
+  };
+  const displayDoctors = currentStep === 4 ? doctors : doctors.filter(d => !hasOnlyReferralClinic(d));
+  const displayAllDoctors = currentStep === 4 ? allDoctors : allDoctors.filter(d => !hasOnlyReferralClinic(d));
 
   return (
     <div className="rb-panel">
@@ -1241,7 +1248,11 @@ function DoctorsList({
               )}
               <div className="rb-doctor-info">
                 <div className="rb-doctor-badges">
-                  {d.clinics.filter(cId => !(disabledClinicsMap[d.id] || []).includes(String(cId))).slice(0, 6).map(cId => (
+                  {d.clinics
+                    .filter(cId => !(disabledClinicsMap[d.id] || []).includes(String(cId)))
+                    .filter(cId => String(cId) !== REFERRAL_CLINIC_ID || !d.clinics.some(c => String(c) !== REFERRAL_CLINIC_ID))
+                    .slice(0, 6)
+                    .map(cId => (
                     <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId), ...(cId === 'ip' ? { width: 'auto', padding: '2px 6px' } : {}) }}>
                       {getClinicName(cId)}
                     </span>

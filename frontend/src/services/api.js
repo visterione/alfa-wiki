@@ -592,6 +592,7 @@ export const email = {
 
 export const referralBonusAccess = {
   getUsers: () => api.get('/referral-bonuses/permissions/users'),
+  getUserPerm: (userId) => api.get(`/referral-bonuses/permissions/${userId}`),
   saveUserPerm: (userId, data) => api.put(`/referral-bonuses/permissions/${userId}`, data),
 };
 

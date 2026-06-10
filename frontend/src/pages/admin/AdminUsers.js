@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw } from 'lucide-react';
-import { users, roles, BASE_URL } from '../../services/api';
+import { Plus, Search, UserCheck, UserX, Shield, ShieldOff, Copy, RefreshCw, User, Building2, X as XIcon, ChevronDown, Download, Loader, Camera, Crown, Trash2, RotateCcw, Lock, Eye, PenLine } from 'lucide-react';
+import { users, roles, BASE_URL, referralBonusAccess } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import DatePickerInput from '../../components/DatePickerInput';
 import toast from 'react-hot-toast';
@@ -110,6 +110,68 @@ function MultiSelect({ label, placeholder, value, onChange, options, optionKey =
   );
 }
 
+const SALARY_CLINICS = [
+  { id: '2',  name: 'Альфа',       color: '#de64a1' },
+  { id: '3',  name: 'Кидс',        color: '#ed9121' },
+  { id: '1',  name: 'Проф',        color: '#9999ff' },
+  { id: '6',  name: 'Линия',       color: '#e2d1bb' },
+  { id: '4',  name: '3К',          color: '#800080' },
+  { id: '7',  name: 'Смайл',       color: '#999999' },
+  { id: '8',  name: 'Направители', color: '#00bfff' },
+  { id: '11', name: 'Сукко',       color: '#2d7055' },
+  { id: 'ip', name: 'ИП Микаелян', color: '#e05252' },
+];
+
+const SALARY_PERM_DEFAULT = {
+  clinics: [],
+  tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block',
+  tab2: 'block', tab3: 'block', tab4: 'block',
+  tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block',
+  tabSummary: 'block',
+};
+
+function PermControl({ value, onChange, disabled }) {
+  const STATES = ['block', 'read', 'edit'];
+  const COLOR  = { block: '#9ca3af', read: '#d97706', edit: '#16a34a' };
+  const ICON   = { block: <Lock size={9} />, read: <Eye size={9} />, edit: <PenLine size={9} /> };
+  const TITLE  = { block: 'Нет доступа', read: 'Только чтение', edit: 'Редактирование' };
+  const cur    = disabled ? 'edit' : (value || 'block');
+  const pos    = Math.max(0, STATES.indexOf(cur));
+  const thumbLeft = 2 + pos * 24; // 2 | 26 | 50
+  return (
+    <div
+      title={TITLE[cur]}
+      onClick={e => { e.stopPropagation(); if (!disabled) onChange(STATES[(pos + 1) % 3]); }}
+      style={{
+        width: 74, height: 24, borderRadius: 12, flexShrink: 0, marginLeft: 'auto',
+        background: disabled ? '#3b82f6' : COLOR[cur],
+        position: 'relative', cursor: disabled ? 'default' : 'pointer',
+        opacity: disabled ? 0.55 : 1, transition: 'background 0.2s',
+        boxShadow: `0 0 0 2px ${disabled ? '#3b82f6' : COLOR[cur]}33`,
+      }}
+    >
+      {STATES.map((s, i) => (
+        <span key={s} style={{
+          position: 'absolute', pointerEvents: 'none',
+          left: 3 + i * 24, top: '50%', transform: 'translateY(-50%)',
+          width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'rgba(255,255,255,0.35)',
+        }}>{ICON[s]}</span>
+      ))}
+      <div style={{
+        position: 'absolute', pointerEvents: 'none',
+        top: 2, left: thumbLeft, width: 20, height: 20, borderRadius: '50%',
+        background: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.28)',
+        transition: 'left 0.2s',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: disabled ? '#3b82f6' : COLOR[cur],
+      }}>
+        {disabled ? ICON.edit : ICON[cur]}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminUsers() {
   const { isAdmin: currentUserIsAdmin } = useAuth();
   const [userList, setUserList] = useState([]);
@@ -124,6 +186,7 @@ export default function AdminUsers() {
   const [avatarHover, setAvatarHover] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [trashList, setTrashList] = useState([]);
+  const [expandedGroups, setExpandedGroups] = useState({ root: true, admin: true, modules: true, salary: true, statistics: true, salary_clinics: false, salary_workTime: false, salary_archive: false, statistics_kpi: false, statistics_directories: false });
   const avatarInputRef = useRef(null);
   const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
@@ -160,7 +223,14 @@ export default function AdminUsers() {
       courses: false,
       journal: false,
       reviews: false
-    }
+    },
+    salaryPerm: { ...SALARY_PERM_DEFAULT },
+    statisticsTabs: {
+      kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
+      kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+      dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
+      dirUtilities: true, dirConsumables: true, dirMarketing: true,
+    },
   });
 
   useEffect(() => { load(); }, []);
@@ -391,8 +461,13 @@ export default function AdminUsers() {
     return password.split('').sort(() => Math.random() - 0.5).join('');
   };
 
-  const openModal = (user = null) => {
+  const openModal = async (user = null) => {
     if (user) {
+      let salaryPerm = { ...SALARY_PERM_DEFAULT };
+      try {
+        const res = await referralBonusAccess.getUserPerm(user.id);
+        salaryPerm = { ...SALARY_PERM_DEFAULT, ...res.data };
+      } catch { /* оставляем дефолт */ }
       setForm({
         username: user.username,
         password: '',
@@ -417,17 +492,16 @@ export default function AdminUsers() {
         canAccessStatistics: user.canAccessStatistics || false,
         canManagePromotions: user.canManagePromotions || false,
         adminAccess: user.adminAccess || {
-          pages: false,
-          sidebar: false,
-          users: false,
-          roles: false,
-          media: false,
-          backup: false,
-          settings: false,
-          courses: false,
-          journal: false,
-          reviews: false
-        }
+          pages: false, sidebar: false, users: false, roles: false, media: false,
+          backup: false, settings: false, courses: false, journal: false, reviews: false
+        },
+        salaryPerm,
+        statisticsTabs: user.statisticsTabs || {
+          kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
+          kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+          dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
+          dirUtilities: true, dirConsumables: true, dirMarketing: true,
+        },
       });
     } else {
       const newPassword = generatePassword();
@@ -455,17 +529,16 @@ export default function AdminUsers() {
         canAccessStatistics: false,
         canManagePromotions: false,
         adminAccess: {
-          pages: false,
-          sidebar: false,
-          users: false,
-          roles: false,
-          media: false,
-          backup: false,
-          settings: false,
-          courses: false,
-          journal: false,
-          reviews: false
-        }
+          pages: false, sidebar: false, users: false, roles: false, media: false,
+          backup: false, settings: false, courses: false, journal: false, reviews: false
+        },
+        salaryPerm: { ...SALARY_PERM_DEFAULT },
+        statisticsTabs: {
+          kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
+          kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
+          dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
+          dirUtilities: true, dirConsumables: true, dirMarketing: true,
+        },
       });
     }
     setModal({ open: true, user });
@@ -570,9 +643,12 @@ export default function AdminUsers() {
         const data = { ...form };
         if (!data.password) delete data.password;
         await users.update(modal.user.id, data);
+        await referralBonusAccess.saveUserPerm(modal.user.id, form.salaryPerm);
         toast.success('Пользователь обновлён');
       } else {
-        await users.create(form);
+        const res = await users.create(form);
+        const newUserId = res.data?.id || res.data?.user?.id;
+        if (newUserId) await referralBonusAccess.saveUserPerm(newUserId, form.salaryPerm);
         toast.success('Пользователь создан');
       }
       setModal({ open: false, user: null });
@@ -1165,7 +1241,7 @@ export default function AdminUsers() {
 
                 </div>
 
-                {/* Правая колонка — Доступ к админ-разделам */}
+                {/* Правая колонка — Права пользователя */}
                 <div className="form-group" style={{
                   background: 'var(--bg-secondary)',
                   padding: 16,
@@ -1177,107 +1253,271 @@ export default function AdminUsers() {
                     textTransform: 'uppercase',
                     letterSpacing: '0.06em',
                     color: 'var(--text-secondary)',
-                    paddingBottom: 0,
-                    marginBottom: 16
+                    marginBottom: 14
                   }}>
                     Права пользователя
                   </div>
 
-                  <label className="admin-toggle-item" style={{ marginBottom: 16, display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8, opacity: currentUserIsAdmin ? 1 : 0.5, cursor: currentUserIsAdmin ? 'pointer' : 'not-allowed' }}>
-                    <span className="admin-toggle-label">
-                      <Crown size={15} style={{ color: form.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', transition: 'color 0.2s', verticalAlign: 'middle', marginRight: 5 }} />
-                      Суперадминистратор
-                    </span>
-                    <input type="checkbox" style={{ display: 'none' }}
-                      checked={form.isAdmin}
-                      onChange={e => currentUserIsAdmin && setForm({...form, isAdmin: e.target.checked})}
-                    />
-                    <span className={`admin-toggle-track${form.isAdmin ? ' on' : ''}${!currentUserIsAdmin ? ' forced' : ''}`} />
-                  </label>
+                  {/* Root: Суперадминистратор — точка входа в дерево прав */}
+                  <div className="perm-tree-group">
+                    <div
+                      className="perm-tree-header"
+                      style={{ opacity: currentUserIsAdmin ? 1 : 0.5, cursor: currentUserIsAdmin ? 'pointer' : 'default' }}
+                      onClick={() => currentUserIsAdmin && setExpandedGroups(prev => ({ ...prev, root: !prev.root }))}
+                    >
+                      <Crown size={13} style={{ flexShrink: 0, color: form.isAdmin ? 'var(--warning)' : 'var(--text-tertiary)', transition: 'color 0.2s' }} />
+                      <span className="perm-tree-label">Суперадминистратор</span>
+                      <button
+                        className="perm-tree-expand-btn"
+                        onClick={e => { e.stopPropagation(); currentUserIsAdmin && setExpandedGroups(prev => ({ ...prev, root: !prev.root })); }}
+                      >{expandedGroups.root ? '−' : '+'}</button>
+                      <span
+                        className={`admin-toggle-track${form.isAdmin ? ' on' : ''}${!currentUserIsAdmin ? ' forced' : ''}`}
+                        title={form.isAdmin ? 'Снять права суперадминистратора' : 'Дать права суперадминистратора'}
+                        onClick={e => { e.stopPropagation(); currentUserIsAdmin && setForm({...form, isAdmin: !form.isAdmin}); }}
+                      />
+                    </div>
 
-                  {/* Основные */}
-                  <div style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.07em',
-                    color: 'var(--text-tertiary)',
-                    marginBottom: 8
-                  }}>
-                    Основные
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px', marginBottom: 16 }}>
-                    {[
-                      { key: 'pages', label: 'Проводник' },
-                      { key: 'roles', label: 'Роли и права' },
-                      { key: 'settings', label: 'Настройки' },
-                      { key: 'sidebar', label: 'Меню навигации' },
-                      { key: 'media', label: 'Медиафайлы' },
-                      { key: 'users', label: 'Пользователи' },
-                      { key: 'backup', label: 'Резервные копии' },
-                      { key: 'journal', label: 'Журнал' },
-                    ].map(({ key, label }) => {
-                      const checked = form.isAdmin || (form.adminAccess[key] ?? false);
-                      return (
-                        <label key={key} className="admin-toggle-item" style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
-                          <span className="admin-toggle-label">{label}</span>
-                          <input type="checkbox" style={{ display: 'none' }}
-                            checked={checked}
-                            onChange={e => !form.isAdmin && setForm({...form, adminAccess: {...form.adminAccess, [key]: e.target.checked}})}
-                            disabled={form.isAdmin}
-                          />
-                          <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                        </label>
-                      );
-                    })}
-                  </div>
+                    {expandedGroups.root && (
+                      <div className="perm-tree-children">
+                        {[
+                    {
+                      id: 'admin',
+                      label: 'Административный доступ',
+                      items: [
+                        { key: 'pages',    label: 'Проводник' },
+                        { key: 'roles',    label: 'Роли и права' },
+                        { key: 'settings', label: 'Настройки' },
+                        { key: 'sidebar',  label: 'Меню навигации' },
+                        { key: 'media',    label: 'Медиафайлы' },
+                        { key: 'users',    label: 'Пользователи' },
+                        { key: 'backup',   label: 'Резервные копии' },
+                        { key: 'journal',  label: 'Журнал' },
+                      ].map(({ key, label }) => ({
+                        key, label,
+                        checked: form.isAdmin || (form.adminAccess[key] ?? false),
+                        onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, [key]: v}}); },
+                      })),
+                      onToggleAll: newVal => {
+                        if (form.isAdmin) return;
+                        const a = {...form.adminAccess};
+                        ['pages','roles','settings','sidebar','media','users','backup','journal'].forEach(k => { a[k] = newVal; });
+                        setForm({...form, adminAccess: a});
+                      },
+                    },
+                    {
+                      id: 'modules',
+                      label: 'Модули',
+                      items: [
+                        { key: 'reviews',     label: 'Отзывы',         checked: form.isAdmin || !!form.adminAccess.reviews,   onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, reviews: v}}); } },
+                        { key: 'services',    label: 'Услуги',          checked: form.isAdmin || !!form.canEditServices,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditServices: v}); } },
+                        { key: 'courses',     label: 'Курсы',           checked: form.isAdmin || !!form.adminAccess.courses,    onChange: v => { if (!form.isAdmin) setForm({...form, adminAccess: {...form.adminAccess, courses: v}}); } },
+                        { key: 'doctorCards', label: 'Карточки врачей', checked: form.isAdmin || !!form.canEditDoctorCards,     onChange: v => { if (!form.isAdmin) setForm({...form, canEditDoctorCards: v}); } },
+                        { key: 'analyses',    label: 'Анализы',         checked: form.isAdmin || !!form.canEditAnalyses,        onChange: v => { if (!form.isAdmin) setForm({...form, canEditAnalyses: v}); } },
+                        { key: 'promotions',  label: 'Акции',           checked: form.isAdmin || !!form.canManagePromotions,    onChange: v => { if (!form.isAdmin) setForm({...form, canManagePromotions: v}); } },
+                      ],
+                      onToggleAll: newVal => {
+                        if (form.isAdmin) return;
+                        setForm({...form,
+                          canEditServices: newVal, canEditDoctorCards: newVal,
+                          canEditAnalyses: newVal, canManagePromotions: newVal,
+                          adminAccess: {...form.adminAccess, reviews: newVal, courses: newVal}
+                        });
+                      },
+                    },
+                    (() => {
+                      const st = form.statisticsTabs || {};
+                      const sp = form.salaryPerm || SALARY_PERM_DEFAULT;
+                      const stTab = (k) => ({ checked: form.isAdmin || !!(st[k] ?? true), onChange: v => { if (!form.isAdmin) setForm(f => ({...f, statisticsTabs: {...(f.statisticsTabs||{}), [k]: v}})); } });
+                      const spTab = (k) => ({
+                        permVal: form.isAdmin ? 'edit' : (sp[k] || 'block'),
+                        onPermChange: v => { if (!form.isAdmin) setForm(f => ({...f, salaryPerm: {...(f.salaryPerm||{}), [k]: v}})); },
+                      });
+                      return [
+                        {
+                          id: 'salary',
+                          label: 'Зарплата',
+                          isParentToggle: true,
+                          parentChecked: form.isAdmin || !!form.canAccessSalary,
+                          onParentToggle: v => { if (!form.isAdmin) setForm({...form, canAccessSalary: v}); },
+                          items: [
+                            { isSubGroup: true, key: 'clinics', expandKey: 'salary_clinics', label: 'Медцентры',
+                              items: SALARY_CLINICS.map(c => ({
+                                key: `clinic_${c.id}`,
+                                label: c.name,
+                                clinicColor: c.color,
+                                checked: form.isAdmin || (sp.clinics || []).includes(c.id),
+                                onChange: v => {
+                                  if (form.isAdmin) return;
+                                  const cls = sp.clinics || [];
+                                  const next = v ? [...cls, c.id] : cls.filter(id => id !== c.id);
+                                  setForm(f => ({...f, salaryPerm: {...(f.salaryPerm||{}), clinics: next}}));
+                                },
+                              })),
+                            },
+                            { key: 'tab1',  label: 'Сотрудники',   ...spTab('tab1') },
+                            { isSubGroup: true, key: 'workTime', expandKey: 'salary_workTime', label: 'Учёт времени',
+                              items: [
+                                { key: 'tabWorkTime',  label: 'Учёт рабочего времени', ...spTab('tabWorkTime') },
+                                { key: 'tabHourNorms', label: 'Норма часов',            ...spTab('tabHourNorms') },
+                                { key: 'tabSchedule',  label: 'Расписание',             ...spTab('tabSchedule') },
+                              ],
+                            },
+                            { key: 'tab2', label: 'Услуги',      ...spTab('tab2') },
+                            { key: 'tab3', label: 'Направления', ...spTab('tab3') },
+                            { key: 'tab4', label: 'Отчёт',       ...spTab('tab4') },
+                            { isSubGroup: true, key: 'archive', expandKey: 'salary_archive', label: 'Архив',
+                              items: [
+                                { key: 'tabArchiveHistory', label: 'Архив',      ...spTab('tabArchiveHistory') },
+                                { key: 'tabArchiveKassa',   label: 'Касса',      ...spTab('tabArchiveKassa') },
+                                { key: 'tabArchiveTabel',   label: 'Табели',     ...spTab('tabArchiveTabel') },
+                              ],
+                            },
+                            { key: 'tabSummary', label: 'Сводка', ...spTab('tabSummary') },
+                          ],
+                        },
+                        {
+                          id: 'statistics',
+                          label: 'Статистика',
+                          isParentToggle: true,
+                          parentChecked: form.isAdmin || !!form.canAccessStatistics,
+                          onParentToggle: v => { if (!form.isAdmin) setForm({...form, canAccessStatistics: v}); },
+                          items: [
+                            { isSubGroup: true, key: 'kpi', expandKey: 'statistics_kpi', label: 'Аналитика',
+                              items: [
+                                { key: 'kpiGeneral',     label: 'Общая',          ...stTab('kpiGeneral') },
+                                { key: 'kpiPatients',    label: 'Пациенты',       ...stTab('kpiPatients') },
+                                { key: 'kpiMargin',      label: 'Маржинальность', ...stTab('kpiMargin') },
+                                { key: 'kpiEfficiency',  label: 'Эффективность',  ...stTab('kpiEfficiency') },
+                                { key: 'kpiRooms',       label: 'Кабинеты',       ...stTab('kpiRooms') },
+                                { key: 'kpiReputation',  label: 'Репутация',      ...stTab('kpiReputation') },
+                                { key: 'kpiUtilities',   label: 'Коммунальные',   ...stTab('kpiUtilities') },
+                                { key: 'kpiConsumables', label: 'Расходники',     ...stTab('kpiConsumables') },
+                                { key: 'kpiServiceCost', label: 'Себестоимость',  ...stTab('kpiServiceCost') },
+                              ],
+                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, kpiGeneral: nv, kpiPatients: nv, kpiMargin: nv, kpiEfficiency: nv, kpiRooms: nv, kpiReputation: nv, kpiUtilities: nv, kpiConsumables: nv, kpiServiceCost: nv}}); },
+                            },
+                            { isSubGroup: true, key: 'directories', expandKey: 'statistics_directories', label: 'Справочники',
+                              items: [
+                                { key: 'dirClinics',     label: 'Филиалы',      ...stTab('dirClinics') },
+                                { key: 'dirCabinets',    label: 'Кабинеты',     ...stTab('dirCabinets') },
+                                { key: 'dirDoctors',     label: 'Врачи',        ...stTab('dirDoctors') },
+                                { key: 'dirEquipment',   label: 'Оборудование', ...stTab('dirEquipment') },
+                                { key: 'dirUtilities',   label: 'Коммунальные', ...stTab('dirUtilities') },
+                                { key: 'dirConsumables', label: 'Расходники',   ...stTab('dirConsumables') },
+                                { key: 'dirMarketing',   label: 'Маркетинг',    ...stTab('dirMarketing') },
+                              ],
+                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, dirClinics: nv, dirCabinets: nv, dirDoctors: nv, dirEquipment: nv, dirUtilities: nv, dirConsumables: nv, dirMarketing: nv}}); },
+                            },
+                          ],
+                        },
+                      ];
+                    })()
+                  ].flat().map((group, gIdx, arr) => {
+                    const isExpanded = expandedGroups[group.id];
+                    const isLastGroup = gIdx === arr.length - 1;
+                    const lastCls = isLastGroup ? ' perm-tree-item--last' : '';
+                    const groupOn = group.isParentToggle
+                      ? group.parentChecked
+                      : group.items.every(i => i.checked);
+                    const onGroupToggle = () => group.isParentToggle
+                      ? group.onParentToggle(!group.parentChecked)
+                      : group.onToggleAll(!group.items.every(i => i.checked));
+                    const groupTitle = group.isParentToggle
+                      ? (group.parentChecked ? 'Отключить доступ' : 'Включить доступ')
+                      : (group.items.every(i => i.checked) ? 'Снять все' : 'Включить все');
 
-                  {/* Модули */}
-                  <div style={{
-                    fontSize: 11,
-                    fontWeight: 600,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.07em',
-                    color: 'var(--text-tertiary)',
-                    marginBottom: 8
-                  }}>
-                    Модули
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px 12px' }}>
-                    {[
-                      { key: 'reviews', label: 'Отзывы' },
-                      { key: 'services', label: 'Услуги' },
-                      { key: 'courses', label: 'Курсы' },
-                      { key: 'doctorCards', label: 'Карточки врачей' },
-                      { key: 'salary', label: 'Зарплата' },
-                      { key: 'statistics', label: 'Статистика' },
-                      { key: 'analyses', label: 'Анализы' },
-                      { key: 'promotions', label: 'Акции' },
-                    ].map(({ key, label }) => {
-                      const moduleMap = {
-                        reviews: { get: form.adminAccess.reviews, set: v => setForm({...form, adminAccess: {...form.adminAccess, reviews: v}}) },
-                        services: { get: form.canEditServices, set: v => setForm({...form, canEditServices: v}) },
-                        courses: { get: form.adminAccess.courses, set: v => setForm({...form, adminAccess: {...form.adminAccess, courses: v}}) },
-                        doctorCards: { get: form.canEditDoctorCards, set: v => setForm({...form, canEditDoctorCards: v}) },
-                        salary: { get: form.canAccessSalary, set: v => setForm({...form, canAccessSalary: v}) },
-                        statistics: { get: form.canAccessStatistics, set: v => setForm({...form, canAccessStatistics: v}) },
-                        analyses: { get: form.canEditAnalyses, set: v => setForm({...form, canEditAnalyses: v}) },
-                        promotions: { get: form.canManagePromotions, set: v => setForm({...form, canManagePromotions: v}) },
-                      };
-                      const { get: val, set: setter } = moduleMap[key];
-                      const checked = form.isAdmin || val;
-                      return (
-                        <label key={key} className="admin-toggle-item" style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 8 }}>
-                          <span className="admin-toggle-label">{label}</span>
-                          <input type="checkbox" style={{ display: 'none' }}
-                            checked={checked}
-                            onChange={e => !form.isAdmin && setter(e.target.checked)}
-                            disabled={form.isAdmin}
+                    return (
+                      <React.Fragment key={group.id}>
+                        <div
+                          className={`perm-tree-item${lastCls}`}
+                          onClick={() => setExpandedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                        >
+                          <span className="perm-tree-label">{group.label}</span>
+                          <button
+                            className="perm-tree-expand-btn"
+                            onClick={e => { e.stopPropagation(); setExpandedGroups(prev => ({ ...prev, [group.id]: !prev[group.id] })); }}
+                          >{isExpanded ? '−' : '+'}</button>
+                          <span
+                            className={`admin-toggle-track${groupOn ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`}
+                            title={groupTitle}
+                            onClick={e => { e.stopPropagation(); onGroupToggle(); }}
                           />
-                          <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
-                        </label>
-                      );
-                    })}
+                        </div>
+                        {isExpanded && (
+                          <div className={`perm-tree-children${isLastGroup ? ' perm-tree-children--last' : ''}${(group.isParentToggle && !groupOn) ? ' perm-tree-children--disabled' : ''}`}>
+                            {group.isParentToggle
+                              ? group.items.map((item, idx) => {
+                                  const isLast = idx === group.items.length - 1;
+                                  const iLastCls = isLast ? ' perm-tree-item--last' : '';
+                                  if (item.isSubGroup) {
+                                    const isSubExp = !!expandedGroups[item.expandKey];
+                                    return (
+                                      <React.Fragment key={item.key}>
+                                        <div
+                                          className={`perm-tree-item${iLastCls}`}
+                                          onClick={() => setExpandedGroups(prev => ({ ...prev, [item.expandKey]: !prev[item.expandKey] }))}
+                                        >
+                                          <span className="perm-tree-label">{item.label}</span>
+                                          <button
+                                            className="perm-tree-expand-btn"
+                                            onClick={e => { e.stopPropagation(); setExpandedGroups(prev => ({ ...prev, [item.expandKey]: !prev[item.expandKey] })); }}
+                                          >{isSubExp ? '−' : '+'}</button>
+                                        </div>
+                                        {isSubExp && (
+                                          <div className={`perm-tree-children${isLast ? ' perm-tree-children--last' : ''}`}>
+                                            {item.items.map((leaf, li) => {
+                                              const leafLast = li === item.items.length - 1 ? ' perm-tree-item--last' : '';
+                                              if (leaf.permVal !== undefined) {
+                                                return (
+                                                  <div key={leaf.key} className={`perm-tree-item${leafLast}`}>
+                                                    <span className="perm-tree-item-label">{leaf.label}</span>
+                                                    <PermControl value={leaf.permVal} onChange={leaf.onPermChange} disabled={form.isAdmin} />
+                                                  </div>
+                                                );
+                                              }
+                                              return (
+                                                <div key={leaf.key} className={`perm-tree-item${leafLast}`} onClick={() => leaf.onChange(!leaf.checked)}>
+                                                  {leaf.clinicColor && <span style={{ width: 8, height: 8, borderRadius: '50%', background: leaf.clinicColor, flexShrink: 0 }} />}
+                                                  <span className="perm-tree-item-label">{leaf.label}</span>
+                                                  <span className={`admin-toggle-track${leaf.checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </React.Fragment>
+                                    );
+                                  }
+                                  if (item.permVal !== undefined) {
+                                    return (
+                                      <div key={item.key} className={`perm-tree-item${iLastCls}`}>
+                                        <span className="perm-tree-item-label">{item.label}</span>
+                                        <PermControl value={item.permVal} onChange={item.onPermChange} disabled={form.isAdmin} />
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div key={item.key} className={`perm-tree-item${iLastCls}`} onClick={() => item.onChange(!item.checked)}>
+                                      <span className="perm-tree-item-label">{item.label}</span>
+                                      <span className={`admin-toggle-track${item.checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                                    </div>
+                                  );
+                                })
+                              : group.items.map(({ key, label, checked, onChange }) => (
+                                  <div key={key} className="perm-tree-item" onClick={() => onChange(!checked)}>
+                                    <span className="perm-tree-item-label">{label}</span>
+                                    <span className={`admin-toggle-track${checked ? ' on' : ''}${form.isAdmin ? ' forced' : ''}`} />
+                                  </div>
+                                ))
+                            }
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

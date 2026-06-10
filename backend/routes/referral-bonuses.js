@@ -293,6 +293,31 @@ router.get('/permissions/users', authenticate, async (req, res) => {
   }
 });
 
+// Получить права конкретного пользователя (только admin)
+router.get('/permissions/:userId', authenticate, async (req, res) => {
+  if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
+  try {
+    const perm = await RbUserPermission.findOne({ where: { userId: req.params.userId } });
+    const af = perm?.tabArchive || 'edit';
+    res.json(perm ? {
+      tab1: perm.tab1 || 'block', tabWorkTime: perm.tabWorkTime || af,
+      tabHourNorms: perm.tabHourNorms || af, tabSchedule: perm.tabSchedule || af,
+      tab2: perm.tab2 || 'block', tab3: perm.tab3 || 'block', tab4: perm.tab4 || 'block',
+      tabArchiveHistory: perm.tabArchiveHistory || af, tabArchiveKassa: perm.tabArchiveKassa || af,
+      tabArchiveTabel: perm.tabArchiveTabel || af,
+      tabSummary: perm.tabSummary || 'block', tabKpi: perm.tabKpi || 'block', clinics: perm.clinics || [],
+    } : {
+      tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block',
+      tab2: 'block', tab3: 'block', tab4: 'block',
+      tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block',
+      tabSummary: 'block', tabKpi: 'block', clinics: [],
+    });
+  } catch (err) {
+    console.error('Get user perm error:', err);
+    res.status(500).json({ error: 'Ошибка получения прав' });
+  }
+});
+
 // Сохранить права пользователя (только admin)
 router.put('/permissions/:userId', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
