@@ -322,7 +322,7 @@ function HistCard({ record, clinics, onDelete, cashPayments = [], onCashPay, onC
   const totalRemainder = reps.reduce((s, cr) => {
     const sal = cr.salary || {};
     const extraTotal = (sal.extraPayments || []).reduce((e, ep) => e + (parseFloat(ep.amount) || 0), 0);
-    return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTotal;
+    return s + parseFloat(sal.finalSalary || 0) - parseFloat(sal.ndflTotal || 0) - parseFloat(sal.advance || 0) - parseFloat(sal.mainPayment || 0) - extraTotal;
   }, 0);
   const netRemainder = totalRemainder - cashPaidTotal;
 
@@ -1070,6 +1070,10 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
         });
         payment = res.data;
         setKassaData(prev => [payment, ...prev]);
+        setCashPaymentsMap(prev => ({
+          ...prev,
+          '__standalone__': [payment, ...(prev['__standalone__'] || [])],
+        }));
       } else {
         const res = await cashPaymentsApi.create({
           salaryRecordId: cashModal.record.id,
@@ -2219,18 +2223,24 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
           )}
 
           <div className="rb-hist-records">
-            {filteredRecords.map(rec => (
-              <HistCard
-                key={rec.id}
-                record={rec}
-                clinics={clinics}
-                onDelete={viewReadOnly ? undefined : handleDelete}
-                cashPayments={cashPaymentsMap[rec.id] || []}
-                onCashPay={viewReadOnly ? undefined : handleOpenCashModal}
-                onCashDelete={viewReadOnly ? undefined : handleCashDelete}
-                onCashEdit={viewReadOnly ? undefined : handleCashEdit}
-              />
-            ))}
+            {filteredRecords.map(rec => {
+              const recPeriod = rec.periodLabel || (rec.dateFrom ? rec.dateFrom.slice(0, 7) : null);
+              const standaloneForPeriod = (cashPaymentsMap['__standalone__'] || [])
+                .filter(p => recPeriod && p.periodLabel === recPeriod);
+              const allCashPayments = [...(cashPaymentsMap[rec.id] || []), ...standaloneForPeriod];
+              return (
+                <HistCard
+                  key={rec.id}
+                  record={rec}
+                  clinics={clinics}
+                  onDelete={viewReadOnly ? undefined : handleDelete}
+                  cashPayments={allCashPayments}
+                  onCashPay={viewReadOnly ? undefined : handleOpenCashModal}
+                  onCashDelete={viewReadOnly ? undefined : handleCashDelete}
+                  onCashEdit={viewReadOnly ? undefined : handleCashEdit}
+                />
+              );
+            })}
           </div>
         </>
       )}
