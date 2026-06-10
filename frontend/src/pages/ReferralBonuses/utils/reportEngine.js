@@ -163,7 +163,7 @@ export async function buildReport({
   const _hasPercentClinic = _clinicPayTypes.some(pt => pt === 'percent');
   const _hasNonExcelClinic = _clinicPayTypes.some(pt => pt === 'normed' || pt === 'hourly' || pt === 'salary');
   if (_hasNonExcelClinic && !_hasPercentClinic) normedOnly = true;
-  const _hasConfiguredClinics = Object.keys(execSettings?.clinicSettings || {}).some(k => k !== 'global');
+  const _hasConfiguredClinics = doctorClinicIds.size > 0 || Object.keys(execSettings?.clinicSettings || {}).some(k => k !== 'global');
 
   function parseDateBound(s, endOfDay) {
     if (!s) return null;
@@ -179,8 +179,8 @@ export async function buildReport({
     ? `${dateFrom ? new Date(dateFrom).toLocaleDateString('ru-RU') : '…'} — ${dateTo ? new Date(dateTo).toLocaleDateString('ru-RU') : '…'}`
     : '';
 
-  // ── Error: no referrer/executor columns (skip for normedOnly — Excel not needed) ──
-  if (!normedOnly && !colMap.referrer && !colMap.executor) {
+  // ── Error: no referrer/executor columns (skip for normedOnly or configured clinics — Excel not needed) ──
+  if (!normedOnly && !_hasConfiguredClinics && !colMap.referrer && !colMap.executor) {
     const keys = rows.length ? Object.keys(rows[0]) : [];
     throw new Error(
       `Не удалось определить колонки ФИО рекомендателя/исполнителя.\nДоступные колонки: ${keys.join(', ')}`
@@ -314,12 +314,23 @@ export async function buildReport({
   // создаём пустую запись чтобы зарплатный листок всё равно рендерился
   {
     const _cs = execSettings?.clinicSettings || {};
+    // Explicit per-clinic settings
     Object.keys(_cs).forEach(cid => {
       if (cid === 'global') return;
       if (disabledClinicIds.has(String(cid))) return;
       if (byClinic[cid]) return;
       byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };
     });
+    // Doctor's assigned clinics that use global settings (no explicit per-clinic key)
+    doctorClinicIds.forEach(cid => {
+      if (disabledClinicIds.has(String(cid))) return;
+      if (byClinic[cid]) return;
+      byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };
+    });
+    // Fallback when only global settings exist and doctor has no clinic list
+    if (!Object.keys(byClinic).length && Object.keys(_cs).length > 0) {
+      byClinic['unknown'] = { id: 'unknown', label: 'Расчёт', rows: [] };
+    }
   }
 
   // ── Load bonuses by service code (for referral payments to referrers) ──
