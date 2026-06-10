@@ -163,6 +163,7 @@ export async function buildReport({
   const _hasPercentClinic = _clinicPayTypes.some(pt => pt === 'percent');
   const _hasNonExcelClinic = _clinicPayTypes.some(pt => pt === 'normed' || pt === 'hourly' || pt === 'salary');
   if (_hasNonExcelClinic && !_hasPercentClinic) normedOnly = true;
+  const _hasConfiguredClinics = Object.keys(execSettings?.clinicSettings || {}).some(k => k !== 'global');
 
   function parseDateBound(s, endOfDay) {
     if (!s) return null;
@@ -253,7 +254,7 @@ export async function buildReport({
     return rbRowInDateRange(r);
   });
 
-  if (!allRelevant.length && !normedOnly) {
+  if (!allRelevant.length && !normedOnly && !_hasConfiguredClinics) {
     throw new Error(
       `В файле не найдено строк для врача «${doctorName}»${periodLabel ? ` за период ${periodLabel}` : ''}.\nПроверьте что в файле есть колонки "ФИО исполнителя" или "ФИО рекомендателя" с данным врачом.`
     );
@@ -307,6 +308,18 @@ export async function buildReport({
     }
   } else if (orphanReferrerRows.length) {
     byClinic[Object.keys(byClinic)[0]].rows.push(...orphanReferrerRows);
+  }
+
+  // Для клиник с настройками, по которым в Excel нет строк (напр. percent с авансом/основной ЗП) —
+  // создаём пустую запись чтобы зарплатный листок всё равно рендерился
+  {
+    const _cs = execSettings?.clinicSettings || {};
+    Object.keys(_cs).forEach(cid => {
+      if (cid === 'global') return;
+      if (disabledClinicIds.has(String(cid))) return;
+      if (byClinic[cid]) return;
+      byClinic[cid] = { id: cid, label: rbGetClinicName(cid), rows: [] };
+    });
   }
 
   // ── Load bonuses by service code (for referral payments to referrers) ──
