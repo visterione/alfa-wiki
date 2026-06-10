@@ -1430,6 +1430,7 @@ export async function buildReport({
       deductions: execDeductionsFiltered,
       materials: execMaterials,
       extras: execExtras,
+      hasClinicSettings: true,
     };
 
     if (interim) {
