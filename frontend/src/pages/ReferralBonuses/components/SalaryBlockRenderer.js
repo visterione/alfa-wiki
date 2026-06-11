@@ -28,6 +28,10 @@ function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandabl
 }
 
 function ServiceTable({ sections, columns, negative }) {
+  const totalCost  = sections.reduce((s, x) => s + (x.cost || 0), 0);
+  const totalCount = sections.reduce((s, x) => s + (x.count || 1), 0);
+  const totalBonus = sections.reduce((s, x) => s + (x.bonusAmount || 0), 0);
+  const hasCost    = sections.some(x => (x.cost || 0) !== 0);
   return (
     <table className="rb-report-table rb-report-table--bordered">
       <thead>
@@ -47,6 +51,19 @@ function ServiceTable({ sections, columns, negative }) {
           </tr>
         ))}
       </tbody>
+      {sections.length > 1 && (
+        <tfoot>
+          <tr>
+            <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
+            <td style={{ textAlign: 'right', fontWeight: 600 }}>{hasCost ? totalCost.toFixed(2) + ' ₽' : ''}</td>
+            <td style={{ textAlign: 'center', fontWeight: 600 }}>{totalCount}</td>
+            <td />
+            <td style={{ textAlign: 'right', fontWeight: 600, color: negative ? 'var(--rb-danger)' : (totalBonus < 0 ? 'var(--rb-danger)' : 'var(--rb-success)') }}>
+              {negative ? '−' : (totalBonus >= 0 ? '+' : '')}{Math.abs(totalBonus).toFixed(2)} ₽
+            </td>
+          </tr>
+        </tfoot>
+      )}
     </table>
   );
 }
@@ -328,54 +345,86 @@ export default function SalaryBlock({ salary }) {
             {/* Ассистент */}
             {hasRoleAssistant && (
               <SubSection indent={20} label="Ассистент" value={`+${fmtRub(assistanceIncomeTotal)}`} color="var(--rb-success)" type="plus">
-                {assistanceIncomeSections.map(({ execName, total, services }, i) => (
-                  <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-                    {services.length > 0 && (
-                      <table className="rb-report-table rb-report-table--bordered">
-                        <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
-                        <tbody>
-                          {services.map((s, j) => (
-                            <tr key={j}>
-                              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                              <td>{s.name || '—'}</td>
-                              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-                              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                              <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}</td>
-                              <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </SubSection>
-                ))}
+                {assistanceIncomeSections.map(({ execName, total, services }, i) => {
+                  const aTotalCost  = services.reduce((s, x) => s + (x.cost || 0), 0);
+                  const aTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
+                  const aTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
+                  return (
+                    <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
+                      {services.length > 0 && (
+                        <table className="rb-report-table rb-report-table--bordered">
+                          <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
+                          <tbody>
+                            {services.map((s, j) => (
+                              <tr key={j}>
+                                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                                <td>{s.name || '—'}</td>
+                                <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+                                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                                <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}</td>
+                                <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {services.length > 1 && (
+                            <tfoot>
+                              <tr>
+                                <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{aTotalCost.toFixed(2)} ₽</td>
+                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{aTotalCount}</td>
+                                <td />
+                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>+{aTotalInc.toFixed(2)} ₽</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      )}
+                    </SubSection>
+                  );
+                })}
               </SubSection>
             )}
 
             {/* Медсестра */}
             {hasRoleNurse && (
               <SubSection indent={20} label="Медсестра" value={`+${fmtRub(nurseIncomeTotal)}`} color="var(--rb-success)" type="plus">
-                {nurseIncomeSections.map(({ execName, total, services }, i) => (
-                  <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-                    {services.length > 0 && (
-                      <table className="rb-report-table rb-report-table--bordered">
-                        <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
-                        <tbody>
-                          {services.map((s, j) => (
-                            <tr key={j}>
-                              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                              <td>{s.name || '—'}</td>
-                              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-                              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                              <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
-                              <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </SubSection>
-                ))}
+                {nurseIncomeSections.map(({ execName, total, services }, i) => {
+                  const nTotalCost  = services.reduce((s, x) => s + (x.cost || 0), 0);
+                  const nTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
+                  const nTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
+                  return (
+                    <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
+                      {services.length > 0 && (
+                        <table className="rb-report-table rb-report-table--bordered">
+                          <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
+                          <tbody>
+                            {services.map((s, j) => (
+                              <tr key={j}>
+                                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                                <td>{s.name || '—'}</td>
+                                <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+                                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                                <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                                <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          {services.length > 1 && (
+                            <tfoot>
+                              <tr>
+                                <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
+                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{nTotalCost.toFixed(2)} ₽</td>
+                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{nTotalCount}</td>
+                                <td />
+                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>+{nTotalInc.toFixed(2)} ₽</td>
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      )}
+                    </SubSection>
+                  );
+                })}
               </SubSection>
             )}
 
@@ -387,6 +436,8 @@ export default function SalaryBlock({ salary }) {
                 <SubSection indent={20} label="Анестезиолог" value={(netPos ? '+' : '−') + fmtRub(Math.abs(net))} color={netPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={netPos ? 'plus' : 'minus'}>
                   {anesthesiologistIncomeSections.map(({ execName, total, services }, i) => {
                     const secPos = total >= 0;
+                    const anTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
+                    const anTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
                     return (
                       <SubSection key={i} indent={40} label={execName} value={(secPos ? '+' : '−') + fmtRub(Math.abs(total))} color={secPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={secPos ? 'plus' : 'minus'}>
                         {services.length > 0 && (
@@ -409,6 +460,18 @@ export default function SalaryBlock({ salary }) {
                                 );
                               })}
                             </tbody>
+                            {services.length > 1 && (
+                              <tfoot>
+                                <tr>
+                                  <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
+                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{anTotalCount}</td>
+                                  <td />
+                                  <td style={{ textAlign: 'right', fontWeight: 600, color: anTotalInc >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)' }}>
+                                    {anTotalInc >= 0 ? '+' : '−'}{Math.abs(anTotalInc).toFixed(2)} ₽
+                                  </td>
+                                </tr>
+                              </tfoot>
+                            )}
                           </table>
                         )}
                       </SubSection>
