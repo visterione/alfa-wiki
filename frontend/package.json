@@ -77,6 +77,9 @@
     "react-scripts": "5.0.1"
   },
   "scripts": {
+    "copy-pdf-worker": "node -e \"const fs=require('fs');fs.copyFileSync('node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs','public/pdf.worker.legacy.min.mjs')\"",
+    "prestart": "npm run copy-pdf-worker",
+    "prebuild": "npm run copy-pdf-worker",
     "start": "cross-env PORT=9000 craco start",
     "build": "cross-env NODE_OPTIONS=--max-old-space-size=4096 craco build",
     "test": "craco test",
