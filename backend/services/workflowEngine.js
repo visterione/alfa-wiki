@@ -55,21 +55,10 @@ async function executeAction(node, review, board, notificationService, chainCont
   // Назначить (один ответственный — заменяет предыдущего)
   if (type === 'actionAssign') {
     const userId = data.userIds?.[0] || null;
-    const userIds = userId ? [userId] : [];
     if (userId) {
-      await review.update({ assigneeIds: userIds });
+      await review.update({ assigneeIds: [userId] });
       console.log(`[WorkflowEngine] actionAssign: review ${review.id} → user`, userId);
       chainContext.assignedUserIds.add(userId);
-
-      if (notificationService) {
-        for (const userId of userIds) {
-          try {
-            await notificationService.sendReviewAssignedNotification(userId, review, board, null);
-          } catch (e) {
-            console.error(`[WorkflowEngine] assign notify userId=${userId}:`, e.message);
-          }
-        }
-      }
     }
   }
 

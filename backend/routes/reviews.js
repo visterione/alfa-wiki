@@ -1625,7 +1625,7 @@ router.post('/:id/assign', authenticate, async (req, res) => {
     }
 
     // Принимаем assigneeId (одиночный) — хранится как массив из 0 или 1 элемента
-    const { assigneeId } = req.body;
+    const { assigneeId, comment } = req.body;
     const assigneeIds = assigneeId ? [assigneeId] : [];
 
     await review.update({ assigneeIds });
@@ -1639,6 +1639,12 @@ router.post('/:id/assign', authenticate, async (req, res) => {
     await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.ASSIGNMENT, {
       newValue: assigneeName
     });
+
+    if (comment && comment.trim()) {
+      await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.COMMENT, {
+        comment: comment.trim()
+      });
+    }
 
     // Уведомляем назначенного
     if (assigneeId && assigneeId !== req.user.id) {

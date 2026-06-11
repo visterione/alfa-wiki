@@ -106,6 +106,7 @@ const ReviewBoard = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState(null);
+  const [assignComment, setAssignComment] = useState('');
 
   // Board members (users with any board role) — для секций Kanban
   const [boardMembers, setBoardMembers] = useState([]);
@@ -633,9 +634,10 @@ const ReviewBoard = () => {
   // Assignment
   const handleAssign = async () => {
     try {
-      const response = await reviews.assignReview(selectedReview.id, selectedAssignee);
+      const response = await reviews.assignReview(selectedReview.id, selectedAssignee, assignComment);
       setReviewsList(prev => prev.map(r => r.id === selectedReview.id ? response.data : r));
       setShowAssignModal(false);
+      setAssignComment('');
       toast.success(selectedAssignee ? 'Ответственный назначен' : 'Назначение снято');
     } catch (err) {
       console.error('Error assigning:', err);
@@ -1659,8 +1661,17 @@ const ReviewBoard = () => {
               </div>
             </div>
 
+            <div className="assign-comment">
+              <textarea
+                placeholder="Комментарий при передаче (необязательно)..."
+                value={assignComment}
+                onChange={(e) => setAssignComment(e.target.value)}
+                rows={3}
+              />
+            </div>
+
             <div className="modal-actions">
-              <button type="button" className="btn-cancel" onClick={() => setShowAssignModal(false)}>
+              <button type="button" className="btn-cancel" onClick={() => { setShowAssignModal(false); setAssignComment(''); }}>
                 Отмена
               </button>
               <button className="btn-submit" onClick={handleAssign}>

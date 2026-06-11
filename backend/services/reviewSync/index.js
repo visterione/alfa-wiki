@@ -9,6 +9,8 @@
 const { ReviewSyncConfig, ReviewPlatform, Review, ReviewBoard } = require('../../models');
 const { v4: uuidv4 } = require('uuid');
 const adapter = require('./adapters/getloyalty');
+const workflowEngine = require('../workflowEngine');
+const notificationService = require('../notificationService');
 
 const PROVIDER = 'getloyalty';
 
@@ -42,6 +44,9 @@ async function syncConfig(config) {
 
   if (!rawReviews.length) return 0;
 
+  const board = await ReviewBoard.findByPk(config.boardId);
+  if (!board) return 0;
+
   const now = new Date();
   let imported = 0;
 
@@ -65,7 +70,7 @@ async function syncConfig(config) {
       ? Math.max(1, Math.min(5, Math.round(raw.rating)))
       : 3;
 
-    await Review.create({
+    const review = await Review.create({
       id:             uuidv4(),
       boardId:        config.boardId,
       platformId,
@@ -85,6 +90,12 @@ async function syncConfig(config) {
       attachments:    [],
       assigneeIds:    []
     });
+
+    try {
+      await workflowEngine.executeWorkflow(board, 'review_created', review, notificationService);
+    } catch (wfErr) {
+      console.error(`[WorkflowEngine] review_created hook error (sync):`, wfErr.message);
+    }
 
     imported++;
   }

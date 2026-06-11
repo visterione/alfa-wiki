@@ -1527,6 +1527,29 @@
   padding: 1rem 1.5rem;
 }
 
+.assign-comment {
+  padding: 0 1.5rem 1rem;
+}
+
+.assign-comment textarea {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  resize: vertical;
+  box-sizing: border-box;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.assign-comment textarea:focus {
+  outline: none;
+  border-color: var(--primary-color, #6366f1);
+}
+
 .search-box {
   display: flex;
   align-items: center;
