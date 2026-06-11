@@ -101,6 +101,7 @@ export default function SalaryBlock({ salary }) {
     extraPayments = [],
     deductions = [], materials = [], extras = [],
     payType,
+    hasClinicSettings = false,
 
     interim = false,
     normServices: normServicesList = [],
@@ -169,7 +170,7 @@ export default function SalaryBlock({ salary }) {
   const hasPerformedBlock   = hasRoleDoctor || hasRoleAssistant || hasRoleAnesthesiologist || hasRoleNurse;
   // Показываем листок даже при нулевом окладе, если есть аванс/основная ЗП/НДФЛ
   const hasPaymentInfo      = (advance || 0) > 0 || (mainPayment || 0) > 0 || effectiveNdflTotal > 0 || extraPayments.length > 0;
-  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasPaymentInfo;
+  const hasAny = hasWage || hasReferral || hasPerformedBlock || hasExtras || hasDeductions || hasMaterials || hasReferralCost || hasPaymentInfo || hasClinicSettings;
 
   if (!hasAny) return null;
 

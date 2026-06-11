@@ -7,6 +7,7 @@ import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } fr
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
+import { parseSalarySlipPdf, normSubdivision } from './utils/pdfUtils';
 import { getSources } from './utils/excelSources';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
@@ -410,7 +411,7 @@ export default function ReferralBonusesPage() {
     setNdflModal(null);
     let count = 0;
     try {
-      for (const { doctor, clinicId, mainPayment, advance, ndfl } of matched) {
+      for (const { doctor, clinicId, mainPayment, advance, ndfl, vacation } of matched) {
         const raw = settingsMap[doctor.id];
         const settings = raw || {
           assistants: [],
@@ -449,6 +450,18 @@ export default function ReferralBonusesPage() {
             deductions.push({ name: 'НДФЛ', value: ndfl, valueType: 'rub', deductionType: 'turnover', locked: false });
           }
           updates.deductions = deductions;
+        }
+
+        let extraPayments = [...(clinicData.extraPayments || [])];
+        if (vacation != null) {
+          const vacIdx = extraPayments.findIndex(ep => ep.label === 'Отпускные');
+          if (vacIdx !== -1) {
+            if (mode === 'overwrite' || !extraPayments[vacIdx].locked)
+              extraPayments[vacIdx] = { ...extraPayments[vacIdx], amount: vacation };
+          } else {
+            extraPayments.push({ method: 'card', label: 'Отпускные', amount: vacation, locked: false });
+          }
+          updates.extraPayments = extraPayments;
         }
 
         if (!Object.keys(updates).length) continue;
@@ -584,6 +597,183 @@ export default function ReferralBonusesPage() {
       await applyNdflImport('overwrite', matched, settingsMap);
     }
   }, [disambigModal, applyNdflImport]);
+
+  // ── PDF расчётные листки import ───────────────────────────────────────────
+  const [pdfImporting,    setPdfImporting]    = useState(false);
+  const [pdfParsing,      setPdfParsing]      = useState(false);
+  const [pdfPreviewModal, setPdfPreviewModal] = useState(null);
+  const [splitEditValues, setSplitEditValues] = useState({}); // { [matchIdx]: { mainPayment, advance, ndfl, vacation } }
+  const [pdfModalSearch,  setPdfModalSearch]  = useState('');
+  // pdfPreviewModal: { matched, settingsMap, unmatchedNames, noSubdivision }
+
+  const handleImportPdf = useCallback(async (file) => {
+    setPdfParsing(true);
+    let rows;
+    try {
+      rows = await parseSalarySlipPdf(file);
+    } catch (err) {
+      console.error('PDF parse error:', err);
+      toast.error('Не удалось прочитать PDF-файл');
+      setPdfParsing(false);
+      return;
+    }
+    if (!rows.length) {
+      toast.error('Расчётные листки не найдены в файле');
+      setPdfParsing(false);
+      return;
+    }
+
+    const matched = [];
+    const unmatchedNames = [];
+    const noSubdivision = [];
+    const settingsMap = {};
+
+    for (const row of rows) {
+      const doctor = matchDoctorByName(row.name);
+      if (!doctor) {
+        if (!unmatchedNames.includes(row.name)) unmatchedNames.push(row.name);
+        continue;
+      }
+      if (!(doctor.id in settingsMap)) {
+        try {
+          const res = await execSettingsApi.get(doctor.id);
+          settingsMap[doctor.id] = res.data && Object.keys(res.data).length ? res.data : null;
+        } catch {
+          settingsMap[doctor.id] = null;
+        }
+      }
+      if (row.subdivision) {
+        const cs = settingsMap[doctor.id]?.clinicSettings || {};
+        const matchingClinics = Object.entries(cs).filter(([, v]) =>
+          v.pdfSubdivision && normSubdivision(v.pdfSubdivision) === row.subdivision
+        );
+        if (matchingClinics.length === 0) {
+          noSubdivision.push({ name: row.name, subdivision: row.subdivision });
+          matched.push({
+            doctor, clinicId: null, subdivisionResolved: false, needsSplit: false,
+            pdfSubdivision: row.subdivision,
+            mainPayment: row.mainPayment, advance: row.advance,
+            ndfl: row.ndfl, vacation: row.vacation ?? null,
+          });
+        } else if (matchingClinics.length === 1) {
+          const cKey = matchingClinics[0][0];
+          matched.push({
+            doctor, clinicId: cKey === 'global' ? null : cKey,
+            subdivisionResolved: true, needsSplit: false,
+            pdfSubdivision: row.subdivision,
+            mainPayment: row.mainPayment, advance: row.advance,
+            ndfl: row.ndfl, vacation: row.vacation ?? null,
+          });
+        } else {
+          // Multiple clinics with the same pdfSubdivision → manual split required
+          for (const [cKey] of matchingClinics) {
+            matched.push({
+              doctor, clinicId: cKey === 'global' ? null : cKey,
+              subdivisionResolved: true, needsSplit: true,
+              pdfSubdivision: row.subdivision,
+              mainPayment: null, advance: null, ndfl: null, vacation: null,
+              refMainPayment: row.mainPayment, refAdvance: row.advance,
+              refNdfl: row.ndfl, refVacation: row.vacation ?? null,
+            });
+          }
+        }
+      } else {
+        matched.push({
+          doctor, clinicId: null, subdivisionResolved: false, needsSplit: false,
+          pdfSubdivision: row.subdivision,
+          mainPayment: row.mainPayment, advance: row.advance,
+          ndfl: row.ndfl, vacation: row.vacation ?? null,
+        });
+      }
+    }
+
+    setPdfParsing(false);
+
+    if (!matched.length) {
+      const msg = unmatchedNames.length
+        ? `Ни один сотрудник не найден: ${unmatchedNames.slice(0, 3).join(', ')}${unmatchedNames.length > 3 ? '...' : ''}`
+        : 'Не найдено данных для импорта';
+      toast.error(msg);
+      return;
+    }
+
+    // Show preview modal — user confirms before anything is written
+    // needsSplit entries float to the top so the user sees them first
+    const sortedMatched = [
+      ...matched.filter(e => e.needsSplit),
+      ...matched.filter(e => !e.needsSplit),
+    ];
+    setSplitEditValues({});
+    setPdfModalSearch('');
+    setPdfPreviewModal({ matched: sortedMatched, settingsMap, unmatchedNames, noSubdivision });
+  }, [matchDoctorByName]);
+
+  const confirmPdfImport = useCallback(async () => {
+    if (!pdfPreviewModal) return;
+    const { matched, settingsMap } = pdfPreviewModal;
+
+    // Apply manually-entered split values to needsSplit entries
+    const parseEditVal = (v) => {
+      if (v === undefined || v === null || v === '') return null;
+      const n = parseFloat(String(v).replace(',', '.'));
+      return isNaN(n) ? null : n;
+    };
+    const resolvedMatched = matched.map((entry, i) => {
+      if (!entry.needsSplit) return entry;
+      const sv = splitEditValues[i] || {};
+      return {
+        ...entry,
+        mainPayment: parseEditVal(sv.mainPayment),
+        advance:     parseEditVal(sv.advance),
+        ndfl:        parseEditVal(sv.ndfl),
+        vacation:    parseEditVal(sv.vacation),
+      };
+    });
+
+    // Auto-fill empty split fields with remainder: total - sum(filled) / count(empty)
+    const splitGroups = {};
+    resolvedMatched.forEach((entry, i) => {
+      if (!entry.needsSplit) return;
+      if (!splitGroups[entry.doctor.id]) splitGroups[entry.doctor.id] = [];
+      splitGroups[entry.doctor.id].push(i);
+    });
+    for (const indices of Object.values(splitGroups)) {
+      for (const field of ['mainPayment', 'advance', 'ndfl', 'vacation']) {
+        const refField = 'ref' + field.charAt(0).toUpperCase() + field.slice(1);
+        const refVal = resolvedMatched[indices[0]][refField];
+        if (refVal == null) continue;
+        const emptyIdx = indices.filter(i => resolvedMatched[i][field] == null);
+        if (emptyIdx.length === 0) continue;
+        const filledSum = indices
+          .filter(i => resolvedMatched[i][field] != null)
+          .reduce((s, i) => s + resolvedMatched[i][field], 0);
+        const remainder = Math.round((refVal - filledSum) * 100) / 100;
+        const perEntry  = Math.round((remainder / emptyIdx.length) * 100) / 100;
+        emptyIdx.forEach(i => { resolvedMatched[i] = { ...resolvedMatched[i], [field]: perEntry }; });
+      }
+    }
+
+    setPdfPreviewModal(null);
+
+    const conflicts = resolvedMatched.filter(({ doctor, clinicId: cid, mainPayment, advance, ndfl, vacation }) => {
+      const targetKey = cid || 'global';
+      const clinicData = settingsMap[doctor.id]?.clinicSettings?.[targetKey] || {};
+      const deductions     = clinicData.deductions     || [];
+      const extraPayments  = clinicData.extraPayments  || [];
+      return (mainPayment !== null && clinicData.lockedMainPayment) ||
+             (advance     !== null && clinicData.lockedAdvance) ||
+             (ndfl        !== null && deductions.some(d => d.name === 'НДФЛ'       && d.locked === true)) ||
+             (vacation    != null  && extraPayments.some(ep => ep.label === 'Отпускные' && ep.locked === true));
+    });
+
+    if (conflicts.length > 0) {
+      setNdflModal({ matched: resolvedMatched, settingsMap, conflicts });
+    } else {
+      setPdfImporting(true);
+      await applyNdflImport('overwrite', resolvedMatched, settingsMap);
+      setPdfImporting(false);
+    }
+  }, [pdfPreviewModal, splitEditValues, applyNdflImport]);
 
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
@@ -951,6 +1141,249 @@ export default function ReferralBonusesPage() {
         </div>
       )}
 
+      {/* PDF parsing overlay */}
+      {pdfParsing && (
+        <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
+          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+            <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
+            <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Чтение PDF...</div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF preview / confirmation modal */}
+      {pdfPreviewModal && (() => {
+        const m = pdfPreviewModal.matched;
+
+        // Map: doctorId → array of indices in m (for split groups)
+        const groupIdxMap = {};
+        m.forEach((e, i) => {
+          if (!e.needsSplit) return;
+          if (!groupIdxMap[e.doctor.id]) groupIdxMap[e.doctor.id] = [];
+          groupIdxMap[e.doctor.id].push(i);
+        });
+
+        // Live remainder for a field within a split group
+        const calcRem = (groupIndices, field) => {
+          const rf = 'ref' + field.charAt(0).toUpperCase() + field.slice(1);
+          const total = m[groupIndices[0]][rf];
+          if (total == null) return null;
+          let filled = 0;
+          for (const idx of groupIndices) {
+            const v = (splitEditValues[idx] || {})[field];
+            if (v !== undefined && v !== null && v !== '') {
+              const n = parseFloat(String(v).replace(',', '.'));
+              if (!isNaN(n)) filled += n;
+            }
+          }
+          return Math.round((total - filled) * 100) / 100;
+        };
+
+        // Search filter
+        const srch = pdfModalSearch.trim().toLowerCase();
+        const matchesSrch = (e) => !srch ||
+          e.doctor.name.toLowerCase().includes(srch) ||
+          (e.pdfSubdivision || '').toLowerCase().includes(srch);
+        const splitMatchIds = new Set(m.filter(e => e.needsSplit && matchesSrch(e)).map(e => e.doctor.id));
+        const visible = (e) => e.needsSplit ? splitMatchIds.has(e.doctor.id) : matchesSrch(e);
+
+        const splitDoctorCount = Object.keys(groupIdxMap).length;
+        const normalCount = m.filter(e => !e.needsSplit).length;
+
+        const fmt = (v) => v != null ? v.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
+        const COL = { border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left' };
+        const COLR = { ...COL, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+
+        const tableRows = [];
+        for (let i = 0; i < m.length; i++) {
+          const entry = m[i];
+          if (!visible(entry)) continue;
+          const { doctor, clinicId, subdivisionResolved, pdfSubdivision, mainPayment, advance, vacation, ndfl,
+                  needsSplit, refMainPayment, refAdvance, refNdfl, refVacation } = entry;
+
+          if (needsSplit) {
+            const gi = groupIdxMap[doctor.id];
+            const isFirst = i === gi[0];
+            const isLast  = i === gi[gi.length - 1];
+
+            if (isFirst) {
+              tableRows.push(
+                <tr key={`sh-${i}`} style={{ background: '#f3f4f6' }}>
+                  <td style={{ ...COL, fontWeight: 700, color: '#111827' }}>{doctor.name}</td>
+                  <td style={{ ...COL, color: '#374151', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>{pdfSubdivision}</td>
+                  <td style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>↕ итого</td>
+                  <td style={COLR}>{fmt(refMainPayment)}</td>
+                  <td style={COLR}>{fmt(refAdvance)}</td>
+                  <td style={COLR}>{fmt(refVacation)}</td>
+                  <td style={COLR}>{fmt(refNdfl)}</td>
+                </tr>
+              );
+            }
+
+            const sv = splitEditValues[i] || {};
+            const cliName = clinicId ? getClinicName(clinicId) : 'Общий';
+            const mkInput = (field, refVal) => (
+              <input
+                type="number" step="0.01" min="0"
+                placeholder={refVal != null ? String(refVal.toFixed(2)) : ''}
+                value={sv[field] !== undefined ? sv[field] : ''}
+                onChange={ev => setSplitEditValues(prev => ({ ...prev, [i]: { ...(prev[i] || {}), [field]: ev.target.value } }))}
+                style={{ width: 98, padding: '3px 6px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 3, textAlign: 'right', background: '#fff', outline: 'none' }}
+              />
+            );
+            tableRows.push(
+              <tr key={i} style={{ background: '#fafafa' }}>
+                <td style={{ ...COL, paddingLeft: 22, color: '#4b5563', fontSize: 11 }}>↳ {doctor.name}</td>
+                <td style={COL} />
+                <td style={COL}>
+                  {clinicId
+                    ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{cliName}</span>
+                    : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Общий</span>}
+                </td>
+                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('mainPayment', refMainPayment)}</td>
+                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('advance', refAdvance)}</td>
+                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('vacation', refVacation)}</td>
+                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('ndfl', refNdfl)}</td>
+              </tr>
+            );
+
+            if (isLast) {
+              const remStyle = (field) => {
+                const r = calcRem(gi, field);
+                if (r == null) return <span style={{ opacity: 0.35 }}>—</span>;
+                return <span style={{ color: r < -0.005 ? '#dc2626' : r > 0.005 ? '#374151' : '#9ca3af', fontWeight: r !== 0 ? 600 : 400 }}>{fmt(r)}</span>;
+              };
+              tableRows.push(
+                <tr key={`rem-${i}`} style={{ background: '#f9fafb', borderBottom: '2px solid #d1d5db' }}>
+                  <td colSpan={2} style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Остаток → пустые поля</td>
+                  <td style={COL} />
+                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('mainPayment')}</td>
+                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('advance')}</td>
+                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('vacation')}</td>
+                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('ndfl')}</td>
+                </tr>
+              );
+            }
+          } else {
+            const clinicName = clinicId ? getClinicName(clinicId) : (subdivisionResolved ? 'Общий' : '—');
+            const warn = !subdivisionResolved && pdfSubdivision;
+            tableRows.push(
+              <tr key={i} style={{ background: warn ? '#fffbeb' : 'transparent' }}>
+                <td style={{ ...COL, fontWeight: 500 }}>{doctor.name}</td>
+                <td style={{ ...COL, color: warn ? '#92400e' : '#6b7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>
+                  {pdfSubdivision || <span style={{ opacity: 0.4 }}>—</span>}
+                  {warn && <span title="Не сопоставлено с клиникой"> ⚠</span>}
+                </td>
+                <td style={COL}>
+                  {clinicId
+                    ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{clinicName}</span>
+                    : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>{subdivisionResolved ? 'Общий' : '—'}</span>}
+                </td>
+                <td style={COLR}>{mainPayment != null ? fmt(mainPayment) : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={COLR}>{advance    != null ? fmt(advance)    : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={COLR}>{vacation   != null ? fmt(vacation)   : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={COLR}>{ndfl       != null ? fmt(ndfl)       : <span style={{ opacity: 0.35 }}>—</span>}</td>
+              </tr>
+            );
+          }
+        }
+
+        return (
+          <div className="rb-modal-overlay" onClick={() => setPdfPreviewModal(null)}>
+            <div className="rb-modal" style={{ maxWidth: 1440, width: '99vw' }} onClick={e => e.stopPropagation()}>
+              <div className="rb-modal-header">
+                <h3>Предпросмотр импорта расчётных листков</h3>
+                <button className="rb-modal-close" onClick={() => setPdfPreviewModal(null)}>×</button>
+              </div>
+              <div className="rb-modal-body" style={{ padding: '12px 18px' }}>
+
+                {/* Stats */}
+                <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8, display: 'flex', flexWrap: 'wrap', gap: '0 14px' }}>
+                  <span>Найдено: <b style={{ color: '#111827' }}>{normalCount}</b> сотр.</span>
+                  {splitDoctorCount > 0 && <span style={{ color: '#374151', fontWeight: 600 }}>Разделить вручную: <b>{splitDoctorCount}</b></span>}
+                  {pdfPreviewModal.unmatchedNames.length > 0 && <span style={{ color: '#92400e' }}>Не найдено: <b>{pdfPreviewModal.unmatchedNames.length}</b></span>}
+                  {pdfPreviewModal.noSubdivision.length > 0 && <span>Без Подразд.: <b>{pdfPreviewModal.noSubdivision.length}</b></span>}
+                </div>
+
+                {/* Search */}
+                <input
+                  type="text"
+                  placeholder="Поиск по сотруднику или подразделению..."
+                  value={pdfModalSearch}
+                  onChange={e => setPdfModalSearch(e.target.value)}
+                  style={{ width: '100%', marginBottom: 8, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#111827', background: '#fff', boxSizing: 'border-box' }}
+                />
+
+                {/* Table */}
+                <div style={{ overflowX: 'auto', maxHeight: 430, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
+                        {[
+                          ['Сотрудник',     200],
+                          ['Подразд. (1С)', 170],
+                          ['Клиника',        90],
+                          ['Осн. ЗП',       110],
+                          ['Аванс',         110],
+                          ['Отпускные',     110],
+                          ['НДФЛ',          110],
+                        ].map(([h, w]) => (
+                          <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid #e5e7eb', minWidth: w }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tableRows.length > 0
+                        ? tableRows
+                        : <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Warnings */}
+                {pdfPreviewModal.unmatchedNames.length > 0 && (
+                  <div style={{ marginTop: 10, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 3 }}>
+                      Не найдено в списке сотрудников ({pdfPreviewModal.unmatchedNames.length}):
+                    </div>
+                    <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>{pdfPreviewModal.unmatchedNames.join(', ')}</div>
+                  </div>
+                )}
+                {pdfPreviewModal.noSubdivision.length > 0 && (
+                  <div style={{ marginTop: 8, padding: '8px 12px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 3 }}>
+                      Подразделение (1С) не настроено ({pdfPreviewModal.noSubdivision.length}) — данные запишутся в «Общий» тариф:
+                    </div>
+                    <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.6 }}>{pdfPreviewModal.noSubdivision.map(r => `${r.name} (${r.subdivision})`).join(', ')}</div>
+                  </div>
+                )}
+
+              </div>
+              <div className="rb-modal-footer">
+                <button className="rb-btn rb-btn-secondary" onClick={() => setPdfPreviewModal(null)}>Отмена</button>
+                <button
+                  className="rb-btn"
+                  style={{ background: '#1f2937', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                  onClick={confirmPdfImport}
+                >
+                  Применить ({normalCount + splitDoctorCount})
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* PDF import loading overlay */}
+      {pdfImporting && (
+        <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
+          <div style={{ background: '#fff', padding: '28px 40px', borderRadius: 12, textAlign: 'center', boxShadow: '0 8px 32px rgba(0,0,0,.15)' }}>
+            <span className="rb-spinner" style={{ display: 'block', margin: '0 auto 14px' }} />
+            <div style={{ fontSize: 14, color: 'var(--rb-text)' }}>Импорт расчётных листков...</div>
+          </div>
+        </div>
+      )}
+
       {/* НДФЛ import loading overlay */}
       {ndflImporting && (
         <div className="rb-modal-overlay" style={{ cursor: 'wait' }}>
@@ -1007,6 +1440,7 @@ export default function ReferralBonusesPage() {
               togglePinCompare={togglePinCompare}
               onGlobalReset={currentStep === 1 && !isStepReadOnly(1) ? handleGlobalReset : null}
               onImportNdfl={currentStep === 1 && !isStepReadOnly(1) ? handleImportNdfl : null}
+              onImportPdf={currentStep === 1 && !isStepReadOnly(1) ? handleImportPdf : null}
               onToggleView={() => setDoctorPanelView('divisions')}
             />
           )
@@ -1044,9 +1478,11 @@ function DoctorsList({
   compareMode, pinnedForCompare, togglePinCompare,
   onGlobalReset,
   onImportNdfl,
+  onImportPdf,
   onToggleView,
 }) {
-  const importFileRef = React.useRef(null);
+  const importFileRef    = React.useRef(null);
+  const importPdfFileRef = React.useRef(null);
   const toggleBulk = (id) => {
     setBulkSelectedIds(prev => {
       const next = new Set(prev);
@@ -1146,13 +1582,27 @@ function DoctorsList({
           {onImportNdfl && (
             <button
               onClick={() => importFileRef.current?.click()}
-              title="Импорт"
+              title="Импорт зарплат (Excel)"
               style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#16a34a', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <polyline points="17 8 12 3 7 8"/>
                 <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </button>
+          )}
+          {onImportPdf && (
+            <button
+              onClick={() => importPdfFileRef.current?.click()}
+              title="Импорт расчётных листков (PDF)"
+              style={{ flexShrink: 0, padding: '7px 9px', color: '#fff', border: 'none', borderRadius: 8, background: '#7c3aed', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" width="15" height="15">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="12" y1="18" x2="12" y2="12"/>
+                <polyline points="9 15 12 12 15 15"/>
               </svg>
             </button>
           )}
@@ -1209,6 +1659,20 @@ function DoctorsList({
               if (!file) return;
               e.target.value = '';
               await onImportNdfl(file);
+            }}
+          />
+        )}
+        {onImportPdf && (
+          <input
+            ref={importPdfFileRef}
+            type="file"
+            accept=".pdf"
+            style={{ display: 'none' }}
+            onChange={async e => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              e.target.value = '';
+              await onImportPdf(file);
             }}
           />
         )}

@@ -14,6 +14,7 @@ const DEFAULT_SUGGESTS = {
   extrasNormed:      ['Отпускные', 'Увольнение'],
   normServices:      ['Консультация', 'Приём', 'Процедура', 'Операция', 'Диагностика'],
   employmentPlaces:  [],
+  pdfSubdivisions:   [],
 };
 
 function execClinicDefault() {
@@ -44,6 +45,7 @@ function execClinicDefault() {
     holidayDoubleRate: false,
     tabelNumber: '',
     employmentPlace: '',
+    pdfSubdivision: '',
   };
 }
 
@@ -1260,6 +1262,20 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     return () => document.removeEventListener('mousedown', close);
   }, [employmentPlaceDropOpen]);
 
+  const [pdfSubdivisionDropOpen, setPdfSubdivisionDropOpen] = useState(false);
+  const pdfSubdivisionRef     = useRef(null);
+  const pdfSubdivisionWrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!pdfSubdivisionDropOpen) return;
+    const close = (e) => {
+      if (pdfSubdivisionRef.current?.contains(e.target) || pdfSubdivisionWrapRef.current?.contains(e.target)) return;
+      setPdfSubdivisionDropOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [pdfSubdivisionDropOpen]);
+
   const [scheduleCategories, setScheduleCategories] = React.useState([]);
   useEffect(() => {
     rbScheduleDicts.listCategories()
@@ -1289,6 +1305,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         extrasNormed:     data.extrasNormed     || DEFAULT_SUGGESTS.extrasNormed,
         normServices:     data.normServices     || DEFAULT_SUGGESTS.normServices,
         employmentPlaces: data.employmentPlaces || DEFAULT_SUGGESTS.employmentPlaces,
+        pdfSubdivisions:  data.pdfSubdivisions  || DEFAULT_SUGGESTS.pdfSubdivisions,
       });
     }).catch(() => {});
   }, []);
@@ -1435,15 +1452,22 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       clearExecCache(selectedDoctor.id);
       setIsDirty(false);
       toast.success('Сохранено');
-      // Update employmentPlaces suggests pool with any new values from saved data
+      // Update employmentPlaces + pdfSubdivisions suggests pools with any new values
       const newPlaces = Object.values(toSave.clinicSettings || {})
         .map(cs => cs.employmentPlace)
         .filter(Boolean);
-      if (newPlaces.length > 0) {
+      const newSubdivisions = Object.values(toSave.clinicSettings || {})
+        .map(cs => cs.pdfSubdivision)
+        .filter(Boolean);
+      if (newPlaces.length > 0 || newSubdivisions.length > 0) {
         setSuggests(prev => {
-          const merged = [...new Set([...(prev.employmentPlaces || []), ...newPlaces])].sort((a, b) => a.localeCompare(b, 'ru'));
-          if (merged.length === (prev.employmentPlaces || []).length) return prev;
-          const next = { ...prev, employmentPlaces: merged };
+          const mergedPlaces = [...new Set([...(prev.employmentPlaces || []), ...newPlaces])].sort((a, b) => a.localeCompare(b, 'ru'));
+          const mergedSubdivisions = [...new Set([...(prev.pdfSubdivisions || []), ...newSubdivisions])].sort((a, b) => a.localeCompare(b, 'ru'));
+          const unchanged =
+            mergedPlaces.length === (prev.employmentPlaces || []).length &&
+            mergedSubdivisions.length === (prev.pdfSubdivisions || []).length;
+          if (unchanged) return prev;
+          const next = { ...prev, employmentPlaces: mergedPlaces, pdfSubdivisions: mergedSubdivisions };
           referralBonuses.saveSuggests(next).catch(() => {});
           return next;
         });
@@ -2060,6 +2084,60 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           })()}
           {readOnly && data.employmentPlace && (
             <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Место труд.: <b>{data.employmentPlace}</b></span>
+          )}
+          {!readOnly && (() => {
+            const sdValue = data.pdfSubdivision || '';
+            const sdQ = sdValue.trim().toLowerCase();
+            const sdSuggests = (suggests.pdfSubdivisions || []).filter(s =>
+              !sdQ || s.toLowerCase().includes(sdQ)
+            );
+            return (
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
+                <span>Подразделение (1С)</span>
+                <div ref={pdfSubdivisionRef} style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    value={sdValue}
+                    onChange={e => { handlePaymentFieldChange('pdfSubdivision', e.target.value); setPdfSubdivisionDropOpen(true); }}
+                    onFocus={() => setPdfSubdivisionDropOpen(true)}
+                    placeholder="—"
+                    style={{
+                      width: 200, height: 26, padding: '0 8px', fontSize: 12,
+                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                    }}
+                  />
+                  {pdfSubdivisionDropOpen && sdSuggests.length > 0 && (
+                    <div ref={pdfSubdivisionWrapRef} style={{
+                      position: 'absolute', top: '100%', left: 0, marginTop: 2,
+                      minWidth: 200, maxHeight: 180, overflowY: 'auto',
+                      background: '#fff', border: '1px solid var(--rb-border)',
+                      borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
+                      zIndex: 9999, fontFamily: 'inherit',
+                    }}>
+                      {sdSuggests.map(s => (
+                        <div
+                          key={s}
+                          onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('pdfSubdivision', s); setPdfSubdivisionDropOpen(false); }}
+                          style={{
+                            padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                            color: 'var(--rb-text)',
+                            background: s === sdValue ? '#EFF6FF' : 'transparent',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = s === sdValue ? '#EFF6FF' : 'transparent'; }}
+                        >
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </label>
+            );
+          })()}
+          {readOnly && data.pdfSubdivision && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Подр. (1С): <b>{data.pdfSubdivision}</b></span>
           )}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
