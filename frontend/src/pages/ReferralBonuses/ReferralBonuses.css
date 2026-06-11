@@ -248,8 +248,9 @@
 .rb-report-table tr:last-child td { border-bottom: none; }
 .rb-report-table--bordered, .rb-report-table--bordered th, .rb-report-table--bordered td { border: 1px solid var(--rb-border); }
 .rb-report-table--bordered tr:last-child td { border-bottom: 1px solid var(--rb-border); }
-.rb-report-table tfoot td { background: #f8fafc; font-size: 11px; color: var(--rb-text-secondary); border-top: 1.5px solid var(--rb-border); opacity: 0; transition: opacity 0.2s; pointer-events: none; }
-.rb-report-table:hover tfoot td { opacity: 1; pointer-events: auto; }
+.rb-table-summary-tip { position: absolute; top: 4px; right: 4px; background: #fff; border: 1px solid var(--rb-border); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); font-size: 12px; z-index: 20; pointer-events: none; min-width: 170px; }
+.rb-table-summary-tip-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
+.rb-table-summary-tip-row span:first-child { color: var(--rb-text-secondary); }
 .rb-report-total { text-align: right; font-size: 13px; font-weight: 700; padding: 6px 4px; color: var(--rb-danger); }
 .rb-report-grand-total { padding: 12px 16px; background: #fef3c7; border-radius: 8px; font-size: 14px; font-weight: 700; text-align: right; color: var(--rb-warning); margin-top: 12px; }
 

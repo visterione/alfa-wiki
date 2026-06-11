@@ -28,43 +28,153 @@ function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandabl
 }
 
 function ServiceTable({ sections, columns, negative }) {
+  const [showTip, setShowTip] = useState(false);
   const totalCost  = sections.reduce((s, x) => s + (x.cost || 0), 0);
   const totalCount = sections.reduce((s, x) => s + (x.count || 1), 0);
   const totalBonus = sections.reduce((s, x) => s + (x.bonusAmount || 0), 0);
   const hasCost    = sections.some(x => (x.cost || 0) !== 0);
   return (
-    <table className="rb-report-table rb-report-table--bordered">
-      <thead>
-        <tr>{columns.map(c => <th key={c}>{c}</th>)}</tr>
-      </thead>
-      <tbody>
-        {sections.map((s, i) => (
-          <tr key={i}>
-            <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-            <td>{s.name || '—'}</td>
-            <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-            <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-            <td style={{ textAlign: 'center' }}>{s.bonusLabel || '—'}</td>
-            <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
-              {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
-            </td>
-          </tr>
-        ))}
-      </tbody>
-      {sections.length > 1 && (
-        <tfoot>
-          <tr>
-            <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
-            <td style={{ textAlign: 'right', fontWeight: 600 }}>{hasCost ? totalCost.toFixed(2) + ' ₽' : ''}</td>
-            <td style={{ textAlign: 'center', fontWeight: 600 }}>{totalCount}</td>
-            <td />
-            <td style={{ textAlign: 'right', fontWeight: 600, color: negative ? 'var(--rb-danger)' : (totalBonus < 0 ? 'var(--rb-danger)' : 'var(--rb-success)') }}>
+    <div style={{ position: 'relative' }}>
+      <table className="rb-report-table rb-report-table--bordered">
+        <thead
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+          style={{ cursor: 'default' }}
+        >
+          <tr>{columns.map(c => <th key={c}>{c}</th>)}</tr>
+        </thead>
+        <tbody>
+          {sections.map((s, i) => (
+            <tr key={i}>
+              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+              <td>{s.name || '—'}</td>
+              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+              <td style={{ textAlign: 'center' }}>{s.bonusLabel || '—'}</td>
+              <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
+                {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {showTip && sections.length > 1 && (
+        <div className="rb-table-summary-tip">
+          {hasCost && (
+            <div className="rb-table-summary-tip-row">
+              <span>Стоимость</span><span>{totalCost.toFixed(2)} ₽</span>
+            </div>
+          )}
+          <div className="rb-table-summary-tip-row">
+            <span>Количество</span><span>{totalCount}</span>
+          </div>
+          <div className="rb-table-summary-tip-row">
+            <span>Итого</span>
+            <span style={{ fontWeight: 700, color: negative ? 'var(--rb-danger)' : (totalBonus < 0 ? 'var(--rb-danger)' : 'var(--rb-success)') }}>
               {negative ? '−' : (totalBonus >= 0 ? '+' : '')}{Math.abs(totalBonus).toFixed(2)} ₽
-            </td>
-          </tr>
-        </tfoot>
+            </span>
+          </div>
+        </div>
       )}
-    </table>
+    </div>
+  );
+}
+
+function RoleServiceTable({ services, aValueRenderer }) {
+  const [showTip, setShowTip] = useState(false);
+  const totalCost   = services.reduce((s, x) => s + (x.cost || 0), 0);
+  const totalCount  = services.reduce((s, x) => s + (x.count || 1), 0);
+  const totalIncome = services.reduce((s, x) => s + (x.income || 0), 0);
+  const hasCost     = services.some(x => (x.cost || 0) !== 0);
+  return (
+    <div style={{ position: 'relative' }}>
+      <table className="rb-report-table rb-report-table--bordered">
+        <thead
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+          style={{ cursor: 'default' }}
+        >
+          <tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr>
+        </thead>
+        <tbody>
+          {services.map((s, j) => (
+            <tr key={j}>
+              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+              <td>{s.name || '—'}</td>
+              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+              <td style={{ textAlign: 'center' }}>{aValueRenderer(s)}</td>
+              <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {showTip && services.length > 1 && (
+        <div className="rb-table-summary-tip">
+          {hasCost && (
+            <div className="rb-table-summary-tip-row">
+              <span>Стоимость</span><span>{totalCost.toFixed(2)} ₽</span>
+            </div>
+          )}
+          <div className="rb-table-summary-tip-row">
+            <span>Количество</span><span>{totalCount}</span>
+          </div>
+          <div className="rb-table-summary-tip-row">
+            <span>Итого</span>
+            <span style={{ fontWeight: 700, color: 'var(--rb-success)' }}>+{totalIncome.toFixed(2)} ₽</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnesthTable({ services }) {
+  const [showTip, setShowTip] = useState(false);
+  const totalCount  = services.reduce((s, x) => s + (x.count || 1), 0);
+  const totalIncome = services.reduce((s, x) => s + (x.income || 0), 0);
+  return (
+    <div style={{ position: 'relative' }}>
+      <table className="rb-report-table rb-report-table--bordered">
+        <thead
+          onMouseEnter={() => setShowTip(true)}
+          onMouseLeave={() => setShowTip(false)}
+          style={{ cursor: 'default' }}
+        >
+          <tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr>
+        </thead>
+        <tbody>
+          {services.map((s, j) => {
+            const inc = s.income || 0;
+            const incPos = inc >= 0;
+            return (
+              <tr key={j}>
+                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                <td>{s.name || '—'}</td>
+                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                <td style={{ textAlign: 'center' }}>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
+                <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
+                  {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {showTip && services.length > 1 && (
+        <div className="rb-table-summary-tip">
+          <div className="rb-table-summary-tip-row">
+            <span>Количество</span><span>{totalCount}</span>
+          </div>
+          <div className="rb-table-summary-tip-row">
+            <span>Итого</span>
+            <span style={{ fontWeight: 700, color: totalIncome >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)' }}>
+              {totalIncome >= 0 ? '+' : '−'}{Math.abs(totalIncome).toFixed(2)} ₽
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -345,86 +455,32 @@ export default function SalaryBlock({ salary }) {
             {/* Ассистент */}
             {hasRoleAssistant && (
               <SubSection indent={20} label="Ассистент" value={`+${fmtRub(assistanceIncomeTotal)}`} color="var(--rb-success)" type="plus">
-                {assistanceIncomeSections.map(({ execName, total, services }, i) => {
-                  const aTotalCost  = services.reduce((s, x) => s + (x.cost || 0), 0);
-                  const aTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
-                  const aTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
-                  return (
-                    <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-                      {services.length > 0 && (
-                        <table className="rb-report-table rb-report-table--bordered">
-                          <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
-                          <tbody>
-                            {services.map((s, j) => (
-                              <tr key={j}>
-                                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                                <td>{s.name || '—'}</td>
-                                <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-                                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                                <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}</td>
-                                <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          {services.length > 1 && (
-                            <tfoot>
-                              <tr>
-                                <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
-                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{aTotalCost.toFixed(2)} ₽</td>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{aTotalCount}</td>
-                                <td />
-                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>+{aTotalInc.toFixed(2)} ₽</td>
-                              </tr>
-                            </tfoot>
-                          )}
-                        </table>
-                      )}
-                    </SubSection>
-                  );
-                })}
+                {assistanceIncomeSections.map(({ execName, total, services }, i) => (
+                  <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
+                    {services.length > 0 && (
+                      <RoleServiceTable
+                        services={services}
+                        aValueRenderer={s => s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : (s.aPct ? `${s.aPct}%` : '—')}
+                      />
+                    )}
+                  </SubSection>
+                ))}
               </SubSection>
             )}
 
             {/* Медсестра */}
             {hasRoleNurse && (
               <SubSection indent={20} label="Медсестра" value={`+${fmtRub(nurseIncomeTotal)}`} color="var(--rb-success)" type="plus">
-                {nurseIncomeSections.map(({ execName, total, services }, i) => {
-                  const nTotalCost  = services.reduce((s, x) => s + (x.cost || 0), 0);
-                  const nTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
-                  const nTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
-                  return (
-                    <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
-                      {services.length > 0 && (
-                        <table className="rb-report-table rb-report-table--bordered">
-                          <thead><tr><th>Код</th><th>Услуга</th><th>Стоимость</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
-                          <tbody>
-                            {services.map((s, j) => (
-                              <tr key={j}>
-                                <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                                <td>{s.name || '—'}</td>
-                                <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-                                <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                                <td style={{ textAlign: 'center' }}>{s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
-                                <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{(s.income || 0).toFixed(2)} ₽</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                          {services.length > 1 && (
-                            <tfoot>
-                              <tr>
-                                <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
-                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{nTotalCost.toFixed(2)} ₽</td>
-                                <td style={{ textAlign: 'center', fontWeight: 600 }}>{nTotalCount}</td>
-                                <td />
-                                <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--rb-success)' }}>+{nTotalInc.toFixed(2)} ₽</td>
-                              </tr>
-                            </tfoot>
-                          )}
-                        </table>
-                      )}
-                    </SubSection>
-                  );
-                })}
+                {nurseIncomeSections.map(({ execName, total, services }, i) => (
+                  <SubSection key={i} indent={40} label={execName} value={`+${fmtRub(total)}`} color="var(--rb-success)" type="plus">
+                    {services.length > 0 && (
+                      <RoleServiceTable
+                        services={services}
+                        aValueRenderer={s => s.aValue ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}
+                      />
+                    )}
+                  </SubSection>
+                ))}
               </SubSection>
             )}
 
@@ -436,44 +492,9 @@ export default function SalaryBlock({ salary }) {
                 <SubSection indent={20} label="Анестезиолог" value={(netPos ? '+' : '−') + fmtRub(Math.abs(net))} color={netPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={netPos ? 'plus' : 'minus'}>
                   {anesthesiologistIncomeSections.map(({ execName, total, services }, i) => {
                     const secPos = total >= 0;
-                    const anTotalCount = services.reduce((s, x) => s + (x.count || 1), 0);
-                    const anTotalInc   = services.reduce((s, x) => s + (x.income || 0), 0);
                     return (
                       <SubSection key={i} indent={40} label={execName} value={(secPos ? '+' : '−') + fmtRub(Math.abs(total))} color={secPos ? 'var(--rb-success)' : 'var(--rb-danger)'} type={secPos ? 'plus' : 'minus'}>
-                        {services.length > 0 && (
-                          <table className="rb-report-table rb-report-table--bordered">
-                            <thead><tr><th>Код</th><th>Услуга</th><th>К-во</th><th>Ставка</th><th>Итого, руб</th></tr></thead>
-                            <tbody>
-                              {services.map((s, j) => {
-                                const inc = s.income || 0;
-                                const incPos = inc >= 0;
-                                return (
-                                  <tr key={j}>
-                                    <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-                                    <td>{s.name || '—'}</td>
-                                    <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-                                    <td style={{ textAlign: 'center' }}>{s.aValue != null ? (s.aValueType === 'rub' ? `${s.aValue} ₽` : `${s.aValue}%`) : '—'}</td>
-                                    <td style={{ fontWeight: 600, color: incPos ? 'var(--rb-success)' : 'var(--rb-danger)', textAlign: 'right' }}>
-                                      {incPos ? '+' : '−'}{Math.abs(inc).toFixed(2)} ₽
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                            {services.length > 1 && (
-                              <tfoot>
-                                <tr>
-                                  <td colSpan={2} style={{ textAlign: 'right', fontStyle: 'italic', fontWeight: 500 }}>Итого:</td>
-                                  <td style={{ textAlign: 'center', fontWeight: 600 }}>{anTotalCount}</td>
-                                  <td />
-                                  <td style={{ textAlign: 'right', fontWeight: 600, color: anTotalInc >= 0 ? 'var(--rb-success)' : 'var(--rb-danger)' }}>
-                                    {anTotalInc >= 0 ? '+' : '−'}{Math.abs(anTotalInc).toFixed(2)} ₽
-                                  </td>
-                                </tr>
-                              </tfoot>
-                            )}
-                          </table>
-                        )}
+                        {services.length > 0 && <AnesthTable services={services} />}
                       </SubSection>
                     );
                   })}
