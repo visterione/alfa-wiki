@@ -221,11 +221,11 @@
 }
 
 .price-table th {
-  padding: 14px 16px;
+  padding: 6px 8px;
   text-align: center;
   background: #f8fafc;
   font-weight: 600;
-  font-size: 13px;
+  font-size: 11px;
   color: #4b5563;
   border-bottom: 2px solid #e5e7eb;
   text-transform: uppercase;
@@ -288,9 +288,9 @@
 }
 
 .price-table td {
-  padding: 14px 16px;
+  padding: 6px 8px;
   border-bottom: 1px solid #f1f5f9;
-  font-size: 14px;
+  font-size: 12px;
   color: #374151;
   vertical-align: middle;
 }
@@ -816,7 +816,121 @@
     justify-content: space-between;
   }
 }
+
+/* Переключатель режимов */
+.price-mode-switcher {
+  display: flex;
+  background: #f3f4f6;
+  border-radius: 10px;
+  padding: 4px;
+  width: fit-content;
+  margin-bottom: 20px;
+}
+
+.price-mode-btn {
+  padding: 8px 20px;
+  border: none;
+  background: transparent;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  color: #6b7280;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.price-mode-btn svg { width: 16px; height: 16px; }
+
+.price-mode-btn.active {
+  background: #fff;
+  color: #1f2937;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
+
+/* Превью лабораторий */
+.lab-preview {
+  padding: 16px;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.lab-preview-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.lab-preview-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.lab-preview-stat .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e40af;
+  line-height: 1;
+}
+
+.lab-preview-stat .stat-value.warn { color: #d97706; }
+
+.lab-preview-stat .stat-label {
+  font-size: 11px;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-top: 2px;
+}
+
+.lab-preview-labs {
+  font-size: 13px;
+  color: #374151;
+}
+
+.lab-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.lab-preview-table th {
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  font-weight: 600;
+  text-align: left;
+}
+
+.lab-preview-table td {
+  padding: 6px 8px;
+  border: 1px solid #e5e7eb;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
 </style>
+
+  <!-- Переключатель режимов -->
+  <div class="price-mode-switcher">
+    <button class="price-mode-btn active" id="mode-clinic-btn" onclick="priceApp.setMode('clinic')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+      Клиники
+    </button>
+    <button class="price-mode-btn" id="mode-lab-btn" onclick="priceApp.setMode('lab')">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+      Лаборатории
+    </button>
+  </div>
 
   <!-- Заголовок и управление -->
   <div class="price-header">
@@ -851,7 +965,7 @@
   <div id="columns-manager" class="columns-manager" style="display:none;">
     <h4>Управление колонками</h4>
     <div class="columns-list" id="columns-list"></div>
-    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <div id="add-competitor-btn-container" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
       <button class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
         + Конкурент
       </button>
@@ -980,6 +1094,43 @@
     </div>
   </div>
 
+  <!-- Модальное окно: Загрузить услуги лабораторий -->
+  <div id="add-lab-services-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-lab-services-modal')">
+    <div class="price-modal-content" style="max-width:700px;">
+      <div class="price-modal-header">
+        <h3>Загрузить услуги из МИС</h3>
+        <button class="price-modal-close" onclick="priceApp.closeModal('add-lab-services-modal')">&times;</button>
+      </div>
+      <div class="price-modal-body">
+        <div class="price-form-group">
+          <label>Категория услуг <span>*</span></label>
+          <select id="lab-category-select" class="price-select price-category-select" onchange="priceApp.onLabCategorySelected()">
+            <option value="">Загрузка категорий...</option>
+          </select>
+        </div>
+
+        <div id="lab-loading" style="display:none; text-align:center; padding:20px; color:#6b7280; font-size:14px;">
+          <svg style="width:24px;height:24px;animation:spin 1s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span id="lab-loading-status">Загрузка услуг из МИС...</span>
+        </div>
+
+        <div id="lab-preview-section" style="display:none">
+          <div class="lab-preview" id="lab-preview-content"></div>
+          <div id="lab-preview-table-container"></div>
+        </div>
+      </div>
+      <div class="price-form-actions">
+        <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.closeModal('add-lab-services-modal')">Отмена</button>
+        <button type="button" class="price-btn price-btn-primary" onclick="priceApp.saveLabGroups()" id="save-lab-groups-btn" disabled>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Добавить услуги
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Модальное окно: Добавить конкурента -->
   <div id="add-competitor-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-competitor-modal')">
     <div class="price-modal-content">
@@ -1008,12 +1159,14 @@ window.priceApp = (function() {
   var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/price-comparisons';
   var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis';
 
+  var currentMode = 'clinic'; // 'clinic' | 'lab'
   var currentComparison = null;
   var currentItems = [];
   var allColumns = []; // Список всех колонок (своих + конкурентов)
   var hiddenColumns = []; // Список скрытых колонок
   var availableClinics = []; // Список клиник из МИС
   var baseColumnName = null; // Базовая колонка для расчета разницы
+  var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
 
   // === HELPERS ===
   function getToken() {
@@ -1066,9 +1219,35 @@ window.priceApp = (function() {
     document.getElementById(modalId).style.display = 'flex';
   }
 
+  // === ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ ===
+  function setMode(mode) {
+    currentMode = mode;
+
+    document.getElementById('mode-clinic-btn').classList.toggle('active', mode === 'clinic');
+    document.getElementById('mode-lab-btn').classList.toggle('active', mode === 'lab');
+
+    // Сбрасываем состояние
+    currentComparison = null;
+    currentItems = [];
+    allColumns = [];
+    hiddenColumns = [];
+    baseColumnName = null;
+
+    // Сбрасываем UI
+    document.getElementById('columns-manager').style.display = 'none';
+    document.getElementById('price-filters').style.display = 'none';
+    document.getElementById('export-excel-btn').disabled = true;
+    document.getElementById('delete-comparison-btn').disabled = true;
+    document.getElementById('creation-date-display').style.display = 'none';
+
+    loadComparisons();
+    renderTable();
+  }
+
   // === ЗАГРУЗКА ДАННЫХ ===
   function loadComparisons() {
-    fetchAPI(API_URL + '?type=external').then(function(comparisons) {
+    var type = currentMode === 'lab' ? 'lab' : 'external';
+    fetchAPI(API_URL + '?type=' + type).then(function(comparisons) {
       var selector = document.getElementById('comparison-selector');
       selector.innerHTML = '<option value="">Создать новую страницу...</option>';
 
@@ -1169,6 +1348,12 @@ window.priceApp = (function() {
     var list = document.getElementById('columns-list');
     list.innerHTML = '';
 
+    // В режиме лабораторий скрываем кнопку добавления конкурента
+    var competitorContainer = document.getElementById('add-competitor-btn-container');
+    if (competitorContainer) {
+      competitorContainer.style.display = currentMode === 'lab' ? 'none' : 'flex';
+    }
+
     // Если нет базовой колонки, устанавливаем первую видимую
     if (!baseColumnName && allColumns.length > 0) {
       baseColumnName = allColumns[0].name;
@@ -1252,8 +1437,10 @@ window.priceApp = (function() {
     var thead = document.getElementById('table-header');
     var tbody = document.getElementById('price-table-body');
 
+    var articleLabel = currentMode === 'lab' ? 'Код 804н' : 'Артикул';
+
     if (!currentComparison || allColumns.length === 0) {
-      thead.innerHTML = '<tr><th class="col-code">Артикул</th><th class="col-service">Название услуги</th><th class="col-actions"></th></tr>';
+      thead.innerHTML = '<tr><th class="col-code">' + articleLabel + '</th><th class="col-service">Название услуги</th><th class="col-actions"></th></tr>';
       tbody.innerHTML = '<tr><td colspan="3" class="price-empty">Добавьте услуги для начала работы</td></tr>';
       return;
     }
@@ -1279,8 +1466,8 @@ window.priceApp = (function() {
     // Заголовок таблицы - одна строка
     var headerRow = '<tr>';
 
-    // Артикул и Название услуги
-    headerRow += '<th class="col-code">Артикул</th>';
+    // Артикул/Код 804н и Название услуги
+    headerRow += '<th class="col-code">' + articleLabel + '</th>';
     headerRow += '<th class="col-service">Название услуги</th>';
 
     // Считаем общее количество колонок для colspan
@@ -1428,7 +1615,7 @@ window.priceApp = (function() {
       body: JSON.stringify({
         name: name,
         description: description,
-        comparisonType: 'external',
+        comparisonType: currentMode === 'lab' ? 'lab' : 'external',
         ownMedCenters: [],
         competitors: []
       })
@@ -1587,6 +1774,13 @@ window.priceApp = (function() {
       showToast('Сначала создайте сравнение', 'error');
       return;
     }
+
+    // В режиме лабораторий открываем специальное окно
+    if (currentMode === 'lab') {
+      openAddLabServicesModal();
+      return;
+    }
+
     document.getElementById('mis-search-input').value = '';
     document.getElementById('mis-results').style.display = 'none';
 
@@ -2247,6 +2441,7 @@ window.priceApp = (function() {
         closeModal('new-comparison-modal');
         closeModal('add-service-modal');
         closeModal('add-competitor-modal');
+        closeModal('add-lab-services-modal');
       }
     });
   }
@@ -2294,6 +2489,296 @@ window.priceApp = (function() {
     }
   }
 
+  // === ЛАБОРАТОРНЫЙ РЕЖИМ ===
+
+  function openAddLabServicesModal() {
+    pendingLabGroups = [];
+    document.getElementById('lab-preview-section').style.display = 'none';
+    document.getElementById('lab-loading').style.display = 'none';
+    document.getElementById('save-lab-groups-btn').disabled = true;
+
+    var select = document.getElementById('lab-category-select');
+    if (select.options.length <= 1) {
+      loadLabCategories();
+    } else {
+      select.value = '';
+    }
+
+    openModal('add-lab-services-modal');
+  }
+
+  function loadLabCategories() {
+    var select = document.getElementById('lab-category-select');
+    select.innerHTML = '<option value="">Загрузка категорий...</option>';
+
+    fetchAPI(MIS_URL + '/get-service-categories', {
+      method: 'POST',
+      body: JSON.stringify({})
+    })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || !res.data.length) {
+        select.innerHTML = '<option value="">Категории не найдены</option>';
+        return;
+      }
+
+      select.innerHTML = '<option value="">Выберите категорию...</option>';
+
+      function addOptions(categories, level) {
+        level = level || 0;
+        categories.forEach(function(cat) {
+          var opt = document.createElement('option');
+          opt.value = cat.id;
+          var indent = level === 0 ? '' : '　'.repeat(level);
+          opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
+          opt.setAttribute('data-level', level);
+          opt.setAttribute('data-name', cat.title);
+          select.appendChild(opt);
+          if (cat.children && cat.children.length) {
+            addOptions(cat.children, level + 1);
+          }
+        });
+      }
+
+      addOptions(res.data);
+    })
+    .catch(function(e) {
+      select.innerHTML = '<option value="">Ошибка загрузки</option>';
+      showToast('Ошибка загрузки категорий: ' + e.message, 'error');
+    });
+  }
+
+  function onLabCategorySelected() {
+    var select = document.getElementById('lab-category-select');
+    var categoryId = select.value;
+
+    document.getElementById('lab-preview-section').style.display = 'none';
+    document.getElementById('save-lab-groups-btn').disabled = true;
+    pendingLabGroups = [];
+
+    if (!categoryId) return;
+
+    var loadingEl = document.getElementById('lab-loading');
+    var statusEl = document.getElementById('lab-loading-status');
+    loadingEl.style.display = 'block';
+    statusEl.textContent = 'Загрузка выбранной категории...';
+
+    // Шаг 1: загружаем выбранную категорию, собираем sub_code и нормализованные названия
+    fetchAPI(MIS_URL + '/get-services', {
+      method: 'POST',
+      body: JSON.stringify({ category_id: categoryId, show_children: true })
+    })
+    .then(function(res) {
+      if (res.error !== 0 || !res.data || !res.data.length) {
+        loadingEl.style.display = 'none';
+        showToast('В категории нет услуг', 'error');
+        return Promise.reject('empty');
+      }
+
+      var subCodeSet = {};
+      var nameKeySet = {};
+      res.data.forEach(function(s) {
+        var subCode = (s.sub_code || '').trim();
+        if (subCode) {
+          subCodeSet[subCode] = true;
+        } else {
+          nameKeySet[normalizeName(s.title)] = true;
+        }
+      });
+
+      statusEl.textContent = 'Поиск совпадений во всех лабораториях...';
+
+      // Шаг 2: получаем все корневые категории
+      return fetchAPI(MIS_URL + '/get-service-categories', {
+        method: 'POST',
+        body: JSON.stringify({})
+      }).then(function(catRes) {
+        var rootCategories = (catRes.error === 0 && catRes.data) ? catRes.data : [];
+
+        // Шаг 3: параллельно грузим все корневые категории
+        var catRequests = rootCategories.map(function(cat) {
+          return fetchAPI(MIS_URL + '/get-services', {
+            method: 'POST',
+            body: JSON.stringify({ category_id: cat.id, show_children: true })
+          }).then(function(r) {
+            return (r.error === 0 && r.data) ? r.data : [];
+          }).catch(function() { return []; });
+        });
+
+        return Promise.all(catRequests).then(function(results) {
+          // Шаг 4: объединяем и фильтруем по совпадению sub_code или названия
+          var allServices = [];
+          results.forEach(function(r) { allServices = allServices.concat(r); });
+
+          return allServices.filter(function(s) {
+            var subCode = (s.sub_code || '').trim();
+            if (subCode) return subCodeSet[subCode];
+            return nameKeySet[normalizeName(s.title)];
+          });
+        });
+      });
+    })
+    .then(function(matchingServices) {
+      loadingEl.style.display = 'none';
+
+      if (!matchingServices || !matchingServices.length) {
+        showToast('Совпадений в других лабораториях не найдено', 'error');
+        return;
+      }
+
+      var groups = groupServicesBySubCode(matchingServices);
+      pendingLabGroups = groups;
+      renderLabPreview(groups);
+      document.getElementById('save-lab-groups-btn').disabled = false;
+    })
+    .catch(function(e) {
+      if (e === 'empty') return;
+      loadingEl.style.display = 'none';
+      showToast('Ошибка загрузки: ' + e.message, 'error');
+    });
+  }
+
+  function normalizeName(name) {
+    // Заменяем кириллические омоглифы на латинские, приводим к нижнему регистру
+    var map = {
+      'а':'a','А':'a','в':'b','В':'b','е':'e','Е':'e',
+      'к':'k','К':'k','м':'m','М':'m','о':'o','О':'o',
+      'с':'c','С':'c','р':'p','Р':'p','т':'t','Т':'t',
+      'у':'y','У':'y','х':'x','Х':'x'
+    };
+    return name
+      .split('')
+      .map(function(c) { return map[c] || c.toLowerCase(); })
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function groupServicesBySubCode(services) {
+    var bySubCode = {};
+    var byName = {};
+
+    services.forEach(function(s) {
+      var lab = (s.lab || '').trim() || 'Без лаборатории';
+      var price = parseFloat(s.price) || 0;
+      var subCode = (s.sub_code || '').trim();
+
+      if (subCode) {
+        if (!bySubCode[subCode]) {
+          bySubCode[subCode] = {
+            serviceCode: subCode,
+            groupName: s.title,
+            prices: {},
+            matchType: 'sub_code'
+          };
+        }
+        // Берём первую найденную цену для данной лаборатории
+        if (!(lab in bySubCode[subCode].prices)) {
+          bySubCode[subCode].prices[lab] = price;
+        }
+      } else {
+        var normalKey = normalizeName(s.title);
+        if (!byName[normalKey]) {
+          byName[normalKey] = {
+            serviceCode: '',
+            groupName: s.title,
+            prices: {},
+            matchType: 'name'
+          };
+        }
+        if (!(lab in byName[normalKey].prices)) {
+          byName[normalKey].prices[lab] = price;
+        }
+      }
+    });
+
+    return Object.values(bySubCode).concat(Object.values(byName));
+  }
+
+  function renderLabPreview(groups) {
+    var labsSet = {};
+    var subCodeCount = 0;
+    var nameCount = 0;
+
+    groups.forEach(function(g) {
+      if (g.matchType === 'sub_code') subCodeCount++;
+      else nameCount++;
+      Object.keys(g.prices).forEach(function(lab) { labsSet[lab] = true; });
+    });
+
+    var labs = Object.keys(labsSet);
+
+    var html = '<div class="lab-preview-stats">';
+    html += '<div class="lab-preview-stat"><div class="stat-value">' + groups.length + '</div><div class="stat-label">позиций</div></div>';
+    html += '<div class="lab-preview-stat"><div class="stat-value">' + subCodeCount + '</div><div class="stat-label">по коду 804н</div></div>';
+    if (nameCount > 0) {
+      html += '<div class="lab-preview-stat"><div class="stat-value warn">' + nameCount + '</div><div class="stat-label">по названию</div></div>';
+    }
+    html += '<div class="lab-preview-stat"><div class="stat-value">' + labs.length + '</div><div class="stat-label">лабораторий</div></div>';
+    html += '</div>';
+    html += '<div class="lab-preview-labs">Лаборатории: <strong>' + labs.join(', ') + '</strong></div>';
+    document.getElementById('lab-preview-content').innerHTML = html;
+
+    // Таблица-превью (первые 8 позиций)
+    var previewCount = Math.min(8, groups.length);
+    var tableHtml = '<div style="font-size:12px; color:#6b7280; margin:10px 0 6px;">Первые ' + previewCount + ' из ' + groups.length + ' позиций:</div>';
+    tableHtml += '<table class="lab-preview-table"><tr>';
+    tableHtml += '<th>Код 804н</th><th>Название</th>';
+    labs.forEach(function(lab) { tableHtml += '<th style="text-align:center;">' + lab + '</th>'; });
+    tableHtml += '</tr>';
+
+    groups.slice(0, previewCount).forEach(function(g) {
+      tableHtml += '<tr>';
+      tableHtml += '<td style="color:#6b7280;white-space:nowrap;">' + (g.serviceCode || '—') + '</td>';
+      tableHtml += '<td>' + g.groupName + '</td>';
+      labs.forEach(function(lab) {
+        var p = g.prices[lab];
+        var color = p ? '#16a34a' : '#d1d5db';
+        var fw = p ? '600' : '400';
+        tableHtml += '<td style="text-align:center;color:' + color + ';font-weight:' + fw + ';">' + (p ? p.toFixed(0) + '₽' : '—') + '</td>';
+      });
+      tableHtml += '</tr>';
+    });
+
+    tableHtml += '</table>';
+    document.getElementById('lab-preview-table-container').innerHTML = tableHtml;
+    document.getElementById('lab-preview-section').style.display = 'block';
+  }
+
+  function saveLabGroups() {
+    if (!currentComparison || !pendingLabGroups.length) return;
+
+    var saveBtn = document.getElementById('save-lab-groups-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Сохранение ' + pendingLabGroups.length + ' позиций...';
+
+    var promises = pendingLabGroups.map(function(group) {
+      return fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
+        method: 'POST',
+        body: JSON.stringify({
+          serviceCode: group.serviceCode || '',
+          serviceName: group.groupName,
+          prices: group.prices,
+          misServiceId: null
+        })
+      });
+    });
+
+    Promise.all(promises)
+      .then(function() {
+        showToast('Добавлено позиций: ' + pendingLabGroups.length, 'success');
+        closeModal('add-lab-services-modal');
+        pendingLabGroups = [];
+        loadComparison();
+      })
+      .catch(function(e) {
+        showToast('Ошибка сохранения: ' + e.message, 'error');
+      })
+      .finally(function() {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg> Добавить услуги';
+      });
+  }
+
   return {
     loadComparisons: loadComparisons,
     loadComparison: loadComparison,
@@ -2317,7 +2802,11 @@ window.priceApp = (function() {
     onCategorySelected: onCategorySelected,
     addAllCategoryServices: addAllCategoryServices,
     showPriceHistoryTooltip: showPriceHistoryTooltip,
-    hidePriceHistoryTooltip: hidePriceHistoryTooltip
+    hidePriceHistoryTooltip: hidePriceHistoryTooltip,
+    setMode: setMode,
+    openAddLabServicesModal: openAddLabServicesModal,
+    onLabCategorySelected: onLabCategorySelected,
+    saveLabGroups: saveLabGroups
   };
 })();
 </script>
