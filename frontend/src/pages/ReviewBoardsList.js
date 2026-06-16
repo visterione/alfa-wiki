@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus, MessageSquare, Star, Settings, X, Archive
+  Plus, MessageSquare, Star, Settings, X, Archive, UserCheck
 } from 'lucide-react';
 import { reviews } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -120,6 +120,12 @@ const ReviewBoardsList = () => {
                 <h3 onClick={() => navigate(`/reviews/board/${board.id}`)}>
                   {board.name}
                 </h3>
+                {board.assignedToMeCount > 0 && (
+                  <span className="board-assigned-badge" title="Назначено на меня">
+                    <UserCheck size={13} />
+                    {board.assignedToMeCount}
+                  </span>
+                )}
               </div>
 
               {board.description && (

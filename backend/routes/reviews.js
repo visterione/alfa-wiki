@@ -358,6 +358,23 @@ router.get('/boards', authenticate, async (req, res) => {
       }
     });
 
+    const boardIds = Array.from(boardsMap.keys());
+
+    // Батч-запрос: назначенные мне активные отзывы по доскам
+    const assignedRows = boardIds.length > 0 ? await Review.findAll({
+      where: {
+        boardId: { [Op.in]: boardIds },
+        assigneeIds: { [Op.contains]: [req.user.id] },
+        status: { [Op.ne]: 'final' },
+        archived: false
+      },
+      attributes: ['boardId', [Sequelize.fn('COUNT', Sequelize.col('id')), 'count']],
+      group: ['boardId'],
+      raw: true
+    }) : [];
+    const assignedCountMap = {};
+    assignedRows.forEach(r => { assignedCountMap[r.boardId] = parseInt(r.count); });
+
     // Добавляем статистику для каждой доски (считаем ВСЕ отзывы, включая архивные)
     const boards = await Promise.all(
       Array.from(boardsMap.values()).map(async (board) => {
@@ -374,7 +391,8 @@ router.get('/boards', authenticate, async (req, res) => {
           reviewCount,
           avgRating: avgRating?.dataValues?.avgRating
             ? parseFloat(avgRating.dataValues.avgRating).toFixed(1)
-            : null
+            : null,
+          assignedToMeCount: assignedCountMap[board.id] || 0
         };
       })
     );
