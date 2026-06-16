@@ -1227,13 +1227,36 @@ router.get('/', authenticate, async (req, res) => {
       order: [['sortOrder', 'ASC'], ['createdAt', 'DESC']]
     });
 
+    // Батч-запрос последнего комментария для каждого отзыва
+    const reviewIds = reviews.map(r => r.id);
+    const latestCommentRows = reviewIds.length > 0 ? await ReviewHistory.findAll({
+      where: { reviewId: { [Op.in]: reviewIds }, action: HISTORY_ACTIONS.COMMENT },
+      attributes: [
+        'reviewId',
+        [Sequelize.fn('MAX', Sequelize.col('createdAt')), 'latestCommentAt'],
+        [Sequelize.fn('COUNT', Sequelize.col('id')), 'commentCount']
+      ],
+      group: ['reviewId'],
+      raw: true
+    }) : [];
+    const latestCommentMap = {};
+    latestCommentRows.forEach(row => {
+      latestCommentMap[row.reviewId] = {
+        latestCommentAt: row.latestCommentAt,
+        commentCount: parseInt(row.commentCount)
+      };
+    });
+
     // Добавляем данные назначенных пользователей
     const reviewsWithAssignees = await Promise.all(
       reviews.map(async (review) => {
         const assignees = await getUsersData(review.assigneeIds || []);
+        const commentInfo = latestCommentMap[review.id] || null;
         return {
           ...review.toJSON(),
-          assignees
+          assignees,
+          latestCommentAt: commentInfo?.latestCommentAt || null,
+          commentCount: commentInfo?.commentCount || 0
         };
       })
     );
@@ -1357,6 +1380,26 @@ router.post('/', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error creating review:', error);
     res.status(500).json({ error: 'Ошибка при создании отзыва' });
+  }
+});
+
+/**
+ * GET /api/reviews/assigned-count
+ * Количество активных отзывов, назначенных текущему пользователю
+ */
+router.get('/assigned-count', authenticate, async (req, res) => {
+  try {
+    const count = await Review.count({
+      where: {
+        assigneeIds: { [Op.contains]: [req.user.id] },
+        status: { [Op.ne]: 'final' },
+        archived: false
+      }
+    });
+    res.json({ count });
+  } catch (error) {
+    console.error('Error fetching assigned count:', error);
+    res.status(500).json({ error: 'Ошибка при получении количества отзывов' });
   }
 });
 
@@ -1506,7 +1549,7 @@ router.post('/:id/move', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Нет прав на перемещение' });
     }
 
-    const { status, sortOrder } = req.body;
+    const { status, sortOrder, comment } = req.body;
     if (!status) {
       return res.status(400).json({ error: 'status обязателен' });
     }
@@ -1553,6 +1596,18 @@ router.post('/:id/move', authenticate, async (req, res) => {
           attachments: []
         }, { transaction: t });
       }
+
+      if (comment && comment.trim()) {
+        await ReviewHistory.create({
+          reviewId: review.id,
+          userId: req.user.id,
+          action: HISTORY_ACTIONS.COMMENT,
+          oldValue: null,
+          newValue: null,
+          comment: comment.trim(),
+          attachments: []
+        }, { transaction: t });
+      }
     });
 
     // Уведомления и workflow — вне транзакции (внешние эффекты)
@@ -1595,6 +1650,23 @@ router.post('/:id/move', authenticate, async (req, res) => {
         );
       } catch (wfError) {
         console.error('[WorkflowEngine] status_changed hook error:', wfError.message);
+      }
+    }
+
+    // Уведомления о комментарии при перемещении
+    if (comment && comment.trim()) {
+      try {
+        const notificationService = require('../services/notificationService');
+        const assigneeIds = review.assigneeIds || [];
+        for (const userId of assigneeIds) {
+          if (userId !== req.user.id) {
+            await notificationService.sendReviewCommentNotification(
+              userId, review, comment.trim(), req.user, false
+            );
+          }
+        }
+      } catch (notifError) {
+        console.error('[ReviewNotif] move comment notification error:', notifError.message);
       }
     }
 

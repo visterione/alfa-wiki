@@ -117,6 +117,8 @@ const ReviewBoard = () => {
   // Assignee picker (при нескольких кандидатах из workflow)
   const [pickerState, setPickerState] = useState(null);
   // pickerState: { candidates: [{id,displayName,username,avatar}], draggableId, newStatus, newSortOrder }
+  const [pickerComment, setPickerComment] = useState('');
+  const [selectedPickerCandidate, setSelectedPickerCandidate] = useState(null);
 
   // Doctor autocomplete
   const [doctorSuggestions, setDoctorSuggestions] = useState([]);
@@ -254,11 +256,18 @@ const ReviewBoard = () => {
     return new Set(members.map(m => m.id));
   };
 
+  const sortWithUnread = (a, b) => {
+    const aUnread = hasUnreadComments(a);
+    const bUnread = hasUnreadComments(b);
+    if (aUnread !== bUnread) return aUnread ? -1 : 1;
+    return a.sortOrder - b.sortOrder;
+  };
+
   // Карточки секции участника
   const getReviewsBySection = (columnId, assigneeId) =>
     applyFilters(reviewsList.filter(r => r.status === columnId))
       .filter(r => getPrimaryAssigneeId(r) === assigneeId)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+      .sort(sortWithUnread);
 
   // Карточки "без назначения" — включает отзывы без assignee И с assignee вне видимых участников колонки
   const getUnassignedReviews = (columnId) => {
@@ -268,7 +277,7 @@ const ReviewBoard = () => {
         const primaryId = getPrimaryAssigneeId(r);
         return primaryId === null || !visibleMemberIds.has(primaryId);
       })
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+      .sort(sortWithUnread);
   };
 
   // Управление сворачиванием секций
@@ -376,7 +385,7 @@ const ReviewBoard = () => {
     await doMoveReview(draggableId, newStatus, newSortOrder);
   };
 
-  const doMoveReview = async (draggableId, newStatus, newSortOrder, chosenAssigneeId = null) => {
+  const doMoveReview = async (draggableId, newStatus, newSortOrder, chosenAssigneeId = null, comment = '') => {
     // Оптимистичное обновление — обновляем статус и сразу assigneeIds если выбрали
     setReviewsList(prev =>
       prev.map(r => {
@@ -389,9 +398,9 @@ const ReviewBoard = () => {
       })
     );
     try {
-      await reviews.moveReview(draggableId, newStatus, newSortOrder);
+      await reviews.moveReview(draggableId, newStatus, newSortOrder, comment || undefined);
       if (chosenAssigneeId) {
-        await reviews.assignReview(draggableId, chosenAssigneeId);
+        await reviews.assignReview(draggableId, chosenAssigneeId, comment || undefined);
       }
       toast.success('Отзыв перемещён');
       loadData();
@@ -474,8 +483,18 @@ const ReviewBoard = () => {
   };
 
   // View review details
+  const hasUnreadComments = (review) => {
+    if (!review.latestCommentAt) return false;
+    const key = `review_viewed_${user?.id}_${review.id}`;
+    const lastViewed = localStorage.getItem(key);
+    if (!lastViewed) return true;
+    return new Date(review.latestCommentAt) > new Date(lastViewed);
+  };
+
   const openDetailsModal = async (review) => {
     try {
+      localStorage.setItem(`review_viewed_${user?.id}_${review.id}`, new Date().toISOString());
+      setReviewsList(prev => prev.map(r => r.id === review.id ? { ...r, _forceRead: Date.now() } : r));
       const response = await reviews.getReview(review.id);
       setSelectedReview(response.data);
       setShowDetailsModal(true);
@@ -908,9 +927,17 @@ const ReviewBoard = () => {
                     <div className="card-header">
                       <div className="card-header-top">
                         <span className="patient-name">{review.patientName}</span>
-                        <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
-                          {getRatingStars(review.rating)}
-                        </span>
+                        <div className="card-header-right">
+                          {hasUnreadComments(review) && (
+                            <span className={`card-unread-badge ${review.rating <= 3 ? 'card-unread-badge--negative' : 'card-unread-badge--positive'}`} title="Есть непрочитанные комментарии">
+                              <span className="card-unread-count">{review.commentCount}</span>
+                              <MessageSquare size={13} className="card-unread-icon" />
+                            </span>
+                          )}
+                          <span className={`rating ${review.rating <= 3 ? 'negative' : 'positive'}`}>
+                            {getRatingStars(review.rating)}
+                          </span>
+                        </div>
                       </div>
                       <div className="card-meta">
                         <span className="platform">{review.platform?.name}</span>
@@ -1089,21 +1116,26 @@ const ReviewBoard = () => {
 
       {/* Assignee Picker — диалог выбора при нескольких кандидатах из workflow */}
       {pickerState && (
-        <div className="modal-overlay" onClick={() => setPickerState(null)}>
+        <div className="modal-overlay" onClick={() => { setPickerState(null); setPickerComment(''); setSelectedPickerCandidate(null); }}>
           <div className="assignee-picker-modal" onClick={e => e.stopPropagation()}>
             <div className="assignee-picker-modal__header">
               <span className="assignee-picker-modal__title">Кому передать отзыв?</span>
-              <button className="assignee-picker-modal__close" onClick={() => setPickerState(null)}><X size={16} /></button>
+              <button className="assignee-picker-modal__close" onClick={() => { setPickerState(null); setPickerComment(''); setSelectedPickerCandidate(null); }}><X size={16} /></button>
             </div>
             <div className="assignee-picker-body">
               <div className="assignee-picker-list">
                 {pickerState.candidates.map(candidate => (
                   <button
                     key={candidate.id}
-                    className="assignee-picker-item"
+                    className={`assignee-picker-item${selectedPickerCandidate?.id === candidate.id ? ' assignee-picker-item--selected' : ''}`}
                     onClick={() => {
-                      doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder, candidate.id);
-                      setPickerState(null);
+                      if (selectedPickerCandidate?.id === candidate.id) {
+                        setSelectedPickerCandidate(null);
+                        setPickerComment('');
+                      } else {
+                        setSelectedPickerCandidate(candidate);
+                        setPickerComment('');
+                      }
                     }}
                   >
                     <div className="assignee-picker-avatar">
@@ -1113,14 +1145,42 @@ const ReviewBoard = () => {
                       }
                     </div>
                     <span>{candidate.displayName || candidate.username}</span>
+                    {selectedPickerCandidate?.id === candidate.id && <Check size={14} className="assignee-picker-item__check" />}
                   </button>
                 ))}
               </div>
+
+              <div className={`assignee-picker-confirm${selectedPickerCandidate ? ' assignee-picker-confirm--open' : ''}`}>
+                <div className="assignee-picker-confirm-inner">
+                  <textarea
+                    className="assignee-picker-comment"
+                    placeholder="Комментарий при передаче (необязательно)..."
+                    value={pickerComment}
+                    onChange={e => setPickerComment(e.target.value)}
+                    rows={2}
+                  />
+                  <button
+                    className="assignee-picker-submit"
+                    onClick={() => {
+                      doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder, selectedPickerCandidate.id, pickerComment);
+                      setPickerState(null);
+                      setPickerComment('');
+                      setSelectedPickerCandidate(null);
+                    }}
+                  >
+                    <Check size={14} />
+                    {pickerComment.trim() ? 'Назначить с комментарием' : 'Назначить'}
+                  </button>
+                </div>
+              </div>
+
               <button
                 className="assignee-picker-skip"
                 onClick={() => {
-                  doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder);
+                  doMoveReview(pickerState.draggableId, pickerState.newStatus, pickerState.newSortOrder, null, undefined);
                   setPickerState(null);
+                  setPickerComment('');
+                  setSelectedPickerCandidate(null);
                 }}
               >
                 Переместить без назначения

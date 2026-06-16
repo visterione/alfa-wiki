@@ -24,7 +24,7 @@ import { ChevronDown, ChevronRight, ChevronLeft, ExternalLink,
   Sun, Moon, Umbrella, Leaf, Car, Truck, Plane, Navigation, CheckCircle, XCircle, Pencil, Trash, Copy, Save, Share2,
   Minus, GraduationCap, Trello, Maximize2, Minimize2
 } from 'lucide-react';
-import { sidebar as sidebarApi, chat, calendar } from '../services/api';
+import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -358,6 +358,7 @@ function QuickAccessButtons({ onClose }) {
   const location = useLocation();
   const { user, isAdmin } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [assignedReviewsCount, setAssignedReviewsCount] = useState(0);
   const canAccessReviews = isAdmin || user?.adminAccess?.reviews === true;
   const canAccessSalary = isAdmin || user?.canAccessSalary === true;
   const canAccessStatistics = isAdmin || user?.canAccessStatistics === true;
@@ -375,6 +376,23 @@ function QuickAccessButtons({ onClose }) {
       setUnreadCount(data.unreadCount || 0);
     } catch (error) {
       console.error('Failed to load unread count:', error);
+    }
+  };
+
+  // Загружаем количество активных отзывов, назначенных мне
+  useEffect(() => {
+    if (!canAccessReviews) return;
+    loadAssignedReviewsCount();
+    const interval = setInterval(loadAssignedReviewsCount, 3600000);
+    return () => clearInterval(interval);
+  }, [canAccessReviews]);
+
+  const loadAssignedReviewsCount = async () => {
+    try {
+      const { data } = await reviewsApi.getAssignedCount();
+      setAssignedReviewsCount(data.count || 0);
+    } catch (error) {
+      console.error('Failed to load assigned reviews count:', error);
     }
   };
 
@@ -450,6 +468,11 @@ function QuickAccessButtons({ onClose }) {
       >
         <ThumbsUp size={20} />
         {!canAccessReviews && <Lock size={10} className="quick-access-lock" />}
+        {canAccessReviews && assignedReviewsCount > 0 && (
+          <span className="quick-access-badge">
+            {assignedReviewsCount > 99 ? '99+' : assignedReviewsCount}
+          </span>
+        )}
       </button>
 
       {/* Третий ряд */}

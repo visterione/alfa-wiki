@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { BASE_URL } from '../services/api';
+import { BASE_URL, chat as chatApi } from '../services/api';
 
 // Tauri detection
 const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -99,7 +99,7 @@ export function SocketProvider({ children }) {
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
   const unreadBadgeCount = useRef(0);
-  // Set of muted chat IDs — updated by Dashboard after loading chats
+  // Set of muted chat IDs — loaded on login and kept up-to-date by Dashboard
   const mutedChatIdsRef = useRef(new Set());
   // Pending chat navigation: set when native notification is clicked
   const [pendingChatNavigation, setPendingChatNavigation] = useState(null);
@@ -107,6 +107,20 @@ export function SocketProvider({ children }) {
   // Map notifId → { chat, message } для onAction
   const notifIdCounter = useRef(1);
   const notifChatMapRef = useRef({});
+
+  // Load muted chat IDs when the user authenticates, so the check works
+  // even before the user visits the Dashboard page
+  useEffect(() => {
+    if (!user?.id) {
+      mutedChatIdsRef.current = new Set();
+      return;
+    }
+    chatApi.list().then(({ data }) => {
+      mutedChatIdsRef.current = new Set(
+        data.filter(c => c.isNotificationMuted).map(c => c.id)
+      );
+    }).catch(() => {});
+  }, [user?.id]);
 
   // Title notification refs
   const originalTitleRef = useRef(document.title);
