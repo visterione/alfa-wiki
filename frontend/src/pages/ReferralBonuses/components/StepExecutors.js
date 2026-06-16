@@ -2010,156 +2010,229 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Header */}
       <div className="rb-doctor-card-header">
-        <div className="rb-doctor-card-info" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <h2 style={{ margin: 0 }}>{selectedDoctor.name}</h2>
-          {!readOnly && (
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-              <span>Таб. №</span>
-              <input
-                type="text"
-                value={data.tabelNumber || ''}
-                onChange={e => handlePaymentFieldChange('tabelNumber', e.target.value)}
-                placeholder="—"
+        <div className="rb-doctor-card-info" style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1, minWidth: 0 }}>
+          {/* Ряд 1: ФИО + Таб. № + кнопка Сохранить */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {(() => {
+                const specialty = (selectedDoctor.professions || []).map(p => typeof p === 'object' ? (p.title || '') : String(p || '')).filter(Boolean).join(', ');
+                const displaySpecialty = specialty || (selectedDoctor.roles || []).join(', ');
+                return (
+                  <>
+                    <h2 style={{ margin: '0 0 1px 0' }}>{selectedDoctor.name}</h2>
+                    {displaySpecialty && (
+                      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {displaySpecialty}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {!readOnly && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                  <span>Таб. №</span>
+                  <input
+                    type="text"
+                    value={data.tabelNumber || ''}
+                    onChange={e => handlePaymentFieldChange('tabelNumber', e.target.value)}
+                    style={{
+                      width: '100%', height: 26, padding: '0 8px', fontSize: 12,
+                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </label>
+              )}
+              {readOnly && data.tabelNumber && (
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Таб. №: <b>{data.tabelNumber}</b></span>
+              )}
+            </div>
+            {!readOnly && (
+              <button
+                onClick={handleSavePayment}
+                disabled={saving || !isDirty}
+                title={isDirty ? 'Сохранить изменения' : 'Нет изменений'}
                 style={{
-                  width: 72, height: 26, padding: '0 8px', fontSize: 12,
+                  width: 30, height: 30, padding: 0, border: 'none', borderRadius: 7, cursor: isDirty ? 'pointer' : 'default',
+                  background: saving ? '#94a3b8' : isDirty ? 'var(--rb-primary)' : '#e2e8f0',
+                  color: saving || isDirty ? '#fff' : '#64748b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s', flexShrink: 0,
+                }}
+              >
+                {saving ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ animation: 'rb-spin 0.7s linear infinite' }}>
+                    <circle cx="12" cy="12" r="9" strokeDasharray="30 56" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
+          {/* Ряд 2: Место трудоустройства + Подразделение + кнопка расширения */}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+            {/* Место трудоустройства */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {!readOnly && (() => {
+                const epValue = data.employmentPlace || '';
+                const epQ = epValue.trim().toLowerCase();
+                const epSuggests = (suggests.employmentPlaces || []).filter(s =>
+                  !epQ || s.toLowerCase().includes(epQ)
+                );
+                return (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                    <span>Место трудоустройства</span>
+                    <div ref={employmentPlaceRef} style={{ position: 'relative', width: '100%' }}>
+                      <input
+                        type="text"
+                        value={epValue}
+                        onChange={e => { handlePaymentFieldChange('employmentPlace', e.target.value); setEmploymentPlaceDropOpen(true); }}
+                        onFocus={() => setEmploymentPlaceDropOpen(true)}
+                        style={{
+                          width: '100%', height: 26, padding: '0 8px', fontSize: 12,
+                          border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                          background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      {employmentPlaceDropOpen && epSuggests.length > 0 && (
+                        <div ref={employmentPlaceWrapRef} style={{
+                          position: 'absolute', top: '100%', left: 0, marginTop: 2,
+                          width: '100%', maxHeight: 180, overflowY: 'auto',
+                          background: '#fff', border: '1px solid var(--rb-border)',
+                          borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
+                          zIndex: 9999, fontFamily: 'inherit',
+                        }}>
+                          {epSuggests.map(s => (
+                            <div
+                              key={s}
+                              onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('employmentPlace', s); setEmploymentPlaceDropOpen(false); }}
+                              style={{
+                                padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                                color: 'var(--rb-text)',
+                                background: s === epValue ? '#EFF6FF' : 'transparent',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = s === epValue ? '#EFF6FF' : 'transparent'; }}
+                            >
+                              {s}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })()}
+              {readOnly && data.employmentPlace && (
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Место труд.: <b>{data.employmentPlace}</b></span>
+              )}
+            </div>
+            {/* Подразделение (1С) */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {!readOnly && (() => {
+                const sdValue = data.pdfSubdivision || '';
+                const sdQ = sdValue.trim().toLowerCase();
+                const sdSuggests = (suggests.pdfSubdivisions || []).filter(s =>
+                  !sdQ || s.toLowerCase().includes(sdQ)
+                );
+                return (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                    <span>Подразделение (1С)</span>
+                    <div ref={pdfSubdivisionRef} style={{ position: 'relative', width: '100%' }}>
+                      <input
+                        type="text"
+                        value={sdValue}
+                        onChange={e => { handlePaymentFieldChange('pdfSubdivision', e.target.value); setPdfSubdivisionDropOpen(true); }}
+                        onFocus={() => setPdfSubdivisionDropOpen(true)}
+                        style={{
+                          width: '100%', height: 26, padding: '0 8px', fontSize: 12,
+                          border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+                          background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                      {pdfSubdivisionDropOpen && sdSuggests.length > 0 && (
+                        <div ref={pdfSubdivisionWrapRef} style={{
+                          position: 'absolute', top: '100%', left: 0, marginTop: 2,
+                          width: '100%', maxHeight: 180, overflowY: 'auto',
+                          background: '#fff', border: '1px solid var(--rb-border)',
+                          borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
+                          zIndex: 9999, fontFamily: 'inherit',
+                        }}>
+                          {sdSuggests.map(s => (
+                            <div
+                              key={s}
+                              onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('pdfSubdivision', s); setPdfSubdivisionDropOpen(false); }}
+                              style={{
+                                padding: '6px 10px', fontSize: 12, cursor: 'pointer',
+                                color: 'var(--rb-text)',
+                                background: s === sdValue ? '#EFF6FF' : 'transparent',
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = s === sdValue ? '#EFF6FF' : 'transparent'; }}
+                            >
+                              {s}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                );
+              })()}
+              {readOnly && data.pdfSubdivision && (
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Подр. (1С): <b>{data.pdfSubdivision}</b></span>
+              )}
+            </div>
+            {onTogglePanel && (
+              <button
+                onClick={onTogglePanel}
+                title={panelCollapsed ? 'Свернуть' : 'На всю ширину'}
+                style={{
+                  width: 30, height: 30, padding: 0, border: 'none', borderRadius: 7, cursor: 'pointer',
+                  background: '#e2e8f0', color: '#64748b',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'all 0.2s', flexShrink: 0,
+                }}
+              >
+                {panelCollapsed ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                )}
+              </button>
+            )}
+          </div>
+          {!readOnly && (
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)', width: '100%' }}>
+              <span>Комментарий</span>
+              <textarea
+                value={execData.salaryComment || ''}
+                onChange={e => { setExecData(prev => ({ ...prev, salaryComment: e.target.value })); setIsDirty(true); }}
+                rows={2}
+                style={{
+                  flex: 1, padding: '4px 8px', fontSize: 12,
                   border: '1px solid var(--rb-border-dark)', borderRadius: 6,
                   background: '#fff', color: 'var(--rb-text)', outline: 'none',
+                  resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5,
+                  minHeight: 44,
                 }}
               />
             </label>
           )}
-          {readOnly && data.tabelNumber && (
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Таб. №: <b>{data.tabelNumber}</b></span>
-          )}
-          {!readOnly && (() => {
-            const epValue = data.employmentPlace || '';
-            const epQ = epValue.trim().toLowerCase();
-            const epSuggests = (suggests.employmentPlaces || []).filter(s =>
-              !epQ || s.toLowerCase().includes(epQ)
-            );
-            return (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-                <span>Место трудоустройства</span>
-                <div ref={employmentPlaceRef} style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    value={epValue}
-                    onChange={e => { handlePaymentFieldChange('employmentPlace', e.target.value); setEmploymentPlaceDropOpen(true); }}
-                    onFocus={() => setEmploymentPlaceDropOpen(true)}
-                    placeholder="—"
-                    style={{
-                      width: 160, height: 26, padding: '0 8px', fontSize: 12,
-                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
-                    }}
-                  />
-                  {employmentPlaceDropOpen && epSuggests.length > 0 && (
-                    <div ref={employmentPlaceWrapRef} style={{
-                      position: 'absolute', top: '100%', left: 0, marginTop: 2,
-                      minWidth: 160, maxHeight: 180, overflowY: 'auto',
-                      background: '#fff', border: '1px solid var(--rb-border)',
-                      borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
-                      zIndex: 9999, fontFamily: 'inherit',
-                    }}>
-                      {epSuggests.map(s => (
-                        <div
-                          key={s}
-                          onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('employmentPlace', s); setEmploymentPlaceDropOpen(false); }}
-                          style={{
-                            padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                            color: 'var(--rb-text)',
-                            background: s === epValue ? '#EFF6FF' : 'transparent',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = s === epValue ? '#EFF6FF' : 'transparent'; }}
-                        >
-                          {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </label>
-            );
-          })()}
-          {readOnly && data.employmentPlace && (
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Место труд.: <b>{data.employmentPlace}</b></span>
-          )}
-          {!readOnly && (() => {
-            const sdValue = data.pdfSubdivision || '';
-            const sdQ = sdValue.trim().toLowerCase();
-            const sdSuggests = (suggests.pdfSubdivisions || []).filter(s =>
-              !sdQ || s.toLowerCase().includes(sdQ)
-            );
-            return (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>
-                <span>Подразделение (1С)</span>
-                <div ref={pdfSubdivisionRef} style={{ position: 'relative' }}>
-                  <input
-                    type="text"
-                    value={sdValue}
-                    onChange={e => { handlePaymentFieldChange('pdfSubdivision', e.target.value); setPdfSubdivisionDropOpen(true); }}
-                    onFocus={() => setPdfSubdivisionDropOpen(true)}
-                    placeholder="—"
-                    style={{
-                      width: 200, height: 26, padding: '0 8px', fontSize: 12,
-                      border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                      background: '#fff', color: 'var(--rb-text)', outline: 'none',
-                    }}
-                  />
-                  {pdfSubdivisionDropOpen && sdSuggests.length > 0 && (
-                    <div ref={pdfSubdivisionWrapRef} style={{
-                      position: 'absolute', top: '100%', left: 0, marginTop: 2,
-                      minWidth: 200, maxHeight: 180, overflowY: 'auto',
-                      background: '#fff', border: '1px solid var(--rb-border)',
-                      borderRadius: 7, boxShadow: '0 6px 18px rgba(0,0,0,.1)',
-                      zIndex: 9999, fontFamily: 'inherit',
-                    }}>
-                      {sdSuggests.map(s => (
-                        <div
-                          key={s}
-                          onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('pdfSubdivision', s); setPdfSubdivisionDropOpen(false); }}
-                          style={{
-                            padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                            color: 'var(--rb-text)',
-                            background: s === sdValue ? '#EFF6FF' : 'transparent',
-                          }}
-                          onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background = s === sdValue ? '#EFF6FF' : 'transparent'; }}
-                        >
-                          {s}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </label>
-            );
-          })()}
-          {readOnly && data.pdfSubdivision && (
-            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Подр. (1С): <b>{data.pdfSubdivision}</b></span>
-          )}
-        </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-          {!readOnly && (
-            <button
-              className="rb-btn rb-btn-primary rb-btn-sm"
-              onClick={handleSavePayment}
-              disabled={saving || !isDirty}
-              title={isDirty ? 'Есть несохранённые изменения' : 'Нет изменений'}
-              style={{ opacity: isDirty ? 1 : 0.45, transition: 'opacity 0.2s' }}
-            >
-              {saving ? 'Сохранение...' : isDirty ? 'Сохранить' : 'Сохранено'}
-            </button>
-          )}
-          {onTogglePanel && (
-            <button onClick={onTogglePanel} title={panelCollapsed ? 'Свернуть' : 'На всю ширину'} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center' }}>
-              {panelCollapsed ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-              )}
-            </button>
+          {readOnly && execData.salaryComment && (
+            <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+              Комментарий: <b style={{ whiteSpace: 'pre-wrap' }}>{execData.salaryComment}</b>
+            </span>
           )}
         </div>
       </div>

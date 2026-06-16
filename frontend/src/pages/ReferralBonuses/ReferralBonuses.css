@@ -101,8 +101,8 @@
 .rb-placeholder p { font-size: 14px; margin: 0; }
 
 /* Doctor card header */
-.rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: hidden; }
-.rb-doctor-card-header { padding: 16px 20px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-bottom: 1px solid var(--rb-border); display: flex; align-items: center; gap: 14px; }
+.rb-doctor-card { background: var(--rb-card-bg); border: 1px solid var(--rb-border); border-radius: var(--rb-radius); overflow: clip; }
+.rb-doctor-card-header { padding: 16px 20px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-bottom: 1px solid var(--rb-border); display: flex; align-items: flex-start; gap: 14px; position: sticky; top: 0; z-index: 20; }
 .rb-doctor-card-info h2 { font-size: 17px; font-weight: 700; margin-bottom: 4px; margin-top: 0; }
 .rb-doctor-card-info p { font-size: 13px; color: var(--rb-text-secondary); margin: 0; }
 .rb-doctor-card-actions { margin-left: auto; display: flex; gap: 8px; }
