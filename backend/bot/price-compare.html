@@ -918,6 +918,58 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Combobox выбора категории лаборатории */
+.lab-category-combobox {
+  position: relative;
+}
+
+.lab-category-dropdown {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 10002;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+
+.lab-category-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #374151;
+  transition: background 0.1s;
+}
+
+.lab-category-option:hover,
+.lab-category-option.highlighted {
+  background: #f3f4f6;
+}
+
+.lab-category-option[data-level="0"] {
+  font-weight: 600;
+  color: #1f2937;
+  background-color: #f9fafb;
+}
+
+.lab-category-option[data-level="0"]:hover,
+.lab-category-option[data-level="0"].highlighted {
+  background-color: #f3f4f6;
+}
+
+.lab-category-option.selected-opt {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.lab-category-empty-msg {
+  padding: 12px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
 </style>
 
   <!-- Переключатель режимов -->
@@ -1104,9 +1156,14 @@
       <div class="price-modal-body">
         <div class="price-form-group">
           <label>Категория услуг <span>*</span></label>
-          <select id="lab-category-select" class="price-select price-category-select" onchange="priceApp.onLabCategorySelected()">
-            <option value="">Загрузка категорий...</option>
-          </select>
+          <div class="lab-category-combobox" id="lab-category-combobox">
+            <input type="text" id="lab-category-input" class="price-input" placeholder="Поиск или выберите категорию..." autocomplete="off"
+              oninput="priceApp.onLabCategoryInput(this.value)"
+              onfocus="priceApp.onLabCategoryFocus()"
+              onblur="priceApp.onLabCategoryBlur()"
+              onkeydown="priceApp.onLabCategoryKeydown(event)">
+            <div class="lab-category-dropdown" id="lab-category-dropdown" style="display:none;"></div>
+          </div>
         </div>
 
         <div id="lab-loading" style="display:none; text-align:center; padding:20px; color:#6b7280; font-size:14px;">
@@ -1167,6 +1224,9 @@ window.priceApp = (function() {
   var availableClinics = []; // Список клиник из МИС
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
+  var labCategoryOptions = []; // Кеш всех опций категорий для поиска
+  var selectedLabCategoryId = null;
+  var highlightedLabOptionIdx = -1;
 
   // === HELPERS ===
   function getToken() {
@@ -1175,14 +1235,22 @@ window.priceApp = (function() {
 
   function fetchAPI(url, options) {
     options = options || {};
-    return fetch(url, {
+    var fetchOptions = {
       method: options.method || 'GET',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + getToken()
       },
       body: options.body
-    }).then(function(r) {
+    };
+
+    if (options.timeout) {
+      var controller = new AbortController();
+      setTimeout(function() { controller.abort(); }, options.timeout);
+      fetchOptions.signal = controller.signal;
+    }
+
+    return fetch(url, fetchOptions).then(function(r) {
       if (!r.ok) return r.json().then(function(e) { throw new Error(e.error || 'Error'); });
       return r.json();
     });
@@ -2493,23 +2561,26 @@ window.priceApp = (function() {
 
   function openAddLabServicesModal() {
     pendingLabGroups = [];
+    selectedLabCategoryId = null;
+    highlightedLabOptionIdx = -1;
     document.getElementById('lab-preview-section').style.display = 'none';
     document.getElementById('lab-loading').style.display = 'none';
     document.getElementById('save-lab-groups-btn').disabled = true;
 
-    var select = document.getElementById('lab-category-select');
-    if (select.options.length <= 1) {
+    var inputEl = document.getElementById('lab-category-input');
+    if (inputEl) inputEl.value = '';
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+
+    if (labCategoryOptions.length === 0) {
       loadLabCategories();
-    } else {
-      select.value = '';
     }
 
     openModal('add-lab-services-modal');
   }
 
   function loadLabCategories() {
-    var select = document.getElementById('lab-category-select');
-    select.innerHTML = '<option value="">Загрузка категорий...</option>';
+    labCategoryOptions = [];
 
     fetchAPI(MIS_URL + '/get-service-categories', {
       method: 'POST',
@@ -2517,39 +2588,130 @@ window.priceApp = (function() {
     })
     .then(function(res) {
       if (res.error !== 0 || !res.data || !res.data.length) {
-        select.innerHTML = '<option value="">Категории не найдены</option>';
+        showToast('Категории не найдены', 'error');
         return;
       }
 
-      select.innerHTML = '<option value="">Выберите категорию...</option>';
-
-      function addOptions(categories, level) {
+      function collectOptions(categories, level) {
         level = level || 0;
         categories.forEach(function(cat) {
-          var opt = document.createElement('option');
-          opt.value = cat.id;
           var indent = level === 0 ? '' : '　'.repeat(level);
-          opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
-          opt.setAttribute('data-level', level);
-          opt.setAttribute('data-name', cat.title);
-          select.appendChild(opt);
+          labCategoryOptions.push({
+            value: cat.id,
+            text: indent + cat.title + ' (' + (cat.services_count || 0) + ')',
+            name: cat.title,
+            level: level
+          });
           if (cat.children && cat.children.length) {
-            addOptions(cat.children, level + 1);
+            collectOptions(cat.children, level + 1);
           }
         });
       }
 
-      addOptions(res.data);
+      collectOptions(res.data);
+      renderLabDropdown('', false);
     })
     .catch(function(e) {
-      select.innerHTML = '<option value="">Ошибка загрузки</option>';
       showToast('Ошибка загрузки категорий: ' + e.message, 'error');
     });
   }
 
+  function positionLabDropdown() {
+    var inputEl = document.getElementById('lab-category-input');
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (!inputEl || !dropdown) return;
+    var rect = inputEl.getBoundingClientRect();
+    dropdown.style.top = (rect.bottom + 2) + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = rect.width + 'px';
+  }
+
+  function renderLabDropdown(search, show) {
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (!dropdown) return;
+    var term = (search || '').toLowerCase().trim();
+    var filtered = labCategoryOptions.filter(function(opt) {
+      return !term || opt.name.toLowerCase().indexOf(term) >= 0;
+    });
+    if (!filtered.length) {
+      dropdown.innerHTML = '<div class="lab-category-empty-msg">Ничего не найдено</div>';
+    } else {
+      dropdown.innerHTML = filtered.map(function(opt) {
+        var isSelected = opt.value === selectedLabCategoryId;
+        var cls = 'lab-category-option' + (isSelected ? ' selected-opt' : '');
+        return '<div class="' + cls + '" data-level="' + opt.level + '" onmousedown="priceApp.selectLabCategory(\'' + opt.value + '\', \'' + opt.name.replace(/'/g, "\\'") + '\')">' + opt.text + '</div>';
+      }).join('');
+    }
+    highlightedLabOptionIdx = -1;
+    if (show !== false) {
+      positionLabDropdown();
+      dropdown.style.display = 'block';
+    }
+  }
+
+  function onLabCategoryInput(value) {
+    selectedLabCategoryId = null;
+    renderLabDropdown(value, true);
+  }
+
+  function onLabCategoryFocus() {
+    if (labCategoryOptions.length > 0) {
+      var inputEl = document.getElementById('lab-category-input');
+      renderLabDropdown(inputEl ? inputEl.value : '', true);
+    }
+  }
+
+  function onLabCategoryBlur() {
+    setTimeout(function() {
+      var dropdown = document.getElementById('lab-category-dropdown');
+      if (dropdown) dropdown.style.display = 'none';
+    }, 150);
+  }
+
+  function onLabCategoryKeydown(e) {
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (!dropdown || dropdown.style.display === 'none') return;
+    var options = dropdown.querySelectorAll('.lab-category-option');
+    if (!options.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightedLabOptionIdx = Math.min(highlightedLabOptionIdx + 1, options.length - 1);
+      updateHighlightedLabOption(options);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightedLabOptionIdx = Math.max(highlightedLabOptionIdx - 1, 0);
+      updateHighlightedLabOption(options);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedLabOptionIdx >= 0 && options[highlightedLabOptionIdx]) {
+        options[highlightedLabOptionIdx].dispatchEvent(new MouseEvent('mousedown'));
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.style.display = 'none';
+    }
+  }
+
+  function updateHighlightedLabOption(options) {
+    options.forEach(function(o, i) {
+      o.classList.toggle('highlighted', i === highlightedLabOptionIdx);
+    });
+    if (highlightedLabOptionIdx >= 0 && options[highlightedLabOptionIdx]) {
+      options[highlightedLabOptionIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function selectLabCategory(value, name) {
+    selectedLabCategoryId = value;
+    var inputEl = document.getElementById('lab-category-input');
+    if (inputEl) inputEl.value = name;
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    highlightedLabOptionIdx = -1;
+    onLabCategorySelected();
+  }
+
   function onLabCategorySelected() {
-    var select = document.getElementById('lab-category-select');
-    var categoryId = select.value;
+    var categoryId = selectedLabCategoryId;
 
     document.getElementById('lab-preview-section').style.display = 'none';
     document.getElementById('save-lab-groups-btn').disabled = true;
@@ -2565,7 +2727,8 @@ window.priceApp = (function() {
     // Шаг 1: загружаем выбранную категорию, собираем sub_code и нормализованные названия
     fetchAPI(MIS_URL + '/get-services', {
       method: 'POST',
-      body: JSON.stringify({ category_id: categoryId, show_children: true })
+      body: JSON.stringify({ category_id: categoryId, show_children: true }),
+      timeout: 60000
     })
     .then(function(res) {
       if (res.error !== 0 || !res.data || !res.data.length) {
@@ -2598,7 +2761,8 @@ window.priceApp = (function() {
         var catRequests = rootCategories.map(function(cat) {
           return fetchAPI(MIS_URL + '/get-services', {
             method: 'POST',
-            body: JSON.stringify({ category_id: cat.id, show_children: true })
+            body: JSON.stringify({ category_id: cat.id, show_children: true }),
+            timeout: 30000
           }).then(function(r) {
             return (r.error === 0 && r.data) ? r.data : [];
           }).catch(function() { return []; });
@@ -2633,7 +2797,11 @@ window.priceApp = (function() {
     .catch(function(e) {
       if (e === 'empty') return;
       loadingEl.style.display = 'none';
-      showToast('Ошибка загрузки: ' + e.message, 'error');
+      if (e && (e.name === 'AbortError' || (e.message && e.message.indexOf('fetch') >= 0))) {
+        showToast('Категория слишком большая или нет связи. Выберите подкатегорию с меньшим объёмом.', 'error');
+      } else {
+        showToast('Ошибка загрузки: ' + (e.message || e), 'error');
+      }
     });
   }
 
@@ -2806,6 +2974,11 @@ window.priceApp = (function() {
     setMode: setMode,
     openAddLabServicesModal: openAddLabServicesModal,
     onLabCategorySelected: onLabCategorySelected,
+    onLabCategoryInput: onLabCategoryInput,
+    onLabCategoryFocus: onLabCategoryFocus,
+    onLabCategoryBlur: onLabCategoryBlur,
+    onLabCategoryKeydown: onLabCategoryKeydown,
+    selectLabCategory: selectLabCategory,
     saveLabGroups: saveLabGroups
   };
 })();

@@ -842,7 +842,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const lockToday = new Date(); lockToday.setHours(0, 0, 0, 0);
   const isCellFrozen = (cell) => {
     const halfSize = Math.floor(new Date(cell.year, cell.month, 0).getDate() / 2);
-    const fh = lockToday >= new Date(cell.year, cell.month - 1, 16);
+    const fh = lockToday >= new Date(cell.year, cell.month - 1, 18);
     const sh = lockToday >= new Date(cell.year, cell.month, 3);
     return cell.day <= halfSize ? fh : sh;
   };
