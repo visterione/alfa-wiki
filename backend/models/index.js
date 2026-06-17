@@ -2161,6 +2161,11 @@ const Review = sequelize.define('Review', {
   importSource: {
     type: DataTypes.STRING(50),
     comment: 'Источник импорта: getloyalty'
+  },
+  syncMeta: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Метаданные синхронизации: sourceHashKey для ответа через GetLoyalty'
   }
 }, {
   tableName: 'reviews',
@@ -2511,6 +2516,7 @@ const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   categoryTitle: { type: DataTypes.STRING(500), comment: 'Название категории' },
   categoryPath: { type: DataTypes.TEXT, comment: 'Полный путь категории (для дерева)' },
   price: { type: DataTypes.DECIMAL(10, 2), comment: 'Стоимость' },
+  costPrice: { type: DataTypes.DECIMAL(10, 2), comment: 'Себестоимость' },
   duration: { type: DataTypes.INTEGER, comment: 'Длительность в минутах' },
   lab: { type: DataTypes.STRING(255), comment: 'Лаборатория' },
   isHidden: { type: DataTypes.BOOLEAN, defaultValue: false },

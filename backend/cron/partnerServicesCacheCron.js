@@ -146,6 +146,7 @@ const syncPartnerServicesCache = async () => {
         categoryTitle: s.category_title || cat.title,
         categoryPath: s.category_path || cat.path,
         price: parseFloat(s.price) || 0,
+        costPrice: parseFloat(s.original_price) || null,
         duration: parseInt(s.duration) || null,
         lab: s.lab || null,
         isHidden: s.is_hidden ? true : false,

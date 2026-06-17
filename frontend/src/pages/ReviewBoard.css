@@ -1901,3 +1901,120 @@
 .assignee-picker-submit:hover {
   background: #2563eb;
 }
+
+/* ── Reply to platform (GetLoyalty) ── */
+.reply-to-platform {
+  margin: 12px 0 8px;
+  border: 1px solid #d1fae5;
+  border-radius: 10px;
+  background: #f0fdf4;
+  padding: 10px 12px;
+}
+
+.reply-to-platform__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #16a34a;
+  margin-bottom: 8px;
+}
+
+/* Строка с textarea + кнопкой внутри блока ответа */
+.reply-to-platform .add-comment-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.reply-to-platform .add-comment-row textarea {
+  flex: 1;
+  padding: 0.625rem 0.75rem;
+  background: var(--bg-primary);
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-family: inherit;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.5;
+  min-height: 0;
+  outline: none;
+}
+
+.reply-to-platform .add-comment-row textarea:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.15);
+}
+
+.btn-send-reply {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: #16a34a;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-send-reply:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.btn-send-reply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Уже отправленный ответ (read-only) */
+.reply-sent {
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.reply-header-date {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: #16a34a;
+  opacity: 0.8;
+}
+
+/* History: replied entry */
+.history-reply .comment-bubble--reply {
+  background: #f0fdf4;
+  border-left: 3px solid #16a34a;
+}
+
+.reply-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #16a34a;
+  background: #dcfce7;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+.reply-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin-left: 4px;
+}

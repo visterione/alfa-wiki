@@ -28,6 +28,15 @@ export const REVIEW_ROLES = [
   { id: 'publisher', label: 'Публикатор', description: 'Финализирует и публикует решения' }
 ];
 
+// Площадки, для которых GetLoyalty не поддерживает отправку ответов
+export const PLATFORMS_REPLY_UNSUPPORTED = [
+  'Докту',
+  'Google Maps',
+  'DocDoc',
+  'Plaso.pro',
+  'НаПоправку'
+];
+
 // Типы действий в истории
 export const HISTORY_ACTION_LABELS = {
   'created': 'Создан',
@@ -35,7 +44,8 @@ export const HISTORY_ACTION_LABELS = {
   'comment': 'Комментарий',
   'file_upload': 'Загружен файл',
   'assignment': 'Назначение',
-  'finalized': 'Финализирован'
+  'finalized': 'Финализирован',
+  'replied': 'Ответ на площадке'
 };
 
 // Хелперы

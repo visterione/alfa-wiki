@@ -115,6 +115,27 @@ async function getFilials(session) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Парсинг ответа клиники из поля first_comment (JSON-строка)
+// Возвращает { text, date, isPending } или null
+// ──────────────────────────────────────────────────────────────────────────────
+
+function parseFirstComment(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    const text = parsed.text ? stripHtml(parsed.text).trim() : null;
+    if (!text) return null;
+    return {
+      text,
+      date: parsed.date ? new Date(parsed.date * 1000).toISOString() : null,
+      isPending: parsed.on_publication === false
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Основная функция: получить отзывы для конкретного филиала
 // Фильтрация по филиалу — через source_hash_key, т.к. API не поддерживает
 // фильтр filialId напрямую.
@@ -204,16 +225,18 @@ async function fetchReviews(credentials, options = {}) {
       const doctorName = getDoctorNameFromPayload(r) || extracted.doctorName;
 
       results.push({
-        externalId:   `gl_${r.id}`,
-        externalUrl:  r.review_link || null,
-        authorName:   r.user_name || 'Аноним',
-        rating:       r.rating ? Math.min(5, Math.max(1, Math.round(r.rating))) : null,
-        text:         extracted.cleanText,
-        date:         reviewDate,
-        platformName: sourceMap[r.source_hash_key] || null,
+        externalId:      `gl_${r.id}`,
+        externalUrl:     r.review_link || null,
+        authorName:      r.user_name || 'Аноним',
+        rating:          r.rating ? Math.min(5, Math.max(1, Math.round(r.rating))) : null,
+        text:            extracted.cleanText,
+        date:            reviewDate,
+        platformName:    sourceMap[r.source_hash_key] || null,
         doctorName,
-        tonal:        r.tonal || null,
-        isAnswered:   !!r.is_answered
+        tonal:           r.tonal || null,
+        isAnswered:      !!r.is_answered,
+        sourceHashKey:   r.source_hash_key || null,
+        firstComment:    parseFirstComment(r.first_comment)
       });
     }
 
@@ -323,8 +346,8 @@ function extractDoctor(text) {
     }
   }
 
-  // Паттерн 2: "Лечащий врач: Фамилия Имя [Отчество]" — в любом месте текста (ПроДокторов)
-  const lcMatch = text.match(/Лечащий врач:\s*([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){1,2})/);
+  // Паттерн 2: "Лечащий врач[:]? Фамилия Имя [Отчество]" — в любом месте текста (ПроДокторов, DocDoc)
+  const lcMatch = text.match(/Лечащий врач:?\s*([А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+){1,2})/);
   if (lcMatch) {
     const doctorName = lcMatch[1].trim();
     const cleanText = text.replace(lcMatch[0], '').trim();
@@ -359,4 +382,112 @@ const credentialsSchema = [
   }
 ];
 
-module.exports = { fetchReviews, testConnection, credentialsSchema, getFilials, login };
+// ──────────────────────────────────────────────────────────────────────────────
+// Отправить ответ на отзыв через GetLoyalty
+// externalId — формат "gl_219856914", sourceHashKey — ключ источника из каталога
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Найти source_hash_key по числовому ID отзыва через поиск в каталоге
+// Используется как fallback когда syncMeta.sourceHashKey не сохранён
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function findSourceHashKeyByReviewId(session, reviewId, reviewDate) {
+  // Ищем в диапазоне ±3 дня от даты отзыва
+  const date = reviewDate ? new Date(reviewDate) : new Date();
+  const from = new Date(date); from.setDate(from.getDate() - 3);
+  const to   = new Date(date); to.setDate(to.getDate() + 3);
+
+  const filters = {
+    sorting_direction: 'desc',
+    date: {
+      from: from.toISOString().slice(0, 10),
+      to:   to.toISOString().slice(0, 10)
+    },
+    tag: { value: [], mode: 'OR' }
+  };
+
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const formData = new URLSearchParams();
+    formData.append('offset', String(offset));
+    formData.append('filters', JSON.stringify(filters));
+    formData.append('sorting_direction', 'desc');
+
+    const resp = await axios.post(`${BASE}/action/platform/review/catalogue`, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Cookie': `cPHPSESSID=${session}`,
+        'User-Agent': 'Mozilla/5.0 (compatible; ReviewSync/1.0)'
+      },
+      timeout: TIMEOUT
+    });
+
+    const reviews = resp.data?.reviews || [];
+    const found = reviews.find(r => String(r.id) === String(reviewId));
+    if (found) return found.source_hash_key || null;
+
+    offset += PAGE_SIZE;
+    hasMore = reviews.length === PAGE_SIZE;
+  }
+
+  return null;
+}
+
+async function replyToReview(credentials, externalId, sourceHashKey, replyText, reviewDate) {
+  const { login: loginStr, password } = credentials;
+  if (!loginStr || !password) throw new Error('Не заданы login и password');
+  if (!replyText || !replyText.trim()) throw new Error('Текст ответа не может быть пустым');
+
+  const reviewId = String(externalId).replace(/^gl_/, '');
+  const session = await login(loginStr, password);
+
+  // Если sourceHashKey не передан — ищем отзыв в каталоге по ID и дате
+  let hashKey = sourceHashKey;
+  if (!hashKey) {
+    hashKey = await findSourceHashKeyByReviewId(session, reviewId, reviewDate);
+    if (!hashKey) throw new Error('Не удалось найти отзыв в GetLoyalty для определения площадки');
+  }
+
+  // Получаем числовой ID платформы через каталог источников
+  const catalogue = await getSourcesCatalogue(session);
+  const source = catalogue.sources?.[hashKey];
+
+  if (!source) {
+    throw new Error(`Источник ${hashKey} не найден в каталоге GetLoyalty`);
+  }
+
+  const platformId = source.id ?? source.account_id ?? source.source_id;
+  if (!platformId) {
+    throw new Error(`Не удалось определить числовой ID платформы для источника ${hashKey}`);
+  }
+
+  const params = new URLSearchParams();
+  params.append('review_id', reviewId);
+  params.append('platform', String(platformId));
+  params.append('text', replyText.trim());
+
+  const resp = await axios.post(`${BASE}/action/platform/account/reply/create`, params, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Cookie': `cPHPSESSID=${session}`,
+      'User-Agent': 'Mozilla/5.0 (compatible; ReviewSync/1.0)',
+      'Origin': BASE,
+      'Referer': `${BASE}/platforms`
+    },
+    timeout: TIMEOUT,
+    validateStatus: s => s < 500
+  });
+
+  if (resp.data?.status !== 200) {
+    throw new Error(resp.data?.message || `GetLoyalty ответил: ${JSON.stringify(resp.data)}`);
+  }
+
+  return { success: true, data: resp.data, resolvedHashKey: hashKey };
+}
+
+module.exports = { fetchReviews, testConnection, credentialsSchema, getFilials, login, replyToReview };

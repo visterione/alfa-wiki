@@ -256,6 +256,38 @@ router.get('/tree', authenticate, async (req, res) => {
   }
 });
 
+// ─── GET /api/partner-services/price-errors?clinic_id= ───────────────────────
+// Услуги, где себестоимость > стоимость (только для admins)
+router.get('/price-errors', authenticate, async (req, res) => {
+  try {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ success: false, error: 'Только для администраторов' });
+    }
+    const clinicId = parseInt(req.query.clinic_id);
+    if (!clinicId) return res.status(400).json({ success: false, error: 'clinic_id обязателен' });
+
+    const [rows] = await sequelize.query(
+      `SELECT id, "serviceId", code, "subCode", title, "categoryTitle", price, "costPrice", duration, lab
+       FROM partner_service_cache
+       WHERE "clinicId" = :clinicId
+         AND "isDeleted" = false
+         AND "costPrice" IS NOT NULL
+         AND "costPrice" > 0
+         AND price > 0
+         AND "costPrice" > price
+       ORDER BY "categoryTitle" ASC, title ASC`,
+      { replacements: { clinicId } }
+    );
+
+    const total = await PartnerServiceCache.count({ where: { clinicId, isDeleted: false } });
+
+    res.json({ success: true, data: rows, total });
+  } catch (err) {
+    console.error('❌ /partner-services/price-errors:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка получения данных' });
+  }
+});
+
 // ─── GET /api/partner-services ────────────────────────────────────────────────
 // Список с серверной пагинацией, поиском и фильтрами
 router.get('/', authenticate, async (req, res) => {

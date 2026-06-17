@@ -525,6 +525,7 @@ export const reviews = {
   moveReview: (id, status, sortOrder, comment) => api.post(`/reviews/${id}/move`, { status, sortOrder, comment }),
   assignReview: (id, assigneeId, comment) => api.post(`/reviews/${id}/assign`, { assigneeId, comment }),
   addComment: (id, data) => api.post(`/reviews/${id}/comment`, data),
+  replyReview: (id, text) => api.post(`/reviews/${id}/reply`, { text }),
   finalizeReview: (id, data) => api.post(`/reviews/${id}/finalize`, data),
   getReviewPdf: (id) => api.get(`/reviews/${id}/pdf`, { responseType: 'blob' }),
 
@@ -556,7 +557,8 @@ export const reviews = {
   testSyncConnection: (boardId, provider, credentials) =>
     api.post(`/reviews/sync/test/${boardId}/${provider}`, { credentials }),
   runSync: (boardId) => api.post(`/reviews/sync/run/${boardId}`),
-  runSyncProvider: (boardId, provider) => api.post(`/reviews/sync/run/${boardId}/${provider}`)
+  runSyncProvider: (boardId, provider) => api.post(`/reviews/sync/run/${boardId}/${provider}`),
+  backfillSync: (boardId) => api.post(`/reviews/sync/backfill/${boardId}`)
 };
 
 // === EMAIL API ===

@@ -347,6 +347,24 @@ const ReviewBoardSettings = () => {
     }
   };
 
+  const handleBackfillSync = async () => {
+    setSyncRunning(true);
+    try {
+      await reviews.backfillSync(boardId);
+      toast.success('Полная синхронизация запущена — ответы на старые отзывы появятся через несколько минут');
+      setTimeout(async () => {
+        try {
+          const res = await reviews.getSyncConfigs(boardId);
+          setSyncConfigs(res.data || []);
+        } catch (_) {}
+        setSyncRunning(false);
+      }, 15000);
+    } catch (err) {
+      toast.error('Ошибка запуска полной синхронизации');
+      setSyncRunning(false);
+    }
+  };
+
   // ── End sync handlers ──────────────────────────────────────────────────────
 
   const getAvatarUrl = (avatarPath) => {
@@ -639,14 +657,26 @@ const ReviewBoardSettings = () => {
               <div className="section-header">
                 <h2>Синхронизация отзывов</h2>
                 {isEnabled && config.isConfigured && (
-                  <button
-                    className="btn-add"
-                    onClick={() => handleRunSyncProvider(config)}
-                    disabled={syncRunning}
-                  >
-                    <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
-                    {syncRunning ? 'Синхронизация...' : 'Синхронизировать'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn-add"
+                      onClick={() => handleRunSyncProvider(config)}
+                      disabled={syncRunning}
+                      title="Синхронизировать отзывы за последние сутки"
+                    >
+                      <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
+                      {syncRunning ? 'Синхронизация...' : 'Синхронизировать'}
+                    </button>
+                    <button
+                      className="btn-add"
+                      onClick={handleBackfillSync}
+                      disabled={syncRunning}
+                      title="Обновить данные по всем отзывам (в том числе старым): подтянуть ответы с площадок"
+                    >
+                      <RefreshCw size={16} className={syncRunning ? 'spinning' : ''} />
+                      Обновить все
+                    </button>
+                  </div>
                 )}
               </div>
 

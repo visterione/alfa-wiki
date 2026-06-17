@@ -1754,6 +1754,69 @@ router.post('/:id/assign', authenticate, async (req, res) => {
 });
 
 /**
+ * POST /api/reviews/:id/reply
+ * Отправка ответа на отзыв через GetLoyalty
+ */
+const PLATFORMS_REPLY_UNSUPPORTED = ['Докту', 'Google Maps', 'DocDoc', 'Plaso.pro', 'НаПоправку'];
+
+router.post('/:id/reply', authenticate, async (req, res) => {
+  try {
+    const review = await Review.findByPk(req.params.id, {
+      include: [
+        { model: ReviewBoard, as: 'board' },
+        { model: ReviewPlatform, as: 'platform' }
+      ]
+    });
+
+    if (!review) {
+      return res.status(404).json({ error: 'Отзыв не найден' });
+    }
+
+    const access = await checkReviewBoardAccess(review.board, req.user.id, 'editor');
+    if (!access || !access.hasAccess) {
+      return res.status(403).json({ error: 'Нет прав на отправку ответа' });
+    }
+
+    const { text } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Текст ответа обязателен' });
+    }
+
+    if (!review.externalId || review.importSource !== 'getloyalty') {
+      return res.status(400).json({ error: 'Ответ через GetLoyalty доступен только для автоимпортированных отзывов' });
+    }
+
+    if (review.platform && PLATFORMS_REPLY_UNSUPPORTED.includes(review.platform.name)) {
+      return res.status(400).json({ error: `Площадка «${review.platform.name}» не поддерживает отправку ответов через GetLoyalty` });
+    }
+
+    await reviewSyncService.replyToReview(review.boardId, {
+      id: review.id,
+      externalId: review.externalId,
+      reviewDate: review.reviewDate,
+      syncMeta: review.syncMeta,
+      replyText: text.trim()
+    });
+
+    // Записываем ответ в историю
+    const historyEntry = await addHistoryEntry(review.id, req.user.id, HISTORY_ACTIONS.REPLIED, {
+      comment: text.trim()
+    });
+
+    const result = await ReviewHistory.findByPk(historyEntry.id, {
+      include: [
+        { model: User, as: 'user', attributes: ['id', 'displayName', 'username', 'avatar'] }
+      ]
+    });
+
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('Error sending reply:', error);
+    res.status(500).json({ error: error.message || 'Ошибка при отправке ответа' });
+  }
+});
+
+/**
  * POST /api/reviews/:id/comment
  * Добавление комментария/файла
  */
@@ -2307,6 +2370,27 @@ router.post('/sync/test/:boardId/:provider', authenticate, async (req, res) => {
   } catch (err) {
     console.error('Error testing sync connection:', err);
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/reviews/sync/backfill/:boardId — полная синхронизация для обновления syncMeta старых отзывов
+router.post('/sync/backfill/:boardId', authenticate, async (req, res) => {
+  try {
+    const { boardId } = req.params;
+    const board = await requireBoardOwner(req, res, boardId);
+    if (!board) return;
+
+    res.status(202).json({ message: 'Полная синхронизация запущена — это может занять несколько минут' });
+
+    try {
+      const result = await reviewSyncService.backfillBoard(boardId);
+      console.log(`[ReviewSync] Backfill завершён для доски ${boardId}:`, result);
+    } catch (err) {
+      console.error('[ReviewSync] Ошибка backfill:', err);
+    }
+  } catch (err) {
+    console.error('Error starting backfill:', err);
+    res.status(500).json({ error: 'Ошибка при запуске полной синхронизации' });
   }
 });
 

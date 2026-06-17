@@ -4,7 +4,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
   Plus, Settings, ArrowLeft, Star, Calendar, User, Paperclip,
   X, Search, Filter, Download, MessageSquare, BarChart2, Archive,
-  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2
+  Clock, ChevronDown, Check, Users as UsersIcon, Copy, Pencil, Send, Trash2, Reply
 } from 'lucide-react';
 import { reviews, users, BASE_URL } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -16,7 +16,8 @@ import {
   getStatusColor,
   getRatingStars,
   getCategoryLabel,
-  HISTORY_ACTION_LABELS
+  HISTORY_ACTION_LABELS,
+  PLATFORMS_REPLY_UNSUPPORTED
 } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
@@ -101,6 +102,10 @@ const ReviewBoard = () => {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentAttachments, setCommentAttachments] = useState([]);
   const [uploadingCommentFile, setUploadingCommentFile] = useState(false);
+
+  // Reply to review on platform (GetLoyalty)
+  const [replyText, setReplyText] = useState('');
+  const [submittingReply, setSubmittingReply] = useState(false);
 
   // Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -552,6 +557,23 @@ const ReviewBoard = () => {
       toast.error('Ошибка при добавлении комментария');
     } finally {
       setSubmittingComment(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!replyText.trim()) return;
+    try {
+      setSubmittingReply(true);
+      await reviews.replyReview(selectedReview.id, replyText.trim());
+      const response = await reviews.getReview(selectedReview.id);
+      setSelectedReview(response.data);
+      setReplyText('');
+      toast.success('Ответ опубликован на площадке');
+    } catch (err) {
+      console.error('Error sending reply:', err);
+      toast.error(err.response?.data?.error || 'Ошибка при отправке ответа');
+    } finally {
+      setSubmittingReply(false);
     }
   };
 
@@ -1521,6 +1543,25 @@ const ReviewBoard = () => {
                         case 'finalized':
                           systemContent = <>Отзыв финализирован: <strong>{entry.newValue}</strong> | {userName} | {date}</>;
                           break;
+                        case 'replied':
+                          return (
+                            <div key={entry.id} className="history-comment history-reply">
+                              <div className="comment-avatar" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>
+                                {entry.user?.avatar
+                                  ? <img src={getAvatarUrl(entry.user.avatar)} alt="" />
+                                  : <div className="comment-avatar-placeholder"><Reply size={16} /></div>
+                                }
+                              </div>
+                              <div className="comment-body">
+                                <div className="history-comment-header">
+                                  <span className="comment-user" style={entry.user?.id ? { cursor: 'pointer' } : {}} onClick={entry.user?.id ? () => navigate(`/users/${entry.user.id}`) : undefined}>{userName}</span>
+                                  <span className="reply-badge"><Reply size={11} /> Ответ на площадке</span>
+                                  <span className="comment-date">{date}</span>
+                                </div>
+                                {entry.comment && <div className="comment-bubble comment-bubble--reply">{entry.comment}</div>}
+                              </div>
+                            </div>
+                          );
                         default:
                           systemContent = <>{HISTORY_ACTION_LABELS[entry.action] || entry.action} | {userName} | {date}</>;
                       }
@@ -1532,6 +1573,61 @@ const ReviewBoard = () => {
                       );
                     })}
                 </div>
+
+                {/* Reply to review on platform (GetLoyalty) */}
+                {selectedReview.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(selectedReview.platform?.name) && (() => {
+                  const meta = selectedReview.syncMeta || {};
+                  // Ответ из GetLoyalty (актуальный) имеет приоритет над историей нашего сайта
+                  const platformReply = meta.replyText || null;
+                  // Fallback: ответ только что отправленный через наш сайт (до следующей синхронизации)
+                  const historyReply = !platformReply
+                    ? selectedReview.history?.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).find(e => e.action === 'replied')
+                    : null;
+
+                  const hasReply = !!(platformReply || historyReply);
+                  const replyText_ = platformReply || historyReply?.comment || '';
+                  const replyDate_ = platformReply
+                    ? (meta.replyDate ? new Date(meta.replyDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null)
+                    : (historyReply ? new Date(historyReply.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
+                  const isPending = meta.replyPending;
+
+                  return (
+                    <div className="reply-to-platform">
+                      <div className="reply-to-platform__header">
+                        <Reply size={14} />
+                        <span>{hasReply ? 'Ответ на площадке' : 'Ответить на площадке'}</span>
+                        {isPending && <span className="reply-pending-badge">На модерации</span>}
+                        {replyDate_ && <span className="reply-header-date">{replyDate_}</span>}
+                      </div>
+                      {hasReply ? (
+                        <div className="reply-sent">{replyText_}</div>
+                      ) : access.canWrite ? (
+                        <div className="add-comment-row">
+                          <textarea
+                            value={replyText}
+                            onChange={(e) => {
+                              setReplyText(e.target.value);
+                              e.target.style.height = 'auto';
+                              e.target.style.height = e.target.scrollHeight + 'px';
+                            }}
+                            placeholder="Написать ответ пациенту — будет опубликован через GetLoyalty..."
+                            rows={2}
+                          />
+                          <button
+                            onClick={handleSendReply}
+                            disabled={!replyText.trim() || submittingReply}
+                            title="Опубликовать ответ"
+                            className="btn-send-reply"
+                          >
+                            {submittingReply ? <Clock size={16} /> : <Send size={16} />}
+                          </button>
+                        </div>
+                      ) : (
+                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', margin: 0 }}>Ответ ещё не отправлен</p>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* Add comment */}
                 {access.canWrite && selectedReview.status !== 'final' && (

@@ -45,7 +45,8 @@ const HISTORY_ACTIONS = {
   COMMENT: 'comment',
   FILE_UPLOAD: 'file_upload',
   ASSIGNMENT: 'assignment',
-  FINALIZED: 'finalized'
+  FINALIZED: 'finalized',
+  REPLIED: 'replied'
 };
 
 // Получить статус по ID
