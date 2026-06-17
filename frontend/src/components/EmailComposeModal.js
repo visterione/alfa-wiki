@@ -17,6 +17,7 @@ const EmailComposeModal = ({ onClose }) => {
   const [roles, setRoles] = useState([]);
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [sending, setSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState(null); // { jobId, sent, failed, total, status }
   const [uploading, setUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showRecipientPicker, setShowRecipientPicker] = useState(false);
@@ -33,6 +34,7 @@ const EmailComposeModal = ({ onClose }) => {
   const fileInputRef = useRef(null);
   const excelInputRef = useRef(null);
   const recipientPickerRef = useRef(null);
+  const pollIntervalRef = useRef(null);
   const [importingExcel, setImportingExcel] = useState(false);
 
   // Load data
@@ -366,6 +368,38 @@ const EmailComposeModal = ({ onClose }) => {
     setAttachments(attachments.filter((_, i) => i !== index));
   };
 
+  // Polling статуса задачи рассылки
+  useEffect(() => {
+    if (!sendProgress || sendProgress.status !== 'running') return;
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const { data } = await email.getJobStatus(sendProgress.jobId);
+        setSendProgress(prev => ({ ...prev, ...data }));
+
+        if (data.status !== 'running') {
+          clearInterval(pollIntervalRef.current);
+          if (data.status === 'done' || data.status === 'partial') {
+            toast.success(`✅ Отправлено: ${data.sent} писем`);
+            if (data.failed > 0) toast.error(`⚠️ Не доставлено: ${data.failed}`);
+            onClose();
+          } else {
+            toast.error('Ошибка отправки рассылки');
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 1500);
+
+    return () => clearInterval(pollIntervalRef.current);
+  }, [sendProgress?.jobId, sendProgress?.status]);
+
+  // Cleanup при размонтировании
+  useEffect(() => {
+    return () => clearInterval(pollIntervalRef.current);
+  }, []);
+
   // Send email
   const handleSend = async () => {
     if (!subject.trim()) {
@@ -385,22 +419,12 @@ const EmailComposeModal = ({ onClose }) => {
 
     setSending(true);
     try {
-      const { data } = await email.send({
-        subject,
-        htmlContent,
-        recipients,
-        attachments
-      });
-
-      toast.success(`✅ Отправлено: ${data.sent} писем`);
-      if (data.failed > 0) {
-        toast.error(`⚠️ Ошибок: ${data.failed}`);
-      }
-
-      onClose();
+      const { data } = await email.send({ subject, htmlContent, recipients, attachments });
+      // Сервер вернул jobId сразу, отправка идёт в фоне
+      setSendProgress({ jobId: data.jobId, sent: 0, failed: 0, total: data.total, status: 'running' });
     } catch (error) {
       console.error('Error sending email:', error);
-      toast.error('Ошибка отправки рассылки');
+      toast.error('Ошибка запуска рассылки');
     } finally {
       setSending(false);
     }
@@ -801,14 +825,34 @@ const EmailComposeModal = ({ onClose }) => {
             />
           </div>
 
-          {/* Send Button */}
-          <button
-            className="btn btn-primary"
-            onClick={handleSend}
-            disabled={sending || uploading}
-          >
-            {sending ? 'Отправка...' : <><Send size={16} /> Отправить</>}
-          </button>
+          {/* Send Button / Progress */}
+          {sendProgress ? (
+            <div className="email-send-progress">
+              <div className="email-progress-label">
+                {sendProgress.status === 'running'
+                  ? `Отправлено ${sendProgress.sent} из ${sendProgress.total}...`
+                  : `Готово: ${sendProgress.sent} из ${sendProgress.total}`}
+                {sendProgress.failed > 0 && `, ошибок: ${sendProgress.failed}`}
+              </div>
+              <div className="email-progress-bar">
+                <div
+                  className="email-progress-fill"
+                  style={{ width: `${sendProgress.total > 0 ? ((sendProgress.sent + sendProgress.failed) / sendProgress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <button className="btn btn-ghost" onClick={onClose}>
+                {sendProgress.status === 'running' ? 'Закрыть (отправка продолжится)' : 'Закрыть'}
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary"
+              onClick={handleSend}
+              disabled={sending || uploading}
+            >
+              {sending ? 'Запуск...' : <><Send size={16} /> Отправить</>}
+            </button>
+          )}
         </div>
       </div>
 

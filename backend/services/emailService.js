@@ -441,92 +441,96 @@ const embedImagesInline = (htmlContent) => {
   };
 };
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 /**
- * Отправляет массовую рассылку email
+ * Отправляет массовую рассылку email батчами с паузами между ними.
  * @param {Object} params
- * @param {string} params.subject - Тема письма
- * @param {string} params.htmlContent - HTML содержимое
- * @param {Array<{email, displayName}>} params.recipients - Массив получателей
- * @param {Array<{name, path, mimeType}>} params.attachments - Вложения (опционально)
- * @param {string} params.senderInfo - Имя отправителя для автоподписи
+ * @param {string} params.subject
+ * @param {string} params.htmlContent
+ * @param {Array<{email, displayName}>} params.recipients
+ * @param {Array<{name, path, mimeType}>} params.attachments
+ * @param {string} params.senderInfo
+ * @param {Function} [params.onProgress] - callback({ sent, failed, total }) после каждого письма
  * @returns {Promise<{success: boolean, sent: number, failed: number, errors: Array}>}
  */
-const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [], senderInfo }) => {
+const sendBulkEmail = async ({ subject, htmlContent, recipients, attachments = [], senderInfo, onProgress }) => {
   const path = require('path');
   const fs = require('fs');
   const transporter = createBroadcastTransporter();
   const results = { success: true, sent: 0, failed: 0, errors: [] };
 
+  const BATCH_SIZE = parseInt(process.env.BROADCAST_BATCH_SIZE || '20');
+  const BATCH_DELAY = parseInt(process.env.BROADCAST_BATCH_DELAY_MS || '3000');
+
   // Встраиваем изображения из HTML как inline attachments
   const { html: processedHtml, images } = embedImagesInline(htmlContent);
 
-  console.log(`📧 Preparing email with ${images.length} embedded images and ${attachments.length} attachments`);
+  console.log(`📧 Starting broadcast: ${recipients.length} recipients, batch=${BATCH_SIZE}, delay=${BATCH_DELAY}ms`);
 
-  for (const recipient of recipients) {
-    // Пропускаем получателей без email
-    if (!recipient.email) {
-      results.failed++;
-      results.errors.push({
-        email: recipient.displayName || 'Unknown',
-        error: 'Email не указан'
-      });
-      continue;
-    }
+  for (let batchStart = 0; batchStart < recipients.length; batchStart += BATCH_SIZE) {
+    const batch = recipients.slice(batchStart, batchStart + BATCH_SIZE);
+    const batchNum = Math.floor(batchStart / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(recipients.length / BATCH_SIZE);
+    console.log(`📦 Batch ${batchNum}/${totalBatches} (${batch.length} recipients)`);
 
-    try {
-      // Собираем все вложения
-      const emailAttachments = [];
-
-      // Обычные вложения (файлы, PDF и т.д.)
-      for (const att of attachments) {
-        const fullPath = att.path.startsWith('uploads/')
-          ? path.join(__dirname, '..', att.path)
-          : path.join(__dirname, '../uploads', att.path);
-
-        emailAttachments.push({
-          filename: att.name,
-          path: fullPath
-        });
+    for (const recipient of batch) {
+      if (!recipient.email) {
+        results.failed++;
+        results.errors.push({ email: recipient.displayName || 'Unknown', error: 'Email не указан' });
+        onProgress?.({ sent: results.sent, failed: results.failed, total: recipients.length });
+        continue;
       }
 
-      // Inline изображения (встроенные в HTML)
-      for (const img of images) {
-        // Проверяем существование файла перед отправкой
-        if (fs.existsSync(img.fullPath)) {
-          emailAttachments.push({
-            filename: path.basename(img.filePath),
-            path: img.fullPath,
-            cid: img.cid // Content-ID для ссылки из HTML
-          });
-        } else {
-          console.warn(`⚠️  Image not found: ${img.fullPath}`);
+      try {
+        const emailAttachments = [];
+
+        for (const att of attachments) {
+          const fullPath = att.path.startsWith('uploads/')
+            ? path.join(__dirname, '..', att.path)
+            : path.join(__dirname, '../uploads', att.path);
+          emailAttachments.push({ filename: att.name, path: fullPath });
         }
+
+        for (const img of images) {
+          if (fs.existsSync(img.fullPath)) {
+            emailAttachments.push({
+              filename: path.basename(img.filePath),
+              path: img.fullPath,
+              cid: img.cid
+            });
+          } else {
+            console.warn(`⚠️  Image not found: ${img.fullPath}`);
+          }
+        }
+
+        const mailOptions = {
+          from: process.env.SMTP_FROM_BROADCAST || process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
+          to: recipient.email,
+          subject: subject,
+          html: processedHtml,
+          attachments: emailAttachments
+        };
+
+        await transporter.sendMail(mailOptions);
+        results.sent++;
+      } catch (error) {
+        console.error(`❌ Failed to send to ${recipient.email}:`, error.message);
+        results.failed++;
+        results.errors.push({ email: recipient.email, error: error.message });
       }
 
-      const mailOptions = {
-        from: process.env.SMTP_FROM_BROADCAST || process.env.SMTP_FROM || '"Alfa Wiki" <noreply@alfawiki.com>',
-        to: recipient.email,
-        subject: subject,
-        html: processedHtml,
-        attachments: emailAttachments
-      };
+      onProgress?.({ sent: results.sent, failed: results.failed, total: recipients.length });
+    }
 
-      const info = await transporter.sendMail(mailOptions);
-      results.sent++;
-
-      if (!process.env.SMTP_HOST) {
-        console.log(`📧 [BROADCAST EMAIL] To: ${recipient.email}, Subject: ${subject}`);
-      }
-    } catch (error) {
-      console.error(`❌ Failed to send to ${recipient.email}:`, error.message);
-      results.failed++;
-      results.errors.push({ email: recipient.email, error: error.message });
+    // Пауза между батчами, кроме последнего
+    if (batchStart + BATCH_SIZE < recipients.length) {
+      console.log(`⏸️  Waiting ${BATCH_DELAY}ms before next batch...`);
+      await sleep(BATCH_DELAY);
     }
   }
 
-  if (results.failed > 0) {
-    results.success = false;
-  }
+  if (results.failed > 0) results.success = false;
 
   console.log(`✅ Email broadcast complete: ${results.sent} sent, ${results.failed} failed`);
 

@@ -1,4 +1,5 @@
 const express = require('express');
+const { randomUUID } = require('crypto');
 const { body, validationResult } = require('express-validator');
 const { EmailTemplate, EmailLog, EmailFavoriteRecipient, EmailFavoriteTemplate, User, Role } = require('../models');
 const { authenticate } = require('../middleware/auth');
@@ -9,6 +10,17 @@ const XLSX = require('xlsx-js-style');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// In-memory store для активных задач рассылки
+const sendJobs = new Map();
+
+// Чистим завершённые задачи старше 1 часа
+setInterval(() => {
+  const cutoff = Date.now() - 3_600_000;
+  for (const [id, job] of sendJobs) {
+    if (job.startedAt < cutoff) sendJobs.delete(id);
+  }
+}, 600_000);
 
 // === EMAIL TEMPLATES ===
 
@@ -105,54 +117,80 @@ router.delete('/templates/:id', authenticate, async (req, res) => {
 
 // === EMAIL SENDING ===
 
-// POST /api/email/send - Отправить рассылку
+// POST /api/email/send - Запустить рассылку (возвращает jobId сразу, отправка идёт в фоне)
 router.post('/send', authenticate, [
   body('subject').trim().notEmpty().withMessage('Тема обязательна'),
   body('htmlContent').notEmpty().withMessage('Содержимое обязательно'),
   body('recipients').isArray({ min: 1 }).withMessage('Укажите получателей')
 ], async (req, res) => {
-  try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { subject, htmlContent, recipients, attachments = [] } = req.body;
-
-    // Имя отправителя для автоподписи
-    const senderInfo = req.user.displayName || req.user.username;
-
-    // Отправка через emailService (изображения автоматически встраиваются как inline attachments)
-    const result = await sendBulkEmail({
-      subject,
-      htmlContent,
-      recipients,
-      attachments,
-      senderInfo
-    });
-
-    // Логируем в БД
-    const status = result.failed === 0 ? 'sent' : (result.sent === 0 ? 'failed' : 'partial');
-    await EmailLog.create({
-      subject,
-      htmlContent,
-      recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
-      attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
-      sentBy: req.user.id,
-      status,
-      errorDetails: result.errors.length > 0 ? JSON.stringify(result.errors) : null
-    });
-
-    res.json({
-      message: `Отправлено: ${result.sent}, Ошибок: ${result.failed}`,
-      sent: result.sent,
-      failed: result.failed,
-      errors: result.errors
-    });
-  } catch (error) {
-    console.error('❌ Error sending email:', error);
-    res.status(500).json({ error: 'Ошибка отправки рассылки' });
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
   }
+
+  const { subject, htmlContent, recipients, attachments = [] } = req.body;
+  const senderInfo = req.user.displayName || req.user.username;
+  const sentBy = req.user.id;
+
+  const jobId = randomUUID();
+  sendJobs.set(jobId, {
+    status: 'running',
+    sent: 0,
+    failed: 0,
+    total: recipients.length,
+    errors: [],
+    startedAt: Date.now()
+  });
+
+  // Отвечаем клиенту немедленно
+  res.json({ jobId, total: recipients.length });
+
+  // Отправка в фоне
+  (async () => {
+    try {
+      const result = await sendBulkEmail({
+        subject,
+        htmlContent,
+        recipients,
+        attachments,
+        senderInfo,
+        onProgress: ({ sent, failed }) => {
+          const job = sendJobs.get(jobId);
+          if (job) { job.sent = sent; job.failed = failed; }
+        }
+      });
+
+      const job = sendJobs.get(jobId);
+      if (job) {
+        job.status = result.failed === 0 ? 'done' : (result.sent === 0 ? 'failed' : 'partial');
+        job.sent = result.sent;
+        job.failed = result.failed;
+        job.errors = result.errors;
+      }
+
+      const status = result.failed === 0 ? 'sent' : (result.sent === 0 ? 'failed' : 'partial');
+      await EmailLog.create({
+        subject,
+        htmlContent,
+        recipients: recipients.map(r => ({ email: r.email, userId: r.userId, displayName: r.displayName })),
+        attachments: attachments.map(a => ({ name: a.name, path: a.path, size: a.size, mimeType: a.mimeType })),
+        sentBy,
+        status,
+        errorDetails: result.errors.length > 0 ? JSON.stringify(result.errors) : null
+      });
+    } catch (error) {
+      console.error('❌ Background email broadcast error:', error);
+      const job = sendJobs.get(jobId);
+      if (job) { job.status = 'failed'; job.errors = [{ error: error.message }]; }
+    }
+  })();
+});
+
+// GET /api/email/send/status/:jobId - Статус задачи рассылки
+router.get('/send/status/:jobId', authenticate, (req, res) => {
+  const job = sendJobs.get(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'Задача не найдена' });
+  res.json(job);
 });
 
 // === EMAIL HISTORY ===

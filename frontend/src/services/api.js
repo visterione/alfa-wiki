@@ -569,6 +569,7 @@ export const email = {
 
   // === SENDING ===
   send: (data) => api.post('/email/send', data),
+  getJobStatus: (jobId) => api.get(`/email/send/status/${jobId}`),
 
   // === HISTORY ===
   getHistory: (params) => api.get('/email/history', { params }),
