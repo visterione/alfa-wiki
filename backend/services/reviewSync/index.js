@@ -314,13 +314,21 @@ async function replyToReview(boardId, review) {
     review.reviewDate
   );
 
-  // Сохраняем найденный hashKey в syncMeta для последующих ответов (fast path)
-  if (result.resolvedHashKey && result.resolvedHashKey !== sourceHashKey) {
-    await Review.update(
-      { syncMeta: { ...(review.syncMeta || {}), sourceHashKey: result.resolvedHashKey } },
-      { where: { id: review.id } }
-    );
-  }
+  // GetLoyalty принимает ответ в очередь, а публикует его позже. Сохраняем
+  // ожидающий ответ сразу, чтобы карточка показывала состояние конкретного
+  // отзыва до следующей синхронизации.
+  await Review.update(
+    {
+      syncMeta: {
+        ...(review.syncMeta || {}),
+        sourceHashKey: result.resolvedHashKey || sourceHashKey,
+        replyText: review.replyText.trim(),
+        replyDate: new Date().toISOString(),
+        replyPending: result.queued === true
+      }
+    },
+    { where: { id: review.id } }
+  );
 
   return result;
 }

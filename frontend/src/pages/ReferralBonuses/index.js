@@ -604,6 +604,10 @@ export default function ReferralBonusesPage() {
   const [pdfPreviewModal, setPdfPreviewModal] = useState(null);
   const [splitEditValues, setSplitEditValues] = useState({}); // { [matchIdx]: { mainPayment, advance, ndfl, vacation } }
   const [pdfModalSearch,  setPdfModalSearch]  = useState('');
+  const [pdfClinicFilter, setPdfClinicFilter] = useState('');
+  const [pdfSelectedDoctorIds, setPdfSelectedDoctorIds] = useState(new Set());
+  const [pdfUnmatchedExpanded, setPdfUnmatchedExpanded] = useState(false);
+  const [pdfSubdivisionExpanded, setPdfSubdivisionExpanded] = useState(false);
   // pdfPreviewModal: { matched, settingsMap, unmatchedNames, noSubdivision }
 
   const handleImportPdf = useCallback(async (file) => {
@@ -705,12 +709,21 @@ export default function ReferralBonusesPage() {
     ];
     setSplitEditValues({});
     setPdfModalSearch('');
+    setPdfClinicFilter('');
+    setPdfUnmatchedExpanded(false);
+    setPdfSubdivisionExpanded(false);
+    setPdfSelectedDoctorIds(new Set(sortedMatched.map(entry => entry.doctor.id)));
     setPdfPreviewModal({ matched: sortedMatched, settingsMap, unmatchedNames, noSubdivision });
   }, [matchDoctorByName]);
 
   const confirmPdfImport = useCallback(async () => {
     if (!pdfPreviewModal) return;
+    if (pdfSelectedDoctorIds.size === 0) {
+      toast.error('Выберите сотрудников для импорта');
+      return;
+    }
     const { matched, settingsMap } = pdfPreviewModal;
+    const selectedMatched = matched.filter(entry => pdfSelectedDoctorIds.has(entry.doctor.id));
 
     // Apply manually-entered split values to needsSplit entries
     const parseEditVal = (v) => {
@@ -718,9 +731,10 @@ export default function ReferralBonusesPage() {
       const n = parseFloat(String(v).replace(',', '.'));
       return isNaN(n) ? null : n;
     };
-    const resolvedMatched = matched.map((entry, i) => {
+    const resolvedMatched = selectedMatched.map(entry => {
       if (!entry.needsSplit) return entry;
-      const sv = splitEditValues[i] || {};
+      const originalIndex = matched.indexOf(entry);
+      const sv = splitEditValues[originalIndex] || {};
       return {
         ...entry,
         mainPayment: parseEditVal(sv.mainPayment),
@@ -773,7 +787,7 @@ export default function ReferralBonusesPage() {
       await applyNdflImport('overwrite', resolvedMatched, settingsMap);
       setPdfImporting(false);
     }
-  }, [pdfPreviewModal, splitEditValues, applyNdflImport]);
+  }, [pdfPreviewModal, splitEditValues, pdfSelectedDoctorIds, applyNdflImport]);
 
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
@@ -1184,11 +1198,35 @@ export default function ReferralBonusesPage() {
         const matchesSrch = (e) => !srch ||
           e.doctor.name.toLowerCase().includes(srch) ||
           (e.pdfSubdivision || '').toLowerCase().includes(srch);
-        const splitMatchIds = new Set(m.filter(e => e.needsSplit && matchesSrch(e)).map(e => e.doctor.id));
-        const visible = (e) => e.needsSplit ? splitMatchIds.has(e.doctor.id) : matchesSrch(e);
+        const clinicFilterKey = pdfClinicFilter;
+        const entryClinicKey = (e) => e.clinicId || 'global';
+        const matchesClinic = (e) => !clinicFilterKey || entryClinicKey(e) === clinicFilterKey;
+        const splitMatchIds = new Set(
+          m.filter(e => e.needsSplit && matchesSrch(e) && matchesClinic(e)).map(e => e.doctor.id)
+        );
+        const visible = (e) => e.needsSplit
+          ? splitMatchIds.has(e.doctor.id)
+          : matchesSrch(e) && matchesClinic(e);
 
         const splitDoctorCount = Object.keys(groupIdxMap).length;
         const normalCount = m.filter(e => !e.needsSplit).length;
+        const clinicFilterOptions = [...new Set(m.map(entryClinicKey))]
+          .map(key => ({
+            value: key,
+            label: key === 'global' ? 'Общий / не определена' : getClinicName(key),
+          }))
+          .sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+        const allDoctorIds = [...new Set(m.map(entry => entry.doctor.id))];
+        const visibleDoctorIds = [...new Set(m.filter(visible).map(entry => entry.doctor.id))];
+        const selectedDoctorCount = allDoctorIds.filter(id => pdfSelectedDoctorIds.has(id)).length;
+        const toggleDoctorSelection = (doctorId) => {
+          setPdfSelectedDoctorIds(prev => {
+            const next = new Set(prev);
+            if (next.has(doctorId)) next.delete(doctorId);
+            else next.add(doctorId);
+            return next;
+          });
+        };
 
         const fmt = (v) => v != null ? v.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
         const COL = { border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left' };
@@ -1205,10 +1243,19 @@ export default function ReferralBonusesPage() {
             const gi = groupIdxMap[doctor.id];
             const isFirst = i === gi[0];
             const isLast  = i === gi[gi.length - 1];
+            const doctorSelected = pdfSelectedDoctorIds.has(doctor.id);
 
             if (isFirst) {
               tableRows.push(
-                <tr key={`sh-${i}`} style={{ background: '#f3f4f6' }}>
+                <tr key={`sh-${i}`} style={{ background: '#f3f4f6', opacity: doctorSelected ? 1 : 0.5 }}>
+                  <td style={{ ...COL, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={doctorSelected}
+                      onChange={() => toggleDoctorSelection(doctor.id)}
+                      style={{ accentColor: 'var(--rb-primary)', cursor: 'pointer' }}
+                    />
+                  </td>
                   <td style={{ ...COL, fontWeight: 700, color: '#111827' }}>{doctor.name}</td>
                   <td style={{ ...COL, color: '#374151', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>{pdfSubdivision}</td>
                   <td style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>↕ итого</td>
@@ -1227,12 +1274,14 @@ export default function ReferralBonusesPage() {
                 type="number" step="0.01" min="0"
                 placeholder={refVal != null ? String(refVal.toFixed(2)) : ''}
                 value={sv[field] !== undefined ? sv[field] : ''}
+                disabled={!doctorSelected}
                 onChange={ev => setSplitEditValues(prev => ({ ...prev, [i]: { ...(prev[i] || {}), [field]: ev.target.value } }))}
-                style={{ width: 98, padding: '3px 6px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 3, textAlign: 'right', background: '#fff', outline: 'none' }}
+                style={{ width: 98, padding: '3px 6px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 3, textAlign: 'right', background: doctorSelected ? '#fff' : '#f3f4f6', color: doctorSelected ? '#111827' : '#9ca3af', outline: 'none' }}
               />
             );
             tableRows.push(
-              <tr key={i} style={{ background: '#fafafa' }}>
+              <tr key={i} style={{ background: '#fafafa', opacity: doctorSelected ? 1 : 0.5 }}>
+                <td style={COL} />
                 <td style={{ ...COL, paddingLeft: 22, color: '#4b5563', fontSize: 11 }}>↳ {doctor.name}</td>
                 <td style={COL} />
                 <td style={COL}>
@@ -1255,6 +1304,7 @@ export default function ReferralBonusesPage() {
               };
               tableRows.push(
                 <tr key={`rem-${i}`} style={{ background: '#f9fafb', borderBottom: '2px solid #d1d5db' }}>
+                  <td style={COL} />
                   <td colSpan={2} style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Остаток → пустые поля</td>
                   <td style={COL} />
                   <td style={{ ...COLR, fontSize: 11 }}>{remStyle('mainPayment')}</td>
@@ -1267,8 +1317,17 @@ export default function ReferralBonusesPage() {
           } else {
             const clinicName = clinicId ? getClinicName(clinicId) : (subdivisionResolved ? 'Общий' : '—');
             const warn = !subdivisionResolved && pdfSubdivision;
+            const doctorSelected = pdfSelectedDoctorIds.has(doctor.id);
             tableRows.push(
-              <tr key={i} style={{ background: warn ? '#fffbeb' : 'transparent' }}>
+              <tr key={i} style={{ background: warn ? '#fffbeb' : 'transparent', opacity: doctorSelected ? 1 : 0.5 }}>
+                <td style={{ ...COL, textAlign: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={doctorSelected}
+                    onChange={() => toggleDoctorSelection(doctor.id)}
+                    style={{ accentColor: 'var(--rb-primary)', cursor: 'pointer' }}
+                  />
+                </td>
                 <td style={{ ...COL, fontWeight: 500 }}>{doctor.name}</td>
                 <td style={{ ...COL, color: warn ? '#92400e' : '#6b7280', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>
                   {pdfSubdivision || <span style={{ opacity: 0.4 }}>—</span>}
@@ -1305,14 +1364,64 @@ export default function ReferralBonusesPage() {
                   {pdfPreviewModal.noSubdivision.length > 0 && <span>Без Подразд.: <b>{pdfPreviewModal.noSubdivision.length}</b></span>}
                 </div>
 
-                {/* Search */}
-                <input
-                  type="text"
-                  placeholder="Поиск по сотруднику или подразделению..."
-                  value={pdfModalSearch}
-                  onChange={e => setPdfModalSearch(e.target.value)}
-                  style={{ width: '100%', marginBottom: 8, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#111827', background: '#fff', boxSizing: 'border-box' }}
-                />
+                {/* Employees selected for import */}
+                <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                  <button
+                    type="button"
+                    className="rb-btn rb-btn-secondary rb-btn-sm"
+                    disabled={visibleDoctorIds.length === 0}
+                    onClick={() => setPdfSelectedDoctorIds(prev => new Set([...prev, ...visibleDoctorIds]))}
+                  >
+                    Выбрать показанных
+                  </button>
+                  <button
+                    type="button"
+                    className="rb-btn rb-btn-secondary rb-btn-sm"
+                    disabled={visibleDoctorIds.length === 0}
+                    onClick={() => setPdfSelectedDoctorIds(prev => {
+                      const next = new Set(prev);
+                      visibleDoctorIds.forEach(id => next.delete(id));
+                      return next;
+                    })}
+                  >
+                    Снять показанных
+                  </button>
+                  <span style={{ fontSize: 12, color: selectedDoctorCount ? '#374151' : '#92400e' }}>
+                    Выбрано сотрудников: <b>{selectedDoctorCount}</b> из {allDoctorIds.length}
+                  </span>
+                </div>
+
+                {/* Search and clinic filter */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                  <input
+                    type="text"
+                    placeholder="Поиск по сотруднику или подразделению..."
+                    value={pdfModalSearch}
+                    onChange={e => setPdfModalSearch(e.target.value)}
+                    style={{ flex: 1, minWidth: 220, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#111827', background: '#fff', boxSizing: 'border-box' }}
+                  />
+                  <select
+                    value={pdfClinicFilter}
+                    onChange={e => {
+                      const clinicKey = e.target.value;
+                      setPdfClinicFilter(clinicKey);
+                      if (clinicKey) {
+                        setPdfSelectedDoctorIds(new Set(
+                          m
+                            .filter(entry => entryClinicKey(entry) === clinicKey)
+                            .map(entry => entry.doctor.id)
+                        ));
+                      }
+                    }}
+                    style={{ width: 220, padding: '6px 10px', fontSize: 12, border: '1px solid #d1d5db', borderRadius: 6, outline: 'none', color: '#374151', background: '#fff' }}
+                    title="Фильтр по клинике"
+                  >
+                    <option value="">Все клиники</option>
+                    {clinicFilterOptions.map(option => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
 
                 {/* Table */}
                 <div style={{ overflowX: 'auto', maxHeight: 430, overflowY: 'auto', border: '1px solid #e5e7eb', borderRadius: 6 }}>
@@ -1320,6 +1429,7 @@ export default function ReferralBonusesPage() {
                     <thead>
                       <tr style={{ background: '#f9fafb', position: 'sticky', top: 0, zIndex: 1 }}>
                         {[
+                          ['',                34],
                           ['Сотрудник',     200],
                           ['Подразд. (1С)', 170],
                           ['Клиника',        90],
@@ -1335,7 +1445,7 @@ export default function ReferralBonusesPage() {
                     <tbody>
                       {tableRows.length > 0
                         ? tableRows
-                        : <tr><td colSpan={7} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</td></tr>}
+                        : <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', color: '#9ca3af' }}>Ничего не найдено</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1346,7 +1456,26 @@ export default function ReferralBonusesPage() {
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#92400e', marginBottom: 3 }}>
                       Не найдено в списке сотрудников ({pdfPreviewModal.unmatchedNames.length}):
                     </div>
-                    <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>{pdfPreviewModal.unmatchedNames.join(', ')}</div>
+                    <div style={{
+                      fontSize: 12,
+                      color: '#78350f',
+                      lineHeight: 1.6,
+                      ...(!pdfUnmatchedExpanded ? {
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      } : {}),
+                    }}>
+                      {pdfPreviewModal.unmatchedNames.join(', ')}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPdfUnmatchedExpanded(v => !v)}
+                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: '#92400e', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {pdfUnmatchedExpanded ? 'Свернуть' : 'Показать полностью'}
+                    </button>
                   </div>
                 )}
                 {pdfPreviewModal.noSubdivision.length > 0 && (
@@ -1354,7 +1483,26 @@ export default function ReferralBonusesPage() {
                     <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 3 }}>
                       Подразделение (1С) не настроено ({pdfPreviewModal.noSubdivision.length}) — данные запишутся в «Общий» тариф:
                     </div>
-                    <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.6 }}>{pdfPreviewModal.noSubdivision.map(r => `${r.name} (${r.subdivision})`).join(', ')}</div>
+                    <div style={{
+                      fontSize: 12,
+                      color: '#6b7280',
+                      lineHeight: 1.6,
+                      ...(!pdfSubdivisionExpanded ? {
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                      } : {}),
+                    }}>
+                      {pdfPreviewModal.noSubdivision.map(r => `${r.name} (${r.subdivision})`).join(', ')}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPdfSubdivisionExpanded(v => !v)}
+                      style={{ marginTop: 5, padding: 0, border: 'none', background: 'transparent', color: '#4b5563', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      {pdfSubdivisionExpanded ? 'Свернуть' : 'Показать полностью'}
+                    </button>
                   </div>
                 )}
 
@@ -1363,10 +1511,11 @@ export default function ReferralBonusesPage() {
                 <button className="rb-btn rb-btn-secondary" onClick={() => setPdfPreviewModal(null)}>Отмена</button>
                 <button
                   className="rb-btn"
-                  style={{ background: '#1f2937', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 600, cursor: 'pointer', fontSize: 13 }}
+                  disabled={selectedDoctorCount === 0}
+                  style={{ background: '#1f2937', color: '#fff', border: 'none', padding: '8px 22px', borderRadius: 8, fontWeight: 600, cursor: selectedDoctorCount ? 'pointer' : 'not-allowed', fontSize: 13, opacity: selectedDoctorCount ? 1 : 0.45 }}
                   onClick={confirmPdfImport}
                 >
-                  Применить ({normalCount + splitDoctorCount})
+                  Применить ({selectedDoctorCount})
                 </button>
               </div>
             </div>

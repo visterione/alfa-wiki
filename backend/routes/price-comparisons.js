@@ -25,11 +25,11 @@ async function recordHistory(pageSlug, userId, summary, changes = []) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// GET /api/price-comparisons - Получить все сравнения пользователя
+// GET /api/price-comparisons - Получить все сравнения
 // ═══════════════════════════════════════════════════════════════
 router.get('/', authenticate, async (req, res) => {
   try {
-    const where = { createdBy: req.user.id };
+    const where = {};
     if (req.query.type) where.comparisonType = req.query.type;
 
     const comparisons = await PriceComparison.findAll({
@@ -53,10 +53,7 @@ router.get('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
 
     const comparison = await PriceComparison.findOne({
-      where: {
-        id,
-        createdBy: req.user.id
-      },
+      where: { id },
       include: [
         {
           model: PriceComparisonItem,
@@ -153,10 +150,7 @@ router.put('/:id',
       } = req.body;
 
       const comparison = await PriceComparison.findOne({
-        where: {
-          id,
-          createdBy: req.user.id
-        }
+        where: { id }
       });
 
       if (!comparison) {
@@ -198,10 +192,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     const { id } = req.params;
 
     const comparison = await PriceComparison.findOne({
-      where: {
-        id,
-        createdBy: req.user.id
-      }
+      where: { id }
     });
 
     if (!comparison) {
@@ -252,12 +243,8 @@ router.post('/:id/items',
         lab = ''
       } = req.body;
 
-      // Проверяем, что сравнение принадлежит пользователю
       const comparison = await PriceComparison.findOne({
-        where: {
-          id,
-          createdBy: req.user.id
-        }
+        where: { id }
       });
 
       if (!comparison) {
@@ -297,6 +284,53 @@ router.post('/:id/items',
 );
 
 // ═══════════════════════════════════════════════════════════════
+// PUT /api/price-comparisons/:id/items/cost-prices - Пакетно сохранить себестоимости
+// ═══════════════════════════════════════════════════════════════
+router.put('/:id/items/cost-prices',
+  authenticate,
+  [
+    body('updates').isArray().withMessage('updates должен быть массивом'),
+    body('updates.*.id').isUUID().withMessage('Некорректный ID услуги'),
+    body('updates.*.costPrices').isObject().withMessage('costPrices должен быть объектом')
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const { id } = req.params;
+      const { updates } = req.body;
+
+      const comparison = await PriceComparison.findOne({ where: { id } });
+      if (!comparison) {
+        return res.status(404).json({ error: 'Сравнение не найдено' });
+      }
+
+      await Promise.all(updates.map(update =>
+        PriceComparisonItem.update(
+          { costPrices: update.costPrices },
+          { where: { id: update.id, comparisonId: id } }
+        )
+      ));
+
+      await recordHistory(
+        PRICE_COMPARE_PAGE_SLUG,
+        req.user.id,
+        `Обновлены себестоимости в «${comparison.name}»`,
+        [{ field: 'costPrices', label: 'Обновлено услуг', to: String(updates.length) }]
+      );
+
+      res.json({ updated: updates.length });
+    } catch (error) {
+      console.error('Error bulk updating comparison cost prices:', error);
+      res.status(500).json({ error: 'Ошибка при сохранении себестоимостей' });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
 // PUT /api/price-comparisons/:id/items/:itemId - Обновить услугу
 // ═══════════════════════════════════════════════════════════════
 router.put('/:id/items/:itemId',
@@ -314,12 +348,8 @@ router.put('/:id/items/:itemId',
       const { id, itemId } = req.params;
       const { prices, serviceCode, serviceName, costPrices, lab } = req.body;
 
-      // Проверяем, что сравнение принадлежит пользователю
       const comparison = await PriceComparison.findOne({
-        where: {
-          id,
-          createdBy: req.user.id
-        }
+        where: { id }
       });
 
       if (!comparison) {
@@ -417,12 +447,8 @@ router.delete('/:id/items/:itemId', authenticate, async (req, res) => {
   try {
     const { id, itemId } = req.params;
 
-    // Проверяем, что сравнение принадлежит пользователю
     const comparison = await PriceComparison.findOne({
-      where: {
-        id,
-        createdBy: req.user.id
-      }
+      where: { id }
     });
 
     if (!comparison) {
@@ -476,12 +502,8 @@ router.put('/:id/items/reorder',
       const { id } = req.params;
       const { itemsOrder } = req.body; // [{ id: 'uuid', sortOrder: 0 }, ...]
 
-      // Проверяем, что сравнение принадлежит пользователю
       const comparison = await PriceComparison.findOne({
-        where: {
-          id,
-          createdBy: req.user.id
-        }
+        where: { id }
       });
 
       if (!comparison) {

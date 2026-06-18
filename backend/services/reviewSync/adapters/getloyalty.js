@@ -483,11 +483,19 @@ async function replyToReview(credentials, externalId, sourceHashKey, replyText, 
     validateStatus: s => s < 500
   });
 
-  if (resp.data?.status !== 200) {
+  const responseStatus = Number(resp.data?.status);
+  const successfulStatuses = [101, 200];
+
+  if (!successfulStatuses.includes(responseStatus)) {
     throw new Error(resp.data?.message || `GetLoyalty ответил: ${JSON.stringify(resp.data)}`);
   }
 
-  return { success: true, data: resp.data, resolvedHashKey: hashKey };
+  return {
+    success: true,
+    queued: responseStatus === 101,
+    data: resp.data,
+    resolvedHashKey: hashKey
+  };
 }
 
 module.exports = { fetchReviews, testConnection, credentialsSchema, getFilials, login, replyToReview };

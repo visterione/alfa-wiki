@@ -211,13 +211,14 @@
 }
 
 .price-table-scroll {
-  overflow-x: auto;
+  max-height: calc(100vh - 180px);
+  overflow: auto;
 }
 
 .price-table {
-  width: 100%;
+  width: max-content;
   border-collapse: collapse;
-  min-width: 800px;
+  min-width: max(800px, 100%);
 }
 
 .price-table th {
@@ -232,13 +233,37 @@
   letter-spacing: 0.5px;
   vertical-align: middle;
   white-space: nowrap;
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 .price-table th.col-service { width: auto; text-align: left; }
 .price-table th.col-code { width: 120px; }
 .price-table th.col-price { width: 140px; }
-.price-table th.col-price-competitor { width: 100px; }
+.price-table th.col-price-competitor {
+  white-space: normal;
+}
+.price-table th.col-price-competitor.col-clinic-single {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+.price-table th.col-price-competitor.col-clinic-pair {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+.price-table td.col-clinic-single-data {
+  width: 240px;
+  min-width: 240px;
+  max-width: 240px;
+}
+.price-table td.col-clinic-pair-data {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+}
 .price-table th.col-diff-competitor { width: 80px; }
 .price-table th.col-actions { width: 80px; }
 .price-table th.hidden, .price-table td.hidden { display: none; }
@@ -1030,6 +1055,14 @@
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
       <input type="text" id="filter-search" class="price-search" placeholder="Поиск по названию, коду..." oninput="priceApp.filterTable()">
     </div>
+    <div class="price-mode-switcher" style="margin-bottom:0;">
+      <button class="price-mode-btn active" id="view-price-btn" onclick="priceApp.setViewMode('price')">Стоимость</button>
+      <button class="price-mode-btn" id="view-cost-btn" onclick="priceApp.setViewMode('cost')">Себестоимость</button>
+    </div>
+    <button class="price-btn price-btn-secondary" id="refresh-costs-btn" style="display:none;" onclick="priceApp.refreshCostPrices()">
+      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+      Обновить себестоимость
+    </button>
     <button class="price-btn price-btn-primary" onclick="priceApp.openAddServiceModal()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Добавить услугу
@@ -1089,57 +1122,29 @@
         <button class="price-modal-close" onclick="priceApp.closeModal('add-service-modal')">&times;</button>
       </div>
       <div class="price-modal-body">
-        <!-- Вкладки -->
-        <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #e5e7eb;">
-          <button class="price-tab-btn active" onclick="priceApp.switchTab('search')" id="tab-search">
-            Поиск услуги
-          </button>
-          <button class="price-tab-btn" onclick="priceApp.switchTab('category')" id="tab-category">
-            По категории
-          </button>
-        </div>
-
-        <!-- Вкладка: Поиск в МИС -->
-        <div id="tab-content-search" class="price-tab-content">
-          <div class="price-mis-search">
-            <div class="price-mis-search-header">
-              <input type="text" id="mis-search-input" class="price-input" placeholder="Поиск услуги в МИС..." style="flex:1">
-              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.searchMIS()">
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                Найти
-              </button>
-            </div>
-            <div class="price-mis-results" id="mis-results" style="display:none">
-              <div class="price-mis-empty">Введите запрос и нажмите "Найти"</div>
-            </div>
+        <div class="price-form-group">
+          <label>Категория или название услуги <span>*</span></label>
+          <div class="lab-category-combobox" id="clinic-category-combobox">
+            <input type="text" id="clinic-category-input" class="price-input" placeholder="Например: УЗИ или консультация терапевта" autocomplete="off"
+              oninput="priceApp.onClinicCategoryInput(this.value)"
+              onfocus="priceApp.onClinicCategoryFocus()"
+              onblur="priceApp.onClinicCategoryBlur()"
+              onkeydown="priceApp.onClinicCategoryKeydown(event)">
+            <div class="lab-category-dropdown" id="clinic-category-dropdown" style="display:none;"></div>
           </div>
         </div>
-
-        <!-- Вкладка: Выбор по категории -->
-        <div id="tab-content-category" class="price-tab-content" style="display:none">
-          <div class="price-mis-search">
-            <div style="margin-bottom: 16px;">
-              <label style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500; color: #374151;">
-                Выберите категорию услуг
-              </label>
-              <select id="category-select" class="price-select price-category-select" onchange="priceApp.onCategorySelected()">
-                <option value="">Загрузка категорий...</option>
-              </select>
-            </div>
-            <div id="category-info" style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; display: none;">
-              <div style="font-size: 13px; color: #0369a1;">
-                <strong>Выбрана категория:</strong> <span id="selected-category-name"></span>
-              </div>
-              <div style="font-size: 12px; color: #075985; margin-top: 4px;">
-                При нажатии кнопки будут загружены и добавлены все услуги из этой категории.
-              </div>
-            </div>
-            <div style="display: flex; gap: 8px; justify-content: flex-end;">
-              <button type="button" class="price-btn price-btn-primary" onclick="priceApp.addAllCategoryServices()" id="add-category-btn" disabled>
-                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                Добавить все услуги
-              </button>
-            </div>
+        <div id="category-info" style="margin-bottom: 16px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; display: none;">
+          <div style="font-size: 13px; color: #0369a1;">
+            <strong>Выбрана категория:</strong> <span id="selected-category-name"></span>
+          </div>
+          <div style="font-size: 12px; color: #075985; margin-top: 4px;">
+            Можно добавить в сравнение сразу все услуги из этой категории.
+          </div>
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px;">
+            <button type="button" class="price-btn price-btn-primary" onclick="priceApp.addAllCategoryServices()" id="add-category-btn" disabled>
+              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              Добавить все услуги
+            </button>
           </div>
         </div>
       </div>
@@ -1155,9 +1160,9 @@
       </div>
       <div class="price-modal-body">
         <div class="price-form-group">
-          <label>Категория услуг <span>*</span></label>
+          <label>Категория или название услуги <span>*</span></label>
           <div class="lab-category-combobox" id="lab-category-combobox">
-            <input type="text" id="lab-category-input" class="price-input" placeholder="Поиск или выберите категорию..." autocomplete="off"
+            <input type="text" id="lab-category-input" class="price-input" placeholder="Например: биохимия или общий анализ крови" autocomplete="off"
               oninput="priceApp.onLabCategoryInput(this.value)"
               onfocus="priceApp.onLabCategoryFocus()"
               onblur="priceApp.onLabCategoryBlur()"
@@ -1227,6 +1232,18 @@ window.priceApp = (function() {
   var labCategoryOptions = []; // Кеш всех опций категорий для поиска
   var selectedLabCategoryId = null;
   var highlightedLabOptionIdx = -1;
+  var labServiceSearchResults = [];
+  var labUnifiedSearchTimer = null;
+  var labUnifiedSearchRequest = 0;
+  var clinicCategoryOptions = [];
+  var selectedClinicCategoryId = null;
+  var highlightedClinicOptionIdx = -1;
+  var clinicServiceSearchResults = [];
+  var clinicUnifiedSearchTimer = null;
+  var clinicUnifiedSearchRequest = 0;
+  var viewMode = 'price'; // 'price' | 'cost'
+  var misAllServicesCache = null;
+  var misAllServicesCacheTime = 0;
 
   // === HELPERS ===
   function getToken() {
@@ -1300,6 +1317,10 @@ window.priceApp = (function() {
     allColumns = [];
     hiddenColumns = [];
     baseColumnName = null;
+    viewMode = 'price';
+    document.getElementById('view-price-btn').classList.add('active');
+    document.getElementById('view-cost-btn').classList.remove('active');
+    document.getElementById('refresh-costs-btn').style.display = 'none';
 
     // Сбрасываем UI
     document.getElementById('columns-manager').style.display = 'none';
@@ -1501,6 +1522,217 @@ window.priceApp = (function() {
     renderTable();
   }
 
+  function setViewMode(mode) {
+    viewMode = mode;
+    document.getElementById('view-price-btn').classList.toggle('active', mode === 'price');
+    document.getElementById('view-cost-btn').classList.toggle('active', mode === 'cost');
+    document.getElementById('refresh-costs-btn').style.display = mode === 'cost' ? 'inline-flex' : 'none';
+    renderTable();
+  }
+
+  function refreshCostPrices() {
+    if (!currentComparison || currentItems.length === 0) {
+      showToast('Нет услуг для обновления', 'error');
+      return;
+    }
+
+    var button = document.getElementById('refresh-costs-btn');
+    button.disabled = true;
+    button.innerHTML = '<svg style="animation:spin 1s linear infinite" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Обновление...';
+
+    var refreshPromise;
+    if (currentMode === 'lab') {
+      misAllServicesCache = null;
+      misAllServicesCacheTime = 0;
+      refreshPromise = loadLabCostsFromMIS(currentItems);
+    } else {
+      var clinicItems = currentItems.filter(function(item) { return !!item.misServiceId; });
+      if (clinicItems.length === 0) {
+        showToast('У услуг нет ID МИС для обновления', 'error');
+        refreshPromise = Promise.resolve();
+      } else {
+        refreshPromise = loadCostsFromMIS(clinicItems);
+      }
+    }
+
+    return refreshPromise.finally(function() {
+      button.disabled = false;
+      button.innerHTML = '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Обновить себестоимость';
+    });
+  }
+
+  function loadCostsFromMIS(items) {
+    var thead = document.getElementById('table-header');
+    var totalCols = thead.querySelectorAll('th').length;
+    var ownCols = allColumns.filter(function(col) { return col.type === 'own'; });
+    if (ownCols.length === 0 || availableClinics.length === 0) {
+      showToast('Не удалось определить клиники для обновления', 'error');
+      return Promise.resolve();
+    }
+
+    document.getElementById('price-table-body').innerHTML =
+      '<tr><td colspan="' + totalCols + '" class="price-loading">Загрузка себестоимостей из МИС...</td></tr>';
+    var itemsByServiceId = {};
+    items.forEach(function(item) {
+      var serviceId = String(item.misServiceId);
+      if (!itemsByServiceId[serviceId]) itemsByServiceId[serviceId] = [];
+      itemsByServiceId[serviceId].push(item);
+    });
+    var serviceIds = Object.keys(itemsByServiceId);
+    var chunkSize = 200;
+    var requests = [];
+
+    ownCols.forEach(function(col) {
+      var clinic = availableClinics.find(function(c) { return c.title === col.name; });
+      if (!clinic) return;
+
+      for (var offset = 0; offset < serviceIds.length; offset += chunkSize) {
+        var chunk = serviceIds.slice(offset, offset + chunkSize);
+        requests.push(
+          fetchAPI(MIS_URL + '/services', {
+            method: 'POST',
+            body: JSON.stringify({ service_ids: chunk, clinic_id: clinic.id }),
+            timeout: 60000
+          }).then(function(res) {
+            return {
+              clinicName: col.name,
+              services: res.error === 0 && Array.isArray(res.data) ? res.data : []
+            };
+          }).catch(function() {
+            return { clinicName: col.name, services: [] };
+          })
+        );
+      }
+    });
+
+    return Promise.all(requests).then(function(results) {
+      var costsMap = {};
+      results.forEach(function(result) {
+        result.services.forEach(function(service) {
+          var matchedItems = itemsByServiceId[String(service.service_id)] || [];
+          matchedItems.forEach(function(item) {
+            if (!costsMap[item.id]) costsMap[item.id] = {};
+            costsMap[item.id][result.clinicName] =
+              service.original_price !== null && service.original_price !== undefined
+                ? parseFloat(service.original_price) || 0
+                : null;
+          });
+        });
+      });
+
+      var updates = items.map(function(item) {
+        var newCosts = Object.assign({}, item.costPrices || {}, costsMap[item.id] || {});
+        return { id: item.id, costPrices: newCosts };
+      });
+
+      return fetchAPI(API_URL + '/' + currentComparison.id + '/items/cost-prices', {
+        method: 'PUT',
+        body: JSON.stringify({ updates: updates })
+      }).then(function() {
+        updates.forEach(function(update) {
+          var idx = currentItems.findIndex(function(i) { return i.id === update.id; });
+          if (idx >= 0) currentItems[idx].costPrices = update.costPrices;
+        });
+      });
+    }).then(function() {
+      showToast('Себестоимость обновлена', 'success');
+      renderTable();
+    }).catch(function(e) {
+      showToast('Ошибка загрузки себестоимостей: ' + e.message, 'error');
+      renderTable();
+    });
+  }
+
+  function fetchAllMISServices() {
+    var now = Date.now();
+    if (misAllServicesCache && (now - misAllServicesCacheTime) < 30 * 60 * 1000) {
+      return Promise.resolve(misAllServicesCache);
+    }
+    return fetchAPI(MIS_URL + '/all-services', {
+      method: 'POST',
+      body: JSON.stringify({ preserve_duplicates: true }),
+      timeout: 120000
+    }).then(function(res) {
+      var allServices = res.error === 0 && Array.isArray(res.data) ? res.data : [];
+      misAllServicesCache = allServices;
+      misAllServicesCacheTime = Date.now();
+      return allServices;
+    });
+  }
+
+  function loadLabCostsFromMIS(items) {
+    var thead = document.getElementById('table-header');
+    var totalCols = thead.querySelectorAll('th').length;
+    document.getElementById('price-table-body').innerHTML =
+      '<tr><td colspan="' + totalCols + '" class="price-loading">Загрузка себестоимостей из МИС...</td></tr>';
+
+    // Build lookup sets from items needing costs
+    var subCodeSet = {};
+    var nameSet = {};
+    items.forEach(function(item) {
+      if (item.serviceCode) {
+        subCodeSet[item.serviceCode.trim()] = true;
+      } else if (item.serviceName) {
+        nameSet[normalizeName(item.serviceName)] = true;
+      }
+    });
+
+    return fetchAllMISServices().then(function(allServices) {
+      return allServices.filter(function(s) {
+        var subCode = (s.sub_code || '').trim();
+        if (subCode) return !!subCodeSet[subCode];
+        return !!nameSet[normalizeName(s.title)];
+      });
+    }).then(function(matchingServices) {
+      console.log('🔬 loadLabCostsFromMIS: найдено совпадений:', matchingServices.length);
+      console.log('🔬 Совпадения по sub_code/lab/cost:', matchingServices.map(function(s) {
+        return { sub_code: s.sub_code, lab: s.lab, title: s.title, original_price: s.original_price };
+      }));
+
+      // Group original_price by sub_code / normalized name → lab
+      var costsPerSubCode = {};
+      var costsPerName = {};
+      matchingServices.forEach(function(s) {
+        var lab = (s.lab || '').trim();
+        var cost = parseFloat(s.original_price) || 0;
+        var subCode = (s.sub_code || '').trim();
+        if (subCode) {
+          if (!costsPerSubCode[subCode]) costsPerSubCode[subCode] = {};
+          if (lab) costsPerSubCode[subCode][lab] = cost;
+        } else {
+          var key = normalizeName(s.title);
+          if (!costsPerName[key]) costsPerName[key] = {};
+          if (lab) costsPerName[key][lab] = cost;
+        }
+      });
+      console.log('🔬 costsPerSubCode:', JSON.stringify(costsPerSubCode));
+
+      var updates = items.map(function(item) {
+        var costsMap = item.serviceCode
+          ? (costsPerSubCode[item.serviceCode.trim()] || {})
+          : (costsPerName[normalizeName(item.serviceName)] || {});
+        var newCosts = Object.assign({}, item.costPrices || {}, costsMap);
+        return { id: item.id, costPrices: newCosts };
+      });
+
+      return fetchAPI(API_URL + '/' + currentComparison.id + '/items/cost-prices', {
+        method: 'PUT',
+        body: JSON.stringify({ updates: updates })
+      }).then(function() {
+        updates.forEach(function(update) {
+          var idx = currentItems.findIndex(function(i) { return i.id === update.id; });
+          if (idx >= 0) currentItems[idx].costPrices = update.costPrices;
+        });
+      });
+    }).then(function() {
+      showToast('Себестоимость обновлена', 'success');
+      renderTable();
+    }).catch(function(e) {
+      showToast('Ошибка загрузки себестоимостей: ' + e.message, 'error');
+      renderTable();
+    });
+  }
+
   function renderTable() {
     var thead = document.getElementById('table-header');
     var tbody = document.getElementById('price-table-body');
@@ -1548,11 +1780,11 @@ window.priceApp = (function() {
 
       if (isBase) {
         // Эталонная колонка - только 1 колонка (без разницы)
-        headerRow += '<th class="col-price-competitor' + hiddenClass + '">' + col.name + ' (эталон)</th>';
+        headerRow += '<th class="col-price-competitor col-clinic-single' + hiddenClass + '">' + col.name + ' (эталон)</th>';
         totalDataCols += 1;
       } else {
         // Остальные колонки имеют 2 подколонки (цена и разница), но без подзаголовков
-        headerRow += '<th class="col-price-competitor' + hiddenClass + '" colspan="2">' + col.name + '</th>';
+        headerRow += '<th class="col-price-competitor col-clinic-pair' + hiddenClass + '" colspan="2">' + col.name + '</th>';
         totalDataCols += 2;
       }
     });
@@ -1589,31 +1821,32 @@ window.priceApp = (function() {
       html += '<td>' + item.serviceName + '</td>';
 
       // Базовая цена для расчета разницы
-      var basePrice = item.prices[baseColumnName] || null;
+      var currentPrices = viewMode === 'cost' ? (item.costPrices || {}) : item.prices;
+      var basePrice = currentPrices[baseColumnName] || null;
 
       // Колонки с ценами (используем переупорядоченный массив)
       orderedColumns.forEach(function(col) {
         var isHidden = hiddenColumns.indexOf(col.name) >= 0;
         var hiddenClass = isHidden ? ' hidden' : '';
         var isBase = col.name === baseColumnName;
-        var price = item.prices[col.name] || null;
+        var price = currentPrices[col.name] || null;
 
         // Колонка с ценой
-        html += '<td class="center' + hiddenClass + '">';
+        html += '<td class="center ' + (isBase ? 'col-clinic-single-data' : 'col-clinic-pair-data') + hiddenClass + '">';
         if (col.type === 'own') {
-          // Для своих медцентров - показываем как текст (цена из МИС)
+          // Для своих медцентров - показываем как текст (цена/себестоимость из МИС)
           html += '<span class="price-value">' + formatPrice(price) + '</span>';
         } else {
           // Для конкурентов - инпут для ввода
-          var history = item.priceHistory && item.priceHistory[col.name];
+          var history = viewMode === 'price' && item.priceHistory && item.priceHistory[col.name];
           var hasHistory = history && history.length > 0;
           var inputClass = 'price-value-input' + (hasHistory ? ' has-history' : '');
 
           html += '<input type="number" class="' + inputClass + '" value="' + (price || '') + '" ';
           html += 'onchange="priceApp.updatePrice(\'' + item.id + '\', \'' + col.name + '\', this.value)" ';
-          html += 'placeholder="Введите цену"';
+          html += 'placeholder="' + (viewMode === 'cost' ? 'Себестоимость' : 'Введите цену') + '"';
 
-          // Добавляем data-атрибуты для истории изменений
+          // Добавляем data-атрибуты для истории изменений (только в режиме стоимости)
           if (hasHistory) {
             var lastChange = history[history.length - 1];
             var changeDate = new Date(lastChange.changedAt);
@@ -1638,7 +1871,7 @@ window.priceApp = (function() {
 
         // Колонка с разницей (только для НЕ эталонных колонок)
         if (!isBase) {
-          html += '<td class="center' + hiddenClass + '">';
+          html += '<td class="center col-clinic-pair-data' + hiddenClass + '">';
           if (basePrice && price) {
             var diff = calculateDiff(basePrice, price);
             html += '<span class="price-diff ' + diff.className + '">' + diff.text + '</span>';
@@ -1849,36 +2082,25 @@ window.priceApp = (function() {
       return;
     }
 
-    document.getElementById('mis-search-input').value = '';
-    document.getElementById('mis-results').style.display = 'none';
-
-    // Сброс вкладки категорий
-    document.getElementById('category-select').value = '';
+    selectedClinicCategoryId = null;
+    highlightedClinicOptionIdx = -1;
+    clinicServiceSearchResults = [];
+    clearTimeout(clinicUnifiedSearchTimer);
+    clinicUnifiedSearchRequest++;
+    document.getElementById('clinic-category-input').value = '';
+    document.getElementById('clinic-category-dropdown').style.display = 'none';
     document.getElementById('category-info').style.display = 'none';
     document.getElementById('add-category-btn').disabled = true;
 
-    // Загрузка категорий при первом открытии
-    if (document.getElementById('category-select').options.length <= 1) {
+    if (clinicCategoryOptions.length === 0) {
       loadCategories();
     }
 
     openModal('add-service-modal');
   }
 
-  function switchTab(tabName) {
-    // Переключение активной кнопки
-    document.getElementById('tab-search').classList.remove('active');
-    document.getElementById('tab-category').classList.remove('active');
-    document.getElementById('tab-' + tabName).classList.add('active');
-
-    // Переключение контента
-    document.getElementById('tab-content-search').style.display = tabName === 'search' ? 'block' : 'none';
-    document.getElementById('tab-content-category').style.display = tabName === 'category' ? 'block' : 'none';
-  }
-
   function loadCategories() {
-    var select = document.getElementById('category-select');
-    select.innerHTML = '<option value="">Загрузка категорий...</option>';
+    clinicCategoryOptions = [];
 
     fetchAPI(MIS_URL + '/get-service-categories', {
       method: 'POST',
@@ -1886,63 +2108,32 @@ window.priceApp = (function() {
     })
     .then(function(res) {
       if (res.error !== 0 || !res.data || res.data.length === 0) {
-        select.innerHTML = '<option value="">Категории не найдены</option>';
+        showToast('Категории не найдены', 'error');
         return;
       }
 
-      select.innerHTML = '<option value="">Выберите категорию...</option>';
-
-      // Функция для рекурсивного добавления категорий
-      function addCategories(categories, level) {
+      function collectCategories(categories, level) {
         level = level || 0;
         categories.forEach(function(cat) {
-          var opt = document.createElement('option');
-          opt.value = cat.id;
-
-          // Визуальная вложенность через отступы
-          var indent = level === 0 ? '' : '　'.repeat(level); // Используем широкий пробел для отступа
-          opt.textContent = indent + cat.title + ' (' + (cat.services_count || 0) + ')';
-
-          opt.setAttribute('data-count', cat.services_count || 0);
-          opt.setAttribute('data-level', level);
-          opt.setAttribute('data-name', cat.title);
-          select.appendChild(opt);
-
-          // Добавляем вложенные категории
+          var indent = level === 0 ? '' : '　'.repeat(level);
+          clinicCategoryOptions.push({
+            value: cat.id,
+            text: indent + cat.title + ' (' + (cat.services_count || 0) + ')',
+            name: cat.title,
+            level: level
+          });
           if (cat.children && cat.children.length > 0) {
-            addCategories(cat.children, level + 1);
+            collectCategories(cat.children, level + 1);
           }
         });
       }
 
-      addCategories(res.data);
+      collectCategories(res.data);
+      renderClinicDropdown('', false);
     })
     .catch(function(e) {
       showToast('Ошибка загрузки категорий: ' + e.message, 'error');
-      select.innerHTML = '<option value="">Ошибка загрузки</option>';
     });
-  }
-
-  function onCategorySelected() {
-    var select = document.getElementById('category-select');
-    var categoryId = select.value;
-    var infoDiv = document.getElementById('category-info');
-    var addBtn = document.getElementById('add-category-btn');
-
-    if (!categoryId) {
-      infoDiv.style.display = 'none';
-      addBtn.disabled = true;
-      return;
-    }
-
-    // Получаем название выбранной категории
-    var selectedOption = select.options[select.selectedIndex];
-    var categoryName = selectedOption.getAttribute('data-name') || selectedOption.textContent;
-
-    // Показываем информацию о выбранной категории
-    document.getElementById('selected-category-name').textContent = categoryName;
-    infoDiv.style.display = 'block';
-    addBtn.disabled = false;
   }
 
   function addAllCategoryServices() {
@@ -1951,8 +2142,7 @@ window.priceApp = (function() {
       return;
     }
 
-    var select = document.getElementById('category-select');
-    var categoryId = select.value;
+    var categoryId = selectedClinicCategoryId;
 
     if (!categoryId) {
       showToast('Выберите категорию', 'error');
@@ -2022,12 +2212,14 @@ window.priceApp = (function() {
               service_id: service.service_id,
               code: service.code,
               title: service.title,
-              prices: {}
+              prices: {},
+              costPrices: {}
             };
           }
 
-          // Сохраняем цену для этой клиники
+          // Сохраняем цену и себестоимость для этой клиники
           servicesMap[serviceId].prices[result.clinicName] = service.price;
+          servicesMap[serviceId].costPrices[result.clinicName] = service.original_price || null;
         });
       });
 
@@ -2054,7 +2246,8 @@ window.priceApp = (function() {
             serviceCode: service.code || '',
             serviceName: service.title,
             misServiceId: service.service_id,
-            prices: service.prices
+            prices: service.prices,
+            costPrices: service.costPrices
           })
         })
         .then(function() {
@@ -2091,53 +2284,218 @@ window.priceApp = (function() {
   }
 
   function searchMIS() {
-    var term = document.getElementById('mis-search-input').value;
+    var term = document.getElementById('clinic-category-input').value;
     if (!term || term.length < 2) {
       showToast('Минимум 2 символа для поиска', 'error');
       return;
     }
 
-    var resultsDiv = document.getElementById('mis-results');
-    resultsDiv.style.display = 'block';
-    resultsDiv.innerHTML = '<div class="price-mis-empty">Поиск...</div>';
-
-    fetchAPI(MIS_URL + '/search-mis', {
+    return fetchAPI(MIS_URL + '/search-mis', {
       method: 'POST',
       body: JSON.stringify({ term: term })
     })
     .then(function(res) {
-      if (!res.success || !res.data || res.data.length === 0) {
-        resultsDiv.innerHTML = '<div class="price-mis-empty">Ничего не найдено</div>';
-        return;
-      }
-
-      resultsDiv.innerHTML = res.data.map(function(s) {
-        return '<div class="price-mis-result" onclick="priceApp.selectMISService(' +
-          "'" + (s.service_id || '') + "'," +
-          "'" + (s.code || '').replace(/'/g, "\\'") + "'," +
-          "'" + (s.title || '').replace(/'/g, "\\'") + "'," +
-          s.price +
-        ')">' +
-          '<div class="price-mis-result-title">' + s.title + '</div>' +
-          '<div class="price-mis-result-meta">' +
-            'Код: ' + (s.code || '-') + ' | ' +
-            '<span class="price-mis-result-price">' + formatPrice(s.price) + '</span>' +
-            (s.category ? ' | ' + s.category : '') +
-          '</div>' +
-        '</div>';
-      }).join('');
+      clinicServiceSearchResults = res.success && Array.isArray(res.data) ? res.data : [];
+      renderClinicDropdown(term, true);
+      return clinicServiceSearchResults;
     })
     .catch(function(e) {
-      resultsDiv.innerHTML = '<div class="price-mis-empty">Ошибка поиска</div>';
+      clinicServiceSearchResults = [];
+      renderClinicDropdown(term, true);
       showToast('Ошибка: ' + e.message, 'error');
     });
   }
 
-  function selectMISService(serviceId, code, title, price) {
+  function positionClinicDropdown() {
+    var input = document.getElementById('clinic-category-input');
+    var dropdown = document.getElementById('clinic-category-dropdown');
+    if (!input || !dropdown) return;
+    var rect = input.getBoundingClientRect();
+    dropdown.style.top = (rect.bottom + 2) + 'px';
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.width = rect.width + 'px';
+  }
+
+  function renderClinicDropdown(search, show) {
+    var dropdown = document.getElementById('clinic-category-dropdown');
+    if (!dropdown) return;
+    var term = (search || '').toLowerCase().trim();
+    var filteredCategories = clinicCategoryOptions.filter(function(opt) {
+      return !term || opt.name.toLowerCase().indexOf(term) >= 0;
+    }).slice(0, 12);
+
+    dropdown.innerHTML = '';
+
+    if (filteredCategories.length) {
+      var categoryTitle = document.createElement('div');
+      categoryTitle.className = 'lab-category-empty-msg';
+      categoryTitle.style.textAlign = 'left';
+      categoryTitle.style.padding = '8px 12px 4px';
+      categoryTitle.style.fontWeight = '600';
+      categoryTitle.textContent = 'Категории';
+      dropdown.appendChild(categoryTitle);
+
+      filteredCategories.forEach(function(opt) {
+        var option = document.createElement('div');
+        option.className = 'lab-category-option' + (opt.value === selectedClinicCategoryId ? ' selected-opt' : '');
+        option.setAttribute('data-level', opt.level);
+        option.textContent = opt.text;
+        option.onmousedown = function() { selectClinicCategory(opt.value, opt.name); };
+        dropdown.appendChild(option);
+      });
+    }
+
+    if (term.length >= 2) {
+      var serviceTitle = document.createElement('div');
+      serviceTitle.className = 'lab-category-empty-msg';
+      serviceTitle.style.textAlign = 'left';
+      serviceTitle.style.padding = '8px 12px 4px';
+      serviceTitle.style.fontWeight = '600';
+      serviceTitle.textContent = 'Услуги';
+      dropdown.appendChild(serviceTitle);
+
+      if (!clinicServiceSearchResults.length) {
+        var empty = document.createElement('div');
+        empty.className = 'lab-category-empty-msg';
+        empty.textContent = 'Введите запрос или подождите результаты поиска...';
+        dropdown.appendChild(empty);
+      } else {
+        clinicServiceSearchResults.slice(0, 20).forEach(function(service, index) {
+          var option = document.createElement('div');
+          option.className = 'lab-category-option';
+          option.setAttribute('data-level', 'service');
+
+          var title = document.createElement('div');
+          title.style.fontWeight = '500';
+          title.textContent = service.title || 'Без названия';
+
+          var meta = document.createElement('div');
+          meta.style.fontSize = '11px';
+          meta.style.color = '#6b7280';
+          var parts = ['Код: ' + (service.code || '—')];
+          if (service.price !== null && service.price !== undefined) parts.push(formatPrice(service.price));
+          if (service.category) parts.push(service.category);
+          meta.textContent = parts.join(' | ');
+
+          option.appendChild(title);
+          option.appendChild(meta);
+          option.onmousedown = function() {
+            selectMISService(
+              service.service_id || '',
+              service.code || '',
+              service.title || '',
+              service.price || 0,
+              service.cost_price || 0
+            );
+          };
+          dropdown.appendChild(option);
+        });
+      }
+    }
+
+    if (!filteredCategories.length && term.length < 2) {
+      dropdown.innerHTML = '<div class="lab-category-empty-msg">Ничего не найдено</div>';
+    }
+
+    highlightedClinicOptionIdx = -1;
+    if (show !== false) {
+      positionClinicDropdown();
+      dropdown.style.display = 'block';
+    }
+  }
+
+  function onClinicCategoryInput(value) {
+    selectedClinicCategoryId = null;
+    clinicServiceSearchResults = [];
+    document.getElementById('category-info').style.display = 'none';
+    document.getElementById('add-category-btn').disabled = true;
+    renderClinicDropdown(value, true);
+
+    clearTimeout(clinicUnifiedSearchTimer);
+    var requestId = ++clinicUnifiedSearchRequest;
+    var term = value.trim();
+    if (term.length < 2) return;
+
+    clinicUnifiedSearchTimer = setTimeout(function() {
+      fetchAPI(MIS_URL + '/search-mis', {
+        method: 'POST',
+        body: JSON.stringify({ term: term })
+      }).then(function(res) {
+        if (requestId !== clinicUnifiedSearchRequest) return;
+        clinicServiceSearchResults = res.success && Array.isArray(res.data) ? res.data : [];
+        renderClinicDropdown(term, true);
+      }).catch(function() {
+        if (requestId !== clinicUnifiedSearchRequest) return;
+        clinicServiceSearchResults = [];
+        renderClinicDropdown(term, true);
+      });
+    }, 350);
+  }
+
+  function onClinicCategoryFocus() {
+    var input = document.getElementById('clinic-category-input');
+    var value = input ? input.value : '';
+    renderClinicDropdown(value, true);
+    if (value.trim().length >= 2 && !clinicServiceSearchResults.length) {
+      onClinicCategoryInput(value);
+    }
+  }
+
+  function onClinicCategoryBlur() {
+    setTimeout(function() {
+      var dropdown = document.getElementById('clinic-category-dropdown');
+      if (dropdown) dropdown.style.display = 'none';
+    }, 150);
+  }
+
+  function onClinicCategoryKeydown(e) {
+    var dropdown = document.getElementById('clinic-category-dropdown');
+    if (!dropdown || dropdown.style.display === 'none') return;
+    var options = dropdown.querySelectorAll('.lab-category-option');
+    if (!options.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      highlightedClinicOptionIdx = Math.min(highlightedClinicOptionIdx + 1, options.length - 1);
+      updateHighlightedClinicOption(options);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      highlightedClinicOptionIdx = Math.max(highlightedClinicOptionIdx - 1, 0);
+      updateHighlightedClinicOption(options);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedClinicOptionIdx >= 0 && options[highlightedClinicOptionIdx]) {
+        options[highlightedClinicOptionIdx].dispatchEvent(new MouseEvent('mousedown'));
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.style.display = 'none';
+    }
+  }
+
+  function updateHighlightedClinicOption(options) {
+    options.forEach(function(option, index) {
+      option.classList.toggle('highlighted', index === highlightedClinicOptionIdx);
+    });
+    if (highlightedClinicOptionIdx >= 0 && options[highlightedClinicOptionIdx]) {
+      options[highlightedClinicOptionIdx].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function selectClinicCategory(value, name) {
+    clearTimeout(clinicUnifiedSearchTimer);
+    clinicUnifiedSearchRequest++;
+    selectedClinicCategoryId = value;
+    var input = document.getElementById('clinic-category-input');
+    if (input) input.value = name;
+    document.getElementById('clinic-category-dropdown').style.display = 'none';
+    document.getElementById('selected-category-name').textContent = name;
+    document.getElementById('category-info').style.display = 'block';
+    document.getElementById('add-category-btn').disabled = false;
+    highlightedClinicOptionIdx = -1;
+  }
+
+  function selectMISService(serviceId, code, title, price, costPrice) {
     if (!currentComparison) return;
 
-    // ВСЕГДА загружаем цены для всех клиник из МИС
-    // Это позволяет автоматически подтягивать новые медцентры при добавлении услуг
     if (availableClinics.length === 0) {
       showToast('Загрузка списка клиник...', 'error');
       return;
@@ -2145,7 +2503,6 @@ window.priceApp = (function() {
 
     var ownMedCenterNames = availableClinics.map(function(c) { return c.title; });
 
-    // Если есть несколько клиник и clinic_id известны - загружаем для каждой
     if (ownMedCenterNames.length > 1) {
       var clinicRequests = [];
 
@@ -2153,27 +2510,23 @@ window.priceApp = (function() {
         var clinic = availableClinics.find(function(c) { return c.title === clinicName; });
         var clinicId = clinic ? clinic.id : null;
 
-        if (!clinicId) {
-          // Если clinic_id не найден, используем общую цену
-          return;
-        }
+        if (!clinicId) return;
 
-        var request = fetchAPI(MIS_URL + '/get-services', {
+        var request = fetchAPI(MIS_URL + '/services', {
           method: 'POST',
           body: JSON.stringify({
-            service_id: serviceId,
+            service_ids: [serviceId],
             clinic_id: clinicId
           })
         }).then(function(res) {
+          var svc = (res.error === 0 && res.data && res.data[0]) ? res.data[0] : null;
           return {
             clinicName: clinicName,
-            price: (res.error === 0 && res.data && res.data[0]) ? res.data[0].price : price
+            price: svc ? svc.price : price,
+            originalPrice: svc ? (svc.original_price || null) : (costPrice || null)
           };
         }).catch(function() {
-          return {
-            clinicName: clinicName,
-            price: price
-          };
+          return { clinicName: clinicName, price: price, originalPrice: costPrice || null };
         });
 
         clinicRequests.push(request);
@@ -2182,15 +2535,15 @@ window.priceApp = (function() {
       if (clinicRequests.length > 0) {
         Promise.all(clinicRequests).then(function(results) {
           var prices = {};
+          var costs = {};
           results.forEach(function(result) {
             prices[result.clinicName] = result.price;
+            costs[result.clinicName] = result.originalPrice;
           });
 
-          // Добавляем цены для клиник, которые не вернулись
           ownMedCenterNames.forEach(function(mc) {
-            if (!prices[mc]) {
-              prices[mc] = price;
-            }
+            if (!prices[mc]) prices[mc] = price;
+            if (!costs[mc]) costs[mc] = costPrice || null;
           });
 
           fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
@@ -2199,7 +2552,8 @@ window.priceApp = (function() {
               serviceCode: code,
               serviceName: title,
               misServiceId: serviceId,
-              prices: prices
+              prices: prices,
+              costPrices: costs
             })
           }).then(function() {
             showToast('Услуга добавлена', 'success');
@@ -2215,8 +2569,10 @@ window.priceApp = (function() {
 
     // Если только одна клиника или clinic_id не известны - используем общую цену
     var prices = {};
+    var costs = {};
     ownMedCenterNames.forEach(function(mc) {
       prices[mc] = price;
+      costs[mc] = costPrice || null;
     });
 
     fetchAPI(API_URL + '/' + currentComparison.id + '/items', {
@@ -2225,7 +2581,8 @@ window.priceApp = (function() {
         serviceCode: code,
         serviceName: title,
         misServiceId: serviceId,
-        prices: prices
+        prices: prices,
+        costPrices: costs
       })
     }).then(function() {
       showToast('Услуга добавлена', 'success');
@@ -2236,31 +2593,48 @@ window.priceApp = (function() {
     });
   }
 
-  // === ОБНОВЛЕНИЕ ЦЕН ===
+  // === ОБНОВЛЕНИЕ ЦЕН / СЕБЕСТОИМОСТЕЙ ===
   function updatePrice(itemId, columnName, value) {
     if (!currentComparison) return;
 
     var item = currentItems.find(function(i) { return i.id === itemId; });
     if (!item) return;
 
-    var newPrices = Object.assign({}, item.prices);
-    newPrices[columnName] = value ? parseFloat(value) : null;
+    if (viewMode === 'cost') {
+      var newCosts = Object.assign({}, item.costPrices || {});
+      newCosts[columnName] = value ? parseFloat(value) : null;
 
-    fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + itemId, {
-      method: 'PUT',
-      body: JSON.stringify({ prices: newPrices })
-    }).then(function(updatedItem) {
-      // Обновляем item с данными, полученными от сервера (включая priceHistory)
-      console.log('Price updated, received item:', updatedItem);
-      console.log('priceHistory:', updatedItem.priceHistory);
-      var itemIndex = currentItems.findIndex(function(i) { return i.id === itemId; });
-      if (itemIndex >= 0) {
-        currentItems[itemIndex] = updatedItem;
-      }
-      renderTable();
-    }).catch(function(e) {
-      showToast('Ошибка: ' + e.message, 'error');
-    });
+      fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + itemId, {
+        method: 'PUT',
+        body: JSON.stringify({ prices: item.prices, costPrices: newCosts })
+      }).then(function(updatedItem) {
+        var itemIndex = currentItems.findIndex(function(i) { return i.id === itemId; });
+        if (itemIndex >= 0) {
+          currentItems[itemIndex] = updatedItem;
+        }
+        renderTable();
+      }).catch(function(e) {
+        showToast('Ошибка: ' + e.message, 'error');
+      });
+    } else {
+      var newPrices = Object.assign({}, item.prices);
+      newPrices[columnName] = value ? parseFloat(value) : null;
+
+      fetchAPI(API_URL + '/' + currentComparison.id + '/items/' + itemId, {
+        method: 'PUT',
+        body: JSON.stringify({ prices: newPrices })
+      }).then(function(updatedItem) {
+        console.log('Price updated, received item:', updatedItem);
+        console.log('priceHistory:', updatedItem.priceHistory);
+        var itemIndex = currentItems.findIndex(function(i) { return i.id === itemId; });
+        if (itemIndex >= 0) {
+          currentItems[itemIndex] = updatedItem;
+        }
+        renderTable();
+      }).catch(function(e) {
+        showToast('Ошибка: ' + e.message, 'error');
+      });
+    }
   }
 
   // === УДАЛЕНИЕ УСЛУГИ ===
@@ -2481,6 +2855,108 @@ window.priceApp = (function() {
       column.width = maxLength < 10 ? 10 : maxLength + 2;
     });
 
+    // === ЛИСТ 2: СЕБЕСТОИМОСТИ ===
+    var worksheet2 = workbook.addWorksheet('Себестоимость');
+
+    if (currentComparison.createdAt) {
+      var dateRow2 = worksheet2.addRow(['Дата создания:', formattedDate]);
+      dateRow2.getCell(1).font = { bold: true };
+      worksheet2.addRow([]);
+    }
+
+    var headerRow2Data = ['Артикул', 'Название услуги'];
+    orderedVisibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      if (isBase) {
+        headerRow2Data.push(col.name + ' (эталон)');
+      } else {
+        headerRow2Data.push(col.name);
+        headerRow2Data.push('');
+      }
+    });
+
+    var headerRowAdded2 = worksheet2.addRow(headerRow2Data);
+    var headerRowNumber2 = headerRowAdded2.number;
+
+    var currentCol2 = 3;
+    orderedVisibleColumns.forEach(function(col) {
+      var isBase = col.name === baseColumnName;
+      if (isBase) {
+        currentCol2 += 1;
+      } else {
+        var colLetter2 = String.fromCharCode(64 + currentCol2);
+        var nextColLetter2 = String.fromCharCode(64 + currentCol2 + 1);
+        worksheet2.mergeCells(colLetter2 + headerRowNumber2 + ':' + nextColLetter2 + headerRowNumber2);
+        currentCol2 += 2;
+      }
+    });
+
+    var headerRow2el = worksheet2.getRow(headerRowNumber2);
+    headerRow2el.eachCell(function(cell) {
+      cell.fill = headerFill;
+      cell.font = headerFont;
+      cell.alignment = headerAlignment;
+      cell.border = borderStyle;
+    });
+    headerRow2el.height = 20;
+
+    currentItems.forEach(function(item) {
+      var costs = item.costPrices || {};
+      var row2 = [item.serviceCode || '', item.serviceName];
+      var rowData2 = [];
+      var baseCostValue = costs[baseColumnName] || null;
+
+      orderedVisibleColumns.forEach(function(col) {
+        var cost = costs[col.name] || null;
+        var isBase = col.name === baseColumnName;
+        row2.push(cost || '');
+        rowData2.push({ type: 'price', value: cost });
+        if (!isBase) {
+          var diffValue2 = null;
+          var diffText2 = '-';
+          if (baseCostValue && cost) {
+            diffValue2 = (cost - baseCostValue).toFixed(2);
+            diffText2 = (diffValue2 > 0 ? '+' : '') + diffValue2;
+          }
+          row2.push(diffText2);
+          rowData2.push({ type: 'diff', value: parseFloat(diffValue2), text: diffText2 });
+        }
+      });
+
+      var addedRow2 = worksheet2.addRow(row2);
+      addedRow2.eachCell({ includeEmpty: true }, function(cell, colNumber) {
+        cell.border = borderStyle;
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        if (colNumber === 2) {
+          cell.alignment = { vertical: 'middle', horizontal: 'left' };
+        }
+        var dataIdx2 = colNumber - 3;
+        if (dataIdx2 >= 0 && dataIdx2 < rowData2.length && rowData2[dataIdx2].type === 'diff') {
+          var diffVal2 = rowData2[dataIdx2].value;
+          if (diffVal2 !== null && !isNaN(diffVal2)) {
+            if (diffVal2 > 0) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+              cell.font = { color: { argb: 'FF16A34A' }, bold: true };
+            } else if (diffVal2 < 0) {
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+              cell.font = { color: { argb: 'FFDC2626' }, bold: true };
+            }
+          }
+        }
+      });
+    });
+
+    worksheet2.columns.forEach(function(column) {
+      var maxLength2 = 10;
+      column.eachCell({ includeEmpty: true }, function(cell) {
+        if (cell.value) {
+          var len = cell.value.toString().length;
+          if (len > maxLength2) maxLength2 = len;
+        }
+      });
+      column.width = maxLength2 < 10 ? 10 : maxLength2 + 2;
+    });
+
     // Экспорт
     workbook.xlsx.writeBuffer().then(function(buffer) {
       var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -2563,6 +3039,9 @@ window.priceApp = (function() {
     pendingLabGroups = [];
     selectedLabCategoryId = null;
     highlightedLabOptionIdx = -1;
+    labServiceSearchResults = [];
+    clearTimeout(labUnifiedSearchTimer);
+    labUnifiedSearchRequest++;
     document.getElementById('lab-preview-section').style.display = 'none';
     document.getElementById('lab-loading').style.display = 'none';
     document.getElementById('save-lab-groups-btn').disabled = true;
@@ -2577,6 +3056,48 @@ window.priceApp = (function() {
     }
 
     openModal('add-lab-services-modal');
+  }
+
+  function selectLabService(index) {
+    var service = labServiceSearchResults[index];
+    if (!service) return;
+
+    var subCode = (service.oms_code || '').trim();
+    var normalizedTitle = normalizeName(service.title || '');
+    var loadingEl = document.getElementById('lab-loading');
+    var statusEl = document.getElementById('lab-loading-status');
+
+    var dropdown = document.getElementById('lab-category-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    var input = document.getElementById('lab-category-input');
+    if (input) input.value = service.title || '';
+    document.getElementById('lab-preview-section').style.display = 'none';
+    document.getElementById('save-lab-groups-btn').disabled = true;
+    pendingLabGroups = [];
+    loadingEl.style.display = 'block';
+    statusEl.textContent = 'Поиск услуги во всех лабораториях...';
+
+    fetchAllMISServices().then(function(allServices) {
+      return allServices.filter(function(candidate) {
+        var candidateSubCode = (candidate.sub_code || '').trim();
+        if (subCode) return candidateSubCode === subCode;
+        return !candidateSubCode && normalizeName(candidate.title || '') === normalizedTitle;
+      });
+    }).then(function(matchingServices) {
+      loadingEl.style.display = 'none';
+      if (!matchingServices.length) {
+        showToast('Совпадений в лабораториях не найдено', 'error');
+        return;
+      }
+
+      var groups = groupServicesBySubCode(matchingServices);
+      pendingLabGroups = groups;
+      renderLabPreview(groups);
+      document.getElementById('save-lab-groups-btn').disabled = false;
+    }).catch(function(e) {
+      loadingEl.style.display = 'none';
+      showToast('Ошибка загрузки: ' + e.message, 'error');
+    });
   }
 
   function loadLabCategories() {
@@ -2630,18 +3151,75 @@ window.priceApp = (function() {
     var dropdown = document.getElementById('lab-category-dropdown');
     if (!dropdown) return;
     var term = (search || '').toLowerCase().trim();
-    var filtered = labCategoryOptions.filter(function(opt) {
+    var filteredCategories = labCategoryOptions.filter(function(opt) {
       return !term || opt.name.toLowerCase().indexOf(term) >= 0;
-    });
-    if (!filtered.length) {
-      dropdown.innerHTML = '<div class="lab-category-empty-msg">Ничего не найдено</div>';
-    } else {
-      dropdown.innerHTML = filtered.map(function(opt) {
-        var isSelected = opt.value === selectedLabCategoryId;
-        var cls = 'lab-category-option' + (isSelected ? ' selected-opt' : '');
-        return '<div class="' + cls + '" data-level="' + opt.level + '" onmousedown="priceApp.selectLabCategory(\'' + opt.value + '\', \'' + opt.name.replace(/'/g, "\\'") + '\')">' + opt.text + '</div>';
-      }).join('');
+    }).slice(0, 12);
+
+    dropdown.innerHTML = '';
+
+    if (filteredCategories.length > 0) {
+      var categoryTitle = document.createElement('div');
+      categoryTitle.className = 'lab-category-empty-msg';
+      categoryTitle.style.textAlign = 'left';
+      categoryTitle.style.padding = '8px 12px 4px';
+      categoryTitle.style.fontWeight = '600';
+      categoryTitle.textContent = 'Категории';
+      dropdown.appendChild(categoryTitle);
+
+      filteredCategories.forEach(function(opt) {
+        var option = document.createElement('div');
+        option.className = 'lab-category-option' + (opt.value === selectedLabCategoryId ? ' selected-opt' : '');
+        option.setAttribute('data-level', opt.level);
+        option.textContent = opt.text;
+        option.onmousedown = function() { selectLabCategory(opt.value, opt.name); };
+        dropdown.appendChild(option);
+      });
     }
+
+    if (term.length >= 2) {
+      var serviceTitle = document.createElement('div');
+      serviceTitle.className = 'lab-category-empty-msg';
+      serviceTitle.style.textAlign = 'left';
+      serviceTitle.style.padding = '8px 12px 4px';
+      serviceTitle.style.fontWeight = '600';
+      serviceTitle.textContent = 'Услуги';
+      dropdown.appendChild(serviceTitle);
+
+      if (labServiceSearchResults.length === 0) {
+        var serviceEmpty = document.createElement('div');
+        serviceEmpty.className = 'lab-category-empty-msg';
+        serviceEmpty.textContent = 'Введите запрос или подождите результаты поиска...';
+        dropdown.appendChild(serviceEmpty);
+      } else {
+        labServiceSearchResults.slice(0, 20).forEach(function(service, index) {
+          var option = document.createElement('div');
+          option.className = 'lab-category-option';
+          option.setAttribute('data-level', 'service');
+
+          var title = document.createElement('div');
+          title.style.fontWeight = '500';
+          title.textContent = service.title || 'Без названия';
+
+          var meta = document.createElement('div');
+          meta.style.fontSize = '11px';
+          meta.style.color = '#6b7280';
+          var parts = [];
+          if (service.oms_code) parts.push('Код 804н: ' + service.oms_code);
+          if (service.lab) parts.push(service.lab);
+          meta.textContent = parts.join(' | ');
+
+          option.appendChild(title);
+          if (parts.length) option.appendChild(meta);
+          option.onmousedown = function() { selectLabService(index); };
+          dropdown.appendChild(option);
+        });
+      }
+    }
+
+    if (!filteredCategories.length && term.length < 2) {
+      dropdown.innerHTML = '<div class="lab-category-empty-msg">Ничего не найдено</div>';
+    }
+
     highlightedLabOptionIdx = -1;
     if (show !== false) {
       positionLabDropdown();
@@ -2651,13 +3229,38 @@ window.priceApp = (function() {
 
   function onLabCategoryInput(value) {
     selectedLabCategoryId = null;
+    labServiceSearchResults = [];
     renderLabDropdown(value, true);
+
+    clearTimeout(labUnifiedSearchTimer);
+    var term = value.trim();
+    if (term.length < 2) return;
+
+    var requestId = ++labUnifiedSearchRequest;
+    labUnifiedSearchTimer = setTimeout(function() {
+      fetchAPI(MIS_URL + '/search-mis', {
+        method: 'POST',
+        body: JSON.stringify({ term: term })
+      }).then(function(res) {
+        if (requestId !== labUnifiedSearchRequest) return;
+        labServiceSearchResults = res.success && Array.isArray(res.data) ? res.data : [];
+        renderLabDropdown(term, true);
+      }).catch(function() {
+        if (requestId !== labUnifiedSearchRequest) return;
+        labServiceSearchResults = [];
+        renderLabDropdown(term, true);
+      });
+    }, 350);
   }
 
   function onLabCategoryFocus() {
     if (labCategoryOptions.length > 0) {
       var inputEl = document.getElementById('lab-category-input');
-      renderLabDropdown(inputEl ? inputEl.value : '', true);
+      var value = inputEl ? inputEl.value : '';
+      renderLabDropdown(value, true);
+      if (value.trim().length >= 2 && labServiceSearchResults.length === 0) {
+        onLabCategoryInput(value);
+      }
     }
   }
 
@@ -2750,34 +3353,11 @@ window.priceApp = (function() {
 
       statusEl.textContent = 'Поиск совпадений во всех лабораториях...';
 
-      // Шаг 2: получаем все корневые категории
-      return fetchAPI(MIS_URL + '/get-service-categories', {
-        method: 'POST',
-        body: JSON.stringify({})
-      }).then(function(catRes) {
-        var rootCategories = (catRes.error === 0 && catRes.data) ? catRes.data : [];
-
-        // Шаг 3: параллельно грузим все корневые категории
-        var catRequests = rootCategories.map(function(cat) {
-          return fetchAPI(MIS_URL + '/get-services', {
-            method: 'POST',
-            body: JSON.stringify({ category_id: cat.id, show_children: true }),
-            timeout: 30000
-          }).then(function(r) {
-            return (r.error === 0 && r.data) ? r.data : [];
-          }).catch(function() { return []; });
-        });
-
-        return Promise.all(catRequests).then(function(results) {
-          // Шаг 4: объединяем и фильтруем по совпадению sub_code или названия
-          var allServices = [];
-          results.forEach(function(r) { allServices = allServices.concat(r); });
-
-          return allServices.filter(function(s) {
-            var subCode = (s.sub_code || '').trim();
-            if (subCode) return subCodeSet[subCode];
-            return nameKeySet[normalizeName(s.title)];
-          });
+      return fetchAllMISServices().then(function(allServices) {
+        return allServices.filter(function(s) {
+          var subCode = (s.sub_code || '').trim();
+          if (subCode) return subCodeSet[subCode];
+          return nameKeySet[normalizeName(s.title)];
         });
       });
     })
@@ -2828,6 +3408,7 @@ window.priceApp = (function() {
     services.forEach(function(s) {
       var lab = (s.lab || '').trim() || 'Без лаборатории';
       var price = parseFloat(s.price) || 0;
+      var cost = parseFloat(s.original_price) || 0;
       var subCode = (s.sub_code || '').trim();
 
       if (subCode) {
@@ -2836,12 +3417,13 @@ window.priceApp = (function() {
             serviceCode: subCode,
             groupName: s.title,
             prices: {},
+            costPrices: {},
             matchType: 'sub_code'
           };
         }
-        // Берём первую найденную цену для данной лаборатории
         if (!(lab in bySubCode[subCode].prices)) {
           bySubCode[subCode].prices[lab] = price;
+          bySubCode[subCode].costPrices[lab] = cost;
         }
       } else {
         var normalKey = normalizeName(s.title);
@@ -2850,11 +3432,13 @@ window.priceApp = (function() {
             serviceCode: '',
             groupName: s.title,
             prices: {},
+            costPrices: {},
             matchType: 'name'
           };
         }
         if (!(lab in byName[normalKey].prices)) {
           byName[normalKey].prices[lab] = price;
+          byName[normalKey].costPrices[lab] = cost;
         }
       }
     });
@@ -2926,6 +3510,7 @@ window.priceApp = (function() {
           serviceCode: group.serviceCode || '',
           serviceName: group.groupName,
           prices: group.prices,
+          costPrices: group.costPrices || {},
           misServiceId: null
         })
       });
@@ -2966,12 +3551,19 @@ window.priceApp = (function() {
     filterTable: filterTable,
     exportToExcel: exportToExcel,
     closeModal: closeModal,
-    switchTab: switchTab,
-    onCategorySelected: onCategorySelected,
     addAllCategoryServices: addAllCategoryServices,
+    onClinicCategoryInput: onClinicCategoryInput,
+    onClinicCategoryFocus: onClinicCategoryFocus,
+    onClinicCategoryBlur: onClinicCategoryBlur,
+    onClinicCategoryKeydown: onClinicCategoryKeydown,
+    selectClinicCategory: selectClinicCategory,
     showPriceHistoryTooltip: showPriceHistoryTooltip,
     hidePriceHistoryTooltip: hidePriceHistoryTooltip,
     setMode: setMode,
+    setViewMode: setViewMode,
+    refreshCostPrices: refreshCostPrices,
+    loadCostsFromMIS: loadCostsFromMIS,
+    loadLabCostsFromMIS: loadLabCostsFromMIS,
     openAddLabServicesModal: openAddLabServicesModal,
     onLabCategorySelected: onLabCategorySelected,
     onLabCategoryInput: onLabCategoryInput,

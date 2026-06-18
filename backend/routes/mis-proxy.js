@@ -288,10 +288,10 @@ router.post('/services', authenticate, async (req, res) => {
 
 // Получить все услуги через дерево категорий.
 // Прямой getServices с большим limit в МИС обрезает прейскурант, поэтому грузим
-// так же, как массовые операции по категориям, и затем дедуплицируем услуги.
+// по категориям. По запросу можно сохранить дубликаты для сравнения лабораторий.
 router.post('/all-services', authenticate, async (req, res) => {
   try {
-    const { clinic_id } = req.body;
+    const { clinic_id, preserve_duplicates } = req.body;
     console.log('📋 Запрос всех услуг МИС', clinic_id ? `clinic_id=${clinic_id}` : '');
 
     const categoriesData = await misRequest('getServiceCategories', {});
@@ -304,7 +304,7 @@ router.post('/all-services', authenticate, async (req, res) => {
       4,
       category => fetchCategoryServices(category, clinic_id)
     );
-    const services = dedupeServices(chunks.flat());
+    const services = preserve_duplicates ? chunks.flat() : dedupeServices(chunks.flat());
 
     console.log(`✅ Загружен полный прейскурант МИС: ${services.length} услуг`);
     res.json({ error: 0, data: services });

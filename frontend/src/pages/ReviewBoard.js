@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import {
@@ -106,6 +106,7 @@ const ReviewBoard = () => {
   // Reply to review on platform (GetLoyalty)
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
+  const openedReviewIdRef = useRef(null);
 
   // Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -498,6 +499,10 @@ const ReviewBoard = () => {
 
   const openDetailsModal = async (review) => {
     try {
+      // Текст ответа относится только к открываемому отзыву и не должен
+      // переноситься из ранее открытой карточки.
+      openedReviewIdRef.current = review.id;
+      setReplyText('');
       localStorage.setItem(`review_viewed_${user?.id}_${review.id}`, new Date().toISOString());
       setReviewsList(prev => prev.map(r => r.id === review.id ? { ...r, _forceRead: Date.now() } : r));
       const response = await reviews.getReview(review.id);
@@ -562,15 +567,20 @@ const ReviewBoard = () => {
 
   const handleSendReply = async () => {
     if (!replyText.trim()) return;
+    const reviewId = selectedReview.id;
+    const sentText = replyText.trim();
+    setReplyText('');
     try {
       setSubmittingReply(true);
-      await reviews.replyReview(selectedReview.id, replyText.trim());
-      const response = await reviews.getReview(selectedReview.id);
-      setSelectedReview(response.data);
-      setReplyText('');
-      toast.success('Ответ опубликован на площадке');
+      await reviews.replyReview(reviewId, sentText);
+      const response = await reviews.getReview(reviewId);
+      setSelectedReview(current => current?.id === reviewId ? response.data : current);
+      toast.success('Ответ отправлен в очередь на публикацию');
     } catch (err) {
       console.error('Error sending reply:', err);
+      if (openedReviewIdRef.current === reviewId) {
+        setReplyText(current => current || sentText);
+      }
       toast.error(err.response?.data?.error || 'Ошибка при отправке ответа');
     } finally {
       setSubmittingReply(false);
