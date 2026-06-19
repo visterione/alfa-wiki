@@ -728,6 +728,7 @@ mark.ps-nbspm { background:#f87171; color:#fff; border-radius:3px; font-family:m
 const SERVICES_TABS = [
   { key: 'services',         label: 'Услуги' },
   { key: 'partner-services', label: 'Услуги партнёров' },
+  { key: '804n',             label: '804н' },
 ];
 
 export default function ServicesPage() {
@@ -748,6 +749,15 @@ export default function ServicesPage() {
       </div>
       {activeTab === 'services'         && <TabServices />}
       {activeTab === 'partner-services' && <TabPartnerServices />}
+      {activeTab === '804n'             && <Tab804n />}
+    </div>
+  );
+}
+
+function Tab804n() {
+  return (
+    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+      Раздел 804н — в разработке
     </div>
   );
 }

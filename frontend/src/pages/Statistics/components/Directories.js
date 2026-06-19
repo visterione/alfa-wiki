@@ -6076,6 +6076,51 @@ function pcNorm(n) {
   return (n || '').split('').map(c => m[c] || c.toLowerCase()).join('').replace(/\s+/g, ' ').trim();
 }
 
+function pcAbbr(name) {
+  if (!name) return '?';
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
+  if (!allVals.length) return null;
+  const maxDelta = Math.max(...allVals.map(x => Math.abs(x.val - (baseVal ?? x.val))), 1);
+  const getPos = (val) => {
+    if (baseVal == null) {
+      const mx = Math.max(...allVals.map(x => x.val));
+      const mn = Math.min(...allVals.map(x => x.val));
+      return ((val - mn) / (mx - mn || 1)) * 84 + 8;
+    }
+    return Math.max(8, Math.min(92, 50 + (val - baseVal) / maxDelta * 40));
+  };
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '3px 0' }}>
+      <span style={{ width: 88, fontSize: 10, color: '#6b7280', flexShrink: 0, textAlign: 'right' }}>{label}</span>
+      <div style={{ flex: 1, position: 'relative', height: 30 }}>
+        <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 4, background: 'linear-gradient(to right, #fca5a5, #f3f4f6 50%, #86efac)', transform: 'translateY(-50%)', borderRadius: 2 }} />
+        {baseVal != null && <div style={{ position: 'absolute', top: '10%', left: '50%', transform: 'translateX(-50%)', height: '80%', width: 2, background: '#94a3b8', borderRadius: 1 }} />}
+        {allVals.map(x => {
+          const isBase = x.isBase;
+          const diff = !isBase && baseVal != null ? pcDiff(baseVal, x.val) : null;
+          const color = isBase ? '#3b82f6' : diff?.cls === 'positive' ? '#16a34a' : diff?.cls === 'negative' ? '#dc2626' : '#9ca3af';
+          const pos = getPos(x.val);
+          return (
+            <div key={x.name} style={{ position: 'absolute', left: `${pos}%`, top: '50%', transform: 'translate(-50%,-50%)', zIndex: isBase ? 2 : 1 }}
+              onMouseEnter={e => onHover(e, x.name, x.val, diff, isBase)}
+              onMouseLeave={onLeave}>
+              <div style={{ width: isBase ? 24 : 20, height: isBase ? 24 : 20, borderRadius: '50%', background: color, border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, cursor: 'default', userSelect: 'none' }}>
+                {pcAbbr(x.name)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <span style={{ width: 72, fontSize: 11, fontWeight: 600, color: '#374151', textAlign: 'right', flexShrink: 0 }}>{pcFmt(baseVal)}</span>
+    </div>
+  );
+}
+
 function pcGroupBySub(services) {
   const bySub = {}, byName = {};
   services.forEach(s => {
@@ -6108,6 +6153,8 @@ export function TabServices() {
   const [viewMode,     setViewModeVal]  = useState('price');
   const [filterText,   setFilterText]   = useState('');
   const [clinics,      setClinics]      = useState([]);
+  const [scaleView,    setScaleView]    = useState(false);
+  const [scaleTtip,    setScaleTtip]    = useState(null);
 
   // modal: null | 'newComp' | 'addSvc' | 'addComp' | 'addLab'
   const [modal, setModal] = useState(null);
@@ -6258,11 +6305,11 @@ export function TabServices() {
   }
 
   // ── Price update ──────────────────────────────────────────────────────────
-  function updatePrice(itemId, colName, value) {
+  function updatePrice(itemId, colName, value, field = 'price') {
     if (!comp) return;
     const item = items.find(i => i.id === itemId);
     if (!item) return;
-    if (viewMode === 'cost') {
+    if (field === 'cost') {
       const nc = { ...(item.costPrices || {}), [colName]: value ? parseFloat(value) : null };
       pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: item.prices, costPrices: nc }) })
         .then(u => setItems(prev => prev.map(i => i.id === itemId ? u : i))).catch(e => toast.error(e.message));
@@ -6287,7 +6334,7 @@ export function TabServices() {
   }
 
   function loadClinicCats() {
-    if (clinicCatOpts.length) return;
+    if (clinicCatOpts.length && clinicCatOpts[0]?.allIds) return;
     pcFetch(`${MIS_PC}/get-service-categories`, { method: 'POST', body: '{}' }).then(res => {
       if (res.error !== 0 || !res.data?.length) return;
       const opts = [];
@@ -6298,6 +6345,14 @@ export function TabServices() {
         });
       }
       collect(res.data, 0);
+      opts.forEach((opt, idx) => {
+        const ids = [opt.value];
+        for (let i = idx + 1; i < opts.length; i++) {
+          if (opts[i].level <= opt.level) break;
+          ids.push(opts[i].value);
+        }
+        opt.allIds = ids;
+      });
       setClinicCatOpts(opts);
     }).catch(() => {});
   }
@@ -6342,11 +6397,11 @@ export function TabServices() {
     else if (e.key === 'Escape')  setShowClinicDrop(false);
   }
 
-  function selectClinicOpt(opt) { opt.kind === 'cat' ? selectClinicCat(opt.value, opt.name) : selectClinicSvc(opt); }
+  function selectClinicOpt(opt) { opt.kind === 'cat' ? selectClinicCat(opt.value, opt.name, opt.allIds) : selectClinicSvc(opt); }
 
-  function selectClinicCat(id, name) {
+  function selectClinicCat(id, name, allIds) {
     clearTimeout(clinicTimer.current); ++clinicReqId.current;
-    setClinicInp(name); setSelClinicCat({ id, name }); setShowClinicDrop(false); setClinicHigh(-1);
+    setClinicInp(name); setSelClinicCat({ id, name, allIds: allIds || [id] }); setShowClinicDrop(false); setClinicHigh(-1);
   }
 
   function selectClinicSvc(svc) {
@@ -6370,11 +6425,16 @@ export function TabServices() {
 
   function addAllCatSvcs() {
     if (!selClinicCat || !comp || !clinics.length) return;
+    const categoryIds = (selClinicCat.allIds?.length ? selClinicCat.allIds : null)
+      || (selClinicCat.id != null ? [selClinicCat.id] : []);
+    if (!categoryIds.length) { toast.error('Выбранная категория не содержит услуг'); return; }
     setAddingCatSvcs(true);
-    Promise.all(clinics.map(c =>
-      pcFetch(`${PS_URL}?category_id=${selClinicCat.id}&clinic_id=${c.id}&limit=500`)
-        .then(res => ({ name: c.title, data: res.success ? (res.data || []) : [] }))
-        .catch(() => ({ name: c.title, data: [] }))
+    Promise.all(clinics.flatMap(c =>
+      categoryIds.map(catId =>
+        pcFetch(`${PS_URL}?category_id=${catId}&clinic_id=${c.id}&limit=500`)
+          .then(res => ({ name: c.title, data: res.success ? (res.data || []) : [] }))
+          .catch(() => ({ name: c.title, data: [] }))
+      )
     )).then(results => {
       const map = {};
       results.forEach(r => r.data.forEach(s => {
@@ -6582,7 +6642,7 @@ export function TabServices() {
     return items.filter(i => i.serviceName.toLowerCase().includes(t) || (i.serviceCode || '').toLowerCase().includes(t));
   }, [items, filterText]);
 
-  const totalDataCols = orderedCols.reduce((s, col) => s + (col.name === baseCol ? 1 : 2), 0);
+  const totalDataCols = orderedCols.length;
   const totalCols     = 2 + totalDataCols + 1;
 
   // ── SVG icons ─────────────────────────────────────────────────────────────
@@ -6607,8 +6667,8 @@ export function TabServices() {
       <div style={{ position: 'fixed', top: clinicDropPos.top, left: clinicDropPos.left, width: clinicDropPos.width, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
         {cats.length > 0 && <>
           <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
-          {cats.map(opt => { const i = gi++; return (
-            <div key={opt.value} className={`pc-drop-item${opt.value === selClinicCat?.id ? ' selected-opt' : ''}${i === clinicHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectClinicCat(opt.value, opt.name)}>{opt.text}</div>
+          {cats.map((opt, oi) => { const i = gi++; return (
+            <div key={opt.value ?? `cat-${oi}`} className={`pc-drop-item${opt.value === selClinicCat?.id ? ' selected-opt' : ''}${i === clinicHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectClinicCat(opt.value, opt.name, opt.allIds)}>{opt.text}</div>
           ); })}
         </>}
         {clinicInp.trim().length >= 2 && <>
@@ -6667,46 +6727,96 @@ export function TabServices() {
       return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>{filterText ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
     }
     return filteredItems.map(item => {
-      const prices   = viewMode === 'cost' ? (item.costPrices || {}) : item.prices;
-      const basePrice = prices[baseCol] || null;
+      const basePrice  = (item.prices || {})[baseCol] ?? null;
+      const baseCost   = (item.costPrices || {})[baseCol] ?? null;
+      const baseMargin = basePrice != null && baseCost != null ? basePrice - baseCost : null;
       return (
         <tr key={item.id}>
           <td style={{ textAlign: 'center' }}>{item.serviceCode || '—'}</td>
-          <td>{item.serviceName}</td>
+          <td title={item.serviceName}><div style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.serviceName}</div></td>
           {orderedCols.map(col => {
-            const isHidden = hiddenCols.includes(col.name);
-            const isBase   = col.name === baseCol;
-            const price    = prices[col.name] || null;
-            const colCls   = `${isBase ? 'pc-col-single' : 'pc-col-pair'}${isHidden ? ' hidden' : ''}`;
-            const hist     = viewMode === 'price' && item.priceHistory?.[col.name];
-            const hasHist  = hist && hist.length > 0;
-            const last     = hasHist ? hist[hist.length - 1] : null;
+            const isHidden    = hiddenCols.includes(col.name);
+            const isBase      = col.name === baseCol;
+            const colCls      = `pc-col-single${isHidden ? ' hidden' : ''}`;
+            const price       = (item.prices || {})[col.name] ?? null;
+            const cost        = (item.costPrices || {})[col.name] ?? null;
+            const margin      = price != null && cost != null ? price - cost : null;
+            const hist        = item.priceHistory?.[col.name];
+            const hasHist     = hist && hist.length > 0;
+            const last        = hasHist ? hist[hist.length - 1] : null;
+            const diffPrice  = !isBase && basePrice  && price       ? pcDiff(basePrice,  price)       : null;
+            const diffCost   = !isBase && baseCost   && cost        ? pcDiff(baseCost,   cost)        : null;
+            const diffMargin = !isBase && baseMargin != null && margin != null ? pcDiff(baseMargin, margin) : null;
+            const Chip = ({ d }) => d ? <span className={`pc-diff ${d.cls}`} style={{ marginLeft: 4, fontSize: 10, whiteSpace: 'nowrap' }}>{d.text}</span> : null;
             return (
-              <React.Fragment key={col.name}>
-                <td className={colCls} style={{ textAlign: 'center' }}>
-                  {col.type === 'own'
-                    ? <span style={{ fontWeight: 600, color: '#16a34a' }}>{pcFmt(price)}</span>
-                    : <input
-                        key={`${item.id}-${col.name}-${viewMode}-${price || ''}`}
-                        type="number"
-                        className={`pc-price-input${hasHist ? ' has-history' : ''}`}
-                        style={{ width: 100, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, textAlign: 'center' }}
-                        defaultValue={price || ''}
-                        placeholder={viewMode === 'cost' ? 'Себест.' : 'Цена'}
-                        onBlur={e => updatePrice(item.id, col.name, e.target.value)}
-                        onMouseEnter={hasHist ? (e => showTtip(e, last)) : undefined}
-                        onMouseLeave={hasHist ? () => setTtip(null) : undefined}
-                      />
-                  }
-                </td>
-                {!isBase && (
-                  <td className={`pc-col-pair${isHidden ? ' hidden' : ''}`} style={{ textAlign: 'center' }}>
-                    {basePrice && price
-                      ? <span className={`pc-diff ${pcDiff(basePrice, price).cls}`}>{pcDiff(basePrice, price).text}</span>
-                      : <span className="pc-diff neutral">—</span>}
-                  </td>
-                )}
-              </React.Fragment>
+              <td key={col.name} className={colCls} style={{ textAlign: 'center', verticalAlign: 'middle', padding: '6px 8px' }}>
+                {(() => {
+                  const GREEN = '#16a34a', RED = '#dc2626', BLACK = '#111827', NONE = '#9ca3af';
+                  const cmpClr = (diff, val, base) => {
+                    if (isBase) return val == null ? NONE : BLACK;
+                    if (diff) return diff.cls === 'positive' ? GREEN : diff.cls === 'negative' ? RED : BLACK;
+                    if (val == null) return NONE;
+                    if (base != null) return val > base ? GREEN : val < base ? RED : BLACK;
+                    return BLACK;
+                  };
+                  const marginClr = isBase
+                    ? (margin == null ? NONE : BLACK)
+                    : (margin == null ? NONE : margin > 0 ? GREEN : RED);
+                  return col.type === 'own' ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffPrice, price, basePrice) }}>{pcFmt(price)}</span>
+                        <Chip d={diffPrice} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffCost, cost, baseCost) }}>{pcFmt(cost)}</span>
+                        <Chip d={diffCost} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
+                        <Chip d={diffMargin} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <input
+                          key={`${item.id}-${col.name}-p-${price ?? ''}`}
+                          type="number"
+                          className={`pc-price-input${hasHist ? ' has-history' : ''}`}
+                          style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #d1d5db', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffPrice, price, basePrice), fontWeight: 600, outline: 'none' }}
+                          defaultValue={price ?? ''}
+                          placeholder="—"
+                          onBlur={e => updatePrice(item.id, col.name, e.target.value, 'price')}
+                          onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
+                          onBlurCapture={e => e.target.style.borderBottomColor = '#d1d5db'}
+                          onMouseEnter={hasHist ? (e => showTtip(e, last)) : undefined}
+                          onMouseLeave={hasHist ? () => setTtip(null) : undefined}
+                        />
+                        <Chip d={diffPrice} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <input
+                          key={`${item.id}-${col.name}-c-${cost ?? ''}`}
+                          type="number"
+                          className="pc-price-input"
+                          style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #e5e7eb', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffCost, cost, baseCost), fontWeight: 600, outline: 'none' }}
+                          defaultValue={cost ?? ''}
+                          placeholder="—"
+                          onBlur={e => updatePrice(item.id, col.name, e.target.value, 'cost')}
+                          onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
+                          onBlurCapture={e => e.target.style.borderBottomColor = '#e5e7eb'}
+                        />
+                        <Chip d={diffCost} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
+                        <Chip d={diffMargin} />
+                      </div>
+                    </div>
+                  );
+                })()}
+              </td>
             );
           })}
           <td style={{ textAlign: 'center' }}>
@@ -6742,13 +6852,15 @@ export function TabServices() {
         .pc-btn-secondary{background:#fff;color:#374151;border:1px solid #d1d5db}
         .pc-btn-secondary:hover:not(:disabled){background:#f9fafb}
         .pc-table{width:max-content;border-collapse:collapse;min-width:max(800px,100%)}
-        .pc-table th{padding:6px 8px;text-align:center;background:#f8fafc;font-weight:600;font-size:11px;color:#4b5563;border-bottom:2px solid #e5e7eb;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;white-space:nowrap;position:sticky;top:0;z-index:2}
+        .pc-table th{padding:6px 8px;text-align:center;background:#f8fafc;font-weight:600;font-size:11px;color:#4b5563;border-bottom:2px solid #e5e7eb;border-right:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;white-space:nowrap;position:sticky;top:0;z-index:2}
+        .pc-table th:last-child{border-right:none}
         .pc-table th.col-svc{text-align:left}
-        .pc-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#374151;vertical-align:middle}
+        .pc-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;border-right:1px solid #f1f5f9;font-size:12px;color:#374151;vertical-align:middle}
+        .pc-table td:last-child{border-right:none}
         .pc-table tr:hover{background:#f8fafc}
         .pc-table tr:last-child td{border-bottom:none}
         .pc-table .hidden{display:none!important}
-        .pc-col-single{width:240px;min-width:240px;max-width:240px}
+        .pc-col-single{width:190px;min-width:190px;max-width:190px}
         .pc-col-pair{width:120px;min-width:120px;max-width:120px}
         .pc-diff{font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px}
         .pc-diff.positive{color:#16a34a;background:#dcfce7}
@@ -6757,6 +6869,7 @@ export function TabServices() {
         .pc-price-input.has-history{background:#f0f9ff;border-color:#3b82f6}
         .pc-price-input.has-history:hover{background:#e0f2fe;cursor:help}
         .pc-price-input::-webkit-outer-spin-button,.pc-price-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+        .pc-price-input::placeholder{color:#d1d5db;font-weight:400}
         .pc-price-input[type=number]{-moz-appearance:textfield}
         .pc-act-btn:hover{background:#e5e7eb!important;color:#374151!important}
         .pc-act-btn.del{color:#ef4444!important}
@@ -6848,13 +6961,28 @@ export function TabServices() {
             <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Поиск по названию, коду..."
               style={{ width: '100%', padding: '10px 12px 10px 38px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
           </div>
-          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 4 }}>
-            {[{ key: 'price', label: 'Стоимость' }, { key: 'cost', label: 'Себестоимость' }].map(v => (
-              <button key={v.key} className={`pc-view-btn${viewMode === v.key ? ' active' : ''}`} onClick={() => setViewModeVal(v.key)}
-                style={{ padding: '6px 16px', border: 'none', background: 'transparent', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#6b7280', transition: 'all .2s' }}>{v.label}</button>
+          <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 8, padding: 3, marginLeft: 'auto' }}>
+            {[
+              { key: false, title: 'Таблица', ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg> },
+              { key: true,  title: 'Шкала',  ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="2" y1="12" x2="22" y2="12"/><circle cx="6" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/></svg> },
+            ].map(v => (
+              <button key={String(v.key)} onClick={() => setScaleView(v.key)}
+                style={{ padding: '5px 10px', border: 'none', borderRadius: 6, background: scaleView === v.key ? '#fff' : 'transparent', color: scaleView === v.key ? '#1d4ed8' : '#6b7280', boxShadow: scaleView === v.key ? '0 1px 3px rgba(0,0,0,.12)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, transition: 'all .15s' }}
+                title={v.title}>{v.ico} {v.title}</button>
             ))}
           </div>
-          <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
+        </div>
+      )}
+
+      {/* Scale tooltip */}
+      {scaleTtip && (
+        <div style={{ position: 'fixed', left: scaleTtip.x + 14, top: scaleTtip.y - 8, background: '#1f2937', color: '#fff', padding: '7px 11px', borderRadius: 7, fontSize: 12, zIndex: 9999, pointerEvents: 'none', boxShadow: '0 4px 14px rgba(0,0,0,.3)', minWidth: 130 }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{scaleTtip.name}{scaleTtip.isBase ? ' (эталон)' : ''}</div>
+          <div>{pcFmt(scaleTtip.val)}</div>
+          {scaleTtip.diff && scaleTtip.diff.cls !== 'neutral' && (
+            <div style={{ color: scaleTtip.diff.cls === 'positive' ? '#4ade80' : '#f87171', marginTop: 2 }}>{scaleTtip.diff.text} от эталона</div>
+          )}
         </div>
       )}
 
@@ -6869,6 +6997,13 @@ export function TabServices() {
                   <th className="col-svc">Название услуги</th>
                   <th style={{ width: 80 }}></th>
                 </tr>
+              ) : scaleView ? (
+                <tr>
+                  <th style={{ width: 120 }}>{mode === 'lab' ? 'Код 804н' : 'Артикул'}</th>
+                  <th className="col-svc">Название услуги</th>
+                  <th style={{ minWidth: 440 }}>Шкала сравнения</th>
+                  <th style={{ width: 80 }}>Действия</th>
+                </tr>
               ) : (
                 <tr>
                   <th style={{ width: 120 }}>{mode === 'lab' ? 'Код 804н' : 'Артикул'}</th>
@@ -6876,15 +7011,44 @@ export function TabServices() {
                   {orderedCols.map(col => {
                     const isHidden = hiddenCols.includes(col.name);
                     const isBase   = col.name === baseCol;
-                    return isBase
-                      ? <th key={col.name} className={`pc-col-single${isHidden ? ' hidden' : ''}`}>{col.name} (эталон)</th>
-                      : <th key={col.name} className={`pc-col-pair${isHidden ? ' hidden' : ''}`} colSpan={2}>{col.name}</th>;
+                    return (
+                      <th key={col.name} className={`pc-col-single${isHidden ? ' hidden' : ''}`}>
+                        {col.name}{isBase ? ' (эталон)' : ''}
+                      </th>
+                    );
                   })}
                   <th style={{ width: 80 }}>Действия</th>
                 </tr>
               )}
             </thead>
-            <tbody>{renderTableBody()}</tbody>
+            <tbody>
+              {scaleView ? filteredItems.map(item => {
+                const visibleCols = orderedCols.filter(col => !hiddenCols.includes(col.name));
+                const mkVals = (getFn) => visibleCols.map(col => ({ name: col.name, val: getFn(col), isBase: col.name === baseCol })).filter(x => x.val != null);
+                const priceVals  = mkVals(col => (item.prices || {})[col.name] ?? null);
+                const costVals   = mkVals(col => (item.costPrices || {})[col.name] ?? null);
+                const marginVals = mkVals(col => { const p = (item.prices || {})[col.name] ?? null, c = (item.costPrices || {})[col.name] ?? null; return p != null && c != null ? p - c : null; });
+                const basePrice  = priceVals.find(x => x.isBase)?.val ?? null;
+                const baseCost   = costVals.find(x => x.isBase)?.val ?? null;
+                const baseMargin = marginVals.find(x => x.isBase)?.val ?? null;
+                const onHover = (e, name, val, diff, isBase) => setScaleTtip({ x: e.clientX, y: e.clientY, name, val, diff, isBase });
+                const onLeave = () => setScaleTtip(null);
+                return (
+                  <tr key={item.id}>
+                    <td style={{ textAlign: 'center' }}>{item.serviceCode || '—'}</td>
+                    <td title={item.serviceName}><div style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.serviceName}</div></td>
+                    <td style={{ padding: '8px 16px' }}>
+                      <ScaleRow label="Стоимость"     allVals={priceVals}  baseVal={basePrice}  onHover={onHover} onLeave={onLeave} />
+                      <ScaleRow label="Себестоимость"  allVals={costVals}   baseVal={baseCost}   onHover={onHover} onLeave={onLeave} />
+                      <ScaleRow label="Маржа"          allVals={marginVals} baseVal={baseMargin} onHover={onHover} onLeave={onLeave} />
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 4 }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}>{Ico.trash}</button>
+                    </td>
+                  </tr>
+                );
+              }) : renderTableBody()}
+            </tbody>
           </table>
         </div>
       </div>

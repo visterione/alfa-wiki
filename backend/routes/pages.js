@@ -160,10 +160,6 @@ router.get('/', authenticate, async (req, res) => {
       where.folderId = folderId === 'null' ? null : folderId;
     }
 
-    if (!req.user.isAdmin && published === undefined) {
-      where.isPublished = true;
-    }
-
     const pages = await Page.findAndCountAll({
       where,
       include: [
