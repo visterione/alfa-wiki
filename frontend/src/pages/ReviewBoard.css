@@ -1402,7 +1402,7 @@
   min-height: 0;
 }
 
-.add-comment button {
+.add-comment button:not(.btn-send-reply) {
   display: flex;
   align-items: center;
   justify-content: center;

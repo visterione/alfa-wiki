@@ -104,7 +104,6 @@ const ReviewBoard = () => {
   const [uploadingCommentFile, setUploadingCommentFile] = useState(false);
 
   // Reply to review on platform (GetLoyalty)
-  const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
   const openedReviewIdRef = useRef(null);
 
@@ -502,7 +501,7 @@ const ReviewBoard = () => {
       // Текст ответа относится только к открываемому отзыву и не должен
       // переноситься из ранее открытой карточки.
       openedReviewIdRef.current = review.id;
-      setReplyText('');
+      setCommentText('');
       localStorage.setItem(`review_viewed_${user?.id}_${review.id}`, new Date().toISOString());
       setReviewsList(prev => prev.map(r => r.id === review.id ? { ...r, _forceRead: Date.now() } : r));
       const response = await reviews.getReview(review.id);
@@ -566,10 +565,10 @@ const ReviewBoard = () => {
   };
 
   const handleSendReply = async () => {
-    if (!replyText.trim()) return;
+    if (!commentText.trim()) return;
     const reviewId = selectedReview.id;
-    const sentText = replyText.trim();
-    setReplyText('');
+    const sentText = commentText.trim();
+    setCommentText('');
     try {
       setSubmittingReply(true);
       await reviews.replyReview(reviewId, sentText);
@@ -579,7 +578,7 @@ const ReviewBoard = () => {
     } catch (err) {
       console.error('Error sending reply:', err);
       if (openedReviewIdRef.current === reviewId) {
-        setReplyText(current => current || sentText);
+        setCommentText(current => current || sentText);
       }
       toast.error(err.response?.data?.error || 'Ошибка при отправке ответа');
     } finally {
@@ -1584,57 +1583,29 @@ const ReviewBoard = () => {
                     })}
                 </div>
 
-                {/* Reply to review on platform (GetLoyalty) */}
+                {/* Reply to review on platform (GetLoyalty) — display only */}
                 {selectedReview.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(selectedReview.platform?.name) && (() => {
                   const meta = selectedReview.syncMeta || {};
-                  // Ответ из GetLoyalty (актуальный) имеет приоритет над историей нашего сайта
                   const platformReply = meta.replyText || null;
-                  // Fallback: ответ только что отправленный через наш сайт (до следующей синхронизации)
                   const historyReply = !platformReply
                     ? selectedReview.history?.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).find(e => e.action === 'replied')
                     : null;
-
                   const hasReply = !!(platformReply || historyReply);
+                  if (!hasReply) return null;
                   const replyText_ = platformReply || historyReply?.comment || '';
                   const replyDate_ = platformReply
                     ? (meta.replyDate ? new Date(meta.replyDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null)
                     : (historyReply ? new Date(historyReply.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
                   const isPending = meta.replyPending;
-
                   return (
                     <div className="reply-to-platform">
                       <div className="reply-to-platform__header">
                         <Reply size={14} />
-                        <span>{hasReply ? 'Ответ на площадке' : 'Ответить на площадке'}</span>
+                        <span>Официальный ответ</span>
                         {isPending && <span className="reply-pending-badge">На модерации</span>}
                         {replyDate_ && <span className="reply-header-date">{replyDate_}</span>}
                       </div>
-                      {hasReply ? (
-                        <div className="reply-sent">{replyText_}</div>
-                      ) : access.canWrite ? (
-                        <div className="add-comment-row">
-                          <textarea
-                            value={replyText}
-                            onChange={(e) => {
-                              setReplyText(e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = e.target.scrollHeight + 'px';
-                            }}
-                            placeholder="Написать ответ пациенту — будет опубликован через GetLoyalty..."
-                            rows={2}
-                          />
-                          <button
-                            onClick={handleSendReply}
-                            disabled={!replyText.trim() || submittingReply}
-                            title="Опубликовать ответ"
-                            className="btn-send-reply"
-                          >
-                            {submittingReply ? <Clock size={16} /> : <Send size={16} />}
-                          </button>
-                        </div>
-                      ) : (
-                        <p style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', margin: 0 }}>Ответ ещё не отправлен</p>
-                      )}
+                      <div className="reply-sent">{replyText_}</div>
                     </div>
                   );
                 })()}
@@ -1678,10 +1649,20 @@ const ReviewBoard = () => {
                       <button
                         onClick={handleAddComment}
                         disabled={(!commentText.trim() && commentAttachments.length === 0) || submittingComment || uploadingCommentFile}
-                        title="Отправить"
+                        title="Отправить комментарий"
                       >
                         <Send size={16} />
                       </button>
+                      {isAdmin && selectedReview.externalId?.startsWith('gl_') && !PLATFORMS_REPLY_UNSUPPORTED.includes(selectedReview.platform?.name) && (
+                        <button
+                          onClick={handleSendReply}
+                          disabled={!commentText.trim() || submittingReply}
+                          title="Ответить на площадке"
+                          className="btn-send-reply"
+                        >
+                          {submittingReply ? <Clock size={16} /> : <User size={16} />}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

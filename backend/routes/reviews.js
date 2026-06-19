@@ -1777,6 +1777,10 @@ router.post('/:id/reply', authenticate, async (req, res) => {
       return res.status(403).json({ error: 'Нет прав на отправку ответа' });
     }
 
+    if (!req.user.isAdmin) {
+      return res.status(403).json({ error: 'Отправка ответов на площадке доступна только администраторам' });
+    }
+
     const { text } = req.body;
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Текст ответа обязателен' });

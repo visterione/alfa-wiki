@@ -2322,7 +2322,7 @@ window.priceApp = (function() {
     var term = (search || '').toLowerCase().trim();
     var filteredCategories = clinicCategoryOptions.filter(function(opt) {
       return !term || opt.name.toLowerCase().indexOf(term) >= 0;
-    }).slice(0, 12);
+    });
 
     dropdown.innerHTML = '';
 
@@ -3153,7 +3153,7 @@ window.priceApp = (function() {
     var term = (search || '').toLowerCase().trim();
     var filteredCategories = labCategoryOptions.filter(function(opt) {
       return !term || opt.name.toLowerCase().indexOf(term) >= 0;
-    }).slice(0, 12);
+    });
 
     dropdown.innerHTML = '';
 
