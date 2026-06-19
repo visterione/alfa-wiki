@@ -186,7 +186,7 @@ export default function AdminUsers() {
   const [avatarHover, setAvatarHover] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
   const [trashList, setTrashList] = useState([]);
-  const [expandedGroups, setExpandedGroups] = useState({ root: true, admin: true, modules: true, salary: true, statistics: true, salary_clinics: false, salary_workTime: false, salary_archive: false, statistics_kpi: false, statistics_directories: false });
+  const [expandedGroups, setExpandedGroups] = useState({ root: true, admin: true, modules: true, salary: true, statistics: true, salary_clinics: false, salary_workTime: false, salary_archive: false, statistics_kpi: false, statistics_directories: false, statistics_services: false });
   const avatarInputRef = useRef(null);
   const misDropdownRef = useRef(null);
   const [form, setForm] = useState({
@@ -230,6 +230,7 @@ export default function AdminUsers() {
       kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
       dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
       dirUtilities: true, dirConsumables: true, dirMarketing: true,
+      svcServices: true, svcPartnerServices: true,
     },
   });
 
@@ -496,11 +497,15 @@ export default function AdminUsers() {
           backup: false, settings: false, courses: false, journal: false, reviews: false
         },
         salaryPerm,
-        statisticsTabs: user.statisticsTabs || {
+        statisticsTabs: user.statisticsTabs ? {
+          svcServices: true, svcPartnerServices: true,
+          ...user.statisticsTabs,
+        } : {
           kpiGeneral: true, kpiPatients: true, kpiMargin: true, kpiEfficiency: true,
           kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
           dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
           dirUtilities: true, dirConsumables: true, dirMarketing: true,
+          svcServices: true, svcPartnerServices: true,
         },
       });
     } else {
@@ -538,6 +543,7 @@ export default function AdminUsers() {
           kpiRooms: true, kpiReputation: true, kpiUtilities: true, kpiConsumables: true, kpiServiceCost: true,
           dirClinics: true, dirCabinets: true, dirDoctors: true, dirEquipment: true,
           dirUtilities: true, dirConsumables: true, dirMarketing: true,
+          svcServices: true, svcPartnerServices: true,
         },
       });
     }
@@ -1408,6 +1414,13 @@ export default function AdminUsers() {
                                 { key: 'dirMarketing',   label: 'Маркетинг',    ...stTab('dirMarketing') },
                               ],
                               onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, dirClinics: nv, dirCabinets: nv, dirDoctors: nv, dirEquipment: nv, dirUtilities: nv, dirConsumables: nv, dirMarketing: nv}}); },
+                            },
+                            { isSubGroup: true, key: 'services', expandKey: 'statistics_services', label: 'Услуги',
+                              items: [
+                                { key: 'svcServices',        label: 'Услуги',             ...stTab('svcServices') },
+                                { key: 'svcPartnerServices', label: 'Услуги партнёров',   ...stTab('svcPartnerServices') },
+                              ],
+                              onToggleAll: nv => { if (!form.isAdmin) setForm({...form, statisticsTabs: {...st, svcServices: nv, svcPartnerServices: nv}}); },
                             },
                           ],
                         },
