@@ -4,12 +4,14 @@ import { getSources } from '../ReferralBonuses/utils/excelSources';
 import { rbClinicId } from '../ReferralBonuses/utils/clinicUtils';
 import StepKpi from '../ReferralBonuses/components/StepKpi';
 import Directories from './components/Directories';
+import ServicesPage from './components/Services';
 import { useTabSlider } from '../ReferralBonuses/utils/useTabSlider';
 import '../ReferralBonuses/ReferralBonuses.css';
 
 const MAIN_TABS = [
   { key: 'kpi',         label: 'Аналитика' },
   { key: 'directories', label: 'Справочники' },
+  { key: 'services',    label: 'Услуги' },
 ];
 
 export default function StatisticsPage() {
@@ -84,6 +86,7 @@ export default function StatisticsPage() {
       {mainTab === 'directories' && (
         <Directories doctors={doctors} excelSources={excelSources} />
       )}
+      {mainTab === 'services' && <ServicesPage />}
     </div>
   );
 }

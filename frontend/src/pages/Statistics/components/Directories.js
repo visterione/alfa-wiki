@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { mis, directories, reviews, salaryRecords, doctorSchedules } from '../../../services/api';
+import { mis, directories, reviews, salaryRecords, doctorSchedules, BASE_URL } from '../../../services/api';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
 import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
@@ -1510,27 +1510,18 @@ function TabConsumables() {
   useEffect(() => {
     if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
     setCatsLoading(true);
-    mis.getServiceCategories()
-      .then(res => {
-        const raw = res.data?.data || res.data || [];
-        setCategories(Array.isArray(raw) ? raw : []);
-      })
+    psGetCategories(clinicFilter)
+      .then(cats => setCategories(cats))
       .catch(() => setCategories([]))
       .finally(() => setCatsLoading(false));
   }, [clinicFilter]);
 
-  // Load services when clinic or category changes
+  // Load services when category changes (category required — there can be 5000+ services per clinic)
   useEffect(() => {
-    if (!clinicFilter) { setServices([]); return; }
+    if (!clinicFilter || !categoryFilter) { setServices([]); return; }
     setSvcsLoading(true);
-    const loader = categoryFilter
-      ? mis.getServicesByCategory(categoryFilter, clinicFilter)
-      : mis.getAllServices(clinicFilter);
-    loader
-      .then(res => {
-        const raw = res.data?.data || res.data || [];
-        setServices(Array.isArray(raw) ? raw : []);
-      })
+    psGetServices(clinicFilter, categoryFilter)
+      .then(svcs => setServices(svcs))
       .catch(() => setServices([]))
       .finally(() => setSvcsLoading(false));
   }, [clinicFilter, categoryFilter]);
@@ -4843,18 +4834,17 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
   useEffect(() => {
     if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
     setCatsLoading(true);
-    mis.getServiceCategories()
-      .then(res => { const raw = res.data?.data || res.data || []; setCategories(Array.isArray(raw) ? raw : []); })
+    psGetCategories(clinicFilter)
+      .then(cats => setCategories(cats))
       .catch(() => setCategories([]))
       .finally(() => setCatsLoading(false));
   }, [clinicFilter]);
 
   useEffect(() => {
-    if (!clinicFilter) { setServices([]); return; }
+    if (!clinicFilter || !categoryFilter) { setServices([]); return; }
     setSvcsLoading(true);
-    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter, clinicFilter) : mis.getAllServices(clinicFilter);
-    loader
-      .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
+    psGetServices(clinicFilter, categoryFilter)
+      .then(svcs => setServices(svcs))
       .catch(() => setServices([]))
       .finally(() => setSvcsLoading(false));
   }, [clinicFilter, categoryFilter]);
@@ -5398,7 +5388,7 @@ export function TabServiceCostAnalytics({ excelSources = [], periodStart, period
 // ══════════════════════════════════════════════════════════════════════════════
 // МАРКЕТИНГ — вспомогательный CategoryDropdown
 // ══════════════════════════════════════════════════════════════════════════════
-function MarketingCategoryDropdown({ onSelect }) {
+function MarketingCategoryDropdown({ onSelect, clinicId }) {
   const [open, setOpen]               = useState(false);
   const [categories, setCategories]   = useState(null);
   const [loading, setLoading]         = useState(false);
@@ -5422,14 +5412,14 @@ function MarketingCategoryDropdown({ onSelect }) {
     if (categories !== null) return;
     setLoading(true);
     try {
-      const res  = await mis.getServiceCategories();
-      const data = res.data?.data || res.data || [];
-      setCategories(Array.isArray(data) ? data : []);
+      const refId = clinicId || DEFAULT_CLINICS[0]?.id;
+      const cats  = await psGetCategories(refId);
+      setCategories(cats);
     } catch {
       setCategories([]);
       toast.error('Ошибка загрузки категорий');
     } finally { setLoading(false); }
-  }, [categories]);
+  }, [categories, clinicId]);
 
   const handleToggle = () => {
     const next = !open;
@@ -5543,19 +5533,18 @@ function TabMarketing() {
   useEffect(() => {
     if (!clinicFilter) { setCategories([]); setServices([]); setCatFilter(''); return; }
     setCatsLoading(true);
-    mis.getServiceCategories()
-      .then(res => { const raw = res.data?.data || res.data || []; setCategories(Array.isArray(raw) ? raw : []); })
+    psGetCategories(clinicFilter)
+      .then(cats => setCategories(cats))
       .catch(() => setCategories([]))
       .finally(() => setCatsLoading(false));
   }, [clinicFilter]);
 
   // ── «По услугам»: load services ──
   useEffect(() => {
-    if (!clinicFilter || mode !== 'services') { setServices([]); return; }
+    if (!clinicFilter || mode !== 'services' || !categoryFilter) { setServices([]); return; }
     setSvcsLoading(true);
-    const loader = categoryFilter ? mis.getServicesByCategory(categoryFilter, clinicFilter) : mis.getAllServices(clinicFilter);
-    loader
-      .then(res => { const raw = res.data?.data || res.data || []; setServices(Array.isArray(raw) ? raw : []); })
+    psGetServices(clinicFilter, categoryFilter)
+      .then(svcs => setServices(svcs))
       .catch(() => setServices([]))
       .finally(() => setSvcsLoading(false));
   }, [clinicFilter, categoryFilter, mode]);
@@ -5629,9 +5618,8 @@ function TabMarketing() {
     setCatSvcs([]); setCatBulkValue(''); setCatExcluded(new Set()); setCatFilter2('');
     setCatSvcsLoading(true);
     try {
-      const res  = await mis.getServicesByCategory(cat.id, clinicFilter);
-      const data = res.data?.data || res.data || [];
-      setCatSvcs(Array.isArray(data) ? data : []);
+      const svcs = await psGetServices(clinicFilter, cat.id);
+      setCatSvcs(svcs);
     } catch { setCatSvcs([]); toast.error('Ошибка загрузки услуг категории'); }
     finally { setCatSvcsLoading(false); }
   }, [clinicFilter]);
@@ -5899,7 +5887,7 @@ function TabMarketing() {
             </div>
           ) : (
             <div>
-              <MarketingCategoryDropdown onSelect={handleCatSelect} />
+              <MarketingCategoryDropdown onSelect={handleCatSelect} clinicId={clinicFilter} />
 
               {catSvcsLoading && (
                 <div style={{ padding: '20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>
@@ -5996,6 +5984,1074 @@ function TabMarketing() {
               )}
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAB: УСЛУГИ (Сравнение цен)
+// ══════════════════════════════════════════════════════════════════════════════
+
+const PC_URL  = BASE_URL + '/api/price-comparisons';
+const MIS_PC  = BASE_URL + '/api/mis';
+const PS_URL  = BASE_URL + '/api/partner-services';
+
+// Normalize tree-structure response → MIS category shape ({ id, title, services_count, children })
+// Intermediate nodes with null categoryId are skipped; their children are promoted up.
+function normalizePsTree(nodes) {
+  const result = [];
+  for (const n of (nodes || [])) {
+    const children = normalizePsTree(n.children || []);
+    if (n.categoryId) {
+      result.push({ id: n.categoryId, title: n.name || n.categoryTitle || '', services_count: n.totalCount || 0, children });
+    } else {
+      result.push(...children);
+    }
+  }
+  return result;
+}
+
+// Normalize partner-service cache items → MIS service shape ({ service_id, code, title, price })
+function normalizePsServices(rows) {
+  return (rows || []).map(r => ({
+    service_id: r.serviceId,
+    code:       r.code || r.subCode || '',
+    title:      r.title || '',
+    price:      r.price,
+  }));
+}
+
+async function psGetCategories(clinicId) {
+  const token = localStorage.getItem('token');
+  const r = await fetch(`${PS_URL}/tree-structure?clinic_id=${clinicId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json = await r.json();
+  return normalizePsTree(json.success ? (json.data || []) : []);
+}
+
+async function psGetServices(clinicId, categoryId) {
+  const token = localStorage.getItem('token');
+  const qs = `clinic_id=${clinicId}&limit=2000${categoryId ? `&category_id=${categoryId}` : ''}`;
+  const r = await fetch(`${PS_URL}?${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json = await r.json();
+  return normalizePsServices(json.success ? (json.data || []) : []);
+}
+
+function pcFetch(url, opts = {}) {
+  const token = localStorage.getItem('token');
+  const options = {
+    method: opts.method || 'GET',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+  };
+  if (opts.body) options.body = opts.body;
+  if (opts.timeout) {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), opts.timeout);
+    options.signal = ctrl.signal;
+  }
+  return fetch(url, options).then(r => {
+    if (!r.ok) return r.json().then(e => Promise.reject(new Error(e.error || 'Error')));
+    return r.json();
+  });
+}
+
+function pcFmt(p) {
+  if (!p) return '—';
+  return parseFloat(p).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
+}
+
+function pcDiff(base, cmp) {
+  if (!base || !cmp) return { text: '—', cls: 'neutral' };
+  const d = parseFloat((cmp - base).toFixed(2));
+  return { text: (d > 0 ? '+' : '') + d, cls: d > 0 ? 'positive' : d < 0 ? 'negative' : 'neutral' };
+}
+
+function pcNorm(n) {
+  const m = {'а':'a','А':'a','в':'b','В':'b','е':'e','Е':'e','к':'k','К':'k','м':'m','М':'m','о':'o','О':'o','с':'c','С':'c','р':'p','Р':'p','т':'t','Т':'t','у':'y','У':'y','х':'x','Х':'x'};
+  return (n || '').split('').map(c => m[c] || c.toLowerCase()).join('').replace(/\s+/g, ' ').trim();
+}
+
+function pcGroupBySub(services) {
+  const bySub = {}, byName = {};
+  services.forEach(s => {
+    const lab   = (s.lab || '').trim() || 'Без лаборатории';
+    const price = parseFloat(s.price) || 0;
+    const cost  = parseFloat(s.original_price) || 0;
+    const sub   = (s.sub_code || '').trim();
+    if (sub) {
+      if (!bySub[sub]) bySub[sub] = { serviceCode: sub, groupName: s.title, prices: {}, costPrices: {}, matchType: 'sub_code' };
+      if (!(lab in bySub[sub].prices)) { bySub[sub].prices[lab] = price; bySub[sub].costPrices[lab] = cost; }
+    } else {
+      const key = pcNorm(s.title);
+      if (!byName[key]) byName[key] = { serviceCode: '', groupName: s.title, prices: {}, costPrices: {}, matchType: 'name' };
+      if (!(lab in byName[key].prices)) { byName[key].prices[lab] = price; byName[key].costPrices[lab] = cost; }
+    }
+  });
+  return [...Object.values(bySub), ...Object.values(byName)];
+}
+
+export function TabServices() {
+  // ── State ────────────────────────────────────────────────────────────────
+  const [mode,         setModeVal]      = useState('clinic'); // 'clinic' | 'lab'
+  const [comparisons,  setComparisons]  = useState([]);
+  const [selId,        setSelId]        = useState('');
+  const [comp,         setComp]         = useState(null);
+  const [items,        setItems]        = useState([]);
+  const [allCols,      setAllCols]      = useState([]);
+  const [hiddenCols,   setHiddenCols]   = useState([]);
+  const [baseCol,      setBaseColVal]   = useState(null);
+  const [viewMode,     setViewModeVal]  = useState('price');
+  const [filterText,   setFilterText]   = useState('');
+  const [clinics,      setClinics]      = useState([]);
+
+  // modal: null | 'newComp' | 'addSvc' | 'addComp' | 'addLab'
+  const [modal, setModal] = useState(null);
+
+  // new comparison form
+  const [newName, setNewName] = useState('');
+  const [newDesc, setNewDesc] = useState('');
+  // competitor form
+  const [compName, setCompName] = useState('');
+
+  // clinic combobox
+  const [clinicCatOpts, setClinicCatOpts] = useState([]);
+  const [clinicInp,     setClinicInp]     = useState('');
+  const [showClinicDrop,setShowClinicDrop]= useState(false);
+  const [selClinicCat,  setSelClinicCat]  = useState(null);
+  const [clinicSvcRes,  setClinicSvcRes]  = useState([]);
+  const [clinicHigh,    setClinicHigh]    = useState(-1);
+  const [addingCatSvcs, setAddingCatSvcs] = useState(false);
+
+  // lab combobox
+  const [labCatOpts,    setLabCatOpts]    = useState([]);
+  const [labInp,        setLabInp]        = useState('');
+  const [showLabDrop,   setShowLabDrop]   = useState(false);
+  const [selLabCat,     setSelLabCat]     = useState(null);  // eslint-disable-line
+  const [labSvcRes,     setLabSvcRes]     = useState([]);
+  const [labHigh,       setLabHigh]       = useState(-1);
+  const [labLoading,    setLabLoading]    = useState(false);
+  const [labStatus,     setLabStatus]     = useState('');
+  const [labPreview,    setLabPreview]    = useState(null);
+  const [pendingGroups, setPendingGroups] = useState([]);
+  const [savingGroups,  setSavingGroups]  = useState(false);
+
+  const [ttip,          setTtip]          = useState(null);
+
+  const [clinicDropPos, setClinicDropPos] = useState({ top: 0, left: 0, width: 300 });
+  const [labDropPos,    setLabDropPos]    = useState({ top: 0, left: 0, width: 300 });
+
+  // ── Refs ─────────────────────────────────────────────────────────────────
+  const clinicTimer   = useRef(null);
+  const clinicReqId   = useRef(0);
+  const labTimer      = useRef(null);
+  const labReqId      = useRef(0);
+  const clinicInputRef= useRef(null);
+  const labInputRef   = useRef(null);
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  useEffect(() => { loadComps('clinic'); loadClinics(); }, []); // eslint-disable-line
+
+  // ── API ───────────────────────────────────────────────────────────────────
+  function loadComps(m) {
+    pcFetch(`${PC_URL}?type=${m === 'lab' ? 'lab' : 'external'}`)
+      .then(list => setComparisons(list))
+      .catch(e => toast.error(e.message));
+  }
+
+  function loadClinics() {
+    pcFetch(`${MIS_PC}/get-clinics`, { method: 'POST', body: '{}' })
+      .then(res => { if (res.error === 0 && res.data?.length) setClinics(res.data); })
+      .catch(() => {});
+  }
+
+  function loadComp(id) {
+    if (!id) {
+      setSelId(''); setComp(null); setItems([]); setAllCols([]); setHiddenCols([]); setBaseColVal(null);
+      return;
+    }
+    pcFetch(`${PC_URL}/${id}`).then(c => {
+      setComp(c);
+      const its = c.items || [];
+      setItems(its);
+      const ownSet = {};
+      its.forEach(item => {
+        if (item.prices) Object.keys(item.prices).forEach(cn => {
+          if (!(c.competitors || []).includes(cn)) ownSet[cn] = true;
+        });
+      });
+      const cols = [
+        ...Object.keys(ownSet).map(n => ({ name: n, type: 'own' })),
+        ...(c.competitors || []).map(n => ({ name: n, type: 'competitor' })),
+      ];
+      setAllCols(cols);
+      setBaseColVal(bc => bc || cols[0]?.name || null);
+    }).catch(e => toast.error(e.message));
+  }
+
+  function fetchLabServices(subCodes, names) {
+    return pcFetch(`${PS_URL}/lab-services`, {
+      method: 'POST',
+      body: JSON.stringify({ sub_codes: subCodes, titles: names }),
+    }).then(res => res.success ? res.data : []);
+  }
+
+  // ── Mode ─────────────────────────────────────────────────────────────────
+  function switchMode(m) {
+    setModeVal(m); setComp(null); setItems([]); setAllCols([]); setHiddenCols([]);
+    setBaseColVal(null); setViewModeVal('price'); setSelId(''); setFilterText('');
+    loadComps(m);
+  }
+
+  // ── Columns ───────────────────────────────────────────────────────────────
+  function toggleCol(name) {
+    setHiddenCols(prev => prev.includes(name) ? prev.filter(c => c !== name) : [...prev, name]);
+  }
+
+  function removeCol(idx) {
+    if (!comp || !window.confirm('Удалить колонку?')) return;
+    const col = allCols[idx];
+    if (col.name === baseCol) setBaseColVal(allCols.find((c, i) => i !== idx)?.name || null);
+    if (col.type === 'own') {
+      Promise.all(
+        items.filter(item => item.prices && col.name in item.prices).map(item => {
+          const p = { ...item.prices }; delete p[col.name];
+          return pcFetch(`${PC_URL}/${comp.id}/items/${item.id}`, { method: 'PUT', body: JSON.stringify({ prices: p }) });
+        })
+      ).then(() => { toast.success('Колонка удалена'); loadComp(comp.id); }).catch(e => toast.error(e.message));
+    } else {
+      const nc = (comp.competitors || []).filter(c => c !== col.name);
+      pcFetch(`${PC_URL}/${comp.id}`, { method: 'PUT', body: JSON.stringify({ ...comp, competitors: nc }) })
+        .then(() => { toast.success('Колонка удалена'); loadComp(comp.id); }).catch(e => toast.error(e.message));
+    }
+  }
+
+  // ── Comparison CRUD ───────────────────────────────────────────────────────
+  function createComp(e) {
+    e.preventDefault();
+    pcFetch(PC_URL, { method: 'POST', body: JSON.stringify({ name: newName, description: newDesc, comparisonType: mode === 'lab' ? 'lab' : 'external', ownMedCenters: [], competitors: [] }) })
+      .then(c => { toast.success('Страница создана'); setModal(null); loadComps(mode); setSelId(String(c.id)); loadComp(c.id); })
+      .catch(e => toast.error(e.message));
+  }
+
+  function deleteComp() {
+    if (!comp || !window.confirm(`Удалить страницу "${comp.name}"?`)) return;
+    pcFetch(`${PC_URL}/${comp.id}`, { method: 'DELETE' })
+      .then(() => { toast.success('Страница удалена'); setSelId(''); loadComp(''); loadComps(mode); })
+      .catch(e => toast.error(e.message));
+  }
+
+  function addCompetitor(e) {
+    e.preventDefault();
+    if (!comp) return;
+    const name = compName.trim();
+    if (!name) return;
+    if (allCols.some(c => c.name === name)) { toast.error('Конкурент уже добавлен'); return; }
+    const nc = [...(comp.competitors || []), name];
+    pcFetch(`${PC_URL}/${comp.id}`, { method: 'PUT', body: JSON.stringify({ ...comp, competitors: nc }) })
+      .then(() => { toast.success('Конкурент добавлен'); setModal(null); setCompName(''); loadComp(comp.id); })
+      .catch(e => toast.error(e.message));
+  }
+
+  // ── Price update ──────────────────────────────────────────────────────────
+  function updatePrice(itemId, colName, value) {
+    if (!comp) return;
+    const item = items.find(i => i.id === itemId);
+    if (!item) return;
+    if (viewMode === 'cost') {
+      const nc = { ...(item.costPrices || {}), [colName]: value ? parseFloat(value) : null };
+      pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: item.prices, costPrices: nc }) })
+        .then(u => setItems(prev => prev.map(i => i.id === itemId ? u : i))).catch(e => toast.error(e.message));
+    } else {
+      const np = { ...item.prices, [colName]: value ? parseFloat(value) : null };
+      pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: np }) })
+        .then(u => setItems(prev => prev.map(i => i.id === itemId ? u : i))).catch(e => toast.error(e.message));
+    }
+  }
+
+  function deleteItem(itemId) {
+    if (!comp || !window.confirm('Удалить услугу?')) return;
+    pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'DELETE' })
+      .then(() => { toast.success('Услуга удалена'); loadComp(comp.id); }).catch(e => toast.error(e.message));
+  }
+
+  // ── Clinic combobox ───────────────────────────────────────────────────────
+  function posClinicDrop() {
+    if (!clinicInputRef.current) return;
+    const r = clinicInputRef.current.getBoundingClientRect();
+    setClinicDropPos({ top: r.bottom + 2, left: r.left, width: r.width });
+  }
+
+  function loadClinicCats() {
+    if (clinicCatOpts.length) return;
+    pcFetch(`${MIS_PC}/get-service-categories`, { method: 'POST', body: '{}' }).then(res => {
+      if (res.error !== 0 || !res.data?.length) return;
+      const opts = [];
+      function collect(cats, lvl) {
+        cats.forEach(c => {
+          opts.push({ value: c.id, text: '　'.repeat(lvl) + c.title + ` (${c.services_count || 0})`, name: c.title, level: lvl });
+          if (c.children?.length) collect(c.children, lvl + 1);
+        });
+      }
+      collect(res.data, 0);
+      setClinicCatOpts(opts);
+    }).catch(() => {});
+  }
+
+  function openAddSvcModal() {
+    if (!comp) { toast.error('Сначала создайте сравнение'); return; }
+    if (mode === 'lab') { openAddLabModal(); return; }
+    setClinicInp(''); setSelClinicCat(null); setClinicSvcRes([]); setClinicHigh(-1);
+    loadClinicCats();
+    setModal('addSvc');
+  }
+
+  function handleClinicInput(val) {
+    setClinicInp(val); setSelClinicCat(null); setClinicSvcRes([]); setClinicHigh(-1);
+    posClinicDrop(); setShowClinicDrop(true);
+    clearTimeout(clinicTimer.current);
+    if (val.trim().length < 2) return;
+    const rid = ++clinicReqId.current;
+    clinicTimer.current = setTimeout(() => {
+      pcFetch(`${PS_URL}/search?term=${encodeURIComponent(val.trim())}&limit=20`)
+        .then(res => { if (rid !== clinicReqId.current) return; setClinicSvcRes(res.success && Array.isArray(res.data) ? res.data : []); })
+        .catch(() => { if (rid === clinicReqId.current) setClinicSvcRes([]); });
+    }, 350);
+  }
+
+  function handleClinicFocus() { posClinicDrop(); setShowClinicDrop(true); if (clinicInp.trim().length >= 2 && !clinicSvcRes.length) handleClinicInput(clinicInp); }
+  function handleClinicBlur()  { setTimeout(() => setShowClinicDrop(false), 150); }
+
+  function getClinicDropOpts() {
+    const term = clinicInp.toLowerCase().trim();
+    const cats = clinicCatOpts.filter(o => !term || o.name.toLowerCase().includes(term)).map(o => ({ kind: 'cat', ...o }));
+    const svcs = clinicInp.trim().length >= 2 ? clinicSvcRes.slice(0, 20).map((s, i) => ({ kind: 'svc', idx: i, ...s })) : [];
+    return [...cats, ...svcs];
+  }
+
+  function handleClinicKey(e) {
+    const opts = getClinicDropOpts();
+    if (!showClinicDrop || !opts.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setClinicHigh(h => Math.min(h + 1, opts.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setClinicHigh(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter')   { e.preventDefault(); if (clinicHigh >= 0) selectClinicOpt(opts[clinicHigh]); }
+    else if (e.key === 'Escape')  setShowClinicDrop(false);
+  }
+
+  function selectClinicOpt(opt) { opt.kind === 'cat' ? selectClinicCat(opt.value, opt.name) : selectClinicSvc(opt); }
+
+  function selectClinicCat(id, name) {
+    clearTimeout(clinicTimer.current); ++clinicReqId.current;
+    setClinicInp(name); setSelClinicCat({ id, name }); setShowClinicDrop(false); setClinicHigh(-1);
+  }
+
+  function selectClinicSvc(svc) {
+    setShowClinicDrop(false);
+    if (!comp || !clinics.length) { toast.error('Нет данных о клиниках'); return; }
+    const clinicIds = clinics.map(c => c.id);
+    pcFetch(`${PS_URL}/prices-by-service-ids`, { method: 'POST', body: JSON.stringify({ service_ids: [svc.service_id], clinic_ids: clinicIds }) })
+      .then(res => {
+        const rows = res.success ? res.data : [];
+        const prices = {}, costs = {};
+        clinics.forEach(c => {
+          const row = rows.find(r => r.clinicId === c.id);
+          prices[c.title] = row ? row.price      : svc.price;
+          costs[c.title]  = row ? (row.costPrice || null) : null;
+        });
+        return pcFetch(`${PC_URL}/${comp.id}/items`, { method: 'POST', body: JSON.stringify({ serviceCode: svc.code || '', serviceName: svc.title || '', misServiceId: svc.service_id || '', prices, costPrices: costs }) });
+      })
+      .then(() => { toast.success('Услуга добавлена'); setModal(null); loadComp(comp.id); })
+      .catch(e => toast.error(e.message));
+  }
+
+  function addAllCatSvcs() {
+    if (!selClinicCat || !comp || !clinics.length) return;
+    setAddingCatSvcs(true);
+    Promise.all(clinics.map(c =>
+      pcFetch(`${PS_URL}?category_id=${selClinicCat.id}&clinic_id=${c.id}&limit=500`)
+        .then(res => ({ name: c.title, data: res.success ? (res.data || []) : [] }))
+        .catch(() => ({ name: c.title, data: [] }))
+    )).then(results => {
+      const map = {};
+      results.forEach(r => r.data.forEach(s => {
+        const k = s.serviceId || s.subCode || `${s.code}|${s.title}`;
+        if (!map[k]) map[k] = { service_id: s.serviceId, code: s.subCode || s.code, title: s.title, prices: {}, costPrices: {} };
+        map[k].prices[r.name]    = s.price;
+        map[k].costPrices[r.name]= s.costPrice || null;
+      }));
+      const svcs = Object.values(map);
+      if (!svcs.length) { toast.error('В категории нет услуг'); setAddingCatSvcs(false); return; }
+      let added = 0, errs = 0;
+      return Promise.all(svcs.map(s =>
+        pcFetch(`${PC_URL}/${comp.id}/items`, { method: 'POST', body: JSON.stringify({ serviceCode: s.code || '', serviceName: s.title, misServiceId: s.service_id, prices: s.prices, costPrices: s.costPrices }) })
+          .then(() => added++).catch(() => errs++)
+      )).then(() => { if (added) toast.success(`Добавлено услуг: ${added}`); if (errs) toast.error(`Ошибок: ${errs}`); setModal(null); loadComp(comp.id); });
+    }).catch(e => toast.error(e.message)).finally(() => setAddingCatSvcs(false));
+  }
+
+  // ── Lab combobox ──────────────────────────────────────────────────────────
+  function posLabDrop() {
+    if (!labInputRef.current) return;
+    const r = labInputRef.current.getBoundingClientRect();
+    setLabDropPos({ top: r.bottom + 2, left: r.left, width: r.width });
+  }
+
+  function loadLabCats() {
+    if (labCatOpts.length) return;
+    pcFetch(`${MIS_PC}/get-service-categories`, { method: 'POST', body: '{}' }).then(res => {
+      if (res.error !== 0 || !res.data?.length) return;
+      const opts = [];
+      function collect(cats, lvl) {
+        cats.forEach(c => {
+          opts.push({ value: c.id, text: '　'.repeat(lvl) + c.title + ` (${c.services_count || 0})`, name: c.title, level: lvl });
+          if (c.children?.length) collect(c.children, lvl + 1);
+        });
+      }
+      collect(res.data, 0);
+      setLabCatOpts(opts);
+    }).catch(() => {});
+  }
+
+  function openAddLabModal() {
+    setPendingGroups([]); setSelLabCat(null); setLabSvcRes([]); setLabHigh(-1);
+    setLabInp(''); setLabLoading(false); setLabPreview(null); loadLabCats();
+    setModal('addLab');
+  }
+
+  function handleLabInput(val) {
+    setLabInp(val); setSelLabCat(null); setLabSvcRes([]); setLabHigh(-1);
+    posLabDrop(); setShowLabDrop(true);
+    clearTimeout(labTimer.current);
+    if (val.trim().length < 2) return;
+    const rid = ++labReqId.current;
+    labTimer.current = setTimeout(() => {
+      pcFetch(`${PS_URL}/search?term=${encodeURIComponent(val.trim())}&limit=20`)
+        .then(res => { if (rid !== labReqId.current) return; setLabSvcRes(res.success && Array.isArray(res.data) ? res.data : []); })
+        .catch(() => { if (rid === labReqId.current) setLabSvcRes([]); });
+    }, 350);
+  }
+
+  function handleLabFocus() { posLabDrop(); setShowLabDrop(true); if (labInp.trim().length >= 2 && !labSvcRes.length) handleLabInput(labInp); }
+  function handleLabBlur()  { setTimeout(() => setShowLabDrop(false), 150); }
+
+  function getLabDropOpts() {
+    const term = labInp.toLowerCase().trim();
+    const cats = labCatOpts.filter(o => !term || o.name.toLowerCase().includes(term)).map(o => ({ kind: 'cat', ...o }));
+    const svcs = labInp.trim().length >= 2 ? labSvcRes.slice(0, 20).map((s, i) => ({ kind: 'svc', idx: i, ...s })) : [];
+    return [...cats, ...svcs];
+  }
+
+  function handleLabKey(e) {
+    const opts = getLabDropOpts();
+    if (!showLabDrop || !opts.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setLabHigh(h => Math.min(h + 1, opts.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setLabHigh(h => Math.max(h - 1, 0)); }
+    else if (e.key === 'Enter')   { e.preventDefault(); if (labHigh >= 0) selectLabOpt(getLabDropOpts()[labHigh]); }
+    else if (e.key === 'Escape')  setShowLabDrop(false);
+  }
+
+  function selectLabOpt(opt) { opt.kind === 'cat' ? selectLabCat(opt.value, opt.name) : selectLabSvc(opt); }
+
+  function selectLabCat(id, name) {
+    setLabInp(name); setSelLabCat({ id, name }); setShowLabDrop(false); setLabHigh(-1);
+    setLabPreview(null); setPendingGroups([]); setLabLoading(true); setLabStatus('Загрузка категории...');
+    const refClinicId = clinics[0]?.id || 2;
+    pcFetch(`${PS_URL}?category_id=${id}&clinic_id=${refClinicId}&limit=1000`)
+      .then(res => {
+        if (!res.success || !res.data?.length) { setLabLoading(false); toast.error('В категории нет услуг'); return Promise.reject('empty'); }
+        const subSet = new Set(), titleSet = new Set();
+        res.data.forEach(s => { const sub = (s.subCode || '').trim(); if (sub) subSet.add(sub); else if (s.title) titleSet.add(s.title); });
+        setLabStatus('Поиск совпадений в кэше лабораторий...');
+        return fetchLabServices([...subSet], [...titleSet]);
+      })
+      .then(matched => {
+        setLabLoading(false);
+        if (!matched?.length) { toast.error('Совпадений не найдено'); return; }
+        const groups = pcGroupBySub(matched);
+        setPendingGroups(groups); setLabPreview(buildLabPreview(groups));
+      })
+      .catch(e => { if (e === 'empty') return; setLabLoading(false); toast.error('Ошибка: ' + (e.message || e)); });
+  }
+
+  function selectLabSvc(svc) {
+    setShowLabDrop(false); setLabInp(svc.title || ''); setLabPreview(null); setPendingGroups([]);
+    setLabLoading(true); setLabStatus('Поиск в кэше лабораторий...');
+    const sub      = (svc.oms_code || '').trim();
+    const subCodes = sub ? [sub] : [];
+    const titles   = sub ? [] : (svc.title ? [svc.title] : []);
+    fetchLabServices(subCodes, titles)
+      .then(matched => {
+        setLabLoading(false);
+        if (!matched.length) { toast.error('Совпадений не найдено'); return; }
+        const groups = pcGroupBySub(matched);
+        setPendingGroups(groups); setLabPreview(buildLabPreview(groups));
+      })
+      .catch(e => { setLabLoading(false); toast.error('Ошибка: ' + e.message); });
+  }
+
+  function buildLabPreview(groups) {
+    const labsSet = {}; let subCount = 0, nameCount = 0;
+    groups.forEach(g => { if (g.matchType === 'sub_code') subCount++; else nameCount++; Object.keys(g.prices).forEach(l => { labsSet[l] = true; }); });
+    return { groups, labs: Object.keys(labsSet), subCount, nameCount };
+  }
+
+  function saveLabGroups() {
+    if (!comp || !pendingGroups.length) return;
+    setSavingGroups(true);
+    Promise.all(pendingGroups.map(g =>
+      pcFetch(`${PC_URL}/${comp.id}/items`, { method: 'POST', body: JSON.stringify({ serviceCode: g.serviceCode || '', serviceName: g.groupName, prices: g.prices, costPrices: g.costPrices || {}, misServiceId: null }) })
+    )).then(() => { toast.success(`Добавлено позиций: ${pendingGroups.length}`); setModal(null); setPendingGroups([]); loadComp(comp.id); })
+      .catch(e => toast.error('Ошибка: ' + e.message)).finally(() => setSavingGroups(false));
+  }
+
+  // ── Tooltip ───────────────────────────────────────────────────────────────
+  function showTtip(e, change) {
+    const r = e.currentTarget.getBoundingClientRect();
+    const dt = new Date(change.changedAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    setTtip({ x: r.left + r.width / 2, y: r.top, user: change.username, date: dt });
+  }
+
+  // ── Excel export ──────────────────────────────────────────────────────────
+  async function exportXlsx() {
+    if (!comp || !allCols.length || !items.length) { toast.error('Нечего экспортировать'); return; }
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    const hFill  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+    const baseC  = allCols.find(c => c.name === baseCol);
+    const ordered = baseC ? [baseC, ...allCols.filter(c => c.name !== baseCol)] : [...allCols];
+
+    function buildSheet(ws, usePrice) {
+      let dateStr = '';
+      if (comp.createdAt) {
+        dateStr = new Date(comp.createdAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
+        const dr = ws.addRow(['Дата создания:', dateStr]); dr.getCell(1).font = { bold: true }; ws.addRow([]);
+      }
+      const hdr = ['Артикул', 'Название услуги'];
+      ordered.forEach(col => { hdr.push(col.name + (col.name === baseCol ? ' (эталон)' : '')); if (col.name !== baseCol) hdr.push(''); });
+      const hr = ws.addRow(hdr); let cc = 3;
+      ordered.forEach(col => {
+        if (col.name !== baseCol) { ws.mergeCells(`${String.fromCharCode(64 + cc)}${hr.number}:${String.fromCharCode(65 + cc)}${hr.number}`); cc += 2; } else cc += 1;
+      });
+      hr.eachCell(cell => { cell.fill = hFill; cell.font = { bold: true }; cell.alignment = { vertical: 'middle', horizontal: 'center' }; cell.border = border; });
+      hr.height = 20;
+      items.forEach(item => {
+        const prices = usePrice ? item.prices : (item.costPrices || {});
+        const baseP  = prices[baseCol] || null;
+        const row = [item.serviceCode || '', item.serviceName]; const rd = [];
+        ordered.forEach(col => {
+          const p = prices[col.name] || null, isB = col.name === baseCol;
+          row.push(p || ''); rd.push({ type: 'price' });
+          if (!isB) { const dv = baseP && p ? parseFloat((p - baseP).toFixed(2)) : null; row.push(dv != null ? (dv > 0 ? '+' : '') + dv : '-'); rd.push({ type: 'diff', value: dv }); }
+        });
+        const ar = ws.addRow(row);
+        ar.eachCell({ includeEmpty: true }, (cell, cn) => {
+          cell.border = border; cell.alignment = { vertical: 'middle', horizontal: cn === 2 ? 'left' : 'center' };
+          const di = cn - 3;
+          if (di >= 0 && di < rd.length && rd[di].type === 'diff' && rd[di].value != null) {
+            if (rd[di].value > 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; cell.font = { color: { argb: 'FF16A34A' }, bold: true }; }
+            else if (rd[di].value < 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; cell.font = { color: { argb: 'FFDC2626' }, bold: true }; }
+          }
+        });
+      });
+      ws.columns.forEach(col => { let max = 10; col.eachCell({ includeEmpty: true }, c => { if (c.value && c.value.toString().length > max) max = c.value.toString().length; }); col.width = max + 2; });
+    }
+
+    buildSheet(wb.addWorksheet('Сравнение цен'), true);
+    buildSheet(wb.addWorksheet('Себестоимость'),  false);
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = Object.assign(document.createElement('a'), { href: url, download: comp.name + '.xlsx' });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    toast.success('Excel создан');
+  }
+
+  // ── Computed ─────────────────────────────────────────────────────────────
+  const orderedCols = useMemo(() => {
+    const bc = allCols.find(c => c.name === baseCol);
+    return bc ? [bc, ...allCols.filter(c => c.name !== baseCol)] : [...allCols];
+  }, [allCols, baseCol]);
+
+  const filteredItems = useMemo(() => {
+    if (!filterText) return items;
+    const t = filterText.toLowerCase();
+    return items.filter(i => i.serviceName.toLowerCase().includes(t) || (i.serviceCode || '').toLowerCase().includes(t));
+  }, [items, filterText]);
+
+  const totalDataCols = orderedCols.reduce((s, col) => s + (col.name === baseCol ? 1 : 2), 0);
+  const totalCols     = 2 + totalDataCols + 1;
+
+  // ── SVG icons ─────────────────────────────────────────────────────────────
+  const Ico = {
+    plus:    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>,
+    trash:   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>,
+    excel:   <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>,
+    clinic:  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 16, height: 16 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>,
+    lab:     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 16, height: 16 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>,
+    search:  <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>,
+    cal:     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 14, height: 14 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>,
+    spin:    <svg className="pc-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>,
+  };
+
+  // ── Dropdown renderers ────────────────────────────────────────────────────
+  function renderClinicDrop() {
+    const term = clinicInp.toLowerCase().trim();
+    const cats = clinicCatOpts.filter(o => !term || o.name.toLowerCase().includes(term));
+    const svcs = clinicInp.trim().length >= 2 ? clinicSvcRes.slice(0, 20) : [];
+    let gi = 0;
+    return (
+      <div style={{ position: 'fixed', top: clinicDropPos.top, left: clinicDropPos.left, width: clinicDropPos.width, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
+        {cats.length > 0 && <>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
+          {cats.map(opt => { const i = gi++; return (
+            <div key={opt.value} className={`pc-drop-item${opt.value === selClinicCat?.id ? ' selected-opt' : ''}${i === clinicHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectClinicCat(opt.value, opt.name)}>{opt.text}</div>
+          ); })}
+        </>}
+        {clinicInp.trim().length >= 2 && <>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
+          {svcs.length === 0
+            ? <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Введите запрос или подождите...</div>
+            : svcs.map((svc, si) => { const i = gi++; return (
+              <div key={si} className={`pc-drop-item${i === clinicHigh ? ' highlighted' : ''}`} data-level="service" style={{ padding: '8px 12px', cursor: 'pointer' }} onMouseDown={() => selectClinicSvc(svc)}>
+                <div style={{ fontWeight: 500, color: '#111827', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>Код: {svc.code || '—'}{svc.price != null ? ` | ${pcFmt(svc.price)}` : ''}{svc.category ? ` | ${svc.category}` : ''}</div>
+              </div>
+            ); })
+          }
+        </>}
+        {cats.length === 0 && clinicInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Ничего не найдено</div>}
+      </div>
+    );
+  }
+
+  function renderLabDrop() {
+    const term = labInp.toLowerCase().trim();
+    const cats = labCatOpts.filter(o => !term || o.name.toLowerCase().includes(term));
+    const svcs = labInp.trim().length >= 2 ? labSvcRes.slice(0, 20) : [];
+    let gi = 0;
+    return (
+      <div style={{ position: 'fixed', top: labDropPos.top, left: labDropPos.left, width: labDropPos.width, background: '#fff', border: '1px solid #d1d5db', borderRadius: 8, maxHeight: 280, overflowY: 'auto', zIndex: 10002, boxShadow: '0 4px 16px rgba(0,0,0,.12)' }}>
+        {cats.length > 0 && <>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
+          {cats.map(opt => { const i = gi++; return (
+            <div key={opt.value} className={`pc-drop-item${opt.value === selLabCat?.id ? ' selected-opt' : ''}${i === labHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectLabCat(opt.value, opt.name)}>{opt.text}</div>
+          ); })}
+        </>}
+        {labInp.trim().length >= 2 && <>
+          <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Услуги</div>
+          {svcs.length === 0
+            ? <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Введите запрос или подождите...</div>
+            : svcs.map((svc, si) => { const i = gi++; return (
+              <div key={si} className={`pc-drop-item${i === labHigh ? ' highlighted' : ''}`} data-level="service" style={{ padding: '8px 12px', cursor: 'pointer' }} onMouseDown={() => selectLabSvc(svc)}>
+                <div style={{ fontWeight: 500, color: '#111827', marginBottom: 2 }}>{svc.title || 'Без названия'}</div>
+                <div style={{ fontSize: 11, color: '#6b7280' }}>{svc.oms_code ? `Код 804н: ${svc.oms_code}` : ''}{svc.lab ? ` | ${svc.lab}` : ''}</div>
+              </div>
+            ); })
+          }
+        </>}
+        {cats.length === 0 && labInp.trim().length < 2 && <div style={{ padding: 12, textAlign: 'center', color: '#9ca3af', fontSize: 13 }}>Ничего не найдено</div>}
+      </div>
+    );
+  }
+
+  // ── Table ─────────────────────────────────────────────────────────────────
+  function renderTableBody() {
+    if (!comp || !allCols.length) {
+      return <tr><td colSpan={3} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Создайте сравнение или выберите существующее</td></tr>;
+    }
+    if (!filteredItems.length) {
+      return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>{filterText ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
+    }
+    return filteredItems.map(item => {
+      const prices   = viewMode === 'cost' ? (item.costPrices || {}) : item.prices;
+      const basePrice = prices[baseCol] || null;
+      return (
+        <tr key={item.id}>
+          <td style={{ textAlign: 'center' }}>{item.serviceCode || '—'}</td>
+          <td>{item.serviceName}</td>
+          {orderedCols.map(col => {
+            const isHidden = hiddenCols.includes(col.name);
+            const isBase   = col.name === baseCol;
+            const price    = prices[col.name] || null;
+            const colCls   = `${isBase ? 'pc-col-single' : 'pc-col-pair'}${isHidden ? ' hidden' : ''}`;
+            const hist     = viewMode === 'price' && item.priceHistory?.[col.name];
+            const hasHist  = hist && hist.length > 0;
+            const last     = hasHist ? hist[hist.length - 1] : null;
+            return (
+              <React.Fragment key={col.name}>
+                <td className={colCls} style={{ textAlign: 'center' }}>
+                  {col.type === 'own'
+                    ? <span style={{ fontWeight: 600, color: '#16a34a' }}>{pcFmt(price)}</span>
+                    : <input
+                        key={`${item.id}-${col.name}-${viewMode}-${price || ''}`}
+                        type="number"
+                        className={`pc-price-input${hasHist ? ' has-history' : ''}`}
+                        style={{ width: 100, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 14, textAlign: 'center' }}
+                        defaultValue={price || ''}
+                        placeholder={viewMode === 'cost' ? 'Себест.' : 'Цена'}
+                        onBlur={e => updatePrice(item.id, col.name, e.target.value)}
+                        onMouseEnter={hasHist ? (e => showTtip(e, last)) : undefined}
+                        onMouseLeave={hasHist ? () => setTtip(null) : undefined}
+                      />
+                  }
+                </td>
+                {!isBase && (
+                  <td className={`pc-col-pair${isHidden ? ' hidden' : ''}`} style={{ textAlign: 'center' }}>
+                    {basePrice && price
+                      ? <span className={`pc-diff ${pcDiff(basePrice, price).cls}`}>{pcDiff(basePrice, price).text}</span>
+                      : <span className="pc-diff neutral">—</span>}
+                  </td>
+                )}
+              </React.Fragment>
+            );
+          })}
+          <td style={{ textAlign: 'center' }}>
+            <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} title="Удалить" style={{ width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+              {Ico.trash}
+            </button>
+          </td>
+        </tr>
+      );
+    });
+  }
+
+  const closeModal = () => setModal(null);
+  const modalOverlayStyle = { position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, backdropFilter: 'blur(4px)' };
+  const modalStyle        = { background: '#fff', borderRadius: 16, width: '100%', maxWidth: 600, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,.3)', margin: 16 };
+  const modalHeadStyle    = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px', borderBottom: '1px solid #e5e7eb' };
+  const modalFootStyle    = { display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '16px 24px', borderTop: '1px solid #e5e7eb', background: '#f9fafb' };
+  const inputStyle        = { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, fontFamily: 'inherit', boxSizing: 'border-box' };
+  const closeBtnStyle     = { width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 8, fontSize: 20, cursor: 'pointer', color: '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+
+  // ── JSX ───────────────────────────────────────────────────────────────────
+  return (
+    <div>
+      {/* Scoped styles */}
+      <style>{`
+        .pc-btn{display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap;font-family:inherit}
+        .pc-btn:disabled{opacity:.5;cursor:not-allowed}
+        .pc-btn svg{flex-shrink:0}
+        .pc-btn-primary{background:#3b82f6;color:#fff}
+        .pc-btn-primary:hover:not(:disabled){background:#2563eb}
+        .pc-btn-success{background:#16a34a;color:#fff}
+        .pc-btn-success:hover:not(:disabled){background:#15803d}
+        .pc-btn-secondary{background:#fff;color:#374151;border:1px solid #d1d5db}
+        .pc-btn-secondary:hover:not(:disabled){background:#f9fafb}
+        .pc-table{width:max-content;border-collapse:collapse;min-width:max(800px,100%)}
+        .pc-table th{padding:6px 8px;text-align:center;background:#f8fafc;font-weight:600;font-size:11px;color:#4b5563;border-bottom:2px solid #e5e7eb;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;white-space:nowrap;position:sticky;top:0;z-index:2}
+        .pc-table th.col-svc{text-align:left}
+        .pc-table td{padding:6px 8px;border-bottom:1px solid #f1f5f9;font-size:12px;color:#374151;vertical-align:middle}
+        .pc-table tr:hover{background:#f8fafc}
+        .pc-table tr:last-child td{border-bottom:none}
+        .pc-table .hidden{display:none!important}
+        .pc-col-single{width:240px;min-width:240px;max-width:240px}
+        .pc-col-pair{width:120px;min-width:120px;max-width:120px}
+        .pc-diff{font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px}
+        .pc-diff.positive{color:#16a34a;background:#dcfce7}
+        .pc-diff.negative{color:#dc2626;background:#fee2e2}
+        .pc-diff.neutral{color:#6b7280;background:#f3f4f6}
+        .pc-price-input.has-history{background:#f0f9ff;border-color:#3b82f6}
+        .pc-price-input.has-history:hover{background:#e0f2fe;cursor:help}
+        .pc-price-input::-webkit-outer-spin-button,.pc-price-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+        .pc-price-input[type=number]{-moz-appearance:textfield}
+        .pc-act-btn:hover{background:#e5e7eb!important;color:#374151!important}
+        .pc-act-btn.del{color:#ef4444!important}
+        .pc-act-btn.del:hover{background:#fee2e2!important}
+        .pc-drop-item:hover,.pc-drop-item.highlighted{background:#f3f4f6}
+        .pc-drop-item[data-level="0"]{font-weight:600;color:#1f2937;background:#f9fafb}
+        .pc-drop-item[data-level="0"]:hover,.pc-drop-item[data-level="0"].highlighted{background:#f3f4f6}
+        .pc-drop-item.selected-opt{background:#eff6ff;color:#1d4ed8}
+        .pc-mode-btn.active{background:#fff;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+        .pc-view-btn.active{background:#fff;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+        .pc-chip.own{background:#dbeafe;border-color:#3b82f6;color:#1e40af}
+        .pc-chip.competitor{background:#fef3c7;border-color:#f59e0b;color:#92400e}
+        .pc-chip.dimmed{opacity:.4}
+        @keyframes pc-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .pc-spin{animation:pc-spin 1s linear infinite}
+      `}</style>
+
+      {/* Tooltip */}
+      {ttip && (
+        <div style={{ position: 'fixed', left: ttip.x, top: ttip.y - 60, transform: 'translateX(-50%)', background: '#fff', color: '#1f2937', padding: '8px 12px', borderRadius: 6, fontSize: 12, zIndex: 10001, pointerEvents: 'none', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,.3)', border: '1px solid #d1d5db' }}>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>Последнее изменение:</div>
+          <div>{ttip.user}</div>
+          <div style={{ color: '#9ca3af', fontSize: 11 }}>{ttip.date}</div>
+        </div>
+      )}
+
+      {/* Mode switcher */}
+      <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 4, width: 'fit-content', marginBottom: 20 }}>
+        {[{ key: 'clinic', label: 'Клиники', ico: Ico.clinic }, { key: 'lab', label: 'Лаборатории', ico: Ico.lab }].map(m => (
+          <button key={m.key} className={`pc-mode-btn${mode === m.key ? ' active' : ''}`} onClick={() => switchMode(m.key)}
+            style={{ padding: '8px 20px', border: 'none', background: 'transparent', borderRadius: 7, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#6b7280', transition: 'all .2s', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {m.ico} {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1 }}>
+          <select value={selId} onChange={e => { setSelId(e.target.value); loadComp(e.target.value); }}
+            style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer', minWidth: 250 }}>
+            <option value="">Создать новую страницу...</option>
+            {comparisons.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button className="pc-btn pc-btn-primary" onClick={() => { setNewName(''); setNewDesc(''); setModal('newComp'); }}>{Ico.plus} Новая страница</button>
+          <button className="pc-btn pc-btn-secondary" onClick={deleteComp} disabled={!comp} style={{ color: '#ef4444' }}>{Ico.trash} Удалить страницу</button>
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          {comp?.createdAt && (
+            <span style={{ fontSize: 13, color: '#6b7280', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {Ico.cal} {new Date(comp.createdAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </span>
+          )}
+          <button className="pc-btn pc-btn-success" onClick={exportXlsx} disabled={!comp}>{Ico.excel} Excel</button>
+        </div>
+      </div>
+
+      {/* Columns manager */}
+      {comp && allCols.length > 0 && (
+        <div style={{ marginBottom: 20, padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
+          <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#374151' }}>Управление колонками</h4>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            {allCols.map((col, idx) => {
+              const isHidden = hiddenCols.includes(col.name);
+              const isBase   = col.name === baseCol;
+              return (
+                <div key={col.name} className={`pc-chip ${col.type}${isHidden ? ' dimmed' : ''}`}
+                  style={{ padding: '6px 12px 6px 28px', background: '#fff', border: '1px solid #d1d5db', borderRadius: 6, fontSize: 13, display: 'flex', alignItems: 'center', gap: 8, position: 'relative', cursor: 'pointer' }}
+                  onClick={e => { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('input')) return; toggleCol(col.name); }}>
+                  <input type="radio" name="pc-base" checked={isBase} onChange={() => {}} onClick={e => { e.stopPropagation(); setBaseColVal(col.name); }}
+                    style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', width: 14, height: 14, margin: 0, opacity: 1 }} />
+                  <span>{col.name}{isBase ? ' (эталон)' : ''}</span>
+                  <button onClick={e => { e.stopPropagation(); removeCol(idx); }} style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 16, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
+                </div>
+              );
+            })}
+          </div>
+          {mode !== 'lab' && (
+            <button className="pc-btn pc-btn-secondary" onClick={() => { setCompName(''); setModal('addComp'); }}>+ Конкурент</button>
+          )}
+        </div>
+      )}
+
+      {/* Filters */}
+      {comp && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}>
+          <div style={{ position: 'relative', flex: 1, minWidth: 250 }}>
+            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>{Ico.search}</span>
+            <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Поиск по названию, коду..."
+              style={{ width: '100%', padding: '10px 12px 10px 38px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
+          </div>
+          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 4 }}>
+            {[{ key: 'price', label: 'Стоимость' }, { key: 'cost', label: 'Себестоимость' }].map(v => (
+              <button key={v.key} className={`pc-view-btn${viewMode === v.key ? ' active' : ''}`} onClick={() => setViewModeVal(v.key)}
+                style={{ padding: '6px 16px', border: 'none', background: 'transparent', borderRadius: 7, fontSize: 13, fontWeight: 500, cursor: 'pointer', color: '#6b7280', transition: 'all .2s' }}>{v.label}</button>
+            ))}
+          </div>
+          <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
+        </div>
+      )}
+
+      {/* Table */}
+      <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{ maxHeight: 'calc(100vh - 340px)', overflow: 'auto' }}>
+          <table className="pc-table">
+            <thead>
+              {!comp || !allCols.length ? (
+                <tr>
+                  <th style={{ width: 120 }}>{mode === 'lab' ? 'Код 804н' : 'Артикул'}</th>
+                  <th className="col-svc">Название услуги</th>
+                  <th style={{ width: 80 }}></th>
+                </tr>
+              ) : (
+                <tr>
+                  <th style={{ width: 120 }}>{mode === 'lab' ? 'Код 804н' : 'Артикул'}</th>
+                  <th className="col-svc">Название услуги</th>
+                  {orderedCols.map(col => {
+                    const isHidden = hiddenCols.includes(col.name);
+                    const isBase   = col.name === baseCol;
+                    return isBase
+                      ? <th key={col.name} className={`pc-col-single${isHidden ? ' hidden' : ''}`}>{col.name} (эталон)</th>
+                      : <th key={col.name} className={`pc-col-pair${isHidden ? ' hidden' : ''}`} colSpan={2}>{col.name}</th>;
+                  })}
+                  <th style={{ width: 80 }}>Действия</th>
+                </tr>
+              )}
+            </thead>
+            <tbody>{renderTableBody()}</tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal: New comparison */}
+      {modal === 'newComp' && (
+        <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={modalStyle}>
+            <div style={modalHeadStyle}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Новая страница</h3>
+              <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
+            </div>
+            <form onSubmit={createComp}>
+              <div style={{ padding: 24 }}>
+                <div style={{ marginBottom: 20 }}>
+                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Название <span style={{ color: '#ef4444' }}>*</span></label>
+                  <input type="text" required value={newName} onChange={e => setNewName(e.target.value)} placeholder="Страница сравнения январь 2026" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Описание</label>
+                  <textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Дополнительная информация..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+                </div>
+              </div>
+              <div style={modalFootStyle}>
+                <button type="button" className="pc-btn pc-btn-secondary" onClick={closeModal}>Отмена</button>
+                <button type="submit" className="pc-btn pc-btn-primary">{Ico.plus} Создать</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add service (clinic mode) */}
+      {modal === 'addSvc' && (
+        <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={modalStyle}>
+            <div style={modalHeadStyle}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Добавить услугу</h3>
+              <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Категория или название услуги <span style={{ color: '#ef4444' }}>*</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input ref={clinicInputRef} type="text" value={clinicInp} onChange={e => handleClinicInput(e.target.value)} onFocus={handleClinicFocus} onBlur={handleClinicBlur} onKeyDown={handleClinicKey}
+                    placeholder="Например: УЗИ или консультация терапевта" autoComplete="off" style={inputStyle} />
+                  {showClinicDrop && renderClinicDrop()}
+                </div>
+              </div>
+              {selClinicCat && (
+                <div style={{ padding: 12, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: '#0369a1' }}><strong>Выбрана категория:</strong> {selClinicCat.name}</div>
+                  <div style={{ fontSize: 12, color: '#075985', marginTop: 4 }}>Можно добавить сразу все услуги из этой категории.</div>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                    <button className="pc-btn pc-btn-primary" onClick={addAllCatSvcs} disabled={addingCatSvcs}>
+                      {addingCatSvcs ? <>{Ico.spin} Загрузка...</> : <>{Ico.plus} Добавить все услуги</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add lab services */}
+      {modal === 'addLab' && (
+        <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={{ ...modalStyle, maxWidth: 700 }}>
+            <div style={modalHeadStyle}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Загрузить услуги из МИС</h3>
+              <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
+            </div>
+            <div style={{ padding: 24 }}>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Категория или название услуги <span style={{ color: '#ef4444' }}>*</span></label>
+                <div style={{ position: 'relative' }}>
+                  <input ref={labInputRef} type="text" value={labInp} onChange={e => handleLabInput(e.target.value)} onFocus={handleLabFocus} onBlur={handleLabBlur} onKeyDown={handleLabKey}
+                    placeholder="Например: биохимия или общий анализ крови" autoComplete="off" style={inputStyle} />
+                  {showLabDrop && renderLabDrop()}
+                </div>
+              </div>
+              {labLoading && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: 20, justifyContent: 'center', color: '#6b7280', fontSize: 14 }}>
+                  {Ico.spin} {labStatus}
+                </div>
+              )}
+              {labPreview && !labLoading && (
+                <>
+                  <div style={{ padding: 16, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {[
+                        { val: labPreview.groups.length, lbl: 'позиций' },
+                        { val: labPreview.subCount,      lbl: 'по коду 804н' },
+                        ...(labPreview.nameCount > 0 ? [{ val: labPreview.nameCount, lbl: 'по названию', warn: true }] : []),
+                        { val: labPreview.labs.length,   lbl: 'лабораторий' },
+                      ].map(s => (
+                        <div key={s.lbl} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <div style={{ fontSize: 22, fontWeight: 700, color: s.warn ? '#d97706' : '#1e40af', lineHeight: 1 }}>{s.val}</div>
+                          <div style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.3px' }}>{s.lbl}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 13, color: '#374151' }}>Лаборатории: <strong>{labPreview.labs.join(', ')}</strong></div>
+                  </div>
+                  {labPreview.groups.length > 0 && (() => {
+                    const preview = labPreview.groups.slice(0, 8);
+                    const labs    = labPreview.labs;
+                    return (
+                      <div>
+                        <div style={{ fontSize: 12, color: '#6b7280', margin: '10px 0 6px' }}>Первые {preview.length} из {labPreview.groups.length} позиций:</div>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                          <thead>
+                            <tr>
+                              <th style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'left' }}>Код 804н</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'left' }}>Название</th>
+                              {labs.map(l => <th key={l} style={{ padding: '6px 8px', border: '1px solid #e5e7eb', background: '#f9fafb', fontWeight: 600, textAlign: 'center' }}>{l}</th>)}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {preview.map((g, gi) => (
+                              <tr key={gi}>
+                                <td style={{ padding: '6px 8px', border: '1px solid #e5e7eb', color: '#6b7280', whiteSpace: 'nowrap' }}>{g.serviceCode || '—'}</td>
+                                <td style={{ padding: '6px 8px', border: '1px solid #e5e7eb' }}>{g.groupName}</td>
+                                {labs.map(l => {
+                                  const p = g.prices[l];
+                                  return <td key={l} style={{ padding: '6px 8px', border: '1px solid #e5e7eb', textAlign: 'center', color: p ? '#16a34a' : '#d1d5db', fontWeight: p ? 600 : 400 }}>{p ? p.toFixed(0) + '₽' : '—'}</td>;
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+            <div style={modalFootStyle}>
+              <button className="pc-btn pc-btn-secondary" onClick={closeModal}>Отмена</button>
+              <button className="pc-btn pc-btn-primary" onClick={saveLabGroups} disabled={!pendingGroups.length || savingGroups}>
+                {savingGroups ? <>{Ico.spin} Сохранение...</> : <>{Ico.plus} Добавить услуги</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Add competitor */}
+      {modal === 'addComp' && (
+        <div style={modalOverlayStyle} onClick={e => { if (e.target === e.currentTarget) closeModal(); }}>
+          <div style={{ ...modalStyle, maxWidth: 500 }}>
+            <div style={modalHeadStyle}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1f2937' }}>Добавить конкурента</h3>
+              <button style={closeBtnStyle} className="pc-modal-close" onClick={closeModal}>&times;</button>
+            </div>
+            <form onSubmit={addCompetitor}>
+              <div style={{ padding: 24 }}>
+                <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 500, color: '#374151' }}>Название конкурента <span style={{ color: '#ef4444' }}>*</span></label>
+                <input type="text" required value={compName} onChange={e => setCompName(e.target.value)} placeholder="Неомед, МедГрад, АйКлиник..." style={inputStyle} />
+              </div>
+              <div style={modalFootStyle}>
+                <button type="button" className="pc-btn pc-btn-secondary" onClick={closeModal}>Отмена</button>
+                <button type="submit" className="pc-btn pc-btn-primary">Добавить</button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

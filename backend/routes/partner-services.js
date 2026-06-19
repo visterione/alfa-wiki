@@ -288,6 +288,110 @@ router.get('/price-errors', authenticate, async (req, res) => {
   }
 });
 
+// ─── GET /api/partner-services/search?term=X&limit=N ─────────────────────────
+// Кросс-клиничный полнотекстовый поиск (без clinic_id) для комбобоксов
+router.get('/search', authenticate, async (req, res) => {
+  try {
+    const term  = (req.query.term || '').trim();
+    const limit = Math.min(100, parseInt(req.query.limit) || 50);
+    if (term.length < 2) return res.json({ success: true, data: [] });
+
+    const rows = await PartnerServiceCache.findAll({
+      where: {
+        isDeleted: false,
+        [Op.or]: [
+          { title:   { [Op.iLike]: `%${term}%` } },
+          { code:    { [Op.iLike]: `%${term}%` } },
+          { subCode: { [Op.iLike]: `%${term}%` } },
+        ],
+      },
+      attributes: ['serviceId', 'code', 'subCode', 'title', 'categoryTitle', 'price'],
+      order: [['title', 'ASC']],
+      limit: limit * 6,
+    });
+
+    const seen = new Set();
+    const data = [];
+    for (const r of rows) {
+      const key = r.serviceId ? `id:${r.serviceId}` : `s:${r.subCode || ''}|${r.title}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        data.push({
+          service_id: r.serviceId,
+          code:       r.code,
+          oms_code:   r.subCode,
+          title:      r.title,
+          price:      r.price,
+          category:   r.categoryTitle,
+        });
+        if (data.length >= limit) break;
+      }
+    }
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('❌ /partner-services/search:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка поиска' });
+  }
+});
+
+// ─── POST /api/partner-services/lab-services ─────────────────────────────────
+// Возвращает записи кэша по sub_codes и/или точным названиям со всех клиник.
+// Заменяет /mis/all-services (preserve_duplicates) для лабораторного режима.
+router.post('/lab-services', authenticate, async (req, res) => {
+  try {
+    const { sub_codes = [], titles = [] } = req.body;
+    if (!sub_codes.length && !titles.length) return res.json({ success: true, data: [] });
+
+    const conditions = [];
+    if (sub_codes.length) conditions.push({ subCode: { [Op.in]: sub_codes } });
+    if (titles.length)    conditions.push({ title:   { [Op.in]: titles } });
+
+    const rows = await PartnerServiceCache.findAll({
+      where: { isDeleted: false, [Op.or]: conditions },
+      attributes: ['serviceId', 'subCode', 'title', 'lab', 'price', 'costPrice'],
+    });
+
+    res.json({
+      success: true,
+      data: rows.map(r => ({
+        service_id:     r.serviceId,
+        sub_code:       r.subCode  || '',
+        title:          r.title,
+        lab:            r.lab      || '',
+        price:          r.price,
+        original_price: r.costPrice,
+      })),
+    });
+  } catch (err) {
+    console.error('❌ /partner-services/lab-services:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка получения лабораторных услуг' });
+  }
+});
+
+// ─── POST /api/partner-services/prices-by-service-ids ────────────────────────
+// Массовый поиск цен/себестоимости из кэша по serviceId × clinicId.
+// Заменяет /mis/services?clinic_id=X для обновления себестоимости.
+router.post('/prices-by-service-ids', authenticate, async (req, res) => {
+  try {
+    const { service_ids = [], clinic_ids = [] } = req.body;
+    if (!service_ids.length) return res.json({ success: true, data: [] });
+
+    const where = { isDeleted: false, serviceId: { [Op.in]: service_ids } };
+    if (clinic_ids.length) where.clinicId = { [Op.in]: clinic_ids };
+
+    const rows = await PartnerServiceCache.findAll({
+      where,
+      attributes: ['serviceId', 'clinicId', 'price', 'costPrice'],
+    });
+
+    res.json({ success: true, data: rows });
+  } catch (err) {
+    console.error('❌ /partner-services/prices-by-service-ids:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка получения цен' });
+  }
+});
+
 // ─── GET /api/partner-services ────────────────────────────────────────────────
 // Список с серверной пагинацией, поиском и фильтрами
 router.get('/', authenticate, async (req, res) => {
@@ -296,7 +400,7 @@ router.get('/', authenticate, async (req, res) => {
     if (!clinicId) return res.status(400).json({ success: false, error: 'clinic_id обязателен' });
 
     const page   = Math.max(1, parseInt(req.query.page) || 1);
-    const limit  = Math.min(200, Math.max(10, parseInt(req.query.limit) || 50));
+    const limit  = Math.min(500, Math.max(10, parseInt(req.query.limit) || 50));
     const offset = (page - 1) * limit;
     const category       = (req.query.category || '').trim();
     const lab            = (req.query.lab || '').trim();
@@ -327,7 +431,7 @@ router.get('/', authenticate, async (req, res) => {
 
     const { count, rows } = await PartnerServiceCache.findAndCountAll({
       where,
-      attributes: ['id', 'serviceId', 'code', 'subCode', 'title', 'categoryTitle', 'categoryPath', 'price', 'duration', 'lab'],
+      attributes: ['id', 'serviceId', 'code', 'subCode', 'title', 'categoryTitle', 'categoryPath', 'price', 'costPrice', 'duration', 'lab'],
       order: [['categoryTitle', 'ASC'], ['title', 'ASC']],
       limit,
       offset
