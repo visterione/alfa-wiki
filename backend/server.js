@@ -352,8 +352,8 @@ async function startServer() {
     // Initialize missed calls polling cron job (every minute, polls Nextcloud for ATC data)
     require('./cron/missedCallsCron');
 
-    // Initialize partner services cache cron job (nightly at 02:00 MSK)
-    require('./cron/partnerServicesCacheCron');
+    // Кэш услуг партнёров синхронизирует отдельный воркер scripts/syncWorker.js
+    // (кросс-платформенно, через день, не зависит от веб-сервера). Здесь расписание не регистрируем.
 
     // Initialize MIS schedule auto-import cron job (14th and 28th at 03:00 MSK)
     require('./cron/misScheduleAutoImportCron');

@@ -16,7 +16,8 @@ const CLINICS = [
   { id: 1, name: 'Проф',   code: 'П',  color: '#9999ff' },
   { id: 6, name: 'Линия',  code: 'Л',  color: '#e2d1bb' },
   { id: 4, name: '3К',     code: '3К', color: '#800080' },
-  { id: 7, name: 'Смайл',  code: 'С',  color: '#999999' }
+  { id: 7, name: 'Смайл',  code: 'С',  color: '#999999' },
+  { id: 11, name: 'Сукко', code: 'СК', color: '#14b8a6' }
 ];
 
 // ─── GET /api/partner-services/clinics ───────────────────────────────────────
@@ -348,7 +349,7 @@ router.post('/lab-services', authenticate, async (req, res) => {
     if (titles.length)    conditions.push({ title:   { [Op.in]: titles } });
 
     const rows = await PartnerServiceCache.findAll({
-      where: { isDeleted: false, [Op.or]: conditions },
+      where: { isDeleted: false, lab: { [Op.not]: null }, [Op.or]: conditions },
       attributes: ['serviceId', 'subCode', 'title', 'lab', 'price', 'costPrice'],
     });
 

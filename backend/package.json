@@ -8,7 +8,9 @@
     "dev": "nodemon server.js",
     "db:init": "node scripts/initDb.js",
     "db:seed": "node scripts/seedDb.js",
-    "backup": "node scripts/backup.js"
+    "backup": "node scripts/backup.js",
+    "sync-worker": "node scripts/syncWorker.js",
+    "sync-once": "node scripts/syncPartnerServices.js"
   },
   "dependencies": {
     "archiver": "^6.0.1",

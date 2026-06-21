@@ -235,11 +235,20 @@ function TabPartnerServices() {
         const s = String(v);
         return /^\s/.test(s) || /\s$/.test(s) || INVIS.test(s) || /  /.test(s);
       }
+      // \u041a\u043e\u0434 804\u043d: \u043b\u0430\u0442\u0438\u043d\u0441\u043a\u0430\u044f A/B + 2 \u0446\u0438\u0444\u0440\u044b, \u0434\u0430\u043b\u0435\u0435 \u0441\u0435\u0433\u043c\u0435\u043d\u0442\u044b \u0438\u0437 \u0446\u0438\u0444\u0440 \u0447\u0435\u0440\u0435\u0437 \u0442\u043e\u0447\u043a\u0443 (A21.01.010)
+      const SUBCODE_804N = /^[AB]\d{2}(\.\d+)+$/;
+      function bad804n(v) {
+        if (!v) return false;
+        const s = String(v).trim();
+        if (!s) return false;
+        return !SUBCODE_804N.test(s);
+      }
       const problems = r.data.reduce((acc, s) => {
         const fields = [];
         if (hasExtra(s.code))    fields.push('code');
         if (hasExtra(s.subCode)) fields.push('subCode');
         if (hasExtra(s.title))   fields.push('title');
+        if (bad804n(s.subCode))  fields.push('subCodeFormat');
         if (fields.length) acc.push({ service: s, fields });
         return acc;
       }, []);
@@ -532,13 +541,13 @@ function TabPartnerServices() {
           {checks?.problems.length === 0 && (
             <div className="ps-checks-summary ps-checks-ok">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 4 }}><polyline points="20 6 9 17 4 12"/></svg>
-              Лишних символов не обнаружено в <strong>{checks.total.toLocaleString('ru-RU')}</strong> записях
+              Ошибок не обнаружено в <strong>{checks.total.toLocaleString('ru-RU')}</strong> записях
             </div>
           )}
           {checks?.problems.length > 0 && (
             <>
               <div className="ps-checks-summary">
-                Обнаружено <strong>{checks.problems.length}</strong> записей с лишними символами из {checks.total.toLocaleString('ru-RU')}
+                Обнаружено <strong>{checks.problems.length}</strong> записей с ошибками из {checks.total.toLocaleString('ru-RU')}
               </div>
               <div className="ps-table-container"><div className="ps-table-scroll">
                 <table className="ps-table">
@@ -550,11 +559,11 @@ function TabPartnerServices() {
                   </tr></thead>
                   <tbody>
                     {checks.problems.map(({ service: s, fields }, i) => {
-                      const FIELD_NAMES = { code: 'Артикул', subCode: 'Код804н', title: 'Название' };
+                      const FIELD_NAMES = { code: 'Артикул', subCode: 'Код804н', title: 'Название', subCodeFormat: 'Код804н: формат' };
                       return (
                         <tr key={i}>
                           <td className={fields.includes('code') ? 'ps-check-cell' : ''} dangerouslySetInnerHTML={{ __html: escWithMarkers(s.code) }} />
-                          <td className={fields.includes('subCode') ? 'ps-check-cell' : ''} dangerouslySetInnerHTML={{ __html: escWithMarkers(s.subCode) }} />
+                          <td className={fields.includes('subCode') || fields.includes('subCodeFormat') ? 'ps-check-cell' : ''} dangerouslySetInnerHTML={{ __html: escWithMarkers(s.subCode) }} />
                           <td className={`col-name${fields.includes('title') ? ' ps-check-cell' : ''}`} dangerouslySetInnerHTML={{ __html: escWithMarkers(s.title) }} />
                           <td className="col-name">{s.categoryTitle || '—'}</td>
                           <td className="ps-check-badge-cell">{fields.map(f => <span key={f} className="ps-check-badge">{FIELD_NAMES[f]}</span>)}</td>

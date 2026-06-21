@@ -6083,6 +6083,48 @@ function pcAbbr(name) {
   return name.slice(0, 2).toUpperCase();
 }
 
+// ── Логотипы лабораторий (режим «Шкала») ──────────────────────────────────────
+// 1) Положите файлы логотипов в  frontend/public/lab-logos/
+// 2) Пропишите соответствие ниже: ключ — название лаборатории как оно приходит
+//    из МИС (регистр и лишние пробелы не важны), значение — путь от /lab-logos/.
+// Если соответствия/файла нет — в кружке останется буквенная аббревиатура.
+const LAB_LOGOS = {
+  // Раскомментируйте строку, когда положите соответствующий файл в frontend/public/lab-logos/.
+  // 'инвитро':                                '/lab-logos/invitro.png',
+  // 'кдл':                                    '/lab-logos/kdl.png',
+  // 'смлаб':                                  '/lab-logos/smlab.png',
+  // 'cl-lab':                                 '/lab-logos/cl-lab.png',
+  // 'альфа':                                  '/lab-logos/alfa.png',
+  // 'микротех':                               '/lab-logos/microtech.png',
+  // 'альфа проф':                             '/lab-logos/alfa-prof.png',
+  // 'хеликс':                                 '/lab-logos/helix.png',
+  // 'medical genomics':                       '/lab-logos/medical-genomics.png',
+  // 'альфа линия':                            '/lab-logos/alfa-liniya.png',
+  // 'гбуз краевая клиническая больница №1':   '/lab-logos/gbuz-kkb1.png',
+  // 'гбуз "городская больница города анапа"': '/lab-logos/gbuz-anapa.png',
+  // 'альфа kids':                             '/lab-logos/alfa-kids.png',
+};
+function pcLabKey(name) { return (name || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+function pcLabLogo(name) {
+  const f = LAB_LOGOS[pcLabKey(name)];
+  return f ? (process.env.PUBLIC_URL || '') + f : null;
+}
+
+// Кружок на шкале: логотип лаборатории, с фолбэком на аббревиатуру при отсутствии/ошибке файла.
+function ScaleDot({ name, isBase, color }) {
+  const [imgErr, setImgErr] = useState(false);
+  const logo = pcLabLogo(name);
+  const showImg = logo && !imgErr;
+  const size = isBase ? 24 : 20;
+  return (
+    <div title={name} style={{ width: size, height: size, borderRadius: '50%', background: showImg ? '#fff' : color, border: `2px solid ${isBase ? '#3b82f6' : '#fff'}`, boxShadow: '0 1px 4px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, cursor: 'default', userSelect: 'none', overflow: 'hidden' }}>
+      {showImg
+        ? <img src={logo} alt={name} draggable={false} onError={() => setImgErr(true)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        : pcAbbr(name)}
+    </div>
+  );
+}
+
 function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
   if (!allVals.length) return null;
   const maxDelta = Math.max(...allVals.map(x => Math.abs(x.val - (baseVal ?? x.val))), 1);
@@ -6109,9 +6151,7 @@ function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
             <div key={x.name} style={{ position: 'absolute', left: `${pos}%`, top: '50%', transform: 'translate(-50%,-50%)', zIndex: isBase ? 2 : 1 }}
               onMouseEnter={e => onHover(e, x.name, x.val, diff, isBase)}
               onMouseLeave={onLeave}>
-              <div style={{ width: isBase ? 24 : 20, height: isBase ? 24 : 20, borderRadius: '50%', background: color, border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, color: '#fff', fontWeight: 700, cursor: 'default', userSelect: 'none' }}>
-                {pcAbbr(x.name)}
-              </div>
+              <ScaleDot name={x.name} isBase={isBase} color={color} />
             </div>
           );
         })}
@@ -6121,13 +6161,16 @@ function ScaleRow({ label, allVals, baseVal, onHover, onLeave }) {
   );
 }
 
-function pcGroupBySub(services) {
+function pcGroupBySub(services, titleTo804n = {}) {
   const bySub = {}, byName = {};
   services.forEach(s => {
-    const lab   = (s.lab || '').trim() || 'Без лаборатории';
-    const price = parseFloat(s.price) || 0;
-    const cost  = parseFloat(s.original_price) || 0;
-    const sub   = (s.sub_code || '').trim();
+    const lab = (s.lab || '').trim();
+    if (!lab) return;
+    const price  = parseFloat(s.price) || 0;
+    const cost   = parseFloat(s.original_price) || 0;
+    const rawSub = (s.sub_code || '').trim();
+    const is804n = /^[A-Z][0-9]{2}\./.test(rawSub);
+    const sub    = is804n ? rawSub : (titleTo804n[pcNorm(s.title)] || '');
     if (sub) {
       if (!bySub[sub]) bySub[sub] = { serviceCode: sub, groupName: s.title, prices: {}, costPrices: {}, matchType: 'sub_code' };
       if (!(lab in bySub[sub].prices)) { bySub[sub].prices[lab] = price; bySub[sub].costPrices[lab] = cost; }
@@ -6139,6 +6182,109 @@ function pcGroupBySub(services) {
   });
   return [...Object.values(bySub), ...Object.values(byName)];
 }
+
+// Memoized comparison row — skips re-render when tooltip/hover state changes in the parent.
+const PcCompRow = React.memo(function PcCompRow({ item, orderedCols, hiddenCols, baseCol, onUpdatePrice, onDelete, onTipShow, onTipHide }) {
+  const basePrice  = (item.prices || {})[baseCol] ?? null;
+  const baseCost   = (item.costPrices || {})[baseCol] ?? null;
+  const baseMargin = basePrice != null && baseCost != null ? basePrice - baseCost : null;
+  const Chip = ({ d }) => d ? <span className={`pc-diff ${d.cls}`} style={{ marginLeft: 4, fontSize: 10, whiteSpace: 'nowrap' }}>{d.text}</span> : null;
+  return (
+    <tr>
+      <td style={{ textAlign: 'center' }}>{item.serviceCode || '—'}</td>
+      <td title={item.serviceName}><div style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.serviceName}</div></td>
+      {orderedCols.map(col => {
+        const isHidden    = hiddenCols.includes(col.name);
+        const isBase      = col.name === baseCol;
+        const colCls      = `pc-col-single${isHidden ? ' hidden' : ''}`;
+        const price       = (item.prices || {})[col.name] ?? null;
+        const cost        = (item.costPrices || {})[col.name] ?? null;
+        const margin      = price != null && cost != null ? price - cost : null;
+        const hist        = item.priceHistory?.[col.name];
+        const hasHist     = hist && hist.length > 0;
+        const last        = hasHist ? hist[hist.length - 1] : null;
+        const diffPrice  = !isBase && basePrice  && price       ? pcDiff(basePrice,  price)       : null;
+        const diffCost   = !isBase && baseCost   && cost        ? pcDiff(baseCost,   cost)        : null;
+        const diffMargin = !isBase && baseMargin != null && margin != null ? pcDiff(baseMargin, margin) : null;
+        return (
+          <td key={col.name} className={colCls} style={{ textAlign: 'center', verticalAlign: 'middle', padding: '6px 8px' }}>
+            {(() => {
+              const GREEN = '#16a34a', RED = '#dc2626', BLACK = '#111827', NONE = '#9ca3af';
+              const cmpClr = (diff, val, base) => {
+                if (isBase) return val == null ? NONE : BLACK;
+                if (diff) return diff.cls === 'positive' ? GREEN : diff.cls === 'negative' ? RED : BLACK;
+                if (val == null) return NONE;
+                if (base != null) return val > base ? GREEN : val < base ? RED : BLACK;
+                return BLACK;
+              };
+              const marginClr = isBase
+                ? (margin == null ? NONE : BLACK)
+                : (margin == null ? NONE : margin > 0 ? GREEN : RED);
+              return col.type === 'own' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffPrice, price, basePrice) }}>{pcFmt(price)}</span>
+                    <Chip d={diffPrice} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffCost, cost, baseCost) }}>{pcFmt(cost)}</span>
+                    <Chip d={diffCost} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
+                    <Chip d={diffMargin} />
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      key={`${item.id}-${col.name}-p-${price ?? ''}`}
+                      type="number"
+                      className={`pc-price-input${hasHist ? ' has-history' : ''}`}
+                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #d1d5db', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffPrice, price, basePrice), fontWeight: 600, outline: 'none' }}
+                      defaultValue={price ?? ''}
+                      placeholder="—"
+                      onBlur={e => onUpdatePrice(item.id, col.name, e.target.value, 'price')}
+                      onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
+                      onBlurCapture={e => e.target.style.borderBottomColor = '#d1d5db'}
+                      onMouseEnter={hasHist ? (e => onTipShow(e, last)) : undefined}
+                      onMouseLeave={hasHist ? () => onTipHide() : undefined}
+                    />
+                    <Chip d={diffPrice} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <input
+                      key={`${item.id}-${col.name}-c-${cost ?? ''}`}
+                      type="number"
+                      className="pc-price-input"
+                      style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #e5e7eb', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffCost, cost, baseCost), fontWeight: 600, outline: 'none' }}
+                      defaultValue={cost ?? ''}
+                      placeholder="—"
+                      onBlur={e => onUpdatePrice(item.id, col.name, e.target.value, 'cost')}
+                      onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
+                      onBlurCapture={e => e.target.style.borderBottomColor = '#e5e7eb'}
+                    />
+                    <Chip d={diffCost} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
+                    <Chip d={diffMargin} />
+                  </div>
+                </div>
+              );
+            })()}
+          </td>
+        );
+      })}
+      <td style={{ textAlign: 'center' }}>
+        <button className="pc-act-btn del" onClick={() => onDelete(item.id)} title="Удалить" style={{ width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ width: 18, height: 18 }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 export function TabServices() {
   // ── State ────────────────────────────────────────────────────────────────
@@ -6152,6 +6298,9 @@ export function TabServices() {
   const [baseCol,      setBaseColVal]   = useState(null);
   const [viewMode,     setViewModeVal]  = useState('price');
   const [filterText,   setFilterText]   = useState('');
+  const [debFilter,    setDebFilter]    = useState('');   // debounced filter (used for filtering)
+  const [page,         setPage]         = useState(1);
+  const PAGE_SIZE = 200;
   const [clinics,      setClinics]      = useState([]);
   const [scaleView,    setScaleView]    = useState(false);
   const [scaleTtip,    setScaleTtip]    = useState(null);
@@ -6199,9 +6348,16 @@ export function TabServices() {
   const labReqId      = useRef(0);
   const clinicInputRef= useRef(null);
   const labInputRef   = useRef(null);
+  const itemsRef      = useRef(items);
+  itemsRef.current    = items;
+  const compRef       = useRef(comp);
+  compRef.current     = comp;
 
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => { loadComps('clinic'); loadClinics(); }, []); // eslint-disable-line
+
+  // Debounce the filter text so typing doesn't re-filter/re-render on every keystroke.
+  useEffect(() => { const t = setTimeout(() => setDebFilter(filterText), 250); return () => clearTimeout(t); }, [filterText]);
 
   // ── API ───────────────────────────────────────────────────────────────────
   function loadComps(m) {
@@ -6305,26 +6461,29 @@ export function TabServices() {
   }
 
   // ── Price update ──────────────────────────────────────────────────────────
-  function updatePrice(itemId, colName, value, field = 'price') {
-    if (!comp) return;
-    const item = items.find(i => i.id === itemId);
+  // Stable callbacks (read live state via refs) so memoized rows don't re-render on hover/edit.
+  const updatePrice = useCallback((itemId, colName, value, field = 'price') => {
+    const c = compRef.current;
+    if (!c) return;
+    const item = itemsRef.current.find(i => i.id === itemId);
     if (!item) return;
     if (field === 'cost') {
       const nc = { ...(item.costPrices || {}), [colName]: value ? parseFloat(value) : null };
-      pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: item.prices, costPrices: nc }) })
+      pcFetch(`${PC_URL}/${c.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: item.prices, costPrices: nc }) })
         .then(u => setItems(prev => prev.map(i => i.id === itemId ? u : i))).catch(e => toast.error(e.message));
     } else {
       const np = { ...item.prices, [colName]: value ? parseFloat(value) : null };
-      pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: np }) })
+      pcFetch(`${PC_URL}/${c.id}/items/${itemId}`, { method: 'PUT', body: JSON.stringify({ prices: np }) })
         .then(u => setItems(prev => prev.map(i => i.id === itemId ? u : i))).catch(e => toast.error(e.message));
     }
-  }
+  }, []);
 
-  function deleteItem(itemId) {
-    if (!comp || !window.confirm('Удалить услугу?')) return;
-    pcFetch(`${PC_URL}/${comp.id}/items/${itemId}`, { method: 'DELETE' })
-      .then(() => { toast.success('Услуга удалена'); loadComp(comp.id); }).catch(e => toast.error(e.message));
-  }
+  const deleteItem = useCallback((itemId) => {
+    const c = compRef.current;
+    if (!c || !window.confirm('Удалить услугу?')) return;
+    pcFetch(`${PC_URL}/${c.id}/items/${itemId}`, { method: 'DELETE' })
+      .then(() => { toast.success('Услуга удалена'); setItems(prev => prev.filter(i => i.id !== itemId)); }).catch(e => toast.error(e.message));
+  }, []);
 
   // ── Clinic combobox ───────────────────────────────────────────────────────
   function posClinicDrop() {
@@ -6461,7 +6620,7 @@ export function TabServices() {
   }
 
   function loadLabCats() {
-    if (labCatOpts.length) return;
+    if (labCatOpts.length && labCatOpts[0]?.allIds) return;
     pcFetch(`${MIS_PC}/get-service-categories`, { method: 'POST', body: '{}' }).then(res => {
       if (res.error !== 0 || !res.data?.length) return;
       const opts = [];
@@ -6472,6 +6631,14 @@ export function TabServices() {
         });
       }
       collect(res.data, 0);
+      opts.forEach((opt, idx) => {
+        const ids = [opt.value];
+        for (let i = idx + 1; i < opts.length; i++) {
+          if (opts[i].level <= opt.level) break;
+          ids.push(opts[i].value);
+        }
+        opt.allIds = ids;
+      });
       setLabCatOpts(opts);
     }).catch(() => {});
   }
@@ -6514,24 +6681,39 @@ export function TabServices() {
     else if (e.key === 'Escape')  setShowLabDrop(false);
   }
 
-  function selectLabOpt(opt) { opt.kind === 'cat' ? selectLabCat(opt.value, opt.name) : selectLabSvc(opt); }
+  function selectLabOpt(opt) { opt.kind === 'cat' ? selectLabCat(opt.value, opt.name, opt.allIds) : selectLabSvc(opt); }
 
-  function selectLabCat(id, name) {
+  function selectLabCat(id, name, allIds) {
     setLabInp(name); setSelLabCat({ id, name }); setShowLabDrop(false); setLabHigh(-1);
     setLabPreview(null); setPendingGroups([]); setLabLoading(true); setLabStatus('Загрузка категории...');
-    const refClinicId = clinics[0]?.id || 2;
-    pcFetch(`${PS_URL}?category_id=${id}&clinic_id=${refClinicId}&limit=1000`)
-      .then(res => {
-        if (!res.success || !res.data?.length) { setLabLoading(false); toast.error('В категории нет услуг'); return Promise.reject('empty'); }
+    const clinicIds = clinics.length ? clinics.map(c => c.id) : [2];
+    const categoryIds = allIds?.length ? allIds : [id];
+    let titleTo804n = {};
+    Promise.all(clinicIds.flatMap(cid => categoryIds.map(catId =>
+      pcFetch(`${PS_URL}?category_id=${catId}&clinic_id=${cid}&limit=1000`)
+        .then(res => (res.success ? (res.data || []) : []))
+        .catch(() => [])
+    )))
+      .then(lists => {
+        const rows = lists.flat();
+        if (!rows.length) { setLabLoading(false); toast.error('В категории нет услуг'); return Promise.reject('empty'); }
         const subSet = new Set(), titleSet = new Set();
-        res.data.forEach(s => { const sub = (s.subCode || '').trim(); if (sub) subSet.add(sub); else if (s.title) titleSet.add(s.title); });
+        titleTo804n = {};
+        rows.forEach(s => {
+          const sub = (s.subCode || '').trim();
+          if (sub && /^[A-Z][0-9]{2}\./.test(sub)) {
+            subSet.add(sub);
+            if (s.title) titleTo804n[pcNorm(s.title)] = sub;
+          }
+          if (s.title) titleSet.add(s.title);
+        });
         setLabStatus('Поиск совпадений в кэше лабораторий...');
         return fetchLabServices([...subSet], [...titleSet]);
       })
       .then(matched => {
         setLabLoading(false);
         if (!matched?.length) { toast.error('Совпадений не найдено'); return; }
-        const groups = pcGroupBySub(matched);
+        const groups = pcGroupBySub(matched, titleTo804n);
         setPendingGroups(groups); setLabPreview(buildLabPreview(groups));
       })
       .catch(e => { if (e === 'empty') return; setLabLoading(false); toast.error('Ошибка: ' + (e.message || e)); });
@@ -6541,13 +6723,15 @@ export function TabServices() {
     setShowLabDrop(false); setLabInp(svc.title || ''); setLabPreview(null); setPendingGroups([]);
     setLabLoading(true); setLabStatus('Поиск в кэше лабораторий...');
     const sub      = (svc.oms_code || '').trim();
-    const subCodes = sub ? [sub] : [];
-    const titles   = sub ? [] : (svc.title ? [svc.title] : []);
+    const is804n   = /^[A-Z][0-9]{2}\./.test(sub);
+    const subCodes = is804n ? [sub] : [];
+    const titles   = svc.title ? [svc.title] : [];
+    const titleTo804n = (is804n && svc.title) ? { [pcNorm(svc.title)]: sub } : {};
     fetchLabServices(subCodes, titles)
       .then(matched => {
         setLabLoading(false);
         if (!matched.length) { toast.error('Совпадений не найдено'); return; }
-        const groups = pcGroupBySub(matched);
+        const groups = pcGroupBySub(matched, titleTo804n);
         setPendingGroups(groups); setLabPreview(buildLabPreview(groups));
       })
       .catch(e => { setLabLoading(false); toast.error('Ошибка: ' + e.message); });
@@ -6569,11 +6753,12 @@ export function TabServices() {
   }
 
   // ── Tooltip ───────────────────────────────────────────────────────────────
-  function showTtip(e, change) {
+  const showTtip = useCallback((e, change) => {
     const r = e.currentTarget.getBoundingClientRect();
     const dt = new Date(change.changedAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     setTtip({ x: r.left + r.width / 2, y: r.top, user: change.username, date: dt });
-  }
+  }, []);
+  const hideTtip = useCallback(() => setTtip(null), []);
 
   // ── Excel export ──────────────────────────────────────────────────────────
   async function exportXlsx() {
@@ -6637,10 +6822,19 @@ export function TabServices() {
   }, [allCols, baseCol]);
 
   const filteredItems = useMemo(() => {
-    if (!filterText) return items;
-    const t = filterText.toLowerCase();
+    if (!debFilter) return items;
+    const t = debFilter.toLowerCase();
     return items.filter(i => i.serviceName.toLowerCase().includes(t) || (i.serviceCode || '').toLowerCase().includes(t));
-  }, [items, filterText]);
+  }, [items, debFilter]);
+
+  // ── Pagination (caps DOM size for large categories) ────────────────────────
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  useEffect(() => { setPage(1); }, [debFilter, selId, scaleView]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+  const pagedItems = useMemo(
+    () => filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredItems, page]
+  );
 
   const totalDataCols = orderedCols.length;
   const totalCols     = 2 + totalDataCols + 1;
@@ -6698,7 +6892,7 @@ export function TabServices() {
         {cats.length > 0 && <>
           <div style={{ padding: '8px 12px 4px', fontSize: 12, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Категории</div>
           {cats.map(opt => { const i = gi++; return (
-            <div key={opt.value} className={`pc-drop-item${opt.value === selLabCat?.id ? ' selected-opt' : ''}${i === labHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectLabCat(opt.value, opt.name)}>{opt.text}</div>
+            <div key={opt.value} className={`pc-drop-item${opt.value === selLabCat?.id ? ' selected-opt' : ''}${i === labHigh ? ' highlighted' : ''}`} data-level={opt.level} style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13 }} onMouseDown={() => selectLabCat(opt.value, opt.name, opt.allIds)}>{opt.text}</div>
           ); })}
         </>}
         {labInp.trim().length >= 2 && <>
@@ -6724,109 +6918,21 @@ export function TabServices() {
       return <tr><td colSpan={3} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>Создайте сравнение или выберите существующее</td></tr>;
     }
     if (!filteredItems.length) {
-      return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>{filterText ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
+      return <tr><td colSpan={totalCols} style={{ textAlign: 'center', padding: 40, color: '#9ca3af' }}>{debFilter ? 'Ничего не найдено' : 'Нет услуг. Добавьте услугу для сравнения.'}</td></tr>;
     }
-    return filteredItems.map(item => {
-      const basePrice  = (item.prices || {})[baseCol] ?? null;
-      const baseCost   = (item.costPrices || {})[baseCol] ?? null;
-      const baseMargin = basePrice != null && baseCost != null ? basePrice - baseCost : null;
-      return (
-        <tr key={item.id}>
-          <td style={{ textAlign: 'center' }}>{item.serviceCode || '—'}</td>
-          <td title={item.serviceName}><div style={{ maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.serviceName}</div></td>
-          {orderedCols.map(col => {
-            const isHidden    = hiddenCols.includes(col.name);
-            const isBase      = col.name === baseCol;
-            const colCls      = `pc-col-single${isHidden ? ' hidden' : ''}`;
-            const price       = (item.prices || {})[col.name] ?? null;
-            const cost        = (item.costPrices || {})[col.name] ?? null;
-            const margin      = price != null && cost != null ? price - cost : null;
-            const hist        = item.priceHistory?.[col.name];
-            const hasHist     = hist && hist.length > 0;
-            const last        = hasHist ? hist[hist.length - 1] : null;
-            const diffPrice  = !isBase && basePrice  && price       ? pcDiff(basePrice,  price)       : null;
-            const diffCost   = !isBase && baseCost   && cost        ? pcDiff(baseCost,   cost)        : null;
-            const diffMargin = !isBase && baseMargin != null && margin != null ? pcDiff(baseMargin, margin) : null;
-            const Chip = ({ d }) => d ? <span className={`pc-diff ${d.cls}`} style={{ marginLeft: 4, fontSize: 10, whiteSpace: 'nowrap' }}>{d.text}</span> : null;
-            return (
-              <td key={col.name} className={colCls} style={{ textAlign: 'center', verticalAlign: 'middle', padding: '6px 8px' }}>
-                {(() => {
-                  const GREEN = '#16a34a', RED = '#dc2626', BLACK = '#111827', NONE = '#9ca3af';
-                  const cmpClr = (diff, val, base) => {
-                    if (isBase) return val == null ? NONE : BLACK;
-                    if (diff) return diff.cls === 'positive' ? GREEN : diff.cls === 'negative' ? RED : BLACK;
-                    if (val == null) return NONE;
-                    if (base != null) return val > base ? GREEN : val < base ? RED : BLACK;
-                    return BLACK;
-                  };
-                  const marginClr = isBase
-                    ? (margin == null ? NONE : BLACK)
-                    : (margin == null ? NONE : margin > 0 ? GREEN : RED);
-                  return col.type === 'own' ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffPrice, price, basePrice) }}>{pcFmt(price)}</span>
-                        <Chip d={diffPrice} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: cmpClr(diffCost, cost, baseCost) }}>{pcFmt(cost)}</span>
-                        <Chip d={diffCost} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
-                        <Chip d={diffMargin} />
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <input
-                          key={`${item.id}-${col.name}-p-${price ?? ''}`}
-                          type="number"
-                          className={`pc-price-input${hasHist ? ' has-history' : ''}`}
-                          style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #d1d5db', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffPrice, price, basePrice), fontWeight: 600, outline: 'none' }}
-                          defaultValue={price ?? ''}
-                          placeholder="—"
-                          onBlur={e => updatePrice(item.id, col.name, e.target.value, 'price')}
-                          onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
-                          onBlurCapture={e => e.target.style.borderBottomColor = '#d1d5db'}
-                          onMouseEnter={hasHist ? (e => showTtip(e, last)) : undefined}
-                          onMouseLeave={hasHist ? () => setTtip(null) : undefined}
-                        />
-                        <Chip d={diffPrice} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center' }}>
-                        <input
-                          key={`${item.id}-${col.name}-c-${cost ?? ''}`}
-                          type="number"
-                          className="pc-price-input"
-                          style={{ width: 88, padding: '2px 4px', border: 'none', borderBottom: '1px dashed #e5e7eb', background: 'transparent', borderRadius: 0, fontSize: 13, textAlign: 'center', color: cmpClr(diffCost, cost, baseCost), fontWeight: 600, outline: 'none' }}
-                          defaultValue={cost ?? ''}
-                          placeholder="—"
-                          onBlur={e => updatePrice(item.id, col.name, e.target.value, 'cost')}
-                          onFocus={e => e.target.style.borderBottomColor = '#3b82f6'}
-                          onBlurCapture={e => e.target.style.borderBottomColor = '#e5e7eb'}
-                        />
-                        <Chip d={diffCost} />
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: marginClr }}>{margin != null ? pcFmt(margin) : '—'}</span>
-                        <Chip d={diffMargin} />
-                      </div>
-                    </div>
-                  );
-                })()}
-              </td>
-            );
-          })}
-          <td style={{ textAlign: 'center' }}>
-            <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} title="Удалить" style={{ width: 32, height: 32, border: 'none', background: '#f3f4f6', borderRadius: 6, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
-              {Ico.trash}
-            </button>
-          </td>
-        </tr>
-      );
-    });
+    return pagedItems.map(item => (
+      <PcCompRow
+        key={item.id}
+        item={item}
+        orderedCols={orderedCols}
+        hiddenCols={hiddenCols}
+        baseCol={baseCol}
+        onUpdatePrice={updatePrice}
+        onDelete={deleteItem}
+        onTipShow={showTtip}
+        onTipHide={hideTtip}
+      />
+    ));
   }
 
   const closeModal = () => setModal(null);
@@ -6988,7 +7094,7 @@ export function TabServices() {
 
       {/* Table */}
       <div style={{ background: '#fff', borderRadius: 12, boxShadow: '0 2px 8px rgba(0,0,0,.06)', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-        <div style={{ maxHeight: 'calc(100vh - 340px)', overflow: 'auto' }}>
+        <div style={{ maxHeight: 'calc(100vh - 150px)', overflow: 'auto' }}>
           <table className="pc-table">
             <thead>
               {!comp || !allCols.length ? (
@@ -7022,15 +7128,13 @@ export function TabServices() {
               )}
             </thead>
             <tbody>
-              {scaleView ? filteredItems.map(item => {
+              {scaleView ? pagedItems.map(item => {
                 const visibleCols = orderedCols.filter(col => !hiddenCols.includes(col.name));
                 const mkVals = (getFn) => visibleCols.map(col => ({ name: col.name, val: getFn(col), isBase: col.name === baseCol })).filter(x => x.val != null);
                 const priceVals  = mkVals(col => (item.prices || {})[col.name] ?? null);
                 const costVals   = mkVals(col => (item.costPrices || {})[col.name] ?? null);
-                const marginVals = mkVals(col => { const p = (item.prices || {})[col.name] ?? null, c = (item.costPrices || {})[col.name] ?? null; return p != null && c != null ? p - c : null; });
                 const basePrice  = priceVals.find(x => x.isBase)?.val ?? null;
                 const baseCost   = costVals.find(x => x.isBase)?.val ?? null;
-                const baseMargin = marginVals.find(x => x.isBase)?.val ?? null;
                 const onHover = (e, name, val, diff, isBase) => setScaleTtip({ x: e.clientX, y: e.clientY, name, val, diff, isBase });
                 const onLeave = () => setScaleTtip(null);
                 return (
@@ -7040,7 +7144,6 @@ export function TabServices() {
                     <td style={{ padding: '8px 16px' }}>
                       <ScaleRow label="Стоимость"     allVals={priceVals}  baseVal={basePrice}  onHover={onHover} onLeave={onLeave} />
                       <ScaleRow label="Себестоимость"  allVals={costVals}   baseVal={baseCost}   onHover={onHover} onLeave={onLeave} />
-                      <ScaleRow label="Маржа"          allVals={marginVals} baseVal={baseMargin} onHover={onHover} onLeave={onLeave} />
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <button className="pc-act-btn del" onClick={() => deleteItem(item.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#9ca3af', padding: 4 }} onMouseEnter={e => e.currentTarget.style.color='#ef4444'} onMouseLeave={e => e.currentTarget.style.color='#9ca3af'}>{Ico.trash}</button>
@@ -7051,6 +7154,18 @@ export function TabServices() {
             </tbody>
           </table>
         </div>
+        {comp && filteredItems.length > PAGE_SIZE && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '10px 16px', borderTop: '1px solid #e5e7eb', background: '#f8fafc', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#6b7280' }}>
+              {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filteredItems.length)} из {filteredItems.length.toLocaleString('ru-RU')}
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button className="pc-btn pc-btn-secondary" style={{ padding: '6px 12px' }} disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))}>‹ Назад</button>
+              <span style={{ fontSize: 13, color: '#374151', minWidth: 90, textAlign: 'center' }}>Стр. {page} из {totalPages}</span>
+              <button className="pc-btn pc-btn-secondary" style={{ padding: '6px 12px' }} disabled={page >= totalPages} onClick={() => setPage(p => Math.min(totalPages, p + 1))}>Вперёд ›</button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Modal: New comparison */}

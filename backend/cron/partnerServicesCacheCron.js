@@ -10,7 +10,6 @@
  * - UPSERT по (clinicId, serviceId) — обновляем только изменившиеся записи
  */
 
-const cron = require('node-cron');
 const axios = require('axios');
 const qs = require('qs');
 const { PartnerServiceCache, sequelize } = require('../models');
@@ -29,7 +28,8 @@ const CLINICS = [
   { id: 1, name: 'Проф' },
   { id: 6, name: 'Линия' },
   { id: 4, name: '3К' },
-  { id: 7, name: 'Смайл' }
+  { id: 7, name: 'Смайл' },
+  { id: 11, name: 'Сукко' }
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -80,9 +80,21 @@ const flattenCategories = (categories, parentPath = '') => {
 
 // ─── Основная функция синхронизации ─────────────────────────────────────────
 
-const syncPartnerServicesCache = async () => {
+// Защита от параллельного запуска в рамках одного процесса (ночной крон + ручной /sync)
+let isSyncing = false;
+
+// opts.clinicIds — необязательный массив id медцентров для частичной синхронизации
+// (например, чтобы догрузить только новый медцентр). По умолчанию — все CLINICS.
+const syncPartnerServicesCache = async (opts = {}) => {
+  if (isSyncing) {
+    console.warn('⚠️  [PARTNER-SYNC] Синхронизация уже выполняется — пропуск повторного запуска.');
+    return { success: false, reason: 'already_running' };
+  }
+  isSyncing = true;
   const startTime = Date.now();
-  console.log('🚀 [PARTNER-SYNC] Начало синхронизации кэша услуг партнёров...');
+  const clinicIds = Array.isArray(opts.clinicIds) && opts.clinicIds.length ? opts.clinicIds : null;
+  const clinicsToSync = clinicIds ? CLINICS.filter(c => clinicIds.includes(c.id)) : CLINICS;
+  console.log(`🚀 [PARTNER-SYNC] Начало синхронизации кэша услуг партнёров${clinicIds ? ` (только медцентры: ${clinicIds.join(', ')})` : ''}...`);
 
   // Убеждаемся что таблица существует
   try {
@@ -96,6 +108,7 @@ const syncPartnerServicesCache = async () => {
   const catData = await misRequest('getServiceCategories', {});
   if (!catData || catData.error !== 0 || !Array.isArray(catData.data)) {
     console.error('❌ [PARTNER-SYNC] Не удалось получить категории. Прерываем.');
+    isSyncing = false;
     return { success: false, reason: 'categories_failed' };
   }
 
@@ -108,7 +121,7 @@ const syncPartnerServicesCache = async () => {
   const clinicStats = {};
 
   // 2. Для каждого медцентра — обходим категории по одной
-  for (const clinic of CLINICS) {
+  for (const clinic of clinicsToSync) {
     console.log(`\n🏥 [PARTNER-SYNC] Медцентр: ${clinic.name} (id=${clinic.id})`);
     let clinicUpserted = 0;
     let clinicSkipped = 0;
@@ -178,20 +191,42 @@ const syncPartnerServicesCache = async () => {
     totalSkipped += clinicSkipped;
     clinicStats[clinic.name] = { upserted: clinicUpserted, skipped: clinicSkipped };
     console.log(`  ✅ ${clinic.name}: ${clinicUpserted} услуг (пропущено категорий: ${clinicSkipped})`);
+
+    // Поклиничная очистка устаревших записей сразу после завершения медцентра.
+    // Делает синк устойчивым к прерыванию: каждый завершённый медцентр остаётся
+    // полностью свежим, без «хвостов» старых service_id (как было со stale-записями).
+    // Защита: пропускаем очистку, если слишком много категорий не загрузилось
+    // (сбой МИС) — иначе можно удалить ещё валидные услуги.
+    const skipThreshold = Math.max(5, Math.ceil(leafCategories.length * 0.05));
+    if (clinicUpserted > 0 && clinicSkipped <= skipThreshold) {
+      try {
+        const removed = await PartnerServiceCache.destroy({
+          where: { clinicId: clinic.id, syncedAt: { [Op.lt]: syncedAt } }
+        });
+        if (removed > 0) console.log(`  🗑️  ${clinic.name}: удалено устаревших записей: ${removed}`);
+      } catch (e) {
+        console.warn(`  ⚠️  ${clinic.name}: не удалось очистить устаревшие записи:`, e.message);
+      }
+    } else if (clinicSkipped > skipThreshold) {
+      console.warn(`  ⚠️  ${clinic.name}: очистка пропущена (пропущено категорий ${clinicSkipped} > ${skipThreshold}), чтобы не удалить валидные услуги.`);
+    }
   }
 
-  // 3. Удаляем записи, которые не обновлялись в этом цикле (устаревшие)
-  // (небольшой допуск: записи старше 2 суток считаем удалёнными из МИС)
-  try {
-    const twoDaysAgo = new Date(startTime - 2 * 24 * 60 * 60 * 1000);
-    const deleted = await PartnerServiceCache.destroy({
-      where: { syncedAt: { [Op.lt]: twoDaysAgo } }
-    });
-    if (deleted > 0) {
-      console.log(`🗑️  [PARTNER-SYNC] Удалено устаревших записей: ${deleted}`);
+  // 3. Глобальный «страховочный» проход: удаляем записи старше 2 суток
+  // (на случай медцентров, по которым поклиничная очистка была пропущена из-за сбоев МИС).
+  // Для частичной синхронизации пропускаем — иначе удалим записи нетронутых медцентров.
+  if (!clinicIds) {
+    try {
+      const twoDaysAgo = new Date(startTime - 2 * 24 * 60 * 60 * 1000);
+      const deleted = await PartnerServiceCache.destroy({
+        where: { syncedAt: { [Op.lt]: twoDaysAgo } }
+      });
+      if (deleted > 0) {
+        console.log(`🗑️  [PARTNER-SYNC] Удалено устаревших записей: ${deleted}`);
+      }
+    } catch (e) {
+      console.warn('⚠️  [PARTNER-SYNC] Не удалось удалить устаревшие записи:', e.message);
     }
-  } catch (e) {
-    console.warn('⚠️  [PARTNER-SYNC] Не удалось удалить устаревшие записи:', e.message);
   }
 
   const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -199,19 +234,12 @@ const syncPartnerServicesCache = async () => {
   console.log(`   Всего записей: ${totalUpserted}, пропущено категорий: ${totalSkipped}`);
   console.log('   По медцентрам:', JSON.stringify(clinicStats));
 
+  isSyncing = false;
   return { success: true, totalUpserted, totalSkipped, elapsed, clinicStats };
 };
 
-// ─── Расписание: каждую ночь в 02:00 МСК ────────────────────────────────────
-
-cron.schedule('0 2 * * *', async () => {
-  console.log('⏰ [PARTNER-SYNC] Запуск по расписанию (02:00 МСК)...');
-  await syncPartnerServicesCache();
-}, {
-  scheduled: true,
-  timezone: 'Europe/Moscow'
-});
-
-console.log('✅ Cron для кэша услуг партнёров инициализирован (ежедневно в 02:00 МСК)');
+// Расписание вынесено в отдельный кросс-платформенный воркер scripts/syncWorker.js
+// (запускается отдельным процессом, не зависит от веб-сервера/nodemon).
+// Здесь модуль только экспортирует функцию синхронизации.
 
 module.exports = { syncPartnerServicesCache };
