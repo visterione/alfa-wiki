@@ -7,7 +7,7 @@ import { mis, referralBonuses as rbApi, executorSettings as execSettingsApi } fr
 import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetClinicName } from './utils/clinicUtils';
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
-import { parseSalarySlipPdf, normSubdivision } from './utils/pdfUtils';
+import { parseSalarySlipPdf, normSubdivision, toSubdivisionList } from './utils/pdfUtils';
 import { getSources } from './utils/excelSources';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
@@ -649,7 +649,7 @@ export default function ReferralBonusesPage() {
       if (row.subdivision) {
         const cs = settingsMap[doctor.id]?.clinicSettings || {};
         const matchingClinics = Object.entries(cs).filter(([, v]) =>
-          v.pdfSubdivision && normSubdivision(v.pdfSubdivision) === row.subdivision
+          toSubdivisionList(v.pdfSubdivision).some(sd => normSubdivision(sd) === row.subdivision)
         );
         if (matchingClinics.length === 0) {
           noSubdivision.push({ name: row.name, subdivision: row.subdivision });
@@ -692,6 +692,36 @@ export default function ReferralBonusesPage() {
     }
 
     setPdfParsing(false);
+
+    // ── Aggregate rows that resolve to the same employee + clinic ──
+    // Handles employees whose PDF contains several payslips (different 1С subdivisions)
+    // that all map to one clinic: their amounts are summed instead of overwriting.
+    // needsSplit entries are a separate mechanism and are left untouched.
+    const sumField = (a, b) =>
+      (a == null && b == null) ? null : Math.round(((a || 0) + (b || 0)) * 100) / 100;
+    const aggregated = [];
+    const groupIndex = {};
+    for (const entry of matched) {
+      if (entry.needsSplit) { aggregated.push(entry); continue; }
+      const key = `${entry.doctor.id}|${entry.clinicId || 'global'}`;
+      if (key in groupIndex) {
+        const g = aggregated[groupIndex[key]];
+        g.mainPayment = sumField(g.mainPayment, entry.mainPayment);
+        g.advance     = sumField(g.advance, entry.advance);
+        g.ndfl        = sumField(g.ndfl, entry.ndfl);
+        g.vacation    = sumField(g.vacation, entry.vacation);
+        if (entry.pdfSubdivision && !g._subdivisions.includes(entry.pdfSubdivision)) {
+          g._subdivisions.push(entry.pdfSubdivision);
+          g.pdfSubdivision = g._subdivisions.join(', ');
+        }
+        g.subdivisionResolved = g.subdivisionResolved || entry.subdivisionResolved;
+      } else {
+        groupIndex[key] = aggregated.length;
+        aggregated.push({ ...entry, _subdivisions: entry.pdfSubdivision ? [entry.pdfSubdivision] : [] });
+      }
+    }
+    matched.length = 0;
+    matched.push(...aggregated);
 
     if (!matched.length) {
       const msg = unmatchedNames.length

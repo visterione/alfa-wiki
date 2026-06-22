@@ -5,6 +5,7 @@ import { executorSettings, performedServiceBonuses, referralBonuses, rbScheduleD
 import { clearExecCache } from '../utils/reportEngine';
 import { useTabSlider } from '../utils/useTabSlider';
 import { calcScheduleHoursForPeriod } from '../utils/scheduleUtils';
+import { toSubdivisionList } from '../utils/pdfUtils';
 import MonthYearPicker from './MonthYearPicker';
 
 const DEFAULT_SUGGESTS = {
@@ -45,7 +46,7 @@ function execClinicDefault() {
     holidayDoubleRate: false,
     tabelNumber: '',
     employmentPlace: '',
-    pdfSubdivision: '',
+    pdfSubdivision: [],
   };
 }
 
@@ -1263,6 +1264,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   }, [employmentPlaceDropOpen]);
 
   const [pdfSubdivisionDropOpen, setPdfSubdivisionDropOpen] = useState(false);
+  const [pdfSubdivisionInput, setPdfSubdivisionInput] = useState('');
   const pdfSubdivisionRef     = useRef(null);
   const pdfSubdivisionWrapRef = useRef(null);
 
@@ -1457,8 +1459,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         .map(cs => cs.employmentPlace)
         .filter(Boolean);
       const newSubdivisions = Object.values(toSave.clinicSettings || {})
-        .map(cs => cs.pdfSubdivision)
-        .filter(Boolean);
+        .flatMap(cs => toSubdivisionList(cs.pdfSubdivision));
       if (newPlaces.length > 0 || newSubdivisions.length > 0) {
         setSuggests(prev => {
           const mergedPlaces = [...new Set([...(prev.employmentPlaces || []), ...newPlaces])].sort((a, b) => a.localeCompare(b, 'ru'));
@@ -1562,6 +1563,18 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const handlePaymentFieldChange = (field, val) => {
     updateClinicData({ [field]: val });
     setIsDirty(true);
+  };
+
+  const addPdfSubdivision = (val) => {
+    const v = String(val || '').trim();
+    setPdfSubdivisionInput('');
+    if (!v) return;
+    const list = toSubdivisionList(data.pdfSubdivision);
+    if (list.some(s => s.toLowerCase() === v.toLowerCase())) return;
+    handlePaymentFieldChange('pdfSubdivision', [...list, v]);
+  };
+  const removePdfSubdivision = (val) => {
+    handlePaymentFieldChange('pdfSubdivision', toSubdivisionList(data.pdfSubdivision).filter(s => s !== val));
   };
 
   const handleSavePayment = async () => {
@@ -2139,27 +2152,60 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             {/* Подразделение (1С) */}
             <div style={{ flex: 1, minWidth: 0 }}>
               {!readOnly && (() => {
-                const sdValue = data.pdfSubdivision || '';
-                const sdQ = sdValue.trim().toLowerCase();
+                const sdChips = toSubdivisionList(data.pdfSubdivision);
+                const sdQ = pdfSubdivisionInput.trim().toLowerCase();
                 const sdSuggests = (suggests.pdfSubdivisions || []).filter(s =>
-                  !sdQ || s.toLowerCase().includes(sdQ)
+                  !sdChips.some(c => c.toLowerCase() === s.toLowerCase()) &&
+                  (!sdQ || s.toLowerCase().includes(sdQ))
                 );
                 return (
-                  <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
                     <span>Подразделение (1С)</span>
                     <div ref={pdfSubdivisionRef} style={{ position: 'relative', width: '100%' }}>
-                      <input
-                        type="text"
-                        value={sdValue}
-                        onChange={e => { handlePaymentFieldChange('pdfSubdivision', e.target.value); setPdfSubdivisionDropOpen(true); }}
-                        onFocus={() => setPdfSubdivisionDropOpen(true)}
+                      <div
+                        onClick={() => { pdfSubdivisionRef.current?.querySelector('input')?.focus(); setPdfSubdivisionDropOpen(true); }}
                         style={{
-                          width: '100%', height: 26, padding: '0 8px', fontSize: 12,
+                          display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center',
+                          minHeight: 26, padding: '2px 6px', fontSize: 12,
                           border: '1px solid var(--rb-border-dark)', borderRadius: 6,
-                          background: '#fff', color: 'var(--rb-text)', outline: 'none',
-                          boxSizing: 'border-box',
+                          background: '#fff', color: 'var(--rb-text)',
+                          boxSizing: 'border-box', cursor: 'text',
                         }}
-                      />
+                      >
+                        {sdChips.map(chip => (
+                          <span
+                            key={chip}
+                            style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              padding: '1px 6px', borderRadius: 10, fontSize: 11,
+                              background: '#EFF6FF', color: '#1d4ed8', maxWidth: '100%',
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chip}</span>
+                            <button
+                              type="button"
+                              onClick={e => { e.stopPropagation(); removePdfSubdivision(chip); }}
+                              style={{ border: 'none', background: 'transparent', color: '#1d4ed8', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}
+                              title="Убрать"
+                            >×</button>
+                          </span>
+                        ))}
+                        <input
+                          type="text"
+                          value={pdfSubdivisionInput}
+                          placeholder={sdChips.length ? '' : 'добавить…'}
+                          onChange={e => { setPdfSubdivisionInput(e.target.value); setPdfSubdivisionDropOpen(true); }}
+                          onFocus={() => setPdfSubdivisionDropOpen(true)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { e.preventDefault(); addPdfSubdivision(pdfSubdivisionInput); }
+                            else if (e.key === 'Backspace' && !pdfSubdivisionInput && sdChips.length) { removePdfSubdivision(sdChips[sdChips.length - 1]); }
+                          }}
+                          style={{
+                            flex: 1, minWidth: 60, height: 20, border: 'none', outline: 'none',
+                            fontSize: 12, background: 'transparent', color: 'var(--rb-text)',
+                          }}
+                        />
+                      </div>
                       {pdfSubdivisionDropOpen && sdSuggests.length > 0 && (
                         <div ref={pdfSubdivisionWrapRef} style={{
                           position: 'absolute', top: '100%', left: 0, marginTop: 2,
@@ -2171,14 +2217,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                           {sdSuggests.map(s => (
                             <div
                               key={s}
-                              onMouseDown={e => { e.preventDefault(); handlePaymentFieldChange('pdfSubdivision', s); setPdfSubdivisionDropOpen(false); }}
+                              onMouseDown={e => { e.preventDefault(); addPdfSubdivision(s); }}
                               style={{
                                 padding: '6px 10px', fontSize: 12, cursor: 'pointer',
-                                color: 'var(--rb-text)',
-                                background: s === sdValue ? '#EFF6FF' : 'transparent',
+                                color: 'var(--rb-text)', background: 'transparent',
                               }}
                               onMouseEnter={e => { e.currentTarget.style.background = '#f0f7ff'; }}
-                              onMouseLeave={e => { e.currentTarget.style.background = s === sdValue ? '#EFF6FF' : 'transparent'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                             >
                               {s}
                             </div>
@@ -2186,11 +2231,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                         </div>
                       )}
                     </div>
-                  </label>
+                  </div>
                 );
               })()}
-              {readOnly && data.pdfSubdivision && (
-                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Подр. (1С): <b>{data.pdfSubdivision}</b></span>
+              {readOnly && toSubdivisionList(data.pdfSubdivision).length > 0 && (
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>Подр. (1С): <b>{toSubdivisionList(data.pdfSubdivision).join(', ')}</b></span>
               )}
             </div>
             {onTogglePanel && (

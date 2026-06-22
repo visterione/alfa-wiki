@@ -32,6 +32,13 @@ function normSubdivision(s) {
   return String(s || '').replace(/["“”«»"«»]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+// Coerce a stored pdfSubdivision value into a clean array of subdivision names.
+// Accepts the new array form, the legacy single string, and legacy ";"/newline-separated strings.
+function toSubdivisionList(v) {
+  const arr = Array.isArray(v) ? v : String(v || '').split(/[;\n]/);
+  return arr.map(s => String(s || '').trim()).filter(Boolean);
+}
+
 // Extract lines from a PDF page, sorted top→bottom, items within each line left→right
 async function extractLines(page) {
   const content = await page.getTextContent();
@@ -162,4 +169,4 @@ export async function parseSalarySlipPdf(file) {
 }
 
 // Export for use in matching logic in index.js
-export { normSubdivision };
+export { normSubdivision, toSubdivisionList };
