@@ -6986,6 +6986,22 @@ export function TabServices() {
         .pc-drop-item.selected-opt{background:#eff6ff;color:#1d4ed8}
         .pc-mode-btn.active{background:#fff;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.12)}
         .pc-view-btn.active{background:#fff;color:#1f2937;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+        .pc-toolbar{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,.04);margin-bottom:14px}
+        .pc-bar{display:flex;align-items:center;gap:10px;padding:12px 14px;flex-wrap:wrap}
+        .pc-bar + .pc-bar{border-top:1px solid #f1f5f9}
+        .pc-seg{display:inline-flex;background:#f1f5f9;border-radius:9px;padding:3px;gap:2px}
+        .pc-seg-btn{padding:7px 15px;border:none;background:transparent;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;color:#64748b;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+        .pc-seg-btn:hover:not(.active){color:#1f2937}
+        .pc-seg-btn.active{background:#fff;color:#1f2937;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+        .pc-vsep{width:1px;align-self:stretch;background:#e5e7eb;margin:2px 0}
+        .pc-grow{flex:1 1 auto}
+        .pc-select{padding:9px 12px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;background:#fff;cursor:pointer;min-width:230px;font-family:inherit}
+        .pc-select:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+        .pc-meta{font-size:12px;color:#94a3b8;display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+        .pc-search{width:100%;padding:9px 12px 9px 38px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;box-sizing:border-box;font-family:inherit}
+        .pc-search:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+        .pc-panel{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,.04);padding:14px 16px;margin-bottom:14px}
+        .pc-panel-title{margin:0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px}
         .pc-chip.own{background:#dbeafe;border-color:#3b82f6;color:#1e40af}
         .pc-chip.competitor{background:#fef3c7;border-color:#f59e0b;color:#92400e}
         .pc-chip.dimmed{opacity:.4}
@@ -7002,42 +7018,42 @@ export function TabServices() {
         </div>
       )}
 
-      {/* Mode switcher */}
-      <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 10, padding: 4, width: 'fit-content', marginBottom: 20 }}>
-        {[{ key: 'clinic', label: 'Клиники', ico: Ico.clinic }, { key: 'lab', label: 'Лаборатории', ico: Ico.lab }].map(m => (
-          <button key={m.key} className={`pc-mode-btn${mode === m.key ? ' active' : ''}`} onClick={() => switchMode(m.key)}
-            style={{ padding: '8px 20px', border: 'none', background: 'transparent', borderRadius: 7, fontSize: 14, fontWeight: 500, cursor: 'pointer', color: '#6b7280', transition: 'all .2s', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {m.ico} {m.label}
-          </button>
-        ))}
-      </div>
+      {/* ── Toolbar: mode · page management · export ──────────────────────── */}
+      <div className="pc-toolbar">
+        <div className="pc-bar">
+          <div className="pc-seg">
+            {[{ key: 'clinic', label: 'Клиники', ico: Ico.clinic }, { key: 'lab', label: 'Лаборатории', ico: Ico.lab }].map(m => (
+              <button key={m.key} className={`pc-seg-btn${mode === m.key ? ' active' : ''}`} onClick={() => switchMode(m.key)}>
+                {m.ico} {m.label}
+              </button>
+            ))}
+          </div>
 
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flex: 1 }}>
-          <select value={selId} onChange={e => { setSelId(e.target.value); loadComp(e.target.value); }}
-            style={{ padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, background: '#fff', cursor: 'pointer', minWidth: 250 }}>
+          <div className="pc-vsep" />
+
+          <select className="pc-select" value={selId} onChange={e => { setSelId(e.target.value); loadComp(e.target.value); }}>
             <option value="">Создать новую страницу...</option>
             {comparisons.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
           <button className="pc-btn pc-btn-primary" onClick={() => { setNewName(''); setNewDesc(''); setModal('newComp'); }}>{Ico.plus} Новая страница</button>
-          <button className="pc-btn pc-btn-secondary" onClick={deleteComp} disabled={!comp} style={{ color: '#ef4444' }}>{Ico.trash} Удалить страницу</button>
-        </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          {comp?.createdAt && (
-            <span style={{ fontSize: 13, color: '#6b7280', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 4 }}>
-              {Ico.cal} {new Date(comp.createdAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </span>
-          )}
+          <button className="pc-btn pc-btn-secondary" onClick={deleteComp} disabled={!comp} title="Удалить страницу" style={{ color: '#ef4444', padding: '10px 12px' }}>{Ico.trash}</button>
+
+          <div className="pc-grow" />
+
           <button className="pc-btn pc-btn-success" onClick={exportXlsx} disabled={!comp}>{Ico.excel} Excel</button>
         </div>
       </div>
 
-      {/* Columns manager */}
+      {/* ── Columns manager ───────────────────────────────────────────────── */}
       {comp && allCols.length > 0 && (
-        <div style={{ marginBottom: 20, padding: 16, background: '#f9fafb', borderRadius: 8, border: '1px solid #e5e7eb' }}>
-          <h4 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#374151' }}>Управление колонками</h4>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+        <div className="pc-panel">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+            <h4 className="pc-panel-title">Управление колонками</h4>
+            {mode !== 'lab' && (
+              <button className="pc-btn pc-btn-secondary" style={{ padding: '7px 14px' }} onClick={() => { setCompName(''); setModal('addComp'); }}>{Ico.plus} Конкурент</button>
+            )}
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
             {allCols.map((col, idx) => {
               const isHidden = hiddenCols.includes(col.name);
               const isBase   = col.name === baseCol;
@@ -7053,30 +7069,29 @@ export function TabServices() {
               );
             })}
           </div>
-          {mode !== 'lab' && (
-            <button className="pc-btn pc-btn-secondary" onClick={() => { setCompName(''); setModal('addComp'); }}>+ Конкурент</button>
-          )}
         </div>
       )}
 
-      {/* Filters */}
+      {/* ── Filter bar: search · add · view toggle ────────────────────────── */}
       {comp && (
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', marginBottom: 20 }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 250 }}>
-            <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>{Ico.search}</span>
-            <input type="text" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Поиск по названию, коду..."
-              style={{ width: '100%', padding: '10px 12px 10px 38px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14, boxSizing: 'border-box' }} />
-          </div>
-          <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
-          <div style={{ display: 'flex', background: '#f3f4f6', borderRadius: 8, padding: 3, marginLeft: 'auto' }}>
-            {[
-              { key: false, title: 'Таблица', ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg> },
-              { key: true,  title: 'Шкала',  ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="2" y1="12" x2="22" y2="12"/><circle cx="6" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/></svg> },
-            ].map(v => (
-              <button key={String(v.key)} onClick={() => setScaleView(v.key)}
-                style={{ padding: '5px 10px', border: 'none', borderRadius: 6, background: scaleView === v.key ? '#fff' : 'transparent', color: scaleView === v.key ? '#1d4ed8' : '#6b7280', boxShadow: scaleView === v.key ? '0 1px 3px rgba(0,0,0,.12)' : 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 500, transition: 'all .15s' }}
-                title={v.title}>{v.ico} {v.title}</button>
-            ))}
+        <div className="pc-toolbar">
+          <div className="pc-bar">
+            <div style={{ position: 'relative', flex: '1 1 260px', minWidth: 220 }}>
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', pointerEvents: 'none', display: 'flex' }}>{Ico.search}</span>
+              <input type="text" className="pc-search" value={filterText} onChange={e => setFilterText(e.target.value)} placeholder="Поиск по названию, коду..." />
+            </div>
+            <button className="pc-btn pc-btn-primary" onClick={openAddSvcModal}>{Ico.plus} Добавить услугу</button>
+            <div className="pc-vsep" />
+            <div className="pc-seg">
+              {[
+                { key: false, title: 'Таблица', ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/></svg> },
+                { key: true,  title: 'Шкала',  ico: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="2" y1="12" x2="22" y2="12"/><circle cx="6" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="18" cy="12" r="2.5"/></svg> },
+              ].map(v => (
+                <button key={String(v.key)} className={`pc-seg-btn${scaleView === v.key ? ' active' : ''}`} onClick={() => setScaleView(v.key)} title={v.title}>
+                  {v.ico} {v.title}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
