@@ -146,6 +146,13 @@ export async function buildReport({
   const doctorName = doctor.name;
   const doctorClinicIds = new Set((doctor.clinics || []).map(String));
   const disabledClinicIds = new Set((execSettings?.disabledClinics || []).map(String));
+  // «Направители» (клиника 8) — виртуальная клиника направлений. Если у сотрудника есть
+  // другие клиники, её зарплатный листок не формируется (как и вкладка скрыта в «Сотрудники»),
+  // иначе получается лишний пустой листок. Зеркалит логику StepExecutors.
+  const REFERRAL_CLINIC_ID = '8';
+  if ([...doctorClinicIds].some(id => id !== REFERRAL_CLINIC_ID)) {
+    disabledClinicIds.add(REFERRAL_CLINIC_ID);
+  }
   if (execSettings?.clinicSettings && doctorClinicIds.size > 0) {
     const clinicSettings = {};
     Object.entries(execSettings.clinicSettings || {}).forEach(([clinicId, settings]) => {
