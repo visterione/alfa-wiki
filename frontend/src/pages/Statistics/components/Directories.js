@@ -6090,19 +6090,19 @@ function pcAbbr(name) {
 // Если соответствия/файла нет — в кружке останется буквенная аббревиатура.
 const LAB_LOGOS = {
   // Раскомментируйте строку, когда положите соответствующий файл в frontend/public/lab-logos/.
-  // 'инвитро':                                '/lab-logos/invitro.png',
-  // 'кдл':                                    '/lab-logos/kdl.png',
-  // 'смлаб':                                  '/lab-logos/smlab.png',
-  // 'cl-lab':                                 '/lab-logos/cl-lab.png',
-  // 'альфа':                                  '/lab-logos/alfa.png',
-  // 'микротех':                               '/lab-logos/microtech.png',
-  // 'альфа проф':                             '/lab-logos/alfa-prof.png',
-  // 'хеликс':                                 '/lab-logos/helix.png',
-  // 'medical genomics':                       '/lab-logos/medical-genomics.png',
-  // 'альфа линия':                            '/lab-logos/alfa-liniya.png',
+  'инвитро':                                '/lab-logos/invitro.png',
+  'кдл':                                    '/lab-logos/kdl.png',
+  'смлаб':                                  '/lab-logos/smlab.png',
+  'cl-lab':                                 '/lab-logos/cl-lab.png',
+  'альфа':                                  '/lab-logos/alfa.png',
+  'микротех':                               '/lab-logos/microtech.png',
+  'альфа проф':                             '/lab-logos/alfa-prof.jpg',
+  'хеликс':                                 '/lab-logos/helix.png',
+  'medical genomics':                       '/lab-logos/medical-genomics.png',
+  'альфа линия':                            '/lab-logos/alfa-liniya.png',
+  'альфа kids':                             '/lab-logos/alfa-kids.png',
   // 'гбуз краевая клиническая больница №1':   '/lab-logos/gbuz-kkb1.png',
   // 'гбуз "городская больница города анапа"': '/lab-logos/gbuz-anapa.png',
-  // 'альфа kids':                             '/lab-logos/alfa-kids.png',
 };
 function pcLabKey(name) { return (name || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
 function pcLabLogo(name) {
