@@ -765,8 +765,6 @@ export default function ServicesPage() {
 
 function Tab804n() {
   return (
-    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
-      Раздел 804н — в разработке
-    </div>
+    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }} />
   );
 }
