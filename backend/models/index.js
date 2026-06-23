@@ -363,6 +363,9 @@ const Accreditation = sequelize.define('Accreditation', {
   specialty: { type: DataTypes.STRING(255), allowNull: false },
   expirationDate: { type: DataTypes.DATEONLY, allowNull: false },
   comment: { type: DataTypes.TEXT },
+  medCenters: { type: DataTypes.JSONB, allowNull: true, comment: 'Медцентры, на которые распространяется аккредитация (массив). medCenter = первый из них (для совместимости)' },
+  misUserId: { type: DataTypes.INTEGER, allowNull: true, comment: 'ID сотрудника в МИС (источник ФИО/специальности/клиник)' },
+  supersededById: { type: DataTypes.UUID, allowNull: true, comment: 'ID новой версии аккредитации, заменившей эту (для архива/истории)' },
   isArchived: { type: DataTypes.BOOLEAN, defaultValue: false, comment: 'Запись перенесена в архив' },
   reminded90: { type: DataTypes.BOOLEAN, defaultValue: false },
   reminded60: { type: DataTypes.BOOLEAN, defaultValue: false },
@@ -376,7 +379,8 @@ const Accreditation = sequelize.define('Accreditation', {
     { fields: ['medCenter'] },
     { fields: ['fullName'] },
     { fields: ['specialty'] },
-    { fields: ['expirationDate'] }
+    { fields: ['expirationDate'] },
+    { fields: ['misUserId'] }
   ]
 });
 
