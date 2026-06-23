@@ -392,7 +392,7 @@ const credentialsSchema = [
 // Используется как fallback когда syncMeta.sourceHashKey не сохранён
 // ──────────────────────────────────────────────────────────────────────────────
 
-async function findSourceHashKeyByReviewId(session, reviewId, reviewDate) {
+async function findRawReviewById(session, reviewId, reviewDate) {
   // Ищем в диапазоне ±3 дня от даты отзыва
   const date = reviewDate ? new Date(reviewDate) : new Date();
   const from = new Date(date); from.setDate(from.getDate() - 3);
@@ -428,13 +428,41 @@ async function findSourceHashKeyByReviewId(session, reviewId, reviewDate) {
 
     const reviews = resp.data?.reviews || [];
     const found = reviews.find(r => String(r.id) === String(reviewId));
-    if (found) return found.source_hash_key || null;
+    if (found) return found;
 
     offset += PAGE_SIZE;
     hasMore = reviews.length === PAGE_SIZE;
   }
 
   return null;
+}
+
+async function findSourceHashKeyByReviewId(session, reviewId, reviewDate) {
+  const raw = await findRawReviewById(session, reviewId, reviewDate);
+  return raw ? (raw.source_hash_key || null) : null;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Проверить, действительно ли ответ зафиксирован на GetLoyalty.
+// Возвращает { found, isAnswered, firstComment } — found=false если самого
+// отзыва нет в каталоге, firstComment=null если ответ не зарегистрирован.
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function verifyReplyPublished(credentials, externalId, reviewDate) {
+  const { login: loginStr, password } = credentials;
+  if (!loginStr || !password) throw new Error('Не заданы login и password');
+
+  const reviewId = String(externalId).replace(/^gl_/, '');
+  const session = await login(loginStr, password);
+  const raw = await findRawReviewById(session, reviewId, reviewDate);
+
+  if (!raw) return { found: false, isAnswered: false, firstComment: null };
+
+  return {
+    found: true,
+    isAnswered: !!raw.is_answered,
+    firstComment: parseFirstComment(raw.first_comment)
+  };
 }
 
 async function replyToReview(credentials, externalId, sourceHashKey, replyText, reviewDate) {
@@ -470,6 +498,8 @@ async function replyToReview(credentials, externalId, sourceHashKey, replyText, 
   params.append('platform', String(platformId));
   params.append('text', replyText.trim());
 
+  console.log(`[GetLoyalty:reply] → review_id=${reviewId} platform=${platformId} hashKey=${hashKey} identity=${source.identity || '?'} textLen=${replyText.trim().length}`);
+
   const resp = await axios.post(`${BASE}/action/platform/account/reply/create`, params, {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -486,6 +516,10 @@ async function replyToReview(credentials, externalId, sourceHashKey, replyText, 
   const responseStatus = Number(resp.data?.status);
   const successfulStatuses = [101, 200];
 
+  // Логируем полный ответ GL — без него невозможно понять, почему «успешная»
+  // отправка не создаёт ответ на площадке.
+  console.log(`[GetLoyalty:reply] ← httpStatus=${resp.status} body=${JSON.stringify(resp.data)}`);
+
   if (!successfulStatuses.includes(responseStatus)) {
     throw new Error(resp.data?.message || `GetLoyalty ответил: ${JSON.stringify(resp.data)}`);
   }
@@ -493,9 +527,18 @@ async function replyToReview(credentials, externalId, sourceHashKey, replyText, 
   return {
     success: true,
     queued: responseStatus === 101,
+    responseStatus,
     data: resp.data,
     resolvedHashKey: hashKey
   };
 }
 
-module.exports = { fetchReviews, testConnection, credentialsSchema, getFilials, login, replyToReview };
+module.exports = {
+  fetchReviews,
+  testConnection,
+  credentialsSchema,
+  getFilials,
+  login,
+  replyToReview,
+  verifyReplyPublished
+};

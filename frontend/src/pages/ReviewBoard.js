@@ -1596,16 +1596,25 @@ const ReviewBoard = () => {
                   const replyDate_ = platformReply
                     ? (meta.replyDate ? new Date(meta.replyDate).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null)
                     : (historyReply ? new Date(historyReply.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : null);
-                  const isPending = meta.replyPending;
+                  const isFailed = meta.replyFailed;
+                  const isUnverified = meta.replyUnverified && !isFailed;
+                  const isPending = meta.replyPending && !isUnverified && !isFailed;
                   return (
-                    <div className="reply-to-platform">
+                    <div className={`reply-to-platform${isFailed ? ' reply-to-platform--failed' : ''}`}>
                       <div className="reply-to-platform__header">
                         <Reply size={14} />
                         <span>Официальный ответ</span>
+                        {isFailed && <span className="reply-failed-badge">Не опубликовано</span>}
+                        {isUnverified && <span className="reply-pending-badge">Проверяется публикация</span>}
                         {isPending && <span className="reply-pending-badge">На модерации</span>}
                         {replyDate_ && <span className="reply-header-date">{replyDate_}</span>}
                       </div>
                       <div className="reply-sent">{replyText_}</div>
+                      {isFailed && (
+                        <div className="reply-failed-note">
+                          Ответ не зафиксирован на площадке. Отправьте его повторно.
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

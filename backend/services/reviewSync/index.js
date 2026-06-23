@@ -7,9 +7,15 @@
  */
 
 const { ReviewSyncConfig, ReviewPlatform, Review, ReviewBoard } = require('../../models');
+const { Op } = require('sequelize');
 const { v4: uuidv4 } = require('uuid');
 const adapter = require('./adapters/getloyalty');
-const { replyToReview: adapterReplyToReview } = adapter;
+const { replyToReview: adapterReplyToReview, verifyReplyPublished } = adapter;
+
+// Сколько часов ждём подтверждения публикации ответа на площадке, прежде чем
+// пометить его как «не опубликован» (replyFailed). GetLoyalty публикует ответ
+// не мгновенно, поэтому не помечаем провал слишком рано.
+const REPLY_VERIFY_GRACE_HOURS = 6;
 const workflowEngine = require('../workflowEngine');
 const notificationService = require('../notificationService');
 
@@ -181,6 +187,14 @@ async function syncBoard(boardId) {
 
     const count = await syncConfig(config);
 
+    // Сверяем отправленные ответы с реальностью (вне окна дат обычной синхронизации)
+    try {
+      const reconciled = await reconcilePendingReplies(config);
+      if (reconciled > 0) console.log(`🔁 [ReviewSync] Доска ${boardId}: сверено ответов ${reconciled}`);
+    } catch (recErr) {
+      console.error(`[ReviewSync] Ошибка сверки ответов доски ${boardId}:`, recErr.message);
+    }
+
     await config.update({
       lastSyncAt:     new Date(),
       lastSyncStatus: 'success',
@@ -316,7 +330,8 @@ async function replyToReview(boardId, review) {
 
   // GetLoyalty принимает ответ в очередь, а публикует его позже. Сохраняем
   // ожидающий ответ сразу, чтобы карточка показывала состояние конкретного
-  // отзыва до следующей синхронизации.
+  // отзыва до следующей синхронизации. Помечаем replyUnverified — позже сверка
+  // по ID подтвердит публикацию либо пометит replyFailed.
   await Review.update(
     {
       syncMeta: {
@@ -324,13 +339,83 @@ async function replyToReview(boardId, review) {
         sourceHashKey: result.resolvedHashKey || sourceHashKey,
         replyText: review.replyText.trim(),
         replyDate: new Date().toISOString(),
-        replyPending: result.queued === true
+        replyPending: true,
+        replyUnverified: true,
+        replyAttemptAt: new Date().toISOString(),
+        replyFailed: false
       }
     },
     { where: { id: review.id } }
   );
 
   return result;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Сверка отправленных ответов с реальностью.
+// Регулярная синхронизация смотрит только окно «вчера–сегодня», поэтому ответы
+// на старые отзывы никогда не переподтверждались. Здесь находим все отзывы доски
+// с непроверенным ответом и проверяем их в GetLoyalty по ID (вне окна дат):
+//   • ответ найден на площадке → снимаем replyUnverified;
+//   • ответа нет спустя REPLY_VERIFY_GRACE_HOURS → помечаем replyFailed.
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function reconcilePendingReplies(config) {
+  const pending = await Review.findAll({
+    where: {
+      boardId: config.boardId,
+      importSource: PROVIDER,
+      syncMeta: { [Op.contains]: { replyUnverified: true } }
+    }
+  });
+
+  if (!pending.length) return 0;
+
+  let reconciled = 0;
+
+  for (const review of pending) {
+    const meta = review.syncMeta || {};
+    try {
+      const check = await verifyReplyPublished(config.credentials, review.externalId, review.reviewDate);
+
+      // Ответ подтверждён на площадке — снимаем флаг «непроверено»
+      if (check.found && (check.isAnswered || check.firstComment)) {
+        await review.update({
+          syncMeta: {
+            ...meta,
+            replyText: check.firstComment?.text || meta.replyText,
+            replyDate: check.firstComment?.date || meta.replyDate,
+            replyPending: check.firstComment ? check.firstComment.isPending : false,
+            replyUnverified: false,
+            replyFailed: false
+          }
+        });
+        reconciled++;
+        continue;
+      }
+
+      // Ответа на площадке нет. Ждём grace-период, прежде чем признать провал.
+      const attemptAt = meta.replyAttemptAt ? new Date(meta.replyAttemptAt) : null;
+      const ageHours = attemptAt ? (Date.now() - attemptAt.getTime()) / 36e5 : Infinity;
+
+      if (ageHours >= REPLY_VERIFY_GRACE_HOURS) {
+        await review.update({
+          syncMeta: {
+            ...meta,
+            replyPending: false,
+            replyUnverified: false,
+            replyFailed: true
+          }
+        });
+        console.warn(`⚠️ [ReviewSync] Ответ на отзыв ${review.externalId} (доска ${config.boardId}) не зафиксирован на площадке спустя ${Math.round(ageHours)}ч — помечен replyFailed`);
+        reconciled++;
+      }
+    } catch (err) {
+      console.error(`[ReviewSync] Ошибка сверки ответа ${review.externalId}:`, err.message);
+    }
+  }
+
+  return reconciled;
 }
 
 module.exports = {
@@ -341,5 +426,6 @@ module.exports = {
   testConnection,
   getCredentialsSchema,
   replyToReview,
+  reconcilePendingReplies,
   PROVIDERS
 };
