@@ -6123,6 +6123,14 @@ function pcLabLogo(name) {
   return f ? (process.env.PUBLIC_URL || '') + f : null;
 }
 
+// Мини-логотип колонки (управление колонками): показываем, только если файл задан и загрузился.
+function PcColLogo({ name }) {
+  const [err, setErr] = useState(false);
+  const logo = pcLabLogo(name);
+  if (!logo || err) return null;
+  return <img src={logo} alt="" draggable={false} onError={() => setErr(true)} style={{ width: 18, height: 18, borderRadius: 4, objectFit: 'contain', flexShrink: 0 }} />;
+}
+
 // Кружок на шкале: логотип лаборатории, с фолбэком на аббревиатуру при отсутствии/ошибке файла.
 function ScaleDot({ name, isBase, color }) {
   const [imgErr, setImgErr] = useState(false);
@@ -6792,44 +6800,90 @@ export function TabServices() {
     const baseC  = allCols.find(c => c.name === baseCol);
     const ordered = baseC ? [baseC, ...allCols.filter(c => c.name !== baseCol)] : [...allCols];
 
-    function buildSheet(ws, usePrice) {
-      let dateStr = '';
-      if (comp.createdAt) {
-        dateStr = new Date(comp.createdAt).toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
-        const dr = ws.addRow(['Дата создания:', dateStr]); dr.getCell(1).font = { bold: true }; ws.addRow([]);
-      }
-      const hdr = ['Артикул', 'Название услуги'];
+    // Excel-номер колонки → буква (A, B, …, Z, AA, …) — корректно для широких таблиц
+    function colLetter(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
+
+    const getPrice  = (it, cn) => (it.prices || {})[cn] || null;
+    const getCost   = (it, cn) => (it.costPrices || {})[cn] || null;
+    const getMargin = (it, cn) => {
+      const p = (it.prices || {})[cn], c = (it.costPrices || {})[cn];
+      return (p != null && c != null) ? parseFloat((p - c).toFixed(2)) : null;
+    };
+    // Под каждую услугу — три строки, как в карточке на экране
+    const metrics = [
+      { label: 'Стоимость',     get: getPrice  },
+      { label: 'Себестоимость', get: getCost   },
+      { label: 'Маржа',         get: getMargin },
+    ];
+
+    // Жирные вертикальные разделители: после «Показателя» и по правому краю каждой клиники.
+    // groupRightData — крайняя правая колонка группы в строках данных; groupRightHead — то же
+    // в заголовке, но для объединённых пар это колонка-«мастер» (Excel рисует рамку по ней).
+    const groupRightData = new Set([3]);
+    const groupRightHead = new Set([3]);
+    { let c = 4; ordered.forEach(col => {
+        if (col.name === baseCol) { groupRightData.add(c); groupRightHead.add(c); c += 1; }
+        else { groupRightData.add(c + 1); groupRightHead.add(c); c += 2; }
+      }); }
+    const thickR = b => ({ ...b, right: { style: 'medium' } });
+
+    function buildSheet(ws) {
+      // Заголовок: Артикул | Название | Показатель | <колонки клиник с парами значение/разница>
+      const hdr = ['Артикул', 'Название услуги', 'Показатель'];
       ordered.forEach(col => { hdr.push(col.name + (col.name === baseCol ? ' (эталон)' : '')); if (col.name !== baseCol) hdr.push(''); });
-      const hr = ws.addRow(hdr); let cc = 3;
+      const hr = ws.addRow(hdr); let cc = 4;
       ordered.forEach(col => {
-        if (col.name !== baseCol) { ws.mergeCells(`${String.fromCharCode(64 + cc)}${hr.number}:${String.fromCharCode(65 + cc)}${hr.number}`); cc += 2; } else cc += 1;
+        if (col.name !== baseCol) { ws.mergeCells(`${colLetter(cc)}${hr.number}:${colLetter(cc + 1)}${hr.number}`); cc += 2; } else cc += 1;
       });
       hr.eachCell(cell => { cell.fill = hFill; cell.font = { bold: true }; cell.alignment = { vertical: 'middle', horizontal: 'center' }; cell.border = border; });
+      groupRightHead.forEach(cn => { hr.getCell(cn).border = thickR(border); });
       hr.height = 20;
+
       items.forEach(item => {
-        const prices = usePrice ? item.prices : (item.costPrices || {});
-        const baseP  = prices[baseCol] || null;
-        const row = [item.serviceCode || '', item.serviceName]; const rd = [];
-        ordered.forEach(col => {
-          const p = prices[col.name] || null, isB = col.name === baseCol;
-          row.push(p || ''); rd.push({ type: 'price' });
-          if (!isB) { const dv = baseP && p ? parseFloat((p - baseP).toFixed(2)) : null; row.push(dv != null ? (dv > 0 ? '+' : '') + dv : '-'); rd.push({ type: 'diff', value: dv }); }
+        const firstRow = ws.rowCount + 1;
+        metrics.forEach((m, mi) => {
+          const baseP = m.get(item, baseCol);
+          const row = [mi === 0 ? (item.serviceCode || '') : '', mi === 0 ? item.serviceName : '', m.label];
+          const rd = [];
+          ordered.forEach(col => {
+            const p = m.get(item, col.name), isB = col.name === baseCol;
+            row.push(p || ''); rd.push({ type: 'price' });
+            if (!isB) { const dv = baseP && p ? parseFloat((p - baseP).toFixed(2)) : null; row.push(dv != null ? (dv > 0 ? '+' : '') + dv : '-'); rd.push({ type: 'diff', value: dv }); }
+          });
+          // Толстый низ под последней строкой услуги (Маржа) — разделитель между услугами;
+          // толстый правый край — разделитель между клиниками и после «Показателя».
+          const isLast = mi === metrics.length - 1;
+          const ar = ws.addRow(row);
+          ar.eachCell({ includeEmpty: true }, (cell, cn) => {
+            let b = border;
+            if (isLast) b = { ...b, bottom: { style: 'medium' } };
+            if (groupRightData.has(cn)) b = { ...b, right: { style: 'medium' } };
+            cell.border = b; cell.alignment = { vertical: 'middle', horizontal: cn === 2 || cn === 3 ? 'left' : 'center' };
+            if (cn === 3) cell.font = { color: { argb: 'FF6B7280' } };
+            const di = cn - 4;
+            if (di >= 0 && di < rd.length && rd[di].type === 'diff' && rd[di].value != null) {
+              if (rd[di].value > 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; cell.font = { color: { argb: 'FF16A34A' }, bold: true }; }
+              else if (rd[di].value < 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; cell.font = { color: { argb: 'FFDC2626' }, bold: true }; }
+            }
+          });
         });
-        const ar = ws.addRow(row);
-        ar.eachCell({ includeEmpty: true }, (cell, cn) => {
-          cell.border = border; cell.alignment = { vertical: 'middle', horizontal: cn === 2 ? 'left' : 'center' };
-          const di = cn - 3;
-          if (di >= 0 && di < rd.length && rd[di].type === 'diff' && rd[di].value != null) {
-            if (rd[di].value > 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; cell.font = { color: { argb: 'FF16A34A' }, bold: true }; }
-            else if (rd[di].value < 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; cell.font = { color: { argb: 'FFDC2626' }, bold: true }; }
-          }
-        });
+        // Артикул и название — одной объединённой ячейкой на все три строки услуги.
+        // Рамку объединённой ячейки Excel берёт со стиля верхней (мастер-)ячейки,
+        // поэтому толстый низ-разделитель задаём именно ей.
+        const lastRow = ws.rowCount;
+        const mergedBorder = { ...border, bottom: { style: 'medium' } };
+        ws.mergeCells(`A${firstRow}:A${lastRow}`);
+        ws.mergeCells(`B${firstRow}:B${lastRow}`);
+        ws.getCell(`A${firstRow}`).alignment = { vertical: 'middle', horizontal: 'center' };
+        ws.getCell(`A${firstRow}`).border = mergedBorder;
+        ws.getCell(`B${firstRow}`).alignment = { vertical: 'middle', horizontal: 'left' };
+        ws.getCell(`B${firstRow}`).border = mergedBorder;
       });
+
       ws.columns.forEach(col => { let max = 10; col.eachCell({ includeEmpty: true }, c => { if (c.value && c.value.toString().length > max) max = c.value.toString().length; }); col.width = max + 2; });
     }
 
-    buildSheet(wb.addWorksheet('Сравнение цен'), true);
-    buildSheet(wb.addWorksheet('Себестоимость'),  false);
+    buildSheet(wb.addWorksheet('Сравнение'));
     const buf = await wb.xlsx.writeBuffer();
     const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     const a = Object.assign(document.createElement('a'), { href: url, download: comp.name + '.xlsx' });
@@ -7085,6 +7139,7 @@ export function TabServices() {
                   onClick={e => { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('input')) return; toggleCol(col.name); }}>
                   <input type="radio" name="pc-base" checked={isBase} onChange={() => {}} onClick={e => { e.stopPropagation(); setBaseColVal(col.name); }}
                     style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', cursor: 'pointer', width: 14, height: 14, margin: 0, opacity: 1 }} />
+                  <PcColLogo name={col.name} />
                   <span>{col.name}{isBase ? ' (эталон)' : ''}</span>
                   <button onClick={e => { e.stopPropagation(); removeCol(idx); }} style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: 16, padding: 0, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&times;</button>
                 </div>
@@ -7156,7 +7211,10 @@ export function TabServices() {
                     const isBase   = col.name === baseCol;
                     return (
                       <th key={col.name} className={`pc-col-single${isHidden ? ' hidden' : ''}`}>
-                        {col.name}{isBase ? ' (эталон)' : ''}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
+                          <PcColLogo name={col.name} />
+                          <span>{col.name}{isBase ? ' (эталон)' : ''}</span>
+                        </span>
                       </th>
                     );
                   })}
