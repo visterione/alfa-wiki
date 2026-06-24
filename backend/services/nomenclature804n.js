@@ -244,7 +244,8 @@ function classify(subCode, title, refMap) {
   const base = baseRef(code, refMap);
   if (base) {
     const v = verdictPair(base.ref.name, title || '');
-    return { status: 'extended', refName: base.ref.name, refCode: code, coverage: v.coverage };
+    // refCode — исходный код из справочника, на который опирается уточнённый код клиники
+    return { status: 'extended', refName: base.ref.name, refCode: base.base, coverage: v.coverage };
   }
 
   return { status: 'not_in_nomenclature', refName: null, refCode: code, coverage: null };

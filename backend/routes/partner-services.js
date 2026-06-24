@@ -498,6 +498,7 @@ router.get('/n804-check', authenticate, async (req, res) => {
         lab: r.lab,
         status: v.status,
         refName: v.refName,
+        refCode: v.refCode,
         coverage: v.coverage
       });
     }

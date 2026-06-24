@@ -938,7 +938,7 @@ function Tab804n() {
             <tbody>
               {pageRows.map(it => (
                 <tr key={it.serviceId}>
-                  <td className="n804-code">{it.subCode || '—'}</td>
+                  <td className="n804-code">{it.subCode || '—'}{it.status === 'extended' && it.refCode && <span className="n804-basecode" title="Исходный код из справочника">({it.refCode})</span>}</td>
                   <td className="col-l">
                     <div className="n804-title">{it.title}</div>
                     {it.categoryTitle && <div className="n804-cat">{it.categoryTitle}</div>}
@@ -987,6 +987,7 @@ const N804_CSS = `
 .n804-table tr:last-child td { border-bottom:none; }
 .n804-table tr:hover td { background:var(--tint-bg, #f8fafc); }
 .n804-code { font-family:monospace; font-size:12px; color:#1f2937; white-space:nowrap; }
+.n804-basecode { display:block; color:#9ca3af; margin-top:2px; }
 .n804-title { font-weight:500; color:#111827; }
 .n804-cat { font-size:11px; color:#9ca3af; margin-top:2px; }
 .n804-ref { color:#4b5563; }
