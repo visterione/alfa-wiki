@@ -8,6 +8,7 @@ const axios = require('axios');
 const qs = require('qs');
 const { Accreditation, AccreditationFile, SearchIndex, Page, PageHistory, Setting } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { generateAccreditationsReportPdf } = require('../services/pdfService');
 
 const router = express.Router();
 
@@ -129,6 +130,8 @@ const indexAccreditation = async (accreditation) => {
   const searchContent = [
     accreditation.fullName,
     accreditation.specialty,
+    accreditation.series,
+    accreditation.number,
     accreditation.medCenter,
     accreditation.comment
   ].filter(Boolean).join(' | ');
@@ -366,6 +369,69 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// Отчёт-реестр в PDF (срез по активным аккредитациям)
+// Параметры: from, to (YYYY-MM-DD по сроку действия), status, medCenters (csv), group (1/0)
+const ACC_STATUS_LABELS = {
+  all: 'Все', expired: 'Просроченные', soon30: 'Истекает ≤30 дней',
+  soon90: 'Истекает ≤90 дней', problem: 'Проблемные (просроченные + ≤30)'
+};
+router.get('/report/pdf', authenticate, async (req, res) => {
+  try {
+    const { from, to, status = 'all', group = '1' } = req.query;
+    const selected = req.query.medCenters
+      ? String(req.query.medCenters).split(',').map(s => s.trim()).filter(Boolean)
+      : null;
+
+    // Активные записи, опционально ограниченные периодом по сроку действия
+    const where = { isArchived: false };
+    if (from || to) {
+      where.expirationDate = {};
+      if (from) where.expirationDate[Op.gte] = from;
+      if (to) where.expirationDate[Op.lte] = to;
+    }
+    const records = await Accreditation.findAll({ where, order: [['expirationDate', 'ASC']] });
+
+    // Разворачиваем по медцентрам (запись может действовать в нескольких) + фильтр клиник
+    const items = [];
+    records.forEach(r => {
+      const mcs = (r.medCenters && r.medCenters.length) ? r.medCenters : (r.medCenter ? [r.medCenter] : []);
+      mcs.forEach(mc => {
+        if (selected && selected.indexOf(mc) === -1) return;
+        items.push({ mc, fullName: r.fullName, specialty: r.specialty, series: r.series, number: r.number, expirationDate: r.expirationDate });
+      });
+    });
+
+    // Фильтр по статусу (относительно сегодня)
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const daysLeft = ds => Math.ceil((new Date(ds) - today) / 86400000);
+    const matchStatus = it => {
+      const d = daysLeft(it.expirationDate);
+      if (status === 'expired') return d < 0;
+      if (status === 'soon30') return d >= 0 && d <= 30;
+      if (status === 'soon90') return d >= 0 && d <= 90;
+      if (status === 'problem') return d <= 30;
+      return true;
+    };
+    const filtered = items.filter(matchStatus);
+
+    const fname = `Аккредитационный отчёт ${new Date().toISOString().slice(0, 10)}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(fname)}`);
+
+    await generateAccreditationsReportPdf(res, {
+      items: filtered,
+      from: from || null,
+      to: to || null,
+      statusLabel: ACC_STATUS_LABELS[status] || 'Все',
+      groupByMedCenter: group !== '0',
+      generatedBy: req.user.displayName || req.user.username || null
+    });
+  } catch (error) {
+    console.error('Accreditations report PDF error:', error);
+    if (!res.headersSent) res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
 // Полная переиндексация (для админа)
 router.post('/reindex', authenticate, async (req, res) => {
   try {
@@ -397,10 +463,12 @@ router.post('/', authenticate, [
       return res.status(400).json({ error: 'Укажите хотя бы один медцентр' });
     }
 
-    const { fullName, specialty, expirationDate, comment, misUserId } = req.body;
+    const { fullName, specialty, series, number, expirationDate, comment, misUserId } = req.body;
 
     const accreditation = await Accreditation.create({
-      medCenter: medCenters[0], medCenters, fullName, specialty, expirationDate, comment,
+      medCenter: medCenters[0], medCenters, fullName, specialty,
+      series: series || null, number: number || null,
+      expirationDate, comment,
       misUserId: misUserId || null
     });
 
@@ -438,7 +506,7 @@ router.put('/:id', authenticate, [
       return res.status(404).json({ error: 'Accreditation not found' });
     }
 
-    const { fullName, specialty, expirationDate, comment } = req.body;
+    const { fullName, specialty, series, number, expirationDate, comment } = req.body;
 
     // Медцентры: если переданы — нормализуем; иначе оставляем как есть
     let newMedCenters;
@@ -456,6 +524,8 @@ router.put('/:id', authenticate, [
       medCenter: (accreditation.medCenters || [accreditation.medCenter]).join(', '),
       fullName: accreditation.fullName,
       specialty: accreditation.specialty,
+      series: accreditation.series,
+      number: accreditation.number,
       expirationDate: accreditation.expirationDate,
       comment: accreditation.comment,
     };
@@ -465,6 +535,8 @@ router.put('/:id', authenticate, [
       ...(newMedCenters && { medCenter, medCenters: newMedCenters }),
       ...(fullName && { fullName }),
       ...(specialty && { specialty }),
+      ...(series !== undefined && { series: series || null }),
+      ...(number !== undefined && { number: number || null }),
       ...(expirationDate && { expirationDate }),
       ...(comment !== undefined && { comment }),
       ...(misUserId !== undefined && { misUserId: misUserId || null })
@@ -479,10 +551,12 @@ router.put('/:id', authenticate, [
       { key: 'medCenter', label: 'Медцентр' },
       { key: 'fullName', label: 'ФИО' },
       { key: 'specialty', label: 'Специальность' },
+      { key: 'series', label: 'Серия' },
+      { key: 'number', label: 'Номер' },
       { key: 'expirationDate', label: 'Дата окончания' },
       { key: 'comment', label: 'Комментарий' },
     ];
-    const updates = { medCenter: newMedCenters ? newMedCenters.join(', ') : undefined, fullName, specialty, expirationDate, comment };
+    const updates = { medCenter: newMedCenters ? newMedCenters.join(', ') : undefined, fullName, specialty, series, number, expirationDate, comment };
     for (const { key, label } of fieldDefs) {
       if (updates[key] !== undefined && String(updates[key] ?? '') !== String(oldValues[key] ?? '')) {
         detailedChanges.push({ field: key, label, from: String(oldValues[key] ?? ''), to: String(updates[key] ?? '') });
@@ -564,6 +638,8 @@ router.post('/:id/renew', authenticate, [
       medCenters: oldMedCenters,
       fullName: old.fullName,
       specialty: old.specialty,
+      series: old.series,
+      number: old.number,
       misUserId: old.misUserId,
       expirationDate,
       comment: comment !== undefined ? comment : old.comment

@@ -361,6 +361,8 @@ const Accreditation = sequelize.define('Accreditation', {
   },
   fullName: { type: DataTypes.STRING(255), allowNull: false },
   specialty: { type: DataTypes.STRING(255), allowNull: false },
+  series: { type: DataTypes.STRING(50), allowNull: true, comment: 'Серия аккредитации (буквы/цифры, необязательно)' },
+  number: { type: DataTypes.STRING(50), allowNull: true, comment: 'Номер аккредитации (буквы/цифры, необязательно)' },
   expirationDate: { type: DataTypes.DATEONLY, allowNull: false },
   comment: { type: DataTypes.TEXT },
   medCenters: { type: DataTypes.JSONB, allowNull: true, comment: 'Медцентры, на которые распространяется аккредитация (массив). medCenter = первый из них (для совместимости)' },

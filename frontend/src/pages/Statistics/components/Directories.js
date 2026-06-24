@@ -6060,6 +6060,19 @@ function pcFetch(url, opts = {}) {
   });
 }
 
+async function pcMapLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 function pcFmt(p) {
   if (!p) return '—';
   return parseFloat(p).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₽';
@@ -6588,13 +6601,14 @@ export function TabServices() {
       || (selClinicCat.id != null ? [selClinicCat.id] : []);
     if (!categoryIds.length) { toast.error('Выбранная категория не содержит услуг'); return; }
     setAddingCatSvcs(true);
-    Promise.all(clinics.flatMap(c =>
-      categoryIds.map(catId =>
-        pcFetch(`${PS_URL}?category_id=${catId}&clinic_id=${c.id}&limit=500`)
-          .then(res => ({ name: c.title, data: res.success ? (res.data || []) : [] }))
-          .catch(() => ({ name: c.title, data: [] }))
-      )
-    )).then(results => {
+    const fetchJobs = clinics.flatMap(c =>
+      categoryIds.map(catId => ({ clinic: c, catId }))
+    );
+    pcMapLimit(fetchJobs, 4, ({ clinic, catId }) =>
+      pcFetch(`${PS_URL}?category_id=${catId}&clinic_id=${clinic.id}&limit=500`)
+        .then(res => ({ name: clinic.title, data: res.success ? (res.data || []) : [], failed: false }))
+        .catch(() => ({ name: clinic.title, data: [], failed: true }))
+    ).then(results => {
       const map = {};
       results.forEach(r => r.data.forEach(s => {
         const k = s.serviceId || s.subCode || `${s.code}|${s.title}`;
@@ -6605,10 +6619,18 @@ export function TabServices() {
       const svcs = Object.values(map);
       if (!svcs.length) { toast.error('В категории нет услуг'); setAddingCatSvcs(false); return; }
       let added = 0, errs = 0;
-      return Promise.all(svcs.map(s =>
+      return pcMapLimit(svcs, 3, s =>
         pcFetch(`${PC_URL}/${comp.id}/items`, { method: 'POST', body: JSON.stringify({ serviceCode: s.code || '', serviceName: s.title, misServiceId: s.service_id, prices: s.prices, costPrices: s.costPrices }) })
-          .then(() => added++).catch(() => errs++)
-      )).then(() => { if (added) toast.success(`Добавлено услуг: ${added}`); if (errs) toast.error(`Ошибок: ${errs}`); setModal(null); loadComp(comp.id); });
+          .then(() => { added++; return true; })
+          .catch(() => { errs++; return false; })
+      ).then(() => {
+        const failedLoads = results.filter(r => r.failed).length;
+        if (added) toast.success(`Добавлено услуг: ${added}`);
+        if (failedLoads) toast.error(`Не загрузились части категории: ${failedLoads}`);
+        if (errs) toast.error(`Ошибок добавления: ${errs}`);
+        setModal(null);
+        loadComp(comp.id);
+      });
     }).catch(e => toast.error(e.message)).finally(() => setAddingCatSvcs(false));
   }
 

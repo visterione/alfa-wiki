@@ -542,7 +542,200 @@ async function generatePageHistoryPdf(page, history) {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Отчёт по аккредитациям (реестр-срез)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Цвета медцентров (в тон чипам на странице)
+const ACC_MC_COLORS = {
+  'Альфа': '#be185d', 'Кидс': '#c2410c', 'Проф': '#6d28d9', '3К': '#a21caf',
+  'Смайл': '#4b5563', 'Линия': '#92400e', 'Сукко': '#047857', 'ИП Микаелян': '#0369a1'
+};
+const ACC_MC_ORDER = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
+
+function accDaysLeft(ds) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  return Math.ceil((new Date(ds) - today) / 86400000);
+}
+function accFormatDate(ds) {
+  const d = new Date(ds);
+  return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear();
+}
+function accStatus(ds) {
+  const d = accDaysLeft(ds);
+  if (d < 0) return { label: 'Просрочено', color: '#dc2626' };
+  if (d <= 30) return { label: '≤30 дней', color: '#b45309' };
+  if (d <= 90) return { label: '≤90 дней', color: '#a16207' };
+  return { label: 'Действует', color: '#16a34a' };
+}
+function accSeriesNumber(it) {
+  return [it.series, it.number].map(x => (x == null ? '' : String(x)).trim()).filter(Boolean).join(' ');
+}
+
+/**
+ * Генерация PDF-отчёта по аккредитациям. Пишет прямо в переданный поток (res).
+ * @param {WritableStream} stream  куда писать PDF (обычно res)
+ * @param {Object} opts
+ *   items            [{ mc, fullName, specialty, series, number, expirationDate }]
+ *   from, to         границы периода (строки YYYY-MM-DD) или null
+ *   statusLabel      человекочитаемое название статус-фильтра
+ *   groupByMedCenter группировать ли по медцентрам
+ *   generatedBy      ФИО/логин сформировавшего
+ */
+function generateAccreditationsReportPdf(stream, opts) {
+  return new Promise((resolve, reject) => {
+    try {
+      const { items = [], from, to, statusLabel, groupByMedCenter = true, generatedBy } = opts;
+      const now = new Date();
+
+      const doc = new PDFDocument({
+        margin: 40, size: 'A4', layout: 'landscape',
+        info: { Title: 'Аккредитационный отчёт', Author: 'Alfa Wiki', Subject: 'Отчёт по аккредитациям', CreationDate: now }
+      });
+
+      const fontsDir = path.join(__dirname, '..', 'fonts');
+      doc.registerFont('DejaVu', path.join(fontsDir, 'DejaVuSans.ttf'));
+      doc.registerFont('DejaVu-Bold', path.join(fontsDir, 'DejaVuSans-Bold.ttf'));
+
+      doc.pipe(stream);
+
+      // Геометрия (landscape A4: 842 x 595, поля 40)
+      const LEFT = 40, RIGHT = 802, BOTTOM = 555;
+
+      // Колонки. В режиме без группировки добавляем «Медцентр».
+      const cols = groupByMedCenter
+        ? [
+            { key: 'idx',  title: '№',             w: 30,  align: 'left' },
+            { key: 'name', title: 'ФИО',           w: 230, align: 'left' },
+            { key: 'spec', title: 'Специальность', w: 242, align: 'left' },
+            { key: 'sn',   title: 'Серия/№',       w: 113, align: 'left' },
+            { key: 'date', title: 'Срок',          w: 72,  align: 'left' },
+            { key: 'stat', title: 'Статус',        w: 75,  align: 'left' }
+          ]
+        : [
+            { key: 'idx',  title: '№',             w: 30,  align: 'left' },
+            { key: 'mc',   title: 'Медцентр',      w: 90,  align: 'left' },
+            { key: 'name', title: 'ФИО',           w: 195, align: 'left' },
+            { key: 'spec', title: 'Специальность', w: 188, align: 'left' },
+            { key: 'sn',   title: 'Серия/№',       w: 110, align: 'left' },
+            { key: 'date', title: 'Срок',          w: 72,  align: 'left' },
+            { key: 'stat', title: 'Статус',        w: 75,  align: 'left' }
+          ];
+      // x-координаты колонок
+      let cx = LEFT;
+      cols.forEach(c => { c.x = cx; cx += c.w; });
+
+      const cellTxt = (cells, c) => String(cells[c.key] == null ? '' : cells[c.key]);
+
+      // Универсальный рендер строки таблицы с полной сеткой (все границы).
+      function renderRow(cells, opts) {
+        opts = opts || {};
+        const isHeader = !!opts.header;
+        doc.font(isHeader ? 'DejaVu-Bold' : 'DejaVu').fontSize(isHeader ? 9 : 8.5);
+
+        // высота строки = по самой высокой ячейке (с учётом переноса) + вертикальные отступы
+        let rowH = 0;
+        cols.forEach(c => {
+          const h = doc.heightOfString(cellTxt(cells, c), { width: c.w - 6 });
+          if (h > rowH) rowH = h;
+        });
+        rowH = Math.max(rowH, isHeader ? 13 : 12) + 6;
+
+        if (!isHeader && doc.y + rowH > BOTTOM) { doc.addPage(); drawTableHeader(); }
+
+        const y = doc.y;
+
+        // фон шапки
+        if (isHeader) { doc.save(); doc.rect(LEFT, y, RIGHT - LEFT, rowH).fill('#f1f5f9'); doc.restore(); }
+
+        // границы всех ячеек (вертикальные + горизонтальные)
+        doc.lineWidth(0.6).strokeColor('#94a3b8');
+        cols.forEach(c => doc.rect(c.x, y, c.w, rowH).stroke());
+
+        // текст
+        cols.forEach(c => {
+          if (isHeader) doc.font('DejaVu-Bold').fillColor('#1f2937');
+          else if (c.key === 'stat') doc.font('DejaVu-Bold').fillColor(opts.statusColor || '#374151');
+          else doc.font('DejaVu').fillColor('#374151');
+          doc.text(cellTxt(cells, c), c.x + 3, y + 3, { width: c.w - 6, align: c.align });
+        });
+
+        doc.fillColor('#000000');
+        doc.y = y + rowH;
+      }
+
+      function drawTableHeader() {
+        const headerCells = {};
+        cols.forEach(c => { headerCells[c.key] = c.title; });
+        renderRow(headerCells, { header: true });
+      }
+
+      // ── Шапка документа ──
+      doc.fontSize(16).font('DejaVu-Bold').fillColor('#1f2937').text('Аккредитационный отчёт', LEFT, doc.y, { align: 'left' });
+      doc.moveDown(0.3);
+      if (from || to) {
+        doc.fontSize(10).font('DejaVu').fillColor('#6b7280')
+          .text('Период (срок действия): ' + (from ? accFormatDate(from) : '…') + ' – ' + (to ? accFormatDate(to) : '…'), { width: RIGHT - LEFT });
+        doc.moveDown(0.6);
+      }
+      doc.fillColor('#000000');
+
+      if (!items.length) {
+        doc.fontSize(11).font('DejaVu').fillColor('#6b7280').text('Нет данных по выбранным фильтрам');
+        doc.end();
+        stream.on('finish', resolve);
+        stream.on('error', reject);
+        return;
+      }
+
+      if (groupByMedCenter) {
+        // группируем по медцентру
+        const groups = {};
+        items.forEach(it => { (groups[it.mc] = groups[it.mc] || []).push(it); });
+        const names = Object.keys(groups).sort((a, b) => {
+          const ia = ACC_MC_ORDER.indexOf(a), ib = ACC_MC_ORDER.indexOf(b);
+          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        });
+        names.forEach(name => {
+          const rows = groups[name].slice().sort((a, b) => new Date(a.expirationDate) - new Date(b.expirationDate));
+          // заголовок секции
+          if (doc.y + 40 > BOTTOM) doc.addPage();
+          doc.moveDown(0.3);
+          doc.fontSize(12).font('DejaVu-Bold').fillColor(ACC_MC_COLORS[name] || '#1f2937')
+            .text(name + '  (' + rows.length + ')', LEFT, doc.y);
+          doc.fillColor('#000000').moveDown(0.2);
+          drawTableHeader();
+          rows.forEach((it, i) => {
+            const st = accStatus(it.expirationDate);
+            renderRow({ idx: i + 1, name: it.fullName, spec: it.specialty, sn: accSeriesNumber(it), date: accFormatDate(it.expirationDate), stat: st.label }, { statusColor: st.color });
+          });
+          doc.moveDown(0.4);
+        });
+      } else {
+        // единая таблица, сортировка: медцентр → дата
+        const rows = items.slice().sort((a, b) => {
+          const ia = ACC_MC_ORDER.indexOf(a.mc), ib = ACC_MC_ORDER.indexOf(b.mc);
+          if (ia !== ib) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+          return new Date(a.expirationDate) - new Date(b.expirationDate);
+        });
+        drawTableHeader();
+        rows.forEach((it, i) => {
+          const st = accStatus(it.expirationDate);
+          renderRow({ idx: i + 1, mc: it.mc, name: it.fullName, spec: it.specialty, sn: accSeriesNumber(it), date: accFormatDate(it.expirationDate), stat: st.label }, { statusColor: st.color });
+        });
+      }
+
+      doc.end();
+      stream.on('finish', resolve);
+      stream.on('error', reject);
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
 module.exports = {
   generateReviewPdf,
-  generatePageHistoryPdf
+  generatePageHistoryPdf,
+  generateAccreditationsReportPdf
 };

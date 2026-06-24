@@ -133,6 +133,7 @@
 .acc-acc-line { display: flex; align-items: center; gap: 12px; padding: 7px 0 1px; }
 .acc-acc-line + .acc-acc-line { border-top: 1px dashed #f1f5f9; padding-top: 7px; }
 .acc-acc-spec { flex: 1; font-size: 14px; color: #374151; min-width: 0; }
+.acc-sn { color: #6b7280; font-weight: 500; font-size: 13px; white-space: nowrap; }
 .acc-badge-notset { background: #f3f4f6; color: #6b7280; padding: 3px 10px; border-radius: 20px; font-size: 13px; font-weight: 500; }
 
 .acc-row {
@@ -178,6 +179,10 @@
 #acc-form, #renew-form { padding: 24px; }
 .acc-form-group { margin-bottom: 18px; }
 .acc-form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; color: #374151; }
+/* Двухколоночная сетка полей формы */
+.acc-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.acc-form-grid .acc-form-group { margin-bottom: 0; }
+.acc-form-grid .span2 { grid-column: 1 / -1; }
 .acc-form-hint { font-size: 12px; color: #9ca3af; margin-top: 5px; }
 .acc-typeahead { position: relative; }
 .acc-typeahead-dropdown {
@@ -258,6 +263,7 @@
   .acc-row-spec { grid-column: 1; }
   .acc-actions { grid-column: 2; grid-row: 1 / span 2; }
   .acc-modal-content { margin: 8px; max-height: calc(100vh - 16px); }
+  .acc-form-grid { grid-template-columns: 1fr; }
   .acc-input, .acc-select, .acc-textarea { font-size: 16px; }
   .acc-toast { left: 16px; right: 16px; bottom: 16px; text-align: center; }
 }
@@ -317,6 +323,10 @@
         <button class="acc-viewtab" id="tab-archive" onclick="accApp.setView('archive')">Архив</button>
       </div>
       <span id="acc-hidden-slot"></span>
+      <button class="acc-btn acc-btn-secondary" onclick="accApp.openReportModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+        Отчёт
+      </button>
       <button class="acc-btn acc-btn-primary" onclick="accApp.openAddModal()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Добавить
@@ -330,7 +340,7 @@
 
   <!-- Модалка добавления/редактирования -->
   <div id="acc-modal" class="acc-modal" style="display:none" onclick="if(event.target===this)accApp.closeModal()">
-    <div class="acc-modal-content">
+    <div class="acc-modal-content wide">
       <div class="acc-modal-header">
         <h3 id="modal-title">Добавить аккредитацию</h3>
         <button class="acc-modal-close" onclick="accApp.closeModal()">&times;</button>
@@ -338,45 +348,103 @@
       <form id="acc-form" onsubmit="accApp.saveRecord(event)">
         <input type="hidden" id="edit-id">
         <input type="hidden" id="edit-misuserid">
-        <div class="acc-form-group">
-          <label>Сотрудник (ФИО) *</label>
-          <div class="acc-typeahead">
-            <input type="text" id="edit-fullname" required class="acc-input" placeholder="Начните вводить ФИО..." autocomplete="off" oninput="accApp.onStaffInput()" onfocus="accApp.onStaffInput()" onblur="accApp.hideStaffDropdown()">
-            <div class="acc-typeahead-dropdown" id="staff-dropdown"></div>
+        <div class="acc-form-grid">
+          <div class="acc-form-group span2">
+            <label>Сотрудник (ФИО) *</label>
+            <div class="acc-typeahead">
+              <input type="text" id="edit-fullname" required class="acc-input" placeholder="Начните вводить ФИО..." autocomplete="off" oninput="accApp.onStaffInput()" onfocus="accApp.onStaffInput()" onblur="accApp.hideStaffDropdown()">
+              <div class="acc-typeahead-dropdown" id="staff-dropdown"></div>
+            </div>
+            <div class="acc-form-hint" id="staff-hint"></div>
+            <input type="checkbox" id="manual-mode" onchange="accApp.toggleManual()" style="display:none">
           </div>
-          <div class="acc-form-hint" id="staff-hint"></div>
-          <input type="checkbox" id="manual-mode" onchange="accApp.toggleManual()" style="display:none">
-        </div>
-        <div class="acc-form-group">
-          <label>Специальность *</label>
-          <select id="edit-specialty-select" class="acc-select"><option value="">Сначала выберите сотрудника</option></select>
-          <input type="text" id="edit-specialty-input" class="acc-input" placeholder="Например: Терапия" style="display:none">
-        </div>
-        <div class="acc-form-group">
-          <label>Медцентры <span style="font-weight:400;color:#9ca3af;font-size:12px">— где действует аккредитация</span></label>
-          <div class="acc-mc-checks" id="edit-medcenters"><span class="acc-mc-empty">Сначала выберите сотрудника</span></div>
-        </div>
-        <div class="acc-form-group">
-          <label>Срок действия *</label>
-          <input type="date" id="edit-expdate" required class="acc-input">
-        </div>
-        <div class="acc-form-group">
-          <label>Комментарий</label>
-          <textarea id="edit-comment" class="acc-textarea" rows="3" placeholder="Дополнительная информация..."></textarea>
-        </div>
-        <div class="acc-form-group">
-          <label>Файлы <span style="font-weight:400;color:#9ca3af;font-size:12px">— можно прикрепить сразу</span></label>
-          <div class="acc-upload-area compact" id="add-upload-area" onclick="document.getElementById('add-file-input').click()">
-            <svg class="acc-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <div class="acc-upload-text">Нажмите или перетащите файлы</div>
-            <div class="acc-upload-hint">Изображения, PDF, Word, Excel (макс. 50MB)</div>
-            <input type="file" id="add-file-input" multiple style="display:none" onchange="accApp.addPendingFiles(event)">
+          <div class="acc-form-group">
+            <label>Специальность *</label>
+            <select id="edit-specialty-select" class="acc-select"><option value="">Сначала выберите сотрудника</option></select>
+            <input type="text" id="edit-specialty-input" class="acc-input" placeholder="Например: Терапия" style="display:none">
           </div>
-          <div id="add-files-list"></div>
+          <div class="acc-form-group">
+            <label>Срок действия *</label>
+            <input type="date" id="edit-expdate" required class="acc-input">
+          </div>
+          <div class="acc-form-group">
+            <label>Серия</label>
+            <input type="text" id="edit-series" class="acc-input" placeholder="Например: АО" autocomplete="off">
+          </div>
+          <div class="acc-form-group">
+            <label>Номер</label>
+            <input type="text" id="edit-number" class="acc-input" placeholder="Например: 123456" autocomplete="off">
+          </div>
+          <div class="acc-form-group span2">
+            <label>Медцентры</label>
+            <div class="acc-mc-checks" id="edit-medcenters"><span class="acc-mc-empty">Сначала выберите сотрудника</span></div>
+          </div>
+          <div class="acc-form-group span2">
+            <label>Комментарий</label>
+            <textarea id="edit-comment" class="acc-textarea" rows="2" placeholder="Дополнительная информация..."></textarea>
+          </div>
+          <div class="acc-form-group span2">
+            <label>Файлы</label>
+            <div class="acc-upload-area compact" id="add-upload-area" onclick="document.getElementById('add-file-input').click()">
+              <svg class="acc-upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <div class="acc-upload-text">Нажмите или перетащите файлы</div>
+              <div class="acc-upload-hint">Изображения, PDF, Word, Excel (макс. 50MB)</div>
+              <input type="file" id="add-file-input" multiple style="display:none" onchange="accApp.addPendingFiles(event)">
+            </div>
+            <div id="add-files-list"></div>
+          </div>
         </div>
         <div class="acc-modal-footer">
           <button type="button" class="acc-btn acc-btn-secondary" onclick="accApp.closeModal()">Отмена</button>
           <button type="submit" class="acc-btn acc-btn-primary">Сохранить</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Модалка отчёта -->
+  <div id="report-modal" class="acc-modal" style="display:none" onclick="if(event.target===this)accApp.closeReportModal()">
+    <div class="acc-modal-content">
+      <div class="acc-modal-header">
+        <h3>Отчёт по аккредитациям</h3>
+        <button class="acc-modal-close" onclick="accApp.closeReportModal()">&times;</button>
+      </div>
+      <form id="report-form" onsubmit="accApp.downloadReport(event)">
+        <div class="acc-form-grid" style="padding:24px">
+          <div class="acc-form-group">
+            <label>Период с</label>
+            <input type="date" id="report-from" class="acc-input">
+          </div>
+          <div class="acc-form-group">
+            <label>по</label>
+            <input type="date" id="report-to" class="acc-input">
+          </div>
+          <div class="acc-form-group span2">
+            <div class="acc-form-hint" style="margin-top:0">Период по сроку действия. Оставьте пустым — попадёт весь действующий реестр.</div>
+          </div>
+          <div class="acc-form-group span2">
+            <label>Статус</label>
+            <select id="report-status" class="acc-select">
+              <option value="all">Все</option>
+              <option value="expired">Просроченные</option>
+              <option value="soon30">Истекает ≤30 дней</option>
+              <option value="soon90">Истекает ≤90 дней</option>
+              <option value="problem">Проблемные (просроченные + ≤30)</option>
+            </select>
+          </div>
+          <div class="acc-form-group span2">
+            <label>Медцентры</label>
+            <div class="acc-mc-checks" id="report-medcenters"></div>
+          </div>
+          <div class="acc-form-group span2">
+            <label class="acc-manual-toggle" style="cursor:pointer">
+              <input type="checkbox" id="report-group" checked> Группировать по медцентру
+            </label>
+          </div>
+        </div>
+        <div class="acc-modal-footer" style="padding:0 24px 24px">
+          <button type="button" class="acc-btn acc-btn-secondary" onclick="accApp.closeReportModal()">Отмена</button>
+          <button type="submit" class="acc-btn acc-btn-primary" id="report-submit">Сформировать PDF</button>
         </div>
       </form>
     </div>
@@ -511,6 +579,15 @@ window.accApp = (function() {
   // Аккредитация привязана к (сотрудник, специальность) — независимо от набора клиник
   function recordKey(r) {
     return (r.misUserId ? 'u' + r.misUserId : 'n' + r.fullName) + '|' + r.specialty;
+  }
+  // Серия/номер аккредитации одной строкой: «АО 123456». Любое из полей может отсутствовать.
+  function snText(r) {
+    return [r.series, r.number].map(function(x) { return (x == null ? '' : String(x)).trim(); }).filter(Boolean).join(' ');
+  }
+  // Готовый суффикс для вывода после специальности: « (АО 123456)» либо ''.
+  function snSuffix(r) {
+    var t = snText(r);
+    return t ? ' <span class="acc-sn">(' + escapeHtml(t) + ')</span>' : '';
   }
   // Медцентры записи (с фолбэком на старое одиночное поле)
   function recMedCenters(r) {
@@ -672,7 +749,7 @@ window.accApp = (function() {
       if (sp && r.specialty !== sp) return false;
       if (statusFilter !== 'all' && !matchStatus(r)) return false;
       if (q) {
-        var hay = (r.fullName + ' ' + r.specialty + ' ' + (r.comment || '')).toLowerCase();
+        var hay = (r.fullName + ' ' + r.specialty + ' ' + snText(r) + ' ' + (r.comment || '')).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
       }
       return true;
@@ -801,7 +878,7 @@ window.accApp = (function() {
 
     function cardMatches(c) {
       if (q) {
-        var hay = (c.name + ' ' + c.specs.join(' ') + ' ' + c.recs.map(function(x) { return x.specialty + ' ' + (x.comment || ''); }).join(' ')).toLowerCase();
+        var hay = (c.name + ' ' + c.specs.join(' ') + ' ' + c.recs.map(function(x) { return x.specialty + ' ' + snText(x) + ' ' + (x.comment || ''); }).join(' ')).toLowerCase();
         if (hay.indexOf(q) === -1) return false;
       }
       if (sp && c.specs.indexOf(sp) === -1 && !c.recs.some(function(x) { return x.specialty === sp; })) return false;
@@ -886,7 +963,7 @@ window.accApp = (function() {
     if (c.recs.length) {
       lines = c.recs.slice().sort(function(a, b) { return new Date(a.expirationDate) - new Date(b.expirationDate); }).map(function(r) {
         return '<div class="acc-acc-line">' +
-          '<span class="acc-acc-spec">' + escapeHtml(r.specialty) + historyLink(r) + '</span>' +
+          '<span class="acc-acc-spec">' + escapeHtml(r.specialty) + snSuffix(r) + historyLink(r) + '</span>' +
           '<span class="acc-date ' + getDateClass(r.expirationDate) + '">' + formatDate(r.expirationDate) + '</span>' +
           '<span class="acc-actions">' + activeActions(r) + '</span>' +
         '</div>';
@@ -948,7 +1025,7 @@ window.accApp = (function() {
 
     return '<div class="acc-row" data-id="' + r.id + '">' +
       '<div><div class="acc-row-name">' + escapeHtml(r.fullName) + '</div>' + comment + history + '</div>' +
-      '<div class="acc-row-spec">' + escapeHtml(r.specialty) + '</div>' +
+      '<div class="acc-row-spec">' + escapeHtml(r.specialty) + snSuffix(r) + '</div>' +
       '<div><span class="acc-date ' + getDateClass(r.expirationDate) + '">' + formatDate(r.expirationDate) + '</span></div>' +
       '<div class="acc-actions">' + actions + '</div>' +
     '</div>';
@@ -1014,7 +1091,7 @@ window.accApp = (function() {
     }
     box.innerHTML = '<div class="acc-mc-readonly">' +
       selectedEmpMedCenters.map(function(m) { return '<span class="acc-medcenter" data-center="' + attr(m) + '">' + escapeHtml(m) + '</span>'; }).join('') +
-      '<span class="acc-mc-note">Действует во всех клиниках сотрудника</span></div>';
+      '</div>';
   }
 
   function setManual(on) {
@@ -1147,6 +1224,8 @@ window.accApp = (function() {
     document.getElementById('edit-id').value = r.id;
     document.getElementById('edit-misuserid').value = r.misUserId || '';
     document.getElementById('edit-fullname').value = r.fullName;
+    document.getElementById('edit-series').value = r.series || '';
+    document.getElementById('edit-number').value = r.number || '';
     document.getElementById('edit-comment').value = r.comment || '';
     document.getElementById('edit-expdate').value = r.expirationDate;
 
@@ -1186,6 +1265,8 @@ window.accApp = (function() {
       medCenters: medCenters,
       fullName: document.getElementById('edit-fullname').value.trim(),
       specialty: specialty,
+      series: document.getElementById('edit-series').value.trim(),
+      number: document.getElementById('edit-number').value.trim(),
       expirationDate: document.getElementById('edit-expdate').value,
       comment: document.getElementById('edit-comment').value,
       misUserId: document.getElementById('edit-misuserid').value || null
@@ -1226,6 +1307,63 @@ window.accApp = (function() {
     fetchAPI(API_URL + '/' + id + '/renew', { method: 'POST', body: JSON.stringify(data) })
       .then(function() { showToast('Аккредитация продлена, предыдущая в архиве', 'success'); closeRenewModal(); loadAll(); })
       .catch(function(e) { showToast('Ошибка: ' + e.message, 'error'); });
+  }
+
+  // ── Отчёт (PDF) ──
+  function openReportModal() {
+    document.getElementById('report-medcenters').innerHTML = MEDCENTERS.map(function(m) {
+      return '<label class="acc-mc-check checked"><input type="checkbox" value="' + attr(m) + '" checked onchange="accApp.onReportMcToggle(this)"> ' + escapeHtml(m) + '</label>';
+    }).join('');
+    document.getElementById('report-from').value = '';
+    document.getElementById('report-to').value = '';
+    document.getElementById('report-status').value = 'all';
+    document.getElementById('report-group').checked = true;
+    document.getElementById('report-modal').style.display = 'flex';
+  }
+  function closeReportModal() { document.getElementById('report-modal').style.display = 'none'; }
+  function onReportMcToggle(input) { input.parentNode.classList.toggle('checked', input.checked); }
+
+  function downloadReport(e) {
+    e.preventDefault();
+    var from = document.getElementById('report-from').value;
+    var to = document.getElementById('report-to').value;
+    if (from && to && from > to) { showToast('Период: дата «с» позже даты «по»', 'error'); return; }
+    var status = document.getElementById('report-status').value;
+    var group = document.getElementById('report-group').checked ? '1' : '0';
+    var mcs = Array.prototype.slice.call(document.querySelectorAll('#report-medcenters input:checked')).map(function(i) { return i.value; });
+    if (!mcs.length) { showToast('Отметьте хотя бы один медцентр', 'error'); return; }
+
+    var params = [];
+    if (from) params.push('from=' + encodeURIComponent(from));
+    if (to) params.push('to=' + encodeURIComponent(to));
+    params.push('status=' + encodeURIComponent(status));
+    params.push('group=' + group);
+    if (mcs.length !== MEDCENTERS.length) params.push('medCenters=' + encodeURIComponent(mcs.join(',')));
+
+    var btn = document.getElementById('report-submit');
+    var oldText = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Формирование…';
+    var restore = function() { btn.disabled = false; btn.textContent = oldText; };
+
+    fetch(API_URL + '/report/pdf?' + params.join('&'), { method: 'GET', headers: { 'Authorization': 'Bearer ' + getToken() } })
+      .then(function(r) {
+        if (!r.ok) return r.json().then(function(err) { throw new Error(err.error || 'Error'); });
+        return r.blob().then(function(blob) { return { blob: blob, headers: r.headers }; });
+      })
+      .then(function(data) {
+        var cd = data.headers.get('Content-Disposition');
+        var filename = 'Аккредитационный отчёт.pdf';
+        if (cd) { var m = cd.match(/filename\*=UTF-8''([^;]+)/); if (m) filename = decodeURIComponent(m[1]); }
+        var url = window.URL.createObjectURL(data.blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click();
+        window.URL.revokeObjectURL(url); document.body.removeChild(a);
+        showToast('Отчёт сформирован', 'success');
+        closeReportModal();
+        restore();
+      })
+      .catch(function(err) { showToast('Ошибка: ' + err.message, 'error'); restore(); });
   }
 
   // ── Архив / восстановление / удаление ──
@@ -1394,7 +1532,7 @@ window.accApp = (function() {
     initDragDrop();
     initAddDragDrop();
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') { closeModal(); closeRenewModal(); closeHistoryModal(); closeFilesModal(); }
+      if (e.key === 'Escape') { closeModal(); closeRenewModal(); closeHistoryModal(); closeFilesModal(); closeReportModal(); }
     });
   }
 
@@ -1405,6 +1543,7 @@ window.accApp = (function() {
     onStaffInput: onStaffInput, selectStaff: selectStaff, hideStaffDropdown: hideStaffDropdown, toggleManual: toggleManual, quickAdd: quickAdd, onMcToggle: onMcToggle,
     setHidden: setHidden, toggleShowHidden: toggleShowHidden,
     openRenewModal: openRenewModal, closeRenewModal: closeRenewModal, saveRenew: saveRenew,
+    openReportModal: openReportModal, closeReportModal: closeReportModal, onReportMcToggle: onReportMcToggle, downloadReport: downloadReport,
     restoreRecord: restoreRecord, deleteRecord: deleteRecord,
     openHistoryModal: openHistoryModal, closeHistoryModal: closeHistoryModal,
     openFilesModal: openFilesModal, closeFilesModal: closeFilesModal, uploadFiles: uploadFiles, downloadFile: downloadFile, deleteFile: deleteFile
