@@ -6800,87 +6800,88 @@ export function TabServices() {
     const baseC  = allCols.find(c => c.name === baseCol);
     const ordered = baseC ? [baseC, ...allCols.filter(c => c.name !== baseCol)] : [...allCols];
 
-    // Excel-номер колонки → буква (A, B, …, Z, AA, …) — корректно для широких таблиц
-    function colLetter(n) { let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
-
     const getPrice  = (it, cn) => (it.prices || {})[cn] || null;
     const getCost   = (it, cn) => (it.costPrices || {})[cn] || null;
     const getMargin = (it, cn) => {
       const p = (it.prices || {})[cn], c = (it.costPrices || {})[cn];
       return (p != null && c != null) ? parseFloat((p - c).toFixed(2)) : null;
     };
-    // Под каждую услугу — три строки, как в карточке на экране
+    // Каждая клиника = три столбца (как в карточке на экране)
     const metrics = [
-      { label: 'Стоимость',     get: getPrice  },
-      { label: 'Себестоимость', get: getCost   },
-      { label: 'Маржа',         get: getMargin },
+      { label: 'Стоимость',     diff: 'Δ',  get: getPrice  },
+      { label: 'Себестоимость', diff: 'Δс', get: getCost   },
+      { label: 'Маржа',         diff: 'Δм', get: getMargin },
     ];
+    const MSPAN = metrics.length;   // метрик на клинику
+    const MPAIR = MSPAN * 2;         // столбцов на клинику (значение + разница на каждую метрику)
 
-    // Жирные вертикальные разделители: после «Показателя» и по правому краю каждой клиники.
-    // groupRightData — крайняя правая колонка группы в строках данных; groupRightHead — то же
-    // в заголовке, но для объединённых пар это колонка-«мастер» (Excel рисует рамку по ней).
-    const groupRightData = new Set([3]);
-    const groupRightHead = new Set([3]);
-    { let c = 4; ordered.forEach(col => {
-        if (col.name === baseCol) { groupRightData.add(c); groupRightHead.add(c); c += 1; }
-        else { groupRightData.add(c + 1); groupRightHead.add(c); c += 2; }
-      }); }
+    // Жирные вертикальные разделители: после «Названия» (кол. 2) и по правому краю каждой клиники
+    const groupRight = new Set([2]);
+    { let c = 3; ordered.forEach(() => { groupRight.add(c + MPAIR - 1); c += MPAIR; }); }
     const thickR = b => ({ ...b, right: { style: 'medium' } });
+    const styleHead = cell => { cell.fill = hFill; cell.font = { bold: true }; cell.alignment = { vertical: 'middle', horizontal: 'center' }; cell.border = border; };
 
     function buildSheet(ws) {
-      // Заголовок: Артикул | Название | Показатель | <колонки клиник с парами значение/разница>
-      const hdr = ['Артикул', 'Название услуги', 'Показатель'];
-      ordered.forEach(col => { hdr.push(col.name + (col.name === baseCol ? ' (эталон)' : '')); if (col.name !== baseCol) hdr.push(''); });
-      const hr = ws.addRow(hdr); let cc = 4;
-      ordered.forEach(col => {
-        if (col.name !== baseCol) { ws.mergeCells(`${colLetter(cc)}${hr.number}:${colLetter(cc + 1)}${hr.number}`); cc += 2; } else cc += 1;
-      });
-      hr.eachCell(cell => { cell.fill = hFill; cell.font = { bold: true }; cell.alignment = { vertical: 'middle', horizontal: 'center' }; cell.border = border; });
-      groupRightHead.forEach(cn => { hr.getCell(cn).border = thickR(border); });
-      hr.height = 20;
+      // Шапка БЕЗ объединений — иначе ломаются фильтры по столбцам.
+      //  r1 — «полоса» с названием клиники над её блоком (имя в первом столбце блока);
+      //  r2 — строка-заголовок: Артикул | Название | Стоимость | <разн.> | Себестоимость | <разн.> | Маржа | <разн.>
+      const band = ['', ''];
+      ordered.forEach(col => { band.push(col.name + (col.name === baseCol ? ' (эталон)' : '')); for (let i = 1; i < MPAIR; i++) band.push(''); });
+      const r1 = ws.addRow(band);
+      const head = ['Артикул', 'Название услуги'];
+      ordered.forEach(() => metrics.forEach(m => { head.push(m.label); head.push(m.diff); }));
+      const r2 = ws.addRow(head);
 
+      [r1, r2].forEach(r => { r.height = 20; r.eachCell({ includeEmpty: true }, styleHead); });
+      [r1, r2].forEach(r => groupRight.forEach(cn => { r.getCell(cn).border = thickR(border); }));
+
+      // Одна строка на услугу: для каждой клиники пара (значение, разница от эталона) по трём метрикам
       items.forEach(item => {
-        const firstRow = ws.rowCount + 1;
-        metrics.forEach((m, mi) => {
-          const baseP = m.get(item, baseCol);
-          const row = [mi === 0 ? (item.serviceCode || '') : '', mi === 0 ? item.serviceName : '', m.label];
-          const rd = [];
-          ordered.forEach(col => {
-            const p = m.get(item, col.name), isB = col.name === baseCol;
-            row.push(p || ''); rd.push({ type: 'price' });
-            if (!isB) { const dv = baseP && p ? parseFloat((p - baseP).toFixed(2)) : null; row.push(dv != null ? (dv > 0 ? '+' : '') + dv : '-'); rd.push({ type: 'diff', value: dv }); }
-          });
-          // Толстый низ под последней строкой услуги (Маржа) — разделитель между услугами;
-          // толстый правый край — разделитель между клиниками и после «Показателя».
-          const isLast = mi === metrics.length - 1;
-          const ar = ws.addRow(row);
-          ar.eachCell({ includeEmpty: true }, (cell, cn) => {
-            let b = border;
-            if (isLast) b = { ...b, bottom: { style: 'medium' } };
-            if (groupRightData.has(cn)) b = { ...b, right: { style: 'medium' } };
-            cell.border = b; cell.alignment = { vertical: 'middle', horizontal: cn === 2 || cn === 3 ? 'left' : 'center' };
-            if (cn === 3) cell.font = { color: { argb: 'FF6B7280' } };
-            const di = cn - 4;
-            if (di >= 0 && di < rd.length && rd[di].type === 'diff' && rd[di].value != null) {
-              if (rd[di].value > 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; cell.font = { color: { argb: 'FF16A34A' }, bold: true }; }
-              else if (rd[di].value < 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; cell.font = { color: { argb: 'FFDC2626' }, bold: true }; }
-            }
+        const row = [item.serviceCode || '', item.serviceName];
+        const baseVals = metrics.map(m => m.get(item, baseCol));
+        const diffAt = {};          // номер столбца → величина разницы (для окраски)
+        let cn = 3;
+        ordered.forEach(col => {
+          metrics.forEach((m, mi) => {
+            const v = m.get(item, col.name);
+            row.push(v != null ? v : '');                 // столбец cn — значение
+            let dv = null;
+            if (col.name !== baseCol) { const b = baseVals[mi]; dv = (b != null && v != null) ? parseFloat((v - b).toFixed(2)) : null; }
+            row.push(dv != null ? dv : '');               // столбец cn+1 — разница (у эталона пусто)
+            if (dv != null) diffAt[cn + 1] = dv;
+            cn += 2;
           });
         });
-        // Артикул и название — одной объединённой ячейкой на все три строки услуги.
-        // Рамку объединённой ячейки Excel берёт со стиля верхней (мастер-)ячейки,
-        // поэтому толстый низ-разделитель задаём именно ей.
-        const lastRow = ws.rowCount;
-        const mergedBorder = { ...border, bottom: { style: 'medium' } };
-        ws.mergeCells(`A${firstRow}:A${lastRow}`);
-        ws.mergeCells(`B${firstRow}:B${lastRow}`);
-        ws.getCell(`A${firstRow}`).alignment = { vertical: 'middle', horizontal: 'center' };
-        ws.getCell(`A${firstRow}`).border = mergedBorder;
-        ws.getCell(`B${firstRow}`).alignment = { vertical: 'middle', horizontal: 'left' };
-        ws.getCell(`B${firstRow}`).border = mergedBorder;
+        const ar = ws.addRow(row);
+        ar.eachCell({ includeEmpty: true }, (cell, c) => {
+          cell.border = groupRight.has(c) ? thickR(border) : border;
+          // Название переносим по словам (ширина ограничена 40), остальное — по центру
+          cell.alignment = c === 2
+            ? { vertical: 'middle', horizontal: 'left', wrapText: true }
+            : { vertical: 'middle', horizontal: 'center' };
+          const dv = diffAt[c];
+          if (dv != null && dv !== 0) {
+            if (dv > 0) { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; cell.font = { color: { argb: 'FF16A34A' }, bold: true }; }
+            else        { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; cell.font = { color: { argb: 'FFDC2626' }, bold: true }; }
+          }
+        });
       });
 
-      ws.columns.forEach(col => { let max = 10; col.eachCell({ includeEmpty: true }, c => { if (c.value && c.value.toString().length > max) max = c.value.toString().length; }); col.width = max + 2; });
+      // Группировка (+/-): каждый столбец с разницей сворачивается; кнопка уровня «1»
+      // в углу аутлайна прячет/показывает все разницы разом.
+      // hidden + outlineLevel + outlineLevelCol — чтобы при открытии разницы были СВЁРНУТЫ.
+      // (collapsed в ExcelJS вычисляется автоматически из outlineLevel ≥ outlineLevelCol, его не присваиваем)
+      { let c = 3; ordered.forEach(() => { metrics.forEach(() => { const dc = ws.getColumn(c + 1); dc.outlineLevel = 1; dc.hidden = true; c += 2; }); }); }
+      ws.properties.outlineLevelCol = 1;
+
+      // Автофильтр по строке-заголовку (r2) и заморозка шапки + первых двух столбцов
+      const totalCols = 2 + ordered.length * MPAIR;
+      ws.autoFilter = { from: { row: r2.number, column: 1 }, to: { row: ws.rowCount, column: totalCols } };
+      ws.views = [{ state: 'frozen', xSplit: 2, ySplit: r2.number }];
+
+      // Ширина по содержимому, но с потолком — иначе широкая замороженная «Название»
+      // занимает весь экран и мешает горизонтальной прокрутке.
+      ws.columns.forEach(col => { let max = 8; col.eachCell({ includeEmpty: true }, c => { if (c.value && c.value.toString().length > max) max = c.value.toString().length; }); col.width = Math.min(max + 2, 40); });
     }
 
     buildSheet(wb.addWorksheet('Сравнение'));
