@@ -763,8 +763,244 @@ export default function ServicesPage() {
   );
 }
 
-function Tab804n() {
+// ── Проверка названий услуг по номенклатуре 804н ─────────────────────────────
+// range — диапазон покрытия эталона, по которому присвоен статус (критерий оценки).
+const N804_STATUS = {
+  significant:         { label: 'Расхождение',        color: '#dc2626', bg: '#fee2e2', range: 'до 80%',  problem: true },
+  not_in_nomenclature: { label: 'Нет в номенклатуре', color: '#7c3aed', bg: '#ede9fe', problem: true },
+  deprecated:          { label: 'Код упразднён',      color: '#c2410c', bg: '#ffedd5', problem: true },
+  minor:               { label: 'Мелкие отличия',     color: '#a16207', bg: '#fef9c3', range: '80–99%', problem: false },
+  ok:                  { label: 'Сходится',           color: '#16a34a', bg: '#dcfce7', range: '100%',   problem: false },
+  extended:            { label: 'Уточнённый код',     color: '#6b7280', bg: '#f3f4f6', problem: false },
+  combined:            { label: 'Несколько кодов',    color: '#6b7280', bg: '#f3f4f6', problem: false },
+  no_code:             { label: 'Нет кода 804н',      color: '#6b7280', bg: '#f3f4f6', problem: false },
+};
+// Порядок чипов-сводки
+const N804_ORDER = ['significant', 'deprecated', 'minor', 'ok', 'not_in_nomenclature', 'extended', 'combined', 'no_code'];
+
+// Круговой индикатор покрытия: кольцо + число внутри, цвет по порогам оценки.
+function CoverageRing({ value }) {
+  const pct = Math.round(value * 100);
+  const r = 13, c = 2 * Math.PI * r;
+  const color = value >= 1 ? '#16a34a' : value >= 0.8 ? '#a16207' : '#dc2626';
   return (
-    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }} />
+    <span className="n804-ring" title="Покрытие токенов эталона">
+      <svg width="34" height="34" viewBox="0 0 34 34">
+        <circle cx="17" cy="17" r={r} fill="none" stroke="#eceef1" strokeWidth="4" />
+        <circle cx="17" cy="17" r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={c * (1 - value)} transform="rotate(-90 17 17)" />
+      </svg>
+      <span className="n804-ring-num" style={{ color }}>{pct}</span>
+    </span>
   );
 }
+
+function Tab804n() {
+  const [clinics, setClinics] = useState([]);
+  const [clinicId, setClinicId] = useState(null);
+  const [clinicDdOpen, setClinicDdOpen] = useState(false);
+  const [filter, setFilter] = useState('problems'); // 'problems' | 'all' | <status>
+  const [summary, setSummary] = useState(null);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const [search, setSearch] = useState('');
+  const [sortDir, setSortDir] = useState('asc'); // 'asc' | 'desc' | null
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 200;
+
+  useEffect(() => {
+    psApi('/clinics').then(res => {
+      if (!res.success || !res.data?.length) return;
+      setClinics(res.data);
+      setClinicId(res.data[0].id);
+    }).catch(e => setErr(e.message));
+  }, []);
+
+  useEffect(() => {
+    const h = e => { if (!e.target.closest('.ps-clinic-dd')) setClinicDdOpen(false); };
+    document.addEventListener('click', h);
+    return () => document.removeEventListener('click', h);
+  }, []);
+
+  useEffect(() => {
+    if (!clinicId) return;
+    setLoading(true); setErr('');
+    const qs = new URLSearchParams({ clinic_id: clinicId });
+    if (filter === 'problems') qs.set('only_problems', '1');
+    else if (filter !== 'all') qs.set('status', filter);
+    psApi(`/n804-check?${qs.toString()}`, {}, 60000)
+      .then(res => {
+        if (!res.success) throw new Error(res.error || 'Ошибка');
+        setSummary(res.summary);
+        setItems(res.data || []);
+      })
+      .catch(e => setErr(e.message))
+      .finally(() => setLoading(false));
+  }, [clinicId, filter]);
+
+  const currentClinic = clinics.find(c => c.id === clinicId);
+  const problemCount = summary ? (summary.significant || 0) + (summary.not_in_nomenclature || 0) + (summary.deprecated || 0) : 0;
+
+  const q = search.trim().toLowerCase();
+  const visible = q
+    ? items.filter(it => (it.title + ' ' + (it.refName || '') + ' ' + (it.subCode || '')).toLowerCase().includes(q))
+    : items;
+  // гамма таблицы по открытой категории (для одиночного статуса)
+  const tint = N804_STATUS[filter] || null;
+
+  // сортировка по совпадению (услуги без % — всегда в конце)
+  const sorted = useMemo(() => {
+    if (!sortDir) return visible;
+    return [...visible].sort((a, b) => {
+      const an = a.coverage == null, bn = b.coverage == null;
+      if (an && bn) return 0;
+      if (an) return 1;
+      if (bn) return -1;
+      return sortDir === 'asc' ? a.coverage - b.coverage : b.coverage - a.coverage;
+    });
+  }, [visible, sortDir]);
+
+  // пагинация
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const curPage = Math.min(page, totalPages);
+  const pageRows = sorted.slice((curPage - 1) * PAGE_SIZE, curPage * PAGE_SIZE);
+
+  // сброс страницы при смене клиники/фильтра/поиска/сортировки
+  useEffect(() => { setPage(1); }, [clinicId, filter, search, sortDir]);
+
+  function toggleSort() { setSortDir(d => d === 'asc' ? 'desc' : d === 'desc' ? null : 'asc'); }
+  // у этих статусов нет % — колонку «Совпадение» прячем целиком
+  const showCoverage = !['not_in_nomenclature', 'combined', 'no_code'].includes(filter);
+
+  return (
+    <>
+      <style>{PS_CSS}{N804_CSS}</style>
+
+      <div className="ps-topbar">
+        <input className="n804-search" placeholder="Поиск по названию, эталону или коду…" value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="ps-clinic-dd">
+          <button className={`ps-clinic-trigger${clinicDdOpen ? ' open' : ''}`} onClick={() => setClinicDdOpen(v => !v)}>
+            <span className="ps-clinic-dot" style={{ background: currentClinic?.color || '#9ca3af' }} />
+            <span>{currentClinic?.name || 'Загрузка...'}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          {clinicDdOpen && (
+            <div className="ps-clinic-list open">
+              {clinics.map(c => (
+                <div key={c.id} className={`ps-clinic-option${c.id === clinicId ? ' selected' : ''}`} onClick={() => { setClinicId(c.id); setClinicDdOpen(false); }}>
+                  <span className="ps-clinic-dot" style={{ background: c.color || '#9ca3af' }} />
+                  {c.name}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Чипы-сводка (кликабельные фильтры) */}
+      {summary && (
+        <div className="n804-chips">
+          <button className={`n804-chip${filter === 'problems' ? ' active' : ''}`} onClick={() => setFilter('problems')} style={{ background: '#334155' }}>
+            <span className="n804-chip-val">{problemCount}<span className="n804-chip-total">/{summary.total || 0}</span></span>
+            <span className="n804-chip-lbl">Проблемные</span>
+          </button>
+          {N804_ORDER.filter(s => summary[s]).map(s => (
+            <button key={s} className={`n804-chip${filter === s ? ' active' : ''}`} onClick={() => setFilter(s)} style={{ background: N804_STATUS[s].color }}>
+              <span className="n804-chip-val">{summary[s]}</span>
+              <span className="n804-chip-lbl">{N804_STATUS[s].label}</span>
+              {N804_STATUS[s].range && <span className="n804-chip-range">совпадение {N804_STATUS[s].range}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {err && <div className="n804-msg err">Ошибка: {err}</div>}
+      {loading && <div className="n804-msg">Загрузка…</div>}
+      {!loading && !err && visible.length === 0 && <div className="n804-msg">Нет услуг по выбранному фильтру</div>}
+
+      {!loading && visible.length > 0 && (
+        <>
+          <table className="n804-table" style={tint ? { '--tint-bg': tint.bg, '--tint-c': tint.color } : undefined}>
+            <thead>
+              <tr>
+                <th style={{ width: 130 }}>Код 804н</th>
+                <th>Услуга в системе</th>
+                <th>Эталон по приказу</th>
+                {showCoverage && (filter === 'ok'
+                  ? <th style={{ width: 130 }}>Совпадение</th>
+                  : <th style={{ width: 130 }} className={`n804-sortable${sortDir ? ' active' : ''}`} onClick={toggleSort} title="Сортировать по совпадению">
+                      Совпадение
+                      <span className="n804-sort-arrow">{sortDir === 'asc' ? '▲' : sortDir === 'desc' ? '▼' : '↕'}</span>
+                    </th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map(it => (
+                <tr key={it.serviceId}>
+                  <td className="n804-code">{it.subCode || '—'}</td>
+                  <td className="col-l">
+                    <div className="n804-title">{it.title}</div>
+                    {it.categoryTitle && <div className="n804-cat">{it.categoryTitle}</div>}
+                  </td>
+                  <td className="col-l n804-ref">{it.refName || <span className="n804-muted">—</span>}</td>
+                  {showCoverage && <td className="n804-status">{it.coverage != null ? <CoverageRing value={it.coverage} /> : <span className="n804-muted">—</span>}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {totalPages > 1 && (
+            <div className="n804-pager">
+              <button disabled={curPage <= 1} onClick={() => setPage(curPage - 1)}>‹ Назад</button>
+              <span className="n804-pager-info">
+                {(curPage - 1) * PAGE_SIZE + 1}–{Math.min(curPage * PAGE_SIZE, sorted.length)} из {sorted.length}
+              </span>
+              <button disabled={curPage >= totalPages} onClick={() => setPage(curPage + 1)}>Вперёд ›</button>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+const N804_CSS = `
+.n804-chips { display:flex; align-items:stretch; gap:8px; margin:14px 0; }
+.n804-chip { flex:1 1 0; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:3px; padding:10px 14px; border:none; border-radius:10px; cursor:pointer; transition:all .15s; color:#fff; }
+.n804-chip:hover { filter:brightness(1.07); box-shadow:0 2px 8px rgba(0,0,0,.12); }
+.n804-chip.active { box-shadow:0 0 0 3px rgba(59,130,246,.45); }
+.n804-chip-val { font-size:22px; font-weight:700; color:#fff; line-height:1; }
+.n804-chip-total { font-size:15px; font-weight:600; color:rgba(255,255,255,.7); }
+.n804-chip-lbl { font-size:12px; color:#fff; white-space:nowrap; }
+.n804-chip-range { font-size:10px; color:rgba(255,255,255,.8); white-space:nowrap; }
+.n804-search { flex:1; min-width:0; padding:9px 14px; border:1px solid #d1d5db; border-radius:8px; font-size:13px; font-family:inherit; background:#fff; color:#374151; box-sizing:border-box; }
+.n804-search:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.1); }
+.n804-msg { padding:32px 20px; text-align:center; color:#9ca3af; font-size:14px; }
+.n804-msg.err { color:#dc2626; }
+.n804-table { width:100%; border-collapse:collapse; font-size:13px; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.06); border:1px solid var(--tint-c, #b8bfc9); }
+.n804-table th { padding:9px 12px; font-size:11px; font-weight:600; color:var(--tint-c, #6b7280); text-transform:uppercase; letter-spacing:.4px; text-align:center; background:var(--tint-bg, #f3f4f6); border-bottom:1px solid #cbd5e1; border-right:1px solid #d1d5db; }
+.n804-table th:last-child { border-right:none; }
+.n804-table td { padding:9px 12px; border-bottom:1px solid #dde1e6; border-right:1px solid #dde1e6; color:#374151; vertical-align:top; text-align:center; }
+.n804-table td:last-child { border-right:none; }
+.n804-table td.col-l { text-align:left; }
+.n804-table tr:last-child td { border-bottom:none; }
+.n804-table tr:hover td { background:var(--tint-bg, #f8fafc); }
+.n804-code { font-family:monospace; font-size:12px; color:#1f2937; white-space:nowrap; }
+.n804-title { font-weight:500; color:#111827; }
+.n804-cat { font-size:11px; color:#9ca3af; margin-top:2px; }
+.n804-ref { color:#4b5563; }
+.n804-muted { color:#cbd5e1; }
+.n804-status { color:#111827; font-size:13px; }
+.n804-sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+.n804-sortable:hover { color:#3b82f6; }
+.n804-sortable.active { color:#3b82f6; }
+.n804-sort-arrow { margin-left:5px; font-size:10px; }
+.n804-ring { position:relative; display:inline-flex; align-items:center; justify-content:center; }
+.n804-ring-num { position:absolute; font-size:10px; font-weight:700; }
+.n804-pager { display:flex; align-items:center; justify-content:center; gap:14px; margin:14px 0 4px; }
+.n804-pager button { padding:7px 14px; border:1px solid #d1d5db; background:#fff; border-radius:8px; font-size:13px; cursor:pointer; color:#374151; }
+.n804-pager button:hover:not(:disabled) { border-color:#3b82f6; color:#3b82f6; }
+.n804-pager button:disabled { opacity:.45; cursor:default; }
+.n804-pager-info { font-size:13px; color:#6b7280; }
+`;

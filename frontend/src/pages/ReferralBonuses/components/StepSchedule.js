@@ -809,6 +809,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const [catMapLoading,      setCatMapLoading]      = useState(false);
   const [cancelImportModal,  setCancelImportModal]  = useState(false);
   const [cancelling,         setCancelling]         = useState(false);
+  const [importModal,        setImportModal]        = useState(false);
+  const [importing,          setImporting]          = useState(false);
 
   // Tab slider for pattern selector inside the form modal
   const { wrapRef: patternWrapRef, sliderEl: patternSliderEl } = useTabSlider(form?.pattern?.type ?? 'daily');
@@ -889,22 +891,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       execSettingsApi.get(misUserId).catch(() => ({ data: {} })),
     ])
       .then(([schedRes, settingsRes]) => {
-        setEntries(schedRes.data.map(r => ({
-          id:         r.id,
-          doctorId:   selectedDoctor.id,
-          misUserId:  r.misUserId,
-          clinicId:   r.clinicId,
-          dateFrom:   r.dateFrom,
-          dateTo:     r.dateTo,
-          pattern:    r.pattern,
-          timeFrom:   r.timeFrom,
-          timeTo:     r.timeTo,
-          exceptions: r.exceptions || [],
-          categoryId: r.categoryId || null,
-          cabinetId:  r.cabinetId  || null,
-          roleTitle:  r.roleTitle  || null,
-          source:     r.source || 'manual',
-        })));
+        setEntries(schedRes.data.map(r => mapSchedRow(r, selectedDoctor.id)));
         const s = settingsRes.data || {};
         execSettingsRef.current = s;
         const isDoctor = (selectedDoctor.roles || []).includes('Врач');
@@ -912,6 +899,34 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       })
       .catch(err => console.error('Load schedules error:', err))
       .finally(() => setLoading(false));
+  }, [selectedDoctor]);
+
+  // Map a raw schedule row from the API into a local entry
+  function mapSchedRow(r, doctorId) {
+    return {
+      id:         r.id,
+      doctorId,
+      misUserId:  r.misUserId,
+      clinicId:   r.clinicId,
+      dateFrom:   r.dateFrom,
+      dateTo:     r.dateTo,
+      pattern:    r.pattern,
+      timeFrom:   r.timeFrom,
+      timeTo:     r.timeTo,
+      exceptions: r.exceptions || [],
+      categoryId: r.categoryId || null,
+      cabinetId:  r.cabinetId  || null,
+      roleTitle:  r.roleTitle  || null,
+      source:     r.source || 'manual',
+    };
+  }
+
+  // Re-fetch entries for the selected doctor (after a MIS import)
+  const reloadEntries = useCallback(async () => {
+    if (!selectedDoctor) return;
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    const res = await schedulesApi.list(misUserId);
+    setEntries(res.data.map(r => mapSchedRow(r, selectedDoctor.id)));
   }, [selectedDoctor]);
 
   // Entries for a specific cell
@@ -953,6 +968,22 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       setCancelling(false);
     }
   }, [selectedDoctor]);
+
+  const handleImportFromMis = useCallback(async () => {
+    if (!selectedDoctor) return;
+    const misUserId = selectedDoctor.misUserId || selectedDoctor.id;
+    const monthStr  = `${year}-${String(month).padStart(2, '0')}`;
+    setImporting(true);
+    try {
+      await schedulesApi.importFromMis(misUserId, monthStr);
+      await reloadEntries();
+      setImportModal(false);
+    } catch (err) {
+      console.error('Import from MIS error:', err);
+    } finally {
+      setImporting(false);
+    }
+  }, [selectedDoctor, year, month, reloadEntries]);
 
   const handleToggleDisableAutoImport = useCallback(async () => {
     if (!selectedDoctor) return;
@@ -1550,8 +1581,19 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         </span>
         <button onClick={nextMonth} style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 7, width: 32, height: 32, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>›</button>
 
-        {selectedDoctor && !readOnly && (
+        {selectedDoctor && (
           <div style={{ marginLeft: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => setImportModal(true)}
+              title={`Импортировать расписание из МИС за ${MONTH_NAMES[month - 1]} ${year}`}
+              style={{ background: 'transparent', border: '1px solid var(--rb-border)', borderRadius: 7, height: 32, padding: '0 8px', cursor: 'pointer', fontSize: 12, color: 'var(--rb-text-secondary)', display: 'flex', alignItems: 'center', transition: 'all .15s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--rb-primary)'; e.currentTarget.style.color = 'var(--rb-primary)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--rb-border)'; e.currentTarget.style.color = 'var(--rb-text-secondary)'; }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
             {hasMisEntries && (
               <button
                 onClick={() => setCancelImportModal(true)}
@@ -1565,7 +1607,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                 </svg>
               </button>
             )}
-            {/* Тумблер авто-импорта из МИС */}
+            {/* Тумблер авто-импорта из МИС — только для администратора */}
+            {!readOnly && (
             <label
               title={!disableMisAutoImport ? 'Автоимпорт расписания из МИС включён' : 'Автоимпорт расписания из МИС отключён'}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)', cursor: savingAutoImportFlag ? 'wait' : 'pointer', userSelect: 'none', opacity: savingAutoImportFlag ? 0.6 : 1 }}
@@ -1587,6 +1630,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               </span>
               <span style={{ fontSize: 11 }}>Импорт</span>
             </label>
+            )}
           </div>
         )}
 
@@ -2466,6 +2510,29 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
               <button style={{ ...btnGhost }} onClick={() => setCancelImportModal(false)} disabled={cancelling}>Отмена</button>
               <button style={{ ...btnRed, opacity: cancelling ? 0.6 : 1, minWidth: 120 }} onClick={handleCancelMisImport} disabled={cancelling}>
                 {cancelling ? 'Удаление...' : 'Удалить'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importModal && (
+        <div className="rb-modal-overlay" onClick={() => { if (!importing) setImportModal(false); }}>
+          <div className="rb-modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+            <div className="rb-modal-header">
+              <h3 style={{ fontSize: 15, fontWeight: 600 }}>Импорт из МИС</h3>
+              <button className="rb-modal-close" onClick={() => { if (!importing) setImportModal(false); }}>×</button>
+            </div>
+            <div style={{ padding: '16px' }}>
+              <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
+                Будет загружено расписание из МИС за <strong style={{ color: 'var(--rb-text)' }}>{MONTH_NAMES[month - 1]} {year}</strong> для сотрудника <strong style={{ color: 'var(--rb-text)' }}>{selectedDoctor?.name}</strong>.
+                {' '}Ранее импортированные записи за этот месяц заменятся актуальными, вручную созданные не изменятся.
+              </div>
+            </div>
+            <div className="rb-modal-footer">
+              <button style={{ ...btnGhost }} onClick={() => setImportModal(false)} disabled={importing}>Отмена</button>
+              <button style={{ ...btnBlue, opacity: importing ? 0.6 : 1, minWidth: 120 }} onClick={handleImportFromMis} disabled={importing}>
+                {importing ? 'Импорт...' : 'Импортировать'}
               </button>
             </div>
           </div>

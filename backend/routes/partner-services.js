@@ -9,6 +9,7 @@ const { PartnerServiceCache, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 const { syncPartnerServicesCache } = require('../cron/partnerServicesCacheCron');
+const { classify: classify804n, getRefMap: getRefMap804n } = require('../services/nomenclature804n');
 
 const CLINICS = [
   { id: 2, name: 'Альфа',  code: 'А',  color: '#de64a1' },
@@ -438,9 +439,16 @@ router.get('/', authenticate, async (req, res) => {
       offset
     });
 
+    // обогащаем статусом соответствия номенклатуре 804н
+    const refMap = await getRefMap804n();
+    const data = rows.map(r => {
+      const v = classify804n(r.subCode, r.title, refMap);
+      return Object.assign(r.toJSON(), { n804Status: v.status, n804RefName: v.refName });
+    });
+
     res.json({
       success: true,
-      data: rows,
+      data,
       pagination: {
         total: count,
         page,
@@ -451,6 +459,53 @@ router.get('/', authenticate, async (req, res) => {
   } catch (err) {
     console.error('❌ /partner-services:', err.message);
     res.status(500).json({ success: false, error: 'Ошибка получения услуг' });
+  }
+});
+
+// ─── GET /api/partner-services/n804-check ─────────────────────────────────────
+// Проверка названий услуг клиники на соответствие номенклатуре 804н.
+// Параметры: clinic_id (обязателен), status (фильтр), only_problems=1.
+router.get('/n804-check', authenticate, async (req, res) => {
+  try {
+    const clinicId = parseInt(req.query.clinic_id);
+    if (!clinicId) return res.status(400).json({ success: false, error: 'clinic_id обязателен' });
+    const statusFilter = (req.query.status || '').trim();
+    const onlyProblems = req.query.only_problems === '1';
+
+    const rows = await PartnerServiceCache.findAll({
+      where: { clinicId, isDeleted: false },
+      attributes: ['serviceId', 'code', 'subCode', 'title', 'categoryTitle', 'lab'],
+      order: [['categoryTitle', 'ASC'], ['title', 'ASC']],
+      raw: true
+    });
+
+    const refMap = await getRefMap804n();
+    const PROBLEM = new Set(['significant', 'deprecated', 'not_in_nomenclature']);
+    const summary = { total: 0, ok: 0, minor: 0, significant: 0, deprecated: 0, not_in_nomenclature: 0, no_code: 0 };
+
+    const items = [];
+    for (const r of rows) {
+      const v = classify804n(r.subCode, r.title, refMap);
+      summary.total++;
+      summary[v.status] = (summary[v.status] || 0) + 1;
+      if (statusFilter && v.status !== statusFilter) continue;
+      if (onlyProblems && !PROBLEM.has(v.status)) continue;
+      items.push({
+        serviceId: r.serviceId,
+        subCode: r.subCode || '',
+        title: r.title,
+        categoryTitle: r.categoryTitle,
+        lab: r.lab,
+        status: v.status,
+        refName: v.refName,
+        coverage: v.coverage
+      });
+    }
+
+    res.json({ success: true, summary, data: items });
+  } catch (err) {
+    console.error('❌ /partner-services/n804-check:', err.message);
+    res.status(500).json({ success: false, error: 'Ошибка проверки 804н' });
   }
 });
 

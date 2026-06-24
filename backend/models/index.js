@@ -2537,6 +2537,20 @@ const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   ]
 });
 
+// === NOMENCLATURE 804н MODEL (справочник эталонных названий по коду) ===
+const Nomenclature804n = sequelize.define('Nomenclature804n', {
+  code: { type: DataTypes.STRING(100), primaryKey: true, comment: 'Нормализованный код 804н (A01.01.001)' },
+  name: { type: DataTypes.STRING(500), allowNull: false, comment: 'Эталонное название (актуальная редакция)' },
+  nameAlt: { type: DataTypes.STRING(500), comment: 'Название в редакции 2017 (если отличается)' },
+  deprecated: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false, comment: 'Код упразднён' },
+  edition: { type: DataTypes.STRING(20), allowNull: false, defaultValue: '2.10', comment: 'Версия справочника-источника' }
+}, {
+  tableName: 'nomenclature_804n',
+  timestamps: true,
+  createdAt: false,
+  updatedAt: 'updatedAt'
+});
+
 // BotToken relationships
 BotToken.belongsTo(User, { foreignKey: 'userId', as: 'botUser' });
 User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
@@ -2878,6 +2892,8 @@ module.exports = {
   AmbulanceReportEntry,
   // Partner services cache
   PartnerServiceCache,
+  // Nomenclature 804н reference
+  Nomenclature804n,
   // Schedule dictionaries
   RbScheduleCategory,
   RbScheduleCabinet,
