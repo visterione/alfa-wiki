@@ -387,6 +387,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [cashPaymentsMap, setCashPaymentsMap] = useState({});
   const [cashOverpayLoading, setCashOverpayLoading] = useState({});
   const [cashOverpayDone, setCashOverpayDone]       = useState({});
+  const [bonusCarryLoading, setBonusCarryLoading]   = useState({});
+  const [bonusCarryDone, setBonusCarryDone]         = useState({});
   const [commentsMap, setCommentsMap] = useState({});
   const [commentSaving, setCommentSaving] = useState({});
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -440,6 +442,55 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
       toast.error('Ошибка при фиксации переплаты');
     } finally {
       setRecalcLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const handleBonusCarry = async (rec, rowKey, bonus, periodLabel, clinicId) => {
+    const key = rowKey;
+    setBonusCarryLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await execSettingsApi.get(rec.misUserId);
+      const raw = res.data && Object.keys(res.data).length ? res.data : null;
+      const settings = raw || {
+        assistants: [],
+        clinicSettings: {
+          global: {
+            payType: 'salary', fixedSalary: 0, hourlyRate: 0, hoursWorked: 0,
+            executorPercent: 0, plusPercent: false, paymentMethod: 'card',
+            mainPaymentMethod: 'card', advance: 0, mainPayment: 0,
+            includeReferralBonuses: true, includeReferralDeductions: true,
+            includeCorpInvoices: true, assistancePercent: 0, cabinets: [],
+            deductions: [], materials: [], serviceMaterials: [],
+            extras: [], normServices: [],
+          },
+        },
+      };
+      // Если есть настройки конкретного медцентра — пишем туда, иначе в global
+      const clinicKey = clinicId && settings.clinicSettings?.[String(clinicId)] ? String(clinicId) : 'global';
+      const clinicData = settings.clinicSettings?.[clinicKey] || {};
+      const extras = [...(clinicData.extras || [])];
+      extras.push({
+        name: `Премия за ${periodLabel}`,
+        amount: parseFloat(bonus.toFixed(2)),
+        hours: 0,
+      });
+      const newSettings = {
+        ...settings,
+        clinicSettings: { ...settings.clinicSettings, [clinicKey]: { ...clinicData, extras } },
+      };
+      await execSettingsApi.save({ misUserId: rec.misUserId, doctorName: rec.doctorName, settings: newSettings });
+      clearExecCache(rec.misUserId);
+      // Сохраняем флаг в reportData записи зарплаты
+      const updatedReportData = { ...(rec.reportData || {}), bonusCarryDone: { ...(rec.reportData?.bonusCarryDone || {}), [key]: true } };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      // Обновляем локальный список записей
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+      setBonusCarryDone(prev => ({ ...prev, [key]: true }));
+      toast.success(`Премия перенесена на следующий месяц у ${rec.doctorName}`);
+    } catch {
+      toast.error('Ошибка при переносе премии');
+    } finally {
+      setBonusCarryLoading(prev => ({ ...prev, [key]: false }));
     }
   };
 
@@ -538,16 +589,20 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         setDataLoaded(true);
         const done = {};
         const cashDone = {};
+        const bonusDone = {};
         const comments = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
           Object.keys(flags).forEach(rowKey => { if (flags[rowKey]) done[rowKey] = true; });
           const cashFlags = rec.reportData?.cashOverpayDone || {};
           Object.keys(cashFlags).forEach(k => { if (cashFlags[k]) cashDone[k] = true; });
+          const bonusFlags = rec.reportData?.bonusCarryDone || {};
+          Object.keys(bonusFlags).forEach(k => { if (bonusFlags[k]) bonusDone[k] = true; });
           if (rec.reportData?.summaryComment) comments[rec.id] = rec.reportData.summaryComment;
         });
         setRecalcDone(done);
         setCashOverpayDone(cashDone);
+        setBonusCarryDone(bonusDone);
         setCommentsMap(comments);
         cashPaymentsApi.getAll()
           .then(cpRes => {
@@ -1172,7 +1227,28 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                           <div style={{ fontSize: 11, color: 'var(--rb-text)', marginTop: 2, display: 'flex', flexWrap: 'wrap', gap: '0 6px', alignItems: 'center' }}>
                             {advance > 0 && <span>Аванс: {fmtRub(advance)}</span>}
                             {(body + extraTotal) > 0 && <span>Основная ЗП: {fmtRub(body + extraTotal)}</span>}
-                            {bonus > 0   && <span>Премия: {fmtRub(bonus)}</span>}
+                            {bonus > 0   && (
+                              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ color: bonusCarryDone[recalcKey] ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>Премия: {fmtRub(bonus)}</span>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleBonusCarry(rec, recalcKey, bonus, dateLabel, cr?.clinicId); }}
+                                  disabled={!!bonusCarryLoading[recalcKey]}
+                                  title={bonusCarryDone[recalcKey] ? 'Премия перенесена на следующий месяц (можно повторить)' : 'Перенести премию на следующий месяц (в дополнительно)'}
+                                  style={{ padding: '3px 5px', background: bonusCarryDone[recalcKey] ? '#f0fdf4' : '#f8fafc', border: `1px solid ${bonusCarryDone[recalcKey] ? '#86efac' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusCarryLoading[recalcKey] ? 0.4 : 1 }}
+                                >
+                                  {bonusCarryDone[recalcKey] ? (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" width="13" height="13">
+                                      <polyline points="20 6 9 17 4 12"/>
+                                    </svg>
+                                  ) : (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" width="13" height="13">
+                                      <polyline points="23 4 23 10 17 10"/>
+                                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                                    </svg>
+                                  )}
+                                </button>
+                              </span>
+                            )}
                             {(() => {
                               const rowCash = cashPaymentsMap[rec.id] || [];
                               if (!rowCash.length) return null;
