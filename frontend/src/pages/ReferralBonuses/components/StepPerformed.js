@@ -820,6 +820,9 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
   const [rowValues, setRowValues] = useState({}); // code -> { type, val }
   const [perfPage, setPerfPage] = useState(1);
   const [perfShowAll, setPerfShowAll] = useState(false);
+  // Quick-fill across all doctor services
+  const [fillType, setFillType] = useState('pct');
+  const [fillValue, setFillValue] = useState('');
 
   const autoSaveTimerRef = useRef(null);
   const handleSaveAllRef = useRef(null);
@@ -940,6 +943,22 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
 
   // Keep ref to latest handleSaveAll for auto-save timer
   handleSaveAllRef.current = handleSaveAll;
+
+  // Quick-fill the same bonus into every (currently listed) service of the doctor
+  const handleFillAll = () => {
+    if (fillValue === '') { toast.error('Укажите размер бонуса'); return; }
+    const val = parseFloat(fillValue);
+    if (isNaN(val) || val < 0) { toast.error('Некорректное значение'); return; }
+    const targets = filteredServices;
+    if (targets.length === 0) { toast.error('Нет услуг для заполнения'); return; }
+    setRowValues(prev => {
+      const next = { ...prev };
+      targets.forEach(svc => { next[svc.code] = { type: fillType, val: String(val) }; });
+      return next;
+    });
+    setFillValue('');
+    triggerAutoSave();
+  };
 
   const triggerAutoSave = useCallback(() => {
     clearTimeout(autoSaveTimerRef.current);
@@ -1076,6 +1095,31 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
             <div className="rb-alert rb-alert-warning">Услуги врача не найдены в МИС.</div>
           ) : (
             <>
+              {/* Quick-fill all services */}
+              <div style={{ background: '#f8fafc', border: '1px solid var(--rb-border)', borderRadius: 8, padding: '10px 14px', marginBottom: 10 }}>
+                <div className="rb-inline-toggle-wrap" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="rb-exec-type-toggle" style={{ height: 30 }}>
+                    <button className={`rb-exec-type-btn${fillType === 'pct' ? ' active' : ''}`} onClick={() => { setFillType('pct'); setFillValue(''); }}>%</button>
+                    <button className={`rb-exec-type-btn${fillType === 'rub' ? ' active' : ''}`} onClick={() => { setFillType('rub'); setFillValue(''); }}>₽</button>
+                  </div>
+                  <input
+                    type="number"
+                    value={fillValue}
+                    onChange={e => setFillValue(e.target.value)}
+                    placeholder={fillType === 'pct' ? 'Например: 10' : 'Например: 150'}
+                    min="0" step="any"
+                    onKeyDown={e => { if (e.key === 'Enter') handleFillAll(); }}
+                    style={{ flex: 1, padding: '7px 10px', border: '1px solid var(--rb-border-dark)', borderRadius: 7, fontSize: 13, outline: 'none' }}
+                  />
+                  <button className="rb-btn rb-btn-primary rb-btn-sm" onClick={handleFillAll} disabled={saving} style={{ whiteSpace: 'nowrap' }}>
+                    Заполнить все ({filteredServices.length})
+                  </button>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--rb-text-secondary)' }}>
+                  Бонус будет проставлен во всех {searchTerm ? 'найденных ' : ''}услугах врача{dbClinicId ? ' для выбранной клиники' : ' (общие)'} и сохранён автоматически.
+                </div>
+              </div>
+
               <div style={{ marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
                 <input
                   type="text"
