@@ -12,6 +12,25 @@ async function resolveDoctorName(misUserId, providedName) {
   return s?.doctorName || null;
 }
 
+// ── Half-period lock (server-side enforcement) ───────────────────────────────
+// Mirrors the frontend rule (TabelTable / StepSchedule): a date is frozen for
+// non-admins once its half-month passes the cutoff — the 1st half closes on the
+// 18th of its own month, the 2nd half on the 3rd of the next month. The frontend
+// clamps ranges so a legitimate request never starts on a frozen date; this guard
+// rejects direct API calls that try to write a schedule into a frozen half.
+function parseYMD(str) {
+  const [y, m, d] = String(str).split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+function isDateFrozen(dateStr) {
+  const d = parseYMD(dateStr);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  const halfSize = Math.floor(new Date(y, m, 0).getDate() / 2);
+  if (day <= halfSize) return today >= new Date(y, m - 1, 18);
+  return today >= new Date(y, m, 3);
+}
+
 // GET /api/doctor-schedules?misUserId=...
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -35,6 +54,10 @@ router.post('/', authenticate, async (req, res) => {
     const { misUserId, clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId, roleTitle, doctorName } = req.body;
     if (!misUserId || !clinicId || !dateFrom || !dateTo || !pattern) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    // Non-admins may not start a schedule inside a frozen half-period.
+    if (!req.user?.isAdmin && isDateFrozen(dateFrom)) {
+      return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
     }
     const row = await DoctorSchedule.create({
       misUserId,
@@ -88,6 +111,12 @@ router.put('/:id', authenticate, async (req, res) => {
     const oldExceptions = Array.isArray(row.exceptions) ? [...row.exceptions] : [];
 
     const { clinicId, dateFrom, dateTo, pattern, timeFrom, timeTo, exceptions, categoryId, cabinetId, roleTitle, doctorName } = req.body;
+    // Non-admins may not move a schedule's start into a frozen half-period.
+    // Only enforced when dateFrom actually changes — shrinking/splitting an entry
+    // that legitimately predates the lock keeps its original (possibly frozen) start.
+    if (!req.user?.isAdmin && dateFrom !== undefined && dateFrom !== row.dateFrom && isDateFrozen(dateFrom)) {
+      return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
+    }
     await row.update({
       ...(clinicId    !== undefined && { clinicId }),
       ...(dateFrom    !== undefined && { dateFrom }),

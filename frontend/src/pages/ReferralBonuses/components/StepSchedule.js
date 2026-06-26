@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { doctorSchedules as schedulesApi, rbScheduleDicts as dictsApi, roleNorms as roleNormsApi, hourNorms as hourNormsApi, categoryNorms as categoryNormsApi, rbHolidays as holidaysApi, executorSettings as execSettingsApi } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import { useAuth } from '../../../context/AuthContext';
+import toast from 'react-hot-toast';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
 
@@ -34,6 +35,17 @@ function displayDate(cell) { return `${cell.day} ${MONTH_NAMES_GEN[cell.month - 
 function fmtDateShort(dateStr) {
   const [, m, d] = dateStr.split('-');
   return `${parseInt(d)} ${MONTH_NAMES_GEN[parseInt(m) - 1]}`;
+}
+
+// Half-period freeze: a date is locked for non-admin edits once its half-month
+// has passed the cutoff — 1st half closes on the 18th of its own month, 2nd half
+// on the 3rd of the next month. Mirrors TabelTable's lock logic. `today` must be
+// normalised to midnight. Frozen dates always form a contiguous prefix in time.
+function isDateFrozen(d, today) {
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  const halfSize = Math.floor(new Date(y, m, 0).getDate() / 2);
+  if (day <= halfSize) return today >= new Date(y, m - 1, 18);
+  return today >= new Date(y, m, 3);
 }
 
 function toMins(timeStr) {
@@ -842,12 +854,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   // Computed per-cell using cell's own year/month so neighbor-month cells
   // (e.g. Apr 27-30 visible while viewing May) are evaluated correctly.
   const lockToday = new Date(); lockToday.setHours(0, 0, 0, 0);
-  const isCellFrozen = (cell) => {
-    const halfSize = Math.floor(new Date(cell.year, cell.month, 0).getDate() / 2);
-    const fh = lockToday >= new Date(cell.year, cell.month - 1, 18);
-    const sh = lockToday >= new Date(cell.year, cell.month, 3);
-    return cell.day <= halfSize ? fh : sh;
-  };
+  const isCellFrozen = (cell) =>
+    isDateFrozen(new Date(cell.year, cell.month - 1, cell.day), lockToday);
   // isCellLocked — actual edit restriction (non-admins only)
   const isCellLocked = (cell) => !isAdmin && isCellFrozen(cell);
 
@@ -1175,8 +1183,38 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     if (!form.clinicId || !form.dateFrom || !form.dateTo) return;
     if (form.pattern.type === 'weekdays' && !form.pattern.weekdays?.length) return;
 
+    // ── Half-period lock guard (non-admins, range create) ──
+    // A new schedule must not be written into a frozen half. Clamp dateFrom
+    // forward to the first open date and notify; reject outright if the whole
+    // range is frozen. Frozen dates form a contiguous prefix, so once dateFrom
+    // is open the entire remaining range is open too.
+    let saveForm = form;
+    if (!isAdmin && !modal.editId) {
+      const end = parseDate(form.dateTo);
+      const cur = parseDate(form.dateFrom);
+      let firstOpen = null;
+      while (cur <= end) {
+        if (!isDateFrozen(cur, lockToday)) { firstOpen = formatDate(cur); break; }
+        cur.setDate(cur.getDate() + 1);
+      }
+      if (!firstOpen) {
+        toast.error('Этот период закрыт для редактирования');
+        return;
+      }
+      if (firstOpen !== form.dateFrom) {
+        // Preserve cycle phase for anchored patterns when the start shifts.
+        const patched = ['two_two', 'custom'].includes(form.pattern.type) && !form.pattern.phaseAnchor
+          ? { ...form.pattern, phaseAnchor: form.dateFrom }
+          : form.pattern;
+        saveForm = { ...form, dateFrom: firstOpen, pattern: patched };
+        if (!skipConflictCheck.current) {
+          toast(`Заблокированные даты пропущены — расписание применено с ${fmtDateShort(firstOpen)}`, { icon: '🔒', duration: 5000 });
+        }
+      }
+    }
+
     if (!skipConflictCheck.current && !(modal.editId && modal.cell)) {
-      const conflicts = findTimeConflicts(form, entries, modal.editId);
+      const conflicts = findTimeConflicts(saveForm, entries, modal.editId);
       if (conflicts.length > 0) { setConflictConfirm(conflicts); return; }
     }
     skipConflictCheck.current = false;
@@ -1205,13 +1243,13 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         ));
       } else {
         const initExceptions = (() => {
-          if (!form.cancelCode) return [];
+          if (!saveForm.cancelCode) return [];
           const exs = [];
-          const end = parseDate(form.dateTo);
-          const cur = parseDate(form.dateFrom);
+          const end = parseDate(saveForm.dateTo);
+          const cur = parseDate(saveForm.dateFrom);
           while (cur <= end) {
-            if (isDayScheduled(form, cur.getFullYear(), cur.getMonth() + 1, cur.getDate())) {
-              exs.push({ date: formatDate(cur), code: form.cancelCode });
+            if (isDayScheduled(saveForm, cur.getFullYear(), cur.getMonth() + 1, cur.getDate())) {
+              exs.push({ date: formatDate(cur), code: saveForm.cancelCode });
             }
             cur.setDate(cur.getDate() + 1);
           }
@@ -1219,16 +1257,16 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         })();
         const res = await schedulesApi.create({
           misUserId,
-          clinicId:   form.clinicId,
-          dateFrom:   form.dateFrom,
-          dateTo:     form.dateTo,
-          pattern:    form.pattern,
-          timeFrom:   form.timeFrom,
-          timeTo:     form.timeTo,
+          clinicId:   saveForm.clinicId,
+          dateFrom:   saveForm.dateFrom,
+          dateTo:     saveForm.dateTo,
+          pattern:    saveForm.pattern,
+          timeFrom:   saveForm.timeFrom,
+          timeTo:     saveForm.timeTo,
           exceptions: initExceptions,
-          categoryId: form.categoryId || null,
-          cabinetId:  form.cabinetId  || null,
-          roleTitle:  form.roleTitle  || null,
+          categoryId: saveForm.categoryId || null,
+          cabinetId:  saveForm.cabinetId  || null,
+          roleTitle:  saveForm.roleTitle  || null,
         });
         const created = res.data;
         setEntries(prev => [...prev, {
