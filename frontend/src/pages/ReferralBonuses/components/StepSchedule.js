@@ -1374,6 +1374,47 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
   const handleDeleteEntry = async (entryId) => {
     if (!selectedDoctor) return;
+
+    // ── Half-period lock guard (non-admins) ──
+    // Deleting the whole chain must not wipe frozen days. If the entry reaches
+    // into a frozen half, shrink it to keep the frozen prefix and drop only the
+    // open tail; reject outright if the entire chain is frozen.
+    const entry = entries.find(e => e.id === entryId);
+    if (entry && !isAdmin) {
+      const end = parseDate(entry.dateTo);
+      const cur = parseDate(entry.dateFrom);
+      let firstOpen = null;
+      while (cur <= end) {
+        if (!isDateFrozen(cur, lockToday)) { firstOpen = formatDate(cur); break; }
+        cur.setDate(cur.getDate() + 1);
+      }
+      if (!firstOpen) {
+        toast.error('Это расписание в закрытом периоде — удаление недоступно');
+        return;
+      }
+      if (firstOpen !== entry.dateFrom) {
+        const newDateTo = addDays(firstOpen, -1);
+        const keepEx = (entry.exceptions || []).filter(ex => (typeof ex === 'string' ? ex : ex.date) <= newDateTo);
+        try {
+          await schedulesApi.update(entryId, {
+            clinicId: entry.clinicId, dateFrom: entry.dateFrom, dateTo: newDateTo,
+            pattern: entry.pattern, timeFrom: entry.timeFrom, timeTo: entry.timeTo, exceptions: keepEx,
+            categoryId: entry.categoryId || null,
+            cabinetId:  entry.cabinetId  || null,
+            roleTitle:  entry.roleTitle   || null,
+          });
+          setEntries(prev => prev.map(e => e.id === entryId ? { ...e, dateTo: newDateTo, exceptions: keepEx } : e));
+          setConfirmDel(null);
+          setModal(prev => prev ? { ...prev, type: 'day' } : null);
+          setForm(null);
+          toast('Заблокированные дни сохранены — удалена только открытая часть', { icon: '🔒', duration: 5000 });
+        } catch (err) {
+          console.error('Delete schedule (clamped) error:', err);
+        }
+        return;
+      }
+    }
+
     try {
       await schedulesApi.delete(entryId);
       const remaining = entries.filter(e => e.id !== entryId);

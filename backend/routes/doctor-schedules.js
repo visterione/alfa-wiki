@@ -198,6 +198,13 @@ router.delete('/:id', authenticate, async (req, res) => {
     const row = await DoctorSchedule.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Not found' });
 
+    // Non-admins may not delete a chain that reaches into a frozen half-period.
+    // Frozen dates are a contiguous prefix, so a frozen start ⇒ the chain overlaps
+    // the lock. The frontend instead shrinks such entries (PUT) to keep frozen days.
+    if (!req.user?.isAdmin && isDateFrozen(row.dateFrom)) {
+      return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
+    }
+
     const resolvedName = await resolveDoctorName(row.misUserId, null);
     await logRbActivity({
       userId:     req.user?.id,
