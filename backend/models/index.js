@@ -2502,6 +2502,22 @@ const OperationsReportEntry = sequelize.define('OperationsReportEntry', {
   ]
 });
 
+// === GYNECOLOGY REPORT MODEL ===
+const GynecologyReportEntry = sequelize.define('GynecologyReportEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  entryDate: { type: DataTypes.DATEONLY, allowNull: true },
+  searchText: { type: DataTypes.TEXT, allowNull: true },
+  data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'gynecology_report_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['entryDate'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === PARTNER SERVICE CACHE MODEL ===
 const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -2922,4 +2938,6 @@ module.exports = {
   DirectoriesMeta,
   // Operations reports module
   OperationsReportEntry,
+  // Gynecology reports module
+  GynecologyReportEntry,
 };
