@@ -10,7 +10,6 @@ const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const COLUMNS = [
-  { aliases: ['Дата'], field: 'reportDate' },
   { aliases: ['Период пребывания пациента', 'Период пребывания', 'Период'], field: 'stayPeriod' },
   { aliases: ['ФИО пациента', 'Пациент'], field: 'patientName' },
   { aliases: ['Телефон', 'Номер телефона', 'Тел'], field: 'phone' },
@@ -46,43 +45,6 @@ function resolveColumnIndex(headerRow, aliases) {
 
 function cleanText(v) { return v === null || v === undefined ? '' : String(v).trim(); }
 
-function excelDateToIso(serial) {
-  const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
-  if (isNaN(d.getTime())) return '';
-  return d.toISOString().slice(0, 10);
-}
-
-function normalizeDate(value) {
-  if (!value && value !== 0) return '';
-  if (value instanceof Date) {
-    if (isNaN(value.getTime())) return '';
-    return value.toISOString().slice(0, 10);
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value) || value <= 0) return '';
-    return excelDateToIso(value);
-  }
-  const text = String(value).trim();
-  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const ru = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
-  if (ru) {
-    const year = ru[3].length === 2 ? `20${ru[3]}` : ru[3];
-    let day = Number(ru[1]);
-    let month = Number(ru[2]);
-    if (month > 12 && day <= 12) { const t = day; day = month; month = t; }
-    if (month < 1 || month > 12 || day < 1 || day > 31) return '';
-    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-  }
-  return '';
-}
-
-function isoToDMY(iso) {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}.${m}.${y}`;
-}
-
 function buildSearchText(data) {
   return Object.entries(data || {})
     .filter(([k, v]) => !k.startsWith('_') && v !== null && v !== undefined)
@@ -112,10 +74,16 @@ function dedupeRows(rows) {
   return { rows: unique, duplicates };
 }
 
+const TARGET_SHEET = 'Гинекология';
+
 function parseImportWorkbook(workbook, userId) {
   const imported = [];
 
-  for (const sheetName of workbook.SheetNames) {
+  // Берём данные только с листа «Гинекология», остальные листы документа игнорируем
+  const target = normalizeLookup(TARGET_SHEET);
+  const sheetNames = workbook.SheetNames.filter(name => normalizeLookup(name) === target);
+
+  for (const sheetName of sheetNames) {
     const sheet = workbook.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
     if (!rows.length) continue;
@@ -148,12 +116,9 @@ function parseImportWorkbook(workbook, userId) {
 
       if (!data.patientName && !data.diagnosis) continue;
 
-      const entryDate = normalizeDate(data.reportDate) || null;
-      if (entryDate) data.reportDate = isoToDMY(entryDate);
-
       imported.push({
         id: randomUUID(),
-        entryDate,
+        entryDate: null,
         searchText: buildSearchText(data),
         data,
         createdBy: userId || null
@@ -277,6 +242,11 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
     const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
     console.log('[gynecology-import] Листы:', workbook.SheetNames);
 
+    const hasTargetSheet = workbook.SheetNames.some(name => normalizeLookup(name) === normalizeLookup(TARGET_SHEET));
+    if (!hasTargetSheet) {
+      return res.status(400).json({ error: `В файле не найден лист «${TARGET_SHEET}». Листы: ${workbook.SheetNames.join(', ')}` });
+    }
+
     const parsed = parseImportWorkbook(workbook, req.user?.id || null);
     console.log('[gynecology-import] Распарсено строк:', parsed.length);
 
@@ -308,12 +278,9 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
 router.post('/', authenticate, async (req, res) => {
   try {
     const data = req.body.data || {};
-    const reportDate = data.reportDate || '';
-    const entryDate = normalizeDate(reportDate) || null;
-    if (entryDate) data.reportDate = isoToDMY(entryDate);
 
     const row = await GynecologyReportEntry.create({
-      entryDate,
+      entryDate: null,
       searchText: buildSearchText(data),
       data,
       createdBy: req.user?.id || null
@@ -332,11 +299,8 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
 
     const data = req.body.data || {};
-    const reportDate = data.reportDate || '';
-    const entryDate = normalizeDate(reportDate) || null;
-    if (entryDate) data.reportDate = isoToDMY(entryDate);
 
-    await row.update({ entryDate, searchText: buildSearchText(data), data });
+    await row.update({ searchText: buildSearchText(data), data });
     res.json(row);
   } catch (err) {
     console.error('PUT /api/gynecology-reports/:id error:', err);

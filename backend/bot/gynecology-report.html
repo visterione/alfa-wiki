@@ -204,14 +204,13 @@ window.gynApp = (function() {
   var searchTimer = null;
 
   var FIELDS = [
-    { name: 'reportDate',    label: 'Дата', type: 'date', required: true },
-    { name: 'stayPeriod',    label: 'Период пребывания пациента', formLabel: 'Период пребывания', type: 'text' },
+    { name: 'stayPeriod',    label: 'Период пребывания пациента', formLabel: 'Период пребывания', type: 'text', span: 2 },
     { name: 'patientName',   label: 'ФИО пациента', type: 'text', required: true, span: 2 },
     { name: 'phone',         label: 'Телефон', type: 'tel' },
-    { name: 'doctorName',    label: 'ФИО врача', type: 'text', span: 2 },
     { name: 'diagnosis',     label: 'Диагноз', type: 'textarea', span: 2 },
     { name: 'remarks',       label: 'Замечания, особенности', type: 'textarea', span: 2 },
     { name: 'referrals',     label: 'Направления', type: 'textarea', span: 2 },
+    { name: 'doctorName',    label: 'ФИО врача', type: 'text', span: 2 },
     { name: 'examinations',  label: 'Обследования', type: 'textarea', span: 2 },
     { name: 'registrarMark', label: 'Регистратура отметка о записи', type: 'text', span: 2 }
   ];
@@ -362,10 +361,6 @@ window.gynApp = (function() {
       '</div>';
 
     attachMasks();
-    if (!editingId) {
-      var dateEl = document.getElementById('gyn-reportDate');
-      if (dateEl && !dateEl.value) dateEl.value = todayDMY();
-    }
   }
 
   function collectForm() {
@@ -519,73 +514,33 @@ window.gynApp = (function() {
     });
   }
 
-  var MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-
-  function parseMonthKey(dateStr) {
-    var m = String(dateStr || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-    if (m) return m[3] + '-' + m[2].padStart(2,'0');
-    m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m) return m[1] + '-' + m[2];
-    return 'unknown';
-  }
-
-  function monthKeyToLabel(key) {
-    var parts = key.split('-');
-    if (parts.length === 2) {
-      var monthIdx = parseInt(parts[1], 10) - 1;
-      var year = parts[0];
-      if (monthIdx >= 0 && monthIdx < 12) return MONTH_NAMES[monthIdx] + ' ' + year;
-    }
-    return key;
-  }
-
   function buildExcel(exportRows) {
     var wb = new ExcelJS.Workbook();
     wb.creator = 'Alfa Wiki';
     wb.created = new Date();
 
-    var byMonth = {};
-    var monthOrder = [];
+    var ws = wb.addWorksheet('Гинекология');
+    ws.addRow(FIELDS.map(function(f) { return f.label; }));
     exportRows.forEach(function(row) {
-      var key = parseMonthKey((row.data || {}).reportDate);
-      if (!byMonth[key]) { byMonth[key] = []; monthOrder.push(key); }
-      byMonth[key].push(row);
+      var d = row.data || {};
+      ws.addRow(FIELDS.map(function(f) { return d[f.name] || ''; }));
     });
 
-    if (!monthOrder.length) monthOrder.push('unknown');
-
-    monthOrder.forEach(function(key) {
-      var rows = byMonth[key] || [];
-      var label = monthKeyToLabel(key);
-      var ws = wb.addWorksheet(label);
-
-      ws.addRow(FIELDS.map(function(f) { return f.label; }));
-
-      var prevDate = null;
-      rows.forEach(function(row) {
-        var d = row.data || {};
-        var currDate = d.reportDate || '';
-        if (prevDate !== null && currDate !== prevDate) ws.addRow([]);
-        ws.addRow(FIELDS.map(function(f) { return d[f.name] || ''; }));
-        prevDate = currDate;
+    var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+    var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+    ws.eachRow(function(row, rowNumber) {
+      row.eachCell({ includeEmpty: true }, function(cell) { cell.border = border; });
+    });
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDB2777' } };
+    ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    ws.columns.forEach(function(col) {
+      var max = 12;
+      col.eachCell({ includeEmpty: true }, function(cell) {
+        max = Math.max(max, String(cell.value || '').length + 2);
       });
-
-      var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
-      var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
-      ws.eachRow(function(row, rowNumber) {
-        row.eachCell({ includeEmpty: true }, function(cell) { cell.border = border; });
-      });
-      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDB2777' } };
-      ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
-      ws.views = [{ state: 'frozen', ySplit: 1 }];
-      ws.columns.forEach(function(col) {
-        var max = 12;
-        col.eachCell({ includeEmpty: true }, function(cell) {
-          max = Math.max(max, String(cell.value || '').length + 2);
-        });
-        col.width = Math.min(max, 40);
-      });
+      col.width = Math.min(max, 40);
     });
 
     wb.xlsx.writeBuffer().then(function(buffer) {
