@@ -1,6 +1,6 @@
 const express = require('express');
 const router  = express.Router();
-const { DoctorSchedule, MisScheduleCategoryMap, RbScheduleCategory, User, ExecutorSettings } = require('../models');
+const { DoctorSchedule, MisScheduleCategoryMap, RbScheduleCategory, User, ExecutorSettings, RbUserPermission } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { importForUser } = require('../services/misScheduleImport');
 const { logRbActivity } = require('../services/rbLogger');
@@ -31,6 +31,18 @@ function isDateFrozen(dateStr) {
   return today >= new Date(y, m, 3);
 }
 
+// Whether this request may write into a frozen half-period. Admins always can;
+// other users only with the per-user `bypassPeriodLock` permission flag.
+async function canBypassLock(req) {
+  if (req.user?.isAdmin) return true;
+  if (!req.user?.id) return false;
+  const perm = await RbUserPermission.findOne({
+    where: { userId: req.user.id },
+    attributes: ['bypassPeriodLock'],
+  });
+  return !!perm?.bypassPeriodLock;
+}
+
 // GET /api/doctor-schedules?misUserId=...
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -55,8 +67,9 @@ router.post('/', authenticate, async (req, res) => {
     if (!misUserId || !clinicId || !dateFrom || !dateTo || !pattern) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
-    // Non-admins may not start a schedule inside a frozen half-period.
-    if (!req.user?.isAdmin && isDateFrozen(dateFrom)) {
+    // Non-admins may not start a schedule inside a frozen half-period,
+    // unless granted the bypassPeriodLock permission.
+    if (isDateFrozen(dateFrom) && !(await canBypassLock(req))) {
       return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
     }
     const row = await DoctorSchedule.create({
@@ -114,7 +127,7 @@ router.put('/:id', authenticate, async (req, res) => {
     // Non-admins may not move a schedule's start into a frozen half-period.
     // Only enforced when dateFrom actually changes — shrinking/splitting an entry
     // that legitimately predates the lock keeps its original (possibly frozen) start.
-    if (!req.user?.isAdmin && dateFrom !== undefined && dateFrom !== row.dateFrom && isDateFrozen(dateFrom)) {
+    if (dateFrom !== undefined && dateFrom !== row.dateFrom && isDateFrozen(dateFrom) && !(await canBypassLock(req))) {
       return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
     }
     await row.update({
@@ -201,7 +214,7 @@ router.delete('/:id', authenticate, async (req, res) => {
     // Non-admins may not delete a chain that reaches into a frozen half-period.
     // Frozen dates are a contiguous prefix, so a frozen start ⇒ the chain overlaps
     // the lock. The frontend instead shrinks such entries (PUT) to keep frozen days.
-    if (!req.user?.isAdmin && isDateFrozen(row.dateFrom)) {
+    if (isDateFrozen(row.dateFrom) && !(await canBypassLock(req))) {
       return res.status(403).json({ error: 'Этот период закрыт для редактирования' });
     }
 

@@ -90,14 +90,15 @@ export function SigBlock({ name }) {
 // Structure: 16 shared day-columns.
 // Column i (0-14) → top header = day i+1, bottom header = day i+16
 // Column 15       → top header = "Х",     bottom header = last day of month (if > 30)
-const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year, month, readOnly, initialEntries = {}, initialPayData = {} }, ref) {
+const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year, month, readOnly, canEditFrozen = false, initialEntries = {}, initialPayData = {} }, ref) {
   const { isAdmin } = useAuth();
   const lastDay = new Date(year, month, 0).getDate();
 
-  // Half-period edit locks (non-admins only)
+  // Half-period edit locks. Bypassed by admins or holders of bypassPeriodLock.
+  const canBypassFreeze = isAdmin || canEditFrozen;
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const firstHalfLocked  = !isAdmin && today >= new Date(year, month - 1, 18);
-  const secondHalfLocked = !isAdmin && today >= new Date(year, month, 3);
+  const firstHalfLocked  = !canBypassFreeze && today >= new Date(year, month - 1, 18);
+  const secondHalfLocked = !canBypassFreeze && today >= new Date(year, month, 3);
 
   // Effective per-half readOnly flags
   const readOnly1 = readOnly || firstHalfLocked;

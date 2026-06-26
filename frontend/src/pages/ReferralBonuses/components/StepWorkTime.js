@@ -420,7 +420,7 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function StepWorkTime({ doctors = [], readOnly, clinics = [], getClinicName }) {
+export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = false, clinics = [], getClinicName }) {
   const { user } = useAuth();
   const now = new Date();
 
@@ -797,6 +797,7 @@ export default function StepWorkTime({ doctors = [], readOnly, clinics = [], get
               year={year}
               month={month}
               readOnly={readOnly}
+              canEditFrozen={canEditFrozen}
               initialEntries={presetEntries}
               initialPayData={presetPayData}
             />

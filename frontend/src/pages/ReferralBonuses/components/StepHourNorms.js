@@ -19,6 +19,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   const permWorkTime  = permissions.tabWorkTime  ?? 'edit';
   const permHourNorms = permissions.tabHourNorms ?? 'edit';
   const permSchedule  = permissions.tabSchedule  ?? 'edit';
+  const canEditFrozen = !!permissions.bypassPeriodLock;
 
   const getInitialTab = () => {
     if (permWorkTime  !== 'block') return 'work_time';
@@ -281,6 +282,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             getClinicColor={getClinicColor}
             getClinicName={getClinicName}
             readOnly={permSchedule === 'read'}
+            canEditFrozen={canEditFrozen}
             managingDivision={scheduleView === 'divisions' ? managingDivision : null}
             onDivisionRenamed={handleDivisionRenamed}
             scheduleCategories={categories}
@@ -301,7 +303,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
       </div>
 
       {activeTab === 'work_time' && (
-        <StepWorkTime doctors={doctors} readOnly={permWorkTime === 'read'} clinics={clinics} getClinicName={getClinicName} />
+        <StepWorkTime doctors={doctors} readOnly={permWorkTime === 'read'} canEditFrozen={canEditFrozen} clinics={clinics} getClinicName={getClinicName} />
       )}
 
       {activeTab === 'hour_norms' && (<>

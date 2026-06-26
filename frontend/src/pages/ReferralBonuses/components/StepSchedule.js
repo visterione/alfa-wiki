@@ -777,8 +777,10 @@ const btnGhost = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
+export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, canEditFrozen = false, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
   const { isAdmin } = useAuth();
+  // Users who may edit frozen half-periods: admins or holders of bypassPeriodLock.
+  const canBypassFreeze = isAdmin || canEditFrozen;
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -856,8 +858,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const lockToday = new Date(); lockToday.setHours(0, 0, 0, 0);
   const isCellFrozen = (cell) =>
     isDateFrozen(new Date(cell.year, cell.month - 1, cell.day), lockToday);
-  // isCellLocked — actual edit restriction (non-admins only)
-  const isCellLocked = (cell) => !isAdmin && isCellFrozen(cell);
+  // isCellLocked — actual edit restriction (no admin / bypass permission)
+  const isCellLocked = (cell) => !canBypassFreeze && isCellFrozen(cell);
 
   // ── Load dictionaries once ───────────────────────────────────────────────
   useEffect(() => {
@@ -1189,7 +1191,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     // range is frozen. Frozen dates form a contiguous prefix, so once dateFrom
     // is open the entire remaining range is open too.
     let saveForm = form;
-    if (!isAdmin && !modal.editId) {
+    if (!canBypassFreeze && !modal.editId) {
       const end = parseDate(form.dateTo);
       const cur = parseDate(form.dateFrom);
       let firstOpen = null;
@@ -1380,7 +1382,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     // into a frozen half, shrink it to keep the frozen prefix and drop only the
     // open tail; reject outright if the entire chain is frozen.
     const entry = entries.find(e => e.id === entryId);
-    if (entry && !isAdmin) {
+    if (entry && !canBypassFreeze) {
       const end = parseDate(entry.dateTo);
       const cur = parseDate(entry.dateFrom);
       let firstOpen = null;

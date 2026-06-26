@@ -158,10 +158,11 @@ function ClinicToggle({ checked, color }) {
 function PermSummary({ perm }) {
   const clinics = (perm.clinics || []).map(id => CLINICS.find(c => c.id === id)).filter(Boolean);
   const restricted = TAB_DEFS.filter(t => perm[t.key] && perm[t.key] !== 'edit');
-  if (!clinics.length && !restricted.length) return <span>Полный доступ</span>;
+  if (!clinics.length && !restricted.length && !perm.bypassPeriodLock) return <span>Полный доступ</span>;
   const parts = [
     ...clinics.map((c, i) => <span key={`cl-${i}`} style={{ color: c.color }}>{c.name}</span>),
     ...restricted.map(t => <span key={t.key} style={{ color: PERM_DOT_COLOR[perm[t.key]] }}>{t.label}</span>),
+    ...(perm.bypassPeriodLock ? [<span key="bypass" style={{ color: '#16a34a' }}>Без блокировки периодов</span>] : []),
   ];
   return (
     <>
@@ -256,6 +257,17 @@ function UserRow({ user, onSaved }) {
               });
               return rows;
             })()}
+          </div>
+
+          <div
+            onClick={() => setPerm(p => ({ ...p, bypassPeriodLock: !p.bypassPeriodLock }))}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, padding: '10px 12px', border: `1px solid ${perm.bypassPeriodLock ? '#16a34a' : '#e2e8f0'}`, borderRadius: 8, background: perm.bypassPeriodLock ? '#16a34a10' : 'white', cursor: 'pointer', userSelect: 'none' }}
+          >
+            <ClinicToggle checked={!!perm.bypassPeriodLock} color="#16a34a" />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>Редактирование закрытых периодов</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Игнорировать блокировку дат (2× в месяц) в Расписании и Учёте рабочего времени</div>
+            </div>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 16, paddingTop: 14, borderTop: '1px dashed #e2e8f0' }}>
