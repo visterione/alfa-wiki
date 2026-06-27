@@ -137,7 +137,7 @@ function AppRoutes() {
         <Route path="admin/sidebar" element={
           <ProtectedRoute requireAdminAccess="sidebar"><AdminSidebar /></ProtectedRoute>
         } />
-        <Route path="explorer" element={
+        <Route path="explorer/*" element={
           <ProtectedRoute><AdminPages /></ProtectedRoute>
         } />
         <Route path="admin/settings" element={

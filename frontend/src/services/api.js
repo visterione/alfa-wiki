@@ -148,6 +148,7 @@ export const rbActivityLog = {
 // Folders
 export const folders = {
   browse: (parentId) => api.get('/folders/browse', { params: { parentId } }),
+  resolve: (path) => api.get('/folders/resolve', { params: { path } }),
   tree: () => api.get('/folders/tree'),
   get: (id) => api.get(`/folders/${id}`),
   create: (data) => api.post('/folders', data),

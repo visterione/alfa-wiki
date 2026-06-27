@@ -19,77 +19,132 @@ function canAccessPage(page, userRoleIds, isAdmin) {
   return userRoleIds.some(roleId => page.allowedRoles.includes(roleId));
 }
 
+// Та же проверка доступа, но для папок
+function canAccessFolder(folder, userRoleIds, isAdmin) {
+  if (isAdmin) return true;
+  if (!folder.allowedRoles || folder.allowedRoles.length === 0) return true;
+  return userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
+}
 
-// Получить содержимое папки (или корня)
+// Транслитерация названия в slug (как у страниц)
+function generateSlug(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/[а-яё]/gi, char => {
+      const ru = 'абвгдеёжзийклмнопрстуфхцчшщъыьэюя';
+      const en = ['a','b','v','g','d','e','yo','zh','z','i','y','k','l','m','n','o','p','r','s','t','u','f','h','c','ch','sh','sch','','y','','e','yu','ya'];
+      const idx = ru.indexOf(char.toLowerCase());
+      return idx >= 0 ? en[idx] : char;
+    })
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// Уникальный slug среди папок-сестёр (один и тот же parentId)
+async function uniqueFolderSlug(title, parentId, excludeId = null) {
+  let base = generateSlug(title) || 'folder';
+  let slug = base;
+  let n = 1;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const where = { parentId: parentId || null, slug };
+    if (excludeId) where.id = { [require('sequelize').Op.ne]: excludeId };
+    const clash = await Folder.findOne({ where });
+    if (!clash) return slug;
+    n += 1;
+    slug = `${base}-${n}`;
+  }
+}
+
+// Общая загрузка содержимого папки (или корня) с учётом прав доступа.
+// Возвращает { folderId, folders, pages, breadcrumbs }.
+async function getFolderContents(parentId, req) {
+  const userRoleIds = req.user.roles?.map(r => r.id) || [];
+  const isAdmin = req.user.isAdmin;
+
+  const allFolders = await Folder.findAll({
+    where: { parentId: parentId || null },
+    include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }],
+    order: [['title', 'ASC']]
+  });
+
+  const folders = allFolders.filter(f => canAccessFolder(f, userRoleIds, isAdmin));
+
+  const allPages = await Page.findAll({
+    where: { folderId: parentId || null },
+    include: [
+      { model: User, as: 'author', attributes: ['id', 'username', 'displayName'] },
+      { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'], required: false }
+    ],
+    order: [['title', 'ASC']]
+  });
+
+  const pages = allPages.filter(page => canAccessPage(page, userRoleIds, isAdmin));
+
+  // Хлебные крошки со slug — чтобы фронт мог собрать URL папки
+  let breadcrumbs = [];
+  if (parentId) {
+    let currentFolder = await Folder.findByPk(parentId);
+    while (currentFolder) {
+      breadcrumbs.unshift({ id: currentFolder.id, title: currentFolder.title, slug: currentFolder.slug });
+      currentFolder = currentFolder.parentId ? await Folder.findByPk(currentFolder.parentId) : null;
+    }
+  }
+
+  const foldersWithCounts = await Promise.all(folders.map(async (folder) => {
+    const [childCount, pageCount] = await Promise.all([
+      Folder.count({ where: { parentId: folder.id } }),
+      Page.count({ where: { folderId: folder.id } }),
+    ]);
+    return { ...folder.toJSON(), childCount, pageCount };
+  }));
+
+  return { folderId: parentId || null, folders: foldersWithCounts, pages, breadcrumbs };
+}
+
+
+// Получить содержимое папки (или корня) по ID
 router.get('/browse', authenticate, async (req, res) => {
   try {
     const { parentId } = req.query;
-    const userRoleIds = req.user.roles?.map(r => r.id) || [];
-    const isAdmin = req.user.isAdmin;
-
-    // Получаем подпапки - сортировка только по алфавиту
-    const allFolders = await Folder.findAll({
-      where: { parentId: parentId || null },
-      include: [{ model: User, as: 'creator', attributes: ['id', 'username', 'displayName'] }],
-      order: [['title', 'ASC']]
-    });
-
-    // Фильтруем папки по доступу (строгая проверка как в Sidebar)
-    const folders = [];
-    for (const folder of allFolders) {
-      // Если пользователь не админ и у папки есть ограничения по ролям
-      if (!isAdmin && folder.allowedRoles && folder.allowedRoles.length > 0) {
-        // Проверяем, есть ли у пользователя нужная роль
-        const hasAccess = userRoleIds.some(roleId => folder.allowedRoles.includes(roleId));
-        if (!hasAccess) {
-          // Нет доступа к этой папке - пропускаем
-          continue;
-        }
-      }
-      // Если дошли сюда - доступ есть, добавляем папку
-      folders.push(folder);
-    }
-
-    // Получаем страницы в этой папке - сортировка только по алфавиту
-    const allPages = await Page.findAll({
-      where: { folderId: parentId || null },
-      include: [
-        { model: User, as: 'author', attributes: ['id', 'username', 'displayName'] },
-        { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'], required: false }
-      ],
-      order: [['title', 'ASC']]
-    });
-
-    // Фильтруем страницы по доступу
-    const pages = allPages.filter(page => canAccessPage(page, userRoleIds, isAdmin));
-
-    // Получаем путь (хлебные крошки)
-    let breadcrumbs = [];
-    if (parentId) {
-      let currentFolder = await Folder.findByPk(parentId);
-      while (currentFolder) {
-        breadcrumbs.unshift({ id: currentFolder.id, title: currentFolder.title });
-        if (currentFolder.parentId) {
-          currentFolder = await Folder.findByPk(currentFolder.parentId);
-        } else {
-          currentFolder = null;
-        }
-      }
-    }
-
-    // Добавляем счётчики вложенных элементов к каждой папке
-    const foldersWithCounts = await Promise.all(folders.map(async (folder) => {
-      const [childCount, pageCount] = await Promise.all([
-        Folder.count({ where: { parentId: folder.id } }),
-        Page.count({ where: { folderId: folder.id } }),
-      ]);
-      return { ...folder.toJSON(), childCount, pageCount };
-    }));
-
-    res.json({ folders: foldersWithCounts, pages, breadcrumbs });
+    const result = await getFolderContents(parentId, req);
+    res.json(result);
   } catch (error) {
     console.error('Browse folders error:', error);
     res.status(500).json({ error: 'Failed to browse folders' });
+  }
+});
+
+// Получить содержимое папки по slug-пути (например ?path=marketing/reports).
+// Нужно для постоянных ссылок на папки.
+router.get('/resolve', authenticate, async (req, res) => {
+  try {
+    const raw = String(req.query.path || '').trim();
+    const segments = raw.split('/').map(s => s.trim()).filter(Boolean);
+
+    if (!segments.length) {
+      // Пустой путь — корень
+      return res.json(await getFolderContents(null, req));
+    }
+
+    const userRoleIds = req.user.roles?.map(r => r.id) || [];
+    const isAdmin = req.user.isAdmin;
+
+    // Идём по сегментам сверху вниз, сопоставляя slug + parentId
+    let parentId = null;
+    let folder = null;
+    for (const segment of segments) {
+      folder = await Folder.findOne({ where: { parentId: parentId || null, slug: segment } });
+      if (!folder || !canAccessFolder(folder, userRoleIds, isAdmin)) {
+        return res.status(404).json({ error: 'Folder not found' });
+      }
+      parentId = folder.id;
+    }
+
+    res.json(await getFolderContents(folder.id, req));
+  } catch (error) {
+    console.error('Resolve folder path error:', error);
+    res.status(500).json({ error: 'Failed to resolve folder path' });
   }
 });
 
@@ -176,8 +231,11 @@ router.post('/', authenticate, requirePermission('pages', 'write'), [
       where: { parentId: parentId || null }
     });
 
+    const slug = await uniqueFolderSlug(title, parentId);
+
     const folder = await Folder.create({
       title,
+      slug,
       icon: icon || 'folder',
       parentId: parentId || null,
       description,
@@ -231,8 +289,16 @@ router.put('/:id', authenticate, requirePermission('pages', 'write'), async (req
       }
     }
 
+    // При смене родителя slug может конфликтовать с сестринской папкой —
+    // перегенерируем уникальный в пределах нового родителя.
+    let nextSlug;
+    if (parentId !== undefined && (parentId || null) !== folder.parentId) {
+      nextSlug = await uniqueFolderSlug(folder.slug || title || folder.title, parentId, folder.id);
+    }
+
     await folder.update({
       ...(title && { title }),
+      ...(nextSlug && { slug: nextSlug }),
       ...(icon !== undefined && { icon }),
       ...(parentId !== undefined && { parentId: parentId || null }),
       ...(description !== undefined && { description }),
@@ -260,7 +326,12 @@ router.post('/move', authenticate, requirePermission('pages', 'write'), async (r
       if (item.type === 'folder') {
         const folder = await Folder.findByPk(item.id);
         if (!folder) continue;
-        await folder.update({ parentId: item.targetFolderId || null });
+        const target = item.targetFolderId || null;
+        const update = { parentId: target };
+        if (target !== folder.parentId) {
+          update.slug = await uniqueFolderSlug(folder.slug || folder.title, target, folder.id);
+        }
+        await folder.update(update);
       } else if (item.type === 'page') {
         const page = await Page.findByPk(item.id);
         if (!page) continue;

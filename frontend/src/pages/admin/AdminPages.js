@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import {
   Plus, Folder, FileText,
   ChevronRight, Home, Edit, Trash2, Eye, MoreVertical,
@@ -78,10 +78,16 @@ import '../Admin.css';
 
 export default function AdminPages() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { isAdmin, hasPermission, hasAdminAccess } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [currentFolderId, setCurrentFolderId] = useState(() => searchParams.get('folderId') || null);
+  const [currentFolderId, setCurrentFolderId] = useState(null);
+
+  // Текущий путь папки из URL: /explorer/marketing/reports -> "marketing/reports".
+  // URL — источник истины: переход = navigate, загрузка идёт по slug-пути.
+  const folderPath = location.pathname.replace(/^\/explorer\/?/, '').replace(/\/+$/, '');
+  const pathSegments = folderPath ? folderPath.split('/') : [];
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [folderList, setFolderList] = useState([]);
   const [pageList, setPageList] = useState([]);
@@ -130,12 +136,28 @@ export default function AdminPages() {
     window.location.href = `${BASE_URL}/api/media/${mediaId}/download`;
   };
 
+  useEffect(() => { loadRoles(); }, []);
+
+  // Обратная совместимость со старыми ссылками вида /explorer?folderId=<uuid>:
+  // разворачиваем id в slug-путь и переходим на него.
   useEffect(() => {
-    loadRoles();
+    const legacyId = searchParams.get('folderId');
+    if (!legacyId || pathSegments.length) return;
+    folders.browse(legacyId)
+      .then(({ data }) => {
+        const path = (data.breadcrumbs || []).map(c => c.slug).filter(Boolean).join('/');
+        navigate(path ? `/explorer/${path}` : '/explorer', { replace: true });
+      })
+      .catch(() => navigate('/explorer', { replace: true }));
+  }, []);
+
+  // Загрузка содержимого при изменении пути в URL (включая кнопки «назад/вперёд»)
+  useEffect(() => {
+    if (searchParams.get('folderId') && !pathSegments.length) return; // ждём редирект выше
     loadContent();
     setFolderSearch('');
     setSelectedId(null);
-  }, [currentFolderId]);
+  }, [folderPath]);
 
   // Закрытие дропдауна «Создать» при клике вне
   useEffect(() => {
@@ -168,25 +190,38 @@ export default function AdminPages() {
   const loadContent = async () => {
     setLoading(true);
     try {
-      const { data } = await folders.browse(currentFolderId);
+      const { data } = pathSegments.length
+        ? await folders.resolve(folderPath)
+        : await folders.browse(null);
+      setCurrentFolderId(data.folderId || null);
       setFolderList(data.folders || []);
       setPageList(data.pages || []);
       setBreadcrumbs(data.breadcrumbs || []);
     } catch (error) {
-      toast.error('Ошибка загрузки');
+      if (error.response?.status === 404) {
+        toast.error('Папка не найдена');
+        navigate('/explorer', { replace: true });
+      } else {
+        toast.error('Ошибка загрузки');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const navigateToFolder = (folderId) => setCurrentFolderId(folderId);
+  // Переходы по папкам = смена URL (ссылки на папки становятся постоянными)
+  const goToFolderPath = (path) => navigate(path ? `/explorer/${path}` : '/explorer');
 
-  const navigateUp = () => {
-    if (breadcrumbs.length > 0) {
-      const parent = breadcrumbs[breadcrumbs.length - 2];
-      setCurrentFolderId(parent ? parent.id : null);
-    }
-  };
+  // Открыть подпапку текущего уровня (folder.slug добавляется к текущему пути)
+  const openFolder = (folder) => goToFolderPath([...pathSegments, folder.slug].join('/'));
+
+  // Перейти к крошке по индексу (slug-цепочка до неё включительно)
+  const navigateToCrumb = (idx) =>
+    goToFolderPath(breadcrumbs.slice(0, idx + 1).map(c => c.slug).join('/'));
+
+  const navigateToRoot = () => goToFolderPath('');
+
+  const navigateUp = () => goToFolderPath(pathSegments.slice(0, -1).join('/'));
 
   // Обработчик выбора пункта из «Создать»
   const handleCreateItem = (kind) => {
@@ -455,7 +490,7 @@ export default function AdminPages() {
         <div className="explorer-breadcrumbs">
           <button
             className={`breadcrumb-item ${!currentFolderId ? 'active' : ''}`}
-            onClick={() => navigateToFolder(null)}
+            onClick={navigateToRoot}
           >
             <Home size={16} />
             <span>Корень</span>
@@ -465,7 +500,7 @@ export default function AdminPages() {
               <ChevronRight size={16} className="breadcrumb-separator" />
               <button
                 className={`breadcrumb-item ${idx === breadcrumbs.length - 1 ? 'active' : ''}`}
-                onClick={() => navigateToFolder(crumb.id)}
+                onClick={() => navigateToCrumb(idx)}
               >
                 <Folder size={16} />
                 <span>{crumb.title}</span>
@@ -534,7 +569,7 @@ export default function AdminPages() {
                   draggedItem?.id === folder.id ? 'dragging' : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => setSelectedId(`folder-${folder.id}`)}
-                onDoubleClick={() => navigateToFolder(folder.id)}
+                onDoubleClick={() => openFolder(folder)}
                 onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
                 onDragOver={(e) => handleDragOver(e, folder.id, true)}
                 onDragLeave={() => setDragOverFolderId(null)}
@@ -661,7 +696,7 @@ export default function AdminPages() {
                   draggedItem?.id === folder.id ? 'dragging' : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => setSelectedId(`folder-${folder.id}`)}
-                onDoubleClick={() => navigateToFolder(folder.id)}
+                onDoubleClick={() => openFolder(folder)}
                 onDragStart={canEdit ? (e) => handleDragStart(e, 'folder', folder.id) : undefined}
                 onDragOver={(e) => handleDragOver(e, folder.id, true)}
                 onDragLeave={() => setDragOverFolderId(null)}

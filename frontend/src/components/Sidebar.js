@@ -398,7 +398,7 @@ function QuickAccessButtons({ onClose }) {
 
   const isOnChat = location.pathname === '/';
   const isOnFavorites = location.pathname === '/favorites';
-  const isOnAdminPages = location.pathname === '/explorer';
+  const isOnAdminPages = location.pathname === '/explorer' || location.pathname.startsWith('/explorer/');
   const isOnCourses = location.pathname.startsWith('/courses');
   const isOnKanban = location.pathname.startsWith('/kanban');
   const isOnReviews = location.pathname.startsWith('/reviews');

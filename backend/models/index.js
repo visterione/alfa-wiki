@@ -157,6 +157,7 @@ const User = sequelize.define('User', {
 const Folder = sequelize.define('Folder', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
   title: { type: DataTypes.STRING(255), allowNull: false },
+  slug: { type: DataTypes.STRING(255), allowNull: true },
   icon: { type: DataTypes.STRING(50), defaultValue: 'folder' },
   parentId: { type: DataTypes.UUID, allowNull: true },
   sortOrder: { type: DataTypes.INTEGER, defaultValue: 0 },
@@ -168,7 +169,8 @@ const Folder = sequelize.define('Folder', {
   timestamps: true,
   indexes: [
     { fields: ['parentId'] },
-    { fields: ['sortOrder'] }
+    { fields: ['sortOrder'] },
+    { fields: ['slug'] }
   ]
 });
 

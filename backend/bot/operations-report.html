@@ -652,7 +652,26 @@ window.opApp = (function() {
     });
   }
 
+  function collapseSidebar() {
+    // Страница встраивается в wiki: тот же window, что и React-приложение.
+    // Layout слушает 'spreadsheet-page' и сворачивает сайдбар, давая больше места таблице.
+    try {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+      var rootEl = document.getElementById('operations-app');
+      if (rootEl && window.MutationObserver) {
+        var obs = new MutationObserver(function() {
+          if (!document.body.contains(rootEl)) {
+            window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) { /* вне wiki — игнорируем */ }
+  }
+
   function init() {
+    collapseSidebar();
     attachDateMask(document.getElementById('op-reportDate'));
     document.getElementById('op-reportDate').value = todayDMY();
     reload();
