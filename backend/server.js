@@ -67,6 +67,7 @@ const directoriesRoutes          = require('./routes/directories');
 const ambulanceReportsRoutes     = require('./routes/ambulance-reports');
 const operationsReportsRoutes    = require('./routes/operations-reports');
 const gynecologyReportsRoutes    = require('./routes/gynecology-reports');
+const therapyReportsRoutes       = require('./routes/therapy-reports');
 
 const app = express();
 const server = http.createServer(app);
@@ -261,6 +262,7 @@ app.use('/api/directories',         directoriesRoutes);
 app.use('/api/ambulance-reports',   ambulanceReportsRoutes);
 app.use('/api/operations-reports',  operationsReportsRoutes);
 app.use('/api/gynecology-reports',  gynecologyReportsRoutes);
+app.use('/api/therapy-reports',     therapyReportsRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
 // URL format: /bot{token}/{method}  (matches api.telegram.org/bot{token}/{method})
