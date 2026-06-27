@@ -74,6 +74,7 @@ import { folders, pages, roles } from '../../services/api';
 import { BASE_URL } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import PageView from '../PageView';
 import '../Admin.css';
 
 export default function AdminPages() {
@@ -83,6 +84,8 @@ export default function AdminPages() {
   const { isAdmin, hasPermission, hasAdminAccess } = useAuth();
   const [loading, setLoading] = useState(true);
   const [currentFolderId, setCurrentFolderId] = useState(null);
+  // Если путь указывает на страницу (а не папку) — показываем её через PageView
+  const [pageViewSlug, setPageViewSlug] = useState(null);
 
   // Текущий путь папки из URL: /explorer/marketing/reports -> "marketing/reports".
   // URL — источник истины: переход = navigate, загрузка идёт по slug-пути.
@@ -193,6 +196,12 @@ export default function AdminPages() {
       const { data } = pathSegments.length
         ? await folders.resolve(folderPath)
         : await folders.browse(null);
+      if (data.type === 'page') {
+        // Последний сегмент пути — страница: показываем её, а не проводник
+        setPageViewSlug(data.pageSlug);
+        return;
+      }
+      setPageViewSlug(null);
       setCurrentFolderId(data.folderId || null);
       setFolderList(data.folders || []);
       setPageList(data.pages || []);
@@ -214,6 +223,9 @@ export default function AdminPages() {
 
   // Открыть подпапку текущего уровня (folder.slug добавляется к текущему пути)
   const openFolder = (folder) => goToFolderPath([...pathSegments, folder.slug].join('/'));
+
+  // Открыть страницу по каноническому пути /explorer/папка/слаг
+  const openPage = (page) => goToFolderPath([...pathSegments, page.slug].join('/'));
 
   // Перейти к крошке по индексу (slug-цепочка до неё включительно)
   const navigateToCrumb = (idx) =>
@@ -433,6 +445,11 @@ export default function AdminPages() {
   // ─────────────────────────────────────────────────────────
 
 
+  // Путь ведёт на страницу — рендерим её обычным просмотром
+  if (pageViewSlug) {
+    return <PageView slugOverride={pageViewSlug} />;
+  }
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -614,7 +631,7 @@ export default function AdminPages() {
                     if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
                       downloadFile(page);
                     } else {
-                      navigate(`/page/${page.slug}`);
+                      openPage(page);
                     }
                   }}
                   onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
@@ -636,7 +653,7 @@ export default function AdminPages() {
                           <Download size={14} />
                         </button>
                       ) : (
-                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); openPage(page); }}>
                           <Eye size={14} />
                         </button>
                       )}
@@ -646,7 +663,7 @@ export default function AdminPages() {
                         </button>
                       )}
                       {canEdit && page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
-                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); navigate(`/page/${page.slug}`); }}>
+                        <button title="Просмотр" onClick={(e) => { e.stopPropagation(); openPage(page); }}>
                           <Eye size={14} />
                         </button>
                       )}
@@ -744,7 +761,7 @@ export default function AdminPages() {
                     if (page.contentType === 'file' && !hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType)) {
                       downloadFile(page);
                     } else {
-                      navigate(`/page/${page.slug}`);
+                      openPage(page);
                     }
                   }}
                   onDragStart={canEdit ? (e) => handleDragStart(e, 'page', page.id) : undefined}
@@ -768,12 +785,12 @@ export default function AdminPages() {
                     {openMenuId === `page-${page.id}` && (
                       <div className="actions-menu" onClick={(e) => e.stopPropagation()}>
                         {page.contentType !== 'file' && (
-                          <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                          <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
                             <Eye size={16} /> Просмотр
                           </button>
                         )}
                         {page.contentType === 'file' && hasFilePreview(page.metadata?.mimeType || page.mediaFile?.mimeType) && (
-                          <button onClick={() => { navigate(`/page/${page.slug}`); setOpenMenuId(null); }}>
+                          <button onClick={() => { openPage(page); setOpenMenuId(null); }}>
                             <Eye size={16} /> Просмотр
                           </button>
                         )}

@@ -199,8 +199,8 @@ router.get('/:identifier', authenticate, async (req, res) => {
       include: [
         { model: User, as: 'author', attributes: ['id', 'displayName', 'username'] },
         { model: User, as: 'editor', attributes: ['id', 'displayName', 'username'] },
-        { model: Folder, as: 'folder', attributes: ['id', 'title'],
-          include: [{ model: Folder, as: 'parent', attributes: ['id', 'title'] }] },
+        { model: Folder, as: 'folder', attributes: ['id', 'title', 'slug'],
+          include: [{ model: Folder, as: 'parent', attributes: ['id', 'title', 'slug'] }] },
         { model: Media, as: 'mediaFile', attributes: ['id', 'originalName', 'mimeType', 'size', 'path'] }
       ]
     });
@@ -226,7 +226,14 @@ router.get('/:identifier', authenticate, async (req, res) => {
       }
     }
 
-    res.json(page);
+    // Полный slug-путь папки (для канонического URL вида /explorer/папка/файл)
+    const pageJson = page.toJSON();
+    const folderPath = [];
+    if (pageJson.folder?.parent?.slug) folderPath.push(pageJson.folder.parent.slug);
+    if (pageJson.folder?.slug) folderPath.push(pageJson.folder.slug);
+    pageJson.folderPath = folderPath;
+
+    res.json(pageJson);
   } catch (error) {
     console.error('Get page error:', error);
     res.status(500).json({ error: 'Failed to fetch page' });

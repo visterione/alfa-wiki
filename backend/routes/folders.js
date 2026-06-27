@@ -99,7 +99,7 @@ async function getFolderContents(parentId, req) {
     return { ...folder.toJSON(), childCount, pageCount };
   }));
 
-  return { folderId: parentId || null, folders: foldersWithCounts, pages, breadcrumbs };
+  return { type: 'folder', folderId: parentId || null, folders: foldersWithCounts, pages, breadcrumbs };
 }
 
 
@@ -130,18 +130,33 @@ router.get('/resolve', authenticate, async (req, res) => {
     const userRoleIds = req.user.roles?.map(r => r.id) || [];
     const isAdmin = req.user.isAdmin;
 
-    // Идём по сегментам сверху вниз, сопоставляя slug + parentId
+    // Идём по сегментам сверху вниз, сопоставляя slug + parentId.
+    // Последний сегмент может оказаться не папкой, а страницей.
     let parentId = null;
-    let folder = null;
-    for (const segment of segments) {
-      folder = await Folder.findOne({ where: { parentId: parentId || null, slug: segment } });
-      if (!folder || !canAccessFolder(folder, userRoleIds, isAdmin)) {
-        return res.status(404).json({ error: 'Folder not found' });
+    for (let i = 0; i < segments.length; i++) {
+      const segment = segments[i];
+      const isLast = i === segments.length - 1;
+      const folder = await Folder.findOne({ where: { parentId: parentId || null, slug: segment } });
+
+      if (folder) {
+        if (!canAccessFolder(folder, userRoleIds, isAdmin)) {
+          return res.status(404).json({ error: 'Folder not found' });
+        }
+        parentId = folder.id;
+        continue;
       }
-      parentId = folder.id;
+
+      // Не папка. Если это последний сегмент — пробуем страницу в текущей папке.
+      if (isLast) {
+        const page = await Page.findOne({ where: { slug: segment, folderId: parentId || null } });
+        if (page && canAccessPage(page, userRoleIds, isAdmin)) {
+          return res.json({ type: 'page', pageSlug: page.slug });
+        }
+      }
+      return res.status(404).json({ error: 'Not found' });
     }
 
-    res.json(await getFolderContents(folder.id, req));
+    res.json(await getFolderContents(parentId, req));
   } catch (error) {
     console.error('Resolve folder path error:', error);
     res.status(500).json({ error: 'Failed to resolve folder path' });

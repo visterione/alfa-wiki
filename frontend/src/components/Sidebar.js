@@ -28,6 +28,15 @@ import { sidebar as sidebarApi, chat, calendar, reviews as reviewsApi } from '..
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
+// Страница активна как для старого /page/<slug>, так и для канонического
+// /explorer/папка/<slug> (slug всегда последний сегмент пути).
+function isPagePathActive(pathname, slug) {
+  if (!slug) return false;
+  if (pathname === `/page/${slug}`) return true;
+  return pathname.startsWith('/explorer/') &&
+    pathname.split('/').filter(Boolean).pop() === slug;
+}
+
 // Маппинг иконок
 const iconMap = {
   'home': Home, 'file': File, 'file-text': FileText, 'folder': Folder,
@@ -594,7 +603,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
 
     // Проверяем есть ли активная страница внутри папки
     const hasActiveFolderPage = folderPages.some(p =>
-      location.pathname === `/page/${p.slug}`
+      isPagePathActive(location.pathname, p.slug)
     );
 
     const folderTitle = item.title || item.folder?.title || 'Папка';
@@ -616,7 +625,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
         {(isExpanded || isClosing) && hasFolderPages && (
           <div className={`sidebar-folder-children ${isClosing ? 'closing' : ''}`}>
             {folderPages.map(page => {
-              const isPageActive = location.pathname === `/page/${page.slug}`;
+              const isPageActive = isPagePathActive(location.pathname, page.slug);
 
               return (
                 <NavLink
@@ -673,7 +682,7 @@ function SidebarItemComponent({ item, level = 0, onClose, expandedState, onToggl
     return (
       <NavLink
         to={pageUrl}
-        className={({ isActive }) => `sidebar-item ${isActive ? 'active' : ''}`}
+        className={`sidebar-item ${isPagePathActive(location.pathname, pageSlug) ? 'active' : ''}`}
         style={{ paddingLeft: `${14 + level * 16}px` }}
         onClick={handleMobileClick}
       >

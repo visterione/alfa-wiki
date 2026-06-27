@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { Edit, ArrowLeft, Star, StarOff, Download, FileText, Image, Film, Music, Archive, Package, File, Table, Scroll, BookOpen, Home, Folder, ChevronRight, FileCode } from 'lucide-react';
 import mammoth from 'mammoth';
 import { pages, favorites, media as mediaApi, BASE_URL } from '../services/api';
@@ -229,9 +229,12 @@ function FileViewer({ mediaFile }) {
   );
 }
 
-export default function PageView() {
-  const { slug } = useParams();
+export default function PageView({ slugOverride } = {}) {
+  // slugOverride используется, когда страница открыта по пути /explorer/папка/файл
+  const { slug: slugParam } = useParams();
+  const slug = slugOverride || slugParam;
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { isAdmin, hasPermission } = useAuth();
 
@@ -408,6 +411,16 @@ export default function PageView() {
     loadPage();
   }, [slug]);
 
+  // Канонический URL страницы: /explorer/папка/подпапка/слаг.
+  // Старые ссылки /page/<slug> открываются и заменяются на путь с папками.
+  useEffect(() => {
+    if (!page) return;
+    const canonical = '/explorer/' + [...(page.folderPath || []), page.slug].filter(Boolean).join('/');
+    if (location.pathname !== canonical) {
+      navigate(canonical + location.search, { replace: true });
+    }
+  }, [page]);
+
   // Закрываем sidebar при открытии страницы с таблицей, восстанавливаем при выходе
   useEffect(() => {
     if (page?.contentType !== 'spreadsheet') return;
@@ -504,18 +517,19 @@ export default function PageView() {
           <Home size={13} />
           <span>Проводник</span>
         </Link>
-        {folderBreadcrumbs.map((folder) => (
-          <React.Fragment key={folder.id}>
-            <ChevronRight size={12} className="page-breadcrumb-sep" />
-            <Link
-              to={`/explorer?folderId=${folder.id}`}
-              className="page-breadcrumb-item"
-            >
-              <Folder size={13} />
-              <span>{folder.title}</span>
-            </Link>
-          </React.Fragment>
-        ))}
+        {folderBreadcrumbs.map((folder, idx) => {
+          const folderUrl = '/explorer/' + folderBreadcrumbs
+            .slice(0, idx + 1).map(f => f.slug).filter(Boolean).join('/');
+          return (
+            <React.Fragment key={folder.id}>
+              <ChevronRight size={12} className="page-breadcrumb-sep" />
+              <Link to={folderUrl} className="page-breadcrumb-item">
+                <Folder size={13} />
+                <span>{folder.title}</span>
+              </Link>
+            </React.Fragment>
+          );
+        })}
         <ChevronRight size={12} className="page-breadcrumb-sep" />
         <span className="page-breadcrumb-current">
           {React.createElement(getPageIcon(page.contentType, page.metadata), { size: 13 })}
