@@ -29,6 +29,12 @@ export const STATUS_CODES = [
 // Коды, которые засчитываются как отработанные дни/часы
 export const WORKING_CODES = new Set(['Я', 'Н', 'РВ', 'С', 'К', 'ПК', 'ЛЧ', 'НС', 'МО']);
 
+// День-неявка с буквенной причиной (отпуск/больничный и т.п.): не рабочий код и не выходной «В».
+// В нормированном табеле такой день показывается буквой (норма) и нулём (факт).
+export function isAbsenceEntry(en) {
+  return !!en?.code && !WORKING_CODES.has(en.code) && en.code !== 'В';
+}
+
 export function pad2(n) { return String(n).padStart(2, '0'); }
 
 // ── Signature / underline field ───────────────────────────────────────────────
@@ -90,9 +96,13 @@ export function SigBlock({ name }) {
 // Structure: 16 shared day-columns.
 // Column i (0-14) → top header = day i+1, bottom header = day i+16
 // Column 15       → top header = "Х",     bottom header = last day of month (if > 30)
-const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year, month, readOnly, canEditFrozen = false, initialEntries = {}, initialPayData = {} }, ref) {
+const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year, month, readOnly, canEditFrozen = false, variant = 'standard', initialEntries = {}, initialPayData = {} }, ref) {
   const { isAdmin } = useAuth();
   const lastDay = new Date(year, month, 0).getDate();
+  const isNormalized = variant === 'normalized';
+  // Нормированные часы — красным; в нормированном табеле они идут верхней строкой
+  const normInputStyle = { color: '#dc2626', fontWeight: 600 };
+  const normCellStyle  = { color: '#dc2626' };
 
   // Half-period edit locks. Bypassed by admins or holders of bypassPeriodLock.
   const canBypassFreeze = isAdmin || canEditFrozen;
@@ -132,7 +142,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
     }));
 
   const getEntry = useCallback(
-    (docId, day) => entries[docId]?.[day] || { code: '', hours: '' },
+    (docId, day) => entries[docId]?.[day] || { code: '', hours: '', normHours: '' },
     [entries]
   );
 
@@ -148,16 +158,31 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
       [docId]: { ...prev[docId], [day]: { ...(prev[docId]?.[day] || {}), hours: val } },
     }));
 
+  const setNormHours = (docId, day, val) =>
+    setEntries(prev => ({
+      ...prev,
+      [docId]: { ...prev[docId], [day]: { ...(prev[docId]?.[day] || {}), normHours: val } },
+    }));
+
   const calcTotals = useCallback((docId) => {
     const daysI   = firstHalf.filter(d => WORKING_CODES.has(getEntry(docId, d).code)).length;
     const hoursI  = firstHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
     const daysII  = secondHalf.filter(d => WORKING_CODES.has(getEntry(docId, d).code)).length;
     const hoursII = secondHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
+    // Нормированные часы — для табеля типа «Нормированный» (дни-неявки показаны буквой, в сумму не идут)
+    const sumNorm = (days) => days.reduce((s, d) => {
+      const en = getEntry(docId, d);
+      return isAbsenceEntry(en) ? s : s + (parseFloat(en.normHours) || 0);
+    }, 0);
+    const normHoursI  = sumNorm(firstHalf);
+    const normHoursII = sumNorm(secondHalf);
 
     return {
       daysI, hoursI, daysII, hoursII,
+      normHoursI, normHoursII,
       totalDays: daysI + daysII,
       totalHours: hoursI + hoursII,
+      totalNormHours: normHoursI + normHoursII,
     };
   }, [getEntry, firstHalf, secondHalf]);
 
@@ -318,17 +343,33 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                   <td className="tt-td tt-center" rowSpan={4}>{doc.tabelNumber || ''}</td>
 
                   {firstHalf.map(d => (
-                    <td key={d}
-                      className={`tt-td tt-code${!readOnly1 ? ' tt-clickable' : ''}`}
-                      onClick={!readOnly1 ? e => openPicker(doc.id, d, e) : undefined}>
-                      {getEntry(doc.id, d).code}
-                    </td>
+                    isNormalized ? (
+                      isAbsenceEntry(getEntry(doc.id, d)) ? (
+                        <td key={d} className="tt-td tt-code" style={normCellStyle}>
+                          {getEntry(doc.id, d).code}
+                        </td>
+                      ) : (
+                        <td key={d} className="tt-td tt-hours">
+                          <input type="number" min="0" step="0.5" className="tt-hours-input"
+                            style={normInputStyle}
+                            value={getEntry(doc.id, d).normHours}
+                            onChange={e => setNormHours(doc.id, d, e.target.value)}
+                            disabled={readOnly1} />
+                        </td>
+                      )
+                    ) : (
+                      <td key={d}
+                        className={`tt-td tt-code${!readOnly1 ? ' tt-clickable' : ''}`}
+                        onClick={!readOnly1 ? e => openPicker(doc.id, d, e) : undefined}>
+                        {getEntry(doc.id, d).code}
+                      </td>
+                    )
                   ))}
                   {showX && <td className="tt-td tt-x-cell">Х</td>}
 
-                  {/* Summary: days in first half | total days (rowspan 2) */}
-                  <td className="tt-td tt-sum">{t.daysI || ''}</td>
-                  <td className="tt-td tt-total" rowSpan={2}>{t.totalDays || ''}</td>
+                  {/* Summary (норм. сверху): норм. за I половину | всего норм. (rowspan 2) */}
+                  <td className="tt-td tt-sum" style={isNormalized ? normCellStyle : undefined}>{(isNormalized ? t.normHoursI : t.daysI) || ''}</td>
+                  <td className="tt-td tt-total" rowSpan={2} style={isNormalized ? normCellStyle : undefined}>{(isNormalized ? t.totalNormHours : t.totalDays) || ''}</td>
                   {/* Данные ЗП + Неявки — строка 0 */}
                   {Array.from({ length: PAY_COLS }, (_, c) => (
                     <td key={c} className="tt-td tt-hours">
@@ -370,13 +411,29 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                 {/* ── Row C: codes for second half ── */}
                 <tr className="tt-row-c">
                   {secondHalf.map((d, i) => (
-                    <td key={i}
-                      className={`tt-td tt-code${!readOnly2 ? ' tt-clickable' : ''}`}
-                      onClick={!readOnly2 ? e => openPicker(doc.id, d, e) : undefined}>
-                      {getEntry(doc.id, d).code}
-                    </td>
+                    isNormalized ? (
+                      isAbsenceEntry(getEntry(doc.id, d)) ? (
+                        <td key={i} className="tt-td tt-code" style={normCellStyle}>
+                          {getEntry(doc.id, d).code}
+                        </td>
+                      ) : (
+                        <td key={i} className="tt-td tt-hours">
+                          <input type="number" min="0" step="0.5" className="tt-hours-input"
+                            style={normInputStyle}
+                            value={getEntry(doc.id, d).normHours}
+                            onChange={e => setNormHours(doc.id, d, e.target.value)}
+                            disabled={readOnly2} />
+                        </td>
+                      )
+                    ) : (
+                      <td key={i}
+                        className={`tt-td tt-code${!readOnly2 ? ' tt-clickable' : ''}`}
+                        onClick={!readOnly2 ? e => openPicker(doc.id, d, e) : undefined}>
+                        {getEntry(doc.id, d).code}
+                      </td>
+                    )
                   ))}
-                  <td className="tt-td tt-sum">{t.daysII || ''}</td>
+                  <td className="tt-td tt-sum" style={isNormalized ? normCellStyle : undefined}>{(isNormalized ? t.normHoursII : t.daysII) || ''}</td>
                   <td className="tt-td tt-total" rowSpan={2}>{t.totalHours || ''}</td>
                   {/* Данные ЗП + Неявки — строка 2 */}
                   {Array.from({ length: PAY_COLS }, (_, c) => (

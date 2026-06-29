@@ -947,18 +947,30 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       .sort((a, b) => a.timeFrom.localeCompare(b.timeFrom));
   }, [entries, selectedDoctor]);
 
-  // Exceptions can be string (legacy) or { date, code } object
+  // Exceptions: string (legacy cancel) | { date, code } (cancel) | { date, timeFrom, timeTo } (override)
   const getExceptionEntry = (entry, cell) => {
     const dateStr = cellDate(cell);
     return (entry.exceptions || []).find(ex =>
       typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
     );
   };
+  // Override = смена отработана, но с изменённым временем (исходный план сохраняется как «норма»)
+  const getOverride = (entry, cell) => {
+    const ex = getExceptionEntry(entry, cell);
+    return (ex && typeof ex === 'object' && ex.timeFrom && ex.timeTo && !ex.code) ? ex : null;
+  };
   const isExcepted = (entry, cell) => !!getExceptionEntry(entry, cell);
+  // Отменена именно смена (полная отмена), а не изменение времени
+  const isCancelled = (entry, cell) => isExcepted(entry, cell) && !getOverride(entry, cell);
   const getExceptionCode = (entry, cell) => {
     const ex = getExceptionEntry(entry, cell);
-    if (!ex) return null;
+    if (!ex || getOverride(entry, cell)) return null;
     return typeof ex === 'object' ? ex.code : 'ОТ';
+  };
+  // Действующее время смены на конкретный день (с учётом override)
+  const effTimes = (entry, cell) => {
+    const ov = getOverride(entry, cell);
+    return { timeFrom: ov ? ov.timeFrom : entry.timeFrom, timeTo: ov ? ov.timeTo : entry.timeTo };
   };
 
   const hasMisEntries = entries.some(e => e.source === 'mis_import');
@@ -1059,6 +1071,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     if (cell) {
       f.dateFrom = cellDate(cell);
       f.dateTo   = cellDate(cell);
+      // Показываем действующее время дня (с учётом ранее изменённых часов)
+      const eff = effTimes(entry, cell);
+      f.timeFrom = eff.timeFrom;
+      f.timeTo   = eff.timeTo;
     }
     setForm(f);
     setModal(prev => ({ ...prev, type: 'form', editId: entry.id }));
@@ -1082,6 +1098,28 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       cabinetId:  e.cabinetId  || null,
       roleTitle:  e.roleTitle  || null,
     });
+
+    // Если изменилось ТОЛЬКО время (медцентр/категория/кабинет/роль те же) — пишем override,
+    // сохраняя исходное плановое время смены как «норму». Структурные правки идут прежним путём (split).
+    const onlyTimeChanged =
+      form.clinicId === origEntry.clinicId &&
+      (form.categoryId || null) === (origEntry.categoryId || null) &&
+      (form.cabinetId  || null) === (origEntry.cabinetId  || null) &&
+      (form.roleTitle  || null) === (origEntry.roleTitle  || null);
+
+    if (onlyTimeChanged) {
+      const withoutDay = (origEntry.exceptions || []).filter(ex =>
+        (typeof ex === 'string' ? ex : ex.date) !== targetDate
+      );
+      // Если время вернули к плановому — просто снимаем override
+      const backToNorm = form.timeFrom === origEntry.timeFrom && form.timeTo === origEntry.timeTo;
+      const newExceptions = backToNorm
+        ? withoutDay
+        : [...withoutDay, { date: targetDate, timeFrom: form.timeFrom, timeTo: form.timeTo }];
+      await schedulesApi.update(modal.editId, { exceptions: newExceptions });
+      setEntries(prev => prev.map(e => e.id === modal.editId ? { ...e, exceptions: newExceptions } : e));
+      return;
+    }
 
     const newDayPayload = {
       misUserId,
@@ -1436,7 +1474,8 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
   const handleToggleException = (entryId, cell) => {
     const entry = entries.find(e => e.id === entryId);
     if (!entry) return;
-    if (isExcepted(entry, cell)) {
+    // Полная отмена считается «активной» только при отмене смены; override (изменение часов) — это рабочий день
+    if (isCancelled(entry, cell)) {
       handleRestoreException(entryId, cell);
     } else {
       setCancelModal({ entryId, cell });
@@ -1464,8 +1503,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
     const dateStr = cellDate(cell);
     const entry = entries.find(e => e.id === entryId);
     if (!entry) return;
-    const newException = { date: dateStr, code };
-    const newExceptions = [...(entry.exceptions || []), newException];
+    // Заменяем любое существующее исключение на этот день (в т.ч. override) отменой
+    const withoutDay = (entry.exceptions || []).filter(ex =>
+      (typeof ex === 'string' ? ex : ex.date) !== dateStr
+    );
+    const newExceptions = [...withoutDay, { date: dateStr, code }];
     try {
       await schedulesApi.update(entryId, { exceptions: newExceptions });
       setEntries(prev => prev.map(e => e.id === entryId ? { ...e, exceptions: newExceptions } : e));
@@ -1547,10 +1589,14 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         const ex = (e.exceptions || []).find(ex2 =>
           typeof ex2 === 'string' ? ex2 === dateStr : ex2.date === dateStr
         );
-        if (!ex) {
+        // Override { timeFrom, timeTo } — день отработан, но с изменённым временем
+        const isOverride = ex && typeof ex === 'object' && ex.timeFrom && ex.timeTo && !ex.code;
+        if (!ex || isOverride) {
           dayHasWork = true;
-          const [fh, fm] = e.timeFrom.split(':').map(Number);
-          const [th, tm] = e.timeTo.split(':').map(Number);
+          const tFrom = isOverride ? ex.timeFrom : e.timeFrom;
+          const tTo   = isOverride ? ex.timeTo   : e.timeTo;
+          const [fh, fm] = tFrom.split(':').map(Number);
+          const [th, tm] = tTo.split(':').map(Number);
           let mins = (th * 60 + tm) - (fh * 60 + fm);
           if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
           if (mins > 0) {
@@ -1828,7 +1874,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         )}
                         <div className="rb-schedule-entries">
                           {cellEntries.map(e => {
-                            const cancelled = isExcepted(e, cell);
+                            const cancelled = isCancelled(e, cell);
+                            const override  = getOverride(e, cell);
+                            const eff       = effTimes(e, cell);
                             const entryCode = cancelled ? (getExceptionCode(e, cell) || 'ОТ') : isHoliday ? 'РВ' : 'Я';
                             const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
                             const cab = e.cabinetId  ? cabinets.find(c => c.id === e.cabinetId)   : null;
@@ -1841,7 +1889,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                                     borderLeft: `3px solid ${clinicColor(e.clinicId)}`,
                                     opacity: cancelled ? 0.4 : 1,
                                   }}
-                                  title={cancelled ? `Отменён · ${entryCode}` : `${e.timeFrom}–${e.timeTo} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}${e.roleTitle ? ' · ' + e.roleTitle : ''}${e.source === 'mis_import' ? ' · МИС' : ''}`}
+                                  title={cancelled ? `Отменён · ${entryCode}` : `${eff.timeFrom}–${eff.timeTo}${override ? ` (норма: ${e.timeFrom}–${e.timeTo})` : ''} · ${cab ? cab.name : clinicName(e.clinicId)}${cat ? ' · ' + cat.name : ''}${e.roleTitle ? ' · ' + e.roleTitle : ''}${e.source === 'mis_import' ? ' · МИС' : ''}`}
                                 >
                                   {(() => {
                                     const bg = cat ? cat.color : clinicColor(e.clinicId);
@@ -1866,7 +1914,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                                       fontSize: 7.5, fontWeight: 800, lineHeight: 1, color: '#fff',
                                     }}>R</span>
                                   )}
-                                  <span className="rb-schedule-entry-time">{e.timeFrom} – {e.timeTo}</span>
+                                  <span className="rb-schedule-entry-time" style={override ? { color: '#b45309', fontWeight: 700 } : undefined}>
+                                    {eff.timeFrom} – {eff.timeTo}
+                                  </span>
                                   <span className="rb-schedule-entry-name">{abbreviateName(selectedDoctor.name)}</span>
                                   <span className="rb-schedule-entry-clinic">{cab ? cab.name : clinicName(e.clinicId)}</span>
                                 </div>
@@ -2096,7 +2146,9 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
 
             <div className="rb-modal-body" style={{ padding: 0 }}>
               {modalCellEntries.map(e => {
-                const cancelled = isExcepted(e, modal.cell);
+                const cancelled = isCancelled(e, modal.cell);
+                const override  = getOverride(e, modal.cell);
+                const eff       = effTimes(e, modal.cell);
                 const col = clinicColor(e.clinicId);
                 const isConfirming = confirmDel === e.id;
                 const cat = e.categoryId ? categories.find(c => c.id === e.categoryId) : null;
@@ -2112,7 +2164,12 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                       <div style={{ flex: 1 }}>
                         <div style={{ opacity: cancelled ? 0.6 : 1 }}>
                           <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--rb-text)', marginBottom: 2 }}>
-                            {e.timeFrom} – {e.timeTo}
+                            {eff.timeFrom} – {eff.timeTo}
+                            {override && (
+                              <span style={{ marginLeft: 8, fontSize: 12, fontWeight: 500, color: 'var(--rb-text-secondary)', textDecoration: 'line-through' }}>
+                                {e.timeFrom} – {e.timeTo}
+                              </span>
+                            )}
                           </div>
                           {selectedDoctor && (
                             <div style={{ fontSize: 13, color: 'var(--rb-text-secondary)' }}>
@@ -2144,6 +2201,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                             </div>
                           );
                         })()}
+                        {override && (
+                          <div style={{ fontSize: 12, color: '#b45309', marginTop: 4, fontWeight: 600 }}>
+                            Изменено время · норма: {e.timeFrom} – {e.timeTo}
+                          </div>
+                        )}
                       </div>
 
                       {/* Actions */}
@@ -2152,6 +2214,11 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleToggleException(e.id, modal.cell)}>
                           {cancelled ? 'Восстановить' : 'Отменить'}
                         </button>
+                        {!cancelled && override && (
+                          <button style={{ ...btnBlue, width: BTN_W }} onClick={() => handleRestoreException(e.id, modal.cell)}>
+                            Сбросить часы
+                          </button>
+                        )}
                         <button style={{ ...btnBlue, width: BTN_W }} onClick={() => openEditForm(e, modal.cell)}>
                           Редактировать
                         </button>

@@ -73,6 +73,7 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
   wb.created = new Date();
 
   const { month, year, orgName, subdivision, docNumber } = record;
+  const isNormalized = (record.tabelType || 'standard') === 'normalized';
   const lastDay  = new Date(year, month, 0).getDate();
   const now      = new Date();
   const docDate  = `${pad2(now.getDate())}.${pad2(now.getMonth() + 1)}.${now.getFullYear()}`;
@@ -331,49 +332,62 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     mergeSet(ws, rowA, C3, rowD, C3, doc.tabelNumber || '',    bodyOpts);
 
     // ── Totals ──
-    const get = (day) => entries[day] || { code: '', hours: '' };
+    const get = (day) => entries[day] || { code: '', hours: '', normHours: '' };
     const daysI   = firstHalf.filter(d => WORKING_CODES.has(get(d).code)).length;
     const hoursI  = firstHalf.reduce((s, d) => s + (parseFloat(get(d).hours) || 0), 0);
     const daysII  = secondHalf.filter(d => WORKING_CODES.has(get(d).code)).length;
     const hoursII = secondHalf.reduce((s, d) => s + (parseFloat(get(d).hours) || 0), 0);
-    const totalDays  = daysI  + daysII;
-    const totalHours = hoursI + hoursII;
+    // День-неявка с буквенной причиной (отпуск и т.п.): в нормированном — буква, в сумму норм. часов не идёт
+    const isAbsence = (e) => !!e.code && !WORKING_CODES.has(e.code) && e.code !== 'В';
+    const normHoursI  = firstHalf.reduce((s, d)  => isAbsence(get(d)) ? s : s + (parseFloat(get(d).normHours) || 0), 0);
+    const normHoursII = secondHalf.reduce((s, d) => isAbsence(get(d)) ? s : s + (parseFloat(get(d).normHours) || 0), 0);
+    const totalDays      = daysI  + daysII;
+    const totalHours     = hoursI + hoursII;
+    const totalNormHours = normHoursI + normHoursII;
 
-    // ── Row A: codes for first half ──
+    // For normalized tabel: top rows (A/C) hold NORM hours (red), bottom rows (B/D) hold actual hours.
+    // Preserve a literal 0 (scheduled but not worked) — only blanks/non-numbers become empty.
+    const num = v => {
+      if (v === '' || v == null) return '';
+      const n = parseFloat(v);
+      return isNaN(n) ? '' : n;
+    };
+    // Нормированные значения — красным шрифтом
+    const redOpts = { ...bodyOpts, font: { ...fnt(9), color: { argb: 'FFDC2626' } } };
+
+    // ── Row A: codes (standard) / NORM hours or absence code (normalized, red) for first half ──
     firstHalf.forEach((day, i) => {
-      setCell(ws, rowA, CD_START + i, get(day).code || '', bodyOpts);
+      const val = isNormalized
+        ? (isAbsence(get(day)) ? get(day).code : num(get(day).normHours))
+        : (get(day).code || '');
+      setCell(ws, rowA, CD_START + i, val, isNormalized ? redOpts : bodyOpts);
     });
     if (showX) setCell(ws, rowA, CD_START + halfSize, 'Х', bodyOpts);
-    // daysI
-    setCell(ws, rowA, C_HALF, daysI || '', bodyOpts);
-    // totalDays — rowSpan A+B
-    mergeSet(ws, rowA, C_MONTH, rowB, C_MONTH, totalDays || '', bodyOpts);
+    setCell(ws, rowA, C_HALF, (isNormalized ? normHoursI : daysI) || '', isNormalized ? redOpts : bodyOpts);
+    mergeSet(ws, rowA, C_MONTH, rowB, C_MONTH, (isNormalized ? totalNormHours : totalDays) || '', isNormalized ? redOpts : bodyOpts);
 
-    // ── Row B: hours for first half ──
+    // ── Row B: actual hours (both) for first half ──
     firstHalf.forEach((day, i) => {
-      const h = get(day).hours;
-      setCell(ws, rowB, CD_START + i, h !== '' ? (parseFloat(h) || '') : '', bodyOpts);
+      setCell(ws, rowB, CD_START + i, num(get(day).hours), bodyOpts);
     });
     if (showX) setCell(ws, rowB, CD_START + halfSize, 'Х', bodyOpts);
-    // hoursI
     setCell(ws, rowB, C_HALF, hoursI || '', bodyOpts);
     // C_MONTH merged above
 
-    // ── Row C: codes for second half ──
+    // ── Row C: codes (standard) / NORM hours or absence code (normalized, red) for second half ──
     secondHalf.forEach((day, i) => {
-      setCell(ws, rowC, CD_START + i, get(day).code || '', bodyOpts);
+      const val = isNormalized
+        ? (isAbsence(get(day)) ? get(day).code : num(get(day).normHours))
+        : (get(day).code || '');
+      setCell(ws, rowC, CD_START + i, val, isNormalized ? redOpts : bodyOpts);
     });
-    // daysII
-    setCell(ws, rowC, C_HALF, daysII || '', bodyOpts);
-    // totalHours — rowSpan C+D
+    setCell(ws, rowC, C_HALF, (isNormalized ? normHoursII : daysII) || '', isNormalized ? redOpts : bodyOpts);
     mergeSet(ws, rowC, C_MONTH, rowD, C_MONTH, totalHours || '', bodyOpts);
 
-    // ── Row D: hours for second half ──
+    // ── Row D: actual hours (both) for second half ──
     secondHalf.forEach((day, i) => {
-      const h = get(day).hours;
-      setCell(ws, rowD, CD_START + i, h !== '' ? (parseFloat(h) || '') : '', bodyOpts);
+      setCell(ws, rowD, CD_START + i, num(get(day).hours), bodyOpts);
     });
-    // hoursII
     setCell(ws, rowD, C_HALF, hoursII || '', bodyOpts);
     // C_MONTH merged above
 

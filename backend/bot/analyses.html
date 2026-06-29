@@ -978,10 +978,13 @@ window.anaApp = (function() {
       currentPageSlug = appEl.dataset.pageSlug;
       return;
     }
-    var pathParts = window.location.pathname.split('/');
+    var pathParts = window.location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     var pageIndex = pathParts.indexOf('page');
     if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
-      currentPageSlug = pathParts[pageIndex + 1];
+      currentPageSlug = decodeURIComponent(pathParts[pageIndex + 1]);
+    } else if (pathParts[0] === 'explorer' && pathParts.length > 1) {
+      // slug страницы — всегда последний сегмент пути проводника
+      currentPageSlug = decodeURIComponent(pathParts[pathParts.length - 1]);
     }
   }
 

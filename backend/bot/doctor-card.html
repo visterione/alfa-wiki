@@ -743,8 +743,17 @@ window.dcApp = (function() {
   };
 
   function getPageSlug() {
-    var match = window.location.pathname.match(/\/page\/([^\/\?]+)/);
-    return match ? match[1] : 'default';
+    var path = window.location.pathname.replace(/\/+$/, '');
+    // Старый формат: /page/<slug>
+    var match = path.match(/\/page\/([^\/\?]+)/);
+    if (match) return decodeURIComponent(match[1]);
+    // Новый формат: /explorer/папка/.../<slug> — slug всегда последний сегмент
+    match = path.match(/\/explorer\/(.+)$/);
+    if (match) {
+      var segs = match[1].split('/').filter(Boolean);
+      if (segs.length) return decodeURIComponent(segs[segs.length - 1]);
+    }
+    return 'default';
   }
 
   function getToken() { return localStorage.getItem('token'); }

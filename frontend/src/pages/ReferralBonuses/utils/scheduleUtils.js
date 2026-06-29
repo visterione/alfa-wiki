@@ -57,12 +57,34 @@ export function isDayScheduled(entry, year, month, day) {
 }
 
 /**
- * Returns true if the entry is cancelled (has an exception) on the given dateStr (YYYY-MM-DD).
+ * Returns an override exception { date, timeFrom, timeTo } for the given dateStr, or null.
+ * Override = смена отработана, но с изменённым (обычно сокращённым) временем.
+ */
+export function getEntryOverride(entry, dateStr) {
+  return (entry.exceptions || []).find(ex =>
+    ex && typeof ex === 'object' && ex.date === dateStr && ex.timeFrom && ex.timeTo && !ex.code
+  ) || null;
+}
+
+/**
+ * Returns the effective shift times for the day (override if present, else the planned times).
+ */
+export function effectiveEntryTimes(entry, dateStr) {
+  const ov = getEntryOverride(entry, dateStr);
+  return { timeFrom: ov ? ov.timeFrom : entry.timeFrom, timeTo: ov ? ov.timeTo : entry.timeTo };
+}
+
+/**
+ * Returns true if the entry is fully cancelled on the given dateStr (YYYY-MM-DD).
+ * A time-override exception is NOT a cancellation — the shift is still worked.
  */
 export function isEntryCancelled(entry, dateStr) {
-  return (entry.exceptions || []).some(ex =>
-    typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
-  );
+  return (entry.exceptions || []).some(ex => {
+    const matchesDate = typeof ex === 'string' ? ex === dateStr : ex.date === dateStr;
+    if (!matchesDate) return false;
+    if (ex && typeof ex === 'object' && ex.timeFrom && ex.timeTo && !ex.code) return false; // override
+    return true;
+  });
 }
 
 /**
@@ -106,8 +128,9 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       if (!isDayScheduled(entry, year, month, day)) continue;
       if (isEntryCancelled(entry, dateStr)) continue;
 
-      const [fh, fm] = entry.timeFrom.split(':').map(Number);
-      const [th, tm] = entry.timeTo.split(':').map(Number);
+      const eff = effectiveEntryTimes(entry, dateStr);
+      const [fh, fm] = eff.timeFrom.split(':').map(Number);
+      const [th, tm] = eff.timeTo.split(':').map(Number);
       let mins = (th * 60 + tm) - (fh * 60 + fm);
       if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
       if (mins > 0) {
@@ -174,8 +197,9 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
         if (!isDayScheduled(entry, year, month, day)) continue;
         if (isEntryCancelled(entry, dateStr)) continue;
 
-        const [fh, fm] = entry.timeFrom.split(':').map(Number);
-        const [th, tm] = entry.timeTo.split(':').map(Number);
+        const eff = effectiveEntryTimes(entry, dateStr);
+        const [fh, fm] = eff.timeFrom.split(':').map(Number);
+        const [th, tm] = eff.timeTo.split(':').map(Number);
         let mins = (th * 60 + tm) - (fh * 60 + fm);
         if (mins <= 0) mins += 24 * 60;
         if (mins > 0) {

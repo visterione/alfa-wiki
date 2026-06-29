@@ -942,11 +942,14 @@ window.servicesApp = (function() {
       return;
     }
 
-    // Вариант 2: Из URL (например, /page/services-stomatology)
-    var pathParts = window.location.pathname.split('/');
+    // Вариант 2: Из URL — старый /page/<slug> или новый /explorer/папка/.../<slug>
+    var pathParts = window.location.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     var pageIndex = pathParts.indexOf('page');
     if (pageIndex !== -1 && pathParts[pageIndex + 1]) {
-      currentPageSlug = pathParts[pageIndex + 1];
+      currentPageSlug = decodeURIComponent(pathParts[pageIndex + 1]);
+    } else if (pathParts[0] === 'explorer' && pathParts.length > 1) {
+      // slug страницы — всегда последний сегмент пути проводника
+      currentPageSlug = decodeURIComponent(pathParts[pathParts.length - 1]);
     }
   }
 

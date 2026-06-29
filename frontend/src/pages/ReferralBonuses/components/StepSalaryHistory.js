@@ -1743,6 +1743,7 @@ export default function StepSalaryHistory({ selectedDoctor, clinics, doctors = [
                   year={doc.year}
                   month={doc.month}
                   readOnly={viewReadOnly}
+                  variant={doc.tabelType || 'standard'}
                   initialEntries={archiveEntries}
                   initialPayData={archivePayData}
                 />

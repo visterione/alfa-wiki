@@ -225,9 +225,10 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet) {
 
       if (coverings.length === 0) {
         // No schedule → выходной (not recorded in Неявки)
-        entries[doc.id][day] = { code: 'В', hours: '' };
+        entries[doc.id][day] = { code: 'В', hours: '', normHours: '' };
       } else {
         let totalWorkedHours = 0;
+        let totalNormHours = 0; // нормированные часы — весь план, игнорируя отмены
         let anyWorked = false;
         let firstExcCode = null;
 
@@ -236,29 +237,41 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet) {
             typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
           );
           const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
+          totalNormHours += h; // нормированное — всегда исходный план смены
 
-          if (excEntry !== undefined) {
+          // Override-исключение { date, timeFrom, timeTo } — смена отработана, но с изменённым временем
+          const isOverride = excEntry && typeof excEntry === 'object'
+            && excEntry.timeFrom && excEntry.timeTo && !excEntry.code;
+
+          if (excEntry !== undefined && !isOverride) {
             // Cancelled shift — use the specified code (legacy string exceptions default to ОТ)
             const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
             if (!firstExcCode) firstExcCode = code;
             if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
             absenceTotals[code].hours += h;
           } else {
-            totalWorkedHours += h;
+            // Worked: override → сокращённые часы, иначе полный план
+            const ah = isOverride
+              ? (parseFloat(calcHoursFromTimes(excEntry.timeFrom, excEntry.timeTo)) || 0)
+              : h;
+            totalWorkedHours += ah;
             anyWorked = true;
           }
         }
+
+        const normHours = totalNormHours ? String(totalNormHours) : '';
 
         if (anyWorked) {
           // Normal working day (sum of all shifts) — use РВ on public holidays
           entries[doc.id][day] = {
             code:  holidaySet?.has(dateStr) ? 'РВ' : 'Я',
             hours: String(totalWorkedHours),
+            normHours,
           };
         } else {
           // All shifts cancelled → day is absent
           if (firstExcCode) absenceTotals[firstExcCode].days += 1;
-          entries[doc.id][day] = { code: firstExcCode || 'В', hours: '' };
+          entries[doc.id][day] = { code: firstExcCode || 'В', hours: '', normHours };
         }
       }
     }
@@ -358,13 +371,19 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
             );
             const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
 
-            if (excEntry !== undefined) {
+            const isOverride = excEntry && typeof excEntry === 'object'
+              && excEntry.timeFrom && excEntry.timeTo && !excEntry.code;
+
+            if (excEntry !== undefined && !isOverride) {
               const code = (typeof excEntry === 'object' && excEntry.code) ? excEntry.code : 'ОТ';
               if (!firstExcCode) firstExcCode = code;
               if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
               absenceTotals[code].hours += h;
             } else {
-              totalWorkedHours += h;
+              const ah = isOverride
+                ? (parseFloat(calcHoursFromTimes(excEntry.timeFrom, excEntry.timeTo)) || 0)
+                : h;
+              totalWorkedHours += ah;
               anyWorked = true;
             }
           }
@@ -534,6 +553,18 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         setPresetPayData(presetPay);
       } else {
         const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month, holidaySet);
+        if (tabelType === 'normalized') {
+          // Нормированный: если в дне есть расписание (норма), но факт = 0 — фиксируем 0,
+          // чтобы было видно сравнение (0 против нормы). Дни без расписания остаются пустыми.
+          for (const docId of Object.keys(preset)) {
+            for (const day of Object.keys(preset[docId])) {
+              const en = preset[docId][day];
+              if ((en.hours === '' || en.hours == null) && en.normHours !== '' && en.normHours != null) {
+                en.hours = '0';
+              }
+            }
+          }
+        }
         setPresetEntries(preset);
         setPresetPayData(presetPay);
       }
@@ -562,7 +593,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         payData:       payData[d.id]  || {},
       }));
       await tabelApi.create({
-        month, year, orgName, subdivision, docNumber, userName,
+        month, year, orgName, subdivision, docNumber, userName, tabelType,
         doctors: doctorsPayload,
       });
       toast.success('Табель сохранён в архив');
@@ -578,7 +609,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
     const { entries, payData } = tabelRef.current.getSnapshot();
     const isDetailed = tabelType === 'detailed';
     const record = {
-      month, year, orgName, subdivision, docNumber, userName,
+      month, year, orgName, subdivision, docNumber, userName, tabelType,
       doctors: tabelDoctors.map(d => ({
         misUserId:     d.id,
         doctorName:    d.name,
@@ -590,7 +621,8 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
       })),
     };
     try {
-      const prefix = isDetailed ? 'Табель_детализированный' : 'Табель';
+      const prefix = isDetailed ? 'Табель_детализированный'
+        : tabelType === 'normalized' ? 'Табель_нормированный' : 'Табель';
       await downloadTabelExcel(record, null,
         `${prefix}_${year}_${pad2(month)}_${subdivision || 'таб'}.xlsx`);
     } catch {
@@ -611,14 +643,14 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Тип табеля</label>
             <div style={{ display: 'flex', gap: 0 }}>
-              {[['standard', 'Стандартный'], ['detailed', 'Детализированный']].map(([val, label]) => (
+              {[['standard', 'Стандартный'], ['normalized', 'Нормированный'], ['detailed', 'Детализированный']].map(([val, label], i, arr) => (
                 <button key={val} type="button"
                   onClick={() => { setTabelType(val); setShowDoc(false); }}
                   style={{
                     height: 34, padding: '0 14px', fontSize: 12, fontWeight: 600,
                     border: '1px solid var(--rb-border-dark)',
-                    borderRight: val === 'standard' ? 'none' : undefined,
-                    borderRadius: val === 'standard' ? '6px 0 0 6px' : '0 6px 6px 0',
+                    borderRight: i < arr.length - 1 ? 'none' : undefined,
+                    borderRadius: i === 0 ? '6px 0 0 6px' : i === arr.length - 1 ? '0 6px 6px 0' : 0,
                     background: tabelType === val ? 'var(--rb-primary)' : '#fff',
                     color: tabelType === val ? '#fff' : 'var(--rb-text-secondary)',
                     cursor: 'pointer',
@@ -798,6 +830,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
               month={month}
               readOnly={readOnly}
               canEditFrozen={canEditFrozen}
+              variant={tabelType}
               initialEntries={presetEntries}
               initialPayData={presetPayData}
             />

@@ -156,23 +156,33 @@ router.put('/:id', authenticate, async (req, res) => {
     const resolvedName = await resolveDoctorName(row.misUserId, doctorName);
     if (exceptions !== undefined) {
       const newExceptions = Array.isArray(row.exceptions) ? row.exceptions : [];
-      const oldExMap = new Map(oldExceptions.map(e => [e.date, e.code || 'ОТ']));
-      const newExMap = new Map(newExceptions.map(e => [e.date, e.code || 'ОТ']));
+      // Exception kinds: cancel { date, code } | override { date, timeFrom, timeTo }
+      const norm = (arr) => new Map((arr || []).map(e => {
+        if (typeof e === 'string') return [e, { kind: 'cancel', code: 'ОТ' }];
+        if (e.timeFrom && e.timeTo && !e.code) return [e.date, { kind: 'override', timeFrom: e.timeFrom, timeTo: e.timeTo }];
+        return [e.date, { kind: 'cancel', code: e.code || 'ОТ' }];
+      }));
+      const desc = (v) => v.kind === 'override' ? `${v.timeFrom}–${v.timeTo}` : v.code;
+      const oldExMap = norm(oldExceptions);
+      const newExMap = norm(newExceptions);
       const exChanges = [];
-      for (const [date, code] of newExMap) {
-        if (!oldExMap.has(date)) exChanges.push({ field: 'exception_added', label: 'Отменён день', before: null, after: `${date} (${code})` });
+      for (const [date, v] of newExMap) {
+        const ov = oldExMap.get(date);
+        if (!ov) {
+          exChanges.push({ field: 'exception_added', label: v.kind === 'override' ? 'Изменены часы дня' : 'Отменён день', before: null, after: `${date} (${desc(v)})` });
+        } else if (ov.kind !== v.kind || desc(ov) !== desc(v)) {
+          exChanges.push({ field: 'exception_changed', label: 'Изменён день', before: `${date} (${desc(ov)})`, after: `${date} (${desc(v)})` });
+        }
       }
-      for (const [date, code] of oldExMap) {
-        if (!newExMap.has(date)) exChanges.push({ field: 'exception_removed', label: 'Восстановлен день', before: `${date} (${code})`, after: null });
+      for (const [date, v] of oldExMap) {
+        if (!newExMap.has(date)) exChanges.push({ field: 'exception_removed', label: v.kind === 'override' ? 'Сброшены часы дня' : 'Восстановлен день', before: `${date} (${desc(v)})`, after: null });
       }
       if (exChanges.length > 0) {
         diff = { changes: exChanges };
-        const addedDates  = exChanges.filter(c => c.field === 'exception_added').map(c => c.after);
-        const removedDates = exChanges.filter(c => c.field === 'exception_removed').map(c => c.before);
-        if (addedDates.length > 0 && removedDates.length === 0) {
-          summary = `Отменён день в расписании: ${resolvedName || row.misUserId}, ${addedDates.join(', ')}`;
-        } else if (removedDates.length > 0 && addedDates.length === 0) {
-          summary = `Восстановлен день в расписании: ${resolvedName || row.misUserId}, ${removedDates.join(', ')}`;
+        const onlyKind = exChanges.every(c => c.field === exChanges[0].field) ? exChanges[0] : null;
+        if (onlyKind) {
+          const dates = exChanges.map(c => c.after || c.before).join(', ');
+          summary = `${onlyKind.label} в расписании: ${resolvedName || row.misUserId}, ${dates}`;
         } else {
           summary = `Изменены дни расписания: ${resolvedName || row.misUserId}`;
         }
