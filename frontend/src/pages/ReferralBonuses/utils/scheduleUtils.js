@@ -1,6 +1,7 @@
 /**
  * Shared schedule utilities used by StepSchedule (UI) and reportEngine (calculations).
  */
+import { rbCanonicalClinicId } from './clinicUtils';
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
@@ -104,7 +105,7 @@ export function isEntryCancelled(entry, dateStr) {
 export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) {
   if (!entries || !entries.length || !dateFrom || !dateTo) return { total: 0, byRole: {}, byCategory: {}, categoryRoles: {} };
 
-  const cidStr = clinicId != null ? String(clinicId) : null;
+  const cidStr = clinicId != null ? rbCanonicalClinicId(clinicId) : null;
 
   const byRoleMinutes     = {};
   const byCategoryMinutes = {};
@@ -124,7 +125,7 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
     let dayHadWork = false;
 
     for (const entry of entries) {
-      if (cidStr && String(entry.clinicId) !== cidStr) continue;
+      if (cidStr && rbCanonicalClinicId(entry.clinicId) !== cidStr) continue;
       if (!isDayScheduled(entry, year, month, day)) continue;
       if (isEntryCancelled(entry, dateStr)) continue;
 
@@ -176,7 +177,7 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
     return { byRole: {}, byCategory: {} };
   }
 
-  const cidStr = clinicId != null ? String(clinicId) : null;
+  const cidStr = clinicId != null ? rbCanonicalClinicId(clinicId) : null;
   const byRoleMinutes     = {};
   const byCategoryMinutes = {};
   const categoryRoles     = {};
@@ -193,7 +194,7 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
       const day   = d.getDate();
 
       for (const entry of entries) {
-        if (cidStr && String(entry.clinicId) !== cidStr) continue;
+        if (cidStr && rbCanonicalClinicId(entry.clinicId) !== cidStr) continue;
         if (!isDayScheduled(entry, year, month, day)) continue;
         if (isEntryCancelled(entry, dateStr)) continue;
 

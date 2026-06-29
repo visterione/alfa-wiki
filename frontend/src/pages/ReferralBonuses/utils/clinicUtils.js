@@ -15,9 +15,24 @@ export const CLINIC_EXCEL_MAP = {
   'проф': '1',
   'альфа смайл': '7',
   'смайл': '7',
+  'альфа сукко': '11',
+  'сукко': '11',
   '3к': '4',
   '3k': '4',
 };
+
+// Некоторые клиники исторически имеют в МИС несколько id, но логически это одна
+// клиника. Сводим псевдонимы к каноническому id, чтобы расчёт/настройки/бонусы
+// не двоились (напр. Сукко = 11; id 12 — тот же филиал «Алекс/Сукко»).
+export const CLINIC_ID_ALIASES = {
+  '12': '11',
+};
+
+// Приводит любой id клиники к каноническому (учитывает CLINIC_ID_ALIASES).
+export function rbCanonicalClinicId(id) {
+  const s = String(id);
+  return CLINIC_ID_ALIASES[s] || s;
+}
 
 export const DEFAULT_CLINICS = [
   { id: 2,    name: 'Альфа',        color: '#de64a1' },
@@ -33,7 +48,7 @@ export const DEFAULT_CLINICS = [
 
 // Нормализует clinic из МИС в id (может быть объект {id,name} или просто число)
 export function rbClinicId(c) {
-  return String(typeof c === 'object' ? c.id : c);
+  return rbCanonicalClinicId(typeof c === 'object' ? c.id : c);
 }
 
 // Нормализует profession из МИС (может быть объект {title} или строка)
@@ -61,7 +76,8 @@ export function rbGetClinicName(clinicsOrId, clinicIdOrUndef) {
 
 export function rbMatchClinicId(name) {
   if (!name) return null;
-  return CLINIC_EXCEL_MAP[String(name).toLowerCase().trim()] || null;
+  const id = CLINIC_EXCEL_MAP[String(name).toLowerCase().trim()] || null;
+  return id ? rbCanonicalClinicId(id) : null;
 }
 
 // Сравнивает ID кабинета из БД со значением из Excel-колонки «Кабинет».

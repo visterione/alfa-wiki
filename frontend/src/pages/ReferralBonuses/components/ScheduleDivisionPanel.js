@@ -8,6 +8,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   getClinicColor, getClinicName,
   onManageAccess, managingDivisionId, onDivisionRenamed,
   onToggleView,
+  bulkMode = false, bulkSelectedIds, setBulkSelectedIds,
 }, ref) {
   const { user } = useAuth();
   const [divisions,    setDivisions]    = useState([]);
@@ -154,6 +155,23 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
     return doctors.filter(d => ids.has(d.id));
   }, [doctors]);
 
+  // ── Bulk selection (Сводный отчёт) ──
+  const toggleBulk = useCallback((id) => {
+    setBulkSelectedIds?.(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, [setBulkSelectedIds]);
+
+  const toggleBulkDivision = useCallback((members, allSelected) => {
+    setBulkSelectedIds?.(prev => {
+      const next = new Set(prev);
+      members.forEach(d => { if (allSelected) next.delete(d.id); else next.add(d.id); });
+      return next;
+    });
+  }, [setBulkSelectedIds]);
+
   const selectStyle = {
     height: 28, padding: '0 6px', fontSize: 12,
     border: '1px solid var(--rb-border)', borderRadius: 6,
@@ -173,6 +191,9 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
           Подразделения
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {bulkMode && bulkSelectedIds?.size > 0 && (
+            <span style={{ fontSize: 12, color: 'var(--rb-primary)', fontWeight: 600, marginRight: 2 }}>✓ {bulkSelectedIds.size} выбрано</span>
+          )}
           {!readOnly && (
             <button
               onClick={() => { setShowCreate(v => !v); setNewDivName(''); }}
@@ -288,6 +309,21 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                 >
                   <polyline points="9 18 15 12 9 6"/>
                 </svg>
+
+                {bulkMode && members.length > 0 && (() => {
+                  const allSelected = members.every(d => bulkSelectedIds?.has(d.id));
+                  return (
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      ref={el => { if (el) el.indeterminate = !allSelected && members.some(d => bulkSelectedIds?.has(d.id)); }}
+                      onChange={() => toggleBulkDivision(members, allSelected)}
+                      onClick={e => e.stopPropagation()}
+                      title="Выбрать всё подразделение"
+                      style={{ flexShrink: 0, accentColor: 'var(--rb-primary)', cursor: 'pointer' }}
+                    />
+                  );
+                })()}
 
                 {isEditing ? (
                   <>
@@ -445,18 +481,27 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                     const specialty = (d.professions || [])
                       .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
                       .filter(Boolean).join(', ');
-                    const isActive = selectedDoctorId === d.id;
+                    const isActive = bulkMode ? !!bulkSelectedIds?.has(d.id) : selectedDoctorId === d.id;
                     return (
                       <div
                         key={d.id}
                         className={`rb-doctor-item${isActive ? ' active' : ''}`}
-                        style={{ paddingLeft: 28, borderLeft: '3px solid transparent' }}
-                        onClick={() => onSelectDoctor(d.id === selectedDoctorId ? null : d.id)}
+                        style={{ paddingLeft: bulkMode ? 14 : 28, borderLeft: '3px solid transparent' }}
+                        onClick={() => bulkMode ? toggleBulk(d.id) : onSelectDoctor(d.id === selectedDoctorId ? null : d.id)}
                       >
+                        {bulkMode && (
+                          <input
+                            type="checkbox"
+                            checked={isActive}
+                            onChange={() => toggleBulk(d.id)}
+                            onClick={e => e.stopPropagation()}
+                            style={{ flexShrink: 0, accentColor: 'var(--rb-primary)', cursor: 'pointer' }}
+                          />
+                        )}
                         <div className="rb-doctor-info">
                           <div className="rb-doctor-name" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <span>{d.name}</span>
-                            {canEdit && !readOnly && (
+                            {canEdit && !readOnly && !bulkMode && (
                               <button
                                 onClick={e => { e.stopPropagation(); toggleMember(div.id, d.id); }}
                                 title="Убрать из подразделения"

@@ -1586,6 +1586,9 @@ export default function ReferralBonusesPage() {
               getClinicColor={getClinicColor}
               getClinicName={getClinicName}
               onToggleView={() => setDoctorPanelView('list')}
+              bulkMode={currentStep === 5 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
+              bulkSelectedIds={bulkSelectedIds}
+              setBulkSelectedIds={setBulkSelectedIds}
             />
           ) : (
             <DoctorsList
@@ -1703,7 +1706,7 @@ function DoctorsList({
           {compareMode && pinCount === 1 && (
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
           )}
-          {onToggleView && !bulkMode && !compareMode && (
+          {onToggleView && !compareMode && (
             <button
               onClick={onToggleView}
               title="По подразделениям"
