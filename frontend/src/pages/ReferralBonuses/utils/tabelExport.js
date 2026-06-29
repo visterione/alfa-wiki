@@ -5,6 +5,8 @@ const MONTH_NAMES = [
   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
 ];
 const WORKING_CODES = new Set(['Я','Н','РВ','С','К','ПК','ЛЧ','НС','МО']);
+// Коды отпуска — в нормированном табеле показываются буквой; остальные неявки — цифрами.
+const VACATION_CODES = new Set(['ОТ','ОД','Р','ОЖ','ДО']);
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
@@ -337,10 +339,11 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     const hoursI  = firstHalf.reduce((s, d) => s + (parseFloat(get(d).hours) || 0), 0);
     const daysII  = secondHalf.filter(d => WORKING_CODES.has(get(d).code)).length;
     const hoursII = secondHalf.reduce((s, d) => s + (parseFloat(get(d).hours) || 0), 0);
-    // День-неявка с буквенной причиной (отпуск и т.п.): в нормированном — буква, в сумму норм. часов не идёт
-    const isAbsence = (e) => !!e.code && !WORKING_CODES.has(e.code) && e.code !== 'В';
-    const normHoursI  = firstHalf.reduce((s, d)  => isAbsence(get(d)) ? s : s + (parseFloat(get(d).normHours) || 0), 0);
-    const normHoursII = secondHalf.reduce((s, d) => isAbsence(get(d)) ? s : s + (parseFloat(get(d).normHours) || 0), 0);
+    // В нормированном табеле буквой показывается только отпуск; остальные неявки —
+    // плановыми часами. Норма = весь план, отпуск тоже входит в норму.
+    const isVacation = (e) => !!e.code && VACATION_CODES.has(e.code);
+    const normHoursI  = firstHalf.reduce((s, d)  => s + (parseFloat(get(d).normHours) || 0), 0);
+    const normHoursII = secondHalf.reduce((s, d) => s + (parseFloat(get(d).normHours) || 0), 0);
     const totalDays      = daysI  + daysII;
     const totalHours     = hoursI + hoursII;
     const totalNormHours = normHoursI + normHoursII;
@@ -358,7 +361,7 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     // ── Row A: codes (standard) / NORM hours or absence code (normalized, red) for first half ──
     firstHalf.forEach((day, i) => {
       const val = isNormalized
-        ? (isAbsence(get(day)) ? get(day).code : num(get(day).normHours))
+        ? (isVacation(get(day)) ? get(day).code : num(get(day).normHours))
         : (get(day).code || '');
       setCell(ws, rowA, CD_START + i, val, isNormalized ? redOpts : bodyOpts);
     });
@@ -377,7 +380,7 @@ export async function buildTabelWorkbook(record, doctorsFilter = null) {
     // ── Row C: codes (standard) / NORM hours or absence code (normalized, red) for second half ──
     secondHalf.forEach((day, i) => {
       const val = isNormalized
-        ? (isAbsence(get(day)) ? get(day).code : num(get(day).normHours))
+        ? (isVacation(get(day)) ? get(day).code : num(get(day).normHours))
         : (get(day).code || '');
       setCell(ws, rowC, CD_START + i, val, isNormalized ? redOpts : bodyOpts);
     });

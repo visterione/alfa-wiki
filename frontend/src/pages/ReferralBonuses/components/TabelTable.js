@@ -29,10 +29,13 @@ export const STATUS_CODES = [
 // Коды, которые засчитываются как отработанные дни/часы
 export const WORKING_CODES = new Set(['Я', 'Н', 'РВ', 'С', 'К', 'ПК', 'ЛЧ', 'НС', 'МО']);
 
-// День-неявка с буквенной причиной (отпуск/больничный и т.п.): не рабочий код и не выходной «В».
-// В нормированном табеле такой день показывается буквой (норма) и нулём (факт).
-export function isAbsenceEntry(en) {
-  return !!en?.code && !WORKING_CODES.has(en.code) && en.code !== 'В';
+// Коды отпуска. В нормированном табеле такой день показывается буквой (а не цифрой нормы).
+// Остальные неявки (НН, ПР, Б, Т и т.п.) показываются плановыми часами.
+export const VACATION_CODES = new Set(['ОТ', 'ОД', 'Р', 'ОЖ', 'ДО']);
+
+// Отпускной день: в нормированном табеле показывается буквой (норма) и нулём (факт).
+export function isVacationEntry(en) {
+  return !!en?.code && VACATION_CODES.has(en.code);
 }
 
 export function pad2(n) { return String(n).padStart(2, '0'); }
@@ -169,10 +172,13 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
     const hoursI  = firstHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
     const daysII  = secondHalf.filter(d => WORKING_CODES.has(getEntry(docId, d).code)).length;
     const hoursII = secondHalf.reduce((s, d) => s + (parseFloat(getEntry(docId, d).hours) || 0), 0);
-    // Нормированные часы — для табеля типа «Нормированный» (дни-неявки показаны буквой, в сумму не идут)
+    // Нормированные часы — для табеля типа «Нормированный».
+    // Норма = весь запланированный план, включая дни-неявки (отмены): сотрудник
+    // должен был отработать эти часы, поэтому они входят в норму, даже если день
+    // показан буквой (НН, ОТ и т.п.). normHours для таких дней сохраняет план смены.
     const sumNorm = (days) => days.reduce((s, d) => {
       const en = getEntry(docId, d);
-      return isAbsenceEntry(en) ? s : s + (parseFloat(en.normHours) || 0);
+      return s + (parseFloat(en.normHours) || 0);
     }, 0);
     const normHoursI  = sumNorm(firstHalf);
     const normHoursII = sumNorm(secondHalf);
@@ -344,7 +350,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
 
                   {firstHalf.map(d => (
                     isNormalized ? (
-                      isAbsenceEntry(getEntry(doc.id, d)) ? (
+                      isVacationEntry(getEntry(doc.id, d)) ? (
                         <td key={d} className="tt-td tt-code" style={normCellStyle}>
                           {getEntry(doc.id, d).code}
                         </td>
@@ -412,7 +418,7 @@ const TabelTable = React.forwardRef(function TabelTable({ selectedDoctors, year,
                 <tr className="tt-row-c">
                   {secondHalf.map((d, i) => (
                     isNormalized ? (
-                      isAbsenceEntry(getEntry(doc.id, d)) ? (
+                      isVacationEntry(getEntry(doc.id, d)) ? (
                         <td key={i} className="tt-td tt-code" style={normCellStyle}>
                           {getEntry(doc.id, d).code}
                         </td>
