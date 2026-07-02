@@ -517,6 +517,288 @@ router.post('/appointments', authenticate, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// ЗАДОЛЖЕННОСТИ (счета)
+// ═══════════════════════════════════════════════════════════════
+
+// Парсинг денежной суммы МИС ("1 200,00" | 1200 | "1200.5") → число
+const parseMoney = (v) => {
+  const n = parseFloat(String(v ?? '').replace(/[\s ]/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Парсинг даты МИС "dd.mm.yyyy[ hh:mm]" → Date | null
+const parseRuDate = (s) => {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(String(s || ''));
+  return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : null;
+};
+
+const toRuDate = (d) => {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}.${d.getFullYear()}`;
+};
+
+const dayStart = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+
+// Загрузка счетов за окно [from, to] с адаптивным разбиением: если МИС давится
+// объёмом (500 / error) — делим окно пополам рекурсивно, пока не пройдёт.
+async function fetchInvoicesWindow(baseParams, from, to, depth = 0) {
+  try {
+    const data = await misRequest('getInvoices', {
+      ...baseParams,
+      date_from: toRuDate(from),
+      date_to: toRuDate(to),
+    });
+    if (Number(data?.error) === 0) {
+      const raw = data?.data;
+      return Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    }
+    throw new Error(`МИС error=${data?.error}`);
+  } catch (err) {
+    const spanDays = Math.round((dayStart(to) - dayStart(from)) / 86400000);
+    if (spanDays <= 0 || depth >= 9) {
+      console.warn(`⚠️ Пропуск окна ${toRuDate(from)}–${toRuDate(to)}: ${err.message}`);
+      return [];
+    }
+    const mid = dayStart(addDays(from, Math.floor(spanDays / 2)));
+    const [a, b] = await Promise.all([
+      fetchInvoicesWindow(baseParams, from, mid, depth + 1),
+      fetchInvoicesWindow(baseParams, addDays(mid, 1), to, depth + 1),
+    ]);
+    return a.concat(b);
+  }
+}
+
+// Подтягиваем номера карт пациентов (getPatient не возвращается в счетах).
+// getPatient принимает несколько id через запятую; бьём пачками по 100.
+async function fetchCardNumbers(ids) {
+  const map = new Map();
+  if (!ids.length) return map;
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100));
+  const results = await mapWithConcurrency(batches, 3, async (batch) => {
+    try {
+      const data = await misRequest('getPatient', { id: batch.join(',') });
+      return Array.isArray(data?.data) ? data.data : (data?.data ? [data.data] : []);
+    } catch (err) {
+      console.warn('⚠️ getPatient batch не удался:', err.message);
+      return [];
+    }
+  });
+  for (const arr of results) {
+    for (const p of arr) {
+      if (p && p.patient_id != null) {
+        map.set(String(p.patient_id), p.number != null ? String(p.number) : null);
+      }
+    }
+  }
+  return map;
+}
+
+// Сводка по должникам: неоплаченные счета (status_code=0), агрегированные по пациенту.
+// Снимок «весь долг на конец периода»: date_to = конец периода, date_from = широкий старт.
+router.post('/debtors', authenticate, async (req, res) => {
+  try {
+    const { date_from, date_to, clinic_id } = req.body;
+
+    const start = parseRuDate(date_from) || new Date(2010, 0, 1);
+    const end = parseRuDate(date_to) || new Date();
+
+    const baseParams = { status: 1 }; // 1 - не оплачен
+    if (clinic_id) baseParams.clinic_id = clinic_id;
+
+    console.log('💰 Запрос задолженностей:', toRuDate(start), '→', toRuDate(end),
+      clinic_id ? `clinic_id=${clinic_id}` : '(все клиники)');
+
+    // Разбиваем период на месяцы — лёгкие месяцы уходят одним запросом,
+    // тяжёлые fetchInvoicesWindow делит пополам, пока МИС не переварит.
+    const windows = [];
+    let cur = dayStart(start);
+    const endDay = dayStart(end);
+    while (cur <= endDay) {
+      const monthEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0);
+      windows.push([cur, monthEnd < endDay ? monthEnd : endDay]);
+      cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+    }
+
+    const chunks = await mapWithConcurrency(windows, 4, ([f, t]) => fetchInvoicesWindow(baseParams, f, t));
+
+    // Дедуп по id счёта (окна не пересекаются, но подстрахуемся)
+    const seenInvoice = new Set();
+    const invoices = [];
+    for (const inv of chunks.flat()) {
+      const key = String(inv.id ?? inv.number ?? '');
+      if (key && seenInvoice.has(key)) continue;
+      if (key) seenInvoice.add(key);
+      invoices.push(inv);
+    }
+
+    // Только полностью неоплаченные (status_code === 0), не в корзине
+    const unpaid = invoices.filter(inv => Number(inv.status_code) === 0 && !inv.is_deleted);
+
+    const byPatient = new Map();
+    const byClinic = new Map();
+    for (const inv of unpaid) {
+      const pid = String(inv.patient_id || '').trim();
+      if (!pid) continue;
+
+      const isCompany = !!inv.company_id;
+      const value = parseMoney(inv.value);
+
+      let rec = byPatient.get(pid);
+      if (!rec) {
+        rec = {
+          patient_id: pid,
+          patient: inv.patient || '',
+          mobile: inv.patient_mobile || '',
+          debt_individual: 0,
+          debt_company: 0,
+          invoices_count: 0,
+          companies: new Set(),
+        };
+        byPatient.set(pid, rec);
+      }
+
+      if (isCompany) {
+        rec.debt_company += value;
+        if (inv.company) rec.companies.add(inv.company);
+      } else {
+        rec.debt_individual += value;
+      }
+      rec.invoices_count += 1;
+
+      // Разбивка по медцентрам
+      const cid = String(inv.clinic_id || '').trim();
+      if (cid) {
+        let cl = byClinic.get(cid);
+        if (!cl) {
+          cl = { clinic_id: cid, clinic: inv.clinic || `Клиника ${cid}`, debt_individual: 0, debt_company: 0, patients: new Set() };
+          byClinic.set(cid, cl);
+        }
+        if (isCompany) cl.debt_company += value; else cl.debt_individual += value;
+        cl.patients.add(pid);
+      }
+    }
+
+    const list = Array.from(byPatient.values()).map(r => ({
+      patient_id: r.patient_id,
+      card_number: null,
+      patient: r.patient,
+      mobile: r.mobile,
+      debt_individual: Math.round(r.debt_individual * 100) / 100,
+      debt_company: Math.round(r.debt_company * 100) / 100,
+      debt_total: Math.round((r.debt_individual + r.debt_company) * 100) / 100,
+      invoices_count: r.invoices_count,
+      companies: Array.from(r.companies),
+    })).sort((a, b) => b.debt_total - a.debt_total);
+
+    // Обогащаем номерами карт пациентов
+    try {
+      const cardMap = await fetchCardNumbers(list.map(r => r.patient_id));
+      for (const r of list) r.card_number = cardMap.get(r.patient_id) || null;
+    } catch (cardErr) {
+      console.warn('⚠️ Не удалось получить номера карт пациентов:', cardErr.message);
+    }
+
+    const totals = list.reduce((acc, r) => {
+      acc.debt_individual += r.debt_individual;
+      acc.debt_company += r.debt_company;
+      acc.debt_total += r.debt_total;
+      return acc;
+    }, { debt_individual: 0, debt_company: 0, debt_total: 0 });
+    totals.debt_individual = Math.round(totals.debt_individual * 100) / 100;
+    totals.debt_company = Math.round(totals.debt_company * 100) / 100;
+    totals.debt_total = Math.round(totals.debt_total * 100) / 100;
+    totals.patients = list.length;
+    totals.invoices = unpaid.length;
+
+    const byClinicArr = Array.from(byClinic.values()).map(c => ({
+      clinic_id: c.clinic_id,
+      clinic: c.clinic,
+      debt_individual: Math.round(c.debt_individual * 100) / 100,
+      debt_company: Math.round(c.debt_company * 100) / 100,
+      debt_total: Math.round((c.debt_individual + c.debt_company) * 100) / 100,
+      patients: c.patients.size,
+    })).sort((a, b) => b.debt_total - a.debt_total);
+
+    // Динамика: бакеты по дням/месяцам/годам в зависимости от длины периода
+    const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    const spanDays = Math.round((dayStart(end) - dayStart(start)) / 86400000) + 1;
+    const unit = spanDays <= 45 ? 'day' : (spanDays <= 550 ? 'month' : 'year');
+    const bkey = (d) => unit === 'day'
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      : unit === 'month'
+        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        : `${d.getFullYear()}`;
+    const blabel = (d) => unit === 'day'
+      ? `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`
+      : unit === 'month'
+        ? `${MONTHS_SHORT[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`
+        : `${d.getFullYear()}`;
+
+    const timelineMap = new Map();
+    const tcur = dayStart(start);
+    const endDay2 = dayStart(end);
+    for (let i = 0; tcur <= endDay2 && i < 4000; i++) {
+      const k = bkey(tcur);
+      if (!timelineMap.has(k)) timelineMap.set(k, { key: k, label: blabel(tcur), debt_individual: 0, debt_company: 0 });
+      if (unit === 'day') tcur.setDate(tcur.getDate() + 1);
+      else if (unit === 'month') tcur.setMonth(tcur.getMonth() + 1);
+      else tcur.setFullYear(tcur.getFullYear() + 1);
+    }
+    for (const inv of unpaid) {
+      const d = parseRuDate(inv.date);
+      if (!d) continue;
+      const k = bkey(d);
+      let b = timelineMap.get(k);
+      if (!b) { b = { key: k, label: blabel(d), debt_individual: 0, debt_company: 0 }; timelineMap.set(k, b); }
+      if (inv.company_id) b.debt_company += parseMoney(inv.value);
+      else b.debt_individual += parseMoney(inv.value);
+    }
+    const timeline = Array.from(timelineMap.values())
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .map(b => ({
+        label: b.label,
+        debt_individual: Math.round(b.debt_individual * 100) / 100,
+        debt_company: Math.round(b.debt_company * 100) / 100,
+        debt_total: Math.round((b.debt_individual + b.debt_company) * 100) / 100,
+      }));
+
+    // Aging: возраст счёта относительно конца периода
+    const agingDefs = [
+      { label: '0–30 дней', min: 0, max: 30 },
+      { label: '31–60 дней', min: 31, max: 60 },
+      { label: '61–90 дней', min: 61, max: 90 },
+      { label: '90+ дней', min: 91, max: Infinity },
+    ];
+    const agingAcc = agingDefs.map(d => ({ bucket: d.label, debt_individual: 0, debt_company: 0 }));
+    for (const inv of unpaid) {
+      const d = parseRuDate(inv.date);
+      if (!d) continue;
+      const age = Math.max(0, Math.floor((dayStart(end) - dayStart(d)) / 86400000));
+      const idx = agingDefs.findIndex(x => age >= x.min && age <= x.max);
+      const b = agingAcc[idx >= 0 ? idx : agingDefs.length - 1];
+      if (inv.company_id) b.debt_company += parseMoney(inv.value);
+      else b.debt_individual += parseMoney(inv.value);
+    }
+    const aging = agingAcc.map(b => ({
+      bucket: b.bucket,
+      debt_individual: Math.round(b.debt_individual * 100) / 100,
+      debt_company: Math.round(b.debt_company * 100) / 100,
+      debt_total: Math.round((b.debt_individual + b.debt_company) * 100) / 100,
+    }));
+
+    console.log(`✅ Должников: ${list.length}, счетов: ${unpaid.length}, сумма: ${totals.debt_total}`);
+    res.json({ error: 0, data: list, totals, by_clinic: byClinicArr, timeline, timeline_unit: unit, aging });
+  } catch (err) {
+    const misBody = JSON.stringify(err.response?.data)?.slice(0, 500);
+    console.error('❌ Ошибка /mis/debtors:', err.message, misBody ? `| МИС: ${misBody}` : '');
+    res.status(500).json({ error: 1, data: [], desc: 'Ошибка при запросе задолженностей' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
 // КЛИНИКИ
 // ═══════════════════════════════════════════════════════════════
 

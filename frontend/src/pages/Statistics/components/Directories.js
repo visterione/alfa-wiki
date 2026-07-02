@@ -7434,6 +7434,452 @@ export function TabServices() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
+// DEBTORS ANALYTICS (shown in Аналитика tab of Statistics page)
+// Снимок задолженностей пациентов на конец выбранного периода (данные из МИС).
+// ══════════════════════════════════════════════════════════════════════════════
+const dateToRu = (d) => {
+  if (!(d instanceof Date) || isNaN(d)) return null;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}.${d.getFullYear()}`;
+};
+
+// Единый стиль ячеек таблицы задолженностей: один цвет, без жирного, белый фон
+const cell = { padding: '8px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-text)', background: '#fff' };
+const cellNum = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+const cellCenter = { ...cell, textAlign: 'center' };
+
+// Короткое имя «Фамилия И.О.» для осей диаграмм
+function shortPatientName(full) {
+  const parts = String(full || '').trim().split(/\s+/);
+  if (parts.length === 0 || !parts[0]) return '—';
+  const [last, first, third] = parts;
+  let s = last;
+  if (first) s += ' ' + first[0].toUpperCase() + '.';
+  if (third) s += third[0].toUpperCase() + '.';
+  return s;
+}
+
+const DEBT_IND_COLOR = '#3b82f6'; // физ. лица
+const DEBT_COM_COLOR = '#f59e0b'; // юр. лица
+
+function DebtPanel({ title, children, style }) {
+  return (
+    <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: '#fff', padding: '14px 16px', ...style }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 12 }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+// Метка процента прямо на секторе кольцевой диаграммы
+function renderPiePct({ cx, cy, midAngle, innerRadius, outerRadius, percent }) {
+  if (percent < 0.05) return null;
+  const r = innerRadius + (outerRadius - innerRadius) / 2;
+  const rad = -midAngle * Math.PI / 180;
+  const x = cx + r * Math.cos(rad);
+  const y = cy + r * Math.sin(rad);
+  return (
+    <text x={x} y={y} fill="#fff" fontSize={13} fontWeight={700} textAnchor="middle" dominantBaseline="central">
+      {Math.round(percent * 100)}%
+    </text>
+  );
+}
+
+const DIST_BUCKETS = [
+  { label: '< 1 тыс', min: 0, max: 1000 },
+  { label: '1–5 тыс', min: 1000, max: 5000 },
+  { label: '5–20 тыс', min: 5000, max: 20000 },
+  { label: '20–50 тыс', min: 20000, max: 50000 },
+  { label: '> 50 тыс', min: 50000, max: Infinity },
+];
+const DIST_COLOR = '#6366f1';
+
+function DebtDashboard({ totals, rows, byClinic, timeline, aging }) {
+  const total = totals?.debt_total || 0;
+  const ind = totals?.debt_individual || 0;
+  const com = totals?.debt_company || 0;
+  const pieData = [
+    { name: 'Физ. лица', value: ind, color: DEBT_IND_COLOR },
+    { name: 'Юр. лица', value: com, color: DEBT_COM_COLOR },
+  ].filter(d => d.value > 0);
+
+  const topDebtors = useMemo(() => rows.slice(0, 10).map(r => {
+    const who = shortPatientName(r.patient) || `ID ${r.patient_id}`;
+    return {
+      name: r.card_number ? `№${r.card_number} · ${who}` : who,
+      ind: r.debt_individual,
+      com: r.debt_company,
+    };
+  }), [rows]);
+
+  const clinicData = useMemo(() => (byClinic || []).map(c => ({
+    name: c.clinic,
+    value: c.debt_total,
+    color: DEFAULT_CLINICS.find(x => String(x.id) === String(c.clinic_id))?.color || '#94a3b8',
+  })), [byClinic]);
+
+  // Распределение должников по размеру долга
+  const distribution = useMemo(() => DIST_BUCKETS.map(b => ({
+    label: b.label,
+    count: rows.filter(r => r.debt_total >= b.min && r.debt_total < b.max).length,
+  })), [rows]);
+
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 12, alignItems: 'stretch' }}>
+        {/* Донат физ/юр */}
+        <DebtPanel title="Структура долга" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+            <div style={{ position: 'relative', width: 184, height: 184 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData.length ? pieData : [{ name: 'Нет', value: 1, color: '#e5e7eb' }]}
+                    dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={58} outerRadius={88}
+                    paddingAngle={pieData.length > 1 ? 2 : 0} stroke="none"
+                    label={pieData.length ? renderPiePct : false} labelLine={false} isAnimationActive={false}>
+                    {(pieData.length ? pieData : [{ color: '#e5e7eb' }]).map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  {pieData.length > 0 && <Tooltip formatter={(v) => fmtRubP(v)} />}
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                <div style={{ fontSize: 10, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.03em' }}>Всего</div>
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{fmt(total)} ₽</div>
+              </div>
+            </div>
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <LegendRow color={DEBT_IND_COLOR} label="Физ. лица" value={fmtRubP(ind)} />
+              <LegendRow color={DEBT_COM_COLOR} label="Юр. лица" value={fmtRubP(com)} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--rb-border)', fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                <span>Должников: <b style={{ color: 'var(--rb-text)' }}>{(totals?.patients || 0).toLocaleString('ru-RU')}</b></span>
+                <span>Счетов: <b style={{ color: 'var(--rb-text)' }}>{(totals?.invoices || 0).toLocaleString('ru-RU')}</b></span>
+              </div>
+            </div>
+          </div>
+        </DebtPanel>
+
+        {/* Крупные задолженности */}
+        <DebtPanel title="Крупные задолженности">
+          {topDebtors.length === 0 ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={Math.max(160, topDebtors.length * 28)}>
+                <BarChart data={topDebtors} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+                  <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
+                  <YAxis type="category" dataKey="name" width={200} tick={{ fontSize: 11 }} />
+                  <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                  <Bar dataKey="ind" name="Физ. лица" stackId="d" fill={DEBT_IND_COLOR} />
+                  <Bar dataKey="com" name="Юр. лица" stackId="d" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
+                <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
+                <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+              </div>
+            </>
+          )}
+        </DebtPanel>
+      </div>
+
+      {/* Динамика задолженности */}
+      <DebtPanel title="Динамика задолженности">
+        {(!timeline || timeline.length === 0) ? (
+          <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={timeline} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f6" />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" minTickGap={8} />
+                <YAxis tick={{ fontSize: 11 }} tickFormatter={fmt} width={64} />
+                <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                <Bar dataKey="debt_individual" name="Физ. лица" stackId="t" fill={DEBT_IND_COLOR} />
+                <Bar dataKey="debt_company" name="Юр. лица" stackId="t" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
+              <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
+              <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+            </div>
+          </>
+        )}
+      </DebtPanel>
+
+      {/* Медцентры + возраст + распределение — три инфографики в ряд */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'stretch' }}>
+        {/* Долг по медцентрам (доли) */}
+        <DebtPanel title="Долг по медцентрам" style={{ display: 'flex', flexDirection: 'column' }}>
+          {clinicData.length === 0 ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+          ) : (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <ResponsiveContainer width="100%" height={200}>
+                <PieChart>
+                  <Pie data={clinicData} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                    innerRadius={48} outerRadius={78} paddingAngle={2} stroke="none"
+                    label={renderPiePct} labelLine={false} isAnimationActive={false}>
+                    {clinicData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v, n) => [fmtRubP(v), n]} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', justifyContent: 'center', marginTop: 8 }}>
+                {clinicData.map((d, i) => <ChartLegendChip key={i} color={d.color} label={d.name} />)}
+              </div>
+            </div>
+          )}
+        </DebtPanel>
+
+        {/* Возраст задолженности */}
+        <DebtPanel title="Возраст задолженности">
+          {(!aging || aging.length === 0 || aging.every(a => a.debt_total === 0)) ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+          ) : (
+            <>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={aging} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f6" />
+                  <XAxis dataKey="bucket" tick={{ fontSize: 10 }} interval={0} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} width={56} />
+                  <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                  <Bar dataKey="debt_individual" name="Физ. лица" stackId="a" fill={DEBT_IND_COLOR} />
+                  <Bar dataKey="debt_company" name="Юр. лица" stackId="a" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
+                <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
+                <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+              </div>
+            </>
+          )}
+        </DebtPanel>
+
+        {/* Распределение по размеру долга */}
+        <DebtPanel title="Должники по размеру долга">
+          {rows.length === 0 ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={distribution} margin={{ left: 8, right: 8, top: 8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef2f6" />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} />
+                <YAxis tick={{ fontSize: 10 }} allowDecimals={false} width={32} />
+                <Tooltip formatter={(v) => [v, 'Должников']} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                <Bar dataKey="count" fill={DIST_COLOR} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </DebtPanel>
+      </div>
+    </div>
+  );
+}
+
+function LegendRow({ color, label, value }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
+      <span style={{ fontSize: 13, flex: 1 }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+    </div>
+  );
+}
+
+function ChartLegendChip({ color, label }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+      <span style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+      {label}
+    </span>
+  );
+}
+
+export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
+  const [rows, setRows] = useState([]);
+  const [totals, setTotals] = useState(null);
+  const [byClinic, setByClinic] = useState([]);
+  const [timeline, setTimeline] = useState([]);
+  const [aging, setAging] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [clinicFilter, setClinicFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [payerFilter, setPayerFilter] = useState('all'); // all | individual | company
+  const [sortConfig, setSortConfig] = useState({ key: 'default', dir: 'desc' });
+
+  const dateFrom = useMemo(() => dateToRu(periodStart), [periodStart]);
+  const dateTo = useMemo(() => dateToRu(periodEnd), [periodEnd]);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    mis.getDebtors({
+      ...(dateFrom ? { date_from: dateFrom } : {}),
+      ...(dateTo ? { date_to: dateTo } : {}),
+      ...(clinicFilter ? { clinic_id: clinicFilter } : {}),
+    })
+      .then(res => {
+        if (!alive) return;
+        const data = res.data;
+        if (data?.error !== 0 || !Array.isArray(data?.data)) {
+          setRows([]); setTotals(null); setByClinic([]); setTimeline([]); setAging([]);
+          setError(data?.desc || 'Не удалось получить данные из МИС');
+          return;
+        }
+        setRows(data.data);
+        setTotals(data.totals || null);
+        setByClinic(Array.isArray(data.by_clinic) ? data.by_clinic : []);
+        setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
+        setAging(Array.isArray(data.aging) ? data.aging : []);
+      })
+      .catch(() => { if (alive) { setRows([]); setTotals(null); setByClinic([]); setTimeline([]); setAging([]); setError('Ошибка запроса к МИС'); } })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [dateFrom, dateTo, clinicFilter]);
+
+  // Тип плательщика записи: юр — если есть долг компании и нет долга физлица, иначе физ
+  const payerType = (r) => (r.debt_company > 0 && r.debt_individual === 0) ? 'company' : 'individual';
+
+  const displayRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let arr = rows.filter(r => {
+      if (payerFilter !== 'all' && payerType(r) !== payerFilter) return false;
+      if (!q) return true;
+      return (r.patient || '').toLowerCase().includes(q)
+        || (r.mobile || '').toLowerCase().includes(q)
+        || String(r.card_number || '').toLowerCase().includes(q)
+        || (r.companies || []).some(c => (c || '').toLowerCase().includes(q));
+    });
+    arr = [...arr];
+    if (sortConfig.key === 'default') {
+      // По умолчанию: сначала физ. лица, затем юр. лица; внутри — по сумме долга
+      arr.sort((a, b) => {
+        const ta = payerType(a) === 'individual' ? 0 : 1;
+        const tb = payerType(b) === 'individual' ? 0 : 1;
+        if (ta !== tb) return ta - tb;
+        return b.debt_total - a.debt_total;
+      });
+    } else {
+      const { key, dir } = sortConfig;
+      const m = dir === 'asc' ? 1 : -1;
+      arr.sort((a, b) => {
+        const av = a[key], bv = b[key];
+        if (typeof av === 'string' || typeof bv === 'string') {
+          return String(av || '').localeCompare(String(bv || ''), 'ru', { numeric: true }) * m;
+        }
+        return ((av || 0) - (bv || 0)) * m;
+      });
+    }
+    return arr;
+  }, [rows, search, payerFilter, sortConfig]);
+
+  const toggleSort = (key) => setSortConfig(prev =>
+    prev.key === key
+      ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { key, dir: (key === 'patient' || key === 'card_number') ? 'asc' : 'desc' }
+  );
+
+  return (
+    <div>
+      {/* Фильтры */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
+          style={{ ...inlineInputStyle, width: 'auto', minWidth: 180 }}>
+          <option value="">Все медцентры</option>
+          {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <select value={payerFilter} onChange={e => setPayerFilter(e.target.value)}
+          style={{ ...inlineInputStyle, width: 'auto', minWidth: 140 }}>
+          <option value="all">Все плательщики</option>
+          <option value="individual">Физ. лица</option>
+          <option value="company">Юр. лица</option>
+        </select>
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Поиск: № карты, ФИО, телефон, компания…"
+          style={{ ...inlineInputStyle, width: 'auto', minWidth: 240 }} />
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+          Счета за {dateFrom || '—'} – {dateTo || '—'}
+        </span>
+      </div>
+
+      {loading && <Spinner text="Загрузка задолженностей из МИС…" />}
+
+      {!loading && error && (
+        <div style={{ padding: '30px 0', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>{error}</div>
+      )}
+
+      {!loading && !error && (
+        <>
+          {/* Инфографика-дашборд */}
+          <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} timeline={timeline} aging={aging} />
+
+          {displayRows.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+              {rows.length === 0 ? 'Задолженностей не найдено' : 'Ничего не найдено по фильтру'}
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: 'var(--rb-text)' }}>
+                <thead>
+                  <tr>
+                    {[
+                      { key: 'card_number',     label: '№ карты' },
+                      { key: 'patient',         label: 'Пациент' },
+                      { key: 'mobile',          label: 'Телефон', sortable: false },
+                      { key: 'debt_individual', label: 'Долг физ. (₽)' },
+                      { key: 'debt_company',    label: 'Долг юр. (₽)' },
+                      { key: 'debt_total',      label: 'Всего (₽)' },
+                    ].map(col => {
+                      const sortable = col.sortable !== false;
+                      const active = sortable && sortConfig.key === col.key;
+                      return (
+                        <th key={col.key} onClick={sortable ? () => toggleSort(col.key) : undefined}
+                          title={sortable ? 'Нажмите для сортировки' : undefined}
+                          style={{ background: active ? '#eef4ff' : '#f8fafc', padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', cursor: sortable ? 'pointer' : 'default', userSelect: 'none' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                            {col.label}
+                            {sortable && (
+                              <span style={{ fontSize: 10, color: active ? 'var(--rb-primary)' : '#c2c8d0' }}>
+                                {active ? (sortConfig.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                              </span>
+                            )}
+                          </span>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayRows.map(r => (
+                    <tr key={r.patient_id}>
+                      <td style={cellCenter}>{r.card_number || DASH}</td>
+                      <td style={cell}>
+                        {r.patient || `ID ${r.patient_id}`}
+                        {r.companies?.length > 0 && (
+                          <div style={{ fontSize: 12, marginTop: 2 }}>{r.companies.join(', ')}</div>
+                        )}
+                      </td>
+                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.mobile || DASH}</td>
+                      <td style={cellNum}>{r.debt_individual ? fmtRubP(r.debt_individual) : DASH}</td>
+                      <td style={cellNum}>{r.debt_company ? fmtRubP(r.debt_company) : DASH}</td>
+                      <td style={cellNum}>{fmtRubP(r.debt_total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════════════════════
 export default function Directories({ doctors = [], excelSources = [] }) {

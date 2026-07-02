@@ -662,6 +662,7 @@ export const mis = {
   }),
   getAllServices: (clinicId) => api.post('/mis/all-services', clinicId ? { clinic_id: clinicId } : {}),
   getAppointments: (params) => api.post('/mis/appointments', params),
+  getDebtors: (params) => api.post('/mis/debtors', params || {}),
 };
 
 export const directories = {

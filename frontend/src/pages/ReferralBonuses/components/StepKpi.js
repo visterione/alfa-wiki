@@ -7,7 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics } from '../../Statistics/components/Directories';
+import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics } from '../../Statistics/components/Directories';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -75,6 +75,7 @@ const KPI_TABS = [
   { key: 'utilities',   label: 'Коммунальные' },
   { key: 'consumables', label: 'Расходники' },
   { key: 'serviceCost', label: 'Себестоимость' },
+  { key: 'debtors',     label: 'Задолженности' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2467,8 +2468,11 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Себестоимость — детализация стоимости услуги по медцентрам */}
       {viewMode === 'serviceCost' && <TabServiceCostAnalytics excelSources={excelSources} periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Задолженности — снимок долгов пациентов на конец периода (данные из МИС) */}
+      {viewMode === 'debtors' && <TabDebtorsAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>
