@@ -7,6 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
+import { mis, reviews } from '../../../services/api';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics } from '../../Statistics/components/Directories';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -2135,7 +2136,50 @@ const PDF_SECTIONS = [
   { key: 'margin',     label: 'Маржинальность',         sub: 'популярные услуги, маржа' },
   { key: 'efficiency', label: 'Эффективность',          sub: 'направления, повторные визиты, цепочки' },
   { key: 'rooms',      label: 'Кабинеты',               sub: 'загрузка и интервалы (требует вкладки Кабинеты)', requiresAppt: true },
+  { key: 'reputation', label: 'Репутация',              sub: 'отзывы, рейтинги, негатив (данные из отзывов)' },
+  { key: 'debtors',    label: 'Задолженности',          sub: 'долги пациентов, по клиникам, возраст (из МИС)' },
 ];
+
+// Сбор данных репутации для PDF (повторяет логику TabReputation, но без UI)
+async function gatherReputation(periodStart, periodEnd) {
+  const iso = d => d.toISOString().split('T')[0];
+  const ru  = d => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  const from = iso(periodStart), to = iso(periodEnd);
+
+  const boardsRes = await reviews.getBoards();
+  const boards = Array.isArray(boardsRes.data) ? boardsRes.data : [];
+  if (!boards.length) return { totals: { total: 0, avgRating: null, finalized: 0, pending: 0 }, boards: [], negatives: [] };
+
+  const statsPairs = await Promise.all(boards.map(b =>
+    reviews.getStats({ boardId: b.id, from, to }).then(r => [b, r.data]).catch(() => [b, null])
+  ));
+
+  let total = 0, ratingSum = 0, ratingW = 0, finalized = 0, pending = 0;
+  const boardRows = [];
+  for (const [b, s] of statsPairs) {
+    const t = s?.total || 0, f = s?.finalized || 0, p = s?.pending || 0, ar = s?.avgRating ?? null;
+    total += t; finalized += f; pending += p;
+    if (ar && t) { ratingSum += ar * t; ratingW += t; }
+    boardRows.push({ name: b.name, total: t, avgRating: ar, finalized: f, pending: p });
+  }
+  boardRows.sort((a, b) => b.total - a.total);
+
+  const fromD = new Date(from), toD = new Date(to + 'T23:59:59');
+  const negLists = await Promise.all(boards.map(b =>
+    reviews.getReviews(b.id).then(res => (Array.isArray(res.data) ? res.data : [])
+      .filter(r => r.rating && r.rating <= 3 && r.reviewDate && new Date(r.reviewDate) >= fromD && new Date(r.reviewDate) <= toD)
+      .map(r => ({ rating: r.rating, raw: new Date(r.reviewDate), board: b.name, text: r.text || r.comment || r.reviewText || '' }))
+    ).catch(() => [])
+  ));
+  const negatives = negLists.flat().sort((a, b) => b.raw - a.raw)
+    .map(n => ({ rating: n.rating, date: ru(n.raw), board: n.board, text: n.text }));
+
+  return {
+    totals: { total, avgRating: ratingW > 0 ? ratingSum / ratingW : null, finalized, pending },
+    boards: boardRows,
+    negatives,
+  };
+}
 
 function PdfConfigModal({ rows, appointments, onClose, onExport }) {
   const [sections,     setSections]     = useState(() => Object.fromEntries(PDF_SECTIONS.map(s => [s.key, true])));
@@ -2327,7 +2371,25 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
     setPdfExporting(true);
     try {
       const label = getPeriodLabel(periodMode, selYear, selMonth, selQuarter, selFromMonth, selToMonth);
-      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors });
+      const sections = config.sections || {};
+
+      // Догрузка данных для разделов, которых нет в rows (Excel)
+      let debtorsData = null;
+      if (sections.debtors && periodStart && periodEnd) {
+        const ru = d => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+        try {
+          const res = await mis.getDebtors({ date_from: ru(periodStart), date_to: ru(periodEnd) });
+          if (res.data?.error === 0) debtorsData = res.data;
+        } catch (err) { console.warn('[KPI PDF] debtors:', err?.message); }
+      }
+
+      let reputationData = null;
+      if (sections.reputation && periodStart && periodEnd) {
+        try { reputationData = await gatherReputation(periodStart, periodEnd); }
+        catch (err) { console.warn('[KPI PDF] reputation:', err?.message); }
+      }
+
+      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors, debtorsData, reputationData });
     } catch (e) {
       console.error('[KPI PDF]', e);
       toast.error('Ошибка экспорта PDF');

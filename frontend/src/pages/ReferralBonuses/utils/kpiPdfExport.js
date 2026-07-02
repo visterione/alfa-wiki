@@ -829,14 +829,116 @@ function buildRooms(appointments, rows, doctors, periodStart, periodEnd, content
   }
 }
 
+// ── Задолженности (данные из МИС, приходят готовыми в config.debtorsData) ───────
+function buildDebtors(data, content, pageBreak) {
+  const totals   = data?.totals || {};
+  const rows     = Array.isArray(data?.data)      ? data.data      : [];
+  const byClinic = Array.isArray(data?.by_clinic) ? data.by_clinic : [];
+  const aging    = Array.isArray(data?.aging)     ? data.aging     : [];
+
+  content.push(pdfSection('Задолженности', pageBreak));
+
+  content.push(pdfTable(
+    ['Общий долг', 'Физ. лица', 'Юр. лица', 'Должников', 'Счетов'],
+    [[
+      rCell(fmtRub(totals.debt_total)), rCell(fmtRub(totals.debt_individual)),
+      rCell(fmtRub(totals.debt_company)), cCell(fmtN(totals.patients)), cCell(fmtN(totals.invoices)),
+    ]],
+    ['*', '*', '*', 'auto', 'auto']
+  ));
+
+  if (byClinic.length) {
+    content.push(pdfSubsection('По медцентрам'));
+    content.push(pdfTable(
+      ['Медцентр', 'Физ. ₽', 'Юр. ₽', 'Всего ₽', 'Должников'],
+      byClinic.map(c => [
+        cell(c.clinic), rCell(fmtRub(c.debt_individual)), rCell(fmtRub(c.debt_company)),
+        rCell(fmtRub(c.debt_total)), cCell(fmtN(c.patients)),
+      ]),
+      ['*', 'auto', 'auto', 'auto', 'auto']
+    ));
+  }
+
+  if (rows.length) {
+    const top = rows.slice(0, 15);
+    content.push(pdfSubsection(`Крупнейшие задолженности (топ ${top.length} из ${rows.length})`));
+    content.push(pdfTable(
+      ['№ карты', 'Пациент', 'Физ. ₽', 'Юр. ₽', 'Всего ₽'],
+      top.map(r => [
+        cell(r.card_number || '—'), cell(r.patient || `ID ${r.patient_id}`),
+        rCell(fmtRub(r.debt_individual)), rCell(fmtRub(r.debt_company)), rCell(fmtRub(r.debt_total)),
+      ]),
+      ['auto', '*', 'auto', 'auto', 'auto']
+    ));
+  }
+
+  if (aging.some(a => a.debt_total > 0)) {
+    content.push(pdfSubsection('Возраст задолженности'));
+    content.push(pdfTable(
+      ['Возраст', 'Физ. ₽', 'Юр. ₽', 'Всего ₽'],
+      aging.map(a => [
+        cell(a.bucket), rCell(fmtRub(a.debt_individual)), rCell(fmtRub(a.debt_company)), rCell(fmtRub(a.debt_total)),
+      ]),
+      ['*', 'auto', 'auto', 'auto']
+    ));
+  }
+}
+
+// ── Репутация (данные приходят готовыми в config.reputationData) ────────────────
+function buildReputation(data, content, pageBreak) {
+  const totals    = data?.totals || {};
+  const boards    = Array.isArray(data?.boards)    ? data.boards    : [];
+  const negatives = Array.isArray(data?.negatives) ? data.negatives : [];
+
+  content.push(pdfSection('Репутация', pageBreak));
+
+  content.push(pdfTable(
+    ['Всего отзывов', 'Средний рейтинг', 'Отработано', 'В работе'],
+    [[
+      cCell(fmtN(totals.total)),
+      cCell(totals.avgRating != null ? totals.avgRating.toFixed(2) : '—'),
+      cCell(fmtN(totals.finalized)), cCell(fmtN(totals.pending)),
+    ]],
+    ['*', '*', '*', '*']
+  ));
+
+  if (boards.length) {
+    content.push(pdfSubsection('По площадкам'));
+    content.push(pdfTable(
+      ['Площадка', 'Отзывов', 'Рейтинг', 'Отработано', 'В работе'],
+      boards.map(b => [
+        cell(b.name), cCell(fmtN(b.total)),
+        cCell(b.avgRating != null ? b.avgRating.toFixed(2) : '—'),
+        cCell(fmtN(b.finalized)), cCell(fmtN(b.pending)),
+      ]),
+      ['*', 'auto', 'auto', 'auto', 'auto']
+    ));
+  }
+
+  if (negatives.length) {
+    const shown = negatives.slice(0, 40);
+    content.push(pdfSubsection(`Негативные отзывы (${negatives.length}${negatives.length > shown.length ? `, показаны ${shown.length}` : ''})`));
+    content.push(pdfTable(
+      ['Дата', 'Площадка', 'Оценка', 'Отзыв'],
+      shown.map(n => [
+        cCell(n.date || '—'), cell(n.board || '—'), cCell(String(n.rating ?? '—')),
+        cell((n.text || '').slice(0, 180)),
+      ]),
+      ['auto', 'auto', 'auto', '*']
+    ));
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 // config = {
-//   sections:     { general, patients, top20, margin, efficiency, rooms }
+//   sections:     { general, patients, top20, margin, efficiency, rooms, reputation, debtors }
 //   clinicFilter: string
 //   specFilter:   string
 //   appointments: array   — required for rooms section
 //   periodStart:  Date
 //   periodEnd:    Date
+//   debtorsData:    object — данные /mis/debtors (для раздела Задолженности)
+//   reputationData: object — агрегат отзывов (для раздела Репутация)
 // }
 export function buildKpiPdf(rows, periodLabel, config = {}) {
   const {
@@ -847,6 +949,8 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
     periodStart  = null,
     periodEnd    = null,
     doctors      = [],
+    debtorsData    = null,
+    reputationData = null,
   } = config;
 
   const sec = key => sections[key] !== false; // default: all on
@@ -882,6 +986,14 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
   push('efficiency', buildEfficiency, filteredRows, { periodStart, periodEnd });
   if (sec('rooms') && appointments.length) {
     buildRooms(appointments, filteredRows, doctors, periodStart, periodEnd, content, !isFirst);
+    isFirst = false;
+  }
+  if (sec('reputation') && reputationData) {
+    buildReputation(reputationData, content, !isFirst);
+    isFirst = false;
+  }
+  if (sec('debtors') && debtorsData) {
+    buildDebtors(debtorsData, content, !isFirst);
     isFirst = false;
   }
 
