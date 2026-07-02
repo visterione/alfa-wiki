@@ -13,6 +13,14 @@ module.exports = {
         })
       );
 
+      // Позволяем импортировать .mjs-модули (напр. pdfjs-dist) без ошибок fullySpecified
+      webpackConfig.module.rules.push({
+        test: /\.mjs$/,
+        include: /node_modules/,
+        type: 'javascript/auto',
+        resolve: { fullySpecified: false }
+      });
+
       return webpackConfig;
     }
   }

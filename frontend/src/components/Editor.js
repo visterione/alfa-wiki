@@ -16,6 +16,10 @@ import Youtube from '@tiptap/extension-youtube';
 import FontFamily from '@tiptap/extension-font-family';
 import EmojiPicker from 'emoji-picker-react';
 import { LocalVideo } from './LocalVideo';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+
+// Воркер pdf.js лежит в public/ — рендерим страницы PDF в картинки прямо в браузере
+pdfjsLib.GlobalWorkerOptions.workerSrc = `${process.env.PUBLIC_URL || ''}/pdf.worker.min.mjs`;
 import { CustomBlockquote, ResizableImage, InteractiveTable } from './EditorExtensions';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
@@ -25,7 +29,7 @@ import {
   Highlighter, Youtube as YoutubeIcon, Subscript as SubIcon,
   Superscript as SupIcon, Palette, ChevronDown, Plus, Trash2,
   Maximize2, Minimize2, Paintbrush, Grid, Video, Smile, Type,
-  AlertTriangle, AlertCircle, LayoutGrid
+  AlertTriangle, AlertCircle, LayoutGrid, FileText
 } from 'lucide-react';
 import { media, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
@@ -1295,9 +1299,11 @@ function TableBubbleMenu({ editor }) {
 function MenuBar({ editor }) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingPdf, setUploadingPdf] = useState(false);
   const [activeCellEditor, setActiveCellEditor] = useState(null);
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
+  const pdfInputRef = useRef(null);
   const highlightButtonRef = useRef(null);
   const colorButtonRef = useRef(null);
   const fontFamilyButtonRef = useRef(null);
@@ -1417,6 +1423,82 @@ function MenuBar({ editor }) {
       setUploadingVideo(false);
       if (videoInputRef.current) {
         videoInputRef.current.value = '';
+      }
+    }
+  }, [editor]);
+
+  const addPdf = useCallback(() => {
+    pdfInputRef.current?.click();
+  }, []);
+
+  const handlePdfUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!isPdf) {
+      toast.error('Выберите PDF-файл');
+      return;
+    }
+
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      toast.error('Максимальный размер PDF 100MB');
+      return;
+    }
+
+    setUploadingPdf(true);
+    const toastId = toast.loading('Обработка PDF…');
+    try {
+      const buffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+      const numPages = pdf.numPages;
+      const baseName = file.name.replace(/\.pdf$/i, '');
+      const imageUrls = [];
+
+      for (let i = 1; i <= numPages; i++) {
+        toast.loading(`Обработка страницы ${i} из ${numPages}…`, { id: toastId });
+
+        const page = await pdf.getPage(i);
+        // Рендерим страницу шириной ~1600px для читаемого качества
+        const base = page.getViewport({ scale: 1 });
+        const scale = Math.min(1600 / base.width, 3);
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        const blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, 'image/jpeg', 0.85)
+        );
+        canvas.width = 0;
+        canvas.height = 0; // освобождаем память
+
+        const pageFile = new File([blob], `${baseName}-p${i}.jpg`, { type: 'image/jpeg' });
+        const { data } = await media.upload(pageFile);
+        imageUrls.push(`${BASE_URL}/${data.path}`);
+      }
+
+      // Вставляем страницы как отдельные полноширинные блоки
+      const html = imageUrls
+        .map((url) => `<p><img src="${url}" data-display="block" /></p>`)
+        .join('');
+      editor.chain().focus().insertContent(html).run();
+
+      toast.success(`Добавлено страниц: ${numPages}`, { id: toastId });
+    } catch (err) {
+      toast.error('Не удалось обработать PDF', { id: toastId });
+      console.error('PDF -> images failed:', err);
+    } finally {
+      setUploadingPdf(false);
+      if (pdfInputRef.current) {
+        pdfInputRef.current.value = '';
       }
     }
   }, [editor]);
@@ -1569,6 +1651,16 @@ function MenuBar({ editor }) {
           accept="video/mp4,video/webm,video/ogg"
           hidden
           onChange={handleVideoUpload}
+        />
+        <MenuButton onClick={addPdf} disabled={uploadingPdf} title={uploadingPdf ? "Обработка PDF..." : "Вставить PDF (постранично)"}>
+          {uploadingPdf ? <div className="loading-spinner-small" /> : <FileText size={16} />}
+        </MenuButton>
+        <input
+          ref={pdfInputRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          hidden
+          onChange={handlePdfUpload}
         />
         <MenuButton
           onClick={() => editor.chain().focus().insertInteractiveTable({ rows: 3, cols: 3, header: true }).run()}
