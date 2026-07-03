@@ -7450,6 +7450,14 @@ const cellNum = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums
 const cellCenter = { ...cell, textAlign: 'center' };
 const debtorLinkStyle = { color: 'var(--rb-primary)', textDecoration: 'none', cursor: 'pointer' };
 
+const clinicChipStyle = (active) => ({
+  padding: '4px 11px', borderRadius: 14, fontSize: 12, fontFamily: 'inherit', cursor: 'pointer',
+  whiteSpace: 'nowrap',
+  border: `1px solid ${active ? 'var(--rb-primary)' : 'var(--rb-border-dark)'}`,
+  background: active ? 'var(--rb-primary)' : '#fff',
+  color: active ? '#fff' : 'var(--rb-text)',
+});
+
 // Ссылка на карточку пациента в веб-интерфейсе Renovatio (по внутреннему patient_id из МИС)
 const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
 const patientCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
@@ -7725,30 +7733,28 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
         </DebtPanel>
       )}
 
-      {/* Медцентры + возраст + распределение — три инфографики в ряд */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'stretch' }}>
-        {/* Долг по медцентрам (доли) */}
+      {/* Медцентры + возраст + распределение. Круговую по МЦ показываем только если центров > 1 */}
+      <div style={{ display: 'grid', gridTemplateColumns: clinicData.length > 1 ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12, alignItems: 'stretch' }}>
+        {/* Долг по медцентрам (доли) — скрыт при одном центре */}
+        {clinicData.length > 1 && (
         <DebtPanel title="Долг по медцентрам" style={{ display: 'flex', flexDirection: 'column' }}>
-          {clinicData.length === 0 ? (
-            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
-          ) : (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={clinicData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                    innerRadius={48} outerRadius={78} paddingAngle={2} stroke="none"
-                    label={renderPiePct} labelLine={false} isAnimationActive={false}>
-                    {clinicData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                  </Pie>
-                  <Tooltip formatter={(v, n) => [fmtRubP(v), n]} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', justifyContent: 'center', marginTop: 8 }}>
-                {clinicData.map((d, i) => <ChartLegendChip key={i} color={d.color} label={d.name} />)}
-              </div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <ResponsiveContainer width="100%" height={200}>
+              <PieChart>
+                <Pie data={clinicData} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                  innerRadius={48} outerRadius={78} paddingAngle={2} stroke="none"
+                  label={renderPiePct} labelLine={false} isAnimationActive={false}>
+                  {clinicData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip formatter={(v, n) => [fmtRubP(v), n]} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', justifyContent: 'center', marginTop: 8 }}>
+              {clinicData.map((d, i) => <ChartLegendChip key={i} color={d.color} label={d.name} />)}
             </div>
-          )}
+          </div>
         </DebtPanel>
+        )}
 
         {/* Возраст задолженности */}
         <DebtPanel title="Возраст задолженности">
@@ -7824,12 +7830,16 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   const [aging, setAging] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [clinicFilter, setClinicFilter] = useState('');
+  const [selectedClinics, setSelectedClinics] = useState([]); // [] = все МЦ
   const [search, setSearch] = useState('');
   const [payerFilter, setPayerFilter] = useState('all'); // all | individual | company
   const [sortConfig, setSortConfig] = useState({ key: 'default', dir: 'desc' });
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 100;
+
+  const clinicsKey = selectedClinics.join(',');
+  const toggleClinic = (id) => setSelectedClinics(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const dateFrom = useMemo(() => dateToRu(periodStart), [periodStart]);
   const dateTo = useMemo(() => dateToRu(periodEnd), [periodEnd]);
@@ -7841,7 +7851,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
     mis.getDebtors({
       ...(dateFrom ? { date_from: dateFrom } : {}),
       ...(dateTo ? { date_to: dateTo } : {}),
-      ...(clinicFilter ? { clinic_id: clinicFilter } : {}),
+      ...(clinicsKey ? { clinic_ids: clinicsKey.split(',') } : {}),
     })
       .then(res => {
         if (!alive) return;
@@ -7862,7 +7872,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
       .catch(() => { if (alive) { setRows([]); setTotals(null); setByClinic([]); setByDoctor([]); setByCompany([]); setTimeline([]); setAging([]); setError('Ошибка запроса к МИС'); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [dateFrom, dateTo, clinicFilter]);
+  }, [dateFrom, dateTo, clinicsKey]);
 
   // Тип плательщика записи: юр — если есть долг компании и нет долга физлица, иначе физ
   const payerType = (r) => (r.debt_company > 0 && r.debt_individual === 0) ? 'company' : 'individual';
@@ -7909,7 +7919,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   );
 
   // Пагинация
-  useEffect(() => { setPage(0); }, [search, payerFilter, sortConfig, clinicFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(0); }, [search, payerFilter, sortConfig, clinicsKey, dateFrom, dateTo]);
   const pageCount = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
   const curPage = Math.min(page, pageCount - 1);
   const pageRows = displayRows.slice(curPage * PAGE_SIZE, curPage * PAGE_SIZE + PAGE_SIZE);
@@ -7994,13 +8004,17 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
 
   return (
     <div>
+      {/* Медцентры — мультивыбор (пусто = все) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Медцентры:</span>
+        <button onClick={() => setSelectedClinics([])} style={clinicChipStyle(selectedClinics.length === 0)}>Все</button>
+        {DEFAULT_CLINICS.filter(c => c.id !== 'ip').map(c => (
+          <button key={c.id} onClick={() => toggleClinic(String(c.id))} style={clinicChipStyle(selectedClinics.includes(String(c.id)))}>{c.name}</button>
+        ))}
+      </div>
+
       {/* Фильтры */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <select value={clinicFilter} onChange={e => setClinicFilter(e.target.value)}
-          style={{ ...inlineInputStyle, width: 'auto', minWidth: 180 }}>
-          <option value="">Все медцентры</option>
-          {DEFAULT_CLINICS.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
         <select value={payerFilter} onChange={e => setPayerFilter(e.target.value)}
           style={{ ...inlineInputStyle, width: 'auto', minWidth: 140 }}>
           <option value="all">Все плательщики</option>
