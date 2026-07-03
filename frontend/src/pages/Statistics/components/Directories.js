@@ -7511,53 +7511,72 @@ const DIST_BUCKETS = [
 ];
 const DIST_COLOR = '#6366f1';
 
-function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, aging }) {
-  const total = totals?.debt_total || 0;
+function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, aging, mode = 'all' }) {
+  // Выбор метрики по режиму плательщика: физ / юр / все
+  const metric = (o) => mode === 'individual' ? (o?.debt_individual || 0)
+    : mode === 'company' ? (o?.debt_company || 0)
+    : (o?.debt_total || 0);
+  const showInd = mode !== 'company';
+  const showCom = mode !== 'individual';
+
+  const total = metric(totals);
   const ind = totals?.debt_individual || 0;
   const com = totals?.debt_company || 0;
   const pieData = [
-    { name: 'Физ. лица', value: ind, color: DEBT_IND_COLOR },
-    { name: 'Юр. лица', value: com, color: DEBT_COM_COLOR },
+    ...(showInd ? [{ name: 'Физ. лица', value: ind, color: DEBT_IND_COLOR }] : []),
+    ...(showCom ? [{ name: 'Юр. лица', value: com, color: DEBT_COM_COLOR }] : []),
   ].filter(d => d.value > 0);
 
-  const topDebtors = useMemo(() => rows.slice(0, 10).map(r => {
-    const who = shortPatientName(r.patient) || `ID ${r.patient_id}`;
-    return {
-      name: r.card_number ? `№${r.card_number} · ${who}` : who,
-      ind: r.debt_individual,
-      com: r.debt_company,
-    };
-  }), [rows]);
+  const topDebtors = useMemo(() => rows
+    .map(r => ({ r, v: metric(r) }))
+    .filter(x => x.v > 0)
+    .sort((a, b) => b.v - a.v)
+    .slice(0, 10)
+    .map(({ r }) => {
+      const who = shortPatientName(r.patient) || `ID ${r.patient_id}`;
+      return {
+        name: r.card_number ? `№${r.card_number} · ${who}` : who,
+        ind: r.debt_individual,
+        com: r.debt_company,
+      };
+    }), [rows, mode]);
 
-  const clinicData = useMemo(() => (byClinic || []).map(c => ({
-    name: c.clinic,
-    value: c.debt_total,
-    color: DEFAULT_CLINICS.find(x => String(x.id) === String(c.clinic_id))?.color || '#94a3b8',
-  })), [byClinic]);
+  const clinicData = useMemo(() => (byClinic || [])
+    .map(c => ({
+      name: c.clinic,
+      value: metric(c),
+      color: DEFAULT_CLINICS.find(x => String(x.id) === String(c.clinic_id))?.color || '#94a3b8',
+    }))
+    .filter(c => c.value > 0)
+    .sort((a, b) => b.value - a.value), [byClinic, mode]);
 
   const [docLimit, setDocLimit] = useState(10); // 10 | 20 | 0(=все)
   const topDoctors = useMemo(() => {
-    const arr = byDoctor || [];
-    const sliced = docLimit > 0 ? arr.slice(0, docLimit) : arr;
-    return sliced.map(d => ({
+    const withV = (byDoctor || [])
+      .map(d => ({ d, v: metric(d) }))
+      .filter(x => x.v > 0)
+      .sort((a, b) => b.v - a.v);
+    const sliced = docLimit > 0 ? withV.slice(0, docLimit) : withV;
+    return sliced.map(({ d }) => ({
       name: d.doctor || `ID ${d.doctor_id}`,
       ind: d.debt_individual,
       com: d.debt_company,
     }));
-  }, [byDoctor, docLimit]);
+  }, [byDoctor, docLimit, mode]);
 
   const [compLimit, setCompLimit] = useState(10); // 10 | 20 | 0(=все)
   const topCompanies = useMemo(() => {
+    if (mode === 'individual') return []; // у юр-среза нет физ-версии
     const arr = byCompany || [];
     const sliced = compLimit > 0 ? arr.slice(0, compLimit) : arr;
     return sliced.map(c => ({ name: c.company || `ID ${c.company_id}`, value: c.debt_total }));
-  }, [byCompany, compLimit]);
+  }, [byCompany, compLimit, mode]);
 
-  // Распределение должников по размеру долга
+  // Распределение должников по размеру долга (по выбранной метрике)
   const distribution = useMemo(() => DIST_BUCKETS.map(b => ({
     label: b.label,
-    count: rows.filter(r => r.debt_total >= b.min && r.debt_total < b.max).length,
-  })), [rows]);
+    count: rows.filter(r => { const v = metric(r); return v > 0 && v >= b.min && v < b.max; }).length,
+  })), [rows, mode]);
 
 
   return (
@@ -7584,8 +7603,8 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
               </div>
             </div>
             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 9 }}>
-              <LegendRow color={DEBT_IND_COLOR} label="Физ. лица" value={fmtRubP(ind)} />
-              <LegendRow color={DEBT_COM_COLOR} label="Юр. лица" value={fmtRubP(com)} />
+              {showInd && <LegendRow color={DEBT_IND_COLOR} label="Физ. лица" value={fmtRubP(ind)} />}
+              {showCom && <LegendRow color={DEBT_COM_COLOR} label="Юр. лица" value={fmtRubP(com)} />}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, paddingTop: 10, borderTop: '1px solid var(--rb-border)', fontSize: 12, color: 'var(--rb-text-secondary)' }}>
                 <span>Должников: <b style={{ color: 'var(--rb-text)' }}>{(totals?.patients || 0).toLocaleString('ru-RU')}</b></span>
                 <span>Счетов: <b style={{ color: 'var(--rb-text)' }}>{(totals?.invoices || 0).toLocaleString('ru-RU')}</b></span>
@@ -7605,13 +7624,13 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
                   <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
                   <YAxis type="category" dataKey="name" width={200} tick={{ fontSize: 11 }} />
                   <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                  <Bar dataKey="ind" name="Физ. лица" stackId="d" fill={DEBT_IND_COLOR} />
-                  <Bar dataKey="com" name="Юр. лица" stackId="d" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+                  {showInd && <Bar dataKey="ind" name="Физ. лица" stackId="d" fill={DEBT_IND_COLOR} radius={showCom ? [0, 0, 0, 0] : [0, 4, 4, 0]} />}
+                  {showCom && <Bar dataKey="com" name="Юр. лица" stackId="d" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />}
                 </BarChart>
               </ResponsiveContainer>
               <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-                <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
-                <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+                {showInd && <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />}
+                {showCom && <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />}
               </div>
             </>
           )}
@@ -7630,13 +7649,13 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} interval="preserveStartEnd" minTickGap={8} />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={fmt} width={64} />
                 <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                <Bar dataKey="debt_individual" name="Физ. лица" stackId="t" fill={DEBT_IND_COLOR} />
-                <Bar dataKey="debt_company" name="Юр. лица" stackId="t" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />
+                {showInd && <Bar dataKey="debt_individual" name="Физ. лица" stackId="t" fill={DEBT_IND_COLOR} radius={showCom ? [0, 0, 0, 0] : [4, 4, 0, 0]} />}
+                {showCom && <Bar dataKey="debt_company" name="Юр. лица" stackId="t" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />}
               </BarChart>
             </ResponsiveContainer>
             <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-              <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
-              <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+              {showInd && <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />}
+              {showCom && <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />}
             </div>
           </>
         )}
@@ -7662,42 +7681,44 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
                 <YAxis type="category" dataKey="name" width={190} interval={0} tick={<TruncTick max={27} />} />
                 <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                <Bar dataKey="ind" name="Физ. лица" stackId="dr" fill={DEBT_IND_COLOR} />
-                <Bar dataKey="com" name="Юр. лица" stackId="dr" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+                {showInd && <Bar dataKey="ind" name="Физ. лица" stackId="dr" fill={DEBT_IND_COLOR} radius={showCom ? [0, 0, 0, 0] : [0, 4, 4, 0]} />}
+                {showCom && <Bar dataKey="com" name="Юр. лица" stackId="dr" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />}
               </BarChart>
             </ResponsiveContainer>
             <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-              <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
-              <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+              {showInd && <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />}
+              {showCom && <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />}
             </div>
           </>
         )}
       </DebtPanel>
 
-      {/* Долг по страховым / юр. лицам */}
-      <DebtPanel title="Долг по страховым / юр. лицам" action={
-        (byCompany && byCompany.length > 0) && (
-          <select value={compLimit} onChange={e => setCompLimit(Number(e.target.value))}
-            style={{ ...inlineInputStyle, width: 'auto', minWidth: 130 }}>
-            <option value={10}>Топ-10</option>
-            <option value={20}>Топ-20</option>
-            <option value={0}>Все ({byCompany.length})</option>
-          </select>
-        )
-      }>
-        {(!topCompanies || topCompanies.length === 0) ? (
-          <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет юридических задолженностей за период</div>
-        ) : (
-          <ResponsiveContainer width="100%" height={Math.max(180, topCompanies.length * 26)}>
-            <BarChart data={topCompanies} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
-              <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
-              <YAxis type="category" dataKey="name" width={220} interval={0} tick={<TruncTick max={32} />} />
-              <Tooltip formatter={(v) => [fmtRubP(v), 'Долг']} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-              <Bar dataKey="value" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-      </DebtPanel>
+      {/* Долг по страховым / юр. лицам — не показываем при фильтре «Физ. лица» */}
+      {mode !== 'individual' && (
+        <DebtPanel title="Долг по страховым / юр. лицам" action={
+          (byCompany && byCompany.length > 0) && (
+            <select value={compLimit} onChange={e => setCompLimit(Number(e.target.value))}
+              style={{ ...inlineInputStyle, width: 'auto', minWidth: 130 }}>
+              <option value={10}>Топ-10</option>
+              <option value={20}>Топ-20</option>
+              <option value={0}>Все ({byCompany.length})</option>
+            </select>
+          )
+        }>
+          {(!topCompanies || topCompanies.length === 0) ? (
+            <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет юридических задолженностей за период</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={Math.max(180, topCompanies.length * 26)}>
+              <BarChart data={topCompanies} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
+                <YAxis type="category" dataKey="name" width={220} interval={0} tick={<TruncTick max={32} />} />
+                <Tooltip formatter={(v) => [fmtRubP(v), 'Долг']} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                <Bar dataKey="value" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </DebtPanel>
+      )}
 
       {/* Медцентры + возраст + распределение — три инфографики в ряд */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, alignItems: 'stretch' }}>
@@ -7736,13 +7757,13 @@ function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, 
                   <XAxis dataKey="bucket" tick={{ fontSize: 10 }} interval={0} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={fmt} width={56} />
                   <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
-                  <Bar dataKey="debt_individual" name="Физ. лица" stackId="a" fill={DEBT_IND_COLOR} />
-                  <Bar dataKey="debt_company" name="Юр. лица" stackId="a" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />
+                  {showInd && <Bar dataKey="debt_individual" name="Физ. лица" stackId="a" fill={DEBT_IND_COLOR} radius={showCom ? [0, 0, 0, 0] : [4, 4, 0, 0]} />}
+                  {showCom && <Bar dataKey="debt_company" name="Юр. лица" stackId="a" fill={DEBT_COM_COLOR} radius={[4, 4, 0, 0]} />}
                 </BarChart>
               </ResponsiveContainer>
               <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-                <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
-                <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+                {showInd && <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />}
+                {showCom && <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />}
               </div>
             </>
           )}
@@ -7844,7 +7865,8 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   const displayRows = useMemo(() => {
     const q = search.trim().toLowerCase();
     let arr = rows.filter(r => {
-      if (payerFilter !== 'all' && payerType(r) !== payerFilter) return false;
+      if (payerFilter === 'individual' && !(r.debt_individual > 0)) return false;
+      if (payerFilter === 'company'    && !(r.debt_company > 0))    return false;
       if (!q) return true;
       return (r.patient || '').toLowerCase().includes(q)
         || (r.mobile || '').toLowerCase().includes(q)
@@ -7887,6 +7909,79 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   const curPage = Math.min(page, pageCount - 1);
   const pageRows = displayRows.slice(curPage * PAGE_SIZE, curPage * PAGE_SIZE + PAGE_SIZE);
 
+  // Экспорт таблицы (в текущем срезе: с учётом фильтров/поиска/сортировки) в Excel
+  const exportXlsx = async () => {
+    if (!displayRows.length) return;
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Задолженности');
+
+    const thin = { style: 'thin', color: { argb: 'FF000000' } };
+    const border = { top: thin, left: thin, bottom: thin, right: thin };
+    const headFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+    const GREEN = 'FF16A34A', RED = 'FFDC2626';
+    const MONEY = '#,##0';
+
+    // col: заголовок, ширина, выравнивание, числовой?, перенос?
+    const cols = [
+      { header: '№ карты',              width: 12, align: 'center', wrap: false },
+      { header: 'Пациент',              width: 34, align: 'left',   wrap: true  },
+      { header: 'Телефон',              width: 20, align: 'left',   wrap: false },
+      { header: 'Компании',             width: 34, align: 'left',   wrap: true  },
+      { header: 'Баланс, ₽',            width: 15, align: 'right',  num: true   },
+      { header: 'Долг физ., ₽',         width: 15, align: 'right',  num: true   },
+      { header: 'Долг юр., ₽',          width: 15, align: 'right',  num: true   },
+      { header: 'Всего, ₽',             width: 15, align: 'right',  num: true   },
+    ];
+    ws.columns = cols.map(c => ({ width: c.width }));
+
+    // Шапка
+    const hr = ws.addRow(cols.map(c => c.header));
+    hr.height = 22;
+    hr.eachCell((cell) => {
+      cell.fill = headFill;
+      cell.font = { bold: true, color: { argb: 'FF334155' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+      cell.border = border;
+    });
+
+    // Данные
+    displayRows.forEach(r => {
+      const row = ws.addRow([
+        r.card_number || '',
+        r.patient || `ID ${r.patient_id}`,
+        r.mobile || '',
+        (r.companies || []).join(', '),
+        r.balance != null ? r.balance : '',
+        r.debt_individual || 0,
+        r.debt_company || 0,
+        r.net,
+      ]);
+      row.eachCell({ includeEmpty: true }, (cell, c) => {
+        const col = cols[c - 1];
+        cell.border = border;
+        cell.alignment = { vertical: 'middle', horizontal: col.align, wrapText: !!col.wrap };
+        if (col.num && typeof cell.value === 'number') cell.numFmt = MONEY;
+      });
+      // Цвета: баланс — зелёный (красный при минусе), долги — красные, «Всего» — по знаку, жирным
+      const bal = row.getCell(5);
+      if (typeof bal.value === 'number') bal.font = { color: { argb: bal.value < 0 ? RED : GREEN } };
+      if (r.debt_individual > 0) row.getCell(6).font = { color: { argb: RED } };
+      if (r.debt_company > 0)    row.getCell(7).font = { color: { argb: RED } };
+      row.getCell(8).font = { bold: true, color: { argb: r.net < 0 ? RED : GREEN } };
+    });
+
+    // Автофильтр по шапке + заморозка первой строки
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: ws.rowCount, column: cols.length } };
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const safe = s => String(s || '').replace(/\./g, '-');
+    const a = Object.assign(document.createElement('a'), { href: url, download: `Задолженности_${safe(dateFrom)}_${safe(dateTo)}.xlsx` });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
   return (
     <div>
       {/* Фильтры */}
@@ -7908,6 +8003,11 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
         <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
           Счета за {dateFrom || '—'} – {dateTo || '—'}
         </span>
+        <button onClick={exportXlsx} disabled={!displayRows.length}
+          title="Скачать таблицу в Excel (текущий фильтр)"
+          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
+          <FileText size={14} /> Excel
+        </button>
       </div>
 
       {loading && <Spinner text="Загрузка задолженностей из МИС…" />}
@@ -7919,7 +8019,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
       {!loading && !error && (
         <>
           {/* Инфографика-дашборд */}
-          <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} byDoctor={byDoctor} byCompany={byCompany} timeline={timeline} aging={aging} />
+          <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} byDoctor={byDoctor} byCompany={byCompany} timeline={timeline} aging={aging} mode={payerFilter} />
 
           {displayRows.length === 0 ? (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
