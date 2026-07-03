@@ -7448,6 +7448,11 @@ const dateToRu = (d) => {
 const cell = { padding: '8px 12px', border: '1px solid var(--rb-border)', color: 'var(--rb-text)', background: '#fff' };
 const cellNum = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const cellCenter = { ...cell, textAlign: 'center' };
+const debtorLinkStyle = { color: 'var(--rb-primary)', textDecoration: 'none', cursor: 'pointer' };
+
+// Ссылка на карточку пациента в веб-интерфейсе Renovatio (по внутреннему patient_id из МИС)
+const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
+const patientCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
 
 const pagerBtn = (disabled) => ({
   minWidth: 28, height: 28, padding: '0 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
@@ -7963,6 +7968,11 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
         cell.alignment = { vertical: 'middle', horizontal: col.align, wrapText: !!col.wrap };
         if (col.num && typeof cell.value === 'number') cell.numFmt = MONEY;
       });
+      // ФИО — гиперссылка на карточку пациента в Renovatio
+      const nameCell = row.getCell(2);
+      nameCell.value = { text: r.patient || `ID ${r.patient_id}`, hyperlink: patientCardUrl(r.patient_id) };
+      nameCell.font = { color: { argb: 'FF2563EB' }, underline: true };
+
       // Цвета: баланс — зелёный (красный при минусе), долги — красные, «Всего» — по знаку, жирным
       const bal = row.getCell(5);
       if (typeof bal.value === 'number') bal.font = { color: { argb: bal.value < 0 ? RED : GREEN } };
@@ -8063,7 +8073,9 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                     <tr key={r.patient_id}>
                       <td style={cellCenter}>{r.card_number || ''}</td>
                       <td style={cell}>
-                        {r.patient || `ID ${r.patient_id}`}
+                        <a href={patientCardUrl(r.patient_id)} target="_blank" rel="noopener noreferrer" style={debtorLinkStyle} title="Открыть карточку пациента в Renovatio">
+                          {r.patient || `ID ${r.patient_id}`}
+                        </a>
                         {r.companies?.length > 0 && (
                           <div style={{ fontSize: 12, marginTop: 2 }}>{r.companies.join(', ')}</div>
                         )}
