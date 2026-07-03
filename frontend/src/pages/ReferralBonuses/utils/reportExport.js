@@ -151,7 +151,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
         const execTotal = services.reduce((a, x) => a + x.bonusAmount, 0);
         addSubHdr(executor, execTotal, 'FF166534', 1);
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 2);
-        services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+        services.forEach(s => {
+          addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? parseFloat(s.bonusAmount.toFixed(2)) : 0], 2);
+          addPatientDetails(s.patientDetails, 3);
+        });
       });
     }
 
@@ -372,7 +375,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       (executorSections || sal.executorSections || []).forEach(({ referrer, services, total }) => {
         addSubHdr(referrer, total, 'FFCC0000', 1);
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Начислено, руб'], 2);
-        services.forEach(s => addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2));
+        services.forEach(s => {
+          addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count, s.bonusLabel, s.bonusAmount > 0 ? -parseFloat(s.bonusAmount.toFixed(2)) : 0], 2);
+          addPatientDetails(s.patientDetails, 3);
+        });
       });
     }
 

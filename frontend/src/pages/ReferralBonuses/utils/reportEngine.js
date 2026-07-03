@@ -135,6 +135,21 @@ function splitPersonNames(str) {
   return String(str).split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// Детализация по пациентам для перепроверки: карта + ФИО + дата
+// rows: [{ patientCard, patientName, date, qty, cost }]
+function rbBuildPatientDetails(rows) {
+  const _detailMap = {};
+  (rows || []).forEach(row => {
+    const d = rbParseDate(row.date);
+    const dateStr = d ? d.toLocaleDateString('ru-RU') : (row.date ? String(row.date).trim() : '');
+    const detKey = `${row.patientCard || ''}|${row.patientName || ''}|${dateStr}`;
+    if (!_detailMap[detKey]) _detailMap[detKey] = { patientCard: row.patientCard || '', patientName: row.patientName || '', date: dateStr, _dateSort: d ? d.getTime() : 0, count: 0, sum: 0 };
+    _detailMap[detKey].count += row.qty || 1;
+    _detailMap[detKey].sum += row.cost || 0;
+  });
+  return Object.values(_detailMap).sort((a, b) => a._dateSort - b._dateSort);
+}
+
 export async function buildReport({
   rows, colMap, doctor, referralBonuses, performedDbBonuses,
   execSettings, dateFrom, dateTo, allDoctors, savedAssistanceIncome,
@@ -499,9 +514,18 @@ export async function buildReport({
         const code = String(r[colMap.serviceCode] || '').trim();
         const name = String(r[colMap.serviceName] || '').trim();
         const key  = code || name || 'unknown';
-        if (!byService[key]) byService[key] = { code, name, cost: 0, count: 0 };
-        byService[key].cost += rbParseCost(r);
-        byService[key].count += rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
+        if (!byService[key]) byService[key] = { code, name, cost: 0, count: 0, _rows: [] };
+        const rowCost = rbParseCost(r);
+        const rowQty  = rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
+        byService[key].cost += rowCost;
+        byService[key].count += rowQty;
+        byService[key]._rows.push({
+          patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+          patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+          date: colMap.date ? r[colMap.date] : '',
+          qty: rowQty,
+          cost: rowCost,
+        });
       });
       const dbClinicId = (clinicId !== 'unknown') ? String(clinicId) : '';
       const services = Object.values(byService).map(s => {
@@ -520,7 +544,8 @@ export async function buildReport({
           }
         }
         referralBonusTotal += bonusAmount;
-        return { ...s, bonusAmount, bonusLabel };
+        const patientDetails = rbBuildPatientDetails(s._rows);
+        return { ...s, bonusAmount, bonusLabel, patientDetails };
       });
       referralSections.push({ executor, services });
     });
@@ -540,11 +565,19 @@ export async function buildReport({
       const key = code || svcName;
       if (!executorByReferrer[refDoctor.name]) executorByReferrer[refDoctor.name] = {};
       if (!executorByReferrer[refDoctor.name][key]) {
-        executorByReferrer[refDoctor.name][key] = { code, name: svcName, cost: 0, count: 0, bonusAmount: 0, bonusLabel: '—' };
+        executorByReferrer[refDoctor.name][key] = { code, name: svcName, cost: 0, count: 0, bonusAmount: 0, bonusLabel: '—', _rows: [] };
       }
       const entry = executorByReferrer[refDoctor.name][key];
+      const rowQty = rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
       entry.cost += cost;
-      entry.count += rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1;
+      entry.count += rowQty;
+      entry._rows.push({
+        patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+        patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+        date: colMap.date ? r[colMap.date] : '',
+        qty: rowQty,
+        cost,
+      });
       if (bonus) {
         if (bonus.bonusPercent != null) {
           entry.bonusAmount += cost * parseFloat(bonus.bonusPercent) / 100;
@@ -559,7 +592,8 @@ export async function buildReport({
     const executorSections = Object.entries(executorByReferrer)
       .sort(([a],[b]) => a.localeCompare(b))
       .map(([referrer, sm]) => ({
-        referrer, services: Object.values(sm),
+        referrer,
+        services: Object.values(sm).map(s => ({ ...s, patientDetails: rbBuildPatientDetails(s._rows) })),
         total: Object.values(sm).reduce((s, x) => s + x.bonusAmount, 0),
       }));
     const referralCostItems = executorSections.map(s => ({ name: s.referrer, amount: s.total }));
@@ -843,17 +877,7 @@ export async function buildReport({
       const bonusLabel = bonusLabels.size === 0 ? '—' : bonusLabels.size === 1 ? [...bonusLabels][0] : [...bonusLabels].join(', ');
       performedBonusTotal += bonusAmount;
 
-      // Детализация по пациентам для перепроверки: карта + ФИО + дата
-      const _detailMap = {};
-      (s._rows || []).forEach(row => {
-        const d = rbParseDate(row.date);
-        const dateStr = d ? d.toLocaleDateString('ru-RU') : (row.date ? String(row.date).trim() : '');
-        const detKey = `${row.patientCard || ''}|${row.patientName || ''}|${dateStr}`;
-        if (!_detailMap[detKey]) _detailMap[detKey] = { patientCard: row.patientCard || '', patientName: row.patientName || '', date: dateStr, _dateSort: d ? d.getTime() : 0, count: 0, sum: 0 };
-        _detailMap[detKey].count += row.qty || 1;
-        _detailMap[detKey].sum += row.cost || 0;
-      });
-      const patientDetails = Object.values(_detailMap).sort((a, b) => a._dateSort - b._dateSort);
+      const patientDetails = rbBuildPatientDetails(s._rows);
 
       return { ...s, bonusAmount, bonusLabel, patientDetails };
     }).filter(s => s.bonusAmount !== 0 || s.code);
