@@ -596,6 +596,30 @@ async function fetchCardNumbers(ids) {
   return map;
 }
 
+// Балансы кошельков пациентов (getPatientBalance: id, balance, patient_funds, bonus_funds).
+// Принимает несколько patient_id через запятую; бьём пачками по 100.
+async function fetchPatientBalances(ids) {
+  const map = new Map();
+  if (!ids.length) return map;
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 100) batches.push(ids.slice(i, i + 100));
+  const results = await mapWithConcurrency(batches, 3, async (batch) => {
+    try {
+      const data = await misRequest('getPatientBalance', { patient_id: batch.join(',') });
+      return Array.isArray(data?.data) ? data.data : (data?.data ? [data.data] : []);
+    } catch (err) {
+      console.warn('⚠️ getPatientBalance batch не удался:', err.message);
+      return [];
+    }
+  });
+  for (const arr of results) {
+    for (const b of arr) {
+      if (b && b.id != null) map.set(String(b.id), parseMoney(b.balance));
+    }
+  }
+  return map;
+}
+
 // Сводка по должникам: неоплаченные счета (status_code=0), агрегированные по пациенту.
 // Снимок «весь долг на конец периода»: date_to = конец периода, date_from = широкий старт.
 router.post('/debtors', authenticate, async (req, res) => {
@@ -639,6 +663,8 @@ router.post('/debtors', authenticate, async (req, res) => {
 
     const byPatient = new Map();
     const byClinic = new Map();
+    const byDoctor = new Map();
+    const byCompany = new Map();
     for (const inv of unpaid) {
       const pid = String(inv.patient_id || '').trim();
       if (!pid) continue;
@@ -663,6 +689,17 @@ router.post('/debtors', authenticate, async (req, res) => {
       if (isCompany) {
         rec.debt_company += value;
         if (inv.company) rec.companies.add(inv.company);
+
+        // Разбивка по компаниям-плательщикам (ДМС/юр. лица)
+        const compKey = String(inv.company_id);
+        let cm = byCompany.get(compKey);
+        if (!cm) {
+          cm = { company_id: compKey, company: inv.company || `Компания ${compKey}`, debt_total: 0, invoices: 0, patients: new Set() };
+          byCompany.set(compKey, cm);
+        }
+        cm.debt_total += value;
+        cm.invoices += 1;
+        cm.patients.add(pid);
       } else {
         rec.debt_individual += value;
       }
@@ -679,11 +716,28 @@ router.post('/debtors', authenticate, async (req, res) => {
         if (isCompany) cl.debt_company += value; else cl.debt_individual += value;
         cl.patients.add(pid);
       }
+
+      // Разбивка по врачам-исполнителям услуг (из services счёта)
+      for (const s of (Array.isArray(inv.services) ? inv.services : [])) {
+        if (s.is_deleted) continue;
+        const sval = parseMoney(s.value);
+        if (!sval) continue;
+        const did = s.doctor_id != null && s.doctor_id !== '' ? String(s.doctor_id) : 'none';
+        let dr = byDoctor.get(did);
+        if (!dr) {
+          dr = { doctor_id: did === 'none' ? null : did, doctor: s.doctor_name || 'Без исполнителя', debt_individual: 0, debt_company: 0, services: 0, patients: new Set() };
+          byDoctor.set(did, dr);
+        }
+        if (isCompany) dr.debt_company += sval; else dr.debt_individual += sval;
+        dr.services += 1;
+        dr.patients.add(pid);
+      }
     }
 
     const list = Array.from(byPatient.values()).map(r => ({
       patient_id: r.patient_id,
       card_number: null,
+      balance: null,
       patient: r.patient,
       mobile: r.mobile,
       debt_individual: Math.round(r.debt_individual * 100) / 100,
@@ -693,12 +747,19 @@ router.post('/debtors', authenticate, async (req, res) => {
       companies: Array.from(r.companies),
     })).sort((a, b) => b.debt_total - a.debt_total);
 
-    // Обогащаем номерами карт пациентов
+    // Обогащаем номерами карт и балансами кошельков (параллельно)
     try {
-      const cardMap = await fetchCardNumbers(list.map(r => r.patient_id));
-      for (const r of list) r.card_number = cardMap.get(r.patient_id) || null;
-    } catch (cardErr) {
-      console.warn('⚠️ Не удалось получить номера карт пациентов:', cardErr.message);
+      const patientIds = list.map(r => r.patient_id);
+      const [cardMap, balanceMap] = await Promise.all([
+        fetchCardNumbers(patientIds),
+        fetchPatientBalances(patientIds),
+      ]);
+      for (const r of list) {
+        r.card_number = cardMap.get(r.patient_id) || null;
+        r.balance = balanceMap.has(r.patient_id) ? balanceMap.get(r.patient_id) : null;
+      }
+    } catch (enrichErr) {
+      console.warn('⚠️ Не удалось обогатить карты/балансы:', enrichErr.message);
     }
 
     const totals = list.reduce((acc, r) => {
@@ -719,6 +780,24 @@ router.post('/debtors', authenticate, async (req, res) => {
       debt_individual: Math.round(c.debt_individual * 100) / 100,
       debt_company: Math.round(c.debt_company * 100) / 100,
       debt_total: Math.round((c.debt_individual + c.debt_company) * 100) / 100,
+      patients: c.patients.size,
+    })).sort((a, b) => b.debt_total - a.debt_total);
+
+    const byDoctorArr = Array.from(byDoctor.values()).map(d => ({
+      doctor_id: d.doctor_id,
+      doctor: d.doctor,
+      debt_individual: Math.round(d.debt_individual * 100) / 100,
+      debt_company: Math.round(d.debt_company * 100) / 100,
+      debt_total: Math.round((d.debt_individual + d.debt_company) * 100) / 100,
+      services: d.services,
+      patients: d.patients.size,
+    })).sort((a, b) => b.debt_total - a.debt_total);
+
+    const byCompanyArr = Array.from(byCompany.values()).map(c => ({
+      company_id: c.company_id,
+      company: c.company,
+      debt_total: Math.round(c.debt_total * 100) / 100,
+      invoices: c.invoices,
       patients: c.patients.size,
     })).sort((a, b) => b.debt_total - a.debt_total);
 
@@ -790,7 +869,7 @@ router.post('/debtors', authenticate, async (req, res) => {
     }));
 
     console.log(`✅ Должников: ${list.length}, счетов: ${unpaid.length}, сумма: ${totals.debt_total}`);
-    res.json({ error: 0, data: list, totals, by_clinic: byClinicArr, timeline, timeline_unit: unit, aging });
+    res.json({ error: 0, data: list, totals, by_clinic: byClinicArr, by_doctor: byDoctorArr, by_company: byCompanyArr, timeline, timeline_unit: unit, aging });
   } catch (err) {
     const misBody = JSON.stringify(err.response?.data)?.slice(0, 500);
     console.error('❌ Ошибка /mis/debtors:', err.message, misBody ? `| МИС: ${misBody}` : '');

@@ -7449,6 +7449,12 @@ const cell = { padding: '8px 12px', border: '1px solid var(--rb-border)', color:
 const cellNum = { ...cell, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
 const cellCenter = { ...cell, textAlign: 'center' };
 
+const pagerBtn = (disabled) => ({
+  minWidth: 28, height: 28, padding: '0 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6,
+  background: '#fff', cursor: disabled ? 'default' : 'pointer', fontSize: 14, fontFamily: 'inherit',
+  color: disabled ? '#c2c8d0' : 'var(--rb-text)', opacity: disabled ? 0.6 : 1,
+});
+
 // Короткое имя «Фамилия И.О.» для осей диаграмм
 function shortPatientName(full) {
   const parts = String(full || '').trim().split(/\s+/);
@@ -7463,10 +7469,20 @@ function shortPatientName(full) {
 const DEBT_IND_COLOR = '#3b82f6'; // физ. лица
 const DEBT_COM_COLOR = '#f59e0b'; // юр. лица
 
-function DebtPanel({ title, children, style }) {
+// Усекающий тик для оси Y — длинные названия обрезаются с многоточием (полное — в тултипе)
+function TruncTick({ x, y, payload, max = 30 }) {
+  const v = String(payload?.value ?? '');
+  const t = v.length > max ? v.slice(0, max - 1) + '…' : v;
+  return <text x={x} y={y} dy={3} textAnchor="end" fontSize={11} fill="#374151">{t}</text>;
+}
+
+function DebtPanel({ title, children, style, action }) {
   return (
     <div style={{ border: '1px solid var(--rb-border)', borderRadius: 'var(--rb-radius)', background: '#fff', padding: '14px 16px', ...style }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 12 }}>{title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{title}</span>
+        {action}
+      </div>
       {children}
     </div>
   );
@@ -7495,7 +7511,7 @@ const DIST_BUCKETS = [
 ];
 const DIST_COLOR = '#6366f1';
 
-function DebtDashboard({ totals, rows, byClinic, timeline, aging }) {
+function DebtDashboard({ totals, rows, byClinic, byDoctor, byCompany, timeline, aging }) {
   const total = totals?.debt_total || 0;
   const ind = totals?.debt_individual || 0;
   const com = totals?.debt_company || 0;
@@ -7518,6 +7534,24 @@ function DebtDashboard({ totals, rows, byClinic, timeline, aging }) {
     value: c.debt_total,
     color: DEFAULT_CLINICS.find(x => String(x.id) === String(c.clinic_id))?.color || '#94a3b8',
   })), [byClinic]);
+
+  const [docLimit, setDocLimit] = useState(10); // 10 | 20 | 0(=все)
+  const topDoctors = useMemo(() => {
+    const arr = byDoctor || [];
+    const sliced = docLimit > 0 ? arr.slice(0, docLimit) : arr;
+    return sliced.map(d => ({
+      name: d.doctor || `ID ${d.doctor_id}`,
+      ind: d.debt_individual,
+      com: d.debt_company,
+    }));
+  }, [byDoctor, docLimit]);
+
+  const [compLimit, setCompLimit] = useState(10); // 10 | 20 | 0(=все)
+  const topCompanies = useMemo(() => {
+    const arr = byCompany || [];
+    const sliced = compLimit > 0 ? arr.slice(0, compLimit) : arr;
+    return sliced.map(c => ({ name: c.company || `ID ${c.company_id}`, value: c.debt_total }));
+  }, [byCompany, compLimit]);
 
   // Распределение должников по размеру долга
   const distribution = useMemo(() => DIST_BUCKETS.map(b => ({
@@ -7605,6 +7639,63 @@ function DebtDashboard({ totals, rows, byClinic, timeline, aging }) {
               <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
             </div>
           </>
+        )}
+      </DebtPanel>
+
+      {/* Долг по врачам-исполнителям */}
+      <DebtPanel title="Долг по врачам" action={
+        (byDoctor && byDoctor.length > 0) && (
+          <select value={docLimit} onChange={e => setDocLimit(Number(e.target.value))}
+            style={{ ...inlineInputStyle, width: 'auto', minWidth: 130 }}>
+            <option value={10}>Топ-10</option>
+            <option value={20}>Топ-20</option>
+            <option value={0}>Все ({byDoctor.length})</option>
+          </select>
+        )
+      }>
+        {(!topDoctors || topDoctors.length === 0) ? (
+          <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет данных</div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={Math.max(180, topDoctors.length * 26)}>
+              <BarChart data={topDoctors} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
+                <YAxis type="category" dataKey="name" width={190} interval={0} tick={<TruncTick max={27} />} />
+                <Tooltip formatter={(v, n) => [fmtRubP(v), n]} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+                <Bar dataKey="ind" name="Физ. лица" stackId="dr" fill={DEBT_IND_COLOR} />
+                <Bar dataKey="com" name="Юр. лица" stackId="dr" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
+              <ChartLegendChip color={DEBT_IND_COLOR} label="Физ. лица" />
+              <ChartLegendChip color={DEBT_COM_COLOR} label="Юр. лица" />
+            </div>
+          </>
+        )}
+      </DebtPanel>
+
+      {/* Долг по страховым / юр. лицам */}
+      <DebtPanel title="Долг по страховым / юр. лицам" action={
+        (byCompany && byCompany.length > 0) && (
+          <select value={compLimit} onChange={e => setCompLimit(Number(e.target.value))}
+            style={{ ...inlineInputStyle, width: 'auto', minWidth: 130 }}>
+            <option value={10}>Топ-10</option>
+            <option value={20}>Топ-20</option>
+            <option value={0}>Все ({byCompany.length})</option>
+          </select>
+        )
+      }>
+        {(!topCompanies || topCompanies.length === 0) ? (
+          <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 13 }}>Нет юридических задолженностей за период</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(180, topCompanies.length * 26)}>
+            <BarChart data={topCompanies} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+              <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={fmt} />
+              <YAxis type="category" dataKey="name" width={220} interval={0} tick={<TruncTick max={32} />} />
+              <Tooltip formatter={(v) => [fmtRubP(v), 'Долг']} cursor={{ fill: 'rgba(0,0,0,0.04)' }} />
+              <Bar dataKey="value" fill={DEBT_COM_COLOR} radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         )}
       </DebtPanel>
 
@@ -7701,6 +7792,8 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   const [rows, setRows] = useState([]);
   const [totals, setTotals] = useState(null);
   const [byClinic, setByClinic] = useState([]);
+  const [byDoctor, setByDoctor] = useState([]);
+  const [byCompany, setByCompany] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [aging, setAging] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -7709,6 +7802,8 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
   const [search, setSearch] = useState('');
   const [payerFilter, setPayerFilter] = useState('all'); // all | individual | company
   const [sortConfig, setSortConfig] = useState({ key: 'default', dir: 'desc' });
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
 
   const dateFrom = useMemo(() => dateToRu(periodStart), [periodStart]);
   const dateTo = useMemo(() => dateToRu(periodEnd), [periodEnd]);
@@ -7726,17 +7821,19 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
         if (!alive) return;
         const data = res.data;
         if (data?.error !== 0 || !Array.isArray(data?.data)) {
-          setRows([]); setTotals(null); setByClinic([]); setTimeline([]); setAging([]);
+          setRows([]); setTotals(null); setByClinic([]); setByDoctor([]); setByCompany([]); setTimeline([]); setAging([]);
           setError(data?.desc || 'Не удалось получить данные из МИС');
           return;
         }
         setRows(data.data);
         setTotals(data.totals || null);
         setByClinic(Array.isArray(data.by_clinic) ? data.by_clinic : []);
+        setByDoctor(Array.isArray(data.by_doctor) ? data.by_doctor : []);
+        setByCompany(Array.isArray(data.by_company) ? data.by_company : []);
         setTimeline(Array.isArray(data.timeline) ? data.timeline : []);
         setAging(Array.isArray(data.aging) ? data.aging : []);
       })
-      .catch(() => { if (alive) { setRows([]); setTotals(null); setByClinic([]); setTimeline([]); setAging([]); setError('Ошибка запроса к МИС'); } })
+      .catch(() => { if (alive) { setRows([]); setTotals(null); setByClinic([]); setByDoctor([]); setByCompany([]); setTimeline([]); setAging([]); setError('Ошибка запроса к МИС'); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [dateFrom, dateTo, clinicFilter]);
@@ -7754,7 +7851,8 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
         || String(r.card_number || '').toLowerCase().includes(q)
         || (r.companies || []).some(c => (c || '').toLowerCase().includes(q));
     });
-    arr = [...arr];
+    // net = баланс кошелька − общий долг (отрицательный = ещё должен)
+    arr = arr.map(r => ({ ...r, net: (r.balance || 0) - r.debt_total }));
     if (sortConfig.key === 'default') {
       // По умолчанию: сначала физ. лица, затем юр. лица; внутри — по сумме долга
       arr.sort((a, b) => {
@@ -7782,6 +7880,12 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
       ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
       : { key, dir: (key === 'patient' || key === 'card_number') ? 'asc' : 'desc' }
   );
+
+  // Пагинация
+  useEffect(() => { setPage(0); }, [search, payerFilter, sortConfig, clinicFilter, dateFrom, dateTo]);
+  const pageCount = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
+  const curPage = Math.min(page, pageCount - 1);
+  const pageRows = displayRows.slice(curPage * PAGE_SIZE, curPage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div>
@@ -7815,7 +7919,7 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
       {!loading && !error && (
         <>
           {/* Инфографика-дашборд */}
-          <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} timeline={timeline} aging={aging} />
+          <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} byDoctor={byDoctor} byCompany={byCompany} timeline={timeline} aging={aging} />
 
           {displayRows.length === 0 ? (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
@@ -7830,9 +7934,10 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                       { key: 'card_number',     label: '№ карты' },
                       { key: 'patient',         label: 'Пациент' },
                       { key: 'mobile',          label: 'Телефон', sortable: false },
+                      { key: 'balance',         label: 'Баланс (₽)' },
                       { key: 'debt_individual', label: 'Долг физ. (₽)' },
                       { key: 'debt_company',    label: 'Долг юр. (₽)' },
-                      { key: 'debt_total',      label: 'Всего (₽)' },
+                      { key: 'net',             label: 'Всего (₽)' },
                     ].map(col => {
                       const sortable = col.sortable !== false;
                       const active = sortable && sortConfig.key === col.key;
@@ -7854,23 +7959,40 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {displayRows.map(r => (
+                  {pageRows.map(r => (
                     <tr key={r.patient_id}>
-                      <td style={cellCenter}>{r.card_number || DASH}</td>
+                      <td style={cellCenter}>{r.card_number || ''}</td>
                       <td style={cell}>
                         {r.patient || `ID ${r.patient_id}`}
                         {r.companies?.length > 0 && (
                           <div style={{ fontSize: 12, marginTop: 2 }}>{r.companies.join(', ')}</div>
                         )}
                       </td>
-                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.mobile || DASH}</td>
-                      <td style={cellNum}>{r.debt_individual ? fmtRubP(r.debt_individual) : DASH}</td>
-                      <td style={cellNum}>{r.debt_company ? fmtRubP(r.debt_company) : DASH}</td>
-                      <td style={cellNum}>{fmtRubP(r.debt_total)}</td>
+                      <td style={{ ...cell, whiteSpace: 'nowrap' }}>{r.mobile || ''}</td>
+                      <td style={{ ...cellNum, color: r.balance < 0 ? '#ef4444' : '#10b981' }}>{r.balance != null ? fmtRubP(r.balance) : ''}</td>
+                      <td style={{ ...cellNum, color: '#ef4444' }}>{r.debt_individual ? fmtRubP(r.debt_individual) : ''}</td>
+                      <td style={{ ...cellNum, color: '#ef4444' }}>{r.debt_company ? fmtRubP(r.debt_company) : ''}</td>
+                      <td style={{ ...cellNum, fontWeight: 600, color: r.net < 0 ? '#ef4444' : '#10b981' }}>{fmtRubP(r.net)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+
+              {/* Пагинация */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                  {`Показаны ${curPage * PAGE_SIZE + 1}–${curPage * PAGE_SIZE + pageRows.length} из ${displayRows.length}`}
+                </span>
+                {pageCount > 1 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <button onClick={() => setPage(0)} disabled={curPage === 0} style={pagerBtn(curPage === 0)}>«</button>
+                    <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={pagerBtn(curPage === 0)}>‹</button>
+                    <span style={{ fontSize: 12, color: 'var(--rb-text)', minWidth: 90, textAlign: 'center' }}>{`Стр. ${curPage + 1} из ${pageCount}`}</span>
+                    <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={pagerBtn(curPage >= pageCount - 1)}>›</button>
+                    <button onClick={() => setPage(pageCount - 1)} disabled={curPage >= pageCount - 1} style={pagerBtn(curPage >= pageCount - 1)}>»</button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </>
