@@ -3,10 +3,11 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot
+  Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import WhatsNewMenu from './WhatsNewMenu';
 import { search as searchApi, BASE_URL } from '../services/api';
 import {
   VehicleSearchResult,
@@ -351,6 +352,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
       </div>
 
       <div className="header-right">
+        {user && <WhatsNewMenu />}
         {user && (
           <div className="header-user" ref={dropdownRef}>
             <button
@@ -437,6 +439,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                   <Link to="/admin/bots" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Bot size={16} />
                     Боты
+                  </Link>
+                )}
+                {(isAdmin || user?.adminAccess?.releaseNotes) && (
+                  <Link to="/admin/release-notes" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Newspaper size={16} />
+                    Нововведения
                   </Link>
                 )}
                 {isAdmin && (

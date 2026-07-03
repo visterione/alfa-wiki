@@ -1,0 +1,216 @@
+.arn-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+
+.arn-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.arn-header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+}
+
+.arn-header-title h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.arn-header-title svg { color: var(--primary); }
+
+.arn-empty {
+  padding: 50px 20px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* Кнопки */
+.arn-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.arn-btn-primary { background: var(--primary); color: #fff; }
+.arn-btn-primary:hover { background: var(--primary-hover); }
+.arn-btn-primary:disabled { opacity: .6; cursor: default; }
+
+.arn-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-light);
+}
+.arn-btn-ghost:hover { background: var(--bg-secondary); }
+
+/* Список */
+.arn-table {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.arn-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+}
+
+.arn-item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.arn-item-meta {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.arn-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.arn-badge-ver { background: var(--primary-light); color: var(--primary); }
+.arn-star { flex-shrink: 0; color: #f59e0b; fill: #f59e0b; vertical-align: middle; }
+.arn-badge-pub { background: #ecfdf5; color: #059669; }
+.arn-badge-draft { background: var(--bg-secondary); color: var(--text-secondary); }
+
+.arn-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.arn-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.arn-icon-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.arn-icon-btn-pub:hover { color: #059669; border-color: #059669; }
+.arn-icon-btn-danger:hover { color: #e53e3e; border-color: #e53e3e; }
+
+/* Форма */
+.arn-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.arn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.arn-field > span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.arn-field input,
+.arn-field select {
+  padding: 9px 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.arn-row {
+  display: flex;
+  gap: 16px;
+}
+.arn-row .arn-field { flex: 1; }
+
+.arn-audience {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.arn-audience-col { flex: 1; min-width: 260px; }
+
+.arn-audience-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.arn-hint {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-tertiary, var(--text-secondary));
+  opacity: .8;
+}
+
+.arn-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.arn-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border-radius: 20px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.arn-chip:hover { border-color: var(--primary); }
+.arn-chip--on {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.arn-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}

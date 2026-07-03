@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { BASE_URL, chat as chatApi } from '../services/api';
+import { BASE_URL, chat as chatApi, releaseNotes as releaseNotesApi } from '../services/api';
 
 // Tauri detection
 const isTauri = () => typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
@@ -96,6 +96,10 @@ export function SocketProvider({ children }) {
   const socketRef = useRef(null);
   const [notifications, setNotifications] = useState([]);
   const [isConnected, setIsConnected] = useState(false);
+  // Счётчик непрочитанных нововведений (Центр обновлений)
+  const [releaseUnreadCount, setReleaseUnreadCount] = useState(0);
+  // Последнее пришедшее важное нововведение — для модалки «Что нового»
+  const [latestReleaseNote, setLatestReleaseNote] = useState(null);
   // userId → { isOnline, lastSeen }
   const [userStatuses, setUserStatuses] = useState({});
   const unreadBadgeCount = useRef(0);
@@ -121,6 +125,23 @@ export function SocketProvider({ children }) {
       );
     }).catch(() => {});
   }, [user?.id]);
+
+  // Обновить счётчик непрочитанных нововведений с сервера
+  const refreshReleaseUnread = useCallback(() => {
+    if (!user?.id) return;
+    releaseNotesApi.unreadCount()
+      .then(({ data }) => setReleaseUnreadCount(data.count || 0))
+      .catch(() => {});
+  }, [user?.id]);
+
+  // Загружаем счётчик нововведений при входе пользователя
+  useEffect(() => {
+    if (!user?.id) {
+      setReleaseUnreadCount(0);
+      return;
+    }
+    refreshReleaseUnread();
+  }, [user?.id, refreshReleaseUnread]);
 
   // Title notification refs
   const originalTitleRef = useRef(document.title);
@@ -244,6 +265,15 @@ export function SocketProvider({ children }) {
       }));
     });
 
+    socket.on('new_release_note', (data) => {
+      console.log('New release note received:', data);
+      setReleaseUnreadCount(prev => prev + 1);
+      if (data?.severity === 'important') {
+        setLatestReleaseNote(data);
+      }
+      playNotificationSound();
+    });
+
     socket.on('new_message', (data) => {
       console.log('New message received:', data);
 
@@ -317,7 +347,13 @@ export function SocketProvider({ children }) {
     userStatuses,
     pendingChatNavigation,
     clearPendingNavigation,
-    setMutedChatIds
+    setMutedChatIds,
+    // Центр обновлений
+    releaseUnreadCount,
+    setReleaseUnreadCount,
+    refreshReleaseUnread,
+    latestReleaseNote,
+    setLatestReleaseNote
   };
 
   return (

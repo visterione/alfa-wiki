@@ -2848,6 +2848,61 @@ const DirectoriesMeta = sequelize.define('DirectoriesMeta', {
   ],
 });
 
+// === RELEASE NOTES MODULE (Центр обновлений) ===
+const ReleaseNote = sequelize.define('ReleaseNote', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  title: { type: DataTypes.STRING(255), allowNull: false },
+  content: { type: DataTypes.TEXT, allowNull: false, defaultValue: '', comment: 'HTML-контент (совместим с Editor/ContentRenderer)' },
+  version: { type: DataTypes.STRING(50), allowNull: true, comment: 'Версия релиза, напр. "5.57"' },
+  severity: {
+    type: DataTypes.ENUM('info', 'important'),
+    allowNull: false,
+    defaultValue: 'info',
+    comment: 'important → показывать модалкой при входе'
+  },
+  targetRoleIds: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: [],
+    comment: 'ID ролей-получателей. Пустой массив = все роли'
+  },
+  targetMedCenterIds: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+    defaultValue: [],
+    comment: 'ID медцентров-получателей. Пустой массив = все МЦ'
+  },
+  isPublished: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  publishedAt: { type: DataTypes.DATE, allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'release_notes',
+  timestamps: true,
+  indexes: [
+    { fields: ['isPublished'] },
+    { fields: ['publishedAt'] }
+  ]
+});
+
+const ReleaseNoteRead = sequelize.define('ReleaseNoteRead', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  releaseNoteId: { type: DataTypes.UUID, allowNull: false },
+  userId: { type: DataTypes.UUID, allowNull: false },
+  readAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
+}, {
+  tableName: 'release_note_reads',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['releaseNoteId', 'userId'] },
+    { fields: ['userId'] }
+  ]
+});
+
+ReleaseNote.belongsTo(User, { foreignKey: 'createdBy', as: 'author' });
+ReleaseNote.hasMany(ReleaseNoteRead, { foreignKey: 'releaseNoteId', as: 'reads', onDelete: 'CASCADE' });
+ReleaseNoteRead.belongsTo(ReleaseNote, { foreignKey: 'releaseNoteId', as: 'releaseNote' });
+ReleaseNoteRead.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   Sequelize,
@@ -2962,4 +3017,7 @@ module.exports = {
   GynecologyReportEntry,
   // Therapy reports module
   TherapyReportEntry,
+  // Release notes module (Центр обновлений)
+  ReleaseNote,
+  ReleaseNoteRead,
 };

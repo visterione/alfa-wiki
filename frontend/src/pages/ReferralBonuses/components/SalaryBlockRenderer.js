@@ -27,8 +27,36 @@ function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandabl
   );
 }
 
+function PatientDetailTable({ details }) {
+  return (
+    <table className="rb-report-table rb-report-table--bordered rb-report-table--detail">
+      <thead>
+        <tr>
+          <th style={{ textAlign: 'center' }}>№ карты</th>
+          <th>ФИО пациента</th>
+          <th style={{ textAlign: 'center' }}>Дата</th>
+          <th style={{ textAlign: 'center' }}>К-во</th>
+          <th style={{ textAlign: 'right' }}>Сумма, руб</th>
+        </tr>
+      </thead>
+      <tbody>
+        {details.map((d, i) => (
+          <tr key={i}>
+            <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{d.patientCard || '—'}</td>
+            <td>{d.patientName || '—'}</td>
+            <td style={{ textAlign: 'center' }}>{d.date || '—'}</td>
+            <td style={{ textAlign: 'center' }}>{d.count || 1}</td>
+            <td style={{ textAlign: 'right' }}>{(d.sum || 0).toFixed(2)} ₽</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function ServiceTable({ sections, columns, negative }) {
   const [showTip, setShowTip] = useState(false);
+  const [expanded, setExpanded] = useState({});
   const totalCost  = sections.reduce((s, x) => s + (x.cost || 0), 0);
   const totalCount = sections.reduce((s, x) => s + (x.count || 1), 0);
   const totalBonus = sections.reduce((s, x) => s + (x.bonusAmount || 0), 0);
@@ -44,18 +72,44 @@ function ServiceTable({ sections, columns, negative }) {
           <tr>{columns.map(c => <th key={c}>{c}</th>)}</tr>
         </thead>
         <tbody>
-          {sections.map((s, i) => (
-            <tr key={i}>
-              <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
-              <td>{s.name || '—'}</td>
-              <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
-              <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
-              <td style={{ textAlign: 'center' }}>{s.bonusLabel || '—'}</td>
-              <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
-                {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
-              </td>
-            </tr>
-          ))}
+          {sections.map((s, i) => {
+            const hasDetails = Array.isArray(s.patientDetails) && s.patientDetails.length > 0;
+            const isOpen = !!expanded[i];
+            return (
+              <React.Fragment key={i}>
+                <tr
+                  className={hasDetails ? 'rb-service-row-expandable' : undefined}
+                  onClick={hasDetails ? () => setExpanded(e => ({ ...e, [i]: !e[i] })) : undefined}
+                  style={hasDetails ? { cursor: 'pointer' } : undefined}
+                >
+                  <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{s.code || '—'}</td>
+                  <td>{s.name || '—'}</td>
+                  <td style={{ textAlign: 'right' }}>{s.cost ? s.cost.toFixed(2) + ' ₽' : '—'}</td>
+                  <td style={{ textAlign: 'center' }}>{s.count || 1}</td>
+                  <td style={{ textAlign: 'center' }}>{s.bonusLabel || '—'}</td>
+                  <td style={{ fontWeight: 600, color: negative ? 'var(--rb-danger)' : ((s.bonusAmount || 0) < 0 ? 'var(--rb-danger)' : 'var(--rb-success)'), textAlign: 'right' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {negative ? '−' : ((s.bonusAmount || 0) < 0 ? '' : '+')}{(s.bonusAmount || 0).toFixed(2)} ₽
+                      {hasDetails && (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11" style={{ flexShrink: 0, verticalAlign: 'middle', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                          <polyline points="9 18 15 12 9 6"/>
+                        </svg>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+                {hasDetails && isOpen && (
+                  <tr className="rb-service-detail-row">
+                    <td colSpan={columns.length} style={{ padding: 0 }}>
+                      <div className="rb-service-detail-wrap">
+                        <PatientDetailTable details={s.patientDetails} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
       {showTip && sections.length > 1 && (

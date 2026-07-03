@@ -6,6 +6,7 @@ import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
+import { roundShiftMinutes } from '../utils/scheduleUtils';
 
 const MONTH_NAMES = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -1599,6 +1600,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
           const [th, tm] = tTo.split(':').map(Number);
           let mins = (th * 60 + tm) - (fh * 60 + fm);
           if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
+          mins = roundShiftMinutes(mins);
           if (mins > 0) {
             workedMinutes += mins;
             if (e.roleTitle) {

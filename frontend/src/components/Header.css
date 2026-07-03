@@ -591,6 +591,7 @@
   display: flex;
   align-items: center;
   margin-left: auto;
+  gap: 8px;
 }
 
 /* Icon Button в хедере */

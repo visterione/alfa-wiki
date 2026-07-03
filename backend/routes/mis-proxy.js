@@ -624,16 +624,21 @@ async function fetchPatientBalances(ids) {
 // Снимок «весь долг на конец периода»: date_to = конец периода, date_from = широкий старт.
 router.post('/debtors', authenticate, async (req, res) => {
   try {
-    const { date_from, date_to, clinic_id } = req.body;
+    const { date_from, date_to, clinic_id, clinic_ids } = req.body;
 
     const start = parseRuDate(date_from) || new Date(2010, 0, 1);
     const end = parseRuDate(date_to) || new Date();
 
-    const baseParams = { status: 1 }; // 1 - не оплачен
-    if (clinic_id) baseParams.clinic_id = clinic_id;
+    // Список клиник: поддержка нескольких (clinic_ids массив/строка) + одиночного clinic_id
+    const clinicList = (Array.isArray(clinic_ids) ? clinic_ids : String(clinic_ids ?? clinic_id ?? '').split(','))
+      .map(s => String(s).trim()).filter(Boolean);
+    // Одна база на «все клиники», либо по одной на каждую выбранную (МИС-фильтр по clinic_id)
+    const baseParamsList = clinicList.length
+      ? clinicList.map(cid => ({ status: 1, clinic_id: cid }))
+      : [{ status: 1 }];
 
     console.log('💰 Запрос задолженностей:', toRuDate(start), '→', toRuDate(end),
-      clinic_id ? `clinic_id=${clinic_id}` : '(все клиники)');
+      clinicList.length ? `clinics=${clinicList.join(',')}` : '(все клиники)');
 
     // Разбиваем период на месяцы — лёгкие месяцы уходят одним запросом,
     // тяжёлые fetchInvoicesWindow делит пополам, пока МИС не переварит.
@@ -646,7 +651,10 @@ router.post('/debtors', authenticate, async (req, res) => {
       cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
     }
 
-    const chunks = await mapWithConcurrency(windows, 4, ([f, t]) => fetchInvoicesWindow(baseParams, f, t));
+    // Задачи = каждое окно × каждая выбранная клиника
+    const tasks = [];
+    for (const [f, t] of windows) for (const bp of baseParamsList) tasks.push({ bp, f, t });
+    const chunks = await mapWithConcurrency(tasks, 4, (task) => fetchInvoicesWindow(task.bp, task.f, task.t));
 
     // Дедуп по id счёта (окна не пересекаются, но подстрахуемся)
     const seenInvoice = new Set();

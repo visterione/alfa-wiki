@@ -3,13 +3,19 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import Header from './Header';
 import Sidebar from './Sidebar';
 import ChatNotification from './ChatNotification';
+import ReleaseNoteModal from './ReleaseNoteModal';
 import { useSocket } from '../context/SocketContext';
+import { releaseNotes as releaseNotesApi } from '../services/api';
 import './Layout.css';
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const { notifications, removeNotification, pendingChatNavigation, clearPendingNavigation } = useSocket();
+  const {
+    notifications, removeNotification, pendingChatNavigation, clearPendingNavigation,
+    latestReleaseNote, setLatestReleaseNote, setReleaseUnreadCount
+  } = useSocket();
+  const [importantNotes, setImportantNotes] = useState([]);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -63,6 +69,27 @@ export default function Layout() {
     navigate('/', { state: { openChatId: chatId } });
   }, [pendingChatNavigation]);
 
+  // Проверяем важные непрочитанные нововведения при входе и при получении нового важного
+  useEffect(() => {
+    let cancelled = false;
+    releaseNotesApi.importantUnread()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setImportantNotes(data || []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [latestReleaseNote]);
+
+  const handleCloseReleaseModal = (ids) => {
+    setImportantNotes([]);
+    if (latestReleaseNote) setLatestReleaseNote(null);
+    Promise.all((ids || []).map(id => releaseNotesApi.markRead(id).catch(() => {})))
+      .then(() => releaseNotesApi.unreadCount())
+      .then(({ data }) => setReleaseUnreadCount(data.count || 0))
+      .catch(() => {});
+  };
+
   // Filter notifications: don't show if we're already on dashboard
   const shouldShowNotifications = location.pathname !== '/';
 
@@ -102,6 +129,11 @@ export default function Layout() {
             />
           ))}
         </div>
+      )}
+
+      {/* Модалка «Что нового» для важных нововведений */}
+      {importantNotes.length > 0 && (
+        <ReleaseNoteModal notes={importantNotes} onClose={handleCloseReleaseModal} />
       )}
     </div>
   );

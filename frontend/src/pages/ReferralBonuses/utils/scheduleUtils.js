@@ -5,6 +5,14 @@ import { rbCanonicalClinicId } from './clinicUtils';
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
+/**
+ * Rounds a shift duration (in minutes) to the nearest 5 minutes.
+ * Avoids "искривлённые" totals from imported times like 8:00–23:59 (959 → 960 min = 16h).
+ */
+export function roundShiftMinutes(mins) {
+  return Math.round(mins / 5) * 5;
+}
+
 export function formatDateStr(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
@@ -134,6 +142,7 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       const [th, tm] = eff.timeTo.split(':').map(Number);
       let mins = (th * 60 + tm) - (fh * 60 + fm);
       if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
+      mins = roundShiftMinutes(mins);
       if (mins > 0) {
         totalMinutes += mins;
         dayHadWork = true;
@@ -203,6 +212,7 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
         const [th, tm] = eff.timeTo.split(':').map(Number);
         let mins = (th * 60 + tm) - (fh * 60 + fm);
         if (mins <= 0) mins += 24 * 60;
+        mins = roundShiftMinutes(mins);
         if (mins > 0) {
           if (entry.categoryId) {
             byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;

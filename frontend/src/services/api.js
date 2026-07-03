@@ -772,4 +772,21 @@ export const rbExcelSources = {
   getFile:    (id)             => api.get(`/rb-excel-sources/${id}/file`, { responseType: 'blob' }),
 };
 
+export const releaseNotes = {
+  // Пользовательские
+  list:            (params) => api.get('/release-notes', { params }),
+  importantUnread: ()       => api.get('/release-notes/important-unread'),
+  unreadCount:     ()       => api.get('/release-notes/unread-count'),
+  markRead:        (id)     => api.post(`/release-notes/${id}/read`),
+  markAllRead:     ()       => api.post('/release-notes/read-all'),
+  // Админские
+  adminList:       ()       => api.get('/release-notes/admin/all'),
+  audienceOptions: ()       => api.get('/release-notes/admin/audience-options'),
+  create:      (data)       => api.post('/release-notes', data),
+  update:      (id, data)   => api.put(`/release-notes/${id}`, data),
+  publish:     (id)         => api.post(`/release-notes/${id}/publish`),
+  unpublish:   (id)         => api.post(`/release-notes/${id}/unpublish`),
+  delete:      (id)         => api.delete(`/release-notes/${id}`),
+};
+
 export default api;

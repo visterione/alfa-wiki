@@ -584,6 +584,10 @@ export async function buildReport({
         anesthesiologist: colMap.anesthesiologist ? String(r[colMap.anesthesiologist] || '').trim() : '',
         nurse: colMap.nurse ? String(r[colMap.nurse] || '').trim() : '',
         serviceSpec: colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '',
+        patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+        patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+        date: colMap.date ? r[colMap.date] : '',
+        qty: rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1,
       });
     });
 
@@ -838,7 +842,20 @@ export async function buildReport({
 
       const bonusLabel = bonusLabels.size === 0 ? '—' : bonusLabels.size === 1 ? [...bonusLabels][0] : [...bonusLabels].join(', ');
       performedBonusTotal += bonusAmount;
-      return { ...s, bonusAmount, bonusLabel };
+
+      // Детализация по пациентам для перепроверки: карта + ФИО + дата
+      const _detailMap = {};
+      (s._rows || []).forEach(row => {
+        const d = rbParseDate(row.date);
+        const dateStr = d ? d.toLocaleDateString('ru-RU') : (row.date ? String(row.date).trim() : '');
+        const detKey = `${row.patientCard || ''}|${row.patientName || ''}|${dateStr}`;
+        if (!_detailMap[detKey]) _detailMap[detKey] = { patientCard: row.patientCard || '', patientName: row.patientName || '', date: dateStr, _dateSort: d ? d.getTime() : 0, count: 0, sum: 0 };
+        _detailMap[detKey].count += row.qty || 1;
+        _detailMap[detKey].sum += row.cost || 0;
+      });
+      const patientDetails = Object.values(_detailMap).sort((a, b) => a._dateSort - b._dateSort);
+
+      return { ...s, bonusAmount, bonusLabel, patientDetails };
     }).filter(s => s.bonusAmount !== 0 || s.code);
 
     const assistancePaidTotal = Object.values(assistancePayments).reduce((s, x) => s + x.total, 0);

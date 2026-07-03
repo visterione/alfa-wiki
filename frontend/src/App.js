@@ -39,6 +39,8 @@ import ReviewBoardSettings from './pages/ReviewBoardSettings';
 import ReviewArchive from './pages/ReviewArchive';
 import ReviewStatistics from './pages/ReviewStatistics';
 import Dashboard from './pages/Dashboard';
+import WhatsNew from './pages/WhatsNew';
+import AdminReleaseNotes from './pages/admin/AdminReleaseNotes';
 import './index.css';
 
 
@@ -98,6 +100,7 @@ function AppRoutes() {
         <Route path="page/:slug/edit" element={<PageEditor />} />
         <Route path="new-page" element={<PageEditor />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="whats-new" element={<WhatsNew />} />
         <Route path="users/:id" element={<UserProfile />} />
         <Route path="favorites" element={<Favorites />} />
         <Route path="calendar" element={<Calendar />} />
@@ -162,6 +165,11 @@ function AppRoutes() {
 
         <Route path="admin/bots" element={
           <ProtectedRoute adminOnly><AdminBots /></ProtectedRoute>
+        } />
+
+        {/* ЦЕНТР ОБНОВЛЕНИЙ - админка нововведений */}
+        <Route path="admin/release-notes" element={
+          <ProtectedRoute requireAdminAccess="releaseNotes"><AdminReleaseNotes /></ProtectedRoute>
         } />
 
         {/* МОДУЛЬ: БОНУСЫ ЗА НАПРАВЛЕНИЯ */}

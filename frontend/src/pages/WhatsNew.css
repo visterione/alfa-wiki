@@ -1,0 +1,197 @@
+.whatsnew-page {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 24px 24px 60px;
+}
+
+.whatsnew-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-primary);
+  margin-bottom: 24px;
+}
+
+.whatsnew-header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.whatsnew-header svg {
+  color: var(--primary);
+}
+
+.whatsnew-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+}
+
+.whatsnew-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.whatsnew-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 6px 22px 4px;
+  box-shadow: var(--shadow-sm);
+  scroll-margin-top: 80px;
+}
+
+.whatsnew-card--unread {
+  border-left: 3px solid var(--primary);
+}
+
+.whatsnew-card--highlight {
+  animation: whatsnew-highlight 2s ease;
+}
+
+@keyframes whatsnew-highlight {
+  0% { box-shadow: 0 0 0 3px var(--primary); }
+  100% { box-shadow: var(--shadow-sm); }
+}
+
+/* Шапка карточки — кнопка сворачивания */
+.whatsnew-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.whatsnew-card-titles { flex: 1; min-width: 0; }
+
+.whatsnew-chevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+.whatsnew-chevron--open { transform: rotate(180deg); }
+
+.whatsnew-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.whatsnew-star {
+  flex-shrink: 0;
+  color: #f59e0b;
+  fill: #f59e0b;
+}
+
+
+.whatsnew-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.whatsnew-version {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.whatsnew-new-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  display: inline-block;
+}
+
+.whatsnew-card-excerpt {
+  margin: 0;
+  padding: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.whatsnew-card-body {
+  color: var(--text-primary);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+  padding: 4px 0 18px;
+  border-top: 1px solid var(--border-light);
+  margin-top: 2px;
+}
+
+/* Картинки/медиа не должны вылезать за область новости,
+   даже если в редакторе им задан жёсткий width */
+.whatsnew-card-body img,
+.whatsnew-card-body video,
+.whatsnew-card-body iframe {
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: var(--radius-md);
+}
+
+.whatsnew-card-body table {
+  max-width: 100%;
+  display: block;
+  overflow-x: auto;
+}
+
+/* Пагинация */
+.whatsnew-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 28px;
+}
+
+.whatsnew-page-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.whatsnew-page-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.whatsnew-page-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.whatsnew-page-info {
+  font-size: 14px;
+  color: var(--text-secondary);
+}

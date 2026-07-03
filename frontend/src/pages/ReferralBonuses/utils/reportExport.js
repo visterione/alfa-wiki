@@ -16,7 +16,7 @@ function _makeStyles() {
 function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments, totalRemainder) {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
-  ws.properties.outlineLevelRow = 3;
+  ws.properties.outlineLevelRow = 4;
   ws.properties.outlineProperties = { summaryBelow: false, summaryRight: false };
 
   const autoWidth = (row, numCols) => {
@@ -59,6 +59,23 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
     return row;
   };
 
+  // Детализация по пациентам под строкой услуги (для перепроверки)
+  const addPatientDetails = (details, lvl) => {
+    if (!Array.isArray(details) || !details.length) return;
+    const dh = ws.addRow(['№ карты', 'ФИО пациента', 'Дата', 'К-во', '', 'Сумма, руб']);
+    dh.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center' }; } });
+    autoWidth(dh, 6);
+    dh.outlineLevel = lvl; dh.hidden = true;
+    details.forEach(d => {
+      const dr = ws.addRow([d.patientCard || '—', d.patientName || '—', d.date || '—', d.count || 1, '', parseFloat((d.sum || 0).toFixed(2))]);
+      dr.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 6) { cell.font = fontNormal; cell.border = allBorders; } });
+      dr.getCell(4).numFmt = '#,##0';
+      dr.getCell(6).numFmt = '#,##0.00';
+      autoWidth(dr, 6);
+      dr.outlineLevel = lvl; dr.hidden = true;
+    });
+  };
+
   const addSubHdr = (name, value, clr, lvl) => {
     const row = ws.addRow([name, '', '', '', '', parseFloat((value || 0).toFixed(2))]);
     row.getCell(1).font = { ...fontBold, color: { argb: clr } };
@@ -93,9 +110,10 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡', _hasWageChildren);
       if ((sal.basePerformedSections || []).length) {
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
-        (sal.basePerformedSections || []).forEach(s =>
-          addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1)
-        );
+        (sal.basePerformedSections || []).forEach(s => {
+          addTblRow([s.code || '—', s.name || '—', parseFloat((s.cost || 0).toFixed(2)), s.count || 1, s.bonusLabel || '', parseFloat((s.bonusAmount || 0).toFixed(2))], 1);
+          addPatientDetails(s.patientDetails, 2);
+        });
       }
       // Почасовой тип: детализация (с fallback для старых записей)
       if (sal.payType === 'hourly') {
@@ -163,6 +181,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
               if (bonusAmt < 0) row.getCell(6).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
               autoWidth(row, 6);
               row.outlineLevel = 3; row.hidden = true;
+              addPatientDetails(s.patientDetails, 4);
             });
           }
         }
