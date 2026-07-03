@@ -8,7 +8,7 @@ import { parseExcelFile, rbMapNewColumns, rbParseDate } from '../../ReferralBonu
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
 import { calcScheduleHoursForPeriod } from '../../ReferralBonuses/utils/scheduleUtils';
 import { DEFAULT_CLINICS, rbMatchClinicId } from '../../ReferralBonuses/utils/clinicUtils';
-import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark } from 'lucide-react';
+import { MapPin, Phone, UserRound, Star, MessageSquare, CheckCircle, Clock, TrendingUp, Globe, Mail, FileText, Calendar, Building2, Landmark, Search } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import toast from 'react-hot-toast';
 
@@ -8004,34 +8004,21 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
 
   return (
     <div>
-      {/* Медцентры — мультивыбор (пусто = все) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Медцентры:</span>
-        <button onClick={() => setSelectedClinics([])} style={clinicChipStyle(selectedClinics.length === 0)}>Все</button>
-        {DEFAULT_CLINICS.filter(c => c.id !== 'ip').map(c => (
-          <button key={c.id} onClick={() => toggleClinic(String(c.id))} style={clinicChipStyle(selectedClinics.includes(String(c.id)))}>{c.name}</button>
-        ))}
-      </div>
-
-      {/* Фильтры */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <select value={payerFilter} onChange={e => setPayerFilter(e.target.value)}
-          style={{ ...inlineInputStyle, width: 'auto', minWidth: 140 }}>
-          <option value="all">Все плательщики</option>
-          <option value="individual">Физ. лица</option>
-          <option value="company">Юр. лица</option>
-        </select>
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Поиск: № карты, ФИО, телефон, компания…"
-          style={{ ...inlineInputStyle, width: 'auto', minWidth: 240 }} />
-        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
-          Счета за {dateFrom || '—'} – {dateTo || '—'}
-        </span>
-        <button onClick={exportXlsx} disabled={!displayRows.length}
-          title="Скачать таблицу в Excel (текущий фильтр)"
-          style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', border: '1px solid var(--rb-border-dark)', borderRadius: 8, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
-          <FileText size={14} /> Excel
-        </button>
+      {/* Медцентры + плательщик — чипы-фильтры */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 14, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Медцентры:</span>
+          <button onClick={() => setSelectedClinics([])} style={clinicChipStyle(selectedClinics.length === 0)}>Все</button>
+          {DEFAULT_CLINICS.filter(c => c.id !== 'ip').map(c => (
+            <button key={c.id} onClick={() => toggleClinic(String(c.id))} style={clinicChipStyle(selectedClinics.includes(String(c.id)))}>{c.name}</button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Плательщик:</span>
+          <button onClick={() => setPayerFilter('all')} style={clinicChipStyle(payerFilter === 'all')}>Все</button>
+          <button onClick={() => setPayerFilter('individual')} style={clinicChipStyle(payerFilter === 'individual')}>Физ. лица</button>
+          <button onClick={() => setPayerFilter('company')} style={clinicChipStyle(payerFilter === 'company')}>Юр. лица</button>
+        </div>
       </div>
 
       {loading && <Spinner text="Загрузка задолженностей из МИС…" />}
@@ -8044,6 +8031,24 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
         <>
           {/* Инфографика-дашборд */}
           <DebtDashboard totals={totals} rows={rows} byClinic={byClinic} byDoctor={byDoctor} byCompany={byCompany} timeline={timeline} aging={aging} mode={payerFilter} />
+
+          {/* Поиск + экспорт — над таблицей */}
+          {rows.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '6px 0 12px', flexWrap: 'wrap' }}>
+              <div style={{ position: 'relative', flex: '1 1 320px', maxWidth: 440 }}>
+                <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }} />
+                <input value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Поиск: № карты, ФИО, телефон, компания…"
+                  style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }} />
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Найдено: {displayRows.length}</span>
+              <button onClick={exportXlsx} disabled={!displayRows.length}
+                title="Скачать таблицу в Excel (текущий фильтр)"
+                style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
+                <FileText size={14} /> Excel
+              </button>
+            </div>
+          )}
 
           {displayRows.length === 0 ? (
             <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
