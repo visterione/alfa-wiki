@@ -135,15 +135,28 @@ function splitPersonNames(str) {
   return String(str).split(',').map(s => s.trim()).filter(Boolean);
 }
 
+// Определяет, оплачена ли строка юр. компанией / ДМС (тип счёта «юр. компания»)
+function rbIsCorpRow(row) {
+  const t = String(row.invoiceType || '').toLowerCase().trim();
+  return t === 'юр. компания' || t === 'юр.компания';
+}
+
 // Детализация по пациентам для перепроверки: карта + ФИО + дата
-// rows: [{ patientCard, patientName, date, qty, cost }]
+// rows: [{ patientCard, patientId, patientName, date, qty, cost, invoiceType, legalCompany, invoiceCreatedDate }]
+// Для corp/ДМС строк добавляется corp: { company, date } (дата = дата создания счёта).
 function rbBuildPatientDetails(rows) {
   const _detailMap = {};
   (rows || []).forEach(row => {
     const d = rbParseDate(row.date);
     const dateStr = d ? d.toLocaleDateString('ru-RU') : (row.date ? String(row.date).trim() : '');
     const detKey = `${row.patientCard || ''}|${row.patientName || ''}|${dateStr}`;
-    if (!_detailMap[detKey]) _detailMap[detKey] = { patientCard: row.patientCard || '', patientName: row.patientName || '', date: dateStr, _dateSort: d ? d.getTime() : 0, count: 0, sum: 0 };
+    if (!_detailMap[detKey]) _detailMap[detKey] = { patientCard: row.patientCard || '', patientId: row.patientId || '', patientName: row.patientName || '', date: dateStr, _dateSort: d ? d.getTime() : 0, count: 0, sum: 0, corp: null };
+    if (!_detailMap[detKey].patientId && row.patientId) _detailMap[detKey].patientId = row.patientId;
+    if (!_detailMap[detKey].corp && rbIsCorpRow(row)) {
+      const cd = rbParseDate(row.invoiceCreatedDate);
+      const cdStr = cd ? cd.toLocaleDateString('ru-RU') : (row.invoiceCreatedDate ? String(row.invoiceCreatedDate).trim() : '');
+      _detailMap[detKey].corp = { company: row.legalCompany || '', date: cdStr };
+    }
     _detailMap[detKey].count += row.qty || 1;
     _detailMap[detKey].sum += row.cost || 0;
   });
@@ -521,7 +534,11 @@ export async function buildReport({
         byService[key].count += rowQty;
         byService[key]._rows.push({
           patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+          patientId: colMap.patientId ? String(r[colMap.patientId] || '').trim() : '',
           patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+          invoiceType: colMap.invoiceType ? String(r[colMap.invoiceType] || '').trim() : '',
+          legalCompany: colMap.legalCompanyName ? String(r[colMap.legalCompanyName] || '').trim() : '',
+          invoiceCreatedDate: colMap.invoiceCreatedDate ? r[colMap.invoiceCreatedDate] : '',
           date: colMap.date ? r[colMap.date] : '',
           qty: rowQty,
           cost: rowCost,
@@ -573,7 +590,11 @@ export async function buildReport({
       entry.count += rowQty;
       entry._rows.push({
         patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+        patientId: colMap.patientId ? String(r[colMap.patientId] || '').trim() : '',
         patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+        invoiceType: colMap.invoiceType ? String(r[colMap.invoiceType] || '').trim() : '',
+        legalCompany: colMap.legalCompanyName ? String(r[colMap.legalCompanyName] || '').trim() : '',
+        invoiceCreatedDate: colMap.invoiceCreatedDate ? r[colMap.invoiceCreatedDate] : '',
         date: colMap.date ? r[colMap.date] : '',
         qty: rowQty,
         cost,
@@ -619,7 +640,11 @@ export async function buildReport({
         nurse: colMap.nurse ? String(r[colMap.nurse] || '').trim() : '',
         serviceSpec: colMap.serviceSpec ? String(r[colMap.serviceSpec] || '').trim() : '',
         patientCard: colMap.patientCard ? String(r[colMap.patientCard] || '').trim() : '',
+        patientId: colMap.patientId ? String(r[colMap.patientId] || '').trim() : '',
         patientName: colMap.patientName ? String(r[colMap.patientName] || '').trim() : '',
+        invoiceType: colMap.invoiceType ? String(r[colMap.invoiceType] || '').trim() : '',
+        legalCompany: colMap.legalCompanyName ? String(r[colMap.legalCompanyName] || '').trim() : '',
+        invoiceCreatedDate: colMap.invoiceCreatedDate ? r[colMap.invoiceCreatedDate] : '',
         date: colMap.date ? r[colMap.date] : '',
         qty: rbIsSpecialDiscountRow(r) ? rbGetRowQty(r) : 1,
       });

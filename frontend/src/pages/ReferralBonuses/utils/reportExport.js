@@ -72,6 +72,23 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       dr.getCell(4).numFmt = '#,##0';
       dr.getCell(6).numFmt = '#,##0.00';
       autoWidth(dr, 6);
+      // № карты → карточка пациента в МИС (после autoWidth — иначе ширина считается по объекту-ссылке)
+      if (d.patientId && d.patientCard) {
+        const cardCell = dr.getCell(1);
+        cardCell.value = { text: String(d.patientCard), hyperlink: `https://rnova.medcentralfa.ru:3010/patients/default/detail/id/${d.patientId}` };
+        cardCell.font = { ...fontNormal, color: { argb: 'FF007AFF' }, underline: true };
+      }
+      // Оплата юр. компанией / ДМС: красный «*» + серая подпись «{компания} от {дата создания счёта}»
+      if (d.corp) {
+        const corpNote = `${d.corp.company || 'Юр. компания'}${d.corp.date ? ` от ${d.corp.date}` : ''}`;
+        dr.getCell(2).value = {
+          richText: [
+            { text: '* ', font: { ...fontNormal, color: { argb: 'FFDC2626' }, bold: true } },
+            { text: d.patientName || '—', font: fontNormal },
+            { text: `  (${corpNote})`, font: { ...fontNormal, color: { argb: 'FF94A3B8' }, italic: true } },
+          ],
+        };
+      }
       dr.outlineLevel = lvl; dr.hidden = true;
     });
   };

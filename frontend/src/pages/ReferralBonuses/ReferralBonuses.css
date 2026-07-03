@@ -254,6 +254,10 @@
 .rb-report-table--detail { margin-bottom: 0; font-size: 11px; background: #fff; }
 .rb-report-table--detail th { background: #eef2f7; padding: 5px 8px; }
 .rb-report-table--detail td { padding: 5px 8px; }
+.rb-patient-link { color: var(--rb-primary); text-decoration: none; border-bottom: 1px dotted var(--rb-primary); cursor: pointer; }
+.rb-patient-link:hover { text-decoration: none; border-bottom-style: solid; }
+.rb-corp-asterisk { color: var(--rb-danger, #dc2626); font-weight: 700; margin-right: 3px; cursor: help; }
+.rb-corp-note { color: #94a3b8; font-size: 10px; line-height: 1.2; margin-top: 1px; }
 .rb-table-summary-tip { position: absolute; top: 4px; right: 4px; background: #fff; border: 1px solid var(--rb-border); border-radius: 8px; padding: 8px 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); font-size: 12px; z-index: 20; pointer-events: none; min-width: 170px; }
 .rb-table-summary-tip-row { display: flex; justify-content: space-between; gap: 16px; padding: 2px 0; }
 .rb-table-summary-tip-row span:first-child { color: var(--rb-text-secondary); }

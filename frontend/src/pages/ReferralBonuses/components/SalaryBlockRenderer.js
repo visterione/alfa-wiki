@@ -3,6 +3,10 @@ import React, { useState } from 'react';
 function fmtRub(v) { return parseFloat(v || 0).toFixed(2) + ' ₽'; }
 function fmtMethod(m) { return m === 'cash' ? 'наличные' : 'карта'; }
 
+// Ссылка на карточку пациента в веб-интерфейсе МИС (Renovatio) по внутреннему patient_id
+const MIS_WEB_BASE = 'https://rnova.medcentralfa.ru:3010';
+const patientCardUrl = (patientId) => `${MIS_WEB_BASE}/patients/default/detail/id/${patientId}`;
+
 function SalaryRow({ label, value, color = 'var(--rb-text)', children, expandable }) {
   const [expanded, setExpanded] = useState(false);
   return (
@@ -42,8 +46,22 @@ function PatientDetailTable({ details }) {
       <tbody>
         {details.map((d, i) => (
           <tr key={i}>
-            <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>{d.patientCard || '—'}</td>
-            <td>{d.patientName || '—'}</td>
+            <td style={{ textAlign: 'center', color: 'var(--rb-text)' }}>
+              {d.patientCard
+                ? (d.patientId
+                    ? <a href={patientCardUrl(d.patientId)} target="_blank" rel="noopener noreferrer" className="rb-patient-link" title="Открыть карточку пациента в МИС">{d.patientCard}</a>
+                    : d.patientCard)
+                : '—'}
+            </td>
+            <td>
+              {d.corp && <span className="rb-corp-asterisk" title="Оплачено юр. компанией / ДМС">*</span>}
+              {d.patientName || '—'}
+              {d.corp && (
+                <div className="rb-corp-note">
+                  {d.corp.company || 'Юр. компания'}{d.corp.date ? ` от ${d.corp.date}` : ''}
+                </div>
+              )}
+            </td>
             <td style={{ textAlign: 'center' }}>{d.date || '—'}</td>
             <td style={{ textAlign: 'center' }}>{d.count || 1}</td>
             <td style={{ textAlign: 'right' }}>{(d.sum || 0).toFixed(2)} ₽</td>

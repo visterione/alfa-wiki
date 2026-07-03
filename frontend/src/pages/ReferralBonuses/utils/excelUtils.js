@@ -56,6 +56,7 @@ export function rbMapNewColumns(rows) {
     totalCost:    ['Итоговая стоимость'],
     invoiceNum:   ['№ счета', '№ Счета', 'Номер счета', 'Номер счёта'],
     patientCard:  ['№ карты пациента'],
+    patientId:    ['ID пациента', 'ID пациента (МИС)', 'Идентификатор пациента'],
     patientName:  ['ФИО пациента', 'Пациент'],
     legalCompanyName: ['Юр. компания', 'Плательщик', 'Наименование плательщика', 'Организация', 'Контрагент'],
     assistant:         ['Ассистент'],
@@ -87,6 +88,7 @@ export function rbMapNewColumns(rows) {
     if (!colMap.totalCost    && kl.includes('итогов')) colMap.totalCost = k;
     if (!colMap.cabinet      && (kl === 'кабинет' || kl.includes('кабинет'))) colMap.cabinet = k;
     if (!colMap.patientCard      && kl.includes('карт') && kl.includes('пациент')) colMap.patientCard = k;
+    if (!colMap.patientId        && (kl === 'id пациента' || (kl.includes('пациент') && (kl.includes('id') || kl.includes('идентификатор'))))) colMap.patientId = k;
     if (!colMap.patientName      && ((kl.includes('фио') && kl.includes('пациент')) || kl === 'пациент')) colMap.patientName = k;
     if (!colMap.legalCompanyName && (kl.includes('плательщик') || kl === 'организация' || kl === 'контрагент')) colMap.legalCompanyName = k;
     if (!colMap.assistant        && (kl === 'ассистент' || (kl.includes('ассист') && !kl.includes('врач')))) colMap.assistant = k;
