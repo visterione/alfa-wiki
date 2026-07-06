@@ -1761,7 +1761,8 @@ function DoctorsList({
               ...clinics.map(c => ({ value: String(c.id), label: c.name })),
             ]}
           />
-          {onImportNdfl && (
+          {/* Кнопка импорта из Excel временно скрыта (логика сохранена — вернуть можно, убрав `false &&`) */}
+          {false && onImportNdfl && (
             <button
               onClick={() => importFileRef.current?.click()}
               title="Импорт зарплат (Excel)"

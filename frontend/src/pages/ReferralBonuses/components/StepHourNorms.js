@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi, rbScheduleDicts, mis } from '../../../services/api';
+import { hourNorms as hourNormsApi, roleNorms as roleNormsApi, categoryNorms as categoryNormsApi, rbScheduleDicts, mis, executorSettings as executorSettingsApi } from '../../../services/api';
 import { rbProfessionTitle } from '../utils/clinicUtils';
 import { useTabSlider } from '../utils/useTabSlider';
 import StepWorkTime from './StepWorkTime';
 import StepSchedule from './StepSchedule';
 import ScheduleDivisionPanel from './ScheduleDivisionPanel';
+import ScheduleFillFlags from './ScheduleFillFlags';
 import MonthYearPicker from './MonthYearPicker';
 
 const MONTH_NAMES = [
@@ -49,6 +50,36 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   const [scheduleView,           setScheduleView]           = useState('divisions'); // 'divisions' | 'list'
   const divisionPanelRef = useRef(null);
 
+  // Ручной статус заполнения расписания: { [misUserId]: 1|2 } (0 не хранится)
+  const [scheduleFillMap, setScheduleFillMap] = useState({});
+
+  useEffect(() => {
+    executorSettingsApi.getScheduleFill()
+      .then(r => setScheduleFillMap(r.data || {}))
+      .catch(() => {});
+  }, []);
+
+  // Циклит статус заполнения: 0 → 1 → 2 → 0 (оптимистично, с откатом при ошибке)
+  const cycleScheduleFill = useCallback((doctor) => {
+    if (permSchedule === 'read') return;
+    const misUserId = doctor.misUserId || doctor.id;
+    const cur  = scheduleFillMap[misUserId] || 0;
+    const next = cur >= 2 ? 0 : cur + 1;
+    setScheduleFillMap(prev => {
+      const m = { ...prev };
+      if (next === 0) delete m[misUserId]; else m[misUserId] = next;
+      return m;
+    });
+    executorSettingsApi.setScheduleFill(misUserId, doctor.name, next).catch(() => {
+      toast.error('Не удалось сохранить статус расписания');
+      setScheduleFillMap(prev => {
+        const m = { ...prev };
+        if (cur === 0) delete m[misUserId]; else m[misUserId] = cur;
+        return m;
+      });
+    });
+  }, [scheduleFillMap, permSchedule]);
+
   const handleSelectDoctor = (id) => {
     setSelectedScheduleDoctor(id);
     if (id) setManagingDivision(null);
@@ -62,6 +93,11 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
   const handleDivisionRenamed = (id, newName) => {
     setManagingDivision(prev => prev?.id === id ? { ...prev, name: newName } : prev);
     divisionPanelRef.current?.updateName(id, newName);
+  };
+
+  const handleDivisionMembersChanged = (id, doctorIds) => {
+    setManagingDivision(prev => prev?.id === id ? { ...prev, doctorIds } : prev);
+    divisionPanelRef.current?.updateDoctorIds(id, doctorIds);
   };
   const [managingDivisionId, setManagingDivisionId] = useState(null);
   const [scheduleSearch,      setScheduleSearch]      = useState('');
@@ -257,6 +293,8 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
               managingDivisionId={managingDivision?.id ?? null}
               onDivisionRenamed={handleDivisionRenamed}
               onToggleView={() => { setScheduleView('list'); setManagingDivision(null); }}
+              scheduleFillMap={scheduleFillMap}
+              onCycleFill={permSchedule === 'read' ? null : cycleScheduleFill}
             />
           ) : (
             <ScheduleListPanel
@@ -271,6 +309,8 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
               clinics={clinics}
               getClinicColor={getClinicColor}
               getClinicName={getClinicName}
+              scheduleFillMap={scheduleFillMap}
+              onCycleFill={permSchedule === 'read' ? null : cycleScheduleFill}
             />
           )}
 
@@ -285,6 +325,7 @@ export default function StepHourNorms({ doctors = [], clinics = [], getClinicCol
             canEditFrozen={canEditFrozen}
             managingDivision={scheduleView === 'divisions' ? managingDivision : null}
             onDivisionRenamed={handleDivisionRenamed}
+            onDivisionMembersChanged={handleDivisionMembersChanged}
             scheduleCategories={categories}
             allRoles={allScheduleRoles}
             allProfessions={allScheduleProfs}
@@ -469,6 +510,7 @@ function ScheduleListPanel({
   doctors, selectedDoctorId, onSelectDoctor, onToggleView,
   search, setSearch, filterClinic, setFilterClinic,
   clinics, getClinicColor, getClinicName,
+  scheduleFillMap = {}, onCycleFill,
 }) {
   return (
     <div className="rb-panel">
@@ -545,6 +587,11 @@ function ScheduleListPanel({
                 <div className="rb-doctor-name">{d.name}</div>
                 {specialty && <div className="rb-doctor-specialty">{specialty}</div>}
               </div>
+              <ScheduleFillFlags
+                status={scheduleFillMap[d.misUserId || d.id] || 0}
+                onClick={onCycleFill ? () => onCycleFill(d) : undefined}
+                readOnly={!onCycleFill}
+              />
             </div>
           );
         })}

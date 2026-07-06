@@ -625,6 +625,8 @@ export const executorSettings = {
   save: (data) => api.post('/executor-settings', data),
   resetAll: () => api.post('/executor-settings/reset-all'),
   getAllDisabledClinics: () => api.get('/executor-settings/disabled-clinics'),
+  getScheduleFill: () => api.get('/executor-settings/schedule-fill'),
+  setScheduleFill: (misUserId, doctorName, status) => api.post('/executor-settings/schedule-fill', { misUserId, doctorName, status }),
 };
 
 export const cashPayments = {

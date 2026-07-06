@@ -778,7 +778,7 @@ const btnGhost = {
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
-export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, canEditFrozen = false, managingDivision, onDivisionRenamed, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
+export default function StepSchedule({ selectedDoctorId, doctors, clinics, getClinicColor, getClinicName, readOnly = false, canEditFrozen = false, managingDivision, onDivisionRenamed, onDivisionMembersChanged, scheduleCategories = [], allRoles = [], allProfessions = [] }) {
   const { isAdmin } = useAuth();
   // Users who may edit frozen half-periods: admins or holders of bypassPeriodLock.
   const canBypassFreeze = isAdmin || canEditFrozen;
@@ -1679,8 +1679,10 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         divisionDoctorIds={managingDivision.doctorIds || []}
         divisionRates={managingDivision.rates || []}
         onRenamed={onDivisionRenamed}
+        onMembersChanged={onDivisionMembersChanged}
         doctors={doctors}
         getClinicName={getClinicName}
+        getClinicColor={getClinicColor}
         scheduleCategories={scheduleCategories}
         allRoles={allRoles}
         allProfessions={allProfessions}

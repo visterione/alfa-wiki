@@ -122,7 +122,7 @@ function Avatar({ user }) {
 
 export default function DivisionAccessPanel({
   divisionId, divisionName, divisionDoctorIds = [], divisionRates = [],
-  onRenamed, doctors = [], getClinicName,
+  onRenamed, onMembersChanged, doctors = [], getClinicName, getClinicColor,
   scheduleCategories = [], allRoles = [], allProfessions = [],
 }) {
   const [accessData, setAccessData] = useState(null);
@@ -152,7 +152,47 @@ export default function DivisionAccessPanel({
 
   useEffect(() => { setSavedRates(divisionRates); }, [divisionRates]);
 
-  const actualDoctorIds = divisionDoctorIds.filter(id => doctors.some(d => d.id === id));
+  // ── Состав подразделения ──────────────────────────────────────────────────
+  const [memberIds,     setMemberIds]     = useState(divisionDoctorIds);
+  const [memberSearch,  setMemberSearch]  = useState('');
+  const [memberFilterClinic, setMemberFilterClinic] = useState('');
+  const [memberSaving,  setMemberSaving]  = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  useEffect(() => { setMemberIds(divisionDoctorIds); }, [divisionDoctorIds]);
+
+  const memberSet = new Set(memberIds);
+  const members = doctors.filter(d => memberSet.has(d.id));
+
+  const memberClinicIds = [...new Set(doctors.flatMap(d => d.clinics || []))]
+    .sort((a, b) => (getClinicName ? getClinicName(a) : a).localeCompare(getClinicName ? getClinicName(b) : b, 'ru'));
+
+  const memberCandidates = doctors.filter(d => {
+    if (memberSet.has(d.id)) return false;
+    if (memberSearch.trim() && !d.name.toLowerCase().includes(memberSearch.trim().toLowerCase())) return false;
+    if (memberFilterClinic && !(d.clinics || []).map(String).includes(String(memberFilterClinic))) return false;
+    return true;
+  });
+
+  const toggleMember = async (doctorId) => {
+    const next = memberSet.has(doctorId)
+      ? memberIds.filter(id => id !== doctorId)
+      : [...memberIds, doctorId];
+    setMemberIds(next); // оптимистично
+    setMemberSaving(true);
+    try {
+      const res = await divisionsApi.update(divisionId, { doctorIds: next });
+      const saved = res.data?.doctorIds ?? next;
+      setMemberIds(saved);
+      onMembersChanged?.(divisionId, saved);
+    } catch {
+      toast.error('Ошибка сохранения состава');
+      setMemberIds(memberIds); // откат
+    } finally {
+      setMemberSaving(false);
+    }
+  };
+
+  const actualDoctorIds = memberIds.filter(id => doctors.some(d => d.id === id));
 
   const divClinicIds = [...new Set(
     actualDoctorIds.flatMap(id => doctors.find(d => d.id === id)?.clinics || [])
@@ -691,6 +731,113 @@ export default function DivisionAccessPanel({
             })()}
           </div>
         )}
+
+        {/* Состав подразделения — внизу, т.к. самая объёмная секция */}
+        <div>
+          {/* Заголовок + кнопка добавления */}
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.4, flex: 1 }}>
+              Сотрудники
+            </span>
+            <button
+              onClick={() => setShowAddMember(v => !v)}
+              title={showAddMember ? 'Скрыть добавление' : 'Добавить сотрудника'}
+              style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: showAddMember ? '#1d4ed8' : 'var(--rb-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12" style={{ transform: showAddMember ? 'rotate(45deg)' : 'none', transition: 'transform 0.15s' }}>
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
+
+          {/* Меню добавления — над списком */}
+          {showAddMember && (
+            <div style={{ marginBottom: 8, padding: '8px', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#f0f6ff' }}>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  autoFocus
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                  placeholder="Поиск по ФИО..."
+                  style={{ flex: 1, minWidth: 0, height: 30, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: '#fff', boxSizing: 'border-box' }}
+                />
+                <select
+                  value={memberFilterClinic}
+                  onChange={e => setMemberFilterClinic(e.target.value)}
+                  style={{ width: 120, flexShrink: 0, height: 30, padding: '0 6px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', color: 'var(--rb-text)', outline: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
+                >
+                  <option value="">Все МЦ</option>
+                  {memberClinicIds.map(cId => (
+                    <option key={cId} value={cId}>{getClinicName ? getClinicName(cId) : cId}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ marginTop: 6, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', maxHeight: 200, overflowY: 'auto' }}>
+                {memberCandidates.length === 0 && (
+                  <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет результатов</div>
+                )}
+                {memberCandidates.slice(0, 30).map(d => {
+                  const specialty = (d.professions || [])
+                    .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+                    .filter(Boolean).join(', ');
+                  return (
+                    <div
+                      key={d.id}
+                      onClick={() => { if (!memberSaving) toggleMember(d.id); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', cursor: memberSaving ? 'default' : 'pointer', borderBottom: '1px solid var(--rb-border)' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--rb-hover, #f1f5f9)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                        {specialty && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{specialty}</div>}
+                      </div>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="var(--rb-primary)" strokeWidth="2.5" width="14" height="14" style={{ flexShrink: 0 }}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Список добавленных */}
+          {members.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', padding: '2px 0 6px' }}>Нет сотрудников</div>
+          )}
+          {members.map(d => {
+            const specialty = (d.professions || [])
+              .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
+              .filter(Boolean).join(', ');
+            return (
+              <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--rb-border)' }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</div>
+                  {specialty && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{specialty}</div>}
+                  {(d.clinics || []).length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2 }}>
+                      {(d.clinics || []).slice(0, 3).map(cId => (
+                        <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor ? getClinicColor(cId) : '#94a3b8', fontSize: 10 }}>
+                          {getClinicName ? getClinicName(cId) : cId}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => toggleMember(d.id)}
+                  disabled={memberSaving}
+                  title="Убрать из подразделения"
+                  style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, opacity: memberSaving ? 0.6 : 1 }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="10" height="10">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
       </div>
     </div>

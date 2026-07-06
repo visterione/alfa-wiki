@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle } from 'react';
 import toast from 'react-hot-toast';
 import { structuralDivisions as divisionsApi } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
+import ScheduleFillFlags from './ScheduleFillFlags';
 
 const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   doctors = [], selectedDoctorId, onSelectDoctor, readOnly,
@@ -9,17 +10,13 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   onManageAccess, managingDivisionId, onDivisionRenamed,
   onToggleView,
   bulkMode = false, bulkSelectedIds, setBulkSelectedIds,
+  scheduleFillMap = {}, onCycleFill,
 }, ref) {
   const { user } = useAuth();
   const [divisions,    setDivisions]    = useState([]);
   const [openId,       setOpenId]       = useState(null);
   const [editingId,    setEditingId]    = useState(null);
   const [editName,     setEditName]     = useState('');
-  const [addingTo,     setAddingTo]     = useState(null);
-  const [memberSearch, setMemberSearch] = useState('');
-  const [filterClinic, setFilterClinic] = useState('');
-  const [filterProf,   setFilterProf]   = useState('');
-  const [filterRole,   setFilterRole]   = useState('');
   const [newDivName,   setNewDivName]   = useState('');
   const [creating,     setCreating]     = useState(false);
   const [showCreate,   setShowCreate]   = useState(false);
@@ -32,6 +29,10 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
         prev.map(d => d.id === id ? { ...d, name: newName } : d)
           .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
       );
+    },
+    // Синхронизирует состав подразделения после правок в окне настроек
+    updateDoctorIds: (id, doctorIds) => {
+      setDivisions(prev => prev.map(d => d.id === id ? { ...d, doctorIds } : d));
     },
   }));
 
@@ -48,43 +49,6 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   useEffect(() => {
     if (showCreate && newInputRef.current) newInputRef.current.focus();
   }, [showCreate]);
-
-  // All unique clinic IDs and profession titles across all doctors (for filter dropdowns)
-  const allClinicIds = useMemo(() =>
-    [...new Set(doctors.flatMap(d => d.clinics || []))].sort((a, b) => {
-      const na = getClinicName ? getClinicName(a) : a;
-      const nb = getClinicName ? getClinicName(b) : b;
-      return na.localeCompare(nb, 'ru');
-    }),
-  [doctors, getClinicName]);
-
-  const allProfTitles = useMemo(() =>
-    [...new Set(doctors.flatMap(d =>
-      (d.professions || []).map(p => typeof p === 'object' ? (p.title || '') : String(p || '')).filter(Boolean)
-    ))].sort((a, b) => a.localeCompare(b, 'ru')),
-  [doctors]);
-
-  const allRoleTitles = useMemo(() =>
-    [...new Set(doctors.flatMap(d =>
-      (d.roles || []).filter(r => r && r !== 'КабинетыИРабота')
-    ))].sort((a, b) => a.localeCompare(b, 'ru')),
-  [doctors]);
-
-  const openAddPanel = (divId) => {
-    setAddingTo(divId);
-    setMemberSearch('');
-    setFilterClinic('');
-    setFilterProf('');
-    setFilterRole('');
-  };
-
-  const closeAddPanel = () => {
-    setAddingTo(null);
-    setMemberSearch('');
-    setFilterClinic('');
-    setFilterProf('');
-    setFilterRole('');
-  };
 
   const handleCreate = async () => {
     if (!newDivName.trim()) return;
@@ -135,21 +99,6 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
     }
   };
 
-  const toggleMember = async (divId, doctorId) => {
-    const div = divisions.find(d => d.id === divId);
-    if (!div) return;
-    const current = div.doctorIds || [];
-    const next = current.includes(doctorId)
-      ? current.filter(id => id !== doctorId)
-      : [...current, doctorId];
-    try {
-      const res = await divisionsApi.update(divId, { doctorIds: next });
-      setDivisions(prev => prev.map(d => d.id === divId ? res.data : d));
-    } catch {
-      toast.error('Ошибка сохранения');
-    }
-  };
-
   const getDivDoctors = useCallback((div) => {
     const ids = new Set(div.doctorIds || []);
     return doctors.filter(d => ids.has(d.id));
@@ -171,13 +120,6 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
       return next;
     });
   }, [setBulkSelectedIds]);
-
-  const selectStyle = {
-    height: 28, padding: '0 6px', fontSize: 12,
-    border: '1px solid var(--rb-border)', borderRadius: 6,
-    background: '#fff', color: 'var(--rb-text)', outline: 'none', cursor: 'pointer',
-    fontFamily: 'inherit',
-  };
 
   return (
     <div className="rb-panel">
@@ -268,27 +210,11 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
         {divisions.map(div => {
           const isOpen    = openId === div.id;
           const isEditing = editingId === div.id;
-          const isAdding  = addingTo === div.id;
           const isManaging = managingDivisionId === div.id;
           const members   = getDivDoctors(div);
-          const memberIds = new Set(div.doctorIds || []);
           const myPerm    = div.myPermission; // 'owner' | 'edit' | 'read' | 'public' | null
           const isOwner   = myPerm === 'owner';
-          const canEdit   = isOwner || myPerm === 'edit' || user?.isAdmin;
           const canAdmin  = isOwner || myPerm === 'edit' || user?.isAdmin;
-
-          const filtered = isAdding
-            ? doctors.filter(d => {
-                if (memberSearch && !d.name.toLowerCase().includes(memberSearch.toLowerCase())) return false;
-                if (filterClinic && !(d.clinics || []).includes(String(filterClinic))) return false;
-                if (filterProf && !(d.professions || []).some(p => {
-                  const t = typeof p === 'object' ? (p.title || '') : String(p || '');
-                  return t === filterProf;
-                })) return false;
-                if (filterRole && !(d.roles || []).includes(filterRole)) return false;
-                return true;
-              })
-            : [];
 
           return (
             <div key={div.id}>
@@ -350,14 +276,6 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
 
                 {!isEditing && (
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    {canEdit && !readOnly && (
-                      <button
-                        onClick={e => { e.stopPropagation(); if (isAdding) { closeAddPanel(); } else { openAddPanel(div.id); if (!isOpen) setOpenId(div.id); } }}
-                        title="Добавить сотрудника"
-                        style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: isAdding ? '#1d4ed8' : 'var(--rb-primary)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                      </button>
-                    )}
                     {canAdmin && onManageAccess && (
                       <button
                         onClick={e => { e.stopPropagation(); onManageAccess(isManaging ? null : { id: div.id, name: div.name, doctorIds: div.doctorIds || [], rates: div.rates || [] }); }}
@@ -386,94 +304,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
               {isOpen && (
                 <div style={{ background: 'var(--rb-bg-alt, #f8fafc)' }}>
 
-                  {/* Add members panel — вверху */}
-                  {canEdit && !readOnly && isAdding && (
-                    <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--rb-border)', background: '#f0f6ff' }}>
-                      {/* Search + close */}
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                        <input
-                          autoFocus
-                          value={memberSearch}
-                          onChange={e => setMemberSearch(e.target.value)}
-                          placeholder="Поиск по ФИО..."
-                          style={{ flex: 1, height: 28, padding: '0 8px', fontSize: 12, border: '1px solid var(--rb-border)', borderRadius: 6, outline: 'none', background: '#fff', minWidth: 0 }}
-                        />
-                        <button onClick={closeAddPanel}
-                          style={{ width: 28, height: 28, flexShrink: 0, border: 'none', borderRadius: 6, background: 'var(--rb-primary)', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="12" height="12"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                        </button>
-                      </div>
-                      {/* Filters */}
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                        <select value={filterClinic} onChange={e => setFilterClinic(e.target.value)} style={{ ...selectStyle, flex: 1, minWidth: 0, maxWidth: '100%' }}>
-                          <option value="">Все клиники</option>
-                          {allClinicIds.map(cId => (
-                            <option key={cId} value={cId}>{getClinicName ? getClinicName(cId) : cId}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-                        <select value={filterProf} onChange={e => setFilterProf(e.target.value)} style={{ ...selectStyle, flex: 1, minWidth: 0, maxWidth: '100%' }}>
-                          <option value="">Все специальности</option>
-                          {allProfTitles.map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
-                        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={{ ...selectStyle, flex: 1, minWidth: 0, maxWidth: '100%' }}>
-                          <option value="">Все роли</option>
-                          {allRoleTitles.map(t => (
-                            <option key={t} value={t}>{t}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {/* Doctor list */}
-                      <div style={{ maxHeight: 220, overflowY: 'auto', borderRadius: 6, border: '1px solid var(--rb-border)', background: '#fff' }}>
-                        {filtered.length === 0 && (
-                          <div style={{ padding: '10px 12px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет результатов</div>
-                        )}
-                        {filtered.map(d => {
-                          const isMember = memberIds.has(d.id);
-                          const specialty = (d.professions || [])
-                            .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
-                            .filter(Boolean).join(', ');
-                          return (
-                            <div
-                              key={d.id}
-                              onClick={() => toggleMember(div.id, d.id)}
-                              style={{
-                                display: 'flex', alignItems: 'center', gap: 8,
-                                padding: '7px 10px', cursor: 'pointer',
-                                background: isMember ? '#eff6ff' : 'transparent',
-                                borderBottom: '1px solid var(--rb-border)',
-                              }}
-                            >
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--rb-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                  {d.name}
-                                </div>
-                                {specialty && (
-                                  <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {specialty}
-                                  </div>
-                                )}
-                                {(d.clinics || []).length > 0 && (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginTop: 2 }}>
-                                    {(d.clinics || []).slice(0, 3).map(cId => (
-                                      <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor ? getClinicColor(cId) : '#94a3b8', fontSize: 10 }}>
-                                        {getClinicName ? getClinicName(cId) : cId}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {members.length === 0 && !isAdding && (
+                  {members.length === 0 && (
                     <div style={{ padding: '6px 20px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет сотрудников</div>
                   )}
 
@@ -499,21 +330,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                           />
                         )}
                         <div className="rb-doctor-info">
-                          <div className="rb-doctor-name" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <span>{d.name}</span>
-                            {canEdit && !readOnly && !bulkMode && (
-                              <button
-                                onClick={e => { e.stopPropagation(); toggleMember(div.id, d.id); }}
-                                title="Убрать из подразделения"
-                                style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
-                              >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-                                  <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                                </svg>
-                              </button>
-                            )}
-                          </div>
+                          <div className="rb-doctor-name">{d.name}</div>
                           {specialty && <div className="rb-doctor-specialty">{specialty}</div>}
                           <div className="rb-doctor-badges">
                             {(d.clinics || []).slice(0, 3).map(cId => (
@@ -523,6 +340,13 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                             ))}
                           </div>
                         </div>
+                        {!bulkMode && (
+                          <ScheduleFillFlags
+                            status={scheduleFillMap[d.misUserId || d.id] || 0}
+                            onClick={onCycleFill ? () => onCycleFill(d) : undefined}
+                            readOnly={!onCycleFill}
+                          />
+                        )}
                       </div>
                     );
                   })}

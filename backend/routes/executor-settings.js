@@ -36,6 +36,48 @@ router.get('/disabled-clinics', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/executor-settings/schedule-fill — returns { [misUserId]: 1|2 } for all doctors
+// Ручной статус заполнения расписания по сотруднику (0 опускаем).
+router.get('/schedule-fill', authenticate, async (req, res) => {
+  try {
+    const all = await ExecutorSettings.findAll({ attributes: ['misUserId', 'settings'] });
+    const result = {};
+    all.forEach(record => {
+      const s = record.settings?.scheduleFillStatus;
+      if (s === 1 || s === 2) result[record.misUserId] = s;
+    });
+    res.json(result);
+  } catch (err) {
+    console.error('Get schedule-fill error:', err);
+    res.status(500).json({ error: 'Ошибка получения данных' });
+  }
+});
+
+// POST /api/executor-settings/schedule-fill — { misUserId, doctorName, status }
+// Точечно обновляет только scheduleFillStatus, не затирая остальные настройки.
+router.post('/schedule-fill', authenticate, async (req, res) => {
+  try {
+    const { misUserId, doctorName, status } = req.body;
+    if (!misUserId) return res.status(400).json({ error: 'misUserId обязателен' });
+    const st = [0, 1, 2].includes(status) ? status : 0;
+
+    const existing = await ExecutorSettings.findOne({ where: { misUserId } });
+    const settings = { ...(existing ? existing.settings : {}), scheduleFillStatus: st };
+
+    await ExecutorSettings.upsert({
+      misUserId,
+      doctorName: doctorName || (existing ? existing.doctorName : '') || '',
+      settings,
+      updatedBy: req.user.id,
+    }, { conflictFields: ['misUserId'] });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Save schedule-fill error:', err);
+    res.status(500).json({ error: 'Ошибка сохранения' });
+  }
+});
+
 // POST /api/executor-settings
 router.post('/', authenticate, async (req, res) => {
   try {

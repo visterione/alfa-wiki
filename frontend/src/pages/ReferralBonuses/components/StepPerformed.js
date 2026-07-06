@@ -137,12 +137,18 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
   const [catSaving, setCatSaving]         = useState(false);
   const [catExcluded, setCatExcluded]     = useState(new Set());
   const [catFilter, setCatFilter]         = useState('');
+  // Inline edit of a saved service
+  const [editingCode, setEditingCode]     = useState(null);
+  const [editType, setEditType]           = useState('percent');
+  const [editValue, setEditValue]         = useState('');
+  const [editSaving, setEditSaving]       = useState(false);
   const searchTimerRef = useRef(null);
 
   // Reset form when clinic or role changes
   useEffect(() => {
     setSelectedSvc(null); setSearchQuery(''); setSearchResults([]); setValue('');
     setCatServices([]); setCatBulkValue(''); setCatExcluded(new Set()); setCatFilter('');
+    setEditingCode(null); setEditValue('');
   }, [activeClinic, role]);
 
   const toggleCatExclude = (code) => {
@@ -254,6 +260,26 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
       onExecDataChange(newExecData);
       toast.success('Удалено');
     } catch { toast.error('Ошибка удаления'); }
+  };
+
+  const startEdit = (s) => {
+    setEditingCode(s.serviceCode);
+    setEditType(s.valueType === 'rub' ? 'rub' : 'percent');
+    setEditValue(String(s.value));
+  };
+  const cancelEdit = () => { setEditingCode(null); setEditValue(''); };
+  const handleSaveEdit = async (s) => {
+    const val = parseFloat(editValue);
+    if (isNaN(val) || val <= 0) { toast.error('Введите корректное значение'); return; }
+    setEditSaving(true);
+    try {
+      await saveEntries(
+        [{ serviceCode: s.serviceCode, serviceName: s.serviceName, value: val, valueType: editType }],
+        'Сохранено',
+      );
+      setEditingCode(null); setEditValue('');
+    } catch { toast.error('Ошибка сохранения'); }
+    finally { setEditSaving(false); }
   };
 
   const fmtVal = (s) => s.valueType === 'rub' ? `${s.value} ₽` : `${s.value}%`;
@@ -437,29 +463,76 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
             <tr>
               <th>Код</th>
               <th>Услуга</th>
-              <th style={{ width: 100, textAlign: 'center' }}>Ставка</th>
-              {!readOnly && <th style={{ width: 40 }} />}
+              <th style={{ width: editingCode ? 180 : 100, textAlign: 'center' }}>Ставка</th>
+              {!readOnly && <th style={{ width: 80 }} />}
             </tr>
           </thead>
           <tbody>
-            {services.map(s => (
+            {services.map(s => {
+              const isEditing = editingCode === s.serviceCode;
+              return (
               <tr key={s.serviceCode} style={{ borderBottom: '1px solid var(--rb-border)' }}>
                 <td style={{ padding: '6px 10px', fontSize: 13, textAlign: 'center' }}>{s.serviceCode}</td>
                 <td style={{ padding: '6px 10px', fontSize: 13 }}>{s.serviceName}</td>
-                <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--rb-success)' }}>{fmtVal(s)}</td>
+                <td style={{ padding: '6px 10px', textAlign: 'center', fontWeight: 600, color: 'var(--rb-success)' }}>
+                  {isEditing ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+                      <div className="rb-exec-type-toggle">
+                        <button className={`rb-exec-type-btn${editType === 'percent' ? ' active' : ''}`} onClick={() => setEditType('percent')}>%</button>
+                        <button className={`rb-exec-type-btn${editType === 'rub' ? ' active' : ''}`} onClick={() => setEditType('rub')}>₽</button>
+                      </div>
+                      <input
+                        type="number" min="0" step="any" autoFocus
+                        placeholder={editType === 'percent' ? '%' : '₽'}
+                        value={editValue} onChange={e => setEditValue(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') handleSaveEdit(s); if (e.key === 'Escape') cancelEdit(); }}
+                        style={{ width: 70, padding: '5px 8px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 13, textAlign: 'right' }}
+                      />
+                    </div>
+                  ) : fmtVal(s)}
+                </td>
                 {!readOnly && (
-                  <td style={{ padding: '4px 6px', textAlign: 'center' }}>
-                    <button onClick={() => handleDelete(s.serviceCode)}
-                      style={{ background: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Удалить"
-                    >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
-                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
-                      </svg>
-                    </button>
+                  <td style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                    {isEditing ? (
+                      <div style={{ display: 'inline-flex', gap: 4 }}>
+                        <button onClick={() => handleSaveEdit(s)} disabled={editSaving}
+                          style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Сохранить"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </button>
+                        <button onClick={cancelEdit}
+                          style={{ background: '#f1f5f9', border: '1px solid var(--rb-border)', borderRadius: 6, cursor: 'pointer', color: 'var(--rb-text-secondary)', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Отмена"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'inline-flex', gap: 4 }}>
+                        <button onClick={() => startEdit(s)}
+                          style={{ background: 'var(--rb-primary)', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Редактировать"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                        <button onClick={() => handleDelete(s.serviceCode)}
+                          style={{ background: '#ef4444', border: 'none', borderRadius: 6, cursor: 'pointer', color: '#fff', padding: '4px 6px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }} title="Удалить"
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="13" height="13">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                          </svg>
+                        </button>
+                      </div>
+                    )}
                   </td>
                 )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       )}
