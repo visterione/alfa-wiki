@@ -56,6 +56,12 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
   const [refPage, setRefPage] = useState(1);
   const [refShowAll, setRefShowAll] = useState(false);
 
+  // Inline row editing
+  const [inlineEditId, setInlineEditId] = useState(null);
+  const [inlineType, setInlineType]     = useState('pct');
+  const [inlineValue, setInlineValue]   = useState('');
+  const [inlineSaving, setInlineSaving] = useState(false);
+
   const searchTimerRef = useRef(null);
 
   // ── Load bonuses ──
@@ -150,18 +156,43 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
     setEditingId(null);
   };
 
-  // ── Edit bonus ──
-  const handleEditBonus = (bonus) => {
-    setSelectedService({ code: bonus.serviceCode, title: bonus.serviceName });
-    if (bonus.bonusPercent != null) {
-      setBonusType('pct');
-      setBonusValue(String(bonus.bonusPercent));
+  // ── Inline edit bonus (in the row itself) ──
+  const startInlineEdit = (b) => {
+    setInlineEditId(b.id);
+    if (b.bonusPercent != null) {
+      setInlineType('pct');
+      setInlineValue(String(parseFloat(b.bonusPercent)));
     } else {
-      setBonusType('rub');
-      setBonusValue(String(bonus.bonusRub));
+      setInlineType('rub');
+      setInlineValue(b.bonusRub != null ? String(parseFloat(b.bonusRub)) : '');
     }
-    setEditingId(bonus.id);
-    setAddTab('search');
+  };
+
+  const cancelInlineEdit = () => { setInlineEditId(null); setInlineValue(''); };
+
+  const saveInlineEdit = async (b) => {
+    const val = parseFloat(inlineValue);
+    if (isNaN(val) || val < 0) { toast.error('Укажите размер бонуса'); return; }
+    setInlineSaving(true);
+    try {
+      await rbApi.save({
+        misUserId: doctor.id,
+        doctorName: doctor.name,
+        serviceCode: b.serviceCode,
+        serviceName: b.serviceName,
+        bonusPercent: inlineType === 'pct' ? val : null,
+        bonusRub: inlineType === 'rub' ? val : null,
+        clinicId: b.clinicId || '',
+      });
+      toast.success('Бонус обновлён');
+      setInlineEditId(null);
+      setInlineValue('');
+      await loadBonuses();
+    } catch {
+      toast.error('Ошибка сохранения');
+    } finally {
+      setInlineSaving(false);
+    }
   };
 
   // ── Save bonus ──
@@ -416,43 +447,88 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
                     <td colSpan="4">Нет услуг. Добавьте услуги выше.</td>
                   </tr>
                 ) : (
-                  refPageData.map(b => (
+                  refPageData.map(b => {
+                    const isEditing = inlineEditId === b.id;
+                    return (
                     <tr key={b.id}>
                       <td className="rb-service-code-cell">{b.serviceCode}</td>
                       <td>{b.serviceName}</td>
                       <td style={{ textAlign: 'center' }}>
-                        {b.bonusPercent != null ? (
+                        {isEditing ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'center' }}>
+                            <div className="rb-exec-type-toggle">
+                              <button className={`rb-exec-type-btn${inlineType === 'pct' ? ' active' : ''}`} onClick={() => setInlineType('pct')}>%</button>
+                              <button className={`rb-exec-type-btn${inlineType === 'rub' ? ' active' : ''}`} onClick={() => setInlineType('rub')}>₽</button>
+                            </div>
+                            <input
+                              type="number" min="0" step="any" autoFocus
+                              placeholder={inlineType === 'pct' ? '%' : '₽'}
+                              value={inlineValue}
+                              onChange={e => setInlineValue(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') saveInlineEdit(b); if (e.key === 'Escape') cancelInlineEdit(); }}
+                              style={{ width: 70, padding: '4px 6px', border: '1px solid var(--rb-border-dark)', borderRadius: 6, fontSize: 12, textAlign: 'right' }}
+                            />
+                          </div>
+                        ) : b.bonusPercent != null ? (
                           <span className="rb-bonus-value rb-bonus-percent">{parseFloat(b.bonusPercent)}%</span>
                         ) : b.bonusRub != null ? (
                           <span className="rb-bonus-value rb-bonus-rub">{parseFloat(b.bonusRub).toFixed(2)} ₽</span>
                         ) : '—'}
                       </td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button
-                          className="rb-btn rb-btn-primary rb-btn-xs"
-                          style={{ marginRight: 4 }}
-                          onClick={() => handleEditBonus(b)}
-                          title="Редактировать"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
-                        <button
-                          className="rb-btn rb-btn-danger rb-btn-xs"
-                          onClick={() => handleDeleteBonus(b.id)}
-                          title="Удалить"
-                        >
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                            <path d="M10 11v6"/><path d="M14 11v6"/>
-                          </svg>
-                        </button>
+                        {isEditing ? (
+                          <>
+                            <button
+                              className="rb-btn rb-btn-primary rb-btn-xs"
+                              style={{ marginRight: 4 }}
+                              onClick={() => saveInlineEdit(b)}
+                              disabled={inlineSaving}
+                              title="Сохранить"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            </button>
+                            <button
+                              className="rb-btn rb-btn-secondary rb-btn-xs"
+                              onClick={cancelInlineEdit}
+                              title="Отмена"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="rb-btn rb-btn-primary rb-btn-xs"
+                              style={{ marginRight: 4 }}
+                              onClick={() => startInlineEdit(b)}
+                              title="Редактировать"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                            <button
+                              className="rb-btn rb-btn-danger rb-btn-xs"
+                              onClick={() => handleDeleteBonus(b.id)}
+                              title="Удалить"
+                            >
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                <path d="M10 11v6"/><path d="M14 11v6"/>
+                              </svg>
+                            </button>
+                          </>
+                        )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>
