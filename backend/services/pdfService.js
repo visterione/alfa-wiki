@@ -300,6 +300,14 @@ function renderChangesInPdf(doc, changes, leftMargin) {
       continue;
     }
 
+    // Неизменённое поле — серым
+    if (c.unchanged !== undefined) {
+      doc.fontSize(8).font('DejaVu').fillColor('#6b7280')
+        .text(c.label + ': ' + String(c.unchanged).slice(0, 100), leftMargin, doc.y, { width: contentW });
+      doc.fillColor('#000000');
+      continue;
+    }
+
     // Построчный diff
     if (c.addedLines || c.removedLines) {
       const rCount = c.removedLines ? c.removedLines.length : 0;

@@ -296,6 +296,13 @@ export default function PageHistoryModal({ pageId, onClose }) {
                                 <span className="hc-context-value">«{String(c.to).slice(0, 100)}»</span>
                               </div>
                             )}
+                            {/* Неизменённое поле — показываем значение серым для полноты картины */}
+                            {c.unchanged !== undefined && (
+                              <div className="hc-field-change hc-context">
+                                <span className="hc-label">{c.label}:</span>
+                                <span className="hc-context-value">«{String(c.unchanged).slice(0, 100)}»</span>
+                              </div>
+                            )}
                             {/* Создание объекта (только to) */}
                             {c.from === undefined && c.to !== undefined && c.field !== 'content' && c.field !== 'serviceContext' && (
                               <div className="hc-field-change">
@@ -311,7 +318,7 @@ export default function PageHistoryModal({ pageId, onClose }) {
                               </div>
                             )}
                             {/* Просто метка (папка, css, js) */}
-                            {c.from === undefined && c.to === undefined && c.field !== 'content' && !c.addedLines && !c.removedLines && (
+                            {c.from === undefined && c.to === undefined && c.unchanged === undefined && c.field !== 'content' && !c.addedLines && !c.removedLines && (
                               <div className="hc-label-only">{c.label}</div>
                             )}
                             {/* Diff строк — для содержимого страницы и описания врача */}

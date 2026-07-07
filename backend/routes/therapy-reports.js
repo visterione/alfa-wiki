@@ -27,9 +27,6 @@ function patientLabel(data) {
   return name || 'без имени';
 }
 
-// Поля, по которым в журнале узнаём запись при редактировании (контекст «какая запись»)
-const IDENTITY_FIELDS = ['patientName', 'admissionDate', 'stayPeriod'];
-
 // Все заполненные поля записи → элементы журнала.
 // side = 'to' (создание, зелёным) или 'from' (удаление, красным).
 function fullEntryChanges(data, side) {
@@ -42,26 +39,19 @@ function fullEntryChanges(data, side) {
   return changes;
 }
 
-// Идентификация записи (ФИО, дата/период) — показывается перед изменениями, чтобы было
-// понятно, какую именно запись правили. Пропускаем поля, которые и так есть среди изменений.
-function identityContext(data, skipFields) {
-  const skip = new Set(skipFields || []);
-  const ctx = [];
-  IDENTITY_FIELDS.forEach(field => {
-    if (skip.has(field)) return;
-    const val = cleanText((data || {})[field]);
-    if (val) ctx.push({ field, label: FIELD_LABELS[field], to: val });
-  });
-  return ctx;
-}
-
-// Разница между старой и новой версией записи → [{ field, label, from, to }] для модалки журнала
-function diffEntryData(oldData, newData) {
+// Полный список полей записи для журнала редактирования (в порядке формы):
+// изменённые — { from, to } (старое красным → новое зелёным),
+// неизменённые непустые — { unchanged } (серым, для полноты картины).
+function editChanges(oldData, newData) {
   const changes = [];
   Object.keys(FIELD_LABELS).forEach(field => {
     const from = cleanText((oldData || {})[field]);
     const to = cleanText((newData || {})[field]);
-    if (from !== to) changes.push({ field, label: FIELD_LABELS[field], from, to });
+    if (from !== to) {
+      changes.push({ field, label: FIELD_LABELS[field], from, to });
+    } else if (to) {
+      changes.push({ field, label: FIELD_LABELS[field], unchanged: to });
+    }
   });
   return changes;
 }
@@ -446,14 +436,13 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const data = req.body.data || {};
     const oldData = row.data || {};
-    const fieldChanges = diffEntryData(oldData, data);
 
     await row.update({ entryDate: computeEntryDate(data), searchText: buildSearchText(data), data });
     await logTherapyHistory(req, {
       event: 'update',
       summary: `Изменена запись: ${patientLabel(data)}`,
-      // Сначала — какая это запись (ФИО/дата), затем сами изменения полей
-      changes: identityContext(data, fieldChanges.map(c => c.field)).concat(fieldChanges)
+      // Полный список полей: неизменённые — серым, изменённые — старое→новое
+      changes: editChanges(oldData, data)
     });
     res.json(row);
   } catch (err) {
