@@ -1723,17 +1723,21 @@ function DoctorsList({
             <button
               type="button"
               onClick={() => setFilterNewOnly(v => !v)}
-              title={filterNewOnly ? 'Показать всех сотрудников' : `Новые сотрудники: ${newCount} — показать только их`}
-              style={{
-                marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '2px 8px', borderRadius: 999, cursor: 'pointer', lineHeight: 1.4,
-                fontSize: 11, fontWeight: 700,
-                border: '1px solid ' + (filterNewOnly ? '#d97706' : '#fcd34d'),
-                background: filterNewOnly ? '#d97706' : '#fef3c7',
-                color: filterNewOnly ? '#fff' : '#92400e',
-              }}
+              title={filterNewOnly ? 'Показать всех сотрудников' : `Новых сотрудников: ${newCount} — показать только их`}
+              className={'rb-new-badge' + (filterNewOnly ? ' active' : '')}
             >
-              {filterNewOnly ? '✕ ' : ''}{newCount} нов.
+              {filterNewOnly ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" width="12" height="12">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" width="13" height="13">
+                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                  <circle cx="9" cy="7" r="4"/>
+                  <line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/>
+                </svg>
+              )}
+              <span>{newCount}</span>
             </button>
           )}
         </div>
