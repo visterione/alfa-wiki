@@ -24,6 +24,7 @@ function execClinicDefault() {
     fixedSalary: 0,
     hourlyRate: 0,
     hoursWorked: 0,
+    proratedNorm: 0,
     executorPercent: 0,
     plusPercent: false,
     paymentMethod: 'card',
@@ -1423,6 +1424,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         fixedSalary: globalData.fixedSalary,
         hourlyRate: globalData.hourlyRate,
         hoursWorked: globalData.hoursWorked,
+        proratedNorm: globalData.proratedNorm,
         executorPercent: globalData.executorPercent,
         plusPercent: globalData.plusPercent,
         advance: globalData.advance,
@@ -1506,6 +1508,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           fixedSalary: globalData.fixedSalary,
           hourlyRate: globalData.hourlyRate,
           hoursWorked: globalData.hoursWorked,
+          proratedNorm: globalData.proratedNorm,
           executorPercent: globalData.executorPercent,
           plusPercent: globalData.plusPercent,
           advance: globalData.advance,
@@ -1603,6 +1606,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   const handleToggleHoursWorkedLock = () => {
     updateClinicData({ lockedHoursWorked: !data.lockedHoursWorked });
+    setIsDirty(true);
+  };
+
+  const handleToggleProratedNormLock = () => {
+    updateClinicData({ lockedProratedNorm: !data.lockedProratedNorm });
     setIsDirty(true);
   };
 
@@ -1968,6 +1976,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const effectiveHoursWorked = data.hoursFromSchedule ? scheduleHoursValue : (data.hoursWorked || 0);
   const globalRateHours = data.hoursFromSchedule ? (scheduleHoursValue - coveredByRoleRates) : effectiveHoursWorked;
   const hourlyTotal = pt === 'hourly' ? (data.hourlyRate || 0) * globalRateHours : 0;
+  // Пропорциональный оклад: оклад × (отработано часов / норма часов)
+  const proratedRatio = (data.proratedNorm || 0) > 0 ? effectiveHoursWorked / (data.proratedNorm || 0) : 0;
+  const proratedTotal = pt === 'prorated' ? (data.fixedSalary || 0) * proratedRatio : 0;
 
   return (
     <div className="rb-doctor-card">
@@ -1982,7 +1993,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
       {/* Подтверждение смены типа оплаты */}
       {pendingPayType && (() => {
-        const PAY_TYPE_LABELS = { salary: 'Фиксированный оклад', hourly: 'Почасовой оклад', percent: '% от услуг', normed: 'Нормированный' };
+        const PAY_TYPE_LABELS = { salary: 'Фиксированный', hourly: 'Почасовой', percent: '% от услуг', normed: 'Нормированный', prorated: 'Пропорциональный' };
         return (
           <div className="rb-modal-overlay" onClick={() => setPendingPayType(null)}>
             <div className="rb-modal" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
@@ -2344,13 +2355,13 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>Тип оплаты</div>
             <div className="rb-paytype-toggle">
-              {['salary', 'hourly', 'percent', 'normed'].map((type, i) => (
+              {['salary', 'hourly', 'percent', 'normed', 'prorated'].map((type, i) => (
                 <button
                   key={type}
                   className={`rb-paytype-btn${pt === type ? ' active' : ''}`}
                   onClick={() => handlePayTypeChange(type)}
                 >
-                  {['Фиксированный оклад', 'Почасовой оклад', '% от услуг', 'Нормированный'][i]}
+                  {['Фиксированный', 'Почасовой', '% от услуг', 'Нормированный', 'Пропорциональный'][i]}
                 </button>
               ))}
             </div>
@@ -2370,7 +2381,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </div>
             )}
 
-            {pt === 'normed' && (
+            {(pt === 'normed' || pt === 'prorated') && (
               <div className="rb-exec-field" style={data.lockedFixedSalary ? { background: '#eff6ff', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ marginBottom: 0 }}>Оклад, ₽</label>
@@ -2656,6 +2667,79 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
         )}
 
+        {/* ── Proportional salary (prorated pay type only) ── */}
+        {pt === 'prorated' && (
+          <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
+            <div className="rb-exec-flat-label">
+              <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Оклад по норме часов
+              </span>
+            </div>
+            <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', padding: '0 12px 10px' }}>
+              <div className="rb-exec-field" style={data.lockedProratedNorm ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ marginBottom: 0 }}>Норма часов</label>
+                  {!readOnly && <LockBtn locked={!!data.lockedProratedNorm} onClick={handleToggleProratedNormLock} />}
+                </div>
+                <input
+                  type="number" min="0" step="any" placeholder="0"
+                  value={data.proratedNorm || ''}
+                  onChange={e => handlePaymentFieldChange('proratedNorm', parseFloat(e.target.value) || 0)}
+                  disabled={!!data.lockedProratedNorm}
+                />
+              </div>
+              <div className="rb-exec-field" style={data.lockedHoursWorked ? { background: '#eff6ff', borderRadius: 6 } : {}}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <label style={{ marginBottom: 0 }}>Отработано, ч</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    {!readOnly && (
+                      <label className="rb-toggle-item" style={{ marginBottom: 0, gap: 4 }} title="Считать часы по расписанию сотрудника">
+                        <span className="rb-toggle-switch">
+                          <input
+                            type="checkbox"
+                            checked={!!data.hoursFromSchedule}
+                            onChange={() => handlePaymentFieldChange('hoursFromSchedule', !data.hoursFromSchedule)}
+                          />
+                          <span className="rb-toggle-slider" />
+                        </span>
+                        <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>из расписания</span>
+                      </label>
+                    )}
+                    {!readOnly && <LockBtn locked={!!data.lockedHoursWorked} onClick={handleToggleHoursWorkedLock} />}
+                  </div>
+                </div>
+                {data.hoursFromSchedule ? (
+                  <div style={{ height: 38, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', border: '1px solid var(--rb-border)', borderRadius: 8, background: 'var(--rb-bg-alt, #f8fafc)' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: schedLoading ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>
+                      {schedLoading ? '...' : `${Number.isInteger(effectiveHoursWorked) ? effectiveHoursWorked : effectiveHoursWorked.toFixed(1)} ч`}
+                    </span>
+                    <MonthYearPicker
+                      compact
+                      year={schedPeriod.year}
+                      month={schedPeriod.month}
+                      onChange={(y, m) => setSchedPeriod({ year: y, month: m })}
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="number" min="0" step="0.5" placeholder="0"
+                    value={data.hoursWorked || ''}
+                    onChange={e => handlePaymentFieldChange('hoursWorked', parseFloat(e.target.value) || 0)}
+                    disabled={!!data.lockedHoursWorked}
+                  />
+                )}
+              </div>
+              <div className="rb-exec-field">
+                <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
+                  <label style={{ marginBottom: 0 }}>Итого</label>
+                </div>
+                <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {proratedTotal.toFixed(2)} ₽</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Norm services (normed pay type only) ── */}
         {pt === 'normed' && (
           <div className="rb-exec-flat-section">
@@ -2722,8 +2806,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
         </div>
 
-        {/* ── Materials (not shown for normed) ── */}
-        {pt !== 'normed' && (
+        {/* ── Materials (not shown for normed / prorated) ── */}
+        {pt !== 'normed' && pt !== 'prorated' && (
           <div className="rb-exec-flat-section">
             <div className="rb-exec-flat-label">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/></svg>
@@ -2758,8 +2842,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           </div>
         )}
 
-        {/* ── Assistance (not shown for normed) ── */}
-        {pt !== 'normed' && (
+        {/* ── Assistance (not shown for normed / prorated) ── */}
+        {pt !== 'normed' && pt !== 'prorated' && (
           <div className="rb-exec-flat-section">
             <div className="rb-exec-flat-label">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -2825,8 +2909,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           />
         </div>
 
-        {/* ── Cabinets (global only, not for normed) ── */}
-        {activeClinic === 'global' && pt !== 'normed' && (
+        {/* ── Cabinets (global only, not for normed / prorated) ── */}
+        {activeClinic === 'global' && pt !== 'normed' && pt !== 'prorated' && (
           <div className="rb-exec-flat-section">
             <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>

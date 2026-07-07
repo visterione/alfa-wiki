@@ -15,6 +15,7 @@ export function execClinicDefault() {
     fixedSalary: 0,
     hourlyRate: 0,
     hoursWorked: 0,
+    proratedNorm: 0,
     executorPercent: 0,
     plusPercent: false,
     paymentMethod: 'card',
@@ -196,7 +197,7 @@ export async function buildReport({
     ? Object.values(execSettings.clinicSettings || {}).map(cs => cs.payType).filter(Boolean)
     : [];
   const _hasPercentClinic = _clinicPayTypes.some(pt => pt === 'percent');
-  const _hasNonExcelClinic = _clinicPayTypes.some(pt => pt === 'normed' || pt === 'hourly' || pt === 'salary');
+  const _hasNonExcelClinic = _clinicPayTypes.some(pt => pt === 'normed' || pt === 'hourly' || pt === 'salary' || pt === 'prorated');
   if (_hasNonExcelClinic && !_hasPercentClinic) normedOnly = true;
   const _hasConfiguredClinics = doctorClinicIds.size > 0 || Object.keys(execSettings?.clinicSettings || {}).some(k => k !== 'global');
 
@@ -326,7 +327,7 @@ export async function buildReport({
         if (cid === 'global') return false;
         if (disabledClinicIds.has(String(cid))) return false;
         const pt = cs[cid].payType || 'salary'; // default matches execClinicDefault
-        return pt === 'normed' || pt === 'hourly' || pt === 'salary';
+        return pt === 'normed' || pt === 'hourly' || pt === 'salary' || pt === 'prorated';
       });
       if (noExcelClinicIds.length > 0) {
         noExcelClinicIds.forEach(cid => {
@@ -1256,6 +1257,28 @@ export async function buildReport({
     } else if (pt === 'percent') {
       basePay = performedBonusTotal;
       basePayLabel = 'Выполненные услуги';
+    } else if (pt === 'prorated') {
+      // Пропорциональный оклад: оклад × (отработано часов / норма часов).
+      // Отработал норму → полный оклад; меньше/больше → пропорционально.
+      const oklad = parseFloat(clinicSettings.fixedSalary) || 0;
+      const normHours = parseFloat(clinicSettings.proratedNorm) || 0;
+      basePayLabel = 'Пропорциональный оклад';
+
+      if (clinicSettings.hoursFromSchedule && scheduleEntries && dateFrom && dateTo) {
+        const { total: schedTotal, days: schedDays } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+        effectiveHoursWorked = schedTotal;
+        effectiveDaysWorked  = schedDays || 0;
+      } else {
+        effectiveHoursWorked = parseFloat(clinicSettings.hoursWorked) || 0;
+        if (scheduleEntries?.length && dateFrom && dateTo) {
+          const { days: sDays } = calcScheduleHoursForPeriod(scheduleEntries, dateFrom, dateTo, _schedClinicId);
+          effectiveDaysWorked = sDays || 0;
+        }
+      }
+
+      const ratio = normHours > 0 ? effectiveHoursWorked / normHours : 0;
+      basePay = Math.round(oklad * ratio);
+      normTotalHours = effectiveHoursWorked;
     } else if (pt === 'normed') {
       const fixedSalary  = parseFloat(clinicSettings.fixedSalary) || 0;
       const normServices = clinicSettings.normServices || [];
@@ -1465,14 +1488,15 @@ export async function buildReport({
       basePay, basePayLabel, payType: pt,
       interim,
       hourlyRate: pt === 'hourly' ? (parseFloat(clinicSettings.hourlyRate) || 0) : 0,
-      hoursWorked: pt === 'hourly' ? effectiveHoursWorked : 0,
+      hoursWorked: (pt === 'hourly' || pt === 'prorated') ? effectiveHoursWorked : 0,
+      proratedNorm: pt === 'prorated' ? (parseFloat(clinicSettings.proratedNorm) || 0) : 0,
       daysWorked: effectiveDaysWorked,
       hourlyRatesBreakdown,
       holidaySurchargeTotal,
       holidaySurchargeBreakdown,
       harmfulnessDeduction,
       normServices: clinicSettings.normServices || [],
-      fixedSalary: pt === 'normed' ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
+      fixedSalary: (pt === 'normed' || pt === 'prorated') ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
       normTotalHours,
       normPremiumAmount,
       normPremiumByRole,

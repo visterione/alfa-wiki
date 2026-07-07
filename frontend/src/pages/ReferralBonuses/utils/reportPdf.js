@@ -68,6 +68,8 @@ function getTariffText(salary) {
     return `${fmt2(salary.basePay)} ₽`;
   if (pt === 'normed' && salary.fixedSalary)
     return `${fmt2(salary.fixedSalary)} ₽`;
+  if (pt === 'prorated' && salary.fixedSalary)
+    return `${fmt2(salary.fixedSalary)} ₽`;
   return '';
 }
 
@@ -79,8 +81,9 @@ function buildLeftRows(salary, periodCell) {
   const premiumByRole = salary.normPremiumByRole  || [];
 
   const rawHours =
-    pt === 'hourly' ? (parseFloat(salary.hoursWorked)    || 0) :
-    pt === 'normed' ? (parseFloat(salary.normTotalHours) || 0) : 0;
+    pt === 'hourly'   ? (parseFloat(salary.hoursWorked)    || 0) :
+    pt === 'prorated' ? (parseFloat(salary.hoursWorked)    || 0) :
+    pt === 'normed'   ? (parseFloat(salary.normTotalHours) || 0) : 0;
   const rawDays  = parseFloat(salary.daysWorked) || 0;
   const hoursStr = rawHours > 0 ? String(parseFloat(rawHours.toFixed(1))) : '';
   const daysStr  = rawDays  > 0 ? String(rawDays) : '';

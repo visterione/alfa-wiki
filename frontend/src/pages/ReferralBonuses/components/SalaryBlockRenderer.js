@@ -311,6 +311,7 @@ export default function SalaryBlock({ salary }) {
     normHoursForPeriod = null,
     hourlyRate = 0,
     hoursWorked = 0,
+    proratedNorm = 0,
     hourlyRatesBreakdown = [],
     holidaySurchargeTotal = 0,
     holidaySurchargeBreakdown = [],
@@ -360,7 +361,7 @@ export default function SalaryBlock({ salary }) {
   const hasReferral         = (referralBonuses || 0) > 0;
   const hasExtras           = (extrasTotal || 0) > 0;
   const hasDeductions       = !interim && (adjustedFinalDeductionsTotal > 0 || turnoverDeductionItems.length > 0 || (assistancePaidTotal || 0) > 0 || (anesthesiologistPaidTotal || 0) > 0 || (nursePaidTotal || 0) > 0);
-  const hasMaterials        = payType !== 'normed' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
+  const hasMaterials        = payType !== 'normed' && payType !== 'prorated' && (finalMaterialsTotal > 0 || svcMatFinalTotal > 0 || turnoverMaterialItems.length > 0 || finalMaterialItems.length > 0 || svcMatBreakdown.length > 0 || svcMatTurnoverBreakdown.length > 0 || serviceMaterials.length > 0);
   const hasReferralCost     = (referralCostTotal || 0) > 0;
   const hasRoleDoctor       = (performedBonusTotal || 0) > 0;
   const hasRoleAssistant    = (assistanceIncomeTotal || 0) > 0;
@@ -380,7 +381,7 @@ export default function SalaryBlock({ salary }) {
       </div>
 
       {hasWage && (
-        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly'}>
+        <SalaryRow label={basePayLabel || 'Оклад'} value={fmtRub((basePay || 0) + (holidaySurchargeTotal || 0))} expandable={basePerformedSections.length > 0 || (payType === 'normed' && normServicesList.length > 0) || payType === 'hourly' || (payType === 'prorated' && (normFixedSalary > 0 || hoursWorked > 0))}>
           {payType === 'hourly' && (hourlyRatesBreakdown.length > 0 || _hourlyRate > 0) && (
             <table className="rb-report-table rb-report-table--bordered">
               <thead><tr><th>Деятельность</th><th style={{ textAlign: 'center' }}>Ставка, ₽/ч</th><th style={{ textAlign: 'center' }}>Часов</th><th style={{ textAlign: 'right' }}>Итого, руб</th></tr></thead>
@@ -434,6 +435,19 @@ export default function SalaryBlock({ salary }) {
                     <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'right' }}>+{row.amount.toFixed(2)} ₽</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          )}
+          {payType === 'prorated' && (
+            <table className="rb-report-table rb-report-table--bordered">
+              <thead><tr><th style={{ textAlign: 'center' }}>Оклад, ₽</th><th style={{ textAlign: 'center' }}>Норма, ч</th><th style={{ textAlign: 'center' }}>Отработано, ч</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td style={{ textAlign: 'center' }}>{normFixedSalary.toLocaleString('ru-RU')} ₽</td>
+                  <td style={{ textAlign: 'center' }}>{proratedNorm ? (Number.isInteger(proratedNorm) ? proratedNorm : proratedNorm.toFixed(1)) : '—'}</td>
+                  <td style={{ textAlign: 'center' }}>{Number.isInteger(hoursWorked) ? hoursWorked : hoursWorked.toFixed(1)}</td>
+                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(basePay || 0).toLocaleString('ru-RU')} ₽</td>
+                </tr>
               </tbody>
             </table>
           )}

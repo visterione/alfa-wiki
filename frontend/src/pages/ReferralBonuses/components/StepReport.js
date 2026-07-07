@@ -480,7 +480,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
     const performedDbBonuses = Array.isArray(pbRes.data)  ? pbRes.data  : [];
     const savedAssistanceIncome = Array.isArray(savedAsstRes.data) ? savedAsstRes.data : [];
     const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
-      cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+      cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
     );
     const result = await buildReport({
       rows, colMap, doctor: selectedDoctor,
@@ -521,7 +521,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
       const holidayDates = new Set((holidaysRes.data || []).map(h => h.date));
 
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
-        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
       );
       if (!isNormed && !uploadedFile) { toast.error('Загрузите файл Excel'); setGenerating(false); return; }
 
@@ -856,7 +856,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
       const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
       const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
       const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
-        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+        cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
       );
       const result = await buildReport({
         rows, colMap, doctor,
@@ -902,7 +902,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
         const performedDbBonuses = Array.isArray(pbRes.data)   ? pbRes.data   : [];
         const scheduleEntries    = Array.isArray(schedRes.data) ? schedRes.data : [];
         const isNormed = Object.values(execSettings?.clinicSettings || {}).some(
-          cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary'
+          cs => cs.payType === 'normed' || cs.payType === 'hourly' || cs.payType === 'salary' || cs.payType === 'prorated'
         );
         const result = await buildReport({
           rows, colMap, doctor,

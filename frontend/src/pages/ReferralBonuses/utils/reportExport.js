@@ -123,7 +123,7 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
 
     // Оклад / выработка
     if ((sal.basePay || 0) > 0 || sal.basePayLabel) {
-      const _hasWageChildren = (sal.basePerformedSections || []).length > 0 || (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) || (sal.payType === 'normed' && (sal.normServices || []).length > 0);
+      const _hasWageChildren = (sal.basePerformedSections || []).length > 0 || (sal.payType === 'hourly' && (sal.hourlyRate || 0) > 0) || (sal.payType === 'normed' && (sal.normServices || []).length > 0) || sal.payType === 'prorated';
       addSalRow(sal.basePayLabel || 'Оклад', sal.basePay, '≡', _hasWageChildren);
       if ((sal.basePerformedSections || []).length) {
         addTblHdr(['Код услуги', 'Название услуги', 'Стоимость, руб', 'К-во', 'Бонус', 'Итого, руб'], 1);
@@ -158,6 +158,14 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
         if ((sal.normPremiumAmount || 0) > 0 && sal.normHoursForPeriod != null) {
           addTblRow(['Премия', '', '', '', '', parseFloat((sal.normPremiumAmount || 0).toFixed(2))], 1);
         }
+      }
+      // Пропорциональный оклад: оклад × (отработано / норма)
+      if (sal.payType === 'prorated') {
+        const _norm  = parseFloat(sal.proratedNorm) || 0;
+        const _hrs   = parseFloat(sal.hoursWorked)  || 0;
+        const _ratio = _norm > 0 ? _hrs / _norm : 0;
+        addTblHdr(['Оклад, ₽', 'Норма, ч', '', 'Отработано, ч', 'Коэфф.', 'Итого, руб'], 1);
+        addTblRow([parseFloat((sal.fixedSalary || 0).toFixed(2)), _norm || '—', '', _hrs, parseFloat(_ratio.toFixed(3)), parseFloat((sal.basePay || 0).toFixed(2))], 1);
       }
     }
 
@@ -624,8 +632,9 @@ export function buildBulkWorkbook(bulkResults) {
       const sal = cr.salary || {};
       const extraTot    = (sal.extraPayments || []).reduce((s, ep) => s + (parseFloat(ep.amount) || 0), 0);
       const pt          = sal.payType || '';
-      const hoursWorked = pt === 'hourly' ? (parseFloat(sal.hoursWorked) || 0) :
-                          pt === 'normed' ? (parseFloat(sal.normTotalHours) || 0) : 0;
+      const hoursWorked = pt === 'hourly'   ? (parseFloat(sal.hoursWorked)    || 0) :
+                          pt === 'prorated' ? (parseFloat(sal.hoursWorked)    || 0) :
+                          pt === 'normed'   ? (parseFloat(sal.normTotalHours) || 0) : 0;
       const nachleno    = parseFloat((sal.finalSalary || 0).toFixed(2));
       const mainSalary  = parseFloat(((sal.mainPayment || 0) + extraTot).toFixed(2));
       const advance     = parseFloat((sal.advance || 0).toFixed(2));

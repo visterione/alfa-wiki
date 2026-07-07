@@ -5,6 +5,7 @@ import { doctorSchedules as schedulesApi, tabelRecords as tabelApi, structuralDi
 import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
 import MonthYearPicker from './MonthYearPicker';
+import { rbCanonicalClinicId } from '../utils/clinicUtils';
 
 const ORGS = [
   'Общество с ограниченной ответственностью «Альфа Престиж»',
@@ -13,6 +14,17 @@ const ORGS = [
   'Общество с ограниченной ответственностью "Алекс"',
   'ИП Микаелян',
 ];
+
+// Организация → канонические id медцентров, которые к ней относятся.
+// Организация задаёт границу табеля: в него попадают только смены из этих МЦ,
+// даже если сотрудник-совместитель работает и в других организациях.
+const ORG_CLINIC_IDS = {
+  'Общество с ограниченной ответственностью «Альфа Престиж»': ['2', '3', '6'], // Альфа, Кидс, Линия
+  'Общество с ограниченной ответственностью «Альфа Проф»':    ['1'],           // Проф
+  'Общество с ограниченной ответственностью «ЛАБ ГРУПП»':     ['4', '7'],      // 3К, Смайл
+  'Общество с ограниченной ответственностью "Алекс"':         ['11'],          // Сукко
+  'ИП Микаелян':                                              ['ip'],          // ИП Микаелян
+};
 // ── Employee multi-select dropdown ────────────────────────────────────────────
 function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName }) {
   const [open,          setOpen]         = useState(false);
@@ -139,6 +151,83 @@ function EmpSelect({ doctors, selectedIds, onChange, clinics = [], getClinicName
   );
 }
 
+// ── Clinic multi-select dropdown ──────────────────────────────────────────────
+function ClinicMultiSelect({ clinics, selectedIds, onChange, getClinicName }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const toggle = id => {
+    const next = new Set(selectedIds);
+    next.has(id) ? next.delete(id) : next.add(id);
+    onChange(next);
+  };
+
+  const nameOf = id => (getClinicName ? getClinicName(String(id)) : String(id));
+  const label = selectedIds.size === 0
+    ? 'Все медцентры'
+    : selectedIds.size === 1 ? nameOf([...selectedIds][0]) : `Выбрано: ${selectedIds.size}`;
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button type="button" onClick={() => setOpen(v => !v)} style={{
+        display: 'flex', alignItems: 'center', gap: 6, height: 34, width: '100%',
+        padding: '0 10px 0 12px', borderRadius: 8, border: '1px solid var(--rb-border-dark)',
+        background: '#fff', cursor: 'pointer', fontSize: 13,
+        color: selectedIds.size === 0 ? 'var(--rb-text-secondary)' : 'var(--rb-text)',
+        whiteSpace: 'nowrap',
+      }}>
+        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s', flexShrink: 0 }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, zIndex: 200,
+          background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 10,
+          boxShadow: '0 8px 28px rgba(0,0,0,.13)', minWidth: 220, maxWidth: 320,
+          marginTop: 4, overflow: 'hidden',
+        }}>
+          <div style={{ display: 'flex', gap: 6, padding: '5px 10px', borderBottom: '1px solid var(--rb-border)' }}>
+            {[['Выбрать все', () => onChange(new Set(clinics.map(c => String(c.id))))],
+              ['Сбросить',    () => onChange(new Set())]].map(([lbl, fn]) => (
+              <button key={lbl} type="button" onClick={fn} style={{
+                fontSize: 11, padding: '2px 8px', border: '1px solid var(--rb-border)',
+                borderRadius: 5, background: 'none', cursor: 'pointer', color: 'var(--rb-text-secondary)',
+              }}>{lbl}</button>
+            ))}
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+            {clinics.map(c => {
+              const cid = String(c.id);
+              return (
+                <label key={cid} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 14px', cursor: 'pointer', fontSize: 13,
+                  background: selectedIds.has(cid) ? '#EFF6FF' : 'transparent',
+                }}>
+                  <input type="checkbox" checked={selectedIds.has(cid)} onChange={() => toggle(cid)}
+                    style={{ accentColor: 'var(--rb-primary)', width: 14, height: 14, flexShrink: 0 }} />
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameOf(cid)}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Schedule preset helpers ───────────────────────────────────────────────────
 function parseDate(str) { const [y, m, d] = str.split('-').map(Number); return new Date(y, m - 1, d); }
 
@@ -207,13 +296,16 @@ function fillAbsencesIntoPayData(absenceList) {
   return pay;
 }
 
-function computePreset(doctors, schedulesMap, year, month, holidaySet) {
+function computePreset(doctors, schedulesMap, year, month, holidaySet, filterClinicIds = null) {
   const lastDay  = new Date(year, month, 0).getDate();
   const entries  = {};
   const payData  = {};
+  const cidSet = (filterClinicIds && filterClinicIds.length)
+    ? new Set(filterClinicIds.map(rbCanonicalClinicId)) : null;
 
   for (const doc of doctors) {
-    const docEntries = schedulesMap[doc.id] || [];
+    const docEntries = (schedulesMap[doc.id] || [])
+      .filter(e => !cidSet || cidSet.has(rbCanonicalClinicId(e.clinicId)));
     entries[doc.id]  = {};
 
     // Track absence codes → { days, hours } (preserving insertion order)
@@ -325,14 +417,17 @@ function splitByNorm(dayEntries, normHours, lastDay) {
 }
 
 // ── Detailed preset: one virtual row per doctor×category ─────────────────────
-function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap = {}, categoryNormsMap = {}) {
+function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap = {}, categoryNormsMap = {}, filterClinicIds = null) {
   const lastDay = new Date(year, month, 0).getDate();
   const virtualDoctors = [];
   const entries  = {};
   const payData  = {};
+  const cidSet = (filterClinicIds && filterClinicIds.length)
+    ? new Set(filterClinicIds.map(rbCanonicalClinicId)) : null;
 
   for (const doc of doctors) {
-    const docEntries = schedulesMap[doc.id] || [];
+    const docEntries = (schedulesMap[doc.id] || [])
+      .filter(e => !cidSet || cidSet.has(rbCanonicalClinicId(e.clinicId)));
 
     // Group schedule entries by categoryId, then by roleTitle as fallback
     const groups = {};
@@ -445,11 +540,13 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
 
   const [divisions,       setDivisions]       = useState([]);
   const [subdivision,     setSubdivision]     = useState('');
+  const [filterClinicIds, setFilterClinicIds] = useState(() => new Set());
   const [selectedIds,     setSelectedIds]     = useState(new Set());
   const [year,            setYear]            = useState(now.getFullYear());
   const [month,           setMonth]           = useState(now.getMonth() + 1);
   const [orgName,         setOrgName]         = useState('');
-  const [docNumber,       setDocNumber]       = useState('1');
+  const [docNumber,       setDocNumber]       = useState('1');   // следующий № к присвоению (авто)
+  const [genDocNumber,    setGenDocNumber]    = useState('');    // № проставленный в текущем табеле
   const [tabelType,       setTabelType]       = useState('standard');
   const [showDoc,         setShowDoc]         = useState(false);
   const [presetEntries,   setPresetEntries]   = useState({});
@@ -464,6 +561,19 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
   useEffect(() => {
     divisionsApi.list()
       .then(res => setDivisions(Array.isArray(res.data) ? res.data : []))
+      .catch(() => {});
+  }, []);
+
+  // Засев автонумерации: следующий № = максимальный числовой в архиве + 1
+  useEffect(() => {
+    tabelApi.list()
+      .then(res => {
+        const maxNum = (Array.isArray(res.data) ? res.data : []).reduce((max, r) => {
+          const n = parseInt(r.docNumber, 10);
+          return Number.isFinite(n) && n > max ? n : max;
+        }, 0);
+        setDocNumber(String(maxNum + 1));
+      })
       .catch(() => {});
   }, []);
 
@@ -485,6 +595,26 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
     [doctors, selectedIds]
   );
 
+  // Медцентры выбранной организации (null = организация не выбрана/не сопоставлена → все МЦ)
+  const orgClinicIds = orgName ? (ORG_CLINIC_IDS[orgName] || null) : null;
+  const visibleClinics = useMemo(() => (
+    orgClinicIds
+      ? clinics.filter(c => orgClinicIds.includes(rbCanonicalClinicId(c.id)))
+      : clinics
+  ), [clinics, orgClinicIds]);
+
+  // Смена организации: чистим выбор МЦ, не относящихся к новой организации
+  const handleOrgChange = (name) => {
+    setOrgName(name);
+    setShowDoc(false);
+    const allowed = name ? (ORG_CLINIC_IDS[name] || null) : null;
+    if (allowed) {
+      setFilterClinicIds(prev => new Set(
+        [...prev].filter(id => allowed.includes(rbCanonicalClinicId(id)))
+      ));
+    }
+  };
+
   const userName = (() => {
     const full = user?.displayName || '';
     const parts = full.trim().split(/\s+/);
@@ -498,7 +628,8 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
   const handleGenerate = async () => {
     if (!subdivision.trim())    { toast.error('Укажите структурное подразделение'); return; }
     if (selectedIds.size === 0) { toast.error('Выберите сотрудников'); return; }
-    if (!orgName)               { toast.error('Выберите наименование организации'); return; }
+    // Организация необязательна: без неё в списке доступны все МЦ всех организаций —
+    // страховой сценарий для перекрёстного выбора медцентров из разных организаций.
 
     setGenerating(true);
     try {
@@ -534,6 +665,12 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
       const holidaySet   = new Set(holidayDates);
       setHolidays(holidayDates);
 
+      // Эффективный набор МЦ: явно выбранные, иначе — все медцентры организации.
+      // Организация = граница табеля, поэтому пустой выбор не «протаскивает» чужие МЦ.
+      const effectiveClinicIds = filterClinicIds.size > 0
+        ? [...filterClinicIds]
+        : (orgClinicIds || []);
+
       if (tabelType === 'detailed') {
         const [catRes, roleNormRes, catNormRes] = await Promise.all([
           dictsApi.listCategories().catch(() => ({ data: [] })),
@@ -547,12 +684,12 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         const categoryNormsMap = {};
         (catNormRes.data || []).forEach(n => { if (n.normHours != null && n.categoryId) categoryNormsMap[n.categoryId] = parseFloat(n.normHours); });
         const { virtualDoctors: vd, entries: preset, payData: presetPay } =
-          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap, categoryNormsMap);
+          computeDetailedPreset(selectedWithNum, schedulesMap, year, month, categoriesMap, holidaySet, roleNormsMap, categoryNormsMap, effectiveClinicIds);
         setVirtualDoctors(vd);
         setPresetEntries(preset);
         setPresetPayData(presetPay);
       } else {
-        const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month, holidaySet);
+        const { entries: preset, payData: presetPay } = computePreset(selectedWithNum, schedulesMap, year, month, holidaySet, effectiveClinicIds);
         if (tabelType === 'normalized') {
           // Нормированный: если в дне есть расписание (норма), но факт = 0 — фиксируем 0,
           // чтобы было видно сравнение (0 против нормы). Дни без расписания остаются пустыми.
@@ -569,6 +706,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         setPresetPayData(presetPay);
       }
 
+      setGenDocNumber(docNumber);   // стамп текущего № на сгенерированный табель
       setTableKey(k => k + 1);
       setShowDoc(true);
     } finally {
@@ -593,9 +731,11 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         payData:       payData[d.id]  || {},
       }));
       await tabelApi.create({
-        month, year, orgName, subdivision, docNumber, userName, tabelType,
+        month, year, orgName, subdivision, docNumber: genDocNumber, userName, tabelType,
         doctors: doctorsPayload,
       });
+      // Автоитерация: следующий табель получит номер +1
+      setDocNumber(String((parseInt(genDocNumber, 10) || 0) + 1));
       toast.success('Табель сохранён в архив');
     } catch {
       toast.error('Ошибка при сохранении');
@@ -609,7 +749,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
     const { entries, payData } = tabelRef.current.getSnapshot();
     const isDetailed = tabelType === 'detailed';
     const record = {
-      month, year, orgName, subdivision, docNumber, userName, tabelType,
+      month, year, orgName, subdivision, docNumber: genDocNumber, userName, tabelType,
       doctors: tabelDoctors.map(d => ({
         misUserId:     d.id,
         doctorName:    d.name,
@@ -663,7 +803,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
         )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 2, minWidth: 200 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Организация</label>
-          <select className="rb-select" value={orgName} onChange={e => setOrgName(e.target.value)}
+          <select className="rb-select" value={orgName} onChange={e => handleOrgChange(e.target.value)}
             disabled={readOnly} style={{ height: 34, padding: '0 10px', width: '100%' }}>
             <option value="">Выберите организацию</option>
             {ORGS.map(o => <option key={o} value={o}>{o}</option>)}
@@ -672,7 +812,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
 
         {divisions.length > 0 && !readOnly && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 140 }}>
-            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Структурное подразделение</label>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Подразделение</label>
             <select
               className="rb-select"
               style={{ height: 34, padding: '0 10px', width: '100%' }}
@@ -690,6 +830,18 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
           </div>
         )}
 
+        {visibleClinics.length > 0 && !readOnly && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 160 }}>
+            <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Медцентр</label>
+            <ClinicMultiSelect
+              clinics={visibleClinics}
+              selectedIds={filterClinicIds}
+              onChange={ids => { setFilterClinicIds(ids); setShowDoc(false); }}
+              getClinicName={getClinicName}
+            />
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>Период</label>
           <MonthYearPicker
@@ -697,17 +849,6 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
             onChange={(y, m) => { setYear(y); setMonth(m); }}
             disabled={readOnly}
           />
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--rb-text-secondary)' }}>№ документа</label>
-          <input type="text" value={docNumber} onChange={e => setDocNumber(e.target.value)}
-            disabled={readOnly}
-            style={{
-              height: 34, padding: '0 12px', borderRadius: 8, width: 70,
-              border: '1px solid var(--rb-border-dark)', fontSize: 13,
-              background: '#fff', color: 'var(--rb-text)', textAlign: 'center',
-            }} />
         </div>
 
         {!readOnly && (
@@ -809,7 +950,7 @@ export default function StepWorkTime({ doctors = [], readOnly, canEditFrozen = f
                 </thead>
                 <tbody>
                   <tr>
-                    <td>{docNumber}</td>
+                    <td>{genDocNumber}</td>
                     <td>{docDate}</td>
                     <td>{periodFrom}</td>
                     <td>{periodTo}</td>
