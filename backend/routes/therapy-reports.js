@@ -27,13 +27,41 @@ function patientLabel(data) {
   return name || 'без имени';
 }
 
-// Разница между старой и новой версией записи → [{ label, from, to }] для модалки журнала
+// Поля, по которым в журнале узнаём запись при редактировании (контекст «какая запись»)
+const IDENTITY_FIELDS = ['patientName', 'admissionDate', 'stayPeriod'];
+
+// Все заполненные поля записи → элементы журнала.
+// side = 'to' (создание, зелёным) или 'from' (удаление, красным).
+function fullEntryChanges(data, side) {
+  const changes = [];
+  Object.keys(FIELD_LABELS).forEach(field => {
+    const val = cleanText((data || {})[field]);
+    if (!val) return;
+    changes.push({ field, label: FIELD_LABELS[field], [side]: val });
+  });
+  return changes;
+}
+
+// Идентификация записи (ФИО, дата/период) — показывается перед изменениями, чтобы было
+// понятно, какую именно запись правили. Пропускаем поля, которые и так есть среди изменений.
+function identityContext(data, skipFields) {
+  const skip = new Set(skipFields || []);
+  const ctx = [];
+  IDENTITY_FIELDS.forEach(field => {
+    if (skip.has(field)) return;
+    const val = cleanText((data || {})[field]);
+    if (val) ctx.push({ field, label: FIELD_LABELS[field], to: val });
+  });
+  return ctx;
+}
+
+// Разница между старой и новой версией записи → [{ field, label, from, to }] для модалки журнала
 function diffEntryData(oldData, newData) {
   const changes = [];
   Object.keys(FIELD_LABELS).forEach(field => {
     const from = cleanText((oldData || {})[field]);
     const to = cleanText((newData || {})[field]);
-    if (from !== to) changes.push({ label: FIELD_LABELS[field], from, to });
+    if (from !== to) changes.push({ field, label: FIELD_LABELS[field], from, to });
   });
   return changes;
 }
@@ -333,7 +361,7 @@ router.get('/export-data', authenticate, async (req, res) => {
     });
     await logTherapyHistory(req, {
       event: 'export',
-      summary: `Экспорт в Excel (записей: ${rows.length})`
+      summary: `Экспорт в Excel: выгружено записей — ${rows.length}`
     });
     res.json(rows);
   } catch (err) {
@@ -370,7 +398,7 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
 
     await logTherapyHistory(req, {
       event: 'import',
-      summary: `Импорт из Excel: добавлено ${inserted}, пропущено ${parsed.length - inserted}`
+      summary: `Импорт из Excel: добавлено ${inserted}, пропущено ${parsed.length - inserted} (обработано строк: ${parsed.length})`
     });
 
     res.json({
@@ -400,7 +428,8 @@ router.post('/', authenticate, async (req, res) => {
     });
     await logTherapyHistory(req, {
       event: 'create',
-      summary: `Добавлена запись: ${patientLabel(data)}`
+      summary: `Добавлена запись: ${patientLabel(data)}`,
+      changes: fullEntryChanges(data, 'to')
     });
     res.status(201).json(row);
   } catch (err) {
@@ -417,13 +446,14 @@ router.put('/:id', authenticate, async (req, res) => {
 
     const data = req.body.data || {};
     const oldData = row.data || {};
-    const changes = diffEntryData(oldData, data);
+    const fieldChanges = diffEntryData(oldData, data);
 
     await row.update({ entryDate: computeEntryDate(data), searchText: buildSearchText(data), data });
     await logTherapyHistory(req, {
       event: 'update',
       summary: `Изменена запись: ${patientLabel(data)}`,
-      changes
+      // Сначала — какая это запись (ФИО/дата), затем сами изменения полей
+      changes: identityContext(data, fieldChanges.map(c => c.field)).concat(fieldChanges)
     });
     res.json(row);
   } catch (err) {
@@ -437,11 +467,13 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const row = await TherapyReportEntry.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
-    const removedLabel = patientLabel(row.data || {});
+    const removedData = row.data || {};
     await row.destroy();
     await logTherapyHistory(req, {
       event: 'delete',
-      summary: `Удалена запись: ${removedLabel}`
+      summary: `Удалена запись: ${patientLabel(removedData)}`,
+      // Полный состав удалённой записи — чтобы можно было восстановить при ошибочном удалении
+      changes: fullEntryChanges(removedData, 'from')
     });
     res.json({ success: true });
   } catch (err) {

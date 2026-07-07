@@ -220,10 +220,35 @@ window.thrApp = (function() {
     return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
   }
 
-  // ID wiki-страницы, в которую встроена таблица (выставляет React при просмотре страницы).
-  // Нужен, чтобы все изменения фиксировались в «Журнале изменений» этой страницы.
+  // ID wiki-страницы, в которую встроена таблица. Нужен, чтобы изменения фиксировались
+  // в «Журнале изменений» этой страницы. Определяем сами по slug из URL (не зависим от React).
+  var PAGES_URL = API_URL.replace(/\/therapy-reports\/?$/, '/pages');
+  var wikiPageIdCache = '';
+
   function wikiPageId() {
-    return (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+    return wikiPageIdCache || (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function currentSlug() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    if (!parts.length) return '';
+    try { return decodeURIComponent(parts[parts.length - 1]); }
+    catch (e) { return parts[parts.length - 1]; }
+  }
+
+  // Разрешаем pageId по slug через API страниц и кэшируем — вызывается один раз при инициализации.
+  function resolveWikiPageId() {
+    if (wikiPageId()) return Promise.resolve(wikiPageId());
+    var slug = currentSlug();
+    if (!slug) return Promise.resolve('');
+    return fetch(PAGES_URL + '/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) {
+      return r.ok ? r.json() : null;
+    }).then(function(page) {
+      wikiPageIdCache = (page && page.id) || '';
+      return wikiPageIdCache;
+    }).catch(function() { return ''; });
   }
 
   function withPageId(path) {
@@ -632,6 +657,7 @@ window.thrApp = (function() {
 
   function init() {
     collapseSidebar();
+    resolveWikiPageId();
     renderForm();
     reload();
     api('/whoami').then(function(info) {
