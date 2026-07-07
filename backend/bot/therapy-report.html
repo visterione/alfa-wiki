@@ -220,6 +220,18 @@ window.thrApp = (function() {
     return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
   }
 
+  // ID wiki-страницы, в которую встроена таблица (выставляет React при просмотре страницы).
+  // Нужен, чтобы все изменения фиксировались в «Журнале изменений» этой страницы.
+  function wikiPageId() {
+    return (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function withPageId(path) {
+    var id = wikiPageId();
+    if (!id) return path;
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'pageId=' + encodeURIComponent(id);
+  }
+
   function api(path, options) {
     options = options || {};
     var controller = window.AbortController ? new AbortController() : null;
@@ -446,7 +458,7 @@ window.thrApp = (function() {
   function save(event) {
     event.preventDefault();
     var data = collectForm();
-    var payload = { entryType: 'therapy', data: data };
+    var payload = { entryType: 'therapy', data: data, pageId: wikiPageId() };
     var request = editingId
       ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
       : api('', { method: 'POST', body: JSON.stringify(payload) });
@@ -469,7 +481,7 @@ window.thrApp = (function() {
 
   function remove(id) {
     if (!confirm('Удалить запись?')) return;
-    api('/' + id, { method: 'DELETE' }).then(function() {
+    api(withPageId('/' + id), { method: 'DELETE' }).then(function() {
       showToast('Удалено', 'success');
       reload();
     }).catch(function(e) { showToast('Ошибка удаления: ' + e.message, 'error'); });
@@ -508,7 +520,7 @@ window.thrApp = (function() {
   function exportExcel() {
     if (!window.ExcelJS) { showToast('Библиотека ExcelJS не загружена', 'error'); return; }
     showToast('Готовлю Excel...', 'success');
-    api('/export-data').then(function(exportRows) {
+    api(withPageId('/export-data')).then(function(exportRows) {
       buildExcel(exportRows || []);
     }).catch(function(e) {
       showToast('Ошибка экспорта: ' + e.message, 'error');
@@ -568,6 +580,7 @@ window.thrApp = (function() {
     }
     var formData = new FormData();
     formData.append('file', file);
+    formData.append('pageId', wikiPageId());
     setStatus('Импорт...', 'loading');
     uploadApi('/import', formData).then(function(result) {
       document.getElementById('thr-import-file').value = '';
@@ -586,7 +599,7 @@ window.thrApp = (function() {
     var answer = prompt('Для подтверждения введите УДАЛИТЬ');
     if (answer !== 'УДАЛИТЬ') { showToast('Очистка отменена', 'error'); return; }
     setStatus('Очистка...', 'loading');
-    api('', { method: 'DELETE' }).then(function(result) {
+    api(withPageId(''), { method: 'DELETE' }).then(function(result) {
       editingId = '';
       pagination.page = 1;
       records = [];

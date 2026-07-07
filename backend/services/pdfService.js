@@ -14,6 +14,23 @@ const ACTION_LABELS = {
   'finalized': 'Финализирован'
 };
 
+// События встроенных таблиц (терапия и т.п.): action='updated', тип — в metadata.event
+const THERAPY_EVENT_LABELS = {
+  create: 'Добавление записи',
+  update: 'Редактирование записи',
+  delete: 'Удаление записи',
+  import: 'Импорт данных',
+  export: 'Экспорт данных',
+  clear:  'Удаление всех данных'
+};
+
+function resolveHistoryActionLabel(entry, actionLabels) {
+  if (entry.metadata?.source === 'therapy' && THERAPY_EVENT_LABELS[entry.metadata.event]) {
+    return THERAPY_EVENT_LABELS[entry.metadata.event];
+  }
+  return actionLabels[entry.action] || entry.action;
+}
+
 /**
  * Генерация PDF отчета по отзыву
  */
@@ -178,7 +195,7 @@ async function generateReviewPdf(review, board, history) {
           });
 
           const userName = entry.user?.displayName || entry.user?.username || 'Система';
-          const actionLabel = ACTION_LABELS[entry.action] || entry.action;
+          const actionLabel = resolveHistoryActionLabel(entry, ACTION_LABELS);
 
           // Дата и пользователь
           doc.font('DejaVu-Bold').text(`${date}`, { continued: true });
@@ -477,7 +494,7 @@ async function generatePageHistoryPdf(page, history) {
           });
 
           const userName = entry.user?.displayName || entry.user?.username || 'Система';
-          const actionLabel = ACTION_LABELS[entry.action] || entry.action;
+          const actionLabel = resolveHistoryActionLabel(entry, ACTION_LABELS);
 
           // Иконка действия (символ)
           let actionIcon = '•';

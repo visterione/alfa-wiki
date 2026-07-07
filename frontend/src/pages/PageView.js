@@ -249,6 +249,8 @@ export default function PageView({ slugOverride } = {}) {
     document.getElementById('page-custom-css')?.remove();
     document.getElementById('page-custom-js')?.remove();
     document.querySelectorAll('script[data-page-script]').forEach(s => s.remove());
+    // Сбрасываем контекст страницы для встроенных HTML-таблиц (журнал изменений)
+    delete window.__WIKI_PAGE__;
   }, []);
 
   // Функция для подсветки текста на странице
@@ -437,6 +439,9 @@ export default function PageView({ slugOverride } = {}) {
     
     try {
       const { data } = await pages.get(slug);
+      // Даём встроенным HTML-таблицам (терапия и т.п.) знать, в какой странице они открыты,
+      // чтобы их изменения писались в «Журнал изменений» этой страницы.
+      window.__WIKI_PAGE__ = { id: data.id, slug: data.slug, title: data.title };
       setPage(data);
       
       try {

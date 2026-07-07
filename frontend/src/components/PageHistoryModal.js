@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Clock, User, FileText, Eye, EyeOff, Download } from 'lucide-react';
+import { X, Clock, User, FileText, Eye, EyeOff, Download, Plus, Pencil, Trash2, Upload } from 'lucide-react';
 import { pages, BASE_URL } from '../services/api';
 import toast from 'react-hot-toast';
 import './PageHistoryModal.css';
@@ -153,8 +153,24 @@ export default function PageHistoryModal({ pageId, onClose }) {
     }).format(date);
   };
 
-  const getActionIcon = (action) => {
-    switch (action) {
+  // События встроенных таблиц (терапия и т.п.) пишутся с action='updated',
+  // а конкретный тип события лежит в metadata.event — показываем его отдельно.
+  const THERAPY_EVENTS = {
+    create: { label: 'Добавление записи',    icon: <Plus size={16} />,   cls: 'action-created' },
+    update: { label: 'Редактирование записи', icon: <Pencil size={16} />, cls: 'action-updated' },
+    delete: { label: 'Удаление записи',       icon: <Trash2 size={16} />, cls: 'action-unpublished' },
+    import: { label: 'Импорт данных',         icon: <Upload size={16} />, cls: 'action-created' },
+    export: { label: 'Экспорт данных',        icon: <Download size={16} />, cls: 'action-published' },
+    clear:  { label: 'Удаление всех данных',  icon: <Trash2 size={16} />, cls: 'action-unpublished' }
+  };
+
+  const getTherapyEvent = (entry) =>
+    entry?.metadata?.source === 'therapy' ? THERAPY_EVENTS[entry.metadata.event] : null;
+
+  const getActionIcon = (entry) => {
+    const t = getTherapyEvent(entry);
+    if (t) return t.icon;
+    switch (entry.action) {
       case 'created':
         return <FileText size={16} />;
       case 'published':
@@ -166,8 +182,10 @@ export default function PageHistoryModal({ pageId, onClose }) {
     }
   };
 
-  const getActionLabel = (action) => {
-    switch (action) {
+  const getActionLabel = (entry) => {
+    const t = getTherapyEvent(entry);
+    if (t) return t.label;
+    switch (entry.action) {
       case 'created':
         return 'Создание';
       case 'updated':
@@ -177,12 +195,14 @@ export default function PageHistoryModal({ pageId, onClose }) {
       case 'unpublished':
         return 'Снятие публикации';
       default:
-        return action;
+        return entry.action;
     }
   };
 
-  const getActionClass = (action) => {
-    switch (action) {
+  const getActionClass = (entry) => {
+    const t = getTherapyEvent(entry);
+    if (t) return t.cls;
+    switch (entry.action) {
       case 'created':
         return 'action-created';
       case 'published':
@@ -222,8 +242,8 @@ export default function PageHistoryModal({ pageId, onClose }) {
             <div className="page-history-timeline">
               {history.map((entry) => (
                 <div key={entry.id} className="page-history-entry">
-                  <div className={`history-action-badge ${getActionClass(entry.action)}`}>
-                    {getActionIcon(entry.action)}
+                  <div className={`history-action-badge ${getActionClass(entry)}`}>
+                    {getActionIcon(entry)}
                   </div>
                   <div className="history-content">
                     <div className="history-header">
@@ -250,7 +270,7 @@ export default function PageHistoryModal({ pageId, onClose }) {
                         </span>
                       </div>
                       <span className="history-action-label">
-                        {getActionLabel(entry.action)}
+                        {getActionLabel(entry)}
                       </span>
                     </div>
                     {entry.changesSummary && !entry.metadata?.changes?.length && (

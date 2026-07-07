@@ -3,10 +3,73 @@ const multer = require('multer');
 const XLSX = require('xlsx-js-style');
 const { randomUUID } = require('crypto');
 const { Op, literal } = require('sequelize');
-const { TherapyReportEntry } = require('../models');
+const { TherapyReportEntry, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
+
+// Человекочитаемые названия полей записи — для описаний в журнале изменений страницы
+const FIELD_LABELS = {
+  admissionDate: 'Дата поступления пациента',
+  stayPeriod:    'Период пребывания пациента',
+  patientName:   'ФИО пациента',
+  phone:         'Телефон',
+  diagnosis:     'Диагноз',
+  remarks:       'Замечания, особенности',
+  referrals:     'Направления',
+  doctorName:    'ФИО врача',
+  examinations:  'Обследования',
+  registrarMark: 'Регистратура отметка о записи'
+};
+
+function patientLabel(data) {
+  const name = cleanText((data || {}).patientName);
+  return name || 'без имени';
+}
+
+// Разница между старой и новой версией записи → [{ label, from, to }] для модалки журнала
+function diffEntryData(oldData, newData) {
+  const changes = [];
+  Object.keys(FIELD_LABELS).forEach(field => {
+    const from = cleanText((oldData || {})[field]);
+    const to = cleanText((newData || {})[field]);
+    if (from !== to) changes.push({ label: FIELD_LABELS[field], from, to });
+  });
+  return changes;
+}
+
+// pageId wiki-страницы, в которую встроена таблица (передаётся клиентом в body/query/form)
+function resolvePageId(req) {
+  const raw = (req.body && req.body.pageId) || req.query.pageId || '';
+  return String(raw || '').trim();
+}
+
+// Пишем событие в журнал изменений wiki-страницы (page_history).
+// Никогда не роняем основную операцию: ошибки логирования только пишем в консоль.
+async function logTherapyHistory(req, { event, summary, changes }) {
+  try {
+    const pageId = resolvePageId(req);
+    const userId = req.user && req.user.id;
+    if (!pageId || !userId) return;
+
+    const page = await Page.findByPk(pageId, { attributes: ['id'] });
+    if (!page) return;
+
+    await PageHistory.create({
+      pageId,
+      userId,
+      action: 'updated',
+      changesSummary: summary,
+      metadata: {
+        source: 'therapy',
+        event,
+        ...(changes && changes.length ? { changes } : {})
+      }
+    });
+  } catch (err) {
+    console.error('[therapy] logTherapyHistory error:', err && err.message);
+  }
+}
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const COLUMNS = [
@@ -268,6 +331,10 @@ router.get('/export-data', authenticate, async (req, res) => {
       where,
       order: [['entryDate', 'ASC'], ['createdAt', 'ASC']]
     });
+    await logTherapyHistory(req, {
+      event: 'export',
+      summary: `Экспорт в Excel (записей: ${rows.length})`
+    });
     res.json(rows);
   } catch (err) {
     console.error('GET /api/therapy-reports/export-data error:', err);
@@ -301,6 +368,11 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
     const inserted = await insertImportRows(deduped.rows);
     console.log(`[therapy-import] Вставлено=${inserted}, пропущено как дубли=${deduped.rows.length - inserted}`);
 
+    await logTherapyHistory(req, {
+      event: 'import',
+      summary: `Импорт из Excel: добавлено ${inserted}, пропущено ${parsed.length - inserted}`
+    });
+
     res.json({
       success: true,
       total: inserted,
@@ -326,6 +398,10 @@ router.post('/', authenticate, async (req, res) => {
       data,
       createdBy: req.user?.id || null
     });
+    await logTherapyHistory(req, {
+      event: 'create',
+      summary: `Добавлена запись: ${patientLabel(data)}`
+    });
     res.status(201).json(row);
   } catch (err) {
     console.error('POST /api/therapy-reports error:', err);
@@ -340,8 +416,15 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
 
     const data = req.body.data || {};
+    const oldData = row.data || {};
+    const changes = diffEntryData(oldData, data);
 
     await row.update({ entryDate: computeEntryDate(data), searchText: buildSearchText(data), data });
+    await logTherapyHistory(req, {
+      event: 'update',
+      summary: `Изменена запись: ${patientLabel(data)}`,
+      changes
+    });
     res.json(row);
   } catch (err) {
     console.error('PUT /api/therapy-reports/:id error:', err);
@@ -354,7 +437,12 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const row = await TherapyReportEntry.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
+    const removedLabel = patientLabel(row.data || {});
     await row.destroy();
+    await logTherapyHistory(req, {
+      event: 'delete',
+      summary: `Удалена запись: ${removedLabel}`
+    });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/therapy-reports/:id error:', err);
@@ -367,6 +455,10 @@ router.delete('/', authenticate, async (req, res) => {
   try {
     if (!req.user?.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
     const deleted = await TherapyReportEntry.destroy({ where: {}, truncate: false });
+    await logTherapyHistory(req, {
+      event: 'clear',
+      summary: `Удалены все данные (записей: ${deleted})`
+    });
     res.json({ success: true, deleted });
   } catch (err) {
     console.error('DELETE /api/therapy-reports error:', err);
