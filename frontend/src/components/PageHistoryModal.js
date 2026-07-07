@@ -153,9 +153,10 @@ export default function PageHistoryModal({ pageId, onClose }) {
     }).format(date);
   };
 
-  // События встроенных таблиц (терапия и т.п.) пишутся с action='updated',
-  // а конкретный тип события лежит в metadata.event — показываем его отдельно.
-  const THERAPY_EVENTS = {
+  // События встроенных таблиц-отчётов (терапия, гинекология, скорая) пишутся с
+  // action='updated', а конкретный тип события лежит в metadata.event — показываем его отдельно.
+  const REPORT_SOURCES = ['therapy', 'gynecology', 'ambulance'];
+  const REPORT_EVENTS = {
     create: { label: 'Добавление записи',    icon: <Plus size={16} />,   cls: 'action-created' },
     update: { label: 'Редактирование записи', icon: <Pencil size={16} />, cls: 'action-updated' },
     delete: { label: 'Удаление записи',       icon: <Trash2 size={16} />, cls: 'action-unpublished' },
@@ -164,11 +165,11 @@ export default function PageHistoryModal({ pageId, onClose }) {
     clear:  { label: 'Удаление всех данных',  icon: <Trash2 size={16} />, cls: 'action-unpublished' }
   };
 
-  const getTherapyEvent = (entry) =>
-    entry?.metadata?.source === 'therapy' ? THERAPY_EVENTS[entry.metadata.event] : null;
+  const getReportEvent = (entry) =>
+    REPORT_SOURCES.includes(entry?.metadata?.source) ? REPORT_EVENTS[entry.metadata.event] : null;
 
   const getActionIcon = (entry) => {
-    const t = getTherapyEvent(entry);
+    const t = getReportEvent(entry);
     if (t) return t.icon;
     switch (entry.action) {
       case 'created':
@@ -183,7 +184,7 @@ export default function PageHistoryModal({ pageId, onClose }) {
   };
 
   const getActionLabel = (entry) => {
-    const t = getTherapyEvent(entry);
+    const t = getReportEvent(entry);
     if (t) return t.label;
     switch (entry.action) {
       case 'created':
@@ -200,7 +201,7 @@ export default function PageHistoryModal({ pageId, onClose }) {
   };
 
   const getActionClass = (entry) => {
-    const t = getTherapyEvent(entry);
+    const t = getReportEvent(entry);
     if (t) return t.cls;
     switch (entry.action) {
       case 'created':

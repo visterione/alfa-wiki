@@ -288,6 +288,43 @@ window.ambApp = (function() {
     return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
   }
 
+  // ID wiki-страницы, в которую встроена таблица. Нужен, чтобы изменения фиксировались
+  // в «Журнале изменений» этой страницы. Определяем сами по slug из URL (не зависим от React).
+  var PAGES_URL = API_URL.replace(/\/ambulance-reports\/?$/, '/pages');
+  var wikiPageIdCache = '';
+
+  function wikiPageId() {
+    return wikiPageIdCache || (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function currentSlug() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    if (!parts.length) return '';
+    try { return decodeURIComponent(parts[parts.length - 1]); }
+    catch (e) { return parts[parts.length - 1]; }
+  }
+
+  // Разрешаем pageId по slug через API страниц и кэшируем — вызывается один раз при инициализации.
+  function resolveWikiPageId() {
+    if (wikiPageId()) return Promise.resolve(wikiPageId());
+    var slug = currentSlug();
+    if (!slug) return Promise.resolve('');
+    return fetch(PAGES_URL + '/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) {
+      return r.ok ? r.json() : null;
+    }).then(function(page) {
+      wikiPageIdCache = (page && page.id) || '';
+      return wikiPageIdCache;
+    }).catch(function() { return ''; });
+  }
+
+  function withPageId(path) {
+    var id = wikiPageId();
+    if (!id) return path;
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'pageId=' + encodeURIComponent(id);
+  }
+
   function api(path, options) {
     options = options || {};
     var controller = window.AbortController ? new AbortController() : null;
@@ -670,6 +707,7 @@ window.ambApp = (function() {
   function save(event) {
     event.preventDefault();
     var payload = collectForm();
+    payload.pageId = wikiPageId();
     var isNewCall = !editingId && activeTab === 'calls';
     var request = editingId
       ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
@@ -715,7 +753,7 @@ window.ambApp = (function() {
 
   function remove(id) {
     if (!confirm('Удалить запись?')) return;
-    api('/' + id, { method: 'DELETE' }).then(function() {
+    api(withPageId('/' + id), { method: 'DELETE' }).then(function() {
       showToast('Удалено', 'success');
       reload();
     }).catch(function(e) { showToast('Ошибка удаления из БД: ' + e.message, 'error'); });
@@ -734,7 +772,7 @@ window.ambApp = (function() {
       return;
     }
     showToast('Готовлю Excel...', 'success');
-    api('/export-data').then(function(exportRows) {
+    api(withPageId('/export-data')).then(function(exportRows) {
       buildExcel(normalizeRows(exportRows || []));
     }).catch(function(e) {
       showToast('Ошибка экспорта: ' + e.message, 'error');
@@ -753,6 +791,7 @@ window.ambApp = (function() {
     }
     var formData = new FormData();
     formData.append('file', file);
+    formData.append('pageId', wikiPageId());
     setStatus('Импорт...', 'loading');
     uploadApi('/import', formData).then(function(result) {
       document.getElementById('amb-import-file').value = '';
@@ -777,7 +816,7 @@ window.ambApp = (function() {
       return;
     }
     setStatus('Очистка...', 'loading');
-    api('', { method: 'DELETE' }).then(function(result) {
+    api(withPageId(''), { method: 'DELETE' }).then(function(result) {
       editingId = '';
       pagination.page = 1;
       records = [];
@@ -890,6 +929,7 @@ window.ambApp = (function() {
   }
 
   function init() {
+    resolveWikiPageId();
     renderTabs();
     renderForm();
     reload();

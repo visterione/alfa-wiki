@@ -1297,6 +1297,44 @@ const ExecutorSettings = sequelize.define('ExecutorSettings', {
   timestamps: true
 });
 
+// === RB EMPLOYEE REGISTRY MODEL ===
+// Локальное зеркало сотрудников из МИС. Живой список врачей эфемерен (тянется из МИС на каждый
+// заход), а наши данные (настройки, история зарплат) привязаны к misUserId и должны переживать
+// увольнение. Реестр хранит последний снимок метаданных + жизненный цикл, чтобы:
+//   1) подсвечивать новых сотрудников (появились после baseline и ещё не заполнены);
+//   2) не терять уволенных из статистики (Сводка/Отчёт получают их снимок, а не пустоту).
+const RbEmployee = sequelize.define('RbEmployee', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  misUserId: {
+    type: DataTypes.STRING(50),
+    allowNull: false,
+    unique: true,
+    comment: 'ID сотрудника в МИС'
+  },
+  name:        { type: DataTypes.STRING(255), allowNull: true, comment: 'Последний известный ФИО' },
+  professions: { type: DataTypes.JSONB, defaultValue: [], comment: 'Снимок профессий из МИС' },
+  roles:       { type: DataTypes.JSONB, defaultValue: [], comment: 'Снимок ролей из МИС' },
+  clinics:     { type: DataTypes.JSONB, defaultValue: [], comment: 'Снимок клиник (сырые id из МИС)' },
+  status: {
+    type: DataTypes.STRING(10),
+    defaultValue: 'active',
+    allowNull: false,
+    comment: 'active | archived'
+  },
+  seededBaseline: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: 'true = существовал на момент первичного засева реестра (не считается новым)'
+  },
+  firstSeenAt: { type: DataTypes.DATE, allowNull: true, comment: 'Когда впервые увидели в МИС' },
+  lastSeenAt:  { type: DataTypes.DATE, allowNull: true, comment: 'Когда в последний раз видели в МИС' },
+  archivedAt:  { type: DataTypes.DATE, allowNull: true, comment: 'Когда перевели в архив' },
+}, {
+  tableName: 'rb_employees',
+  timestamps: true
+});
+
 // === PERFORMED SERVICE BONUS MODEL ===
 // Бонусы за выполненные услуги (врач получает за свои собственные выполненные услуги)
 const PerformedServiceBonus = sequelize.define('PerformedServiceBonus', {
@@ -2971,6 +3009,8 @@ module.exports = {
   CashPayment,
   // Executor settings module
   ExecutorSettings,
+  // Employee registry (mirror of MIS staff)
+  RbEmployee,
   // Performed service bonuses module
   PerformedServiceBonus,
   // Service consumables module

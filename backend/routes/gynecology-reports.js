@@ -5,9 +5,33 @@ const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const { GynecologyReportEntry } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { fullEntryChanges, editChanges, logReportHistory } = require('../utils/reportHistory');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+// Человекочитаемые названия полей записи — для описаний в журнале изменений страницы
+const FIELD_LABELS = {
+  stayPeriod:    'Период пребывания пациента',
+  patientName:   'ФИО пациента',
+  phone:         'Телефон',
+  diagnosis:     'Диагноз',
+  remarks:       'Замечания, особенности',
+  referrals:     'Направления',
+  doctorName:    'ФИО врача',
+  examinations:  'Обследования',
+  registrarMark: 'Регистратура отметка о записи'
+};
+
+function patientLabel(data) {
+  const name = cleanText((data || {}).patientName);
+  return name || 'без имени';
+}
+
+// Обёртка над общим журналлером — фиксирует source='gynecology'
+function logGynecologyHistory(req, opts) {
+  return logReportHistory(req, { source: 'gynecology', ...opts });
+}
 
 const COLUMNS = [
   { aliases: ['Период пребывания пациента', 'Период пребывания', 'Период'], field: 'stayPeriod' },
@@ -222,6 +246,10 @@ router.get('/export-data', authenticate, async (req, res) => {
       where,
       order: [['entryDate', 'ASC'], ['createdAt', 'ASC']]
     });
+    await logGynecologyHistory(req, {
+      event: 'export',
+      summary: `Экспорт в Excel: выгружено записей — ${rows.length}`
+    });
     res.json(rows);
   } catch (err) {
     console.error('GET /api/gynecology-reports/export-data error:', err);
@@ -260,6 +288,11 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
     const inserted = await insertImportRows(deduped.rows);
     console.log(`[gynecology-import] Вставлено=${inserted}, пропущено как дубли=${deduped.rows.length - inserted}`);
 
+    await logGynecologyHistory(req, {
+      event: 'import',
+      summary: `Импорт из Excel: добавлено ${inserted}, пропущено ${parsed.length - inserted} (обработано строк: ${parsed.length})`
+    });
+
     res.json({
       success: true,
       total: inserted,
@@ -285,6 +318,11 @@ router.post('/', authenticate, async (req, res) => {
       data,
       createdBy: req.user?.id || null
     });
+    await logGynecologyHistory(req, {
+      event: 'create',
+      summary: `Добавлена запись: ${patientLabel(data)}`,
+      changes: fullEntryChanges(data, 'to', FIELD_LABELS)
+    });
     res.status(201).json(row);
   } catch (err) {
     console.error('POST /api/gynecology-reports error:', err);
@@ -299,8 +337,14 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
 
     const data = req.body.data || {};
+    const oldData = row.data || {};
 
     await row.update({ searchText: buildSearchText(data), data });
+    await logGynecologyHistory(req, {
+      event: 'update',
+      summary: `Изменена запись: ${patientLabel(data)}`,
+      changes: editChanges(oldData, data, FIELD_LABELS)
+    });
     res.json(row);
   } catch (err) {
     console.error('PUT /api/gynecology-reports/:id error:', err);
@@ -313,7 +357,13 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const row = await GynecologyReportEntry.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
+    const removedData = row.data || {};
     await row.destroy();
+    await logGynecologyHistory(req, {
+      event: 'delete',
+      summary: `Удалена запись: ${patientLabel(removedData)}`,
+      changes: fullEntryChanges(removedData, 'from', FIELD_LABELS)
+    });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/gynecology-reports/:id error:', err);
@@ -326,6 +376,10 @@ router.delete('/', authenticate, async (req, res) => {
   try {
     if (!req.user?.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
     const deleted = await GynecologyReportEntry.destroy({ where: {}, truncate: false });
+    await logGynecologyHistory(req, {
+      event: 'clear',
+      summary: `Удалены все данные (записей: ${deleted})`
+    });
     res.json({ success: true, deleted });
   } catch (err) {
     console.error('DELETE /api/gynecology-reports error:', err);

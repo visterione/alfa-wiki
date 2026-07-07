@@ -14,8 +14,9 @@ const ACTION_LABELS = {
   'finalized': 'Финализирован'
 };
 
-// События встроенных таблиц (терапия и т.п.): action='updated', тип — в metadata.event
-const THERAPY_EVENT_LABELS = {
+// События встроенных таблиц-отчётов (терапия, гинекология, скорая): action='updated', тип — в metadata.event
+const REPORT_SOURCES = ['therapy', 'gynecology', 'ambulance'];
+const REPORT_EVENT_LABELS = {
   create: 'Добавление записи',
   update: 'Редактирование записи',
   delete: 'Удаление записи',
@@ -25,8 +26,8 @@ const THERAPY_EVENT_LABELS = {
 };
 
 function resolveHistoryActionLabel(entry, actionLabels) {
-  if (entry.metadata?.source === 'therapy' && THERAPY_EVENT_LABELS[entry.metadata.event]) {
-    return THERAPY_EVENT_LABELS[entry.metadata.event];
+  if (REPORT_SOURCES.includes(entry.metadata?.source) && REPORT_EVENT_LABELS[entry.metadata.event]) {
+    return REPORT_EVENT_LABELS[entry.metadata.event];
   }
   return actionLabels[entry.action] || entry.action;
 }

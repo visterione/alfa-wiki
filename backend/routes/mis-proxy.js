@@ -7,6 +7,7 @@ const express = require('express');
 const axios = require('axios');
 const qs = require('qs');
 const { authenticate } = require('../middleware/auth');
+const { syncAndAnnotate } = require('../services/rbEmployeeRegistry');
 
 const router = express.Router();
 
@@ -170,7 +171,13 @@ router.post('/doctors', authenticate, async (req, res) => {
       }
     }
 
-    res.json({ error: 0, data: merged });
+    // Только для полноростерного запроса (без фильтра по клинике/ролям) синхронизируем реестр
+    // сотрудников и подмешиваем архивных + флаги _isNew. Отфильтрованные вызовы не трогаем,
+    // чтобы частичный список не портил снимок и lastSeenAt.
+    const isFullRoster = !clinic_id && !(Array.isArray(roles) && roles.length > 0);
+    const data = isFullRoster ? await syncAndAnnotate(merged) : merged;
+
+    res.json({ error: 0, data });
   } catch (err) {
     console.error('❌ Ошибка /mis/doctors:', err.message);
     res.status(500).json({

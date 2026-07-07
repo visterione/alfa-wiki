@@ -340,6 +340,9 @@ async function startServer() {
     // Initialize services price update cron job
     require('./cron/servicesCron');
 
+    // Initialize RB employee registry archive cron job (14-day stale → archived)
+    require('./cron/rbEmployeeArchiveCron');
+
     // Initialize notification service with Socket.IO
     notificationService.init(io);
 

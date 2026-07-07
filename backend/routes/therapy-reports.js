@@ -3,10 +3,12 @@ const multer = require('multer');
 const XLSX = require('xlsx-js-style');
 const { randomUUID } = require('crypto');
 const { Op, literal } = require('sequelize');
-const { TherapyReportEntry, Page, PageHistory } = require('../models');
+const { TherapyReportEntry } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { fullEntryChanges, editChanges, logReportHistory } = require('../utils/reportHistory');
 
 const router = express.Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Человекочитаемые названия полей записи — для описаний в журнале изменений страницы
 const FIELD_LABELS = {
@@ -27,68 +29,10 @@ function patientLabel(data) {
   return name || 'без имени';
 }
 
-// Все заполненные поля записи → элементы журнала.
-// side = 'to' (создание, зелёным) или 'from' (удаление, красным).
-function fullEntryChanges(data, side) {
-  const changes = [];
-  Object.keys(FIELD_LABELS).forEach(field => {
-    const val = cleanText((data || {})[field]);
-    if (!val) return;
-    changes.push({ field, label: FIELD_LABELS[field], [side]: val });
-  });
-  return changes;
+// Обёртка над общим журналлером — фиксирует source='therapy'
+function logTherapyHistory(req, opts) {
+  return logReportHistory(req, { source: 'therapy', ...opts });
 }
-
-// Полный список полей записи для журнала редактирования (в порядке формы):
-// изменённые — { from, to } (старое красным → новое зелёным),
-// неизменённые непустые — { unchanged } (серым, для полноты картины).
-function editChanges(oldData, newData) {
-  const changes = [];
-  Object.keys(FIELD_LABELS).forEach(field => {
-    const from = cleanText((oldData || {})[field]);
-    const to = cleanText((newData || {})[field]);
-    if (from !== to) {
-      changes.push({ field, label: FIELD_LABELS[field], from, to });
-    } else if (to) {
-      changes.push({ field, label: FIELD_LABELS[field], unchanged: to });
-    }
-  });
-  return changes;
-}
-
-// pageId wiki-страницы, в которую встроена таблица (передаётся клиентом в body/query/form)
-function resolvePageId(req) {
-  const raw = (req.body && req.body.pageId) || req.query.pageId || '';
-  return String(raw || '').trim();
-}
-
-// Пишем событие в журнал изменений wiki-страницы (page_history).
-// Никогда не роняем основную операцию: ошибки логирования только пишем в консоль.
-async function logTherapyHistory(req, { event, summary, changes }) {
-  try {
-    const pageId = resolvePageId(req);
-    const userId = req.user && req.user.id;
-    if (!pageId || !userId) return;
-
-    const page = await Page.findByPk(pageId, { attributes: ['id'] });
-    if (!page) return;
-
-    await PageHistory.create({
-      pageId,
-      userId,
-      action: 'updated',
-      changesSummary: summary,
-      metadata: {
-        source: 'therapy',
-        event,
-        ...(changes && changes.length ? { changes } : {})
-      }
-    });
-  } catch (err) {
-    console.error('[therapy] logTherapyHistory error:', err && err.message);
-  }
-}
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const COLUMNS = [
   { aliases: ['Дата поступления пациента', 'Дата поступления', 'Дата'], field: 'admissionDate' },
@@ -419,7 +363,7 @@ router.post('/', authenticate, async (req, res) => {
     await logTherapyHistory(req, {
       event: 'create',
       summary: `Добавлена запись: ${patientLabel(data)}`,
-      changes: fullEntryChanges(data, 'to')
+      changes: fullEntryChanges(data, 'to', FIELD_LABELS)
     });
     res.status(201).json(row);
   } catch (err) {
@@ -442,7 +386,7 @@ router.put('/:id', authenticate, async (req, res) => {
       event: 'update',
       summary: `Изменена запись: ${patientLabel(data)}`,
       // Полный список полей: неизменённые — серым, изменённые — старое→новое
-      changes: editChanges(oldData, data)
+      changes: editChanges(oldData, data, FIELD_LABELS)
     });
     res.json(row);
   } catch (err) {
@@ -462,7 +406,7 @@ router.delete('/:id', authenticate, async (req, res) => {
       event: 'delete',
       summary: `Удалена запись: ${patientLabel(removedData)}`,
       // Полный состав удалённой записи — чтобы можно было восстановить при ошибочном удалении
-      changes: fullEntryChanges(removedData, 'from')
+      changes: fullEntryChanges(removedData, 'from', FIELD_LABELS)
     });
     res.json({ success: true });
   } catch (err) {

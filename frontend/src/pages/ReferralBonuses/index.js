@@ -175,6 +175,7 @@ export default function ReferralBonusesPage() {
   const [filterClinic, setFilterClinic] = useState('');
   const [filterRole, setFilterRole] = useState('');
   const [filterProfession, setFilterProfession] = useState('');
+  const [filterNewOnly, setFilterNewOnly] = useState(false); // показывать только новых сотрудников
 
   // ── Selected doctor ──
   const [selectedDoctor, setSelectedDoctor] = useState(null);
@@ -288,6 +289,11 @@ export default function ReferralBonusesPage() {
         professions,
         roles,
         clinics: mappedClinics,
+        // Флаги реестра сотрудников (проставляет бэкенд в /mis/doctors):
+        //   _archived — уволен/давно не виден в МИС (в статистике участвует, в рабочем списке скрыт),
+        //   _isNew    — появился после baseline и ещё без настроек исполнителя.
+        _archived: !!d._archived,
+        _isNew: !!d._isNew,
       };
     });
 
@@ -323,12 +329,23 @@ export default function ReferralBonusesPage() {
       .finally(() => setDoctorsLoading(false));
   }, []);
 
-  // ── Exclude hidden roles ──
-  const visibleDoctors = doctors.filter(d => !d.roles.includes('КабинетыИРабота'));
+  // ── Exclude hidden roles + archived ──
+  // Архивные (уволенные) остаются в полном `doctors` для Сводки/Отчёта, но из рабочего списка
+  // сотрудников и из списков фильтров (роли/профессии) исключаются.
+  const visibleDoctors = doctors.filter(d => !d.roles.includes('КабинетыИРабота') && !d._archived);
+
+  // ── New employees within the user's clinic scope (для бейджа) ──
+  // Бейдж считаем по области доступа: бухгалтеру одного медцентра не показываем новых из чужого.
+  const newDoctors = visibleDoctors.filter(d =>
+    d._isNew &&
+    (!(permissions.clinics?.length > 0) || d.clinics.some(c => permissions.clinics.includes(String(c))))
+  );
+  const newCount = newDoctors.length;
 
   // ── Filtered doctors ──
   const filteredDoctors = visibleDoctors.filter(d => {
     if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
+    if (filterNewOnly && !d._isNew) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterClinic) {
       const effectiveClinics = d.clinics.filter(c => !(disabledClinicsMap[d.id] || []).includes(String(c)));
@@ -1601,6 +1618,9 @@ export default function ReferralBonusesPage() {
               onSelect={handleSelectDoctor}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
+              filterNewOnly={filterNewOnly}
+              setFilterNewOnly={setFilterNewOnly}
+              newCount={newCount}
               filterClinic={filterClinic}
               setFilterClinic={setFilterClinic}
               filterRole={filterRole}
@@ -1649,6 +1669,7 @@ function DoctorsList({
   doctors, allDoctors, clinics, loading, error,
   selectedDoctor, onSelect,
   searchQuery, setSearchQuery,
+  filterNewOnly, setFilterNewOnly, newCount,
   filterClinic, setFilterClinic,
   filterRole, setFilterRole, allRoles,
   filterProfession, setFilterProfession,
@@ -1698,6 +1719,23 @@ function DoctorsList({
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
           Сотрудники
+          {(newCount > 0 || filterNewOnly) && (
+            <button
+              type="button"
+              onClick={() => setFilterNewOnly(v => !v)}
+              title={filterNewOnly ? 'Показать всех сотрудников' : `Новые сотрудники: ${newCount} — показать только их`}
+              style={{
+                marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 999, cursor: 'pointer', lineHeight: 1.4,
+                fontSize: 11, fontWeight: 700,
+                border: '1px solid ' + (filterNewOnly ? '#d97706' : '#fcd34d'),
+                background: filterNewOnly ? '#d97706' : '#fef3c7',
+                color: filterNewOnly ? '#fff' : '#92400e',
+              }}
+            >
+              {filterNewOnly ? '✕ ' : ''}{newCount} нов.
+            </button>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {bulkMode && bulkSelectedIds.size > 0 && (

@@ -5,11 +5,73 @@ const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const { AmbulanceReportEntry } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { fullEntryChanges, editChanges, logReportHistory } = require('../utils/reportHistory');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
 const ENTRY_TYPES = ['calls', 'refusals', 'caddy', 'patientCalls'];
+
+// Названия вкладок и полей для «Журнала изменений» страницы (seqNumber в data не хранится)
+const TAB_TITLES = {
+  calls: 'Вызовы',
+  refusals: 'Отказы',
+  caddy: 'Caddy',
+  patientCalls: 'Звонки пациентам'
+};
+
+const AMB_FIELD_LABELS = {
+  calls: {
+    callDate: 'Дата вызова',
+    callTime: 'Время вызова',
+    patientName: 'ФИО пациента',
+    address: 'Адрес',
+    brigadeNumber: '№ бригады',
+    amount: 'Сумма',
+    waitingTime: 'Время ожидания',
+    comment: 'Комментарий'
+  },
+  refusals: {
+    refusalDate: 'Дата',
+    callTime: 'Время звонка',
+    reason: 'Причина отказа',
+    refusalDelay: 'Время через которое отказались',
+    localVisitor: 'Местные приезжие'
+  },
+  caddy: {
+    caddyDate: 'Дата',
+    caddyTime: 'Время',
+    carNumber: 'Номер машины',
+    reason: 'Причина вызова',
+    medCenter: 'Медцентр'
+  },
+  patientCalls: {
+    comment: 'Комментарий',
+    patientCallDate: 'Дата',
+    callDate: 'Дата вызова',
+    patientName: 'Пациент',
+    diagnosis: 'Диагноз',
+    direction: 'Направление',
+    doctorName: 'ФИО врача',
+    examination: 'Обследование',
+    phone: 'Номер телефона',
+    registrarMark: 'Регистратура отметка о записи'
+  }
+};
+
+// Краткая идентификация записи для заголовка события журнала
+function recordLabel(data) {
+  const d = data || {};
+  const raw = cleanText(d.patientName) || cleanText(d.reason) || cleanText(d.carNumber)
+    || cleanText(d.medCenter) || cleanText(d.comment);
+  if (!raw) return 'запись';
+  return raw.length > 60 ? raw.slice(0, 60) + '…' : raw;
+}
+
+// Обёртка над общим журналлером — фиксирует source='ambulance'
+function logAmbulanceHistory(req, opts) {
+  return logReportHistory(req, { source: 'ambulance', ...opts });
+}
 const NUMBERED_TYPES = ['calls', 'refusals'];
 const DATE_FIELDS = {
   calls: 'callDate',
@@ -606,6 +668,10 @@ router.get('/export-data', authenticate, async (req, res) => {
         ['createdAt', 'ASC']
       ]
     });
+    await logAmbulanceHistory(req, {
+      event: 'export',
+      summary: `Экспорт в Excel: выгружено записей — ${rows.length}`
+    });
     res.json(rows);
   } catch (err) {
     console.error('GET /api/ambulance-reports/export-data error:', err);
@@ -704,6 +770,16 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
       inserted += typeInserted;
     }
 
+    const insertedParts = ENTRY_TYPES
+      .filter(type => byType[type] && byType[type].inserted)
+      .map(type => `${TAB_TITLES[type]}: ${byType[type].inserted}`);
+    await logAmbulanceHistory(req, {
+      event: 'import',
+      summary: `Импорт из Excel: добавлено ${inserted}`
+        + (insertedParts.length ? ` (${insertedParts.join(', ')})` : '')
+        + `, пропущено ${parsed.imported.length - inserted}`
+    });
+
     res.json({
       success: true,
       total: inserted,
@@ -721,9 +797,13 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
   }
 });
 
-router.delete('/', authenticate, async (_req, res) => {
+router.delete('/', authenticate, async (req, res) => {
   try {
     const deleted = await AmbulanceReportEntry.destroy({ where: {}, truncate: false });
+    await logAmbulanceHistory(req, {
+      event: 'clear',
+      summary: `Удалены все данные (записей: ${deleted})`
+    });
     res.json({ success: true, deleted });
   } catch (err) {
     console.error('DELETE /api/ambulance-reports error:', err);
@@ -805,6 +885,11 @@ router.post('/', authenticate, async (req, res) => {
     }
 
     const row = await AmbulanceReportEntry.create(payload);
+    await logAmbulanceHistory(req, {
+      event: 'create',
+      summary: `Добавлена запись (${TAB_TITLES[entryType]}): ${recordLabel(payload.data)}`,
+      changes: fullEntryChanges(payload.data, 'to', AMB_FIELD_LABELS[entryType] || {})
+    });
     res.status(201).json(row);
   } catch (err) {
     console.error('POST /api/ambulance-reports error:', err);
@@ -820,12 +905,18 @@ router.put('/:id', authenticate, async (req, res) => {
     const entryType = req.body.entryType || row.entryType;
     if (!ENTRY_TYPES.includes(entryType)) return res.status(400).json({ error: 'Неверный тип вкладки' });
 
+    const oldData = row.data || {};
     const payload = normalizeEntry(entryType, req.body, row.createdBy);
     if (NUMBERED_TYPES.includes(entryType) && !payload.seqNumber) {
       payload.seqNumber = await getNextNumber(entryType, row.id);
     }
 
     await row.update(payload);
+    await logAmbulanceHistory(req, {
+      event: 'update',
+      summary: `Изменена запись (${TAB_TITLES[entryType]}): ${recordLabel(payload.data)}`,
+      changes: editChanges(oldData, payload.data, AMB_FIELD_LABELS[entryType] || {})
+    });
     res.json(row);
   } catch (err) {
     console.error('PUT /api/ambulance-reports/:id error:', err);
@@ -837,7 +928,14 @@ router.delete('/:id', authenticate, async (req, res) => {
   try {
     const row = await AmbulanceReportEntry.findByPk(req.params.id);
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
+    const removedData = row.data || {};
+    const removedType = row.entryType;
     await row.destroy();
+    await logAmbulanceHistory(req, {
+      event: 'delete',
+      summary: `Удалена запись (${TAB_TITLES[removedType] || removedType}): ${recordLabel(removedData)}`,
+      changes: fullEntryChanges(removedData, 'from', AMB_FIELD_LABELS[removedType] || {})
+    });
     res.json({ success: true });
   } catch (err) {
     console.error('DELETE /api/ambulance-reports/:id error:', err);
