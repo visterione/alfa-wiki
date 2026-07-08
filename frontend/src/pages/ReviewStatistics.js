@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, Star, MessageSquare,
-  TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown
+  TrendingUp, Users, Clock, CheckCircle, ArrowUpDown, ArrowUp, ArrowDown,
+  Timer, Gauge, Zap, Snail
 } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
 import { reviews } from '../services/api';
-import { REVIEW_STATUSES, DECISION_CATEGORIES } from '../utils/reviewConstants';
+import { REVIEW_STATUSES, DECISION_CATEGORIES, formatMsDuration } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewStatistics.css';
 
@@ -265,6 +266,20 @@ const ReviewStatistics = () => {
             <span className="card-label">В работе</span>
           </div>
         </div>
+
+        <div className="summary-card">
+          <div className="card-icon teal">
+            <Timer size={24} />
+          </div>
+          <div className="card-content">
+            <span className="card-value">
+              {stats?.avgHandlingMs != null ? formatMsDuration(stats.avgHandlingMs) : '—'}
+            </span>
+            <span className="card-label" title="Среднее время от создания до принятия решения">
+              Ср. время обработки
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="stats-grid">
@@ -396,6 +411,45 @@ const ReviewStatistics = () => {
             );
           })()}
         </div>
+
+        {/* Время на этапах */}
+        <div className="stats-card">
+          <h3>
+            <Timer size={18} />
+            Среднее время на этапе
+          </h3>
+          {(() => {
+            const timing = (stats?.stageTiming || []).filter(s => s.count > 0);
+            if (timing.length === 0) {
+              return <div className="no-data">Недостаточно данных о движении отзывов</div>;
+            }
+            const maxMs = Math.max(...timing.map(s => s.avgMs || 0), 1);
+            return (
+              <div className="chart-container">
+                {timing.map(stage => (
+                  <div key={stage.statusId} className="bar-row">
+                    <div className="bar-label">
+                      <span className="status-dot" style={{ background: stage.color }} />
+                      {stage.label}
+                    </div>
+                    <div className="bar-wrapper">
+                      <div
+                        className="bar"
+                        style={{ width: `${(stage.avgMs / maxMs) * 100}%`, background: stage.color }}
+                      />
+                    </div>
+                    <div className="bar-value bar-value--time" title={`${stage.count} переходов`}>
+                      {formatMsDuration(stage.avgMs)}
+                    </div>
+                  </div>
+                ))}
+                <div className="decisions-total">
+                  Медиана полного цикла: {stats?.medianHandlingMs != null ? formatMsDuration(stats.medianHandlingMs) : '—'}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Динамика по времени */}
@@ -474,6 +528,65 @@ const ReviewStatistics = () => {
                 </ResponsiveContainer>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* Производительность сотрудников */}
+      {stats?.employeePerformance && stats.employeePerformance.length > 0 && (
+        <div className="stats-card full-width">
+          <h3>
+            <Gauge size={18} />
+            Производительность сотрудников
+          </h3>
+          <p className="stats-card-hint">
+            Среднее время, за которое сотрудник передаёт отзыв на следующий этап. Чем меньше — тем быстрее обработка.
+          </p>
+          <div className="doctors-table employee-perf-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Сотрудник</th>
+                  <th>Действий</th>
+                  <th>Ср. время до передачи</th>
+                  <th>Темп</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats.employeePerformance.map((emp, idx) => {
+                  const isFastest = idx === 0 && stats.employeePerformance.length > 1;
+                  const isSlowest = idx === stats.employeePerformance.length - 1 && stats.employeePerformance.length > 1;
+                  return (
+                    <tr key={emp.userId}>
+                      <td>{idx + 1}</td>
+                      <td>
+                        <span
+                          className="emp-name"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => navigate(`/users/${emp.userId}`)}
+                        >
+                          {emp.name}
+                        </span>
+                      </td>
+                      <td>{emp.actions}</td>
+                      <td>
+                        <strong>{formatMsDuration(emp.avgMs)}</strong>
+                      </td>
+                      <td>
+                        {isFastest ? (
+                          <span className="pace-badge pace-fast"><Zap size={13} /> Быстрый</span>
+                        ) : isSlowest ? (
+                          <span className="pace-badge pace-slow"><Snail size={13} /> Медленный</span>
+                        ) : (
+                          <span className="pace-badge pace-normal">В норме</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

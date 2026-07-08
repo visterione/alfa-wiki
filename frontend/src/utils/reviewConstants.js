@@ -76,6 +76,49 @@ export const getRoleLabel = (roleId) => {
   return REVIEW_ROLES.find(r => r.id === roleId)?.label || roleId;
 };
 
+// ─── Длительность этапа / таймеры ─────────────────────────────────────────────
+
+/**
+ * Человекочитаемая длительность между двумя моментами.
+ * Возвращает компактную строку: «5 мин», «3 ч 20 мин», «2 дн 4 ч».
+ */
+export const formatDuration = (fromDate, toDate = Date.now()) => {
+  if (!fromDate) return '—';
+  const ms = new Date(toDate).getTime() - new Date(fromDate).getTime();
+  if (isNaN(ms) || ms < 0) return '—';
+
+  const totalMinutes = Math.floor(ms / 60000);
+  if (totalMinutes < 60) return `${totalMinutes} мин`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) {
+    const mins = totalMinutes % 60;
+    return mins ? `${totalHours} ч ${mins} мин` : `${totalHours} ч`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return hours ? `${days} дн ${hours} ч` : `${days} дн`;
+};
+
+/** Человекочитаемая длительность из миллисекунд (для статистики). */
+export const formatMsDuration = (ms) => {
+  if (ms == null || isNaN(ms)) return '—';
+  return formatDuration(new Date(0), new Date(ms));
+};
+
+/**
+ * Уровень «застоя» отзыва на этапе по времени в текущем статусе.
+ * Возвращает { level, color, label } — для подсветки таймера на карточке.
+ * Пороги подобраны под рабочий цикл обработки отзыва.
+ */
+export const getStageUrgency = (stageEnteredAt, now = Date.now()) => {
+  const hours = (new Date(now).getTime() - new Date(stageEnteredAt).getTime()) / 3600000;
+  if (hours >= 72) return { level: 'critical', color: '#ef4444', label: 'Долгий застой' };
+  if (hours >= 24) return { level: 'warning', color: '#f59e0b', label: 'Требует внимания' };
+  return { level: 'fresh', color: '#10b981', label: 'В норме' };
+};
+
 // Цвета для ролей доступа
 export const ACCESS_ROLE_COLORS = {
   owner: '#10b981',

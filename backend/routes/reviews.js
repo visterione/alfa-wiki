@@ -1153,11 +1153,127 @@ router.get('/stats', authenticate, async (req, res) => {
       order: [[groupByExpression, 'ASC']]
     });
 
+    // ── Тайминг этапов и производительность сотрудников ──────────────────────
+    // Реконструируем движение каждого отзыва по этапам из истории:
+    // длительность этапа = время между входом в этап и следующим событием.
+    // Длительность закрытого этапа приписываем сотруднику, который перевёл отзыв дальше.
+    const periodReviews = await Review.findAll({
+      where: whereBase,
+      attributes: ['id', 'createdAt', 'finalizedAt', 'status']
+    });
+    const periodReviewIds = periodReviews.map(r => r.id);
+
+    // Среднее время обработки (создание → финализация) по завершённым отзывам
+    const handlingDurations = periodReviews
+      .filter(r => r.status === 'final' && r.finalizedAt)
+      .map(r => new Date(r.finalizedAt).getTime() - new Date(r.createdAt).getTime())
+      .filter(d => d >= 0)
+      .sort((a, b) => a - b);
+    const avgHandlingMs = handlingDurations.length
+      ? Math.round(handlingDurations.reduce((a, b) => a + b, 0) / handlingDurations.length)
+      : null;
+    const medianHandlingMs = handlingDurations.length
+      ? handlingDurations[Math.floor(handlingDurations.length / 2)]
+      : null;
+
+    const stageAgg = {};     // label → { totalMs, count }
+    const employeeAgg = {};  // userId → { totalMs, count }
+
+    if (periodReviewIds.length > 0) {
+      const histories = await ReviewHistory.findAll({
+        where: {
+          reviewId: { [Op.in]: periodReviewIds },
+          action: { [Op.in]: [HISTORY_ACTIONS.STATUS_CHANGE, HISTORY_ACTIONS.FINALIZED] }
+        },
+        attributes: ['reviewId', 'action', 'oldValue', 'newValue', 'userId', 'createdAt'],
+        order: [['reviewId', 'ASC'], ['createdAt', 'ASC']],
+        raw: true
+      });
+
+      const byReview = {};
+      histories.forEach(h => { (byReview[h.reviewId] = byReview[h.reviewId] || []).push(h); });
+
+      const createdMap = {};
+      periodReviews.forEach(r => { createdMap[r.id] = new Date(r.createdAt).getTime(); });
+
+      const firstStageLabel = REVIEW_STATUSES[0]?.label || 'Новый отзыв';
+      const finalStageLabel = REVIEW_STATUSES.find(s => s.id === 'final')?.label;
+
+      for (const rid of periodReviewIds) {
+        const events = byReview[rid];
+        if (!events || events.length === 0) continue;
+        let stageStart = createdMap[rid] ?? new Date(events[0].createdAt).getTime();
+        let currentStage = firstStageLabel;
+
+        for (const ev of events) {
+          const evTime = new Date(ev.createdAt).getTime();
+          const delta = evTime - stageStart;
+          // Стадия, которую отзыв покидает этим событием
+          const stageLabel = (ev.action === HISTORY_ACTIONS.STATUS_CHANGE && ev.oldValue)
+            ? ev.oldValue : currentStage;
+
+          // Не учитываем «простой» в финальном статусе — это уже не работа над отзывом
+          if (delta >= 0 && stageLabel !== finalStageLabel) {
+            stageAgg[stageLabel] = stageAgg[stageLabel] || { totalMs: 0, count: 0 };
+            stageAgg[stageLabel].totalMs += delta;
+            stageAgg[stageLabel].count += 1;
+            if (ev.userId) {
+              employeeAgg[ev.userId] = employeeAgg[ev.userId] || { totalMs: 0, count: 0 };
+              employeeAgg[ev.userId].totalMs += delta;
+              employeeAgg[ev.userId].count += 1;
+            }
+          }
+
+          if (ev.action === HISTORY_ACTIONS.STATUS_CHANGE && ev.newValue) currentStage = ev.newValue;
+          stageStart = evTime;
+        }
+      }
+    }
+
+    // Имена сотрудников для рейтинга производительности
+    const employeeIds = Object.keys(employeeAgg);
+    const employeeUsers = employeeIds.length > 0
+      ? await User.findAll({ where: { id: employeeIds }, attributes: ['id', 'displayName', 'username', 'avatar'] })
+      : [];
+    const employeeUserMap = {};
+    employeeUsers.forEach(u => { employeeUserMap[u.id] = u; });
+
+    const stageTiming = REVIEW_STATUSES
+      .filter(s => s.id !== 'final')
+      .map(s => {
+        const agg = stageAgg[s.label];
+        return {
+          statusId: s.id,
+          label: s.label,
+          color: s.color,
+          avgMs: agg && agg.count ? Math.round(agg.totalMs / agg.count) : null,
+          count: agg ? agg.count : 0
+        };
+      });
+
+    const employeePerformance = employeeIds
+      .map(uid => {
+        const agg = employeeAgg[uid];
+        const u = employeeUserMap[uid];
+        return {
+          userId: uid,
+          name: u ? (u.displayName || u.username) : 'Неизвестно',
+          avatar: u ? u.avatar : null,
+          actions: agg.count,
+          avgMs: agg.count ? Math.round(agg.totalMs / agg.count) : null
+        };
+      })
+      .sort((a, b) => a.avgMs - b.avgMs);
+
     res.json({
       total,
       avgRating,
       finalized,
       pending,
+      avgHandlingMs,
+      medianHandlingMs,
+      stageTiming,
+      employeePerformance,
       byStatus,
       byPlatform,
       byRating,
@@ -1265,6 +1381,21 @@ router.get('/', authenticate, async (req, res) => {
       };
     });
 
+    // Батч-запрос: момент входа отзыва в текущий этап (последняя смена статуса).
+    // Нужен для таймера «сколько отзыв стоит на этапе». Если смены статуса ещё не было —
+    // берём дату создания отзыва.
+    const lastStatusRows = reviewIds.length > 0 ? await ReviewHistory.findAll({
+      where: { reviewId: { [Op.in]: reviewIds }, action: HISTORY_ACTIONS.STATUS_CHANGE },
+      attributes: [
+        'reviewId',
+        [Sequelize.fn('MAX', Sequelize.col('createdAt')), 'stageEnteredAt']
+      ],
+      group: ['reviewId'],
+      raw: true
+    }) : [];
+    const stageEnteredMap = {};
+    lastStatusRows.forEach(row => { stageEnteredMap[row.reviewId] = row.stageEnteredAt; });
+
     // Добавляем данные назначенных пользователей
     const reviewsWithAssignees = await Promise.all(
       reviews.map(async (review) => {
@@ -1274,7 +1405,8 @@ router.get('/', authenticate, async (req, res) => {
           ...review.toJSON(),
           assignees,
           latestCommentAt: commentInfo?.latestCommentAt || null,
-          commentCount: commentInfo?.commentCount || 0
+          commentCount: commentInfo?.commentCount || 0,
+          stageEnteredAt: stageEnteredMap[review.id] || review.createdAt
         };
       })
     );

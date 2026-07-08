@@ -670,6 +670,141 @@
   color: var(--text-primary);
 }
 
+/* ─── Обновлённая (детализированная) хронология ────────────────────────────── */
+.history-timeline--rich {
+  padding-left: 2.25rem;
+}
+
+.history-timeline--rich::before {
+  left: 13px;
+  top: 14px;
+  bottom: 14px;
+  background: var(--border-color);
+}
+
+.history-timeline--rich .history-item {
+  padding-bottom: 1.25rem;
+}
+
+.history-timeline--rich .history-dot {
+  left: -2.25rem;
+  top: 2px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--bg-primary);
+  border-radius: 50%;
+}
+
+.history-timeline--rich .history-content {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 0.7rem 0.9rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.history-timeline--rich .history-action {
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.01em;
+}
+
+.history-timeline--rich .history-date {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.history-detail {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.history-detail strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* Цепочка перехода статусов */
+.status-transition {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.transition-arrow {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.transition-actor {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* Длительность предыдущего этапа */
+.history-stage-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  border: 1px dashed;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* Вложения в записи истории */
+.history-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.history-attachment-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  max-width: 100%;
+}
+
+.history-attachment-link:hover {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}
+
+.history-attachment-link span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

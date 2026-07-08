@@ -17,7 +17,9 @@ import {
   getRatingStars,
   getCategoryLabel,
   HISTORY_ACTION_LABELS,
-  PLATFORMS_REPLY_UNSUPPORTED
+  PLATFORMS_REPLY_UNSUPPORTED,
+  formatDuration,
+  getStageUrgency
 } from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewBoard.css';
@@ -106,6 +108,14 @@ const ReviewBoard = () => {
   // Reply to review on platform (GetLoyalty)
   const [submittingReply, setSubmittingReply] = useState(false);
   const openedReviewIdRef = useRef(null);
+
+  // Общий «тик» для таймеров на карточках — одно обновление на всю доску раз в минуту,
+  // чтобы не считать длительность посекундно на каждой карточке.
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 60000);
+    return () => clearInterval(t);
+  }, []);
 
   // Assignment
   const [showAssignModal, setShowAssignModal] = useState(false);
@@ -989,6 +999,18 @@ const ReviewBoard = () => {
                     <p className="card-text">{review.reviewText}</p>
 
                     <div className="card-footer">
+                      {review.status !== 'final' && review.stageEnteredAt && (() => {
+                        const urgency = getStageUrgency(review.stageEnteredAt, nowTick);
+                        return (
+                          <span
+                            className={`card-stage-timer card-stage-timer--${urgency.level}`}
+                            title={`На этапе «${getStatusLabel(review.status)}»: ${formatDuration(review.stageEnteredAt, nowTick)} · ${urgency.label}`}
+                          >
+                            <Clock size={12} />
+                            {formatDuration(review.stageEnteredAt, nowTick)}
+                          </span>
+                        );
+                      })()}
                       {review.attachments && review.attachments.length > 0 && (
                         <div className="card-attachments">
                           <Paperclip size={12} />

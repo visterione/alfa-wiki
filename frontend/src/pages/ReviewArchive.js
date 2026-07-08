@@ -2,10 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Archive, Search, Download, Star, Calendar, User,
-  MessageSquare, Filter, ChevronDown, X, ExternalLink, FileText
+  MessageSquare, Filter, ChevronDown, X, ExternalLink, FileText,
+  Plus, ArrowRight, UserCheck, CheckCircle2, Clock, Paperclip, Reply
 } from 'lucide-react';
-import { reviews } from '../services/api';
-import { REVIEW_STATUSES, getStatusById } from '../utils/reviewConstants';
+import { reviews, BASE_URL } from '../services/api';
+import {
+  REVIEW_STATUSES, getStatusColor,
+  HISTORY_ACTION_LABELS, formatDuration
+} from '../utils/reviewConstants';
 import toast from 'react-hot-toast';
 import './ReviewArchive.css';
 
@@ -167,6 +171,71 @@ const ReviewArchive = () => {
       hour: '2-digit',
       minute: '2-digit'
     });
+  };
+
+  // Небольшая цветная «плашка» статуса для цепочки переходов
+  const StatusChip = ({ label }) => {
+    const color = REVIEW_STATUSES.find(s => s.label === label)?.color || '#94a3b8';
+    return (
+      <span className="status-chip" style={{ color, borderColor: color, background: `${color}1a` }}>
+        {label || '—'}
+      </span>
+    );
+  };
+
+  // Метаданные для типа события: иконка, цвет, заголовок и детализированное описание
+  const getHistoryMeta = (item) => {
+    const userName = item.user?.displayName || item.user?.username || 'Система';
+    switch (item.action) {
+      case 'created':
+        return {
+          icon: Plus, color: '#6366f1', title: 'Отзыв создан',
+          detail: <>Добавил: <strong>{userName}</strong></>
+        };
+      case 'status_change':
+        return {
+          icon: ArrowRight, color: getStatusColor(REVIEW_STATUSES.find(s => s.label === item.newValue)?.id) || '#3b82f6',
+          title: 'Смена этапа',
+          detail: (
+            <span className="status-transition">
+              <StatusChip label={item.oldValue} />
+              <ArrowRight size={14} className="transition-arrow" />
+              <StatusChip label={item.newValue} />
+              <span className="transition-actor">· {userName}</span>
+            </span>
+          )
+        };
+      case 'assignment':
+        return {
+          icon: UserCheck, color: '#0ea5e9',
+          title: item.newValue && item.newValue !== 'Снято назначение' ? 'Назначен ответственный' : 'Назначение снято',
+          detail: item.newValue && item.newValue !== 'Снято назначение'
+            ? <><strong>{userName}</strong> назначил ответственным: <strong>{item.newValue}</strong></>
+            : <><strong>{userName}</strong> снял назначение</>
+        };
+      case 'finalized':
+        return {
+          icon: CheckCircle2, color: '#10b981', title: 'Решение принято',
+          detail: <><strong>{userName}</strong> финализировал отзыв. Решение: <strong>{item.newValue}</strong></>
+        };
+      case 'file_upload':
+        return {
+          icon: Paperclip, color: '#8b5cf6', title: 'Загружен файл',
+          detail: <><strong>{userName}</strong> прикрепил файлы</>
+        };
+      case 'replied':
+        return {
+          icon: Reply, color: '#f59e0b', title: 'Ответ на площадке',
+          detail: <>Отправил: <strong>{userName}</strong></>
+        };
+      case 'comment':
+      default:
+        return {
+          icon: MessageSquare, color: '#64748b',
+          title: HISTORY_ACTION_LABELS[item.action] || 'Комментарий',
+          detail: <><strong>{userName}</strong></>
+        };
+    }
   };
 
   const getRatingStars = (rating) => {
@@ -514,24 +583,67 @@ const ReviewArchive = () => {
                 ) : reviewHistory.length === 0 ? (
                   <p className="no-history">Нет записей в истории</p>
                 ) : (
-                  <div className="history-timeline">
-                    {reviewHistory.map((item, idx) => (
-                      <div key={idx} className="history-item">
-                        <div className="history-dot" />
-                        <div className="history-content">
-                          <div className="history-header">
-                            <span className="history-action">{item.action}</span>
-                            <span className="history-date">{formatDateTime(item.createdAt)}</span>
+                  <div className="history-timeline history-timeline--rich">
+                    {(() => {
+                      // История приходит отсортированной по возрастанию. Считаем,
+                      // сколько отзыв простоял на предыдущем этапе до каждой смены статуса.
+                      const sorted = [...reviewHistory].sort(
+                        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+                      );
+                      let stageStart = sorted[0]?.createdAt || null;
+
+                      return sorted.map((item, idx) => {
+                        const meta = getHistoryMeta(item);
+                        const Icon = meta.icon;
+
+                        // Длительность предыдущего этапа для событий смены статуса/финализации
+                        let stageDuration = null;
+                        if (item.action === 'status_change' || item.action === 'finalized') {
+                          if (stageStart) stageDuration = formatDuration(stageStart, item.createdAt);
+                          stageStart = item.createdAt;
+                        }
+
+                        return (
+                          <div key={item.id || idx} className="history-item">
+                            <div className="history-dot" style={{ background: meta.color, boxShadow: `0 0 0 3px ${meta.color}22` }}>
+                              <Icon size={12} color="#fff" />
+                            </div>
+                            <div className="history-content" style={{ borderLeft: `3px solid ${meta.color}` }}>
+                              <div className="history-header">
+                                <span className="history-action" style={{ color: meta.color }}>{meta.title}</span>
+                                <span className="history-date">{formatDateTime(item.createdAt)}</span>
+                              </div>
+                              <div className="history-detail">{meta.detail}</div>
+                              {stageDuration && (
+                                <div className="history-stage-duration" style={{ color: meta.color, borderColor: `${meta.color}55` }}>
+                                  <Clock size={11} />
+                                  <span>Предыдущий этап длился {stageDuration}</span>
+                                </div>
+                              )}
+                              {item.comment && (
+                                <div className="history-comment">{item.comment}</div>
+                              )}
+                              {item.attachments && item.attachments.length > 0 && (
+                                <div className="history-attachments">
+                                  {item.attachments.map((file, i) => (
+                                    <a
+                                      key={i}
+                                      href={`${BASE_URL}/${file.path}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="history-attachment-link"
+                                    >
+                                      <Paperclip size={12} />
+                                      <span>{file.filename}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <div className="history-user">
-                            {item.user?.displayName || item.user?.username || 'Система'}
-                          </div>
-                          {item.comment && (
-                            <div className="history-comment">{item.comment}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
                 )}
               </div>

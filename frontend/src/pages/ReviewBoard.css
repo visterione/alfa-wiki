@@ -558,6 +558,45 @@
   color: var(--text-primary);
 }
 
+/* Таймер этапа: компактно, слева в футере карточки */
+.card-stage-timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: auto;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.card-stage-timer svg {
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.card-stage-timer--fresh {
+  color: var(--text-tertiary);
+}
+
+.card-stage-timer--warning {
+  color: #d97706;
+}
+
+.card-stage-timer--critical {
+  color: #dc2626;
+}
+
+/* Пульсация только для «застрявших» отзывов, чтобы сразу бросались в глаза */
+.card-stage-timer--critical svg {
+  animation: stageTimerPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes stageTimerPulse {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 0.25; }
+}
+
 .card-doctor {
   display: flex;
   align-items: center;
