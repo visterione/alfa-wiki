@@ -6,6 +6,7 @@ import { downloadTabelExcel } from '../utils/tabelExport';
 import TabelTable, { pad2, SigBlock } from './TabelTable';
 import MonthYearPicker from './MonthYearPicker';
 import { rbCanonicalClinicId } from '../utils/clinicUtils';
+import { MAX_PAID_BREAK_MIN } from '../utils/scheduleUtils';
 
 const ORGS = [
   'Общество с ограниченной ответственностью «Альфа Престиж»',
@@ -277,6 +278,31 @@ function calcHoursFromTimes(timeFrom, timeTo) {
   return String(h);
 }
 
+// Оплачиваемый короткий перерыв между сменами разбитого дня (8:00–12:30 + 13:00–17:00).
+// Возвращает доп. часы за промежутки 0 < gap ≤ MAX_PAID_BREAK_MIN между соседними
+// сменами одной клиники. shifts: [{ from, to, clinic }] (строки времени).
+function paidBreakHours(shifts) {
+  const toMins = t => { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; };
+  const byClinic = new Map();
+  for (const s of shifts) {
+    let start = toMins(s.from), end = toMins(s.to);
+    if (end <= start) end += 24 * 60;
+    const key = s.clinic || '';
+    if (!byClinic.has(key)) byClinic.set(key, []);
+    byClinic.get(key).push({ start, end });
+  }
+  let bonusMin = 0;
+  for (const list of byClinic.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.start - b.start);
+    for (let i = 0; i < list.length - 1; i++) {
+      const gap = list[i + 1].start - list[i].end;
+      if (gap > 0 && gap <= MAX_PAID_BREAK_MIN) bonusMin += gap;
+    }
+  }
+  return bonusMin / 60;
+}
+
 // Build { [docId]: { [day]: { code: 'Я', hours: '8' } } } from loaded schedules
 // Fill absence reasons into payData rows/cols sequentially.
 // Cols 6+7 handle up to 4 reasons (rows 0-3), then overflow to cols 8+9.
@@ -323,13 +349,17 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet, filterCli
         let totalNormHours = 0; // нормированные часы — весь план, игнорируя отмены
         let anyWorked = false;
         let firstExcCode = null;
+        const workedShifts = []; // фактически отработанные смены (для склейки перерыва)
+        const normShifts   = []; // весь план (для склейки перерыва в норме)
 
         for (const covering of coverings) {
+          const clinic = rbCanonicalClinicId(covering.clinicId);
           const excEntry = (covering.exceptions || []).find(ex =>
             typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
           );
           const h = parseFloat(calcHoursFromTimes(covering.timeFrom, covering.timeTo)) || 0;
           totalNormHours += h; // нормированное — всегда исходный план смены
+          normShifts.push({ from: covering.timeFrom, to: covering.timeTo, clinic });
 
           // Override-исключение { date, timeFrom, timeTo } — смена отработана, но с изменённым временем
           const isOverride = excEntry && typeof excEntry === 'object'
@@ -343,13 +373,17 @@ function computePreset(doctors, schedulesMap, year, month, holidaySet, filterCli
             absenceTotals[code].hours += h;
           } else {
             // Worked: override → сокращённые часы, иначе полный план
-            const ah = isOverride
-              ? (parseFloat(calcHoursFromTimes(excEntry.timeFrom, excEntry.timeTo)) || 0)
-              : h;
-            totalWorkedHours += ah;
+            const from = isOverride ? excEntry.timeFrom : covering.timeFrom;
+            const to   = isOverride ? excEntry.timeTo   : covering.timeTo;
+            totalWorkedHours += parseFloat(calcHoursFromTimes(from, to)) || 0;
+            workedShifts.push({ from, to, clinic });
             anyWorked = true;
           }
         }
+
+        // Оплачиваемый короткий перерыв разбитого дня — и в факт, и в норму
+        totalWorkedHours += paidBreakHours(workedShifts);
+        totalNormHours   += paidBreakHours(normShifts);
 
         const normHours = totalNormHours ? String(totalNormHours) : '';
 
@@ -459,8 +493,10 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
           let totalWorkedHours = 0;
           let anyWorked = false;
           let firstExcCode = null;
+          const workedShifts = []; // фактически отработанные смены (для склейки перерыва)
 
           for (const covering of coverings) {
+            const clinic = rbCanonicalClinicId(covering.clinicId);
             const excEntry = (covering.exceptions || []).find(ex =>
               typeof ex === 'string' ? ex === dateStr : ex.date === dateStr
             );
@@ -475,13 +511,16 @@ function computeDetailedPreset(doctors, schedulesMap, year, month, categoriesMap
               if (!absenceTotals[code]) absenceTotals[code] = { days: 0, hours: 0 };
               absenceTotals[code].hours += h;
             } else {
-              const ah = isOverride
-                ? (parseFloat(calcHoursFromTimes(excEntry.timeFrom, excEntry.timeTo)) || 0)
-                : h;
-              totalWorkedHours += ah;
+              const from = isOverride ? excEntry.timeFrom : covering.timeFrom;
+              const to   = isOverride ? excEntry.timeTo   : covering.timeTo;
+              totalWorkedHours += parseFloat(calcHoursFromTimes(from, to)) || 0;
+              workedShifts.push({ from, to, clinic });
               anyWorked = true;
             }
           }
+
+          // Оплачиваемый короткий перерыв разбитого дня
+          totalWorkedHours += paidBreakHours(workedShifts);
 
           if (anyWorked) {
             // Normal working day (sum of all shifts) — use РВ on public holidays

@@ -13,6 +13,36 @@ export function roundShiftMinutes(mins) {
   return Math.round(mins / 5) * 5;
 }
 
+/**
+ * Оплачиваемый короткий перерыв: разбитый рабочий день (напр. 8:00–12:30 + 13:00–17:00)
+ * приезжает двумя отдельными сменами, а промежуток между ними по факту оплачивается.
+ * Промежуток ≤ этого порога (минут) засчитывается как отработанное время; больший
+ * промежуток — это настоящий разрыв дня и не оплачивается.
+ */
+export const MAX_PAID_BREAK_MIN = 60;
+
+/**
+ * Кредитует минуты оплачиваемого короткого перерыва: между соседними сменами одной
+ * клиники с промежутком 0 < gap ≤ MAX_PAID_BREAK_MIN промежуток начисляется на более
+ * раннюю смену. Мутирует поле `mins` смен. shifts: [{ startMin, endMin, mins, clinic }].
+ */
+export function applyPaidBreaks(shifts) {
+  const byClinic = new Map();
+  for (const s of shifts) {
+    const key = s.clinic || '';
+    if (!byClinic.has(key)) byClinic.set(key, []);
+    byClinic.get(key).push(s);
+  }
+  for (const list of byClinic.values()) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.startMin - b.startMin);
+    for (let i = 0; i < list.length - 1; i++) {
+      const gap = list[i + 1].startMin - list[i].endMin;
+      if (gap > 0 && gap <= MAX_PAID_BREAK_MIN) list[i].mins += roundShiftMinutes(gap);
+    }
+  }
+}
+
 export function formatDateStr(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
@@ -130,8 +160,9 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
     const month   = d.getMonth() + 1;
     const day     = d.getDate();
     const dateStr = formatDateStr(d);
-    let dayHadWork = false;
 
+    // Собираем смены дня, затем склеиваем короткие оплачиваемые перерывы между ними.
+    const dayShifts = [];
     for (const entry of entries) {
       if (cidStr && rbCanonicalClinicId(entry.clinicId) !== cidStr) continue;
       if (!isDayScheduled(entry, year, month, day)) continue;
@@ -140,12 +171,18 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
       const eff = effectiveEntryTimes(entry, dateStr);
       const [fh, fm] = eff.timeFrom.split(':').map(Number);
       const [th, tm] = eff.timeTo.split(':').map(Number);
-      let mins = (th * 60 + tm) - (fh * 60 + fm);
-      if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
-      mins = roundShiftMinutes(mins);
-      if (mins > 0) {
+      const startMin = fh * 60 + fm;
+      let endMin = th * 60 + tm;
+      if (endMin <= startMin) endMin += 24 * 60; // overnight shift (e.g. 21:00–06:00)
+      const mins = roundShiftMinutes(endMin - startMin);
+      if (mins > 0) dayShifts.push({ startMin, endMin, mins, clinic: rbCanonicalClinicId(entry.clinicId), entry });
+    }
+
+    if (dayShifts.length) {
+      applyPaidBreaks(dayShifts);
+      scheduledDays++;
+      for (const { mins, entry } of dayShifts) {
         totalMinutes += mins;
-        dayHadWork = true;
         if (entry.categoryId) {
           byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
           if (entry.roleTitle) categoryRoles[entry.categoryId] = entry.roleTitle;
@@ -156,7 +193,6 @@ export function calcScheduleHoursForPeriod(entries, dateFrom, dateTo, clinicId) 
         }
       }
     }
-    if (dayHadWork) scheduledDays++;
 
     d.setDate(d.getDate() + 1);
   }
@@ -202,6 +238,7 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
       const month = d.getMonth() + 1;
       const day   = d.getDate();
 
+      const dayShifts = [];
       for (const entry of entries) {
         if (cidStr && rbCanonicalClinicId(entry.clinicId) !== cidStr) continue;
         if (!isDayScheduled(entry, year, month, day)) continue;
@@ -210,18 +247,22 @@ export function calcHolidayHoursForPeriod(entries, dateFrom, dateTo, clinicId, h
         const eff = effectiveEntryTimes(entry, dateStr);
         const [fh, fm] = eff.timeFrom.split(':').map(Number);
         const [th, tm] = eff.timeTo.split(':').map(Number);
-        let mins = (th * 60 + tm) - (fh * 60 + fm);
-        if (mins <= 0) mins += 24 * 60;
-        mins = roundShiftMinutes(mins);
-        if (mins > 0) {
-          if (entry.categoryId) {
-            byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
-            if (entry.roleTitle) categoryRoles[entry.categoryId] = entry.roleTitle;
-          } else if (entry.roleTitle) {
-            byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
-          } else {
-            byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
-          }
+        const startMin = fh * 60 + fm;
+        let endMin = th * 60 + tm;
+        if (endMin <= startMin) endMin += 24 * 60;
+        const mins = roundShiftMinutes(endMin - startMin);
+        if (mins > 0) dayShifts.push({ startMin, endMin, mins, clinic: rbCanonicalClinicId(entry.clinicId), entry });
+      }
+
+      applyPaidBreaks(dayShifts);
+      for (const { mins, entry } of dayShifts) {
+        if (entry.categoryId) {
+          byCategoryMinutes[entry.categoryId] = (byCategoryMinutes[entry.categoryId] || 0) + mins;
+          if (entry.roleTitle) categoryRoles[entry.categoryId] = entry.roleTitle;
+        } else if (entry.roleTitle) {
+          byRoleMinutes[entry.roleTitle] = (byRoleMinutes[entry.roleTitle] || 0) + mins;
+        } else {
+          byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
         }
       }
     }

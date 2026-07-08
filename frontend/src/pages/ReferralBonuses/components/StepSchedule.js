@@ -6,7 +6,8 @@ import { useAuth } from '../../../context/AuthContext';
 import toast from 'react-hot-toast';
 import { STATUS_CODES } from './TabelTable';
 import DivisionAccessPanel from './DivisionAccessPanel';
-import { roundShiftMinutes } from '../utils/scheduleUtils';
+import { roundShiftMinutes, applyPaidBreaks } from '../utils/scheduleUtils';
+import { rbCanonicalClinicId } from '../utils/clinicUtils';
 
 const MONTH_NAMES = [
   'Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -1586,6 +1587,7 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
       }
 
       let dayHasWork = false;
+      const dayShifts = []; // смены дня — склеиваем короткие оплачиваемые перерывы
       for (const e of cellEntries) {
         const ex = (e.exceptions || []).find(ex2 =>
           typeof ex2 === 'string' ? ex2 === dateStr : ex2.date === dateStr
@@ -1593,23 +1595,17 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
         // Override { timeFrom, timeTo } — день отработан, но с изменённым временем
         const isOverride = ex && typeof ex === 'object' && ex.timeFrom && ex.timeTo && !ex.code;
         if (!ex || isOverride) {
-          dayHasWork = true;
           const tFrom = isOverride ? ex.timeFrom : e.timeFrom;
           const tTo   = isOverride ? ex.timeTo   : e.timeTo;
           const [fh, fm] = tFrom.split(':').map(Number);
           const [th, tm] = tTo.split(':').map(Number);
-          let mins = (th * 60 + tm) - (fh * 60 + fm);
-          if (mins <= 0) mins += 24 * 60; // overnight shift (e.g. 21:00–06:00)
-          mins = roundShiftMinutes(mins);
+          const startMin = fh * 60 + fm;
+          let endMin = th * 60 + tm;
+          if (endMin <= startMin) endMin += 24 * 60; // overnight shift (e.g. 21:00–06:00)
+          const mins = roundShiftMinutes(endMin - startMin);
           if (mins > 0) {
-            workedMinutes += mins;
-            if (e.roleTitle) {
-              byRoleMinutes[e.roleTitle] = (byRoleMinutes[e.roleTitle] || 0) + mins;
-            } else if (e.categoryId) {
-              byCategoryMinutes[e.categoryId] = (byCategoryMinutes[e.categoryId] || 0) + mins;
-            } else {
-              byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
-            }
+            dayHasWork = true;
+            dayShifts.push({ startMin, endMin, mins, clinic: rbCanonicalClinicId(e.clinicId), e });
           }
         } else {
           const code = (typeof ex === 'object' ? ex.code : null) || 'ОТ';
@@ -1618,6 +1614,18 @@ export default function StepSchedule({ selectedDoctorId, doctors, clinics, getCl
             if (!absenceDates[code]) absenceDates[code] = new Set();
             absenceDates[code].add(dateStr);
           }
+        }
+      }
+
+      applyPaidBreaks(dayShifts);
+      for (const { mins, e } of dayShifts) {
+        workedMinutes += mins;
+        if (e.roleTitle) {
+          byRoleMinutes[e.roleTitle] = (byRoleMinutes[e.roleTitle] || 0) + mins;
+        } else if (e.categoryId) {
+          byCategoryMinutes[e.categoryId] = (byCategoryMinutes[e.categoryId] || 0) + mins;
+        } else {
+          byRoleMinutes[''] = (byRoleMinutes[''] || 0) + mins;
         }
       }
       if (dayHasWork) workedDaysSet.add(dateStr);
