@@ -637,58 +637,91 @@
   color: #14b8a6;
 }
 
-/* Значение времени рядом со шкалой этапа — шире обычного числа */
-.bar-value--time {
-  width: auto;
-  min-width: 68px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
+/* Инфографика производительности сотрудников */
+.emp-perf-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
-.stats-card-hint {
-  margin: -0.25rem 0 1rem;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  line-height: 1.45;
-}
-
-.employee-perf-table td strong {
-  color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
-}
-
-.employee-perf-table .emp-name {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.employee-perf-table .emp-name:hover {
-  color: #3b82f6;
-  text-decoration: underline;
-}
-
-.pace-badge {
-  display: inline-flex;
+.emp-perf-row {
+  display: grid;
+  grid-template-columns: 180px 1fr 92px;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
+  gap: 1rem;
+}
+
+.emp-perf-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pace-badge.pace-fast {
+.emp-perf-name:hover {
+  color: #3b82f6;
+}
+
+.emp-perf-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emp-perf-mark {
+  flex-shrink: 0;
+}
+
+.emp-perf-mark.fast {
   color: #059669;
-  background: rgba(16, 185, 129, 0.14);
 }
 
-.pace-badge.pace-slow {
+.emp-perf-mark.slow {
   color: #dc2626;
-  background: rgba(239, 68, 68, 0.14);
 }
 
-.pace-badge.pace-normal {
+.emp-perf-track {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  height: 22px;
+}
+
+.emp-perf-bar {
+  height: 100%;
+  min-width: 2px;
+  border-radius: 5px;
+  transition: width 0.5s ease;
+  flex-shrink: 0;
+}
+
+.emp-perf-time {
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.emp-perf-actions {
+  font-size: 0.8125rem;
   color: var(--text-tertiary);
-  background: var(--bg-secondary);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .emp-perf-row {
+    grid-template-columns: 110px 1fr 70px;
+    gap: 0.5rem;
+  }
+
+  .emp-perf-name {
+    font-size: 0.8125rem;
+  }
 }

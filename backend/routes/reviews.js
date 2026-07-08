@@ -1153,10 +1153,7 @@ router.get('/stats', authenticate, async (req, res) => {
       order: [[groupByExpression, 'ASC']]
     });
 
-    // ── Тайминг этапов и производительность сотрудников ──────────────────────
-    // Реконструируем движение каждого отзыва по этапам из истории:
-    // длительность этапа = время между входом в этап и следующим событием.
-    // Длительность закрытого этапа приписываем сотруднику, который перевёл отзыв дальше.
+    // ── Среднее время обработки и производительность сотрудников ─────────────
     const periodReviews = await Review.findAll({
       where: whereBase,
       attributes: ['id', 'createdAt', 'finalizedAt', 'status']
@@ -1167,16 +1164,13 @@ router.get('/stats', authenticate, async (req, res) => {
     const handlingDurations = periodReviews
       .filter(r => r.status === 'final' && r.finalizedAt)
       .map(r => new Date(r.finalizedAt).getTime() - new Date(r.createdAt).getTime())
-      .filter(d => d >= 0)
-      .sort((a, b) => a - b);
+      .filter(d => d >= 0);
     const avgHandlingMs = handlingDurations.length
       ? Math.round(handlingDurations.reduce((a, b) => a + b, 0) / handlingDurations.length)
       : null;
-    const medianHandlingMs = handlingDurations.length
-      ? handlingDurations[Math.floor(handlingDurations.length / 2)]
-      : null;
 
-    const stageAgg = {};     // label → { totalMs, count }
+    // Производительность: длительность закрытого этапа приписываем сотруднику,
+    // который перевёл отзыв дальше (сколько он «держал» отзыв до передачи).
     const employeeAgg = {};  // userId → { totalMs, count }
 
     if (periodReviewIds.length > 0) {
@@ -1185,7 +1179,7 @@ router.get('/stats', authenticate, async (req, res) => {
           reviewId: { [Op.in]: periodReviewIds },
           action: { [Op.in]: [HISTORY_ACTIONS.STATUS_CHANGE, HISTORY_ACTIONS.FINALIZED] }
         },
-        attributes: ['reviewId', 'action', 'oldValue', 'newValue', 'userId', 'createdAt'],
+        attributes: ['reviewId', 'action', 'oldValue', 'userId', 'createdAt'],
         order: [['reviewId', 'ASC'], ['createdAt', 'ASC']],
         raw: true
       });
@@ -1196,35 +1190,25 @@ router.get('/stats', authenticate, async (req, res) => {
       const createdMap = {};
       periodReviews.forEach(r => { createdMap[r.id] = new Date(r.createdAt).getTime(); });
 
-      const firstStageLabel = REVIEW_STATUSES[0]?.label || 'Новый отзыв';
       const finalStageLabel = REVIEW_STATUSES.find(s => s.id === 'final')?.label;
 
       for (const rid of periodReviewIds) {
         const events = byReview[rid];
         if (!events || events.length === 0) continue;
         let stageStart = createdMap[rid] ?? new Date(events[0].createdAt).getTime();
-        let currentStage = firstStageLabel;
 
         for (const ev of events) {
           const evTime = new Date(ev.createdAt).getTime();
           const delta = evTime - stageStart;
-          // Стадия, которую отзыв покидает этим событием
-          const stageLabel = (ev.action === HISTORY_ACTIONS.STATUS_CHANGE && ev.oldValue)
-            ? ev.oldValue : currentStage;
+          // Стадия, которую отзыв покидает этим событием (для отсечения простоя в финале)
+          const stageLabel = ev.action === HISTORY_ACTIONS.STATUS_CHANGE ? ev.oldValue : null;
 
-          // Не учитываем «простой» в финальном статусе — это уже не работа над отзывом
-          if (delta >= 0 && stageLabel !== finalStageLabel) {
-            stageAgg[stageLabel] = stageAgg[stageLabel] || { totalMs: 0, count: 0 };
-            stageAgg[stageLabel].totalMs += delta;
-            stageAgg[stageLabel].count += 1;
-            if (ev.userId) {
-              employeeAgg[ev.userId] = employeeAgg[ev.userId] || { totalMs: 0, count: 0 };
-              employeeAgg[ev.userId].totalMs += delta;
-              employeeAgg[ev.userId].count += 1;
-            }
+          if (delta >= 0 && stageLabel !== finalStageLabel && ev.userId) {
+            employeeAgg[ev.userId] = employeeAgg[ev.userId] || { totalMs: 0, count: 0 };
+            employeeAgg[ev.userId].totalMs += delta;
+            employeeAgg[ev.userId].count += 1;
           }
 
-          if (ev.action === HISTORY_ACTIONS.STATUS_CHANGE && ev.newValue) currentStage = ev.newValue;
           stageStart = evTime;
         }
       }
@@ -1237,19 +1221,6 @@ router.get('/stats', authenticate, async (req, res) => {
       : [];
     const employeeUserMap = {};
     employeeUsers.forEach(u => { employeeUserMap[u.id] = u; });
-
-    const stageTiming = REVIEW_STATUSES
-      .filter(s => s.id !== 'final')
-      .map(s => {
-        const agg = stageAgg[s.label];
-        return {
-          statusId: s.id,
-          label: s.label,
-          color: s.color,
-          avgMs: agg && agg.count ? Math.round(agg.totalMs / agg.count) : null,
-          count: agg ? agg.count : 0
-        };
-      });
 
     const employeePerformance = employeeIds
       .map(uid => {
@@ -1271,8 +1242,6 @@ router.get('/stats', authenticate, async (req, res) => {
       finalized,
       pending,
       avgHandlingMs,
-      medianHandlingMs,
-      stageTiming,
       employeePerformance,
       byStatus,
       byPlatform,

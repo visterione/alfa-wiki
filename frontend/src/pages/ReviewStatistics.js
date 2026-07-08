@@ -411,45 +411,6 @@ const ReviewStatistics = () => {
             );
           })()}
         </div>
-
-        {/* Время на этапах */}
-        <div className="stats-card">
-          <h3>
-            <Timer size={18} />
-            Среднее время на этапе
-          </h3>
-          {(() => {
-            const timing = (stats?.stageTiming || []).filter(s => s.count > 0);
-            if (timing.length === 0) {
-              return <div className="no-data">Недостаточно данных о движении отзывов</div>;
-            }
-            const maxMs = Math.max(...timing.map(s => s.avgMs || 0), 1);
-            return (
-              <div className="chart-container">
-                {timing.map(stage => (
-                  <div key={stage.statusId} className="bar-row">
-                    <div className="bar-label">
-                      <span className="status-dot" style={{ background: stage.color }} />
-                      {stage.label}
-                    </div>
-                    <div className="bar-wrapper">
-                      <div
-                        className="bar"
-                        style={{ width: `${(stage.avgMs / maxMs) * 100}%`, background: stage.color }}
-                      />
-                    </div>
-                    <div className="bar-value bar-value--time" title={`${stage.count} переходов`}>
-                      {formatMsDuration(stage.avgMs)}
-                    </div>
-                  </div>
-                ))}
-                <div className="decisions-total">
-                  Медиана полного цикла: {stats?.medianHandlingMs != null ? formatMsDuration(stats.medianHandlingMs) : '—'}
-                </div>
-              </div>
-            );
-          })()}
-        </div>
       </div>
 
       {/* Динамика по времени */}
@@ -539,55 +500,48 @@ const ReviewStatistics = () => {
             <Gauge size={18} />
             Производительность сотрудников
           </h3>
-          <p className="stats-card-hint">
-            Среднее время, за которое сотрудник передаёт отзыв на следующий этап. Чем меньше — тем быстрее обработка.
-          </p>
-          <div className="doctors-table employee-perf-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Сотрудник</th>
-                  <th>Действий</th>
-                  <th>Ср. время до передачи</th>
-                  <th>Темп</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.employeePerformance.map((emp, idx) => {
-                  const isFastest = idx === 0 && stats.employeePerformance.length > 1;
-                  const isSlowest = idx === stats.employeePerformance.length - 1 && stats.employeePerformance.length > 1;
+          {(() => {
+            const emps = stats.employeePerformance;
+            const maxMs = Math.max(...emps.map(e => e.avgMs || 0), 1);
+            // Плавный переход цвета: быстрые — зелёные, медленные — красные
+            const paceColor = (ratio) => {
+              const hue = Math.round(140 - ratio * 140); // 140° (зелёный) → 0° (красный)
+              return `hsl(${hue}, 70%, 45%)`;
+            };
+            return (
+              <div className="emp-perf-chart">
+                {emps.map((emp, idx) => {
+                  const ratio = (emp.avgMs || 0) / maxMs;
+                  const color = paceColor(ratio);
+                  const isFastest = idx === 0 && emps.length > 1;
+                  const isSlowest = idx === emps.length - 1 && emps.length > 1;
                   return (
-                    <tr key={emp.userId}>
-                      <td>{idx + 1}</td>
-                      <td>
-                        <span
-                          className="emp-name"
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => navigate(`/users/${emp.userId}`)}
-                        >
-                          {emp.name}
-                        </span>
-                      </td>
-                      <td>{emp.actions}</td>
-                      <td>
-                        <strong>{formatMsDuration(emp.avgMs)}</strong>
-                      </td>
-                      <td>
-                        {isFastest ? (
-                          <span className="pace-badge pace-fast"><Zap size={13} /> Быстрый</span>
-                        ) : isSlowest ? (
-                          <span className="pace-badge pace-slow"><Snail size={13} /> Медленный</span>
-                        ) : (
-                          <span className="pace-badge pace-normal">В норме</span>
-                        )}
-                      </td>
-                    </tr>
+                    <div key={emp.userId} className="emp-perf-row">
+                      <div
+                        className="emp-perf-name"
+                        onClick={() => navigate(`/users/${emp.userId}`)}
+                        title="Открыть профиль"
+                      >
+                        {isFastest && <Zap size={14} className="emp-perf-mark fast" />}
+                        {isSlowest && <Snail size={14} className="emp-perf-mark slow" />}
+                        <span>{emp.name}</span>
+                      </div>
+                      <div className="emp-perf-track">
+                        <div
+                          className="emp-perf-bar"
+                          style={{ width: `${Math.max(ratio * 100, 2)}%`, background: color }}
+                        />
+                        <span className="emp-perf-time" style={{ color }}>{formatMsDuration(emp.avgMs)}</span>
+                      </div>
+                      <div className="emp-perf-actions" title="Количество переходов, выполненных сотрудником">
+                        {emp.actions} действ.
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
