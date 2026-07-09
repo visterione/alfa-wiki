@@ -1280,8 +1280,10 @@ export async function buildReport({
       // Спец. условия: при превышении нормы отработанных часов (хоть на час, хоть на десять)
       // оклад начисляется полностью (капается на 100%) + фиксированная премия 15% от оклада.
       if (clinicSettings.proratedPremium && normHours > 0 && effectiveHoursWorked > normHours) {
-        proratedOvertimeAmount = Math.round(oklad * 0.15);
-        basePay = Math.round(oklad) + proratedOvertimeAmount;
+        // Переработка = (оклад + 15%) / норма × часы сверх нормы
+        const overHours = effectiveHoursWorked - normHours;
+        proratedOvertimeAmount = Math.round((oklad * 1.15 / normHours) * overHours * 100) / 100;
+        basePay = Math.round((oklad + proratedOvertimeAmount) * 100) / 100;
       } else {
         const ratio = normHours > 0 ? effectiveHoursWorked / normHours : 0;
         basePay = Math.round(oklad * ratio);

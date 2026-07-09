@@ -2021,8 +2021,9 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const proratedRatio = (data.proratedNorm || 0) > 0 ? effectiveHoursWorked / (data.proratedNorm || 0) : 0;
   // Спец. условия: при превышении нормы оклад капается на 100% и добавляется фикс. премия 15%
   const proratedExceeded = !!data.proratedPremium && (data.proratedNorm || 0) > 0 && effectiveHoursWorked > (data.proratedNorm || 0);
-  const proratedPremiumAmount = proratedExceeded ? (data.fixedSalary || 0) * 0.15 : 0;
   const proratedOverHours = Math.max(0, effectiveHoursWorked - (data.proratedNorm || 0));
+  // Переработка = (оклад + 15%) / норма × часы сверх нормы
+  const proratedPremiumAmount = proratedExceeded ? ((data.fixedSalary || 0) * 1.15 / (data.proratedNorm || 1)) * proratedOverHours : 0;
   const proratedTotal = pt === 'prorated'
     ? (proratedExceeded ? (data.fixedSalary || 0) + proratedPremiumAmount : (data.fixedSalary || 0) * proratedRatio)
     : 0;

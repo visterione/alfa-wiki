@@ -442,6 +442,7 @@ export default function SalaryBlock({ salary }) {
           {payType === 'prorated' && (() => {
             const hasPremium = proratedOvertimeAmount > 0;
             const fmtH = (h) => Number.isInteger(h) ? h : h.toFixed(1);
+            const fmtMoney = (v) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             // При спец. условиях база капается на норме, а часы сверх нормы — отдельной строкой «Переработка»
             const baseHours = hasPremium ? proratedNorm : hoursWorked;
             const baseTotal = (basePay || 0) - proratedOvertimeAmount;
@@ -454,14 +455,14 @@ export default function SalaryBlock({ salary }) {
                     <td>Оклад</td>
                     <td style={{ textAlign: 'center' }}>{proratedNorm ? fmtH(proratedNorm) : '—'}</td>
                     <td style={{ textAlign: 'center' }}>{fmtH(baseHours)}</td>
-                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(baseTotal).toLocaleString('ru-RU')} ₽</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{fmtMoney(baseTotal)} ₽</td>
                   </tr>
                   {hasPremium && (
                     <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
                       <td>Переработка</td>
                       <td style={{ textAlign: 'center' }}>{proratedNorm ? fmtH(proratedNorm) : '—'}</td>
                       <td style={{ textAlign: 'center' }}>{fmtH(overHours)}</td>
-                      <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(proratedOvertimeAmount).toLocaleString('ru-RU')} ₽</td>
+                      <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{fmtMoney(proratedOvertimeAmount)} ₽</td>
                     </tr>
                   )}
                 </tbody>
