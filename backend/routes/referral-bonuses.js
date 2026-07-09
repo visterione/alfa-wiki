@@ -250,14 +250,14 @@ router.delete('/:id', authenticate, async (req, res) => {
 router.get('/permissions/my', authenticate, async (req, res) => {
   try {
     if (req.user.isAdmin) {
-      return res.json({ tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit', tabSummary: 'edit', tabKpi: 'edit', bypassPeriodLock: true, clinics: [] });
+      return res.json({ tab1: 'edit', tabWorkTime: 'edit', tabHourNorms: 'edit', tabSchedule: 'edit', tab2: 'edit', tab3: 'edit', tab4: 'edit', tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit', tabSummary: 'edit', tabKpi: 'edit', bypassPeriodLock: true, clinics: [], defaultClinic: 'auto' });
     }
     const perm = await RbUserPermission.findOne({ where: { userId: req.user.id } });
     if (!perm) {
-      return res.json({ tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', bypassPeriodLock: false, clinics: [] });
+      return res.json({ tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', bypassPeriodLock: false, clinics: [], defaultClinic: 'auto' });
     }
     const archiveFallback = perm.tabArchive || 'edit';
-    res.json({ tab1: perm.tab1, tabWorkTime: perm.tabWorkTime || 'edit', tabHourNorms: perm.tabHourNorms || 'edit', tabSchedule: perm.tabSchedule || 'edit', tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchiveHistory: perm.tabArchiveHistory || archiveFallback, tabArchiveKassa: perm.tabArchiveKassa || archiveFallback, tabArchiveTabel: perm.tabArchiveTabel || archiveFallback, tabSummary: perm.tabSummary, tabKpi: perm.tabKpi || 'edit', bypassPeriodLock: !!perm.bypassPeriodLock, clinics: perm.clinics });
+    res.json({ tab1: perm.tab1, tabWorkTime: perm.tabWorkTime || 'edit', tabHourNorms: perm.tabHourNorms || 'edit', tabSchedule: perm.tabSchedule || 'edit', tab2: perm.tab2, tab3: perm.tab3, tab4: perm.tab4, tabArchiveHistory: perm.tabArchiveHistory || archiveFallback, tabArchiveKassa: perm.tabArchiveKassa || archiveFallback, tabArchiveTabel: perm.tabArchiveTabel || archiveFallback, tabSummary: perm.tabSummary, tabKpi: perm.tabKpi || 'edit', bypassPeriodLock: !!perm.bypassPeriodLock, clinics: perm.clinics, defaultClinic: perm.defaultClinic || 'auto' });
   } catch (err) {
     console.error('Get rb permissions error:', err);
     res.status(500).json({ error: 'Ошибка получения прав' });
@@ -284,8 +284,8 @@ router.get('/permissions/users', authenticate, async (req, res) => {
       displayName: u.displayName || u.username,
       avatar: u.avatar,
       perm: u.rbPermission
-        ? (() => { const af = u.rbPermission.tabArchive || 'edit'; return { tab1: u.rbPermission.tab1, tabWorkTime: u.rbPermission.tabWorkTime || 'edit', tabHourNorms: u.rbPermission.tabHourNorms || 'edit', tabSchedule: u.rbPermission.tabSchedule || 'edit', tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchiveHistory: u.rbPermission.tabArchiveHistory || af, tabArchiveKassa: u.rbPermission.tabArchiveKassa || af, tabArchiveTabel: u.rbPermission.tabArchiveTabel || af, tabSummary: u.rbPermission.tabSummary, tabKpi: u.rbPermission.tabKpi || 'edit', bypassPeriodLock: !!u.rbPermission.bypassPeriodLock, clinics: u.rbPermission.clinics }; })()
-        : { tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', bypassPeriodLock: false, clinics: [] }
+        ? (() => { const af = u.rbPermission.tabArchive || 'edit'; return { tab1: u.rbPermission.tab1, tabWorkTime: u.rbPermission.tabWorkTime || 'edit', tabHourNorms: u.rbPermission.tabHourNorms || 'edit', tabSchedule: u.rbPermission.tabSchedule || 'edit', tab2: u.rbPermission.tab2, tab3: u.rbPermission.tab3, tab4: u.rbPermission.tab4, tabArchiveHistory: u.rbPermission.tabArchiveHistory || af, tabArchiveKassa: u.rbPermission.tabArchiveKassa || af, tabArchiveTabel: u.rbPermission.tabArchiveTabel || af, tabSummary: u.rbPermission.tabSummary, tabKpi: u.rbPermission.tabKpi || 'edit', bypassPeriodLock: !!u.rbPermission.bypassPeriodLock, clinics: u.rbPermission.clinics, defaultClinic: u.rbPermission.defaultClinic || 'auto' }; })()
+        : { tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block', tab2: 'block', tab3: 'block', tab4: 'block', tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block', tabSummary: 'block', tabKpi: 'block', bypassPeriodLock: false, clinics: [], defaultClinic: 'auto' }
     })));
   } catch (err) {
     console.error('Get rb permissions users error:', err);
@@ -307,11 +307,13 @@ router.get('/permissions/:userId', authenticate, async (req, res) => {
       tabArchiveTabel: perm.tabArchiveTabel || af,
       tabSummary: perm.tabSummary || 'block', tabKpi: perm.tabKpi || 'block',
       bypassPeriodLock: !!perm.bypassPeriodLock, clinics: perm.clinics || [],
+      defaultClinic: perm.defaultClinic || 'auto',
     } : {
       tab1: 'block', tabWorkTime: 'block', tabHourNorms: 'block', tabSchedule: 'block',
       tab2: 'block', tab3: 'block', tab4: 'block',
       tabArchiveHistory: 'block', tabArchiveKassa: 'block', tabArchiveTabel: 'block',
       tabSummary: 'block', tabKpi: 'block', bypassPeriodLock: false, clinics: [],
+      defaultClinic: 'auto',
     });
   } catch (err) {
     console.error('Get user perm error:', err);
@@ -324,7 +326,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
   if (!req.user.isAdmin) return res.status(403).json({ error: 'Нет доступа' });
   try {
     const { userId } = req.params;
-    const { tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi, bypassPeriodLock, clinics } = req.body;
+    const { tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi, bypassPeriodLock, clinics, defaultClinic } = req.body;
     const valid = ['edit', 'read', 'block'];
     for (const v of [tab1, tabWorkTime, tabHourNorms, tabSchedule, tab2, tab3, tab4, tabArchiveHistory, tabArchiveKassa, tabArchiveTabel, tabSummary, tabKpi]) {
       if (v && !valid.includes(v)) return res.status(400).json({ error: `Недопустимое значение: ${v}` });
@@ -336,7 +338,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
       tabSchedule: existing.tabSchedule, tab2: existing.tab2, tab3: existing.tab3, tab4: existing.tab4,
       tabArchiveHistory: existing.tabArchiveHistory, tabArchiveKassa: existing.tabArchiveKassa,
       tabArchiveTabel: existing.tabArchiveTabel, tabSummary: existing.tabSummary, tabKpi: existing.tabKpi,
-      bypassPeriodLock: existing.bypassPeriodLock, clinics: existing.clinics,
+      bypassPeriodLock: existing.bypassPeriodLock, clinics: existing.clinics, defaultClinic: existing.defaultClinic,
     } : null;
 
     const data = {
@@ -347,6 +349,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
       tabArchiveTabel: tabArchiveTabel || 'edit', tabSummary: tabSummary || 'edit', tabKpi: tabKpi || 'edit',
       bypassPeriodLock: !!bypassPeriodLock,
       clinics: Array.isArray(clinics) ? clinics : [],
+      defaultClinic: (typeof defaultClinic === 'string' && defaultClinic) ? defaultClinic.slice(0, 16) : 'auto',
     };
     const [perm, created] = await RbUserPermission.findOrCreate({ where: { userId }, defaults: data });
     if (!created) await perm.update(data);
@@ -361,7 +364,7 @@ router.put('/permissions/:userId', authenticate, async (req, res) => {
       entityType: 'user_permission',
       entityId:   userId,
       summary:    `${created ? 'Назначены' : 'Изменены'} права доступа: ${targetName}`,
-      diff:       { before, after: { tab1: data.tab1, tabWorkTime: data.tabWorkTime, tabHourNorms: data.tabHourNorms, tabSchedule: data.tabSchedule, tab2: data.tab2, tab3: data.tab3, tab4: data.tab4, tabArchiveHistory: data.tabArchiveHistory, tabArchiveKassa: data.tabArchiveKassa, tabArchiveTabel: data.tabArchiveTabel, tabSummary: data.tabSummary, tabKpi: data.tabKpi, bypassPeriodLock: data.bypassPeriodLock, clinics: data.clinics } },
+      diff:       { before, after: { tab1: data.tab1, tabWorkTime: data.tabWorkTime, tabHourNorms: data.tabHourNorms, tabSchedule: data.tabSchedule, tab2: data.tab2, tab3: data.tab3, tab4: data.tab4, tabArchiveHistory: data.tabArchiveHistory, tabArchiveKassa: data.tabArchiveKassa, tabArchiveTabel: data.tabArchiveTabel, tabSummary: data.tabSummary, tabKpi: data.tabKpi, bypassPeriodLock: data.bypassPeriodLock, clinics: data.clinics, defaultClinic: data.defaultClinic } },
     });
 
     res.json({ success: true });

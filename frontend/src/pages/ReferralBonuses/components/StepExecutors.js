@@ -25,6 +25,7 @@ function execClinicDefault() {
     hourlyRate: 0,
     hoursWorked: 0,
     proratedNorm: 0,
+    proratedPremium: false,
     executorPercent: 0,
     plusPercent: false,
     paymentMethod: 'card',
@@ -53,6 +54,39 @@ function execClinicDefault() {
 
 function execDefault() {
   return { assistants: [], disabledClinics: [], clinicSettings: { global: execClinicDefault() } };
+}
+
+// Ordered list of clinic tab ids (excluding 'global') that a given doctor's card shows.
+// Mirrors the clinicTabs filter below so the default-tab logic stays in sync.
+function eligibleClinicTabIds(doctor, clinics) {
+  const realIds = new Set((doctor?.clinics || []).map(String));
+  const isIpOnlyDoctor = (doctor?.clinics || []).length > 0 && (doctor.clinics || []).every(c => c === 'ip');
+  const REFERRAL_CLINIC_ID = '8';
+  const doctorHasOtherClinics = Array.from(realIds).some(id => id !== REFERRAL_CLINIC_ID);
+  return (clinics || [])
+    .filter(c => {
+      if (isIpOnlyDoctor && String(c.id) !== 'ip') return false;
+      if (String(c.id) === REFERRAL_CLINIC_ID && doctorHasOtherClinics) return false;
+      return realIds.has(String(c.id));
+    })
+    .map(c => String(c.id));
+}
+
+// Resolve which clinic tab should be active when a doctor is first opened,
+// based on the current user's permissions (defaultClinic + clinic scope).
+function resolveDefaultClinic(doctor, clinics, permissions) {
+  const eligible = eligibleClinicTabIds(doctor, clinics);
+  const setting = permissions?.defaultClinic || 'auto';
+  const userClinics = (permissions?.clinics || []).map(String);
+  const firstAccessible = () => {
+    if (!userClinics.length) return 'global'; // full access → keep Общие
+    return eligible.find(id => userClinics.includes(id)) || 'global';
+  };
+  if (setting === 'global') return 'global';
+  if (setting === 'auto')   return firstAccessible();
+  // Pinned specific clinic — use it if this doctor has that tab, else fall back to auto.
+  if (eligible.includes(String(setting))) return String(setting);
+  return firstAccessible();
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -1213,7 +1247,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey, onDisabledClinicsChange }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey, onDisabledClinicsChange, permissions }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
@@ -1342,7 +1376,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   useEffect(() => {
     if (!selectedDoctor) return;
     setLoading(true);
-    setActiveClinic('global');
+    setActiveClinic(resolveDefaultClinic(selectedDoctor, clinics, permissions));
     setDoctorServices([]);
     Promise.all([
       executorSettings.get(selectedDoctor.id),
@@ -1425,6 +1459,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         hourlyRate: globalData.hourlyRate,
         hoursWorked: globalData.hoursWorked,
         proratedNorm: globalData.proratedNorm,
+        proratedPremium: globalData.proratedPremium,
         executorPercent: globalData.executorPercent,
         plusPercent: globalData.plusPercent,
         advance: globalData.advance,
@@ -1509,6 +1544,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
           hourlyRate: globalData.hourlyRate,
           hoursWorked: globalData.hoursWorked,
           proratedNorm: globalData.proratedNorm,
+          proratedPremium: globalData.proratedPremium,
           executorPercent: globalData.executorPercent,
           plusPercent: globalData.plusPercent,
           advance: globalData.advance,
@@ -1611,6 +1647,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
 
   const handleToggleProratedNormLock = () => {
     updateClinicData({ lockedProratedNorm: !data.lockedProratedNorm });
+    setIsDirty(true);
+  };
+
+  const handleToggleProratedPremiumLock = () => {
+    updateClinicData({ lockedProratedPremium: !data.lockedProratedPremium });
     setIsDirty(true);
   };
 
@@ -1978,7 +2019,14 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const hourlyTotal = pt === 'hourly' ? (data.hourlyRate || 0) * globalRateHours : 0;
   // Пропорциональный оклад: оклад × (отработано часов / норма часов)
   const proratedRatio = (data.proratedNorm || 0) > 0 ? effectiveHoursWorked / (data.proratedNorm || 0) : 0;
-  const proratedTotal = pt === 'prorated' ? (data.fixedSalary || 0) * proratedRatio : 0;
+  // Спец. условия: при превышении нормы оклад капается на 100% и добавляется фикс. премия 15%
+  const proratedExceeded = !!data.proratedPremium && (data.proratedNorm || 0) > 0 && effectiveHoursWorked > (data.proratedNorm || 0);
+  const proratedPremiumAmount = proratedExceeded ? (data.fixedSalary || 0) * 0.15 : 0;
+  const proratedOverHours = Math.max(0, effectiveHoursWorked - (data.proratedNorm || 0));
+  const proratedTotal = pt === 'prorated'
+    ? (proratedExceeded ? (data.fixedSalary || 0) + proratedPremiumAmount : (data.fixedSalary || 0) * proratedRatio)
+    : 0;
+  const fmtProratedH = (h) => Number.isInteger(h) ? h : h.toFixed(1);
 
   return (
     <div className="rb-doctor-card">
@@ -2670,13 +2718,28 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
         {/* ── Proportional salary (prorated pay type only) ── */}
         {pt === 'prorated' && (
           <div className="rb-exec-flat-section" style={{ marginTop: 4 }}>
-            <div className="rb-exec-flat-label">
+            <div className="rb-exec-flat-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 Оклад по норме часов
               </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginRight: 12 }}>
+                <label className="rb-toggle-item" style={{ marginBottom: 0, gap: 6, ...(data.lockedProratedPremium ? { pointerEvents: 'none', opacity: 0.65 } : {}) }} title="При превышении нормы отработанных часов оклад начисляется полностью (100%) + фикс. премия 15%">
+                  <span className="rb-toggle-switch">
+                    <input
+                      type="checkbox"
+                      checked={!!data.proratedPremium}
+                      disabled={!!data.lockedProratedPremium}
+                      onChange={() => handlePaymentFieldChange('proratedPremium', !data.proratedPremium)}
+                    />
+                    <span className="rb-toggle-slider" />
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap', textTransform: 'none' }}>Спец. условия</span>
+                </label>
+                {!readOnly && <LockBtn locked={!!data.lockedProratedPremium} onClick={handleToggleProratedPremiumLock} />}
+              </div>
             </div>
-            <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', padding: '0 12px 10px' }}>
+            <div className="rb-exec-fields-grid" style={{ gridTemplateColumns: proratedExceeded ? '1fr 1fr' : '1fr 1fr 1fr', padding: '0 12px 10px' }}>
               <div className="rb-exec-field" style={data.lockedProratedNorm ? { background: '#eff6ff', borderRadius: 6 } : {}}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <label style={{ marginBottom: 0 }}>Норма часов</label>
@@ -2730,13 +2793,43 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                   />
                 )}
               </div>
-              <div className="rb-exec-field">
-                <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
-                  <label style={{ marginBottom: 0 }}>Итого</label>
+              {!proratedExceeded && (
+                <div className="rb-exec-field">
+                  <div style={{ display: 'flex', alignItems: 'center', height: 20 }}>
+                    <label style={{ marginBottom: 0 }}>Итого</label>
+                  </div>
+                  <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {proratedTotal.toFixed(2)} ₽</div>
                 </div>
-                <div style={{ padding: '0 10px', border: '1px solid #bfdbfe', borderRadius: 8, fontSize: 13, fontWeight: 700, color: 'var(--rb-primary)', background: '#eff6ff', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 38, boxSizing: 'border-box' }}>= {proratedTotal.toFixed(2)} ₽</div>
-              </div>
+              )}
             </div>
+            {proratedExceeded && (
+              <div style={{ padding: '0 12px 12px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ color: 'var(--rb-text-secondary)' }}>
+                      <th style={{ textAlign: 'left', padding: '4px 8px', fontWeight: 600, borderBottom: '1px solid var(--rb-border)' }}>Начисление</th>
+                      <th style={{ textAlign: 'center', padding: '4px 8px', fontWeight: 600, borderBottom: '1px solid var(--rb-border)' }}>Норма, ч</th>
+                      <th style={{ textAlign: 'center', padding: '4px 8px', fontWeight: 600, borderBottom: '1px solid var(--rb-border)' }}>Отработано, ч</th>
+                      <th style={{ textAlign: 'right', padding: '4px 8px', fontWeight: 600, borderBottom: '1px solid var(--rb-border)' }}>Итого, ₽</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '5px 8px' }}>Оклад</td>
+                      <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(data.proratedNorm || 0)}</td>
+                      <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(data.proratedNorm || 0)}</td>
+                      <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 700, color: 'var(--rb-primary)' }}>{(data.fixedSalary || 0).toFixed(2)} ₽</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '5px 8px' }}>Переработка</td>
+                      <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(data.proratedNorm || 0)}</td>
+                      <td style={{ textAlign: 'center', padding: '5px 8px' }}>{fmtProratedH(proratedOverHours)}</td>
+                      <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 700, color: 'var(--rb-success, #16a34a)' }}>{proratedPremiumAmount.toFixed(2)} ₽</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

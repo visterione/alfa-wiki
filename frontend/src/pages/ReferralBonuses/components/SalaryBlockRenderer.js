@@ -312,6 +312,7 @@ export default function SalaryBlock({ salary }) {
     hourlyRate = 0,
     hoursWorked = 0,
     proratedNorm = 0,
+    proratedOvertimeAmount = 0,
     hourlyRatesBreakdown = [],
     holidaySurchargeTotal = 0,
     holidaySurchargeBreakdown = [],
@@ -438,19 +439,35 @@ export default function SalaryBlock({ salary }) {
               </tbody>
             </table>
           )}
-          {payType === 'prorated' && (
-            <table className="rb-report-table rb-report-table--bordered">
-              <thead><tr><th style={{ textAlign: 'center' }}>Оклад, ₽</th><th style={{ textAlign: 'center' }}>Норма, ч</th><th style={{ textAlign: 'center' }}>Отработано, ч</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td style={{ textAlign: 'center' }}>{normFixedSalary.toLocaleString('ru-RU')} ₽</td>
-                  <td style={{ textAlign: 'center' }}>{proratedNorm ? (Number.isInteger(proratedNorm) ? proratedNorm : proratedNorm.toFixed(1)) : '—'}</td>
-                  <td style={{ textAlign: 'center' }}>{Number.isInteger(hoursWorked) ? hoursWorked : hoursWorked.toFixed(1)}</td>
-                  <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(basePay || 0).toLocaleString('ru-RU')} ₽</td>
-                </tr>
-              </tbody>
-            </table>
-          )}
+          {payType === 'prorated' && (() => {
+            const hasPremium = proratedOvertimeAmount > 0;
+            const fmtH = (h) => Number.isInteger(h) ? h : h.toFixed(1);
+            // При спец. условиях база капается на норме, а часы сверх нормы — отдельной строкой «Переработка»
+            const baseHours = hasPremium ? proratedNorm : hoursWorked;
+            const baseTotal = (basePay || 0) - proratedOvertimeAmount;
+            const overHours = Math.max(0, hoursWorked - proratedNorm);
+            return (
+              <table className="rb-report-table rb-report-table--bordered">
+                <thead><tr><th>Начисление</th><th style={{ textAlign: 'center' }}>Норма, ч</th><th style={{ textAlign: 'center' }}>Отработано, ч</th><th style={{ textAlign: 'center' }}>Итого, руб</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td>Оклад</td>
+                    <td style={{ textAlign: 'center' }}>{proratedNorm ? fmtH(proratedNorm) : '—'}</td>
+                    <td style={{ textAlign: 'center' }}>{fmtH(baseHours)}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(baseTotal).toLocaleString('ru-RU')} ₽</td>
+                  </tr>
+                  {hasPremium && (
+                    <tr style={{ borderTop: '1px dashed #e2e8f0' }}>
+                      <td>Переработка</td>
+                      <td style={{ textAlign: 'center' }}>{proratedNorm ? fmtH(proratedNorm) : '—'}</td>
+                      <td style={{ textAlign: 'center' }}>{fmtH(overHours)}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--rb-success)', textAlign: 'center' }}>+{Math.round(proratedOvertimeAmount).toLocaleString('ru-RU')} ₽</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            );
+          })()}
           {basePerformedSections.length > 0 && (
             <ServiceTable sections={basePerformedSections} columns={['Код', 'Услуга', 'Стоимость', 'К-во', 'Бонус', 'Итого, руб']} />
           )}

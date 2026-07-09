@@ -1174,6 +1174,7 @@ export async function buildReport({
     const pt = clinicSettings.payType || 'salary';
     let basePay = 0, basePayLabel = '';
     let normTotalHours = 0, normPremiumAmount = 0;
+    let proratedOvertimeAmount = 0; // переработка при спец. условиях пропорционального оклада (в составе basePay, но не строка «Премия» в выплатах)
     let effectiveHoursWorked = 0;
     let effectiveDaysWorked = 0;
     const normPremiumByRole = []; // [{ roleTitle, categoryId, premiumAmount, workedHours, norm }]
@@ -1276,8 +1277,15 @@ export async function buildReport({
         }
       }
 
-      const ratio = normHours > 0 ? effectiveHoursWorked / normHours : 0;
-      basePay = Math.round(oklad * ratio);
+      // Спец. условия: при превышении нормы отработанных часов (хоть на час, хоть на десять)
+      // оклад начисляется полностью (капается на 100%) + фиксированная премия 15% от оклада.
+      if (clinicSettings.proratedPremium && normHours > 0 && effectiveHoursWorked > normHours) {
+        proratedOvertimeAmount = Math.round(oklad * 0.15);
+        basePay = Math.round(oklad) + proratedOvertimeAmount;
+      } else {
+        const ratio = normHours > 0 ? effectiveHoursWorked / normHours : 0;
+        basePay = Math.round(oklad * ratio);
+      }
       normTotalHours = effectiveHoursWorked;
     } else if (pt === 'normed') {
       const fixedSalary  = parseFloat(clinicSettings.fixedSalary) || 0;
@@ -1499,6 +1507,7 @@ export async function buildReport({
       fixedSalary: (pt === 'normed' || pt === 'prorated') ? (parseFloat(clinicSettings.fixedSalary) || 0) : 0,
       normTotalHours,
       normPremiumAmount,
+      proratedOvertimeAmount,
       normPremiumByRole,
       normHoursForPeriod: _normHoursForPeriod,
       referralBonuses: effectiveReferralBonusTotal,

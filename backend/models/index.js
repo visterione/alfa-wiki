@@ -1544,6 +1544,7 @@ const RbUserPermission = sequelize.define('RbUserPermission', {
   tabSummary:       { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   tabKpi:           { type: DataTypes.STRING(10), defaultValue: 'edit', allowNull: false },
   bypassPeriodLock: { type: DataTypes.BOOLEAN, defaultValue: false, allowNull: false, comment: 'Обход блокировки закрытых периодов (Расписание / Учёт рабочего времени)' },
+  defaultClinic:    { type: DataTypes.STRING(16), allowNull: true, comment: 'Клиника по умолчанию во вкладке Сотрудники: auto (первая доступная) / global / <clinicId>' },
 }, { tableName: 'rb_user_permissions', timestamps: true });
 
 // === EMAIL TEMPLATE MODEL ===

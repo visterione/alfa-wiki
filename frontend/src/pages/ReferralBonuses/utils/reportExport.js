@@ -161,11 +161,19 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
       }
       // Пропорциональный оклад: оклад × (отработано / норма)
       if (sal.payType === 'prorated') {
-        const _norm  = parseFloat(sal.proratedNorm) || 0;
-        const _hrs   = parseFloat(sal.hoursWorked)  || 0;
-        const _ratio = _norm > 0 ? _hrs / _norm : 0;
-        addTblHdr(['Оклад, ₽', 'Норма, ч', '', 'Отработано, ч', 'Коэфф.', 'Итого, руб'], 1);
-        addTblRow([parseFloat((sal.fixedSalary || 0).toFixed(2)), _norm || '—', '', _hrs, parseFloat(_ratio.toFixed(3)), parseFloat((sal.basePay || 0).toFixed(2))], 1);
+        const _norm    = parseFloat(sal.proratedNorm) || 0;
+        const _hrs     = parseFloat(sal.hoursWorked)  || 0;
+        const _overtime = parseFloat(sal.proratedOvertimeAmount) || 0;
+        // При спец. условиях база капается на норме, а часы сверх нормы — отдельной строкой «Переработка»
+        const _baseHours = _overtime > 0 ? _norm : _hrs;
+        const _baseTotal = (parseFloat(sal.basePay) || 0) - _overtime;
+        const _overHours = Math.max(0, _hrs - _norm);
+        const _ratio = _norm > 0 ? _baseHours / _norm : 0;
+        addTblHdr(['Начисление', 'Норма, ч', '', 'Отработано, ч', 'Коэфф.', 'Итого, руб'], 1);
+        addTblRow(['Оклад', _norm || '—', '', _baseHours, parseFloat(_ratio.toFixed(3)), parseFloat(_baseTotal.toFixed(2))], 1);
+        if (_overtime > 0) {
+          addTblRow(['Переработка', _norm || '—', '', _overHours, '', parseFloat(_overtime.toFixed(2))], 1);
+        }
       }
     }
 

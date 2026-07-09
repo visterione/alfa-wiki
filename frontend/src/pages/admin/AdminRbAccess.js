@@ -158,11 +158,14 @@ function ClinicToggle({ checked, color }) {
 function PermSummary({ perm }) {
   const clinics = (perm.clinics || []).map(id => CLINICS.find(c => c.id === id)).filter(Boolean);
   const restricted = TAB_DEFS.filter(t => perm[t.key] && perm[t.key] !== 'edit');
-  if (!clinics.length && !restricted.length && !perm.bypassPeriodLock) return <span>Полный доступ</span>;
+  const dc = perm.defaultClinic && perm.defaultClinic !== 'auto' ? perm.defaultClinic : null;
+  const dcLabel = dc === 'global' ? 'Общие' : (CLINICS.find(c => c.id === dc)?.name || null);
+  if (!clinics.length && !restricted.length && !perm.bypassPeriodLock && !dcLabel) return <span>Полный доступ</span>;
   const parts = [
     ...clinics.map((c, i) => <span key={`cl-${i}`} style={{ color: c.color }}>{c.name}</span>),
     ...restricted.map(t => <span key={t.key} style={{ color: PERM_DOT_COLOR[perm[t.key]] }}>{t.label}</span>),
     ...(perm.bypassPeriodLock ? [<span key="bypass" style={{ color: '#16a34a' }}>Без блокировки периодов</span>] : []),
+    ...(dcLabel ? [<span key="dc" style={{ color: '#64748b' }}>По умолч.: {dcLabel}</span>] : []),
   ];
   return (
     <>
@@ -181,6 +184,7 @@ function UserRow({ user, onSaved }) {
   const [perm, setPerm] = useState({
     tabWorkTime: 'edit', tabSchedule: 'edit',
     tabArchiveHistory: 'edit', tabArchiveKassa: 'edit', tabArchiveTabel: 'edit',
+    defaultClinic: 'auto',
     ...user.perm,
   });
   const [saving, setSaving] = useState(false);
@@ -233,6 +237,27 @@ function UserRow({ user, onSaved }) {
                 );
               })}
             </div>
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#64748b', marginBottom: 4 }}>Клиника по умолчанию во вкладке «Сотрудники»</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Какой медцентр открывается сразу при выборе сотрудника (вместо «Общие»)</div>
+            {(() => {
+              const availableClinics = (perm.clinics && perm.clinics.length)
+                ? CLINICS.filter(c => perm.clinics.includes(c.id))
+                : CLINICS;
+              return (
+                <select
+                  value={perm.defaultClinic || 'auto'}
+                  onChange={e => setPerm(p => ({ ...p, defaultClinic: e.target.value }))}
+                  style={{ ...inputStyle, minWidth: 260 }}
+                >
+                  <option value="auto">Первая доступная (авто)</option>
+                  <option value="global">Общие</option>
+                  {availableClinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              );
+            })()}
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

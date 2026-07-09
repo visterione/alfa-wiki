@@ -122,10 +122,21 @@ function buildLeftRows(salary, periodCell) {
       }
     }
   } else if (salary.basePay) {
-    const premAmt    = parseFloat(salary.normPremiumAmount) || 0;
-    const displayBase = premAmt > 0 ? salary.basePay - premAmt : salary.basePay;
-    rows.push({ label: salary.basePayLabel || 'Оклад', period: periodCell, days: daysStr, hours: hoursStr, paid: hoursStr, sum: displayBase });
-    if (premAmt > 0) {
+    // Пропорциональный со спец. условиями: базу капаем на норме, часы сверх — отдельной строкой «Переработка»
+    const overtimeAmt = pt === 'prorated' ? (parseFloat(salary.proratedOvertimeAmount) || 0) : 0;
+    const premAmt    = overtimeAmt > 0 ? 0 : (parseFloat(salary.normPremiumAmount) || 0);
+    const isProratedOvertime = overtimeAmt > 0;
+    const proratedNorm = parseFloat(salary.proratedNorm) || 0;
+    const displayBase = isProratedOvertime
+      ? salary.basePay - overtimeAmt
+      : (premAmt > 0 ? salary.basePay - premAmt : salary.basePay);
+    const baseHoursStr = isProratedOvertime && proratedNorm > 0 ? String(parseFloat(proratedNorm.toFixed(1))) : hoursStr;
+    rows.push({ label: salary.basePayLabel || 'Оклад', period: periodCell, days: daysStr, hours: baseHoursStr, paid: baseHoursStr, sum: displayBase });
+    if (isProratedOvertime) {
+      const overHours = Math.max(0, rawHours - proratedNorm);
+      const overStr = overHours > 0 ? String(parseFloat(overHours.toFixed(1))) : '';
+      rows.push({ label: 'Переработка', period: periodCell, days: '', hours: overStr, paid: overStr, sum: overtimeAmt });
+    } else if (premAmt > 0) {
       const premEntries = salary.normPremiumByRole || [];
       const totalOverHours = premEntries.reduce((s, p) => {
         const oh = p.premiumHours != null ? p.premiumHours : Math.max(0, (p.workedHours || 0) - 2 * (p.norm || 0));
