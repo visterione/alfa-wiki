@@ -389,6 +389,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [cashOverpayDone, setCashOverpayDone]       = useState({});
   const [bonusCarryLoading, setBonusCarryLoading]   = useState({});
   const [bonusCarryDone, setBonusCarryDone]         = useState({});
+  const [bonusWriteOffLoading, setBonusWriteOffLoading] = useState({});
+  const [bonusWriteOffDone, setBonusWriteOffDone]       = useState({});
   const [commentsMap, setCommentsMap] = useState({});
   const [commentSaving, setCommentSaving] = useState({});
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -494,6 +496,28 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
+  // Списание премии — отказ от остатка «хвоста» (в т.ч. в экспорте «Выплата» премия обнуляется).
+  // Ничего не начисляет в настройки исполнителя, только помечает запись флагом.
+  const handleBonusWriteOff = async (rec, rowKey) => {
+    const key = rowKey;
+    setBonusWriteOffLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const already = !!(rec.reportData?.bonusWriteOff?.[key]);
+      const updatedReportData = {
+        ...(rec.reportData || {}),
+        bonusWriteOff: { ...(rec.reportData?.bonusWriteOff || {}), [key]: !already },
+      };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+      setBonusWriteOffDone(prev => ({ ...prev, [key]: !already }));
+      toast.success(already ? `Списание премии отменено у ${rec.doctorName}` : `Премия списана у ${rec.doctorName}`);
+    } catch {
+      toast.error('Ошибка при списании премии');
+    } finally {
+      setBonusWriteOffLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   const handleCashOverpay = async (rec, amount, dateLabel, clinicId) => {
     const key = rec.id;
     setCashOverpayLoading(prev => ({ ...prev, [key]: true }));
@@ -590,6 +614,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const done = {};
         const cashDone = {};
         const bonusDone = {};
+        const writeOffDone = {};
         const comments = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
@@ -598,11 +623,14 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           Object.keys(cashFlags).forEach(k => { if (cashFlags[k]) cashDone[k] = true; });
           const bonusFlags = rec.reportData?.bonusCarryDone || {};
           Object.keys(bonusFlags).forEach(k => { if (bonusFlags[k]) bonusDone[k] = true; });
+          const writeOffFlags = rec.reportData?.bonusWriteOff || {};
+          Object.keys(writeOffFlags).forEach(k => { if (writeOffFlags[k]) writeOffDone[k] = true; });
           if (rec.reportData?.summaryComment) comments[rec.id] = rec.reportData.summaryComment;
         });
         setRecalcDone(done);
         setCashOverpayDone(cashDone);
         setBonusCarryDone(bonusDone);
+        setBonusWriteOffDone(writeOffDone);
         setCommentsMap(comments);
         cashPaymentsApi.getAll()
           .then(cpRes => {
@@ -809,10 +837,12 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         (a.rec.doctorName || '').localeCompare(b.rec.doctorName || '', 'ru')
       );
 
-      sortedPayoutRows.forEach(({ rec, cr }) => {
+      sortedPayoutRows.forEach(({ key, rec, cr }) => {
         const s = cr?.salary || {};
-        const remainder = calcRemainder(s);
-        const cashPaid = (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+        const writtenOff = !!(rec.reportData?.bonusWriteOff?.[key]);
+        // Списанная премия — «хвост», от которого отказались: в выплате обнуляем.
+        const remainder = writtenOff ? 0 : calcRemainder(s);
+        const cashPaid = writtenOff ? 0 : (liveCashMap[rec.id] || []).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
         ws.addRow({
           name:      rec.doctorName || '—',
           bonus:     remainder,
@@ -1229,7 +1259,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             {(body + extraTotal) > 0 && <span>Основная ЗП: {fmtRub(body + extraTotal)}</span>}
                             {bonus > 0   && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ color: bonusCarryDone[recalcKey] ? 'var(--rb-text-secondary)' : 'var(--rb-text)' }}>Премия: {fmtRub(bonus)}</span>
+                                <span style={{ color: (bonusCarryDone[recalcKey] || bonusWriteOffDone[recalcKey]) ? 'var(--rb-text-secondary)' : 'var(--rb-text)', textDecoration: bonusWriteOffDone[recalcKey] ? 'line-through' : 'none' }}>Премия: {fmtRub(bonus)}</span>
                                 <button
                                   onClick={e => { e.stopPropagation(); handleBonusCarry(rec, recalcKey, bonus, dateLabel, cr?.clinicId); }}
                                   disabled={!!bonusCarryLoading[recalcKey]}
@@ -1246,6 +1276,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
                                     </svg>
                                   )}
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleBonusWriteOff(rec, recalcKey); }}
+                                  disabled={!!bonusWriteOffLoading[recalcKey]}
+                                  title={bonusWriteOffDone[recalcKey] ? 'Премия списана — нажмите, чтобы отменить' : 'Списать премию (отказаться от остатка)'}
+                                  style={{ padding: '3px 5px', background: bonusWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${bonusWriteOffDone[recalcKey] ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: bonusWriteOffLoading[recalcKey] ? 0.4 : 1 }}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke={bonusWriteOffDone[recalcKey] ? '#dc2626' : '#94a3b8'} strokeWidth={bonusWriteOffDone[recalcKey] ? '2.5' : '2'} width="13" height="13">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                                  </svg>
                                 </button>
                               </span>
                             )}

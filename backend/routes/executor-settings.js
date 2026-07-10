@@ -2,6 +2,7 @@ const express = require('express');
 const { ExecutorSettings, RbScheduleCategory } = require('../models');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity, diffExecSettings } = require('../services/rbLogger');
+const { AUP_CLINIC_ID, canSeeAup, settingsHasAup, stripAupSettings, mergeAupBack } = require('../services/aupFilter');
 
 const router = express.Router();
 
@@ -11,7 +12,10 @@ router.get('/', authenticate, async (req, res) => {
     const { misUserId } = req.query;
     if (!misUserId) return res.status(400).json({ error: 'misUserId обязателен' });
     const record = await ExecutorSettings.findOne({ where: { misUserId } });
-    res.json(record ? record.settings : {});
+    let settings = record ? record.settings : {};
+    // АУП скрыт от всех без флага (даже от админов).
+    if (!canSeeAup(req.user)) settings = stripAupSettings(settings);
+    res.json(settings || {});
   } catch (err) {
     console.error('Get executor settings error:', err);
     res.status(500).json({ error: 'Ошибка получения настроек' });
@@ -23,10 +27,12 @@ router.get('/disabled-clinics', authenticate, async (req, res) => {
   try {
     const all = await ExecutorSettings.findAll({ attributes: ['misUserId', 'settings'] });
     const result = {};
+    const seeAup = canSeeAup(req.user);
     all.forEach(record => {
-      const dc = record.settings?.disabledClinics;
+      let dc = record.settings?.disabledClinics;
       if (Array.isArray(dc) && dc.length > 0) {
-        result[record.misUserId] = dc.map(String);
+        if (!seeAup) dc = dc.filter(id => String(id) !== AUP_CLINIC_ID);
+        if (dc.length > 0) result[record.misUserId] = dc.map(String);
       }
     });
     res.json(result);
@@ -49,6 +55,22 @@ router.get('/schedule-fill', authenticate, async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('Get schedule-fill error:', err);
+    res.status(500).json({ error: 'Ошибка получения данных' });
+  }
+});
+
+// GET /api/executor-settings/aup-members — { misUserId, doctorName }[] участников клиники АУП.
+// Только для пользователей с флагом; остальным — пустой список (даже админам).
+router.get('/aup-members', authenticate, async (req, res) => {
+  try {
+    if (!canSeeAup(req.user)) return res.json([]);
+    const all = await ExecutorSettings.findAll({ attributes: ['misUserId', 'doctorName', 'settings'] });
+    const members = all
+      .filter(r => settingsHasAup(r.settings))
+      .map(r => ({ misUserId: String(r.misUserId), doctorName: r.doctorName || '' }));
+    res.json(members);
+  } catch (err) {
+    console.error('Get aup-members error:', err);
     res.status(500).json({ error: 'Ошибка получения данных' });
   }
 });
@@ -87,17 +109,24 @@ router.post('/', authenticate, async (req, res) => {
     const existing = await ExecutorSettings.findOne({ where: { misUserId } });
     const oldSettings = existing ? existing.settings : null;
 
+    // Пользователь без флага не получал клинику АУП в GET — значит в его payload её нет.
+    // Подмешиваем сохранённый блок АУП обратно, чтобы сохранение не затёрло секретные данные.
+    let incoming = settings || {};
+    if (!canSeeAup(req.user)) incoming = mergeAupBack(incoming, oldSettings);
+
     await ExecutorSettings.upsert({
       misUserId,
       doctorName: doctorName || '',
-      settings: settings || {},
+      settings: incoming,
       updatedBy: req.user.id
     }, { conflictFields: ['misUserId'] });
 
     const categories = await RbScheduleCategory.findAll({ attributes: ['id', 'name'] });
     const roleNames = Object.fromEntries(categories.map(c => [String(c.id), c.name]));
 
-    const diff = oldSettings ? diffExecSettings(oldSettings, settings || {}, clinicNames || {}, roleNames) : null;
+    // Изменения по клинике АУП не попадают в общий журнал (он виден админам без флага).
+    const rawDiff = oldSettings ? diffExecSettings(oldSettings, incoming, clinicNames || {}, roleNames) : null;
+    const diff = rawDiff ? rawDiff.filter(c => String(c.clinicId) !== AUP_CLINIC_ID) : null;
     const hasDiff = diff && diff.length > 0;
 
     await logRbActivity({
@@ -126,12 +155,15 @@ router.post('/reset-all', authenticate, async (req, res) => {
   try {
     const all = await ExecutorSettings.findAll();
     const resetSection = (arr) => (arr || []).filter(it => it.locked === true);
+    const seeAup = canSeeAup(req.user);
 
     await Promise.all(all.map(async record => {
       const s = record.settings || {};
       const cs = s.clinicSettings || {};
       const newCs = {};
       for (const [clinicId, clinicData] of Object.entries(cs)) {
+        // Без флага АУП не сбрасываем — оставляем блок как есть.
+        if (clinicId === AUP_CLINIC_ID && !seeAup) { newCs[clinicId] = clinicData; continue; }
         const lockedCabs = clinicData.lockedCabinets || [];
         newCs[clinicId] = {
           ...clinicData,

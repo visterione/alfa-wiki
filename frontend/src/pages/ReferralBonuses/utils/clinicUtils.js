@@ -60,6 +60,7 @@ export function rbGetClinicColor(clinicsOrId, clinicIdOrUndef) {
   const [clinics, clinicId] = clinicIdOrUndef !== undefined
     ? [clinicsOrId, clinicIdOrUndef]
     : [DEFAULT_CLINICS, clinicsOrId];
+  if (String(clinicId) === 'aup') return '#111111'; // АУП — чёрный
   if (!Array.isArray(clinics)) return '#94a3b8';
   const c = clinics.find(x => String(x.id) === String(clinicId) || x.name === clinicId);
   return c?.color || '#94a3b8';
@@ -69,6 +70,7 @@ export function rbGetClinicName(clinicsOrId, clinicIdOrUndef) {
   const [clinics, clinicId] = clinicIdOrUndef !== undefined
     ? [clinicsOrId, clinicIdOrUndef]
     : [DEFAULT_CLINICS, clinicsOrId];
+  if (String(clinicId) === 'aup') return 'АУП';
   if (!Array.isArray(clinics)) return String(clinicsOrId);
   const c = clinics.find(x => String(x.id) === String(clinicId) || x.name === clinicId);
   return c?.name || clinicId;

@@ -59,6 +59,17 @@ const IMPORT_GROUP_CLINIC_IDS = {
   'лабгрупп': ['4', '7'],
 };
 
+// Служебные «клиники» — это склады в МИС без названий (показываются как id).
+// Не несут информативности, поэтому не рисуем их чипами.
+const HIDDEN_CLINIC_IDS = ['9', '10'];
+
+// ── Секретная клиника «АУП» ────────────────────────────────────────────────
+// Виртуальная клиника (в МИС её нет). Данные и её видимость доступны только
+// пользователям с флагом canAccessTopSalary — enforcement на сервере
+// (см. backend/services/aupFilter.js). На фронте всё под этим же флагом.
+export const AUP_CLINIC_ID = 'aup';
+const AUP_CLINIC = { id: AUP_CLINIC_ID, name: 'АУП', color: '#111111' };
+
 // ── Payroll Excel parser ──────────────────────────────────────────────────────
 function parsePayrollImportRows(rows) {
   if (!rows.length) return [];
@@ -114,6 +125,9 @@ export default function ReferralBonusesPage() {
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
 
+  // Доступ к секретной клинике АУП (не связан с админством).
+  const canSeeAup = !!user?.canAccessTopSalary;
+
   // ── Access guard ──
   useEffect(() => {
     if (user && !isAdmin && !user.canAccessSalary) {
@@ -164,6 +178,17 @@ export default function ReferralBonusesPage() {
 
   // ── Clinics ──
   const [clinics, setClinics] = useState(DEFAULT_CLINICS);
+
+  // ── АУП: участники секретной клиники (Set misUserId) ──
+  // Загружается только для допущенных; для остальных бэкенд возвращает [].
+  const [aupMembers, setAupMembers] = useState(() => new Set());
+  const reloadAupMembers = useCallback(() => {
+    if (!canSeeAup) { setAupMembers(new Set()); return; }
+    execSettingsApi.getAupMembers()
+      .then(res => setAupMembers(new Set((res.data || []).map(m => String(m.misUserId)))))
+      .catch(() => {});
+  }, [canSeeAup]);
+  useEffect(() => { reloadAupMembers(); }, [reloadAupMembers]);
 
   // ── Doctors (from MIS) ──
   const [doctors, setDoctors] = useState([]);
@@ -242,6 +267,16 @@ export default function ReferralBonusesPage() {
         // silently use DEFAULT_CLINICS
       });
   }, []);
+
+  // Держим виртуальную клинику АУП в списке только для допущенных.
+  useEffect(() => {
+    setClinics(prev => {
+      const hasAup = prev.some(c => String(c.id) === AUP_CLINIC_ID);
+      if (canSeeAup && !hasAup) return [...prev, AUP_CLINIC];
+      if (!canSeeAup && hasAup) return prev.filter(c => String(c.id) !== AUP_CLINIC_ID);
+      return prev;
+    });
+  }, [canSeeAup, clinics.length]); // eslint-disable-line
 
   // ── Load permissions ──
   useEffect(() => {
@@ -332,7 +367,12 @@ export default function ReferralBonusesPage() {
   // ── Exclude hidden roles + archived ──
   // Архивные (уволенные) остаются в полном `doctors` для Сводки/Отчёта, но из рабочего списка
   // сотрудников и из списков фильтров (роли/профессии) исключаются.
-  const visibleDoctors = doctors.filter(d => !d.roles.includes('КабинетыИРабота') && !d._archived);
+  const visibleDoctors = doctors
+    .filter(d => !d.roles.includes('КабинетыИРабота') && !d._archived)
+    // Допущенным добавляем чип/клинику АУП участникам (для остальных aupMembers пуст).
+    .map(d => (canSeeAup && aupMembers.has(String(d.id)) && !d.clinics.includes(AUP_CLINIC_ID))
+      ? { ...d, clinics: [...d.clinics, AUP_CLINIC_ID] }
+      : d);
 
   // ── New employees within the user's clinic scope (для бейджа) ──
   // Бейдж считаем по области доступа: бухгалтеру одного медцентра не показываем новых из чужого.
@@ -344,7 +384,12 @@ export default function ReferralBonusesPage() {
 
   // ── Filtered doctors ──
   const filteredDoctors = visibleDoctors.filter(d => {
-    if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) return false;
+    if (permissions.clinics?.length > 0 && !d.clinics.some(c => permissions.clinics.includes(String(c)))) {
+      // Допущенному к АУП показываем безклиничных (кандидаты в АУП) и участников АУП
+      // даже при ограничении доступа по клиникам — иначе их не назначить/не увидеть.
+      const aupVisible = canSeeAup && (d.clinics.length === 0 || d.clinics.includes(AUP_CLINIC_ID));
+      if (!aupVisible) return false;
+    }
     if (filterNewOnly && !d._isNew) return false;
     if (searchQuery && !d.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (filterClinic) {
@@ -381,14 +426,19 @@ export default function ReferralBonusesPage() {
   const handleSelectDoctor = useCallback((misUserId) => {
     const doSelect = () => setSelectedDoctor(prev => {
       if (prev?.id === misUserId) return null; // toggle off
-      return doctors.find(d => d.id === misUserId) || null;
+      const found = doctors.find(d => d.id === misUserId) || null;
+      // Допущенным подмешиваем клинику АУП участнику, чтобы показать вкладку и учесть в отчёте.
+      if (found && canSeeAup && aupMembers.has(String(found.id)) && !found.clinics.includes(AUP_CLINIC_ID)) {
+        return { ...found, clinics: [...found.clinics, AUP_CLINIC_ID] };
+      }
+      return found;
     });
     if (step1DirtyRef.current && currentStep === 1 && selectedDoctor?.id !== misUserId && selectedDoctor !== null) {
       setPendingNav({ action: doSelect, doctorName: selectedDoctor?.name });
       return;
     }
     doSelect();
-  }, [doctors, currentStep, selectedDoctor]);
+  }, [doctors, currentStep, selectedDoctor, canSeeAup, aupMembers]);
 
   // ── НДФЛ import ──
   const [ndflModal, setNdflModal] = useState(null);
@@ -883,6 +933,8 @@ export default function ReferralBonusesPage() {
     onSourcesChange: reloadExcelSources,
     currentUserName: user?.displayName || user?.username || '',
     onDisabledClinicsChange: handleDisabledClinicsChange,
+    canSeeAup,
+    onAupSaved: reloadAupMembers,
   };
 
   // Steps 2 and 6 use 3 sub-keys instead of a single key
@@ -1938,12 +1990,13 @@ function DoctorsList({
               <div className="rb-doctor-info">
                 <div className="rb-doctor-badges">
                   {d.clinics
+                    .filter(cId => !HIDDEN_CLINIC_IDS.includes(String(cId)))
                     .filter(cId => !(disabledClinicsMap[d.id] || []).includes(String(cId)))
                     .filter(cId => String(cId) !== REFERRAL_CLINIC_ID || !d.clinics.some(c => String(c) !== REFERRAL_CLINIC_ID))
                     .slice(0, 6)
                     .map(cId => (
-                    <span key={cId} className="rb-clinic-badge" style={{ background: getClinicColor(cId), ...(cId === 'ip' ? { width: 'auto', padding: '2px 6px' } : {}) }}>
-                      {getClinicName(cId)}
+                    <span key={cId} className={`rb-clinic-badge${String(cId) === AUP_CLINIC_ID ? ' rb-aup-badge' : ''}`} style={{ background: getClinicColor(cId), ...(cId === 'ip' ? { width: 'auto', padding: '2px 6px' } : {}) }}>
+                      {String(cId) === AUP_CLINIC_ID ? <span className="rb-aup-text">{getClinicName(cId)}</span> : getClinicName(cId)}
                     </span>
                   ))}
                 </div>

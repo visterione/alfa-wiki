@@ -211,6 +211,7 @@ export default function AdminUsers() {
     canEditServices: false,
     canAccessSalary: false,
     canAccessStatistics: false,
+    canAccessTopSalary: false,
     canManagePromotions: false,
     adminAccess: {
       pages: false,
@@ -491,6 +492,7 @@ export default function AdminUsers() {
         canEditServices: user.canEditServices || false,
         canAccessSalary: user.canAccessSalary || false,
         canAccessStatistics: user.canAccessStatistics || false,
+        canAccessTopSalary: user.canAccessTopSalary || false,
         canManagePromotions: user.canManagePromotions || false,
         adminAccess: user.adminAccess || {
           pages: false, sidebar: false, users: false, roles: false, media: false,
@@ -532,6 +534,7 @@ export default function AdminUsers() {
         canEditServices: false,
         canAccessSalary: false,
         canAccessStatistics: false,
+    canAccessTopSalary: false,
         canManagePromotions: false,
         adminAccess: {
           pages: false, sidebar: false, users: false, roles: false, media: false,
@@ -1381,6 +1384,11 @@ export default function AdminUsers() {
                               ],
                             },
                             { key: 'tabSummary', label: 'Сводка', ...spTab('tabSummary') },
+                            // АУП — секретная клиника. Флаг НЕ зависит от isAdmin:
+                            // админ без него данные АУП не видит (в этом весь смысл).
+                            { key: 'aupAccess', label: 'АУП — секретная клиника', clinicColor: '#111111',
+                              checked: !!form.canAccessTopSalary,
+                              onChange: v => setForm(f => ({...f, canAccessTopSalary: v})) },
                           ],
                         },
                         {

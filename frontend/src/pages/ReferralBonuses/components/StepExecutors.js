@@ -1247,7 +1247,7 @@ function AddItemForm({ section, suggests, onAdd, readOnly, visible: visibleProp,
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey, onDisabledClinicsChange, permissions }) {
+export default function StepExecutors({ selectedDoctor, clinics, doctors, readOnly, panelCollapsed, onTogglePanel, onDirtyChange, settingsResetKey, onDisabledClinicsChange, permissions, canSeeAup, onAupSaved }) {
   const [execData, setExecData] = useState(execDefault());
   const [activeClinic, setActiveClinic] = useState('global');
   const { wrapRef: clinicTabRef, sliderEl: clinicSlider } = useTabSlider(activeClinic);
@@ -1440,13 +1440,15 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     const source = data?.clinicSettings || {};
     const clinicSettings = { global: source.global || execClinicDefault() };
     Object.entries(source).forEach(([clinicId, settings]) => {
-      if (clinicId === 'global' || realDoctorClinicIds.has(String(clinicId))) {
+      // АУП — виртуальная клиника, её нет в selectedDoctor.clinics у нового участника;
+      // сохраняем её для допущенных, иначе вкладка АУП вырезалась бы до записи.
+      if (clinicId === 'global' || realDoctorClinicIds.has(String(clinicId)) || (clinicId === 'aup' && canSeeAup)) {
         clinicSettings[clinicId] = settings;
       }
     });
-    const disabledClinics = (data?.disabledClinics || []).filter(id => realDoctorClinicIds.has(String(id)));
+    const disabledClinics = (data?.disabledClinics || []).filter(id => realDoctorClinicIds.has(String(id)) || (String(id) === 'aup' && canSeeAup));
     return { ...(data || execDefault()), clinicSettings, disabledClinics };
-  }, [realDoctorClinicIds]);
+  }, [realDoctorClinicIds, canSeeAup]);
 
   const getClinicData = useCallback((clinicId = activeClinic, data = execData) => {
     const cs = data.clinicSettings || {};
@@ -1491,6 +1493,8 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
       clearExecCache(selectedDoctor.id);
       setIsDirty(false);
       toast.success('Сохранено');
+      // Обновляем список участников АУП (мог измениться состав вкладки АУП).
+      if (canSeeAup) onAupSaved?.();
       // Update employmentPlaces + pdfSubdivisions suggests pools with any new values
       const newPlaces = Object.values(toSave.clinicSettings || {})
         .map(cs => cs.employmentPlace)
@@ -1517,6 +1521,19 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
     }
   }, [selectedDoctor, execData, clinics]); // eslint-disable-line
 
+  // Снять АУП с сотрудника (ошибочно завели / больше не нужен).
+  // Полностью удаляет клинику АУП из настроек — сотрудник перестаёт быть участником.
+  const handleRemoveAup = useCallback(async () => {
+    if (!selectedDoctor) return;
+    if (!window.confirm(`Убрать АУП у сотрудника «${selectedDoctor.name}»? Все данные по клинике АУП будут удалены.`)) return;
+    const next = { ...execData, clinicSettings: { ...(execData.clinicSettings || {}) } };
+    delete next.clinicSettings.aup;
+    if (Array.isArray(next.disabledClinics)) next.disabledClinics = next.disabledClinics.filter(id => String(id) !== 'aup');
+    setExecData(next);
+    setActiveClinic('global');
+    await saveToServer(next); // внутри дёрнет onAupSaved → бейдж исчезнет
+  }, [selectedDoctor, execData, saveToServer]);
+
   // ── Clinic tabs ───────────────────────────────────────────────────────────
   const isIpDoctor = (selectedDoctor?.clinics || []).includes('ip');
   const isIpOnlyDoctor = (selectedDoctor?.clinics || []).every(c => c === 'ip');
@@ -1525,11 +1542,17 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
   const clinicTabs = [
     { id: 'global', label: 'Общие', color: 'var(--rb-primary)' },
     ...(clinics || []).filter(c => {
+      if (String(c.id) === 'aup') return false; // АУП добавляем отдельно ниже
       if (isIpOnlyDoctor && String(c.id) !== 'ip') return false;
       if (String(c.id) === REFERRAL_CLINIC_ID && doctorHasOtherClinics) return false;
       return realDoctorClinicIds.has(String(c.id));
     }).map(c => ({ id: String(c.id), label: c.name, color: c.color })),
   ];
+  // Вкладка АУП: всегда доступна допущенным (для назначения/просмотра секретной ЗП).
+  if (canSeeAup) {
+    const aup = (clinics || []).find(c => String(c.id) === 'aup') || { id: 'aup', name: 'АУП', color: '#111111' };
+    clinicTabs.push({ id: 'aup', label: aup.name, color: aup.color, aup: true });
+  }
 
   const handleSwitchClinic = (clinicId) => {
     setActiveClinic(clinicId);
@@ -2351,11 +2374,11 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
             return (
               <button
                 key={tab.id}
-                className={`rb-clinic-tab${activeClinic === tab.id ? ' active' : ''}${isClinicDisabled ? ' clinic-disabled' : ''}`}
+                className={`rb-clinic-tab${activeClinic === tab.id ? ' active' : ''}${isClinicDisabled ? ' clinic-disabled' : ''}${tab.aup ? ' rb-aup-tab' : ''}`}
                 onClick={() => handleSwitchClinic(tab.id)}
-                title={isClinicDisabled ? `${tab.label} — отключена, не включается в отчёты` : tab.label}
+                title={tab.aup ? 'АУП — секретная клиника, видна только допущенным' : (isClinicDisabled ? `${tab.label} — отключена, не включается в отчёты` : tab.label)}
               >
-                {tab.label}
+                {tab.aup ? <span className="rb-aup-text">{tab.label}</span> : tab.label}
                 {tab.id !== 'global' && !readOnly && (
                   <span
                     className="rb-clinic-tab-toggle"
@@ -2378,6 +2401,27 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Плашка секретной клиники АУП с кнопкой снятия */}
+      {activeClinic === 'aup' && canSeeAup && (
+        <div style={{ margin: '12px 12px 0', padding: '10px 14px', borderRadius: 8, background: '#1a1a1a', border: '1px solid #8a6d1f', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span className="rb-aup-text" style={{ fontSize: 13 }}>АУП — секретная клиника</span>
+          <span style={{ fontSize: 12, color: '#c9c9c9', flex: 1, minWidth: 140 }}>
+            Видна только допущенным. Данные скрыты от всех остальных, включая администраторов.
+          </span>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={handleRemoveAup}
+              disabled={saving}
+              style={{ flexShrink: 0, padding: '6px 12px', borderRadius: 6, border: '1px solid #b45454', background: 'transparent', color: '#e88', fontSize: 12, fontWeight: 600, cursor: saving ? 'default' : 'pointer' }}
+              title="Полностью удалить клинику АУП у этого сотрудника"
+            >
+              Убрать АУП у сотрудника
+            </button>
+          )}
         </div>
       )}
 

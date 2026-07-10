@@ -5,12 +5,27 @@ const { SalaryRecord, CashPayment } = require('../models');
 const { Op, literal } = require('sequelize');
 const { authenticate } = require('../middleware/auth');
 const { logRbActivity } = require('../services/rbLogger');
+const { canSeeAup, stripAupReportData, mergeAupReportData, recordHasAup, AUP_CLINIC_ID } = require('../services/aupFilter');
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   next();
 };
+
+// Вырезает клинику АУП из списка зарплатных записей для пользователя без флага.
+// Записи, целиком состоящие из АУП, исключаются полностью.
+function filterAupRecords(records, user) {
+  if (canSeeAup(user)) return records.map(r => (r.toJSON ? r.toJSON() : r));
+  const out = [];
+  for (const rec of records) {
+    const plain = rec.toJSON ? rec.toJSON() : rec;
+    const { reportData, empty } = stripAupReportData(plain.reportData);
+    if (empty) continue; // запись была только по АУП — скрываем целиком
+    out.push({ ...plain, reportData });
+  }
+  return out;
+}
 
 // GET /api/salary-records/find?misUserId=X&dateFrom=Y
 router.get('/find', authenticate, async (req, res) => {
@@ -33,7 +48,9 @@ router.get('/find', authenticate, async (req, res) => {
       return rd.getFullYear() === year && (rd.getMonth() + 1) === month;
     });
 
-    res.json(match || null);
+    if (!match) return res.json(null);
+    const [filtered] = filterAupRecords([match], req.user);
+    res.json(filtered || null);
   } catch (err) {
     console.error('GET /api/salary-records/find error:', err);
     res.status(500).json({ error: err.message });
@@ -69,7 +86,7 @@ router.get('/all', authenticate, async (req, res) => {
         include: [[literal('("excelData" IS NOT NULL)'), 'hasExcel']],
       },
     });
-    res.json(records);
+    res.json(filterAupRecords(records, req.user));
   } catch (err) {
     console.error('GET /api/salary-records/all error:', err);
     res.status(500).json({ error: err.message });
@@ -90,7 +107,7 @@ router.get('/', authenticate, async (req, res) => {
         include: [[literal('("excelData" IS NOT NULL)'), 'hasExcel']],
       },
     });
-    res.json(records);
+    res.json(filterAupRecords(records, req.user));
   } catch (err) {
     console.error('GET /api/salary-records error:', err);
     res.status(500).json({ error: err.message });
@@ -110,13 +127,16 @@ router.post('/',
   try {
     const { misUserId, doctorName, dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
 
+    // Пользователь без флага не может создавать записи с данными АУП.
+    const safeReportData = canSeeAup(req.user) ? reportData : stripAupReportData(reportData).reportData;
+
     const record = await SalaryRecord.create({
       misUserId,
       doctorName,
       dateFrom:    dateFrom    || null,
       dateTo:      dateTo      || null,
       periodLabel: periodLabel || null,
-      reportData:  reportData  || null,
+      reportData:  safeReportData || null,
       excelData:   excelBase64 || null,
       createdBy: req.user?.id || null,
     });
@@ -153,6 +173,11 @@ router.get('/:id/excel', authenticate, async (req, res) => {
   try {
     const record = await SalaryRecord.findByPk(req.params.id);
     if (!record) return res.status(404).json({ error: 'Not found' });
+    // Excel-выгрузка — цельный заранее сгенерированный файл; если он содержит АУП,
+    // а у пользователя нет флага — не отдаём (вырезать из готового xlsx нельзя).
+    if (recordHasAup(record) && !canSeeAup(req.user)) {
+      return res.status(403).json({ error: 'Экспорт содержит скрытые данные АУП' });
+    }
     if (!record.excelData) return res.status(404).json({ error: 'Excel file not saved for this record' });
 
     const buf = Buffer.from(record.excelData, 'base64');
@@ -176,9 +201,11 @@ router.get('/assistance-income', authenticate, async (req, res) => {
     if (dateTo)   where.dateTo   = { [Op.lte]: dateTo };
 
     const records = await SalaryRecord.findAll({ where });
+    const seeAup = canSeeAup(req.user);
     const result = [];
     for (const record of records) {
-      const clinicReports = record.reportData?.clinicReports || [];
+      let clinicReports = record.reportData?.clinicReports || [];
+      if (!seeAup) clinicReports = clinicReports.filter(cr => String(cr && cr.clinicId) !== AUP_CLINIC_ID);
       for (const cr of clinicReports) {
         for (const sec of (cr.salary?.assistanceSections || [])) {
           if (sec.total > 0) {
@@ -210,11 +237,16 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!record) return res.status(404).json({ error: 'Not found' });
     const { dateFrom, dateTo, periodLabel, reportData, excelBase64 } = req.body;
     const oldComment = record.reportData?.comment ?? null;
+    // Пользователь без флага не видел АУП-блоки — при пересохранении возвращаем их из БД,
+    // чтобы правка комментария/отчёта не удалила секретные данные.
+    const safeReportData = canSeeAup(req.user)
+      ? (reportData || null)
+      : mergeAupReportData(reportData || null, record.reportData);
     await record.update({
       dateFrom:    dateFrom    || null,
       dateTo:      dateTo      || null,
       periodLabel: periodLabel || null,
-      reportData:  reportData  || null,
+      reportData:  safeReportData,
       excelData:   excelBase64 !== undefined ? (excelBase64 || null) : record.excelData,
     });
 

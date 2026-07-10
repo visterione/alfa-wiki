@@ -124,6 +124,14 @@ const User = sequelize.define('User', {
     comment: 'Разрешение на доступ к разделу статистики'
   },
 
+  // Доступ к секретной клинике «АУП» (зарплаты верхушки).
+  // Ортогонален isAdmin — админ БЕЗ этого флага АУП не видит.
+  canAccessTopSalary: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    comment: 'Доступ к секретной клинике АУП (скрыта даже от админов без флага)'
+  },
+
   // Флаг системного бота (Ассистент)
   isBot: {
     type: DataTypes.BOOLEAN,

@@ -744,17 +744,18 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
           <div className="rb-report">
             <MissingBonusBanner clinicReports={reportData.clinicReports} doctor={selectedDoctor} canEdit={!readOnly} onSaved={handleGenerate} />
             {/* Clinic reports */}
-            {reportData.clinicReports.map(({ clinicLabel, clinicColor, salary }, idx) => {
+            {reportData.clinicReports.map(({ clinicLabel, clinicColor, clinicId, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
+              const isAup = String(clinicId) === 'aup';
               return (
                 <div key={idx} style={{ marginBottom: isMulti ? 40 : 20, ...(isMulti && idx > 0 ? { borderTop: '3px dashed var(--rb-border)', paddingTop: 28 } : {}) }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 16px', background: `${clinicColor}18`, border: `2px solid ${clinicColor}`, borderRadius: 8 }}>
-                    <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: clinicColor, flexShrink: 0 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 16px', background: isAup ? '#1a1a1a' : `${clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : clinicColor}`, borderRadius: 8 }}>
+                    <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: isAup ? '#bf953f' : clinicColor, flexShrink: 0 }} />
                     <div style={{ flex: 1 }}>
-                      <div className="rb-report-title" style={{ color: clinicColor }}>{clinicLabel}</div>
-                      {isMulti && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 2 }}>Расчётный лист {idx + 1} из {reportData.clinicReports.length}</div>}
+                      <div className="rb-report-title" style={{ color: clinicColor }}>{isAup ? <span className="rb-aup-text">{clinicLabel}</span> : clinicLabel}</div>
+                      {isMulti && <div style={{ fontSize: 11, color: isAup ? '#b0b0b0' : 'var(--rb-text-secondary)', marginTop: 2 }}>Расчётный лист {idx + 1} из {reportData.clinicReports.length}</div>}
                     </div>
-                    {reportData.periodLabel && <div style={{ fontSize: 15, color: 'var(--rb-text)' }}>{reportData.periodLabel}</div>}
+                    {reportData.periodLabel && <div style={{ fontSize: 15, color: isAup ? '#e6d9a8' : 'var(--rb-text)' }}>{reportData.periodLabel}</div>}
                   </div>
                   <SalaryBlock salary={salary} />
                 </div>
@@ -1261,16 +1262,19 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                   {isOpen && hasClinics && (
                     <div style={{ padding: '16px 16px 16px', borderTop: '1px solid var(--rb-border)' }}>
                       <MissingBonusBanner clinicReports={r.clinicReports} doctor={r.doctor} canEdit={!readOnly} onSaved={() => rerunSingleDoctor(r.doctor)} />
-                      {r.clinicReports.map((cr, cidx) => (
+                      {r.clinicReports.map((cr, cidx) => {
+                        const isAup = String(cr.clinicId) === 'aup';
+                        return (
                         <div key={cidx} style={{ ...(cidx > 0 ? { marginTop: 16, borderTop: '2px dashed var(--rb-border)', paddingTop: 16 } : {}) }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: `${cr.clinicColor}18`, border: `2px solid ${cr.clinicColor}`, borderRadius: 8 }}>
-                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: cr.clinicColor, flexShrink: 0 }} />
-                            <div className="rb-report-title" style={{ color: cr.clinicColor }}>{cr.clinicLabel}</div>
-                            {r.periodLabel && <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--rb-text-secondary)' }}>{r.periodLabel}</div>}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: isAup ? '#1a1a1a' : `${cr.clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : cr.clinicColor}`, borderRadius: 8 }}>
+                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: isAup ? '#bf953f' : cr.clinicColor, flexShrink: 0 }} />
+                            <div className="rb-report-title" style={{ color: cr.clinicColor }}>{isAup ? <span className="rb-aup-text">{cr.clinicLabel}</span> : cr.clinicLabel}</div>
+                            {r.periodLabel && <div style={{ marginLeft: 'auto', fontSize: 11, color: isAup ? '#e6d9a8' : 'var(--rb-text-secondary)' }}>{r.periodLabel}</div>}
                           </div>
                           <SalaryBlock salary={cr.salary} />
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

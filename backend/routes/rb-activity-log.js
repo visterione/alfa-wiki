@@ -4,6 +4,7 @@ const { RbActivityLog, User } = require('../models');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const { Op } = require('sequelize');
 const { TAB_LABELS, ACTION_LABELS } = require('../services/rbLogger');
+const { canSeeAup, AUP_CLINIC_ID } = require('../services/aupFilter');
 
 // GET /api/rb-activity-log
 router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) => {
@@ -44,11 +45,19 @@ router.get('/', authenticate, requireAdminAccess('journal'), async (req, res) =>
       offset: parseInt(offset) || 0,
     });
 
-    const result = rows.map(r => ({
-      ...r.toJSON(),
-      tabLabel:    TAB_LABELS[r.tab]    || r.tab,
-      actionLabel: ACTION_LABELS[r.action] || r.action,
-    }));
+    const seeAup = canSeeAup(req.user);
+    const result = rows.map(r => {
+      const row = {
+        ...r.toJSON(),
+        tabLabel:    TAB_LABELS[r.tab]    || r.tab,
+        actionLabel: ACTION_LABELS[r.action] || r.action,
+      };
+      // Защитно: не показываем изменения по клинике АУП пользователям без флага.
+      if (!seeAup && row.diff && Array.isArray(row.diff.changes)) {
+        row.diff = { ...row.diff, changes: row.diff.changes.filter(c => String(c.clinicId) !== AUP_CLINIC_ID) };
+      }
+      return row;
+    });
 
     res.json({ count, rows: result });
   } catch (err) {
