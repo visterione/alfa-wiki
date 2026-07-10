@@ -391,6 +391,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
   const [bonusCarryDone, setBonusCarryDone]         = useState({});
   const [bonusWriteOffLoading, setBonusWriteOffLoading] = useState({});
   const [bonusWriteOffDone, setBonusWriteOffDone]       = useState({});
+  const [overpayWriteOffLoading, setOverpayWriteOffLoading] = useState({});
+  const [overpayWriteOffDone, setOverpayWriteOffDone]       = useState({});
   const [commentsMap, setCommentsMap] = useState({});
   const [commentSaving, setCommentSaving] = useState({});
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -518,6 +520,28 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
     }
   };
 
+  // Списание переплаты — отказ от копеечного «хвоста» переплаты (в экспорте «Сводка» переплата обнуляется).
+  // Ничего не пишет в настройки исполнителя, только помечает запись флагом.
+  const handleOverpayWriteOff = async (rec, rowKey) => {
+    const key = rowKey;
+    setOverpayWriteOffLoading(prev => ({ ...prev, [key]: true }));
+    try {
+      const already = !!(rec.reportData?.overpayWriteOff?.[key]);
+      const updatedReportData = {
+        ...(rec.reportData || {}),
+        overpayWriteOff: { ...(rec.reportData?.overpayWriteOff || {}), [key]: !already },
+      };
+      await salaryRecords.update(rec.id, { dateFrom: rec.dateFrom, dateTo: rec.dateTo, periodLabel: rec.periodLabel, reportData: updatedReportData });
+      setRecords(prev => prev.map(r => r.id === rec.id ? { ...r, reportData: updatedReportData } : r));
+      setOverpayWriteOffDone(prev => ({ ...prev, [key]: !already }));
+      toast.success(already ? `Списание переплаты отменено у ${rec.doctorName}` : `Переплата списана у ${rec.doctorName}`);
+    } catch {
+      toast.error('Ошибка при списании переплаты');
+    } finally {
+      setOverpayWriteOffLoading(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   const handleCashOverpay = async (rec, amount, dateLabel, clinicId) => {
     const key = rec.id;
     setCashOverpayLoading(prev => ({ ...prev, [key]: true }));
@@ -615,6 +639,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
         const cashDone = {};
         const bonusDone = {};
         const writeOffDone = {};
+        const overpayWriteDone = {};
         const comments = {};
         list.forEach(rec => {
           const flags = rec.reportData?.recalcDone || {};
@@ -625,12 +650,15 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           Object.keys(bonusFlags).forEach(k => { if (bonusFlags[k]) bonusDone[k] = true; });
           const writeOffFlags = rec.reportData?.bonusWriteOff || {};
           Object.keys(writeOffFlags).forEach(k => { if (writeOffFlags[k]) writeOffDone[k] = true; });
+          const overpayWriteFlags = rec.reportData?.overpayWriteOff || {};
+          Object.keys(overpayWriteFlags).forEach(k => { if (overpayWriteFlags[k]) overpayWriteDone[k] = true; });
           if (rec.reportData?.summaryComment) comments[rec.id] = rec.reportData.summaryComment;
         });
         setRecalcDone(done);
         setCashOverpayDone(cashDone);
         setBonusCarryDone(bonusDone);
         setBonusWriteOffDone(writeOffDone);
+        setOverpayWriteOffDone(overpayWriteDone);
         setCommentsMap(comments);
         cashPaymentsApi.getAll()
           .then(cpRes => {
@@ -935,7 +963,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
 
       const dataRows = [];
       const seenRecForCash = new Set();
-      filtered.forEach(({ rec, cr, clinicName }) => {
+      filtered.forEach(({ key, rec, cr, clinicName }) => {
         const s = cr?.salary || {};
         const _rowExtraTotal = (s.extraPayments || []).reduce((a, ep) => a + (parseFloat(ep.amount) || 0), 0);
         const remainder = calcRemainder(s);
@@ -944,6 +972,9 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           : 0;
         seenRecForCash.add(rec.id);
         const netRemainder = remainder - cashPaidForRow;
+        // Списанная переплата — обнуляем в столбце «Переплата», списанная премия — в «Премия».
+        const overpayWrittenOff = !!(rec.reportData?.overpayWriteOff?.[key]);
+        const bonusWrittenOff   = !!(rec.reportData?.bonusWriteOff?.[key]);
         const cashPaid = (liveCashMap[rec.id] || []).reduce((acc, p) => acc + parseFloat(p.amount || 0), 0);
         const detailStr = buildDetail(s);
         const row = ws.addRow({
@@ -956,8 +987,8 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
           deductions: getDeductionsTotal(s) || null,
           advance:    parseFloat(s.advance     || 0),
           body:       parseFloat(s.mainPayment || 0) + _rowExtraTotal,
-          bonus:      netRemainder >= 0 ? netRemainder : 0,
-          overpay:    netRemainder < 0  ? netRemainder : 0,
+          bonus:      bonusWrittenOff ? 0 : (netRemainder >= 0 ? netRemainder : 0),
+          overpay:    overpayWrittenOff ? 0 : (netRemainder < 0 ? netRemainder : 0),
           cashPaid:   cashPaid || null,
           detail:     detailStr || null,
           comment:    rec.reportData?.summaryComment || null,
@@ -1020,6 +1051,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             const rem = calcRemainder(r.cr?.salary);
             const cash = !seenB.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
             seenB.add(r.rec.id);
+            if (r.rec.reportData?.bonusWriteOff?.[r.key]) return s;
             const net = rem - cash; return s + (net >= 0 ? net : 0);
           }, 0);
         })(),
@@ -1029,6 +1061,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
             const rem = calcRemainder(r.cr?.salary);
             const cash = !seenO.has(r.rec.id) ? (liveCashMap[r.rec.id] || []).reduce((a, p) => a + parseFloat(p.amount || 0), 0) : 0;
             seenO.add(r.rec.id);
+            if (r.rec.reportData?.overpayWriteOff?.[r.key]) return s;
             const net = rem - cash; return s + (net < 0 ? net : 0);
           }, 0);
         })(),
@@ -1326,7 +1359,7 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                             })()}
                             {overpay < 0 && (
                               <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                <span style={{ color: recalcDone[recalcKey] ? 'var(--rb-text-secondary)' : '#dc2626' }}>Переплата: {fmtRub(overpay)}</span>
+                                <span style={{ color: (recalcDone[recalcKey] || overpayWriteOffDone[recalcKey]) ? 'var(--rb-text-secondary)' : '#dc2626', textDecoration: overpayWriteOffDone[recalcKey] ? 'line-through' : 'none' }}>Переплата: {fmtRub(overpay)}</span>
                                 <button
                                   onClick={e => { e.stopPropagation(); handleRecalculate(rec, recalcKey, overpay, dateLabel, cr?.clinicId); }}
                                   disabled={!!recalcLoading[recalcKey]}
@@ -1343,6 +1376,17 @@ export default function StepSummary({ doctors = [], clinics = [], permissions = 
                                       <path d="M3.51 15a9 9 0 1 0 .49-4.02"/>
                                     </svg>
                                   )}
+                                </button>
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleOverpayWriteOff(rec, recalcKey); }}
+                                  disabled={!!overpayWriteOffLoading[recalcKey]}
+                                  title={overpayWriteOffDone[recalcKey] ? 'Переплата списана — нажмите, чтобы отменить' : 'Списать переплату (отказаться от остатка)'}
+                                  style={{ padding: '3px 5px', background: overpayWriteOffDone[recalcKey] ? '#fef2f2' : '#f8fafc', border: `1px solid ${overpayWriteOffDone[recalcKey] ? '#fca5a5' : '#e2e8f0'}`, borderRadius: 5, cursor: 'pointer', display: 'flex', alignItems: 'center', lineHeight: 1, opacity: overpayWriteOffLoading[recalcKey] ? 0.4 : 1 }}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="none" stroke={overpayWriteOffDone[recalcKey] ? '#dc2626' : '#94a3b8'} strokeWidth={overpayWriteOffDone[recalcKey] ? '2.5' : '2'} width="13" height="13">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                                  </svg>
                                 </button>
                               </span>
                             )}
