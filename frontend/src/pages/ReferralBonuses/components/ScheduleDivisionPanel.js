@@ -4,6 +4,9 @@ import { structuralDivisions as divisionsApi } from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import ScheduleFillFlags from './ScheduleFillFlags';
 
+const PIN_COLORS = ['#007AFF', '#dc2626'];
+const PIN_LABELS = ['А', 'Б'];
+
 const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   doctors = [], selectedDoctorId, onSelectDoctor, readOnly,
   getClinicColor, getClinicName,
@@ -11,7 +14,9 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
   onToggleView,
   bulkMode = false, bulkSelectedIds, setBulkSelectedIds,
   scheduleFillMap = {}, onCycleFill,
+  compareMode = false, pinnedForCompare = [], togglePinCompare,
 }, ref) {
+  const pinCount = pinnedForCompare.length;
   const { user } = useAuth();
   const [divisions,    setDivisions]    = useState([]);
   const [openId,       setOpenId]       = useState(null);
@@ -136,7 +141,10 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
           {bulkMode && bulkSelectedIds?.size > 0 && (
             <span style={{ fontSize: 12, color: 'var(--rb-primary)', fontWeight: 600, marginRight: 2 }}>✓ {bulkSelectedIds.size} выбрано</span>
           )}
-          {!readOnly && (
+          {compareMode && pinCount === 1 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-primary)', marginRight: 2 }}>Выберите врача Б</span>
+          )}
+          {!readOnly && !compareMode && (
             <button
               onClick={() => { setShowCreate(v => !v); setNewDivName(''); }}
               title="Создать подразделение"
@@ -287,7 +295,7 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                         </svg>
                       </button>
                     )}
-                    {canAdmin && !readOnly && (
+                    {canAdmin && !readOnly && !compareMode && (
                       <button onClick={e => handleDelete(div.id, e)} title="Удалить"
                         style={{ width: 22, height: 22, borderRadius: 5, border: 'none', cursor: 'pointer', background: '#dc2626', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
@@ -313,11 +321,18 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                       .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
                       .filter(Boolean).join(', ');
                     const isActive = bulkMode ? !!bulkSelectedIds?.has(d.id) : selectedDoctorId === d.id;
+                    const pinIdx   = compareMode ? pinnedForCompare.indexOf(d.id) : -1;
+                    const isPinned = pinIdx !== -1;
+                    const canPin   = compareMode && (isPinned || pinCount < 2);
                     return (
                       <div
                         key={d.id}
                         className={`rb-doctor-item${isActive ? ' active' : ''}`}
-                        style={{ paddingLeft: bulkMode ? 14 : 28, borderLeft: '3px solid transparent' }}
+                        style={{
+                          paddingLeft: bulkMode ? 14 : 28,
+                          borderLeft: compareMode && isPinned ? `3px solid ${PIN_COLORS[pinIdx]}` : '3px solid transparent',
+                          ...(compareMode && isPinned ? { background: PIN_COLORS[pinIdx] + '15' } : {}),
+                        }}
                         onClick={() => bulkMode ? toggleBulk(d.id) : onSelectDoctor(d.id === selectedDoctorId ? null : d.id)}
                       >
                         {bulkMode && (
@@ -340,7 +355,15 @@ const ScheduleDivisionPanel = React.forwardRef(function ScheduleDivisionPanel({
                             ))}
                           </div>
                         </div>
-                        {!bulkMode && (
+                        {compareMode ? (
+                          <button
+                            onClick={e => { e.stopPropagation(); canPin && togglePinCompare?.(d.id); }}
+                            title={isPinned ? 'Снять метку' : pinCount < 2 ? 'Закрепить для сравнения' : 'Уже выбрано 2 врача'}
+                            style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', border: isPinned ? 'none' : '1.5px solid #cbd5e1', background: isPinned ? PIN_COLORS[pinIdx] : 'transparent', color: isPinned ? '#fff' : '#94a3b8', fontSize: 10, fontWeight: 700, cursor: canPin ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: canPin ? 1 : 0.3 }}
+                          >
+                            {isPinned ? PIN_LABELS[pinIdx] : '⊕'}
+                          </button>
+                        ) : !bulkMode && (
                           <ScheduleFillFlags
                             status={scheduleFillMap[d.misUserId || d.id] || 0}
                             onClick={onCycleFill ? () => onCycleFill(d) : undefined}

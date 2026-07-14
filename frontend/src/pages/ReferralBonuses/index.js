@@ -1658,6 +1658,9 @@ export default function ReferralBonusesPage() {
               bulkMode={currentStep === 5 && (reportMode === 'bulk' || reportMode === 'bulk_interim')}
               bulkSelectedIds={bulkSelectedIds}
               setBulkSelectedIds={setBulkSelectedIds}
+              compareMode={currentStep === 6}
+              pinnedForCompare={pinnedForCompare}
+              togglePinCompare={togglePinCompare}
             />
           ) : (
             <DoctorsList
@@ -1800,7 +1803,7 @@ function DoctorsList({
           {compareMode && pinCount === 1 && (
             <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--rb-primary)' }}>Выберите врача Б</span>
           )}
-          {onToggleView && !compareMode && (
+          {onToggleView && (
             <button
               onClick={onToggleView}
               title="По подразделениям"
