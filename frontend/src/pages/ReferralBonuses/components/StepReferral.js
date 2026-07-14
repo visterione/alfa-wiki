@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { referralBonuses as rbApi, mis } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
 import ServiceTree from './ServiceTree';
+import ClinicLogo from './ClinicLogo';
 
 // ═══════════════════════════════════════
 // STEP 3: БОНУСЫ ЗА НАПРАВЛЕНИЯ
@@ -299,6 +300,7 @@ function DoctorReferralPanel({ doctor, clinics, openReportForDoctor, getClinicCo
               className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
               onClick={() => { setActiveClinic(String(c.id)); setRefPage(1); }}
             >
+              <ClinicLogo clinicId={c.id} color={c.color} />
               {c.name}
             </button>
           ))}

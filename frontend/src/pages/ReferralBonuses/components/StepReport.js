@@ -11,6 +11,7 @@ import { exportReportPdf, exportBulkReportPdf } from '../utils/reportPdf';
 import { rbNamesMatch } from '../utils/nameMatching';
 import SalaryBlock from './SalaryBlockRenderer';
 import CorpReviewModal from './CorpReviewModal';
+import ClinicLogo from './ClinicLogo';
 
 // ─── Drop zone ────────────────────────────────────────────────────────────────
 function DropZone({ uploadedFile, onSelect, onClear, compact, onDms }) {
@@ -750,7 +751,9 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
               return (
                 <div key={idx} style={{ marginBottom: isMulti ? 40 : 20, ...(isMulti && idx > 0 ? { borderTop: '3px dashed var(--rb-border)', paddingTop: 28 } : {}) }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, padding: '12px 16px', background: isAup ? '#1a1a1a' : `${clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : clinicColor}`, borderRadius: 8 }}>
-                    <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: isAup ? '#bf953f' : clinicColor, flexShrink: 0 }} />
+                    {isAup
+                      ? <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: '50%', background: '#bf953f', flexShrink: 0 }} />
+                      : <ClinicLogo clinicId={clinicId} color={clinicColor} size={30} dotSize={14} />}
                     <div style={{ flex: 1 }}>
                       <div className="rb-report-title" style={{ color: clinicColor }}>{isAup ? <span className="rb-aup-text">{clinicLabel}</span> : clinicLabel}</div>
                       {isMulti && <div style={{ fontSize: 11, color: isAup ? '#b0b0b0' : 'var(--rb-text-secondary)', marginTop: 2 }}>Расчётный лист {idx + 1} из {reportData.clinicReports.length}</div>}
@@ -1267,7 +1270,9 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                         return (
                         <div key={cidx} style={{ ...(cidx > 0 ? { marginTop: 16, borderTop: '2px dashed var(--rb-border)', paddingTop: 16 } : {}) }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, padding: '8px 12px', background: isAup ? '#1a1a1a' : `${cr.clinicColor}18`, border: `2px solid ${isAup ? '#8a6d1f' : cr.clinicColor}`, borderRadius: 8 }}>
-                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: isAup ? '#bf953f' : cr.clinicColor, flexShrink: 0 }} />
+                            {isAup
+                              ? <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#bf953f', flexShrink: 0 }} />
+                              : <ClinicLogo clinicId={cr.clinicId} color={cr.clinicColor} size={24} dotSize={10} />}
                             <div className="rb-report-title" style={{ color: cr.clinicColor }}>{isAup ? <span className="rb-aup-text">{cr.clinicLabel}</span> : cr.clinicLabel}</div>
                             {r.periodLabel && <div style={{ marginLeft: 'auto', fontSize: 11, color: isAup ? '#e6d9a8' : 'var(--rb-text-secondary)' }}>{r.periodLabel}</div>}
                           </div>

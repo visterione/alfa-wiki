@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { performedServiceBonuses, executorSettings, mis } from '../../../services/api';
 import { useTabSlider } from '../utils/useTabSlider';
+import ClinicLogo from './ClinicLogo';
 
 // ─── Role labels ─────────────────────────────────────────────────────────────
 const ROLES = [
@@ -291,7 +292,10 @@ function RoleServicePanel({ role, clinics, activeClinic, setActiveClinic, clinic
         {clinicSlider}
         <button className={`rb-clinic-tab${activeClinic === 'global' ? ' active' : ''}`} onClick={() => setActiveClinic('global')}>Общие</button>
         {(clinics || []).map(c => (
-          <button key={c.id} className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`} onClick={() => setActiveClinic(String(c.id))}>{c.name}</button>
+          <button key={c.id} className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`} onClick={() => setActiveClinic(String(c.id))}>
+            <ClinicLogo clinicId={c.id} color={c.color} />
+            {c.name}
+          </button>
         ))}
       </div>
 
@@ -1158,6 +1162,7 @@ export default function StepPerformed({ selectedDoctor, clinics, readOnly, panel
                 className={`rb-clinic-tab${activeClinic === String(c.id) ? ' active' : ''}`}
                 onClick={() => { setActiveClinic(String(c.id)); setPerfPage(1); }}
               >
+                <ClinicLogo clinicId={c.id} color={c.color} />
                 {c.name}
               </button>
             ))}

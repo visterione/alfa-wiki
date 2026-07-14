@@ -7,6 +7,7 @@ import { useTabSlider } from '../utils/useTabSlider';
 import { calcScheduleHoursForPeriod } from '../utils/scheduleUtils';
 import { toSubdivisionList } from '../utils/pdfUtils';
 import MonthYearPicker from './MonthYearPicker';
+import ClinicLogo from './ClinicLogo';
 
 const DEFAULT_SUGGESTS = {
   deductions:        ['НДФЛ', 'Штраф', 'Взыскание', 'Кредит', 'Алименты', 'Удержание'],
@@ -2378,6 +2379,7 @@ export default function StepExecutors({ selectedDoctor, clinics, doctors, readOn
                 onClick={() => handleSwitchClinic(tab.id)}
                 title={tab.aup ? 'АУП — секретная клиника, видна только допущенным' : (isClinicDisabled ? `${tab.label} — отключена, не включается в отчёты` : tab.label)}
               >
+                {tab.id !== 'global' && !tab.aup && <ClinicLogo clinicId={tab.id} color={tab.color} />}
                 {tab.aup ? <span className="rb-aup-text">{tab.label}</span> : tab.label}
                 {tab.id !== 'global' && !readOnly && (
                   <span

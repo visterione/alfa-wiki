@@ -547,6 +547,7 @@
 .rb-clinic-tab.active { color: white; }
 .rb-clinic-tab:hover:not(.active) { background: #f1f5f9; color: var(--rb-text); }
 .rb-clinic-tab-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.rb-clinic-tab-logo { border-radius: 50%; object-fit: contain; background: #fff; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.06); }
 .rb-clinic-tab.clinic-disabled { opacity: 0.55; }
 .rb-clinic-tab.clinic-disabled:not(.active) { color: var(--rb-text-secondary); text-decoration: line-through; }
 .rb-clinic-tab-toggle { display: inline-flex; align-items: center; margin-left: 3px; opacity: 0.4; transition: opacity 0.15s; cursor: pointer; }
