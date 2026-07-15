@@ -14,6 +14,7 @@
  */
 const axios = require('axios');
 const https = require('https');
+const crypto = require('crypto');
 const { BotSubscriber } = require('../models');
 const { normalizePhone, getPatientsByPhone, addPatientCategory } = require('./misClient');
 const { ORGANIZATIONS } = require('../bot/patient/config');
@@ -29,6 +30,9 @@ const fromniAgent = new https.Agent({
   keepAliveMsecs: 5000,
   family: process.env.FROMNI_IPV6 ? 0 : 4,
   maxSockets: 8,
+  // Сервер Fromni (старый nginx) запрашивает legacy TLS-ренегоциацию, которую OpenSSL 3
+  // по умолчанию запрещает → ECONNRESET. Разрешаем её (как это делает Windows/curl).
+  secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT | crypto.constants.SSL_OP_ALLOW_UNSAFE_LEGACY_RENEGOTIATION,
 });
 
 const FROMNI_KEY_ENV = {
