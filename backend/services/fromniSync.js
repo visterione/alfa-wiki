@@ -13,13 +13,23 @@
  * Категория зависит только от платформы (2 категории), organization — разрез статистики.
  */
 const axios = require('axios');
+const https = require('https');
 const { BotSubscriber } = require('../models');
 const { normalizePhone, getPatientsByPhone, addPatientCategory } = require('./misClient');
 const { ORGANIZATIONS } = require('../bot/patient/config');
 
 const FROMNI_BASE = process.env.FROMNI_BASE_URL || 'https://api.fromni.com/user';
-const PAGE = 500;
+const PAGE = Number(process.env.FROMNI_PAGE || 200); // меньше страница = быстрее ответ, меньше шанс RST от файрвола
 const CONCURRENCY = 4;
+
+// keep-alive + форс IPv4: лечит ECONNRESET на долгих запросах к Fromni из дата-центра
+// (файрвол/балансировщик рвёт простаивающее или IPv6-соединение). Настраивается через env при необходимости.
+const fromniAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 5000,
+  family: process.env.FROMNI_IPV6 ? 0 : 4,
+  maxSockets: 8,
+});
 
 const FROMNI_KEY_ENV = {
   'alfa': 'FROMNI_KEY_ALFA',
@@ -39,16 +49,19 @@ const CHANNELS = [
   { channel: 'max', platform: 'max', categoryId: process.env.MIS_CATEGORY_MAX, misTag: true }
 ];
 
-async function postWithRetry(client, path, body, tries = 4) {
+const RETRIABLE_CODES = ['ECONNRESET', 'ECONNABORTED', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN'];
+async function postWithRetry(client, path, body, tries = 6) {
   let lastErr;
   for (let attempt = 1; attempt <= tries; attempt++) {
     try { return await client.post(path, body); }
     catch (err) {
       lastErr = err;
       const status = err.response && err.response.status;
-      const retriable = !status || status === 502 || status === 503 || status === 504 || err.code === 'ECONNABORTED';
+      const retriable = !status || status >= 502 || RETRIABLE_CODES.includes(err.code);
       if (!retriable || attempt === tries) throw err;
-      await new Promise(r => setTimeout(r, 2000 * attempt));
+      const wait = 2000 * attempt;
+      console.warn(`     Fromni ${err.code || status}, ретрай ${attempt}/${tries - 1} через ${wait / 1000}с...`);
+      await new Promise(r => setTimeout(r, wait));
     }
   }
   throw lastErr;
@@ -65,8 +78,9 @@ async function mapPool(items, limit, worker) {
 async function fetchContacts(key, channel, sinceDate, limitCap) {
   const client = axios.create({
     baseURL: FROMNI_BASE,
-    headers: { Authorization: `Token ${key}`, 'Content-Type': 'application/json' },
-    timeout: 90000
+    headers: { Authorization: `Token ${key}`, 'Content-Type': 'application/json', Connection: 'keep-alive' },
+    timeout: 90000,
+    httpsAgent: fromniAgent,
   });
   const conditions = [{ union: 'and', conditions: [{ field: 'channels', op: 'eq', value: channel }] }];
   if (sinceDate) {
