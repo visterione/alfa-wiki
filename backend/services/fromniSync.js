@@ -94,6 +94,7 @@ async function fetchContacts(key, channel, sinceDate, limitCap) {
       });
     }
     offset += PAGE;
+    console.log(`     Fromni[${channel}]: загружено ${Math.min(offset, total)}/${total}`);
     if (rows.length < PAGE) break;
     if (limitCap && out.length >= limitCap) break;
   }
@@ -148,6 +149,7 @@ async function processOrgChannel(org, orgName, ch, opts, ctx, stats) {
 
   if (opts.dryRun) { stats.wouldTag += withPhone.length; return; }
 
+  let done = 0;
   await mapPool(withPhone, CONCURRENCY, async (c) => {
     try {
       const existing = await BotSubscriber.findOne({ where: { platform: ch.platform, organization: org, externalUserId: c.externalUserId } });
@@ -177,6 +179,8 @@ async function processOrgChannel(org, orgName, ch, opts, ctx, stats) {
     } catch (err) {
       stats.errors++;
       console.error(`     ошибка ${c.phone}:`, err.message);
+    } finally {
+      if (++done % 100 === 0) console.log(`     [${ch.platform}] МИС: обработано ${done}/${withPhone.length}`);
     }
   });
 }
