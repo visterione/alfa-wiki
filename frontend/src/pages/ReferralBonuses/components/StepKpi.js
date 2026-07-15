@@ -9,6 +9,7 @@ import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/ap
 import { buildKpiPdf } from '../utils/kpiPdfExport';
 import { mis, reviews } from '../../../services/api';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics } from '../../Statistics/components/Directories';
+import BotSubscribers from '../../Statistics/components/BotSubscribers';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь',
@@ -77,6 +78,7 @@ const KPI_TABS = [
   { key: 'consumables', label: 'Расходники' },
   { key: 'serviceCost', label: 'Себестоимость' },
   { key: 'debtors',     label: 'Задолженности' },
+  { key: 'bots',        label: 'Боты' },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -2533,8 +2535,11 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Задолженности — снимок долгов пациентов на конец периода (данные из МИС) */}
       {viewMode === 'debtors' && <TabDebtorsAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Боты — подписчики Telegram/MAX (данные из bot_subscribers), не требует Excel */}
+      {viewMode === 'bots' && <BotSubscribers periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'bots' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

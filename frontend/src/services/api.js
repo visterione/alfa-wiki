@@ -792,4 +792,9 @@ export const releaseNotes = {
   delete:      (id)         => api.delete(`/release-notes/${id}`),
 };
 
+export const botSubscribers = {
+  // Статистика подписчиков ботов (Telegram/MAX) по медцентрам и месяцам
+  stats: (params) => api.get('/bot-subscribers/stats', { params }),
+};
+
 export default api;

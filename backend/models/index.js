@@ -450,9 +450,39 @@ const TelegramSubscriber = sequelize.define('TelegramSubscriber', {
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true },
   subscribedToAccreditations: { type: DataTypes.BOOLEAN, defaultValue: true },
   subscribedToVehicles: { type: DataTypes.BOOLEAN, defaultValue: true }
-}, { 
-  tableName: 'telegram_subscribers', 
-  timestamps: true 
+}, {
+  tableName: 'telegram_subscribers',
+  timestamps: true
+});
+
+// === PATIENT BOT SUBSCRIBER MODEL ===
+// Подписчики клиентских ботов (Telegram / MAX) по 6 организациям.
+// Категория в МИС зависит ТОЛЬКО от платформы (2 категории), organization — разрез для статистики.
+const BotSubscriber = sequelize.define('BotSubscriber', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  platform: { type: DataTypes.STRING(20), allowNull: false },        // 'telegram' | 'max'
+  organization: { type: DataTypes.STRING(50), allowNull: false },     // ключ организации ('alfa', 'alfa-deti', ...)
+  externalUserId: { type: DataTypes.STRING(50), allowNull: false },   // chatId / user_id в мессенджере
+  username: { type: DataTypes.STRING(100) },
+  firstName: { type: DataTypes.STRING(100) },
+  lastName: { type: DataTypes.STRING(100) },
+  phone: { type: DataTypes.STRING(30) },                              // после share contact (нормализованный)
+  patientIds: { type: DataTypes.JSONB, defaultValue: [] },            // найденные patient_id (семьи -> несколько)
+  status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'started' }, // started | identified | tagged
+  source: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'bot' },      // bot | import (Fromni backfill)
+  startedAt: { type: DataTypes.DATE },
+  identifiedAt: { type: DataTypes.DATE },
+  taggedAt: { type: DataTypes.DATE }
+}, {
+  tableName: 'bot_subscribers',
+  timestamps: true,
+  indexes: [
+    // Уникальность на (платформа, организация, пользователь): один человек может быть
+    // подписан на боты нескольких медцентров — считаем его в каждом.
+    { unique: true, fields: ['platform', 'organization', 'externalUserId'] },
+    { fields: ['organization'] },
+    { fields: ['status'] }
+  ]
 });
 
 // === VEHICLE MODEL ===
@@ -2970,6 +3000,7 @@ module.exports = {
   Accreditation,
   AccreditationFile,
   TelegramSubscriber,
+  BotSubscriber,
   Vehicle,
   VehicleFile,
   MapMarker,

@@ -245,6 +245,7 @@ app.use('/api/executor-settings', executorSettingsRoutes);
 app.use('/api/performed-service-bonuses', performedServiceBonusesRoutes);
 app.use('/api/service-consumables', serviceConsumablesRoutes);
 app.use('/api/bots', botManagementRoutes);
+app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);
 app.use('/api/cash-payments', cashPaymentsRoutes);
