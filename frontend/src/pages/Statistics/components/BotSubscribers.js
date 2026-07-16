@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
+  BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LabelList,
 } from 'recharts';
 import { botSubscribers } from '../../../services/api';
 
@@ -56,6 +56,8 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [overlap, setOverlap] = useState(null);
+  const [prevTotal, setPrevTotal] = useState(null);
 
   // Период берём из общего селектора StepKpi (локальная дата — без сдвига таймзоны)
   const dateFrom = periodStart ? isoLocal(periodStart) : '';
@@ -78,7 +80,41 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
     return () => { alive = false; };
   }, [dateFrom, dateTo, effGran]);
 
+  // Экосистема: распределение по числу медцентров за выбранный период и канал.
+  useEffect(() => {
+    let alive = true;
+    const params = {};
+    if (dateFrom) params.from = dateFrom;
+    if (dateTo) params.to = dateTo;
+    if (platform === 'telegram' || platform === 'max') params.platform = platform;
+    botSubscribers.overlap(params)
+      .then(res => { if (alive) setOverlap(res.data); })
+      .catch(() => { if (alive) setOverlap(null); });
+    return () => { alive = false; };
+  }, [dateFrom, dateTo, platform]);
+
   const visiblePlatforms = platform === 'all' ? ['telegram', 'max'] : [platform];
+
+  // Итог за предыдущий равный по длине отрезок — для сравнения (▲/▼).
+  useEffect(() => {
+    if (!dateFrom || !dateTo) { setPrevTotal(null); return; }
+    const fromD = new Date(`${dateFrom}T00:00:00`);
+    const toD = new Date(`${dateTo}T00:00:00`);
+    const days = Math.round((toD - fromD) / 86400000) + 1;
+    const prevToD = new Date(fromD); prevToD.setDate(fromD.getDate() - 1);
+    const prevFromD = new Date(fromD); prevFromD.setDate(fromD.getDate() - days);
+    let alive = true;
+    botSubscribers.stats({ from: isoLocal(prevFromD), to: isoLocal(prevToD), granularity: 'month' })
+      .then(res => {
+        if (!alive) return;
+        const t = (res.data.rows || [])
+          .filter(r => visiblePlatforms.includes(r.platform))
+          .reduce((s, r) => s + r.count, 0);
+        setPrevTotal(t);
+      })
+      .catch(() => { if (alive) setPrevTotal(null); });
+    return () => { alive = false; };
+  }, [dateFrom, dateTo, platform]);
   const gran = data?.granularity || effGran;
 
   const derived = useMemo(() => {
@@ -124,6 +160,7 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
           <span style={{ color: 'var(--rb-text-secondary, #64748b)', fontSize: 14 }}>
             подписчиков{platform !== 'all' ? ` · ${PLATFORM_META[platform].label}` : ''}
           </span>
+          {derived && prevTotal != null && <DeltaBadge current={derived.grand} prev={prevTotal} />}
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -149,6 +186,7 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       {loading && <div style={{ opacity: 0.6, padding: 20 }}>Загрузка…</div>}
       {error && <div style={{ color: 'var(--rb-danger, #dc2626)', padding: 20 }}>{error}</div>}
 
+
       {!loading && !error && derived && (empty ? (
         <div style={{ opacity: 0.6, padding: 20 }}>Нет данных за выбранный период.</div>
       ) : (
@@ -172,6 +210,9 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
               </BarChart>
             </ResponsiveContainer>
           </Panel>
+
+          {/* Экосистема: на сколько медцентров подписан человек */}
+          {overlap && overlap.totalPeople > 0 && <EcosystemPanel overlap={overlap} />}
 
           {/* Динамика по периодам */}
           <Panel title={`Динамика подписок ${GRAN_LABEL[gran]}`}>
@@ -253,6 +294,25 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
   );
 }
 
+// Разница с предыдущим равным периодом: ▲ рост (зелёный) / ▼ падение (красный).
+function DeltaBadge({ current, prev }) {
+  const diff = current - prev;
+  const pct = prev > 0 ? Math.round((diff / prev) * 100) : null;
+  const color = diff > 0 ? '#16a34a' : diff < 0 ? '#dc2626' : 'var(--rb-text-secondary, #64748b)';
+  const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '→';
+  const sign = diff > 0 ? '+' : diff < 0 ? '−' : '';
+  const abs = Math.abs(diff);
+  return (
+    <span
+      title="К предыдущему периоду такой же длины"
+      style={{ display: 'inline-flex', alignItems: 'baseline', gap: 4, fontSize: 14, fontWeight: 600, color, fontVariantNumeric: 'tabular-nums' }}>
+      <span style={{ fontSize: 12 }}>{arrow}</span>
+      {sign}{abs.toLocaleString('ru-RU')}
+      {pct != null && <span style={{ opacity: 0.8 }}>({sign}{Math.abs(pct)}%)</span>}
+    </span>
+  );
+}
+
 function Segmented({ options, value, onChange }) {
   return (
     <div style={{ display: 'inline-flex', gap: 4, padding: 4, borderRadius: 10, background: 'rgba(128,128,128,0.10)' }}>
@@ -273,6 +333,90 @@ function Panel({ title, children }) {
     <div style={{ border: `1px solid ${GRID}`, borderRadius: 12, background: 'var(--rb-card-bg, #fff)', padding: '14px 16px' }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--rb-text, #1e293b)' }}>{title}</div>
       {children}
+    </div>
+  );
+}
+
+// Секвенциальная палитра одного тона (голубой → тёмно-синий): больше центров = насыщеннее.
+const CENTERS_RAMP = ['#cfe0f7', '#9dc3ef', '#6ba3e5', '#3d82d6', '#245fac', '#123f7a'];
+const centersWord = (n) => (n === 1 ? 'центр' : n >= 5 ? 'центров' : 'центра');
+
+function EcosystemPanel({ overlap }) {
+  const chart = useMemo(() => {
+    if (!overlap || !overlap.totalPeople) return null;
+    const total = overlap.totalPeople;
+    return overlap.distribution.map(d => ({
+      centers: d.centers,
+      label: `${d.centers} ${centersWord(d.centers)}`,
+      subscribers: d.subscribers,
+      pct: total ? (d.subscribers / total) * 100 : 0,
+    }));
+  }, [overlap]);
+
+  return (
+    <Panel title="Экосистема">
+      {!chart ? (
+        <div style={{ opacity: 0.6, padding: '8px 0' }}>Нет данных.</div>
+      ) : (
+        <>
+          {/* Ключевые цифры */}
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16 }}>
+            <Stat
+              value={`${((overlap.multiCenter / overlap.totalPeople) * 100).toFixed(0)}%`}
+              label="пользуются 2+ медцентрами"
+            />
+            <Stat value={overlap.avgCenters.toFixed(2)} label="медцентров на человека в среднем" />
+            <Stat value={overlap.totalPeople.toLocaleString('ru-RU')} label="опознанных подписчиков" />
+          </div>
+
+          <ResponsiveContainer width="100%" height={chart.length * 40 + 16}>
+            <BarChart data={chart} layout="vertical" margin={{ left: 4, right: 64, top: 4, bottom: 4 }}>
+              <CartesianGrid horizontal={false} stroke={GRID} />
+              <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} allowDecimals={false} />
+              <YAxis type="category" dataKey="label" width={92}
+                     tick={{ ...AXIS, fill: 'var(--rb-text, #1e293b)', fontSize: 13 }} axisLine={false} tickLine={false} />
+              <Tooltip cursor={{ fill: 'rgba(128,128,128,0.08)' }} content={<EcoTip />} />
+              <Bar dataKey="subscribers" radius={[0, 4, 4, 0]} maxBarSize={26}>
+                {chart.map(d => <Cell key={d.centers} fill={CENTERS_RAMP[d.centers - 1] || CENTERS_RAMP[CENTERS_RAMP.length - 1]} />)}
+                <LabelList dataKey="subscribers" content={<EcoLabel data={chart} />} />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function Stat({ value, label }) {
+  return (
+    <div>
+      <div style={{ fontSize: 26, fontWeight: 700, fontVariantNumeric: 'tabular-nums', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary, #64748b)', marginTop: 2 }}>{label}</div>
+    </div>
+  );
+}
+
+// Прямая подпись: «count · pct%» справа от столбца
+function EcoLabel({ x, y, width, height, value, index, data }) {
+  if (!value) return null;
+  const row = data[index];
+  return (
+    <text x={x + width + 8} y={y + height / 2} dy={4} fontSize={12} fill="var(--rb-text, #1e293b)">
+      {value.toLocaleString('ru-RU')} · {row.pct.toFixed(0)}%
+    </text>
+  );
+}
+
+function EcoTip({ active, payload }) {
+  if (!active || !payload || !payload.length) return null;
+  const row = payload[0].payload;
+  return (
+    <div style={{ background: 'var(--rb-card-bg, #fff)', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, #1e293b)' }}>{row.label}</div>
+      <div style={{ color: 'var(--rb-text-secondary, #64748b)' }}>
+        Подписчиков: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{row.subscribers.toLocaleString('ru-RU')}</b> · {row.pct.toFixed(1)}%
+      </div>
     </div>
   );
 }

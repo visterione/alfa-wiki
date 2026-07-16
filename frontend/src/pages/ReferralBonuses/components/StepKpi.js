@@ -7,7 +7,7 @@ import { rbParseFullName, rbParseAbbrevName } from '../utils/nameMatching';
 import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
-import { mis, reviews } from '../../../services/api';
+import { mis, reviews, botSubscribers } from '../../../services/api';
 import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics } from '../../Statistics/components/Directories';
 import BotSubscribers from '../../Statistics/components/BotSubscribers';
 
@@ -2140,7 +2140,36 @@ const PDF_SECTIONS = [
   { key: 'rooms',      label: 'Кабинеты',               sub: 'загрузка и интервалы (требует вкладки Кабинеты)', requiresAppt: true },
   { key: 'reputation', label: 'Репутация',              sub: 'отзывы, рейтинги, негатив (данные из отзывов)' },
   { key: 'debtors',    label: 'Задолженности',          sub: 'долги пациентов, по клиникам, возраст (из МИС)' },
+  { key: 'bots',       label: 'Боты',                   sub: 'подписчики Telegram/MAX по медцентрам, экосистема' },
 ];
+
+// Сбор данных ботов для PDF: подписчики за период + экосистема + дельта к пред. периоду.
+async function gatherBots(periodStart, periodEnd) {
+  // Локальная дата (без сдвига таймзоны, как в UI-компоненте BotSubscribers)
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const from = iso(periodStart), to = iso(periodEnd);
+
+  // Авто-детализация под длину периода — как в UI-компоненте BotSubscribers
+  const spanDays = Math.round((periodEnd - periodStart) / 86400000) + 1;
+  const gran = spanDays <= 62 ? 'day' : spanDays <= 240 ? 'week' : 'month';
+
+  const [statsRes, overlapRes] = await Promise.all([
+    botSubscribers.stats({ from, to, granularity: gran }),
+    botSubscribers.overlap({ from, to }),
+  ]);
+
+  // Итог за предыдущий равный по длине отрезок — для сравнения
+  let prevTotal = null;
+  try {
+    const days = Math.round((periodEnd - periodStart) / 86400000) + 1;
+    const prevTo = new Date(periodStart); prevTo.setDate(periodStart.getDate() - 1);
+    const prevFrom = new Date(periodStart); prevFrom.setDate(periodStart.getDate() - days);
+    const prevRes = await botSubscribers.stats({ from: iso(prevFrom), to: iso(prevTo), granularity: 'month' });
+    prevTotal = (prevRes.data.rows || []).reduce((s, r) => s + r.count, 0);
+  } catch (err) { /* дельта необязательна */ }
+
+  return { stats: statsRes.data, overlap: overlapRes.data, prevTotal };
+}
 
 // Сбор данных репутации для PDF (повторяет логику TabReputation, но без UI)
 async function gatherReputation(periodStart, periodEnd) {
@@ -2391,7 +2420,13 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
         catch (err) { console.warn('[KPI PDF] reputation:', err?.message); }
       }
 
-      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors, debtorsData, reputationData });
+      let botsData = null;
+      if (sections.bots && periodStart && periodEnd) {
+        try { botsData = await gatherBots(periodStart, periodEnd); }
+        catch (err) { console.warn('[KPI PDF] bots:', err?.message); }
+      }
+
+      buildKpiPdf(rows, label, { ...config, appointments, periodStart, periodEnd, doctors, debtorsData, reputationData, botsData });
     } catch (e) {
       console.error('[KPI PDF]', e);
       toast.error('Ошибка экспорта PDF');

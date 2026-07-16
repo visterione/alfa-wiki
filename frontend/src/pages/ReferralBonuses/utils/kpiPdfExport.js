@@ -929,9 +929,260 @@ function buildReputation(data, content, pageBreak) {
   }
 }
 
+// ── Боты (подписчики Telegram/MAX, данные приходят готовыми в config.botsData) ──
+const BOT_PLATFORM = {
+  telegram: { label: 'Telegram', color: '#2a78d6' },
+  max:      { label: 'MAX',      color: '#7c3aed' },
+};
+// Секвенциальная палитра экосистемы (голубой → тёмно-синий), как в UI
+const CENTERS_RAMP = ['#cfe0f7', '#9dc3ef', '#6ba3e5', '#3d82d6', '#245fac', '#123f7a'];
+const centersWord = n => (n === 1 ? 'центр' : n >= 5 ? 'центров' : 'центра');
+const shortOrg = name => safeStr(name).replace('Медцентр ', '');
+const GRAN_LABEL = { day: 'по дням', week: 'по неделям', month: 'по месяцам' };
+const MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const ddmm = d => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
+function fmtBotPeriod(p, gran) {
+  if (gran === 'day') { const [, m, d] = p.split('-'); return `${d}.${m}`; }
+  if (gran === 'week') {
+    const s = new Date(`${p}T00:00:00`); const e = new Date(s); e.setDate(s.getDate() + 6);
+    return `${ddmm(s)}-${ddmm(e)}`;
+  }
+  const [y, mo] = p.split('-'); return `${MONTHS_RU[Number(mo) - 1]} ${y.slice(2)}`;
+}
+
+// Стек-гистограмма по медцентрам (Telegram + MAX в одной полосе, как в вебе)
+function pdfBotsStackedBar(orgAgg, { labelWidth = 150, barMaxW = BAR_MAX_W } = {}) {
+  if (!orgAgg.length) return null;
+  const max = Math.max(...orgAgg.map(d => d.total || 0), 1);
+  return {
+    table: {
+      widths: [labelWidth, barMaxW, 60],
+      body: orgAgg.map(d => {
+        const canvas = []; let x = 0;
+        for (const pf of ['telegram', 'max']) {
+          const w = (d[pf] / max) * barMaxW;
+          if (d[pf] > 0) { canvas.push({ type: 'rect', x, y: 4, w: Math.max(w, 1), h: 9, color: BOT_PLATFORM[pf].color }); x += w; }
+        }
+        return [
+          { text: safeStr(d.name), fontSize: 8, color: '#374151', margin: [0, 2, 4, 2] },
+          { canvas, margin: [0, 0, 0, 0] },
+          { text: fmtN(d.total), fontSize: 8, color: '#374151', alignment: 'right', margin: [4, 2, 0, 2] },
+        ];
+      }),
+    },
+    layout: {
+      hLineWidth: (i, node) => (i === 0 || i === node.table.body.length) ? 0 : 0.3,
+      vLineWidth: () => 0, hLineColor: () => '#e2e8f0',
+      fillColor: (i) => i % 2 === 1 ? '#f8fafc' : null,
+      paddingTop: () => 0, paddingBottom: () => 0, paddingLeft: () => 2, paddingRight: () => 2,
+    },
+    margin: [0, 0, 0, 6],
+  };
+}
+
+// Легенда каналов
+function pdfChannelLegend() {
+  return {
+    columns: [
+      { width: 12, canvas: [{ type: 'rect', x: 0, y: 2, w: 8, h: 8, r: 1, color: BOT_PLATFORM.telegram.color }] },
+      { width: 'auto', text: 'Telegram', fontSize: 8, color: '#374151', margin: [2, 1, 14, 0] },
+      { width: 12, canvas: [{ type: 'rect', x: 0, y: 2, w: 8, h: 8, r: 1, color: BOT_PLATFORM.max.color }] },
+      { width: 'auto', text: 'MAX', fontSize: 8, color: '#374151', margin: [2, 1, 0, 0] },
+      { width: '*', text: '' },
+    ],
+    margin: [0, 0, 0, 6],
+  };
+}
+
+// Динамика подписок: линии (день/неделя = «график») или столбцы (месяц = «гистограмма»).
+// Сам график — SVG (только ASCII-числа внутри), подписи периодов — pdfMake-текст (кириллица безопасна).
+function pdfBotsDynamics(periodAgg, gran) {
+  const n = periodAgg.length; if (!n) return null;
+  const W = 515, H = 150, padL = 30, padR = 8, padT = 8, padB = 6;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const isBars = gran === 'month';
+  const scale = isBars
+    ? Math.max(...periodAgg.map(d => d.total), 1)
+    : Math.max(...periodAgg.flatMap(d => [d.telegram, d.max]), 1);
+  const y = v => padT + ph - (v / scale) * ph;
+
+  let svg = '';
+  svg += `<line x1="${padL}" y1="${padT + ph}" x2="${padL + pw}" y2="${padT + ph}" stroke="#cbd5e1" stroke-width="0.7"/>`;
+  svg += `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#cbd5e1" stroke-width="0.7"/>`;
+  svg += `<text x="${padL - 4}" y="${padT + ph}" text-anchor="end" font-size="7" fill="#94a3b8">0</text>`;
+  svg += `<text x="${padL - 4}" y="${padT + 7}" text-anchor="end" font-size="7" fill="#94a3b8">${scale}</text>`;
+
+  if (isBars) {
+    const slot = pw / n, bw = Math.min(slot * 0.55, 24);
+    periodAgg.forEach((d, i) => {
+      const cx = padL + slot * i + slot / 2; let yb = padT + ph;
+      for (const pf of ['telegram', 'max']) {
+        const h = (d[pf] / scale) * ph;
+        if (d[pf] > 0) { svg += `<rect x="${(cx - bw / 2).toFixed(1)}" y="${(yb - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${BOT_PLATFORM[pf].color}"/>`; yb -= h; }
+      }
+    });
+    // Месяцы: подписи кириллицей — рендерим pdfMake-текстом под графиком (равные колонки)
+    const labels = periodAgg.map(d => ({ text: safeStr(fmtBotPeriod(d.period, gran)), fontSize: 6, alignment: 'center', color: '#64748b' }));
+    return {
+      stack: [
+        { svg: `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`, width: W },
+        { columns: labels, columnGap: 0, margin: [padL, 1, padR, 0] },
+      ],
+      margin: [0, 0, 0, 10],
+    };
+  }
+
+  // День/неделя: линии + ASCII-подписи (даты) прямо в SVG — точное позиционирование
+  const px = i => (n > 1 ? padL + (pw / (n - 1)) * i : padL + pw / 2);
+  for (const pf of ['telegram', 'max']) {
+    const pts = periodAgg.map((d, i) => `${px(i).toFixed(1)},${y(d[pf]).toFixed(1)}`).join(' ');
+    svg += `<polyline points="${pts}" fill="none" stroke="${BOT_PLATFORM[pf].color}" stroke-width="1.5"/>`;
+    periodAgg.forEach((d, i) => { svg += `<circle cx="${px(i).toFixed(1)}" cy="${y(d[pf]).toFixed(1)}" r="1.6" fill="${BOT_PLATFORM[pf].color}"/>`; });
+  }
+  const maxLabels = gran === 'week' ? 9 : 14;
+  const step = Math.max(1, Math.ceil(n / maxLabels));
+  periodAgg.forEach((d, i) => {
+    if (i % step !== 0 && i !== n - 1) return;
+    svg += `<text x="${px(i).toFixed(1)}" y="${H - 1}" text-anchor="middle" font-size="6" fill="#64748b">${fmtBotPeriod(d.period, gran)}</text>`;
+  });
+  return {
+    svg: `<svg width="${W}" height="${H}" xmlns="http://www.w3.org/2000/svg">${svg}</svg>`,
+    width: W, margin: [0, 0, 0, 10],
+  };
+}
+
+// Детализация: тепловая карта период × медцентр (насыщенность = число подписок)
+function pdfBotsHeatmap(periodAgg, orgAgg, cellMap, gran, grand) {
+  if (!periodAgg.length || !orgAgg.length) return null;
+  const maxCell = Math.max(1, ...Object.values(cellMap));
+  const hCell = (t, opts = {}) => ({ text: t, fontSize: 7, color: '#374151', ...opts });
+  const head = hCell(gran === 'day' ? 'Дата' : gran === 'week' ? 'Период' : 'Месяц', { bold: true, fillColor: '#e2e8f0' });
+
+  const body = [[
+    head,
+    ...orgAgg.map(o => hCell(shortOrg(o.name), { fontSize: 6.5, bold: true, fillColor: '#e2e8f0', alignment: 'center' })),
+    hCell('Итого', { bold: true, fillColor: '#e2e8f0', alignment: 'center' }),
+  ]];
+  periodAgg.forEach(pr => {
+    body.push([
+      hCell(safeStr(fmtBotPeriod(pr.period, gran))),
+      ...orgAgg.map(o => {
+        const v = cellMap[`${pr.period}|${o.key}`] || 0;
+        const ratio = v / maxCell;
+        return hCell(v ? String(v) : '', { alignment: 'center', fillColor: v ? blendHex('#2a78d6', ratio) : null, color: ratio > 0.55 ? '#fff' : '#374151' });
+      }),
+      hCell(String(pr.total), { bold: true, alignment: 'center' }),
+    ]);
+  });
+  body.push([
+    hCell('Итого', { bold: true }),
+    ...orgAgg.map(o => hCell(String(o.total), { bold: true, alignment: 'center' })),
+    hCell(String(grand), { bold: true, alignment: 'center' }),
+  ]);
+
+  return {
+    table: { headerRows: 1, widths: [64, ...orgAgg.map(() => '*'), 34], body },
+    layout: {
+      hLineWidth: () => 0.3, vLineWidth: () => 0.3, hLineColor: () => '#e2e8f0', vLineColor: () => '#e2e8f0',
+      paddingLeft: () => 3, paddingRight: () => 3, paddingTop: () => 1.5, paddingBottom: () => 1.5,
+    },
+    margin: [0, 2, 0, 10],
+  };
+}
+
+function buildBots(data, content, pageBreak) {
+  const stats   = data?.stats   || {};
+  const overlap = data?.overlap || null;
+  const totals  = stats.totals  || {};
+  const orgs    = Array.isArray(stats.organizations) ? stats.organizations : [];
+  const byPlat  = totals.byPlatform || {};
+  const total   = totals.total || 0;
+
+  // Агрегация из строк (период × медцентр × канал)
+  const rows = Array.isArray(stats.rows) ? stats.rows : [];
+  const gran = stats.granularity || 'month';
+  const periods = (stats.periods || []).slice().sort();
+
+  const orgMap = {};
+  for (const o of orgs) orgMap[o.key] = { key: o.key, name: o.name, telegram: 0, max: 0, total: 0 };
+  const periodMap = {};
+  for (const p of periods) periodMap[p] = { period: p, telegram: 0, max: 0, total: 0 };
+  const cellMap = {};
+  for (const r of rows) {
+    if (orgMap[r.organization] && orgMap[r.organization][r.platform] != null) {
+      orgMap[r.organization][r.platform] += r.count; orgMap[r.organization].total += r.count;
+    }
+    if (periodMap[r.period] && periodMap[r.period][r.platform] != null) {
+      periodMap[r.period][r.platform] += r.count; periodMap[r.period].total += r.count;
+    }
+    const k = `${r.period}|${r.organization}`; cellMap[k] = (cellMap[k] || 0) + r.count;
+  }
+  const orgAgg = Object.values(orgMap).map(o => ({ ...o, name: shortOrg(o.name) }))
+    .filter(o => o.total > 0).sort((a, b) => b.total - a.total);
+  const periodAgg = periods.map(p => periodMap[p]);
+
+  content.push(pdfSection('Боты', pageBreak));
+
+  // Итог + дельта к предыдущему периоду
+  content.push(pdfTable(
+    ['Всего подписчиков', 'Telegram', 'MAX'],
+    [[ cCell(fmtN(total)), cCell(fmtN(byPlat.telegram)), cCell(fmtN(byPlat.max)) ]],
+    ['*', '*', '*']
+  ));
+  if (data?.prevTotal != null) {
+    const diff = total - data.prevTotal;
+    const pct  = data.prevTotal > 0 ? Math.round(diff / data.prevTotal * 100) : null;
+    const sign = diff > 0 ? '+' : diff < 0 ? '-' : '';
+    content.push({
+      text: `К пред. периоду: ${sign}${fmtN(Math.abs(diff))}${pct != null ? ` (${sign}${Math.abs(pct)}%)` : ''}`,
+      fontSize: 8, color: diff < 0 ? '#dc2626' : diff > 0 ? '#16a34a' : '#64748b', margin: [0, 0, 0, 8],
+    });
+  }
+
+  // Подписчики по медцентрам — стек-гистограмма по каналам
+  if (orgAgg.length) {
+    content.push(pdfSubsection('Подписчики по медцентрам'));
+    content.push(pdfChannelLegend());
+    content.push(pdfBotsStackedBar(orgAgg, { labelWidth: 150 }));
+  }
+
+  // Экосистема — гистограмма распределения по числу медцентров
+  if (overlap && overlap.totalPeople > 0) {
+    const dist = Array.isArray(overlap.distribution) ? overlap.distribution : [];
+    const multiPct = Math.round(overlap.multiCenter / overlap.totalPeople * 100);
+    content.push(pdfSubsection('Экосистема — на сколько медцентров подписан человек'));
+    content.push({
+      text: `Опознано ${fmtN(overlap.totalPeople)} чел. Пользуются 2+ медцентрами: ${fmtN(overlap.multiCenter)} (${multiPct}%). В среднем ${overlap.avgCenters.toFixed(2)} центра на человека.`,
+      fontSize: 8, color: '#64748b', margin: [0, 0, 0, 6],
+    });
+    const distRows = dist.filter(d => d.subscribers > 0).map(d => ({
+      name: `${d.centers} ${centersWord(d.centers)}`,
+      value: d.subscribers,
+      color: CENTERS_RAMP[d.centers - 1] || CENTERS_RAMP[CENTERS_RAMP.length - 1],
+    }));
+    content.push(pdfHBar(distRows, {
+      valueKey: 'value', labelKey: 'name', colorKey: 'color', labelWidth: 90,
+      formatter: v => `${fmtN(v)} · ${(v / overlap.totalPeople * 100).toFixed(0)}%`,
+    }));
+  }
+
+  // Динамика подписок — график (день/неделя) или гистограмма (месяц)
+  if (periodAgg.length) {
+    content.push(pdfSubsection(`Динамика подписок ${GRAN_LABEL[gran] || ''}`));
+    content.push(pdfChannelLegend());
+    content.push(pdfBotsDynamics(periodAgg, gran));
+  }
+
+  // Детализация — тепловая карта
+  if (periodAgg.length && orgAgg.length) {
+    content.push(pdfSubsection('Детализация'));
+    content.push(pdfBotsHeatmap(periodAgg, orgAgg, cellMap, gran, total));
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 // config = {
-//   sections:     { general, patients, top20, margin, efficiency, rooms, reputation, debtors }
+//   sections:     { general, patients, top20, margin, efficiency, rooms, reputation, debtors, bots }
 //   clinicFilter: string
 //   specFilter:   string
 //   appointments: array   — required for rooms section
@@ -939,6 +1190,7 @@ function buildReputation(data, content, pageBreak) {
 //   periodEnd:    Date
 //   debtorsData:    object — данные /mis/debtors (для раздела Задолженности)
 //   reputationData: object — агрегат отзывов (для раздела Репутация)
+//   botsData:       object — { stats, overlap, prevTotal } (для раздела Боты)
 // }
 export function buildKpiPdf(rows, periodLabel, config = {}) {
   const {
@@ -951,6 +1203,7 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
     doctors      = [],
     debtorsData    = null,
     reputationData = null,
+    botsData       = null,
   } = config;
 
   const sec = key => sections[key] !== false; // default: all on
@@ -994,6 +1247,10 @@ export function buildKpiPdf(rows, periodLabel, config = {}) {
   }
   if (sec('debtors') && debtorsData) {
     buildDebtors(debtorsData, content, !isFirst);
+    isFirst = false;
+  }
+  if (sec('bots') && botsData && ((botsData.stats?.totals?.total || 0) > 0 || (botsData.overlap?.totalPeople || 0) > 0)) {
+    buildBots(botsData, content, !isFirst);
     isFirst = false;
   }
 

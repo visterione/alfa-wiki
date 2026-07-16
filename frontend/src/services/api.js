@@ -795,6 +795,8 @@ export const releaseNotes = {
 export const botSubscribers = {
   // Статистика подписчиков ботов (Telegram/MAX) по медцентрам и месяцам
   stats: (params) => api.get('/bot-subscribers/stats', { params }),
+  // Распределение подписчиков по числу медцентров (экосистема ботов)
+  overlap: (params) => api.get('/bot-subscribers/overlap', { params }),
 };
 
 export default api;

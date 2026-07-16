@@ -65,4 +65,64 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/bot-subscribers/overlap?from=YYYY-MM-DD&to=YYYY-MM-DD&platform=telegram|max
+// Распределение подписчиков по числу разных медцентров, на боты которых они подписаны.
+// Идентификация человека — по нормализованному телефону (объединяет Telegram и MAX),
+// поэтому считаем только опознанных (status='tagged', есть телефон).
+// Фильтр периода — по дате подписки (startedAt), как в /stats: считаем медцентры,
+// на которые человек подписался в рамках выбранного окна.
+router.get('/overlap', authenticate, async (req, res) => {
+  try {
+    const { from, to, platform } = req.query;
+
+    const where = [`status = 'tagged'`, `phone IS NOT NULL`, `phone <> ''`, `"startedAt" IS NOT NULL`];
+    const repl = {};
+    if (from && /^\d{4}-\d{2}(-\d{2})?$/.test(from)) {
+      repl.from = /^\d{4}-\d{2}$/.test(from) ? `${from}-01` : from;
+      where.push(`"startedAt" >= :from`);
+    }
+    if (to && /^\d{4}-\d{2}(-\d{2})?$/.test(to)) {
+      if (/^\d{4}-\d{2}$/.test(to)) { repl.to = `${to}-01`; where.push(`"startedAt" < (:to)::date + interval '1 month'`); }
+      else { repl.to = to; where.push(`"startedAt" < (:to)::date + interval '1 day'`); }
+    }
+    if (platform === 'telegram' || platform === 'max') { where.push(`platform = :platform`); repl.platform = platform; }
+
+    const [rows] = await sequelize.query(
+      `WITH per_person AS (
+         SELECT phone, COUNT(DISTINCT organization) AS centers
+           FROM bot_subscribers
+          WHERE ${where.join(' AND ')}
+          GROUP BY phone
+       )
+       SELECT centers::int AS centers, COUNT(*)::int AS subscribers
+         FROM per_person
+        GROUP BY centers
+        ORDER BY centers ASC`,
+      { replacements: repl }
+    );
+
+    const maxCenters = Object.keys(ORGANIZATIONS).length;
+    // Плотное распределение 1..maxCenters (нули для отсутствующих корзин)
+    const byCount = Object.fromEntries(rows.map(r => [r.centers, r.subscribers]));
+    const distribution = Array.from({ length: maxCenters }, (_, i) => ({
+      centers: i + 1,
+      subscribers: byCount[i + 1] || 0,
+    }));
+
+    const totalPeople = distribution.reduce((s, d) => s + d.subscribers, 0);
+    const multiCenter = distribution.reduce((s, d) => s + (d.centers > 1 ? d.subscribers : 0), 0);
+    const memberships = distribution.reduce((s, d) => s + d.centers * d.subscribers, 0);
+
+    res.json({
+      distribution,
+      totalPeople,
+      multiCenter,
+      avgCenters: totalPeople ? memberships / totalPeople : 0,
+    });
+  } catch (err) {
+    console.error('Bot subscribers overlap error:', err);
+    res.status(500).json({ error: 'Ошибка получения статистики экосистемы' });
+  }
+});
+
 module.exports = router;
