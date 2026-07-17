@@ -681,6 +681,12 @@ export const misAppointments = {
   query: (params) => api.get('/mis-appointments', { params }),
 };
 
+export const misPayments = {
+  syncStatus: () => api.get('/mis-payments/sync/status'),
+  syncTrigger: (params) => api.post('/mis-payments/sync/trigger', params || {}),
+  query: (params) => api.get('/mis-payments', { params }),
+};
+
 export const hourNorms = {
   get: (year, month) => api.get('/hour-norms', { params: { year, month } }),
   getPeriods: () => api.get('/hour-norms/periods'),

@@ -63,6 +63,7 @@ const rbHolidaysRoutes           = require('./routes/rb-holidays');
 const rbDoctorHeadersRoutes      = require('./routes/rb-doctor-headers');
 const rbActivityLogRoutes        = require('./routes/rb-activity-log');
 const misAppointmentsRoutes      = require('./routes/mis-appointments');
+const misPaymentsRoutes          = require('./routes/mis-payments');
 const directoriesRoutes          = require('./routes/directories');
 const ambulanceReportsRoutes     = require('./routes/ambulance-reports');
 const operationsReportsRoutes    = require('./routes/operations-reports');
@@ -260,6 +261,7 @@ app.use('/api/rb-doctor-headers',   rbDoctorHeadersRoutes);
 app.use('/api/rb-activity-log',     rbActivityLogRoutes);
 app.use('/api/rb-excel-sources',    rbExcelSourcesRoutes);
 app.use('/api/mis-appointments',    misAppointmentsRoutes);
+app.use('/api/mis-payments',        misPaymentsRoutes);
 app.use('/api/directories',         directoriesRoutes);
 app.use('/api/ambulance-reports',   ambulanceReportsRoutes);
 app.use('/api/operations-reports',  operationsReportsRoutes);
@@ -370,6 +372,9 @@ async function startServer() {
 
     // Initialize MIS appointments daily sync cron job (00:05 MSK)
     require('./cron/misAppointmentsSyncCron');
+
+    // Initialize MIS payments (списания/возвраты) daily sync cron job (00:10 MSK)
+    require('./cron/misPaymentsSyncCron');
 
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');

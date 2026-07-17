@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { fetchAppointmentsFromDB, getSyncStatus, triggerSync } from '../utils/appointmentsApi';
 import { buildKpiPdf } from '../utils/kpiPdfExport';
 import { mis, reviews, botSubscribers } from '../../../services/api';
-import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics } from '../../Statistics/components/Directories';
+import { TabReputation, TabUtilitiesAnalytics, TabConsumablesAnalytics, TabEquipmentAnalytics, TabServiceCostAnalytics, TabDebtorsAnalytics, TabRefundsAnalytics } from '../../Statistics/components/Directories';
 import BotSubscribers from '../../Statistics/components/BotSubscribers';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -78,6 +78,7 @@ const KPI_TABS = [
   { key: 'consumables', label: 'Расходники' },
   { key: 'serviceCost', label: 'Себестоимость' },
   { key: 'debtors',     label: 'Задолженности' },
+  { key: 'refunds',     label: 'Возвраты' },
   { key: 'bots',        label: 'Боты' },
 ];
 
@@ -2570,11 +2571,14 @@ export default function StepKpi({ excelSources = [], doctors = [] }) {
       {/* Задолженности — снимок долгов пациентов на конец периода (данные из МИС) */}
       {viewMode === 'debtors' && <TabDebtorsAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
 
+      {/* Возвраты — списания getPayments (is_refund) из локальной БД mis_payments */}
+      {viewMode === 'refunds' && <TabRefundsAnalytics periodStart={periodStart} periodEnd={periodEnd} />}
+
       {/* Боты — подписчики Telegram/MAX (данные из bot_subscribers), не требует Excel */}
       {viewMode === 'bots' && <BotSubscribers periodStart={periodStart} periodEnd={periodEnd} />}
 
       {/* Остальные вкладки */}
-      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'bots' && (
+      {viewMode !== 'rooms' && viewMode !== 'reputation' && viewMode !== 'utilities' && viewMode !== 'consumables' && viewMode !== 'serviceCost' && viewMode !== 'debtors' && viewMode !== 'refunds' && viewMode !== 'bots' && (
         <>
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 0', color: 'var(--rb-text-secondary)', gap: 12 }}>

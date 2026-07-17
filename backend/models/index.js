@@ -2910,6 +2910,41 @@ const MisAppointment = sequelize.define('MisAppointment', {
   ],
 });
 
+// ── MIS Payments (списания getPayments, type=2; возвраты помечены is_refund) ────
+const MisPayment = sequelize.define('MisPayment', {
+  id:             { type: DataTypes.INTEGER,      autoIncrement: true, primaryKey: true },
+  opDate:         { type: DataTypes.DATE,         allowNull: true,  field: 'op_date' },
+  value:          { type: DataTypes.DECIMAL(14, 2), allowNull: true },
+  type:           { type: DataTypes.SMALLINT,     allowNull: true },
+  typeName:       { type: DataTypes.STRING(255),  allowNull: true,  field: 'type_name' },
+  isRefund:       { type: DataTypes.BOOLEAN,      allowNull: false, defaultValue: false, field: 'is_refund' },
+  incomeType:     { type: DataTypes.SMALLINT,     allowNull: true,  field: 'income_type' },
+  incomeTypeName: { type: DataTypes.STRING(255),  allowNull: true,  field: 'income_type_name' },
+  invoiceNumber:  { type: DataTypes.STRING(100),  allowNull: true,  field: 'invoice_number' },
+  title:          { type: DataTypes.STRING(500),  allowNull: true },
+  patientId:      { type: DataTypes.INTEGER,      allowNull: true,  field: 'patient_id' },
+  patient:        { type: DataTypes.STRING(500),  allowNull: true },
+  clinicId:       { type: DataTypes.SMALLINT,     allowNull: true,  field: 'clinic_id' },
+  clinicName:     { type: DataTypes.STRING(255),  allowNull: true,  field: 'clinic_name' },
+  isCompany:      { type: DataTypes.BOOLEAN,      allowNull: false, defaultValue: false, field: 'is_company' },
+  authorId:       { type: DataTypes.INTEGER,      allowNull: true,  field: 'author_id' },
+  authorName:     { type: DataTypes.STRING(255),  allowNull: true,  field: 'author_name' },
+  device:         { type: DataTypes.STRING(100),  allowNull: true },
+  isDeleted:      { type: DataTypes.BOOLEAN,      allowNull: false, defaultValue: false, field: 'is_deleted' },
+  data:           { type: DataTypes.JSONB,        allowNull: false, defaultValue: {} },
+  syncedAt:       { type: DataTypes.DATE,         allowNull: false, defaultValue: DataTypes.NOW, field: 'synced_at' },
+}, {
+  tableName:  'mis_payments',
+  timestamps: false,
+  indexes: [
+    { fields: ['op_date'] },
+    { fields: ['clinic_id'] },
+    { fields: ['author_id'] },
+    { fields: ['is_refund'] },
+    { fields: ['type_name'] },
+  ],
+});
+
 // === DIRECTORIES META MODEL (ручные поля для справочника филиалов/кабинетов/врачей) ===
 const DirectoriesMeta = sequelize.define('DirectoriesMeta', {
   id:         { type: DataTypes.UUID,         defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3089,6 +3124,8 @@ module.exports = {
   RbExcelSource,
   // MIS Appointments cache
   MisAppointment,
+  // MIS Payments cache (списания/возвраты)
+  MisPayment,
   // Directories manual data
   DirectoriesMeta,
   // Operations reports module

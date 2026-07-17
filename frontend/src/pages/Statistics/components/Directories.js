@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { mis, directories, reviews, salaryRecords, doctorSchedules, BASE_URL } from '../../../services/api';
 import { useTabSlider } from '../../ReferralBonuses/utils/useTabSlider';
 import { fetchAppointmentsFromDB } from '../../ReferralBonuses/utils/appointmentsApi';
+import { fetchRefundsFromDB } from '../../ReferralBonuses/utils/refundsApi';
 import { fetchSourceFile } from '../../ReferralBonuses/utils/excelSources';
 import { parseExcelFile, rbMapNewColumns, rbParseDate } from '../../ReferralBonuses/utils/excelUtils';
 import { rbParseFullName, rbParseAbbrevName } from '../../ReferralBonuses/utils/nameMatching';
@@ -8125,6 +8126,368 @@ export function TabDebtorsAnalytics({ periodStart, periodEnd }) {
                 )}
               </div>
             </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ВОЗВРАТЫ (getPayments type=2, is_refund) — данные из локальной БД mis_payments
+// ══════════════════════════════════════════════════════════════════════════════
+const REFUND_CLINIC_COLOR = Object.fromEntries(DEFAULT_CLINICS.map(c => [String(c.id), c.color]));
+const refundClinicColor = (id) => REFUND_CLINIC_COLOR[String(id)] || '#94a3b8';
+
+function refundKpiCard(label, value, sub, accent) {
+  return (
+    <div style={{ flex: '1 1 180px', minWidth: 160, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
+      <div style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginBottom: 6 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700, color: accent || 'var(--rb-text)', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: 'var(--rb-text-secondary)', marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+}
+
+export function TabRefundsAnalytics({ periodStart, periodEnd }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [selectedClinics, setSelectedClinics] = useState([]); // [] = все МЦ
+  const [search, setSearch] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: 'date', dir: 'desc' });
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 100;
+
+  const toggleClinic = (id) => setSelectedClinics(prev =>
+    prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const startIso = useMemo(() => periodStart.toISOString(), [periodStart]);
+  const endIso   = useMemo(() => periodEnd.toISOString(), [periodEnd]);
+
+  // Загрузка возвратов из БД (весь период, без фильтра клиники — фильтруем на клиенте).
+  // Данные наполняет ежедневный крон (cron/misPaymentsSyncCron.js) + разовый бэкфилл
+  // через CLI (backend/run-payments-sync.js) — ручной синхронизации из UI нет.
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError('');
+    fetchRefundsFromDB(new Date(startIso), new Date(endIso))
+      .then(data => { if (alive) setRows(Array.isArray(data) ? data : []); })
+      .catch(() => { if (alive) { setRows([]); setError('Ошибка запроса возвратов из БД'); } })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [startIso, endIso]);
+
+  // Фильтрация по клиникам + поиску
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return rows.filter(r => {
+      if (selectedClinics.length && !selectedClinics.includes(String(r.clinic_id))) return false;
+      if (!q) return true;
+      return (r.patient || '').toLowerCase().includes(q)
+        || (r.title || '').toLowerCase().includes(q)
+        || (r.clinic_name || '').toLowerCase().includes(q)
+        || (r.income_type_name || '').toLowerCase().includes(q)
+        || String(r.invoice_number || '').toLowerCase().includes(q);
+    });
+  }, [rows, selectedClinics, search]);
+
+  // Возврат — списание, поэтому сумма value обычно отрицательная; берём модуль
+  const refundAmount = (r) => Math.abs(Number(r.value) || 0);
+
+  // Агрегаты
+  const totals = useMemo(() => {
+    const count = filtered.length;
+    const sum = filtered.reduce((s, r) => s + refundAmount(r), 0);
+    const patients = new Set(filtered.map(r => r.patient_id ?? r.patient).filter(v => v != null));
+    return { count, sum, patients: patients.size, avg: count ? sum / count : 0 };
+  }, [filtered]);
+
+  // По способу оплаты (нал/безнал) — getPayments не отдаёт автора возврата,
+  // поэтому «кто делал» из этого источника недоступно; показываем доступные разрезы.
+  const byMethod = useMemo(() => {
+    const map = new Map();
+    for (const r of filtered) {
+      const key = r.income_type_name || 'Не указан';
+      const cur = map.get(key) || { name: key, count: 0, sum: 0 };
+      cur.count += 1;
+      cur.sum += refundAmount(r);
+      map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [filtered]);
+
+  // По медцентрам
+  const byClinic = useMemo(() => {
+    const map = new Map();
+    for (const r of filtered) {
+      const key = String(r.clinic_id ?? '—');
+      const cur = map.get(key) || { clinic_id: r.clinic_id ?? null, name: r.clinic_name || 'Не указан', count: 0, sum: 0 };
+      cur.count += 1;
+      cur.sum += refundAmount(r);
+      map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count);
+  }, [filtered]);
+
+  // По дням
+  const timeline = useMemo(() => {
+    const map = new Map();
+    for (const r of filtered) {
+      const d = r.date ? new Date(r.date) : null;
+      if (!d || isNaN(d)) continue;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const cur = map.get(key) || { day: key, count: 0, sum: 0 };
+      cur.count += 1;
+      cur.sum += refundAmount(r);
+      map.set(key, cur);
+    }
+    return [...map.values()].sort((a, b) => a.day.localeCompare(b.day))
+      .map(x => ({ ...x, label: x.day.slice(8) + '.' + x.day.slice(5, 7) }));
+  }, [filtered]);
+
+  // Таблица: сортировка
+  const displayRows = useMemo(() => {
+    const arr = [...filtered];
+    const { key, dir } = sortConfig;
+    const m = dir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      let av, bv;
+      if (key === 'value') { av = refundAmount(a); bv = refundAmount(b); }
+      else if (key === 'date') { av = a.date ? new Date(a.date).getTime() : 0; bv = b.date ? new Date(b.date).getTime() : 0; }
+      else { av = a[key]; bv = b[key]; }
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return String(av || '').localeCompare(String(bv || ''), 'ru', { numeric: true }) * m;
+      }
+      return ((av || 0) - (bv || 0)) * m;
+    });
+    return arr;
+  }, [filtered, sortConfig]);
+
+  const toggleSort = (key) => setSortConfig(prev =>
+    prev.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                     : { key, dir: (key === 'value' || key === 'date') ? 'desc' : 'asc' });
+
+  useEffect(() => { setPage(0); }, [search, sortConfig, selectedClinics, startIso, endIso]);
+  const pageCount = Math.max(1, Math.ceil(displayRows.length / PAGE_SIZE));
+  const curPage = Math.min(page, pageCount - 1);
+  const pageRows = displayRows.slice(curPage * PAGE_SIZE, curPage * PAGE_SIZE + PAGE_SIZE);
+
+  const fmtDateTime = (v) => {
+    const d = v ? new Date(v) : null;
+    if (!d || isNaN(d)) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${d.getFullYear()} ${hh}:${mi}`;
+  };
+
+  const exportXlsx = async () => {
+    if (!displayRows.length) return;
+    const ExcelJS = (await import('exceljs')).default;
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Возвраты');
+    const cols = [
+      { header: 'Дата',         key: 'date',    width: 18 },
+      { header: 'Медцентр',     key: 'clinic',  width: 18 },
+      { header: 'Пациент',      key: 'patient', width: 28 },
+      { header: 'Способ',       key: 'method',  width: 16 },
+      { header: 'Наименование', key: 'title',   width: 30 },
+      { header: 'Счёт',         key: 'invoice', width: 12 },
+      { header: 'Сумма (₽)',    key: 'value',   width: 14 },
+    ];
+    ws.columns = cols;
+    ws.getRow(1).font = { bold: true };
+    for (const r of displayRows) {
+      ws.addRow({
+        date: fmtDateTime(r.date),
+        clinic: r.clinic_name || '',
+        patient: r.patient || (r.patient_id ? `ID ${r.patient_id}` : ''),
+        method: r.income_type_name || '',
+        title: r.title || '',
+        invoice: r.invoice_number || '',
+        value: refundAmount(r),
+      });
+    }
+    ws.getColumn('value').numFmt = '#,##0';
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const safe = s => String(s || '').replace(/[.:]/g, '-');
+    const a = Object.assign(document.createElement('a'), { href: url, download: `Возвраты_${safe(dateToRu(periodStart))}_${safe(dateToRu(periodEnd))}.xlsx` });
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div>
+      {/* Медцентры — чипы-фильтры */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', marginRight: 2 }}>Медцентры:</span>
+        <button onClick={() => setSelectedClinics([])} style={clinicChipStyle(selectedClinics.length === 0)}>Все</button>
+        {DEFAULT_CLINICS.filter(c => c.id !== 'ip' && c.id !== 8).map(c => (
+          <button key={c.id} onClick={() => toggleClinic(String(c.id))} style={clinicChipStyle(selectedClinics.includes(String(c.id)))}>{c.name}</button>
+        ))}
+      </div>
+
+      {loading && <Spinner text="Загрузка возвратов…" />}
+      {!loading && error && (
+        <div style={{ padding: '30px 0', textAlign: 'center', color: '#ef4444', fontSize: 13 }}>{error}</div>
+      )}
+
+      {!loading && !error && (
+        <>
+          {/* KPI-карточки */}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
+            {refundKpiCard('Количество возвратов', fmt(totals.count))}
+            {refundKpiCard('Сумма возвратов', fmtRubP(totals.sum), null, '#ef4444')}
+            {refundKpiCard('Средний возврат', fmtRubP(totals.avg))}
+            {refundKpiCard('Пациентов с возвратами', fmt(totals.patients))}
+          </div>
+
+          {totals.count === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--rb-text-secondary)', fontSize: 14 }}>
+              {rows.length === 0
+                ? 'Возвратов за период не найдено'
+                : 'Ничего не найдено по фильтру'}
+            </div>
+          ) : (
+            <>
+              {/* По медцентрам + по способу оплаты */}
+              <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 20 }}>
+                <div style={{ flex: '1 1 380px', minWidth: 300, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Возвраты по медцентрам (кол-во)</div>
+                  <ResponsiveContainer width="100%" height={Math.max(140, Math.min(byClinic.length, 12) * 28 + 20)}>
+                    <BarChart data={byClinic} layout="vertical" margin={{ left: 8, right: 24, top: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                      <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" width={110} tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v) => [v, 'Кол-во']} />
+                      <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                        {byClinic.map((c, i) => <Cell key={i} fill={refundClinicColor(c.clinic_id)} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div style={{ flex: '1 1 360px', minWidth: 300, background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', overflowX: 'auto' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>По способу оплаты</div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: 'var(--rb-text)' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...cell, background: '#f8fafc', fontWeight: 600, textAlign: 'left' }}>Способ</th>
+                        <th style={{ ...cellNum, background: '#f8fafc', fontWeight: 600 }}>Кол-во</th>
+                        <th style={{ ...cellNum, background: '#f8fafc', fontWeight: 600 }}>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byMethod.map(a => (
+                        <tr key={a.name}>
+                          <td style={cell}>{a.name}</td>
+                          <td style={cellNum}>{fmt(a.count)}</td>
+                          <td style={{ ...cellNum, color: '#ef4444' }}>{fmtRubP(a.sum)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Динамика по дням */}
+              <div style={{ background: '#fff', border: '1px solid var(--rb-border)', borderRadius: 12, padding: '14px 16px', marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Динамика возвратов по дням</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={timeline} margin={{ left: 0, right: 16, top: 6, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v, n) => n === 'sum' ? [fmtRubP(v), 'Сумма'] : [v, 'Кол-во']} />
+                    <Line type="monotone" dataKey="count" stroke="#6366f1" strokeWidth={2} dot={{ r: 2 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Поиск + экспорт */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '6px 0 12px', flexWrap: 'wrap' }}>
+                <div style={{ position: 'relative', flex: '1 1 320px', maxWidth: 440 }}>
+                  <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: 'var(--rb-text-secondary)', pointerEvents: 'none' }} />
+                  <input value={search} onChange={e => setSearch(e.target.value)}
+                    placeholder="Поиск: пациент, сотрудник, тип, счёт…"
+                    style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px 0 34px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, fontSize: 13, fontFamily: 'inherit', outline: 'none', background: '#fff' }} />
+                </div>
+                <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)', whiteSpace: 'nowrap' }}>Найдено: {displayRows.length}</span>
+                <button onClick={exportXlsx} disabled={!displayRows.length}
+                  title="Скачать таблицу в Excel (текущий фильтр)"
+                  style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, padding: '0 14px', border: '1px solid var(--rb-border-dark)', borderRadius: 9, background: '#fff', cursor: displayRows.length ? 'pointer' : 'default', fontSize: 13, fontFamily: 'inherit', color: displayRows.length ? 'var(--rb-text)' : '#c2c8d0', opacity: displayRows.length ? 1 : 0.6 }}>
+                  <FileText size={14} /> Excel
+                </button>
+              </div>
+
+              {/* Детальная таблица */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, color: 'var(--rb-text)' }}>
+                  <thead>
+                    <tr>
+                      {[
+                        { key: 'date',            label: 'Дата' },
+                        { key: 'clinic_name',     label: 'Медцентр' },
+                        { key: 'patient',         label: 'Пациент' },
+                        { key: 'income_type_name', label: 'Способ' },
+                        { key: 'invoice_number',  label: 'Счёт' },
+                        { key: 'value',           label: 'Сумма (₽)' },
+                      ].map(col => {
+                        const active = sortConfig.key === col.key;
+                        return (
+                          <th key={col.key} onClick={() => toggleSort(col.key)}
+                            title="Нажмите для сортировки"
+                            style={{ background: active ? '#eef4ff' : '#f8fafc', padding: '10px 12px', textAlign: 'center', fontWeight: 600, fontSize: 12, border: '1px solid var(--rb-border)', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+                              {col.label}
+                              <span style={{ fontSize: 10, color: active ? 'var(--rb-primary)' : '#c2c8d0' }}>
+                                {active ? (sortConfig.dir === 'asc' ? '▲' : '▼') : '⇅'}
+                              </span>
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageRows.map((r, i) => (
+                      <tr key={i}>
+                        <td style={{ ...cell, whiteSpace: 'nowrap' }}>{fmtDateTime(r.date)}</td>
+                        <td style={cell}>{r.clinic_name || ''}</td>
+                        <td style={cell}>
+                          {r.patient_id
+                            ? <a href={patientCardUrl(r.patient_id)} target="_blank" rel="noopener noreferrer" style={debtorLinkStyle} title="Открыть карточку пациента в Renovatio">{r.patient || `ID ${r.patient_id}`}</a>
+                            : (r.patient || '')}
+                        </td>
+                        <td style={cell}>{r.income_type_name || ''}</td>
+                        <td style={cellCenter}>{r.invoice_number || ''}</td>
+                        <td style={{ ...cellNum, color: '#ef4444', fontWeight: 600 }}>{fmtRubP(refundAmount(r))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Пагинация */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'var(--rb-text-secondary)' }}>
+                    {`Показаны ${curPage * PAGE_SIZE + 1}–${curPage * PAGE_SIZE + pageRows.length} из ${displayRows.length}`}
+                  </span>
+                  {pageCount > 1 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <button onClick={() => setPage(0)} disabled={curPage === 0} style={pagerBtn(curPage === 0)}>«</button>
+                      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={pagerBtn(curPage === 0)}>‹</button>
+                      <span style={{ fontSize: 12, color: 'var(--rb-text)', minWidth: 90, textAlign: 'center' }}>{`Стр. ${curPage + 1} из ${pageCount}`}</span>
+                      <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={pagerBtn(curPage >= pageCount - 1)}>›</button>
+                      <button onClick={() => setPage(pageCount - 1)} disabled={curPage >= pageCount - 1} style={pagerBtn(curPage >= pageCount - 1)}>»</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </>
       )}
