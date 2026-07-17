@@ -10,6 +10,16 @@ const PLATFORM_META = {
   max:      { label: 'MAX',      color: '#7c3aed' },
 };
 
+// Сегменты 100%-стека охвата пациентов (цвет закреплён за смыслом сегмента).
+// Telegram/MAX — цвета каналов; «оба» — бирюзовый; «не подписаны» — нейтральный серый.
+const SEG_META = {
+  telegramOnly: { label: 'Только Telegram', color: '#2a78d6' },
+  both:         { label: 'Telegram и MAX',  color: '#0d9488' },
+  maxOnly:      { label: 'Только MAX',       color: '#7c3aed' },
+  none:         { label: 'Не подписаны',     color: '#cbd5e1' },
+};
+const SEG_ORDER = ['telegramOnly', 'both', 'maxOnly', 'none'];
+
 const MONTHS_RU = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const ddmm = (d) => `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}`;
 function fmtPeriod(p, gran) {
@@ -58,6 +68,8 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
   const [error, setError] = useState(null);
   const [overlap, setOverlap] = useState(null);
   const [prevTotal, setPrevTotal] = useState(null);
+  const [penetration, setPenetration] = useState(null);
+  const [penLoading, setPenLoading] = useState(true);
 
   // Период берём из общего селектора StepKpi (локальная дата — без сдвига таймзоны)
   const dateFrom = periodStart ? isoLocal(periodStart) : '';
@@ -92,6 +104,20 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
       .catch(() => { if (alive) setOverlap(null); });
     return () => { alive = false; };
   }, [dateFrom, dateTo, platform]);
+
+  // Охват среди реальных пациентов: доля посетителей клиник, подписанных на боты.
+  useEffect(() => {
+    let alive = true;
+    setPenLoading(true);
+    const params = { granularity: effGran };
+    if (dateFrom) params.from = dateFrom;
+    if (dateTo) params.to = dateTo;
+    botSubscribers.penetration(params)
+      .then(res => { if (alive) setPenetration(res.data); })
+      .catch(() => { if (alive) setPenetration(null); })
+      .finally(() => { if (alive) setPenLoading(false); });
+    return () => { alive = false; };
+  }, [dateFrom, dateTo, effGran]);
 
   const visiblePlatforms = platform === 'all' ? ['telegram', 'max'] : [platform];
 
@@ -182,6 +208,11 @@ export default function BotSubscribers({ periodStart, periodEnd }) {
           ))}
         </div>
       )}
+
+      {/* Охват среди пациентов — доля посетителей клиник, подписанных на боты */}
+      <div style={{ marginBottom: 20 }}>
+        <PenetrationPanel data={penetration} loading={penLoading} gran={gran} />
+      </div>
 
       {loading && <div style={{ opacity: 0.6, padding: 20 }}>Загрузка…</div>}
       {error && <div style={{ color: 'var(--rb-danger, #dc2626)', padding: 20 }}>{error}</div>}
@@ -333,6 +364,95 @@ function Panel({ title, children }) {
     <div style={{ border: `1px solid ${GRID}`, borderRadius: 12, background: 'var(--rb-card-bg, #fff)', padding: '14px 16px' }}>
       <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: 'var(--rb-text, #1e293b)' }}>{title}</div>
       {children}
+    </div>
+  );
+}
+
+// Охват среди пациентов: за каждый период 100%-столбик посетителей клиник,
+// внутри — доли подписанных на Telegram / MAX / оба / никого.
+function PenetrationPanel({ data, loading, gran }) {
+  const chart = useMemo(() => {
+    if (!data || !Array.isArray(data.rows)) return [];
+    return data.rows.map(r => ({
+      period: r.period,
+      short: fmtPeriod(r.period, gran),
+      total: r.total,
+      telegramOnly: r.telegram - r.both,
+      both: r.both,
+      maxOnly: r.max - r.both,
+      none: r.none,
+    }));
+  }, [data, gran]);
+
+  const t = data?.totals;
+  const pct = (num, den) => (den > 0 ? (num / den) * 100 : 0);
+
+  return (
+    <Panel title="Охват среди пациентов">
+      {loading ? (
+        <div style={{ opacity: 0.6, padding: '8px 0' }}>Загрузка…</div>
+      ) : !chart.length ? (
+        <div style={{ opacity: 0.6, padding: '8px 0' }}>Нет данных за выбранный период.</div>
+      ) : (
+        <>
+          {t && t.total > 0 && (
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 16 }}>
+              <Stat value={t.total.toLocaleString('ru-RU')} label="уникальных пациентов за период" />
+              <Stat value={`${pct(t.any, t.total).toFixed(1)}%`} label="охвачено ботами" />
+              <Stat value={`${pct(t.telegram, t.total).toFixed(1)}%`} label="подписаны на Telegram" />
+              <Stat value={`${pct(t.max, t.total).toFixed(1)}%`} label="подписаны на MAX" />
+            </div>
+          )}
+
+          {/* Легенда сегментов */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 8 }}>
+            {SEG_ORDER.map(k => (
+              <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--rb-text-secondary, #64748b)' }}>
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: SEG_META[k].color }} />
+                {SEG_META[k].label}
+              </span>
+            ))}
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={chart} stackOffset="expand" margin={{ left: 0, right: 8, top: 8, bottom: 4 }}>
+              <CartesianGrid vertical={false} stroke={GRID} />
+              <XAxis dataKey="short" tick={AXIS} axisLine={false} tickLine={false} minTickGap={gran === 'day' ? 12 : 4} />
+              <YAxis tick={AXIS} axisLine={false} tickLine={false} width={40}
+                     tickFormatter={v => `${Math.round(v * 100)}%`} />
+              <Tooltip cursor={{ fill: 'rgba(128,128,128,0.08)' }} content={<PenTip />} />
+              {SEG_ORDER.map((k, i) => (
+                <Bar key={k} dataKey={k} stackId="p" fill={SEG_META[k].color}
+                     radius={i === SEG_ORDER.length - 1 ? [4, 4, 0, 0] : 0} maxBarSize={44} />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function PenTip({ active, payload, label }) {
+  if (!active || !payload || !payload.length) return null;
+  const row = payload[0].payload;
+  const total = row.total || 0;
+  return (
+    <div style={{ background: 'var(--rb-card-bg, #fff)', border: `1px solid ${GRID}`, borderRadius: 8, padding: '8px 10px', fontSize: 13, boxShadow: '0 4px 12px rgba(0,0,0,0.15)', minWidth: 190 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--rb-text, #1e293b)' }}>{row.short || label}</div>
+      <div style={{ color: 'var(--rb-text-secondary, #64748b)', marginBottom: 6 }}>
+        Пациентов: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{total.toLocaleString('ru-RU')}</b>
+      </div>
+      {SEG_ORDER.map(k => {
+        const v = row[k] || 0;
+        const p = total > 0 ? (v / total) * 100 : 0;
+        return (
+          <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--rb-text-secondary, #64748b)' }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: SEG_META[k].color }} />
+            {SEG_META[k].label}: <b style={{ color: 'var(--rb-text, #1e293b)' }}>{v.toLocaleString('ru-RU')}</b> · {p.toFixed(1)}%
+          </div>
+        );
+      })}
     </div>
   );
 }

@@ -803,6 +803,8 @@ export const botSubscribers = {
   stats: (params) => api.get('/bot-subscribers/stats', { params }),
   // Распределение подписчиков по числу медцентров (экосистема ботов)
   overlap: (params) => api.get('/bot-subscribers/overlap', { params }),
+  // Охват среди реальных пациентов: сколько пациентов с визитами подписаны на боты
+  penetration: (params) => api.get('/bot-subscribers/penetration', { params }),
 };
 
 export default api;

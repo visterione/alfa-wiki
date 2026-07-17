@@ -125,4 +125,83 @@ router.get('/overlap', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/bot-subscribers/penetration?from=YYYY-MM-DD&to=YYYY-MM-DD&granularity=day|week|month
+// Охват среди реальных пациентов: за каждый период берём уникальных пациентов с визитами
+// (mis_appointments, кроме отказов status_id=5) и считаем, сколько из них подписаны на боты.
+// Подписка определяется по patient_id из bot_subscribers (status='tagged'): категории
+// Telegram/MAX проставляются пациенту в МИС при тегировании, платформа хранится в строке.
+router.get('/penetration', authenticate, async (req, res) => {
+  try {
+    const { from, to, granularity } = req.query;
+
+    const FMT = { day: 'YYYY-MM-DD', week: 'YYYY-MM-DD', month: 'YYYY-MM' };
+    const gran = FMT[granularity] ? granularity : 'day';
+    const fmt = FMT[gran];
+
+    const where = [`time_start IS NOT NULL`, `patient_id IS NOT NULL`, `status_id IS DISTINCT FROM 5`];
+    const repl = {};
+    if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) { repl.from = from; where.push(`time_start >= :from`); }
+    if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) { repl.to = to; where.push(`time_start < (:to)::date + interval '1 day'`); }
+
+    const [rows] = await sequelize.query(
+      `WITH visits AS (
+         SELECT DISTINCT
+                to_char(date_trunc('${gran}', time_start), '${fmt}') AS period,
+                patient_id
+           FROM mis_appointments
+          WHERE ${where.join(' AND ')}
+       ),
+       tg AS (
+         SELECT DISTINCT (jsonb_array_elements_text("patientIds"))::int AS pid
+           FROM bot_subscribers WHERE platform = 'telegram' AND status = 'tagged'
+       ),
+       mx AS (
+         SELECT DISTINCT (jsonb_array_elements_text("patientIds"))::int AS pid
+           FROM bot_subscribers WHERE platform = 'max' AND status = 'tagged'
+       )
+       SELECT v.period,
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE tg.pid IS NOT NULL)::int AS telegram,
+              COUNT(*) FILTER (WHERE mx.pid IS NOT NULL)::int AS max,
+              COUNT(*) FILTER (WHERE tg.pid IS NOT NULL AND mx.pid IS NOT NULL)::int AS both,
+              COUNT(*) FILTER (WHERE tg.pid IS NULL AND mx.pid IS NULL)::int AS none
+         FROM visits v
+         LEFT JOIN tg ON tg.pid = v.patient_id
+         LEFT JOIN mx ON mx.pid = v.patient_id
+        GROUP BY v.period
+        ORDER BY v.period ASC`,
+      { replacements: repl }
+    );
+
+    // Итоги за весь период (уникальные пациенты по всему окну, без двойного счёта по дням)
+    const [[totals]] = await sequelize.query(
+      `WITH visits AS (
+         SELECT DISTINCT patient_id FROM mis_appointments WHERE ${where.join(' AND ')}
+       ),
+       tg AS (
+         SELECT DISTINCT (jsonb_array_elements_text("patientIds"))::int AS pid
+           FROM bot_subscribers WHERE platform = 'telegram' AND status = 'tagged'
+       ),
+       mx AS (
+         SELECT DISTINCT (jsonb_array_elements_text("patientIds"))::int AS pid
+           FROM bot_subscribers WHERE platform = 'max' AND status = 'tagged'
+       )
+       SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE tg.pid IS NOT NULL)::int AS telegram,
+              COUNT(*) FILTER (WHERE mx.pid IS NOT NULL)::int AS max,
+              COUNT(*) FILTER (WHERE tg.pid IS NOT NULL AND mx.pid IS NOT NULL)::int AS both,
+              COUNT(*) FILTER (WHERE tg.pid IS NOT NULL OR mx.pid IS NOT NULL)::int AS any
+         FROM visits v
+         LEFT JOIN tg ON tg.pid = v.patient_id
+         LEFT JOIN mx ON mx.pid = v.patient_id`,
+      { replacements: repl }
+    );
+
+    res.json({ granularity: gran, rows, totals: totals || { total: 0, telegram: 0, max: 0, both: 0, any: 0 } });
+  } catch (err) {
+    console.error('Bot subscribers penetration error:', err);
+    res.status(500).json({ error: 'Ошибка получения охвата пациентов' });
+  }
+});
+
 module.exports = router;
