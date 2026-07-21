@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Реестр справок</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --reg-primary: #2563eb;
+  --reg-primary-hover: #1d4ed8;
+  --reg-bg: #f8fafc;
+  --reg-card: #fff;
+  --reg-border: #e5e7eb;
+  --reg-border-dark: #cbd5e1;
+  --reg-text: #111827;
+  --reg-muted: #64748b;
+  --reg-success: #16a34a;
+  --reg-danger: #dc2626;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--reg-bg);
+  color: var(--reg-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+#registry-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+.reg-topbar {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--reg-border);
+  flex-wrap: wrap;
+}
+.reg-actions { display: flex; gap: 5px; padding-bottom: 8px; flex-shrink: 0; }
+.reg-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.reg-btn-primary { background: var(--reg-primary); color: #fff; }
+.reg-btn-primary:hover { background: var(--reg-primary-hover); }
+.reg-btn-secondary { background: #fff; color: #334155; border-color: var(--reg-border-dark); }
+.reg-btn-secondary:hover { background: #f1f5f9; }
+.reg-btn-danger { background: #fee2e2; color: var(--reg-danger); }
+.reg-btn-danger:hover { background: #fecaca; }
+.reg-btn-success { background: var(--reg-success); color: #fff; }
+.reg-btn-success:hover { background: #15803d; }
+.reg-btn-icon { width: 34px; min-height: 34px; padding: 0; }
+.reg-btn svg { width: 16px; height: 16px; }
+.reg-tabs {
+  display: flex; gap: 2px; flex: 1; min-width: 0; margin-bottom: 0;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.reg-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--reg-muted);
+  padding: 10px 16px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.reg-tab:hover { background: #f1f5f9; color: var(--reg-text); }
+.reg-tab.active { color: var(--reg-primary); border-bottom-color: var(--reg-primary); background: #eff6ff; }
+.reg-layout { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+.reg-panel {
+  background: var(--reg-card); border: 1px solid var(--reg-border); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.reg-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--reg-border);
+  background: linear-gradient(135deg, #f0f5ff 0%, #f8fafc 100%);
+  border-left: 3px solid var(--reg-primary);
+}
+.reg-panel-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--reg-primary); letter-spacing: -.01em; }
+.reg-form { padding: 13px; }
+.reg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+.reg-group-title {
+  grid-column: 1 / -1; margin: 6px 0 0; padding: 5px 9px; border-radius: 6px;
+  background: #eff6ff; color: var(--reg-primary); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.reg-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 0; min-width: 0; }
+.reg-field.full { grid-column: 1 / -1; }
+.reg-field label {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.reg-required { color: var(--reg-danger); }
+.reg-input, .reg-select, .reg-textarea {
+  width: 100%; border: 1px solid var(--reg-border-dark); border-radius: 7px; background: #fff;
+  color: var(--reg-text); padding: 6px 9px; min-height: 32px; outline: none; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.reg-textarea { min-height: 58px; resize: vertical; line-height: 1.4; }
+.reg-input:focus, .reg-select:focus, .reg-textarea:focus {
+  border-color: var(--reg-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.reg-form-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid var(--reg-border);
+}
+.reg-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--reg-border); flex-wrap: wrap; }
+.reg-filters { display: flex; gap: 7px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.reg-search { min-width: 130px; flex: 1; }
+.reg-table-wrap { overflow: auto; max-height: calc(100vh - 260px); min-height: 120px; }
+.reg-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.reg-table th {
+  background: #f8fafc; color: #334155; text-align: center;
+  padding: 5px 7px; border: 1px solid var(--reg-border); font-weight: 700; white-space: nowrap;
+  position: sticky; z-index: 1;
+}
+.reg-table thead tr:first-child th { top: 0; height: 26px; }
+.reg-table thead tr:nth-child(2) th { top: 26px; }
+.reg-table th.reg-grp { background: #eff6ff; color: var(--reg-primary); }
+.reg-table td { padding: 4px 7px; border: 1px solid var(--reg-border); vertical-align: top; }
+.reg-table tr:hover td { background: #f8fafc; }
+.reg-table .center { text-align: center; }
+.reg-actions-cell { display: flex; gap: 5px; justify-content: center; }
+.reg-table th.col-actions,
+.reg-table td.col-actions { position: sticky; right: 0; box-shadow: -2px 0 5px rgba(0,0,0,.07); }
+.reg-table th.col-actions { z-index: 3; }
+.reg-table td.col-actions { background: #fff; z-index: 2; }
+.reg-table tr:hover td.col-actions { background: #f8fafc; }
+.reg-empty { text-align: center; color: var(--reg-muted); padding: 28px 12px !important; }
+.reg-status { display: inline-flex; align-items: center; gap: 5px; color: var(--reg-muted); font-size: 12px; }
+.reg-status.api { color: var(--reg-success); }
+.reg-status.error { color: var(--reg-danger); }
+.reg-status.loading { color: var(--reg-primary); }
+.reg-pagination {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 13px; border-top: 1px solid var(--reg-border); background: #f8fafc; flex-wrap: wrap;
+}
+.reg-pagination-controls { display: flex; align-items: center; gap: 6px; }
+.reg-page-size { width: 80px; }
+.reg-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 13px;
+  border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  font-size: 13px; font-weight: 600;
+}
+.reg-toast.success { background: var(--reg-success); }
+.reg-toast.error { background: var(--reg-danger); }
+@media (max-width: 640px) {
+  #registry-app { padding: 8px 10px 12px; }
+  .reg-actions { justify-content: flex-start; width: 100%; }
+  .reg-search { min-width: 100%; }
+  .reg-table-wrap { max-height: none; }
+  .reg-form { padding: 11px; }
+}
+</style>
+</head>
+<body>
+<div id="registry-app">
+  <div class="reg-topbar">
+    <div class="reg-tabs" id="reg-tabs"></div>
+    <div class="reg-actions">
+      <button class="reg-btn reg-btn-secondary reg-btn-icon" onclick="registryApp.reload()" title="Обновить" aria-label="Обновить">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
+      </button>
+      <button id="reg-btn-import" class="reg-btn reg-btn-secondary reg-btn-icon" onclick="registryApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="reg-btn reg-btn-success reg-btn-icon" onclick="registryApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button id="reg-btn-delete-all" class="reg-btn reg-btn-danger reg-btn-icon" onclick="registryApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+      </button>
+      <input type="file" id="reg-import-file" accept=".xlsx,.xls" style="display:none" onchange="registryApp.importExcel(this.files[0])">
+    </div>
+  </div>
+
+  <div class="reg-layout">
+    <section class="reg-panel">
+      <div class="reg-panel-head">
+        <h2 class="reg-panel-title" id="reg-form-title">Новая справка</h2>
+        <span class="reg-status" id="reg-storage-status"></span>
+      </div>
+      <form class="reg-form" id="reg-form" onsubmit="registryApp.save(event)"></form>
+    </section>
+
+    <section class="reg-panel">
+      <div class="reg-toolbar">
+        <div class="reg-filters">
+          <input class="reg-input reg-search" id="reg-search" placeholder="Поиск по таблице" oninput="registryApp.onSearchChange()">
+        </div>
+        <button class="reg-btn reg-btn-secondary" onclick="registryApp.clearFilters()" type="button">Сбросить</button>
+      </div>
+      <div class="reg-table-wrap">
+        <table class="reg-table">
+          <thead id="reg-table-head"></thead>
+          <tbody id="reg-table-body"></tbody>
+        </table>
+      </div>
+      <div class="reg-pagination">
+        <div class="reg-status" id="reg-page-info">0 записей</div>
+        <div class="reg-pagination-controls">
+          <button class="reg-btn reg-btn-secondary reg-btn-icon" type="button" onclick="registryApp.prevPage()" title="Назад">‹</button>
+          <select class="reg-select reg-page-size" id="reg-page-size" onchange="registryApp.changePageSize(this.value)">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <button class="reg-btn reg-btn-secondary reg-btn-icon" type="button" onclick="registryApp.nextPage()" title="Вперёд">›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+window.registryApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/certificate-registry';
+  var activeOrg = 'prestige';
+  var records = [];
+  var editingId = '';
+  var pagination = { page: 1, pageSize: 50, total: 0 };
+  var searchTimer = null;
+
+  var tabs = [
+    { id: 'prestige', title: 'Престиж' },
+    { id: 'labgroup', title: 'Лабгрупп' }
+  ];
+
+  // Единая структура столбцов для обеих организаций.
+  // group — название объединённой ячейки-шапки над столбцами (астериск в ТЗ).
+  var fields = [
+    { name: 'seqNumber', label: '№ п/п', type: 'number' },
+    { name: 'certNumber', label: '№ справки', type: 'text' },
+    { name: 'correctionNumber', label: '№ корректировки', type: 'text' },
+
+    { name: 'tpFio', label: 'Фамилия, имя, отчество', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpInn', label: 'ИНН', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpAppealDate', label: 'Дата обращения', group: 'Налогоплательщик', type: 'date' },
+    { name: 'tpDocCode', label: 'Код документа', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpDocSeries', label: 'Серия, номер', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpDocDate', label: 'Дата выдачи', group: 'Налогоплательщик', type: 'date' },
+
+    { name: 'ptFio', label: 'Фамилия, имя, отчество', group: 'Пациент', type: 'text' },
+    { name: 'ptInn', label: 'ИНН', group: 'Пациент', type: 'text' },
+    { name: 'ptAppealDate', label: 'Дата обращения', group: 'Пациент', type: 'date' },
+    { name: 'ptDocCode', label: 'Код документа', group: 'Пациент', type: 'text' },
+    { name: 'ptDocSeries', label: 'Серия, номер', group: 'Пациент', type: 'text' },
+    { name: 'ptDocDate', label: 'Дата выдачи', group: 'Пациент', type: 'date' },
+
+    { name: 'sumCode1', label: 'По коду услуги 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
+    { name: 'sumCode2', label: 'По коду услуги 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
+
+    { name: 'issuerName', label: 'ФИО выдавшего справку', type: 'text' },
+    { name: 'formDate', label: 'Дата формирования', type: 'date' },
+    { name: 'status', label: 'Статус', type: 'text' },
+    { name: 'clinics', label: 'Клиники', type: 'text' }
+  ];
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  // ID wiki-страницы, в которую встроена таблица. Нужен, чтобы изменения фиксировались
+  // в «Журнале изменений» этой страницы. Определяем сами по slug из URL (не зависим от React).
+  var PAGES_URL = API_URL.replace(/\/certificate-registry\/?$/, '/pages');
+  var wikiPageIdCache = '';
+
+  function wikiPageId() {
+    return wikiPageIdCache || (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function currentSlug() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    if (!parts.length) return '';
+    try { return decodeURIComponent(parts[parts.length - 1]); }
+    catch (e) { return parts[parts.length - 1]; }
+  }
+
+  // Разрешаем pageId по slug через API страниц и кэшируем — вызывается один раз при инициализации.
+  function resolveWikiPageId() {
+    if (wikiPageId()) return Promise.resolve(wikiPageId());
+    var slug = currentSlug();
+    if (!slug) return Promise.resolve('');
+    return fetch(PAGES_URL + '/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) {
+      return r.ok ? r.json() : null;
+    }).then(function(page) {
+      wikiPageIdCache = (page && page.id) || '';
+      return wikiPageIdCache;
+    }).catch(function() { return ''; });
+  }
+
+  function withPageId(path) {
+    var id = wikiPageId();
+    if (!id) return path;
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'pageId=' + encodeURIComponent(id);
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 12000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил за 12 секунд');
+      throw e;
+    });
+  }
+
+  function uploadApi(path, formData, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 120000);
+    return fetch(API_URL + path, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Импорт не ответил за 120 секунд');
+      throw e;
+    });
+  }
+
+  function todayDMY() {
+    var d = new Date();
+    return String(d.getDate()).padStart(2, '0') + '.' +
+           String(d.getMonth() + 1).padStart(2, '0') + '.' + d.getFullYear();
+  }
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+
+  function focusNextFormInput(el) {
+    var inputs = Array.from(document.querySelectorAll(
+      '#reg-form input.reg-input:not([readonly]), #reg-form select.reg-select, #reg-form textarea.reg-textarea'
+    ));
+    var idx = inputs.indexOf(el);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  }
+
+  function attachDateMask(el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (['Tab','Backspace','Delete','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    el.addEventListener('input', function() {
+      var caretBefore = this.selectionStart;
+      var digitsBefore = (this.value.substring(0, caretBefore).match(/\d/g) || []).length;
+      var digits = this.value.replace(/\D/g, '').substring(0, 8);
+      var f = digits.length > 4
+        ? digits.slice(0,2) + '.' + digits.slice(2,4) + '.' + digits.slice(4)
+        : digits.length > 2 ? digits.slice(0,2) + '.' + digits.slice(2) : digits;
+      this.value = f;
+      var n = 0, c = 0;
+      while (n < f.length && c < digitsBefore) { if (/\d/.test(f[n])) c++; n++; }
+      this.setSelectionRange(n, n);
+      if (digits.length >= 8) focusNextFormInput(this);
+    });
+  }
+
+  function attachMasks() {
+    document.querySelectorAll('#reg-form [data-mask="date"]').forEach(attachDateMask);
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function formatValue(value) {
+    return value == null || value === '' ? '-' : escapeHtml(value);
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'reg-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2600);
+  }
+
+  function normalizeRows(rows) {
+    return rows.map(function(row) {
+      return {
+        id: row.id,
+        org: row.org,
+        seqNumber: row.seqNumber,
+        data: row.data || {},
+        createdAt: row.createdAt || new Date().toISOString(),
+        updatedAt: row.updatedAt || row.createdAt || new Date().toISOString()
+      };
+    });
+  }
+
+  function setStatus(text, type) {
+    var el = document.getElementById('reg-storage-status');
+    el.className = 'reg-status ' + (type || '');
+    el.textContent = text || '';
+  }
+
+  function renderTabs() {
+    document.getElementById('reg-tabs').innerHTML = tabs.map(function(tab) {
+      return '<button type="button" class="reg-tab' + (tab.id === activeOrg ? ' active' : '') + '" onclick="registryApp.switchTab(\'' + tab.id + '\')">' +
+        escapeHtml(tab.title) + '</button>';
+    }).join('');
+  }
+
+  function renderForm(data) {
+    data = data || {};
+    var html = '';
+    var lastGroup = null;
+    fields.forEach(function(field) {
+      if (field.group && field.group !== lastGroup) {
+        html += '<div class="reg-group-title">' + escapeHtml(field.group) + '</div>';
+      }
+      if (!field.group && lastGroup) {
+        // ничего — просто продолжаем сеткой
+      }
+      lastGroup = field.group || null;
+
+      var value = field.name === 'seqNumber' ? (data.seqNumber || '') : (data[field.name] || '');
+      var cls = 'reg-field';
+      var label = '<label for="reg-' + field.name + '">' + escapeHtml(field.label) + '</label>';
+      var input;
+      var step = field.step ? ' step="' + field.step + '"' : '';
+      var inputType = field.type;
+      var extraAttr = '';
+      if (field.type === 'date') {
+        inputType = 'text';
+        extraAttr = ' data-mask="date" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off"';
+      }
+      input = '<input class="reg-input" id="reg-' + field.name + '" name="' + field.name + '" type="' + inputType + '" value="' + escapeHtml(value) + '"' + step + extraAttr + '>';
+      html += '<div class="' + cls + '">' + label + input + '</div>';
+    });
+
+    document.getElementById('reg-form-title').textContent = editingId ? 'Редактировать справку' : 'Новая справка';
+    document.getElementById('reg-form').innerHTML =
+      '<div class="reg-grid">' + html + '</div>' +
+      '<div class="reg-form-actions">' +
+        '<button class="reg-btn reg-btn-primary" type="submit">' + (editingId ? 'Сохранить изменения' : 'Добавить справку') + '</button>' +
+        '<button class="reg-btn reg-btn-secondary" type="button" onclick="registryApp.resetForm()">Очистить</button>' +
+      '</div>';
+
+    attachMasks();
+    setDefaultNumber();
+  }
+
+  function setDefaultNumber() {
+    var numberInput = document.getElementById('reg-seqNumber');
+    if (!numberInput || editingId) return;
+    if (numberInput.value) return;
+    api('/next-number?org=' + encodeURIComponent(activeOrg))
+      .then(function(res) { if (!numberInput.value) numberInput.value = res.nextNumber || ''; })
+      .catch(function() {});
+  }
+
+  function collectForm() {
+    var form = document.getElementById('reg-form');
+    var data = {};
+    fields.forEach(function(field) {
+      if (field.name === 'seqNumber') return;
+      var el = form.elements[field.name];
+      if (el) data[field.name] = el.value;
+    });
+    var seq = form.elements.seqNumber ? Number(form.elements.seqNumber.value) : null;
+    return { org: activeOrg, seqNumber: Number.isFinite(seq) && seq > 0 ? seq : null, data: data };
+  }
+
+  // Двухуровневая шапка: объединённые ячейки-группы (colspan) над своими столбцами,
+  // одиночные столбцы растянуты на обе строки (rowspan=2).
+  function buildHeaderHtml() {
+    var row1 = '', row2 = '';
+    var i = 0;
+    while (i < fields.length) {
+      var f = fields[i];
+      if (!f.group) {
+        row1 += '<th rowspan="2">' + escapeHtml(f.label) + '</th>';
+        i++;
+      } else {
+        var g = f.group, members = [];
+        while (i < fields.length && fields[i].group === g) { members.push(fields[i]); i++; }
+        row1 += '<th class="reg-grp" colspan="' + members.length + '">' + escapeHtml(g) + '</th>';
+        members.forEach(function(m) { row2 += '<th>' + escapeHtml(m.label) + '</th>'; });
+      }
+    }
+    row1 += '<th rowspan="2" class="col-actions">Действия</th>';
+    return '<tr>' + row1 + '</tr><tr>' + row2 + '</tr>';
+  }
+
+  function currentRows() {
+    return records.filter(function(r) { return r.org === activeOrg; });
+  }
+
+  function renderTable() {
+    document.getElementById('reg-table-head').innerHTML = buildHeaderHtml();
+    var rows = currentRows();
+    var colCount = fields.length + 1;
+
+    if (!rows.length) {
+      document.getElementById('reg-table-body').innerHTML =
+        '<tr><td class="reg-empty" colspan="' + colCount + '">Нет данных</td></tr>';
+      renderPagination();
+      return;
+    }
+
+    document.getElementById('reg-table-body').innerHTML = rows.map(function(row) {
+      return '<tr>' +
+        fields.map(function(field) {
+          var val = field.name === 'seqNumber' ? row.seqNumber : (row.data || {})[field.name];
+          var tdCls = field.name === 'seqNumber' ? 'center' : '';
+          return '<td' + (tdCls ? ' class="' + tdCls + '"' : '') + '>' + formatValue(val) + '</td>';
+        }).join('') +
+        '<td class="center col-actions"><div class="reg-actions-cell">' +
+          '<button class="reg-btn reg-btn-secondary reg-btn-icon" type="button" onclick="registryApp.edit(\'' + row.id + '\')" title="Редактировать">✎</button>' +
+          '<button class="reg-btn reg-btn-danger reg-btn-icon" type="button" onclick="registryApp.remove(\'' + row.id + '\')" title="Удалить">×</button>' +
+        '</div></td></tr>';
+    }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    var start = pagination.total ? ((pagination.page - 1) * pagination.pageSize + 1) : 0;
+    var end = Math.min(pagination.page * pagination.pageSize, pagination.total);
+    document.getElementById('reg-page-info').textContent =
+      'Показано ' + start + '-' + end + ' из ' + pagination.total + ' | страница ' + pagination.page + ' из ' + totalPages;
+    document.getElementById('reg-page-size').value = String(pagination.pageSize);
+  }
+
+  function renderAll() {
+    renderTabs();
+    renderTable();
+  }
+
+  function loadFromApi() {
+    var params = new URLSearchParams();
+    var search = document.getElementById('reg-search').value.trim();
+    params.set('org', activeOrg);
+    params.set('page', pagination.page);
+    params.set('limit', pagination.pageSize);
+    if (search) params.set('search', search);
+    return api('?' + params.toString()).then(function(res) {
+      records = normalizeRows(res.rows || []);
+      pagination.total = res.total || 0;
+      pagination.page = res.page || pagination.page;
+      pagination.pageSize = res.limit || pagination.pageSize;
+      renderAll();
+    });
+  }
+
+  function reload() {
+    setStatus('Загрузка...', 'loading');
+    loadFromApi().then(function() { setStatus(''); }).catch(function(e) {
+      records = [];
+      pagination.total = 0;
+      renderAll();
+      setStatus('БД недоступна', 'error');
+      showToast('Не удалось загрузить данные из БД: ' + e.message, 'error');
+    });
+  }
+
+  function switchTab(org) {
+    activeOrg = org;
+    editingId = '';
+    pagination.page = 1;
+    renderForm();
+    reload();
+  }
+
+  function resetForm() {
+    editingId = '';
+    renderForm();
+  }
+
+  function save(event) {
+    event.preventDefault();
+    var payload = collectForm();
+    payload.pageId = wikiPageId();
+    var request = editingId
+      ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+      : api('', { method: 'POST', body: JSON.stringify(payload) });
+    request.then(function() {
+      showToast('Справка сохранена', 'success');
+      resetForm();
+      reload();
+    }).catch(function(e) {
+      showToast('Ошибка сохранения в БД: ' + e.message, 'error');
+    });
+  }
+
+  function edit(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    activeOrg = row.org;
+    editingId = row.id;
+    renderTabs();
+    renderForm(Object.assign({}, row.data, { seqNumber: row.seqNumber }));
+    renderTable();
+    document.querySelector('.reg-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function remove(id) {
+    if (!confirm('Удалить справку?')) return;
+    api(withPageId('/' + id), { method: 'DELETE' }).then(function() {
+      showToast('Удалено', 'success');
+      reload();
+    }).catch(function(e) { showToast('Ошибка удаления из БД: ' + e.message, 'error'); });
+  }
+
+  function clearFilters() {
+    document.getElementById('reg-search').value = '';
+    pagination.page = 1;
+    reload();
+  }
+
+  function openImport() {
+    document.getElementById('reg-import-file').click();
+  }
+
+  function importExcel(file) {
+    if (!file) return;
+    if (!confirm('Импортировать данные из Excel? Записи будут добавлены в БД.')) {
+      document.getElementById('reg-import-file').value = '';
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('pageId', wikiPageId());
+    setStatus('Импорт...', 'loading');
+    uploadApi('/import', formData).then(function(result) {
+      document.getElementById('reg-import-file').value = '';
+      var byOrg = result.counts
+        ? ' | Престиж: ' + (result.counts.prestige || 0) + ', Лабгрупп: ' + (result.counts.labgroup || 0)
+        : '';
+      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0) + byOrg, 'success');
+      setStatus('');
+      pagination.page = 1;
+      reload();
+    }).catch(function(e) {
+      document.getElementById('reg-import-file').value = '';
+      setStatus('');
+      showToast('Ошибка импорта: ' + e.message, 'error');
+    });
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить все данные реестра справок?')) return;
+    var answer = prompt('Для подтверждения введите УДАЛИТЬ');
+    if (answer !== 'УДАЛИТЬ') {
+      showToast('Очистка отменена', 'error');
+      return;
+    }
+    setStatus('Очистка...', 'loading');
+    api(withPageId(''), { method: 'DELETE' }).then(function(result) {
+      editingId = '';
+      pagination.page = 1;
+      records = [];
+      renderForm();
+      reload();
+      showToast('Удалено записей: ' + (result.deleted || 0), 'success');
+    }).catch(function(e) {
+      setStatus('');
+      showToast('Ошибка очистки: ' + e.message, 'error');
+    });
+  }
+
+  function exportExcel() {
+    if (!window.ExcelJS) {
+      showToast('Библиотека ExcelJS не загружена', 'error');
+      return;
+    }
+    showToast('Готовлю Excel...', 'success');
+    api(withPageId('/export-data')).then(function(exportRows) {
+      buildExcel(normalizeRows(exportRows || []));
+    }).catch(function(e) {
+      showToast('Ошибка экспорта: ' + e.message, 'error');
+    });
+  }
+
+  // Раскладка колонок для Excel: значения двух строк шапки + список объединений ячеек.
+  function excelHeaderLayout() {
+    var row1 = [], row2 = [], merges = [];
+    var c = 1, i = 0;
+    while (i < fields.length) {
+      var f = fields[i];
+      if (!f.group) {
+        row1[c - 1] = f.label;
+        row2[c - 1] = '';
+        merges.push([1, c, 2, c]);
+        c++; i++;
+      } else {
+        var g = f.group, start = c;
+        while (i < fields.length && fields[i].group === g) {
+          row1[c - 1] = (c === start ? g : '');
+          row2[c - 1] = fields[i].label;
+          c++; i++;
+        }
+        merges.push([1, start, 1, c - 1]);
+      }
+    }
+    return { row1: row1, row2: row2, merges: merges, colCount: c - 1 };
+  }
+
+  function buildExcel(exportRows) {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Alfa Wiki';
+    wb.created = new Date();
+
+    var layout = excelHeaderLayout();
+    var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+    var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+
+    tabs.forEach(function(tab) {
+      var ws = wb.addWorksheet(tab.title);
+      ws.addRow(layout.row1);
+      ws.addRow(layout.row2);
+      layout.merges.forEach(function(m) { ws.mergeCells(m[0], m[1], m[2], m[3]); });
+
+      exportRows.filter(function(r) { return r.org === tab.id; }).forEach(function(row) {
+        ws.addRow(fields.map(function(f) {
+          return f.name === 'seqNumber' ? (row.seqNumber || '') : ((row.data || {})[f.name] || '');
+        }));
+      });
+
+      // Стили шапки
+      [1, 2].forEach(function(rn) {
+        var hr = ws.getRow(rn);
+        hr.font = { bold: true, color: { argb: 'FF1D4ED8' } };
+        hr.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        hr.eachCell({ includeEmpty: true }, function(cell) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+        });
+      });
+
+      ws.eachRow({ includeEmpty: true }, function(rowObj) {
+        for (var ci = 1; ci <= layout.colCount; ci++) {
+          rowObj.getCell(ci).border = border;
+        }
+      });
+
+      ws.views = [{ state: 'frozen', ySplit: 2 }];
+      ws.columns.forEach(function(col) {
+        var max = 12;
+        col.eachCell({ includeEmpty: true }, function(cell) {
+          max = Math.max(max, String(cell.value == null ? '' : cell.value).length + 2);
+        });
+        col.width = Math.min(max, 30);
+      });
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Реестр_справок_' + today() + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Excel сформирован', 'success');
+    });
+  }
+
+  function onSearchChange() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() {
+      pagination.page = 1;
+      reload();
+    }, 350);
+  }
+
+  function prevPage() {
+    if (pagination.page <= 1) return;
+    pagination.page -= 1;
+    reload();
+  }
+
+  function nextPage() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    if (pagination.page >= totalPages) return;
+    pagination.page += 1;
+    reload();
+  }
+
+  function changePageSize(value) {
+    pagination.pageSize = Number(value) || 50;
+    pagination.page = 1;
+    reload();
+  }
+
+  function init() {
+    resolveWikiPageId();
+    renderTabs();
+    renderForm();
+    reload();
+    api('/whoami').then(function(info) {
+      if (info.isAdmin) {
+        document.getElementById('reg-btn-import').style.display = '';
+        document.getElementById('reg-btn-delete-all').style.display = '';
+      }
+    }).catch(function(e) {
+      console.warn('[registry] whoami failed:', e && e.message);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    switchTab: switchTab,
+    resetForm: resetForm,
+    save: save,
+    edit: edit,
+    remove: remove,
+    reload: reload,
+    clearFilters: clearFilters,
+    onSearchChange: onSearchChange,
+    exportExcel: exportExcel,
+    clearAllData: clearAllData,
+    openImport: openImport,
+    importExcel: importExcel,
+    prevPage: prevPage,
+    nextPage: nextPage,
+    changePageSize: changePageSize
+  };
+})();
+</script>
+</body>
+</html>

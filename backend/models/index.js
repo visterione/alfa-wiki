@@ -2566,6 +2566,27 @@ const AmbulanceReportEntry = sequelize.define('AmbulanceReportEntry', {
   ]
 });
 
+// === CERTIFICATE REGISTRY MODEL (Реестр справок) ===
+// org — организация (престиж / лабгрупп); одинаковая структура таблицы для обеих
+const CertificateRegistryEntry = sequelize.define('CertificateRegistryEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  org: {
+    type: DataTypes.ENUM('prestige', 'labgroup'),
+    allowNull: false
+  },
+  seqNumber: { type: DataTypes.INTEGER, allowNull: true },
+  searchText: { type: DataTypes.TEXT, allowNull: true },
+  data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'certificate_registry_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['org'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === OPERATIONS REPORT MODEL ===
 const OperationsReportEntry = sequelize.define('OperationsReportEntry', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3098,6 +3119,7 @@ module.exports = {
   Promotion,
   // Ambulance reports module
   AmbulanceReportEntry,
+  CertificateRegistryEntry,
   // Partner services cache
   PartnerServiceCache,
   // Nomenclature 804н reference
