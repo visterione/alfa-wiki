@@ -2574,6 +2574,7 @@ const CertificateRegistryEntry = sequelize.define('CertificateRegistryEntry', {
     type: DataTypes.ENUM('prestige', 'labgroup'),
     allowNull: false
   },
+  year: { type: DataTypes.INTEGER, allowNull: true, comment: 'Год реестра — вкладка (лист исходного Excel)' },
   seqNumber: { type: DataTypes.INTEGER, allowNull: true },
   searchText: { type: DataTypes.TEXT, allowNull: true },
   data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
@@ -2583,6 +2584,7 @@ const CertificateRegistryEntry = sequelize.define('CertificateRegistryEntry', {
   timestamps: true,
   indexes: [
     { fields: ['org'] },
+    { fields: ['org', 'year'] },
     { fields: ['createdAt'] }
   ]
 });

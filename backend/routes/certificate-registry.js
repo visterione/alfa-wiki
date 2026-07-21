@@ -9,8 +9,17 @@ const { fullEntryChanges, editChanges, logReportHistory } = require('../utils/re
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const sequelize = CertificateRegistryEntry.sequelize;
 
 const ORGS = ['prestige', 'labgroup'];
+// Разумный диапазон годов — чтобы в фильтр не попадали кривые даты из исходников
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2100;
+
+function parseYear(value) {
+  const n = Number(String(value == null ? '' : value).trim());
+  return Number.isInteger(n) && n >= MIN_YEAR && n <= MAX_YEAR ? n : null;
+}
 const ORG_TITLES = { prestige: 'Престиж', labgroup: 'Лабгрупп' };
 
 // Подписи полей для «Журнала изменений» wiki-страницы (в порядке формы).
@@ -52,6 +61,11 @@ function logRegistryHistory(req, opts) {
 }
 
 const DATE_FIELDS = ['tpBirthDate', 'tpDocDate', 'ptBirthDate', 'ptDocDate', 'formDate'];
+
+// Служебные столбцы исходника, которые намеренно не импортируем и о которых не
+// сообщаем как о нераспознанных. «Признак» — пустой столбец-разделитель между
+// данными налогоплательщика и пациента.
+const IGNORED_HEADERS = ['признак'];
 
 // Содержательные поля (всё, кроме № п/п, № справки, № корректировки). Если при импорте
 // заполнены только номера, а эти поля пусты — строка считается пустой заготовкой и пропускается.
@@ -137,17 +151,24 @@ function buildSearchText(data) {
     .trim();
 }
 
-async function getNextNumber(org, excludeId) {
+// Нумерация сквозная внутри вкладки (организация + год)
+async function getNextNumber(org, year, excludeId) {
   const where = { org, seqNumber: { [Op.not]: null } };
+  if (year) where.year = year;
   if (excludeId) where.id = { [Op.ne]: excludeId };
   const last = await CertificateRegistryEntry.findOne({ where, order: [['seqNumber', 'DESC']] });
   return last ? (Number(last.seqNumber) || 0) + 1 : 1;
 }
 
-function orgForSheet(sheetName) {
+// Лист «ПРЕСТИЖ 2024» → { org: 'prestige', year: 2024 }. Год обязателен: каждая
+// вкладка реестра соответствует своему листу, поэтому листы без года пропускаем.
+function parseSheetName(sheetName) {
   const key = normalizeLookup(sheetName);
   const found = SHEET_ORG.find(o => o.names.some(n => key.includes(normalizeLookup(n))));
-  return found ? found.org : null;
+  if (!found) return null;
+  const m = String(sheetName || '').match(/(20\d{2})/);
+  const year = m ? parseYear(m[1]) : null;
+  return year ? { org: found.org, year } : null;
 }
 
 // Значение ячейки → строка. Большие числа (ИНН) разворачиваем в полную запись,
@@ -192,9 +213,60 @@ function standaloneField(text) {
   if (text.includes('формировани') || (text.includes('дата') && text.includes('справк'))) return 'formDate';
   if (text.includes('справк')) return 'certNumber';
   if (text.includes('статус')) return 'status';
-  if (text.includes('клиник')) return 'clinics';
+  // Клиника/организация: значение — название юрлица («престиж», «лабгрупп»).
+  // Корень 'клин' вместо 'клиник' — в исходных файлах встречается опечатка «Клинки».
+  if (text.includes('клин') || text.includes('организац') || text.includes('юрлиц')
+    || text.includes('юридическоелицо') || text.includes('медцентр') || text.includes('медицинскийцентр')) return 'clinics';
   if (text.includes('пп') || text.includes('поряд')) return 'seqNumber';
   return null;
+}
+
+// Есть ли в строке названия объединённых секций — признак двухстрочной шапки.
+function hasGroupRow(row) {
+  return (row || []).some(v => {
+    const k = normalizeLookup(v);
+    return k.includes('налогоплательщик') || k.includes('пациент') || k.includes('расход');
+  });
+}
+
+// Шапка из ОДНОЙ строки: секций нет, подписи столбцов идут подряд и повторяются
+// («Фамилия/ИНН/Дата рождения…» дважды). Секцию определяем по порядку: первый блок
+// с ФИО — налогоплательщик, второй — пациент.
+function resolveColumnsFlat(row) {
+  const n = (row || []).map(normalizeLookup);
+  const map = [];
+  let group = null;
+  let fioSeen = 0;
+  let sumOrder = 0;
+
+  for (let c = 0; c < n.length; c++) {
+    const t = n[c] || '';
+    if (!t) { map[c] = null; continue; }
+
+    // Одиночные столбцы (в т.ч. «ФИО выдавшего справку») — сбрасывают секцию
+    const st = standaloneField(t);
+    if (st) { group = null; map[c] = st; continue; }
+
+    // Начало блока «Фамилия, имя, отчество» → новая секция
+    if (t.includes('фамили') || t.includes('фио')) {
+      fioSeen += 1;
+      group = fioSeen === 1 ? 'tp' : 'pt';
+      map[c] = subField(group, t);
+      continue;
+    }
+
+    // «По коду услуги 1/2» → суммы расходов
+    if (t.includes('услуг') && t.includes('код')) {
+      group = 'sum';
+      map[c] = sumField(t, sumOrder++);
+      continue;
+    }
+
+    if (group === 'sum') { map[c] = sumField(t, sumOrder++); continue; }
+    if (group) { map[c] = subField(group, t); continue; }
+    map[c] = null;
+  }
+  return map;
 }
 
 // Сопоставление столбцов по двум строкам шапки.
@@ -237,20 +309,56 @@ function resolveColumns(row1, row2) {
 // Импорт по заголовкам: первые две строки — шапка, данные с 3-й строки.
 function parseImportWorkbook(workbook, userId) {
   const imported = [];
-  const counts = { prestige: 0, labgroup: 0 };
+  const counts = {};            // ключ «org|year» → сколько строк
+  // Заголовки столбцов, которые не удалось сопоставить ни с одним полем — возвращаем
+  // клиенту, чтобы сразу было видно, что из файла не импортировалось.
+  const unmapped = new Set();
+  const skippedSheets = [];     // листы без узнаваемой организации/года
 
   for (const sheetName of workbook.SheetNames) {
-    const org = orgForSheet(sheetName);
-    if (!org) continue;
+    const parsedSheet = parseSheetName(sheetName);
+    if (!parsedSheet) {
+      skippedSheets.push(sheetName);
+      continue;
+    }
+    const { org, year } = parsedSheet;
 
     const sheet = workbook.Sheets[sheetName];
     // raw: true — числа/даты остаются числами (ИНН не уходит в экспоненту, дату-серийник ловит normalizeDate)
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
-    if (rows.length <= HEADER_ROWS) continue;
+    if (rows.length < 2) continue;
 
-    const colMap = resolveColumns(rows[0], rows[1]);
+    // Раскладка шапки в исходниках различается от листа к листу: где-то две строки
+    // с объединёнными секциями, где-то одна строка подписей, где-то секции пустые.
+    // Поэтому пробуем все варианты и берём тот, что распознал больше столбцов.
+    const candidates = [
+      { headerRows: 2, titleRows: [0, 1], map: rows.length > 2 ? resolveColumns(rows[0], rows[1]) : [] },
+      { headerRows: 1, titleRows: [0], map: resolveColumnsFlat(rows[0]) },
+      { headerRows: 2, titleRows: [1], map: rows.length > 2 ? resolveColumnsFlat(rows[1]) : [] }
+    ];
+    const score = m => new Set(m.filter(Boolean)).size;
+    let best = candidates[0];
+    candidates.forEach(c => { if (score(c.map) > score(best.map)) best = c; });
 
-    for (let i = HEADER_ROWS; i < rows.length; i++) {
+    const colMap = best.map;
+    const headerRows = best.headerRows;
+    if (rows.length <= headerRows || !score(colMap)) continue;
+
+    // Собираем нераспознанные столбцы, у которых есть непустой заголовок
+    const width = Math.max.apply(null, best.titleRows.map(i => (rows[i] || []).length));
+    for (let c = 0; c < width; c++) {
+      if (colMap[c]) continue;
+      const title = best.titleRows
+        .map(i => cleanText((rows[i] || [])[c]))
+        .filter(Boolean).join(' / ');
+      if (!title) continue;
+      // Служебные столбцы источника — не поля данных, о них не предупреждаем
+      const key = normalizeLookup(title);
+      if (IGNORED_HEADERS.some(ign => key.includes(ign))) continue;
+      unmapped.add(`${sheetName}: ${title}`);
+    }
+
+    for (let i = headerRows; i < rows.length; i++) {
       const row = rows[i];
       if (isEmptyRow(row)) continue;
 
@@ -280,16 +388,18 @@ function parseImportWorkbook(workbook, userId) {
       imported.push({
         id: randomUUID(),
         org,
+        year,
         seqNumber,
         searchText: buildSearchText(data),
         data,
         createdBy: userId || null
       });
-      counts[org]++;
+      const key = org + '|' + year;
+      counts[key] = (counts[key] || 0) + 1;
     }
   }
 
-  return { imported, counts };
+  return { imported, counts, unmapped: Array.from(unmapped), skippedSheets };
 }
 
 function duplicateKey(row) {
@@ -300,7 +410,7 @@ function duplicateKey(row) {
       acc[k] = row.data[k] === null || row.data[k] === undefined ? '' : String(row.data[k]).trim();
       return acc;
     }, {});
-  return JSON.stringify({ org: row.org, seqNumber: row.seqNumber || null, data: stable });
+  return JSON.stringify({ org: row.org, year: row.year || null, seqNumber: row.seqNumber || null, data: stable });
 }
 
 function dedupeRows(rows) {
@@ -329,6 +439,7 @@ async function insertImportRows(rows) {
         const orderIndex = i + index;
         replacements[`id${index}`] = row.id || randomUUID();
         replacements[`org${index}`] = row.org;
+        replacements[`year${index}`] = row.year || null;
         replacements[`seqNumber${index}`] = row.seqNumber;
         replacements[`searchText${index}`] = row.searchText || '';
         replacements[`data${index}`] = JSON.stringify(row.data || {});
@@ -337,6 +448,7 @@ async function insertImportRows(rows) {
         return `(
           CAST(:id${index} AS uuid),
           CAST(:org${index} AS certificate_registry_org),
+          CAST(:year${index} AS integer),
           CAST(:seqNumber${index} AS integer),
           CAST(:searchText${index} AS text),
           CAST(:data${index} AS jsonb),
@@ -347,12 +459,13 @@ async function insertImportRows(rows) {
       }).join(',');
 
       const [insertedRows] = await sequelize.query(`
-        INSERT INTO certificate_registry_entries (id, org, "seqNumber", "searchText", data, "createdBy", "createdAt", "updatedAt")
+        INSERT INTO certificate_registry_entries (id, org, year, "seqNumber", "searchText", data, "createdBy", "createdAt", "updatedAt")
         SELECT *
-        FROM (VALUES ${values}) AS v(id, org, "seqNumber", "searchText", data, "createdBy", "createdAt", "updatedAt")
+        FROM (VALUES ${values}) AS v(id, org, year, "seqNumber", "searchText", data, "createdBy", "createdAt", "updatedAt")
         WHERE NOT EXISTS (
           SELECT 1 FROM certificate_registry_entries e
           WHERE e.org = v.org
+            AND COALESCE(e.year, -1) = COALESCE(CAST(v.year AS integer), -1)
             AND COALESCE(e."seqNumber", -2147483648) = COALESCE(CAST(v."seqNumber" AS integer), -2147483648)
             AND (e.data - '_source') = (v.data - '_source')
         )
@@ -369,16 +482,31 @@ async function insertImportRows(rows) {
 // ── GET list ──────────────────────────────────────────────────────────────────
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { org, search } = req.query;
+    const { org, search, year, clinic } = req.query;
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const offset = (page - 1) * limit;
     const where = {};
 
     if (org && ORGS.includes(org)) where.org = org;
+    // year — это вкладка реестра (колонка year), а не год из «Даты формирования»
+    const tabYear = parseYear(year);
+    if (tabYear) where.year = tabYear;
     if (search && search.trim()) {
       where.searchText = { [Op.iLike]: `%${search.trim()}%` };
     }
+
+    // Клинику сравниваем без учёта регистра и пробелов.
+    const extra = [];
+    if (clinic && String(clinic).trim()) {
+      // В поле может быть перечислено несколько клиник через запятую — ищем вхождение
+      const needle = sequelize.escape(String(clinic).trim().toLowerCase());
+      extra.push(sequelize.literal(`EXISTS (
+        SELECT 1 FROM unnest(string_to_array(lower(coalesce(data->>'clinics', '')), ',')) AS t
+        WHERE btrim(t) = ${needle}
+      )`));
+    }
+    if (extra.length) where[Op.and] = extra;
 
     const result = await CertificateRegistryEntry.findAndCountAll({
       where,
@@ -399,7 +527,7 @@ router.get('/next-number', authenticate, async (req, res) => {
   try {
     const { org, excludeId } = req.query;
     if (!ORGS.includes(org)) return res.status(400).json({ error: 'Неверная организация' });
-    const nextNumber = await getNextNumber(org, excludeId);
+    const nextNumber = await getNextNumber(org, parseYear(req.query.year), excludeId);
     res.json({ nextNumber });
   } catch (err) {
     console.error('GET /api/certificate-registry/next-number error:', err);
@@ -425,8 +553,72 @@ router.get('/export-data', authenticate, async (req, res) => {
 });
 
 // ── GET whoami ────────────────────────────────────────────────────────────────
+// displayName нужен для автоподстановки в «ФИО выдавшего справку»
 router.get('/whoami', authenticate, (req, res) => {
-  res.json({ isAdmin: !!req.user.isAdmin });
+  res.json({
+    isAdmin: !!req.user.isAdmin,
+    displayName: req.user.displayName || ''
+  });
+});
+
+// ── GET years ─────────────────────────────────────────────────────────────────
+// Годы, реально присутствующие в данных. Фронт объединяет их с фиксированным
+// списком вкладок, чтобы записи «нестандартных» лет не оказались недоступны.
+router.get('/years', authenticate, async (_req, res) => {
+  try {
+    const [rows] = await sequelize.query(`
+      SELECT DISTINCT year FROM certificate_registry_entries
+      WHERE year IS NOT NULL ORDER BY year
+    `);
+    const [[orphans]] = await sequelize.query(`
+      SELECT count(*)::int AS count FROM certificate_registry_entries WHERE year IS NULL
+    `);
+    res.json({ years: rows.map(r => r.year), withoutYear: orphans.count });
+  } catch (err) {
+    console.error('GET /api/certificate-registry/years error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
+// ── GET filters ───────────────────────────────────────────────────────────────
+// Значения для выпадающих фильтров: годы из «Даты формирования» и клиники.
+// Клиники группируются без учёта регистра («Престиж» и «престиж» — одно значение).
+router.get('/filters', authenticate, async (req, res) => {
+  try {
+    const org = ORGS.includes(req.query.org) ? req.query.org : null;
+    const year = parseYear(req.query.year);
+    const replacements = {};
+    const scope = [];
+    if (org) {
+      scope.push('org = CAST(:org AS certificate_registry_org)');
+      replacements.org = org;
+    }
+    if (year) {
+      scope.push('year = :year');
+      replacements.year = year;
+    }
+
+    // Клиники: в поле часто перечислено несколько через запятую («Престиж, Кидс»),
+    // поэтому разбиваем на отдельные клиники и группируем без учёта регистра.
+    const clinicConds = [`btrim(tok) <> ''`].concat(scope);
+    const [clinics] = await sequelize.query(`
+      SELECT lower(btrim(tok)) AS value,
+             min(btrim(tok)) AS label,
+             count(*)::int AS count
+      FROM certificate_registry_entries,
+           unnest(string_to_array(coalesce(data->>'clinics', ''), ',')) AS tok
+      WHERE ${clinicConds.join(' AND ')}
+      GROUP BY lower(btrim(tok))
+      ORDER BY count DESC, value ASC
+    `, { replacements });
+
+    res.json({
+      clinics: clinics.map(r => ({ value: r.value, label: r.label, count: r.count }))
+    });
+  } catch (err) {
+    console.error('GET /api/certificate-registry/filters error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
 });
 
 // ── POST import ───────────────────────────────────────────────────────────────
@@ -440,13 +632,16 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
 
     const parsed = parseImportWorkbook(workbook, req.user?.id || null);
     console.log('[cert-registry-import] Распарсено строк:', parsed.imported.length, 'по орг:', parsed.counts);
+    if (parsed.unmapped.length) {
+      console.log('[cert-registry-import] Нераспознанные столбцы:', parsed.unmapped);
+    }
 
     const deduped = dedupeRows(parsed.imported);
     if (deduped.duplicates > 0) console.log('[cert-registry-import] Дублей внутри файла:', deduped.duplicates);
 
     if (!deduped.rows.length) {
       return res.status(400).json({
-        error: 'Не найдено строк для импорта. Проверьте названия листов (Престиж / Лабгрупп) и заголовки.',
+        error: 'Не найдено строк для импорта. Листы должны называться как «Престиж 2025» / «Лабгрупп 2025» — с организацией и годом.',
         sheetNames
       });
     }
@@ -454,9 +649,10 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
     const inserted = await insertImportRows(deduped.rows);
     console.log(`[cert-registry-import] Вставлено=${inserted}, пропущено как дубли=${deduped.rows.length - inserted}`);
 
-    const insertedParts = ORGS
-      .filter(org => parsed.counts[org])
-      .map(org => `${ORG_TITLES[org]}: ${parsed.counts[org]}`);
+    const insertedParts = Object.keys(parsed.counts).sort().map(key => {
+      const [org, year] = key.split('|');
+      return `${ORG_TITLES[org] || org} ${year}: ${parsed.counts[key]}`;
+    });
     await logRegistryHistory(req, {
       event: 'import',
       summary: `Импорт из Excel: добавлено ${inserted}`
@@ -471,6 +667,8 @@ router.post('/import', authenticate, upload.single('file'), async (req, res) => 
       skipped: parsed.imported.length - inserted,
       duplicatesInFile: deduped.duplicates,
       counts: parsed.counts,
+      unmapped: parsed.unmapped,
+      skippedSheets: parsed.skippedSheets,
       sheetNames
     });
   } catch (err) {
@@ -485,12 +683,14 @@ router.post('/', authenticate, async (req, res) => {
     const org = req.body.org;
     if (!ORGS.includes(org)) return res.status(400).json({ error: 'Неверная организация' });
 
+    const year = parseYear(req.body.year);
     const data = normalizeDataDates({ ...(req.body.data || {}) });
     let seqNumber = req.body.seqNumber ? Number(req.body.seqNumber) : null;
-    if (!Number.isFinite(seqNumber) || seqNumber <= 0) seqNumber = await getNextNumber(org);
+    if (!Number.isFinite(seqNumber) || seqNumber <= 0) seqNumber = await getNextNumber(org, year);
 
     const row = await CertificateRegistryEntry.create({
       org,
+      year,
       seqNumber,
       searchText: buildSearchText(data),
       data,
@@ -515,12 +715,13 @@ router.put('/:id', authenticate, async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Запись не найдена' });
 
     const org = ORGS.includes(req.body.org) ? req.body.org : row.org;
+    const year = parseYear(req.body.year) || row.year;
     const oldData = row.data || {};
     const data = normalizeDataDates({ ...(req.body.data || {}) });
     let seqNumber = req.body.seqNumber ? Number(req.body.seqNumber) : null;
-    if (!Number.isFinite(seqNumber) || seqNumber <= 0) seqNumber = await getNextNumber(org, row.id);
+    if (!Number.isFinite(seqNumber) || seqNumber <= 0) seqNumber = await getNextNumber(org, year, row.id);
 
-    await row.update({ org, seqNumber, searchText: buildSearchText(data), data });
+    await row.update({ org, year, seqNumber, searchText: buildSearchText(data), data });
     await logRegistryHistory(req, {
       event: 'update',
       summary: `Изменена справка (${ORG_TITLES[org] || org}): ${recordLabel(data)}`,
