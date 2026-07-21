@@ -20,13 +20,13 @@ const REG_FIELD_LABELS = {
   correctionNumber: '№ корректировки',
   tpFio: 'Налогоплательщик: Фамилия, имя, отчество',
   tpInn: 'Налогоплательщик: ИНН',
-  tpAppealDate: 'Налогоплательщик: Дата обращения',
+  tpBirthDate: 'Налогоплательщик: Дата рождения',
   tpDocCode: 'Налогоплательщик: Код документа',
   tpDocSeries: 'Налогоплательщик: Серия, номер',
   tpDocDate: 'Налогоплательщик: Дата выдачи',
   ptFio: 'Пациент: Фамилия, имя, отчество',
   ptInn: 'Пациент: ИНН',
-  ptAppealDate: 'Пациент: Дата обращения',
+  ptBirthDate: 'Пациент: Дата рождения',
   ptDocCode: 'Пациент: Код документа',
   ptDocSeries: 'Пациент: Серия, номер',
   ptDocDate: 'Пациент: Дата выдачи',
@@ -51,17 +51,15 @@ function logRegistryHistory(req, opts) {
   return logReportHistory(req, { source: 'certRegistry', ...opts });
 }
 
-// Порядок столбцов таблицы (без seqNumber — это отдельная колонка «№ п/п»).
-// Совпадает с порядком в certificate-registry.html и используется для позиционного импорта.
-const FIELD_ORDER = [
-  'certNumber', 'correctionNumber',
-  'tpFio', 'tpInn', 'tpAppealDate', 'tpDocCode', 'tpDocSeries', 'tpDocDate',
-  'ptFio', 'ptInn', 'ptAppealDate', 'ptDocCode', 'ptDocSeries', 'ptDocDate',
-  'sumCode1', 'sumCode2',
-  'issuerName', 'formDate', 'status', 'clinics'
-];
+const DATE_FIELDS = ['tpBirthDate', 'tpDocDate', 'ptBirthDate', 'ptDocDate', 'formDate'];
 
-const DATE_FIELDS = ['tpAppealDate', 'tpDocDate', 'ptAppealDate', 'ptDocDate', 'formDate'];
+// Содержательные поля (всё, кроме № п/п, № справки, № корректировки). Если при импорте
+// заполнены только номера, а эти поля пусты — строка считается пустой заготовкой и пропускается.
+const CONTENT_FIELDS = [
+  'tpFio', 'tpInn', 'tpBirthDate', 'tpDocCode', 'tpDocSeries', 'tpDocDate',
+  'ptFio', 'ptInn', 'ptBirthDate', 'ptDocCode', 'ptDocSeries', 'ptDocDate',
+  'sumCode1', 'sumCode2', 'issuerName', 'formDate', 'status', 'clinics'
+];
 
 // Первые две строки каждого листа — объединённая шапка таблицы (данные с 3-й строки).
 const HEADER_ROWS = 2;
@@ -152,7 +150,91 @@ function orgForSheet(sheetName) {
   return found ? found.org : null;
 }
 
-// Позиционный импорт: колонки идут в порядке [seqNumber, ...FIELD_ORDER].
+// Значение ячейки → строка. Большие числа (ИНН) разворачиваем в полную запись,
+// чтобы не получить «2.30112E+11». Даты-серийники обрабатываются отдельно (normalizeDate).
+function cellToText(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') {
+    if (Number.isInteger(v)) return v.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 0 });
+    return String(v);
+  }
+  return String(v).trim();
+}
+
+// Подпись столбца внутри группы «Налогоплательщик»/«Пациент» → поле (prefix = 'tp' | 'pt').
+function subField(prefix, sub) {
+  if (!sub) return null;
+  if (sub.includes('фамили') || sub.includes('фио')) return prefix + 'Fio';
+  if (sub.includes('инн')) return prefix + 'Inn';
+  if (sub.includes('рождени') || sub.includes('обращени')) return prefix + 'BirthDate';
+  if (sub.includes('выдач')) return prefix + 'DocDate';
+  if (sub.includes('код')) return prefix + 'DocCode';
+  if (sub.includes('сери') || sub.includes('номер')) return prefix + 'DocSeries';
+  return null;
+}
+
+function sumField(sub, order) {
+  if (sub && sub.includes('1')) return 'sumCode1';
+  if (sub && sub.includes('2')) return 'sumCode2';
+  return order === 0 ? 'sumCode1' : 'sumCode2';
+}
+
+// Одиночный (внегрупповой) столбец по его подписи. Подпись может стоять в любой из
+// двух строк шапки, поэтому проверяем объединённый текст обеих строк столбца.
+// Порядок важен, т.к. подписи пересекаются по словам:
+//  - 'выдавш' раньше 'справк' («ФИО выдавшего справку» содержит оба);
+//  - дата со словом «справк» («Дата формирования справки» / «Дата справки») — это
+//    «Дата формирования», а не «№ справки», поэтому ловим её раньше чистого 'справк'.
+function standaloneField(text) {
+  if (!text) return null;
+  if (text.includes('корректировк')) return 'correctionNumber';
+  if (text.includes('выдавш')) return 'issuerName';
+  if (text.includes('формировани') || (text.includes('дата') && text.includes('справк'))) return 'formDate';
+  if (text.includes('справк')) return 'certNumber';
+  if (text.includes('статус')) return 'status';
+  if (text.includes('клиник')) return 'clinics';
+  if (text.includes('пп') || text.includes('поряд')) return 'seqNumber';
+  return null;
+}
+
+// Сопоставление столбцов по двум строкам шапки.
+//  - Название группы («Налогоплательщик»/«Пациент»/«Сумма расходов») — в объединённой
+//    ячейке row1, её подпись стоит в первом столбце диапазона, дальше row1 пуст.
+//  - Одиночные столбцы (№ п/п, № справки, ФИО выдавшего, Статус, Клиники…) могут иметь
+//    подпись как в row1, так и в row2 — ловим по объединённому тексту обеих строк.
+// Благодаря этому лишний/пустой столбец не сдвигает разбор, а хвостовые одиночные
+// столбцы не «прилипают» к последней группе.
+function resolveColumns(row1, row2) {
+  const n1 = (row1 || []).map(normalizeLookup);
+  const n2 = (row2 || []).map(normalizeLookup);
+  const width = Math.max(n1.length, n2.length);
+  const map = [];
+  let group = null;      // 'tp' | 'pt' | 'sum' | null
+  let sumOrder = 0;
+
+  for (let c = 0; c < width; c++) {
+    const a = n1[c] || '';
+    const b = n2[c] || '';
+
+    // 1. Начало группы — только по row1 (объединённая ячейка-анкер).
+    if (a.includes('налогоплательщик')) { group = 'tp'; map[c] = subField('tp', b); continue; }
+    if (a.includes('пациент')) { group = 'pt'; map[c] = subField('pt', b); continue; }
+    if (a.includes('расход')) { group = 'sum'; sumOrder = 0; map[c] = sumField(b, sumOrder++); continue; }
+
+    // 2. Одиночный столбец (подпись в row1 или row2) — сбрасывает текущую группу.
+    const st = standaloneField(a + ' ' + b);
+    if (st) { group = null; map[c] = st; continue; }
+
+    // 3. Иначе — продолжение активной группы (подпись столбца в row2).
+    if (group === 'tp') map[c] = subField('tp', b);
+    else if (group === 'pt') map[c] = subField('pt', b);
+    else if (group === 'sum') map[c] = sumField(b, sumOrder++);
+    else map[c] = null;
+  }
+  return map;
+}
+
+// Импорт по заголовкам: первые две строки — шапка, данные с 3-й строки.
 function parseImportWorkbook(workbook, userId) {
   const imported = [];
   const counts = { prestige: 0, labgroup: 0 };
@@ -162,26 +244,37 @@ function parseImportWorkbook(workbook, userId) {
     if (!org) continue;
 
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
-    if (!rows.length) continue;
+    // raw: true — числа/даты остаются числами (ИНН не уходит в экспоненту, дату-серийник ловит normalizeDate)
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: true });
+    if (rows.length <= HEADER_ROWS) continue;
 
-    // Первые две строки — объединённая шапка таблицы; данные всегда с 3-й строки.
+    const colMap = resolveColumns(rows[0], rows[1]);
+
     for (let i = HEADER_ROWS; i < rows.length; i++) {
       const row = rows[i];
       if (isEmptyRow(row)) continue;
 
       const data = {};
-      FIELD_ORDER.forEach((field, fi) => {
-        // +1 — первая колонка это seqNumber
-        data[field] = cleanText(row[fi + 1]);
-      });
-      normalizeDataDates(data);
+      let seqNumber = null;
+      for (let c = 0; c < row.length; c++) {
+        const field = colMap[c];
+        if (!field) continue;
+        const raw = row[c];
+        if (field === 'seqNumber') {
+          const n = Number(raw);
+          seqNumber = Number.isFinite(n) && n > 0 ? Math.trunc(n) : null;
+        } else if (DATE_FIELDS.includes(field)) {
+          const iso = normalizeDate(raw);
+          data[field] = iso ? isoToDMY(iso) : cellToText(raw);
+        } else {
+          data[field] = cellToText(raw);
+        }
+      }
 
-      const seqRaw = Number(cleanText(row[0]));
-      const seqNumber = Number.isFinite(seqRaw) && seqRaw > 0 ? seqRaw : null;
-
-      // Пропускаем строки, где нет ни номера справки, ни ФИО (пустые/технические)
-      if (!data.certNumber && !data.tpFio && !data.ptFio) continue;
+      // Пропускаем «пустые заготовки»: строки, где заполнены только № п/п и/или № справки
+      // (и № корректировки), а всё содержательное пусто — их резервировали на будущее.
+      const hasContent = CONTENT_FIELDS.some(f => cleanText(data[f]) !== '');
+      if (!hasContent) continue;
 
       data._source = 'import';
       imported.push({
