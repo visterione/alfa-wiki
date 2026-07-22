@@ -198,7 +198,10 @@ button, input, textarea, select { font-family: inherit; }
         <div class="op-grid">
           <div class="op-field full">
             <label for="op-serviceName">Название <span class="op-required">*</span></label>
-            <input class="op-input" id="op-serviceName" name="serviceName" type="text" required placeholder="Название услуги">
+            <input class="op-input" id="op-serviceName" name="serviceName" type="text" required
+                   placeholder="Название услуги — выберите из списка или введите новое"
+                   list="op-service-names" autocomplete="off">
+            <datalist id="op-service-names"></datalist>
           </div>
           <div class="op-field">
             <label for="op-patientCount">Кол-во пациентов</label>
@@ -416,6 +419,16 @@ window.opApp = (function() {
     document.getElementById('op-reportDate').value   = data.reportDate   || '';
   }
 
+  // Подсказки для поля «Название»: уже встречавшиеся услуги, частые сверху.
+  // Нативный datalist — выпадающий список с фильтрацией по вводу, но своё значение вписать можно.
+  function loadServiceNames() {
+    return api('/service-names').then(function(res) {
+      document.getElementById('op-service-names').innerHTML = (res.names || []).map(function(name) {
+        return '<option value="' + escapeHtml(name) + '"></option>';
+      }).join('');
+    }).catch(function() {});
+  }
+
   function resetForm() {
     editingId = '';
     document.getElementById('op-form').reset();
@@ -558,6 +571,7 @@ window.opApp = (function() {
     request.then(function() {
       showToast('Запись сохранена', 'success');
       resetForm();
+      loadServiceNames();
       reload();
     }).catch(function(e) {
       showToast('Ошибка сохранения: ' + e.message, 'error');
@@ -725,6 +739,7 @@ window.opApp = (function() {
     uploadApi('/import', formData).then(function(result) {
       document.getElementById('op-import-file').value = '';
       showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0), 'success');
+      loadServiceNames();
       pagination.page = 1;
       reload();
     }).catch(function(e) {
@@ -775,6 +790,7 @@ window.opApp = (function() {
     attachDateMask(document.getElementById('op-reportDate'));
     document.getElementById('op-reportDate').value = todayDMY();
     renderTabs();
+    loadServiceNames();
     reload();
     api('/whoami').then(function(info) {
       if (info.isAdmin) {

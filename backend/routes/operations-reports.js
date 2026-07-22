@@ -326,6 +326,26 @@ router.get('/periods', authenticate, async (req, res) => {
   }
 });
 
+// ── GET service-names ─────────────────────────────────────────────────────────
+// Уникальные названия услуг для автоподстановки в форме. Частые — первыми:
+// datalist показывает начало списка, и туда должно попасть то, что вводят чаще всего.
+router.get('/service-names', authenticate, async (req, res) => {
+  try {
+    const [rows] = await OperationsReportEntry.sequelize.query(`
+      SELECT data->>'serviceName' AS name, COUNT(*)::int AS count
+      FROM operations_report_entries
+      WHERE COALESCE(TRIM(data->>'serviceName'), '') <> ''
+      GROUP BY 1
+      ORDER BY count DESC, name ASC
+      LIMIT 1000
+    `);
+    res.json({ names: rows.map(r => r.name) });
+  } catch (err) {
+    console.error('GET /api/operations-reports/service-names error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 // ── GET whoami ────────────────────────────────────────────────────────────────
 router.get('/whoami', authenticate, (req, res) => {
   res.json({ isAdmin: !!req.user.isAdmin });
