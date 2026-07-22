@@ -25,6 +25,7 @@ const ORG_TITLES = { prestige: 'Престиж', labgroup: 'Лабгрупп' };
 // Подписи полей для «Журнала изменений» wiki-страницы (в порядке формы).
 // Дублирующиеся подписи налогоплательщика/пациента различаем префиксом.
 const REG_FIELD_LABELS = {
+  printed: 'Печать документа',
   certNumber: '№ справки',
   correctionNumber: '№ корректировки',
   tpFio: 'Налогоплательщик: Фамилия, имя, отчество',
@@ -145,7 +146,8 @@ function normalizeDataDates(data) {
 
 function buildSearchText(data) {
   return Object.entries(data || {})
-    .filter(([k, v]) => !k.startsWith('_') && v !== null && v !== undefined)
+    // printed — служебный флаг («1»/«»), в поиске по тексту он только мешал бы
+    .filter(([k, v]) => !k.startsWith('_') && k !== 'printed' && v !== null && v !== undefined)
     .map(([, v]) => v)
     .join(' ')
     .trim();

@@ -29,7 +29,9 @@ body {
   font-size: 14px;
 }
 button, input, textarea, select { font-family: inherit; }
-#registry-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+/* Ширины не хватает: таблица широкая, поэтому занимаем всю рабочую область
+   без бокового «воздуха» (обёртка wiki-страницы уже растянута на 100%). */
+#registry-app { max-width: none; width: 100%; margin: 0; padding: 8px 6px 10px; }
 .reg-topbar {
   display: flex; align-items: flex-end; justify-content: space-between;
   gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--reg-border);
@@ -101,23 +103,32 @@ button, input, textarea, select { font-family: inherit; }
   display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
   padding-top: 10px; border-top: 1px solid var(--reg-border);
 }
+.reg-checks { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
+.reg-check {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 12px; font-weight: 600; color: #334155; user-select: none;
+}
+.reg-check input { width: 15px; height: 15px; accent-color: var(--reg-primary); cursor: pointer; margin: 0; }
 .reg-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--reg-border); flex-wrap: wrap; }
 .reg-filters { display: flex; gap: 7px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .reg-search { min-width: 130px; flex: 1; }
 .reg-filter { min-width: 130px; max-width: 210px; }
 .reg-table-wrap { overflow: auto; max-height: calc(100vh - 260px); min-height: 120px; }
-.reg-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.reg-table { width: 100%; border-collapse: collapse; font-size: 10px; }
 .reg-table th {
   background: #f8fafc; color: #334155; text-align: center;
-  padding: 5px 7px; border: 1px solid var(--reg-border); font-weight: 700; white-space: nowrap;
+  padding: 5px 5px; border: 1px solid var(--reg-border); font-weight: 700; white-space: nowrap;
   position: sticky; z-index: 1;
 }
 .reg-table thead tr:first-child th { top: 0; height: 26px; }
 .reg-table thead tr:nth-child(2) th { top: 26px; }
 .reg-table th.reg-grp { background: #eff6ff; color: var(--reg-primary); }
-.reg-table td { padding: 4px 7px; border: 1px solid var(--reg-border); vertical-align: top; }
+.reg-table td { padding: 4px 5px; border: 1px solid var(--reg-border); vertical-align: top; }
 .reg-table tr:hover td { background: #f8fafc; }
 .reg-table .center { text-align: center; }
+/* Столбец «Печать документа» — только иконка, поэтому фиксируем минимальную ширину */
+.reg-table th.col-print, .reg-table td.col-print { width: 30px; min-width: 30px; text-align: center; }
+.reg-print-icon { color: var(--reg-primary); font-size: 13px; }
 .reg-actions-cell { display: flex; gap: 5px; justify-content: center; }
 .reg-table th.col-actions,
 .reg-table td.col-actions { position: sticky; right: 0; box-shadow: -2px 0 5px rgba(0,0,0,.07); }
@@ -295,33 +306,43 @@ window.registryApp = (function() {
 
   // Единая структура столбцов для обеих организаций.
   // group — название объединённой ячейки-шапки над столбцами (астериск в ТЗ).
+  // short — короткая подпись для шапки таблицы: у части столбцов значения короче
+  // заголовка, и полный текст растягивал бы столбец впустую (в Excel идёт label).
   var fields = [
+    { name: 'printed', label: 'Печать документа', short: '🖨', type: 'checkbox' },
     { name: 'seqNumber', label: '№ п/п', type: 'number' },
-    { name: 'certNumber', label: '№ справки', type: 'text' },
-    { name: 'correctionNumber', label: '№ корректировки', type: 'text' },
+    { name: 'certNumber', label: '№ справки', short: '№ спр.', type: 'text' },
+    { name: 'correctionNumber', label: '№ корректировки', short: '№ корр.', type: 'text' },
 
-    { name: 'tpFio', label: 'Фамилия, имя, отчество', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Налогоплательщик', type: 'text' },
     { name: 'tpInn', label: 'ИНН', group: 'Налогоплательщик', type: 'text' },
-    { name: 'tpBirthDate', label: 'Дата рождения', group: 'Налогоплательщик', type: 'date' },
-    { name: 'tpDocCode', label: 'Код документа', group: 'Налогоплательщик', type: 'text', info: 'docCodes' },
-    { name: 'tpDocSeries', label: 'Серия, номер', group: 'Налогоплательщик', type: 'text' },
-    { name: 'tpDocDate', label: 'Дата выдачи', group: 'Налогоплательщик', type: 'date' },
+    { name: 'tpBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Налогоплательщик', type: 'date' },
+    { name: 'tpDocCode', label: 'Код документа', short: 'Код док.', group: 'Налогоплательщик', type: 'text', info: 'docCodes' },
+    { name: 'tpDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Налогоплательщик', type: 'text' },
+    { name: 'tpDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Налогоплательщик', type: 'date' },
 
-    { name: 'ptFio', label: 'Фамилия, имя, отчество', group: 'Пациент', type: 'text' },
+    { name: 'ptFio', label: 'Фамилия, имя, отчество', short: 'ФИО', group: 'Пациент', type: 'text' },
     { name: 'ptInn', label: 'ИНН', group: 'Пациент', type: 'text' },
-    { name: 'ptBirthDate', label: 'Дата рождения', group: 'Пациент', type: 'date' },
-    { name: 'ptDocCode', label: 'Код документа', group: 'Пациент', type: 'text', info: 'docCodes' },
-    { name: 'ptDocSeries', label: 'Серия, номер', group: 'Пациент', type: 'text' },
-    { name: 'ptDocDate', label: 'Дата выдачи', group: 'Пациент', type: 'date' },
+    { name: 'ptBirthDate', label: 'Дата рождения', short: 'Д. р.', group: 'Пациент', type: 'date' },
+    { name: 'ptDocCode', label: 'Код документа', short: 'Код док.', group: 'Пациент', type: 'text', info: 'docCodes' },
+    { name: 'ptDocSeries', label: 'Серия, номер', short: 'Серия, №', group: 'Пациент', type: 'text' },
+    { name: 'ptDocDate', label: 'Дата выдачи', short: 'Выдан', group: 'Пациент', type: 'date' },
 
-    { name: 'sumCode1', label: 'По коду услуги 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
-    { name: 'sumCode2', label: 'По коду услуги 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
+    { name: 'sumCode1', label: 'По коду услуги 1', short: 'Код 1', group: 'Сумма расходов', type: 'number', step: '0.01' },
+    { name: 'sumCode2', label: 'По коду услуги 2', short: 'Код 2', group: 'Сумма расходов', type: 'number', step: '0.01' },
 
-    { name: 'issuerName', label: 'ФИО выдавшего справку', type: 'text' },
-    { name: 'formDate', label: 'Дата формирования', type: 'date' },
+    { name: 'issuerName', label: 'ФИО выдавшего справку', short: 'Кто выдал', type: 'text' },
+    { name: 'formDate', label: 'Дата формирования', short: 'Дата форм.', type: 'date' },
     { name: 'status', label: 'Статус', type: 'text' },
     { name: 'clinics', label: 'Клиники', type: 'text', datalist: 'clinics' }
   ];
+
+  // Пары «поле налогоплательщика → поле пациента» для галочки «одно лицо».
+  var SAME_PERSON_MAP = [
+    ['tpFio', 'ptFio'], ['tpInn', 'ptInn'], ['tpBirthDate', 'ptBirthDate'],
+    ['tpDocCode', 'ptDocCode'], ['tpDocSeries', 'ptDocSeries'], ['tpDocDate', 'ptDocDate']
+  ];
+  var samePerson = false;   // состояние галочки, переживает перерисовку формы
 
   // Готовые значения клиник — свои для каждой организации (вкладки).
   // Список подсказок, но ввести можно и произвольное значение (в данных встречаются
@@ -556,6 +577,7 @@ window.registryApp = (function() {
     var html = '';
     var lastGroup = null;
     fields.forEach(function(field) {
+      if (field.type === 'checkbox') return;   // галочки живут отдельным блоком под сеткой
       if (field.group && field.group !== lastGroup) {
         html += '<div class="reg-group-title">' + escapeHtml(field.group) + '</div>';
       }
@@ -592,16 +614,59 @@ window.registryApp = (function() {
       html += '<div class="' + cls + '">' + label + input + '</div>';
     });
 
+    // «Печать документа» по умолчанию включена у новой справки; при редактировании
+    // берём сохранённое значение (у старых записей поля нет — значит, не печаталась).
+    var printed = (!editingId && data.printed === undefined) ? true : isTruthy(data.printed);
+
     document.getElementById('reg-form-title').textContent = editingId ? 'Редактировать справку' : 'Новая справка';
     document.getElementById('reg-form').innerHTML =
       '<div class="reg-grid">' + html + '</div>' +
+      '<div class="reg-checks">' +
+        '<label class="reg-check">' +
+          '<input type="checkbox" id="reg-same-person" name="samePerson"' + (samePerson ? ' checked' : '') +
+          ' onchange="registryApp.toggleSamePerson(this.checked)">' +
+          'Налогоплательщик и пациент одно лицо' +
+        '</label>' +
+        '<label class="reg-check">' +
+          '<input type="checkbox" id="reg-printed" name="printed"' + (printed ? ' checked' : '') + '>' +
+          'Печать документа' +
+        '</label>' +
+      '</div>' +
       '<div class="reg-form-actions">' +
         '<button class="reg-btn reg-btn-primary" type="submit">' + (editingId ? 'Сохранить изменения' : 'Добавить справку') + '</button>' +
         '<button class="reg-btn reg-btn-secondary" type="button" onclick="registryApp.resetForm()">Очистить</button>' +
       '</div>';
 
     attachMasks();
+    attachSamePersonSync();
     setDefaultNumber();
+  }
+
+  function isTruthy(value) {
+    return value === true || value === 1 || (value !== '' && value != null && value !== '0' && value !== false);
+  }
+
+  // Пока галочка «одно лицо» активна, правки в блоке налогоплательщика
+  // сразу отражаются в блоке пациента — иначе пришлось бы снимать/ставить её заново.
+  function attachSamePersonSync() {
+    var form = document.getElementById('reg-form');
+    SAME_PERSON_MAP.forEach(function(pair) {
+      var src = form.elements[pair[0]];
+      if (src) src.addEventListener('input', function() { if (samePerson) copyToPatient(); });
+    });
+  }
+
+  function copyToPatient() {
+    var form = document.getElementById('reg-form');
+    SAME_PERSON_MAP.forEach(function(pair) {
+      var src = form.elements[pair[0]], dst = form.elements[pair[1]];
+      if (src && dst) dst.value = src.value;
+    });
+  }
+
+  function toggleSamePerson(checked) {
+    samePerson = !!checked;
+    if (samePerson) copyToPatient();
   }
 
   function setDefaultNumber() {
@@ -619,7 +684,8 @@ window.registryApp = (function() {
     fields.forEach(function(field) {
       if (field.name === 'seqNumber') return;
       var el = form.elements[field.name];
-      if (el) data[field.name] = el.value;
+      if (!el) return;
+      data[field.name] = field.type === 'checkbox' ? (el.checked ? '1' : '') : el.value;
     });
     var seq = form.elements.seqNumber ? Number(form.elements.seqNumber.value) : null;
     return {
@@ -630,6 +696,15 @@ window.registryApp = (function() {
     };
   }
 
+  function headLabel(field) { return field.short || field.label; }
+
+  // У сокращённых заголовков полное название остаётся в подсказке.
+  function thAttrs(field) {
+    var cls = field.type === 'checkbox' ? ' class="col-print"' : '';
+    var title = field.short ? ' title="' + escapeHtml(field.label) + '"' : '';
+    return cls + title;
+  }
+
   // Двухуровневая шапка: объединённые ячейки-группы (colspan) над своими столбцами,
   // одиночные столбцы растянуты на обе строки (rowspan=2).
   function buildHeaderHtml() {
@@ -638,7 +713,7 @@ window.registryApp = (function() {
     while (i < fields.length) {
       var f = fields[i];
       if (!f.group) {
-        row1 += '<th rowspan="2">' + escapeHtml(f.label) + '</th>';
+        row1 += '<th rowspan="2"' + thAttrs(f) + '>' + escapeHtml(headLabel(f)) + '</th>';
         i++;
       } else {
         var g = f.group, members = [];
@@ -646,7 +721,7 @@ window.registryApp = (function() {
         row1 += '<th class="reg-grp" colspan="' + members.length + '">' + escapeHtml(g) + '</th>';
         members.forEach(function(m) {
           var info = m.info ? ' <button type="button" class="reg-info-btn" onclick="registryApp.showInfo(\'' + m.info + '\')" title="Справочная информация">i</button>' : '';
-          row2 += '<th>' + escapeHtml(m.label) + info + '</th>';
+          row2 += '<th' + thAttrs(m) + '>' + escapeHtml(headLabel(m)) + info + '</th>';
         });
       }
     }
@@ -673,6 +748,11 @@ window.registryApp = (function() {
     document.getElementById('reg-table-body').innerHTML = rows.map(function(row) {
       return '<tr>' +
         fields.map(function(field) {
+          if (field.type === 'checkbox') {
+            var on = isTruthy((row.data || {})[field.name]);
+            return '<td class="center col-print">' + (on
+              ? '<span class="reg-print-icon" title="Печать документа производилась">📄</span>' : '') + '</td>';
+          }
           var val = field.name === 'seqNumber' ? row.seqNumber : (row.data || {})[field.name];
           var tdCls = field.name === 'seqNumber' ? 'center' : '';
           return '<td' + (tdCls ? ' class="' + tdCls + '"' : '') + '>' + formatValue(val) + '</td>';
@@ -777,7 +857,9 @@ window.registryApp = (function() {
     if (!form || !form.elements) return values;
     fields.forEach(function(field) {
       var el = form.elements[field.name];
-      if (el && el.value) values[field.name] = el.value;
+      if (!el) return;
+      if (field.type === 'checkbox') values[field.name] = el.checked ? '1' : '';
+      else if (el.value) values[field.name] = el.value;
     });
     return values;
   }
@@ -800,6 +882,7 @@ window.registryApp = (function() {
 
   function resetForm() {
     editingId = '';
+    samePerson = false;
     renderForm();
   }
 
@@ -850,6 +933,7 @@ window.registryApp = (function() {
     activeOrg = row.org;
     if (row.year) activeYear = row.year;
     editingId = row.id;
+    samePerson = false;
     renderTabs();
     renderForm(Object.assign({}, row.data, { seqNumber: row.seqNumber }));
     renderTable();
@@ -986,6 +1070,7 @@ window.registryApp = (function() {
         return r.org === tab.org && r.year === tab.year;
       }).forEach(function(row) {
         ws.addRow(fields.map(function(f) {
+          if (f.type === 'checkbox') return isTruthy((row.data || {})[f.name]) ? 'Да' : '';
           return f.name === 'seqNumber' ? (row.seqNumber || '') : ((row.data || {})[f.name] || '');
         }));
       });
@@ -1093,14 +1178,41 @@ window.registryApp = (function() {
 
   // Страница встраивается в wiki (тот же window, что и React). Layout слушает
   // 'spreadsheet-page' и сворачивает сайдбар, освобождая место под таблицу.
+  // Плюс сама обёртка контента у wiki-страниц ограничена 80% ширины — для широкой
+  // таблицы это лишние поля по бокам, поэтому на время показа реестра снимаем их.
+  var WIDE_CSS =
+    '.reg-fullwidth { width: 100% !important; max-width: none !important;' +
+    ' padding-left: 8px !important; padding-right: 8px !important; }' +
+    '.reg-fullwidth .card:has(#registry-app), .reg-fullwidth .page-content:has(#registry-app)' +
+    ' { padding-left: 0 !important; padding-right: 0 !important; }';
+
+  function expandWorkArea() {
+    var rootEl = document.getElementById('registry-app');
+    var wrapper = rootEl && rootEl.closest ? rootEl.closest('.content-wrapper') : null;
+    if (!wrapper) return function() {};
+
+    var style = document.createElement('style');
+    style.id = 'reg-fullwidth-style';
+    style.textContent = WIDE_CSS;
+    document.head.appendChild(style);
+    wrapper.classList.add('reg-fullwidth');
+
+    return function() {
+      wrapper.classList.remove('reg-fullwidth');
+      style.remove();
+    };
+  }
+
   function collapseSidebar() {
     try {
       window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+      var restoreWidth = expandWorkArea();
       var rootEl = document.getElementById('registry-app');
       if (rootEl && window.MutationObserver) {
         var obs = new MutationObserver(function() {
           if (!document.body.contains(rootEl)) {
             window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+            restoreWidth();
             obs.disconnect();
           }
         });
@@ -1142,6 +1254,7 @@ window.registryApp = (function() {
   return {
     switchTab: switchTab,
     resetForm: resetForm,
+    toggleSamePerson: toggleSamePerson,
     save: save,
     edit: edit,
     copyFrom: copyFrom,
