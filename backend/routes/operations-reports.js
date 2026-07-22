@@ -306,6 +306,26 @@ router.get('/export-data', authenticate, async (req, res) => {
   }
 });
 
+// ── GET periods ───────────────────────────────────────────────────────────────
+// Месяцы, в которых есть записи — по ним фронт подсвечивает вкладки с данными
+router.get('/periods', authenticate, async (req, res) => {
+  try {
+    const [rows] = await OperationsReportEntry.sequelize.query(`
+      SELECT EXTRACT(YEAR FROM "entryDate")::int  AS year,
+             EXTRACT(MONTH FROM "entryDate")::int AS month,
+             COUNT(*)::int AS count
+      FROM operations_report_entries
+      WHERE "entryDate" IS NOT NULL
+      GROUP BY 1, 2
+      ORDER BY 1 DESC, 2 DESC
+    `);
+    res.json({ periods: rows });
+  } catch (err) {
+    console.error('GET /api/operations-reports/periods error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 // ── GET whoami ────────────────────────────────────────────────────────────────
 router.get('/whoami', authenticate, (req, res) => {
   res.json({ isAdmin: !!req.user.isAdmin });

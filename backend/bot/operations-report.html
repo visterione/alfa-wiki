@@ -54,6 +54,28 @@ button, input, textarea, select { font-family: inherit; }
 .op-btn-success:hover { background: #15803d; }
 .op-btn-icon { width: 34px; min-height: 34px; padding: 0; }
 .op-btn svg { width: 16px; height: 16px; }
+.op-tabbar {
+  display: flex; align-items: flex-end; gap: 6px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--op-border);
+}
+.op-year { display: flex; align-items: center; gap: 2px; padding-bottom: 6px; flex-shrink: 0; }
+.op-year-value { font-weight: 700; font-size: 13px; color: var(--op-primary); min-width: 42px; text-align: center; }
+.op-year-btn {
+  border: 1px solid var(--op-border-dark); background: #fff; color: #334155;
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.op-year-btn:hover { background: #f1f5f9; }
+.op-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.op-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--op-muted);
+  padding: 10px 12px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.op-tab:hover { background: #f1f5f9; color: var(--op-text); }
+.op-tab.active { color: var(--op-primary); border-bottom-color: var(--op-primary); background: #f5f3ff; }
+.op-tab.has-data::after {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 5px;
+  border-radius: 50%; background: var(--op-success); vertical-align: middle;
+}
 .op-layout { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
 .op-panel {
   background: var(--op-card); border: 1px solid var(--op-border); border-radius: 10px;
@@ -107,6 +129,9 @@ button, input, textarea, select { font-family: inherit; }
 .op-table th.col-actions { z-index: 3; }
 .op-table td.col-actions { background: #fff; z-index: 2; }
 .op-table tr:hover td.col-actions { background: #f8fafc; }
+/* Строка-разделитель между датами: пустая серая полоса, чтобы блоки одного дня читались одним куском */
+.op-table tr.op-sep td { padding: 4px 7px; height: 23px; background: #e2e8f0; border-bottom: 1px solid var(--op-border-dark); }
+.op-table tr.op-sep:hover td { background: #e2e8f0; }
 .op-empty { text-align: center; color: var(--op-muted); padding: 28px 12px !important; }
 .op-status { display: inline-flex; align-items: center; gap: 5px; color: var(--op-muted); font-size: 12px; }
 .op-status.error { color: var(--op-danger); }
@@ -152,6 +177,15 @@ button, input, textarea, select { font-family: inherit; }
       </button>
       <input type="file" id="op-import-file" accept=".xlsx,.xls" style="display:none" onchange="opApp.importExcel(this.files[0])">
     </div>
+  </div>
+
+  <div class="op-tabbar">
+    <div class="op-year">
+      <button type="button" class="op-year-btn" onclick="opApp.shiftYear(-1)" title="Предыдущий год">‹</button>
+      <span class="op-year-value" id="op-year-value"></span>
+      <button type="button" class="op-year-btn" onclick="opApp.shiftYear(1)" title="Следующий год">›</button>
+    </div>
+    <div class="op-tabs" id="op-tabs"></div>
   </div>
 
   <div class="op-layout">
@@ -235,6 +269,11 @@ window.opApp = (function() {
   var editingId = '';
   var pagination = { page: 1, pageSize: 50, total: 0 };
   var searchTimer = null;
+
+  // Вкладки по месяцам: activeMonth = 0 — показываем все записи без фильтра по дате
+  var periods = [];
+  var activeYear = new Date().getFullYear();
+  var activeMonth = new Date().getMonth() + 1;
 
   var FIELDS = [
     { name: 'serviceName',   label: 'Название' },
@@ -385,6 +424,56 @@ window.opApp = (function() {
     document.getElementById('op-submit-btn').textContent = 'Добавить запись';
   }
 
+  // ── Вкладки по месяцам ──────────────────────────────────────────────────────
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function monthRange(year, month) {
+    return {
+      from: year + '-' + pad2(month) + '-01',
+      to:   year + '-' + pad2(month) + '-' + pad2(new Date(year, month, 0).getDate())
+    };
+  }
+
+  function hasData(year, month) {
+    return periods.some(function(p) { return Number(p.year) === year && Number(p.month) === month; });
+  }
+
+  function renderTabs() {
+    document.getElementById('op-year-value').textContent = activeYear;
+    var tabs = '<button type="button" class="op-tab' + (activeMonth === 0 ? ' active' : '') + '"'
+      + ' onclick="opApp.switchMonth(0)">Все</button>';
+    tabs += MONTH_NAMES.map(function(title, idx) {
+      var month = idx + 1;
+      var cls = 'op-tab'
+        + (month === activeMonth ? ' active' : '')
+        + (hasData(activeYear, month) ? ' has-data' : '');
+      return '<button type="button" class="' + cls + '" onclick="opApp.switchMonth(' + month + ')">'
+        + escapeHtml(title) + '</button>';
+    }).join('');
+    document.getElementById('op-tabs').innerHTML = tabs;
+  }
+
+  function loadPeriods() {
+    return api('/periods').then(function(res) {
+      periods = res.periods || [];
+      renderTabs();
+    }).catch(function() {});
+  }
+
+  function switchMonth(month) {
+    activeMonth = Number(month) || 0;
+    pagination.page = 1;
+    renderTabs();
+    reload();
+  }
+
+  function shiftYear(delta) {
+    activeYear += delta;
+    pagination.page = 1;
+    renderTabs();
+    if (activeMonth) reload();
+  }
+
   function renderTable() {
     var tbody = document.getElementById('op-table-body');
     if (!records.length) {
@@ -392,9 +481,14 @@ window.opApp = (function() {
       renderPagination();
       return;
     }
+    var prevDate = null;
     tbody.innerHTML = records.map(function(row) {
       var d = row.data || {};
-      return '<tr>' +
+      // Дата сменилась — вставляем пустую серую строку, чтобы день отделялся от дня
+      var currDate = d.reportDate || '';
+      var sep = (prevDate !== null && currDate !== prevDate) ? '<tr class="op-sep"><td colspan="6"></td></tr>' : '';
+      prevDate = currDate;
+      return sep + '<tr>' +
         '<td>' + formatValue(d.serviceName) + '</td>' +
         '<td class="center">' + formatValue(d.patientCount) + '</td>' +
         '<td class="center">' + formatValue(d.serviceCount) + '</td>' +
@@ -424,6 +518,11 @@ window.opApp = (function() {
     params.set('page', pagination.page);
     params.set('limit', pagination.pageSize);
     if (search) params.set('search', search);
+    if (activeMonth) {
+      var range = monthRange(activeYear, activeMonth);
+      params.set('dateFrom', range.from);
+      params.set('dateTo', range.to);
+    }
     return api('?' + params.toString()).then(function(res) {
       records = (res.rows || []).map(function(r) {
         return { id: r.id, data: r.data || {} };
@@ -437,6 +536,7 @@ window.opApp = (function() {
 
   function reload() {
     setStatus('Загрузка...', 'loading');
+    loadPeriods();
     loadFromApi().then(function() {
       setStatus('', '');
     }).catch(function(e) {
@@ -674,6 +774,7 @@ window.opApp = (function() {
     collapseSidebar();
     attachDateMask(document.getElementById('op-reportDate'));
     document.getElementById('op-reportDate').value = todayDMY();
+    renderTabs();
     reload();
     api('/whoami').then(function(info) {
       if (info.isAdmin) {
@@ -699,6 +800,8 @@ window.opApp = (function() {
     resetForm: resetForm,
     clearFilters: clearFilters,
     onSearchChange: onSearchChange,
+    switchMonth: switchMonth,
+    shiftYear: shiftYear,
     exportExcel: exportExcel,
     openImport: openImport,
     importExcel: importExcel,

@@ -439,6 +439,15 @@ window.doctorDayApp = (function() {
     }, 0);
   }
 
+  // Ячейка «Инфо»: textarea (с переносами) нужна только там, где текст есть.
+  // Пустых ячеек на листе тысячи, и textarea для каждой — главный тормоз отрисовки,
+  // поэтому пустые рисуем лёгким input, а в textarea он превращается сам, когда текст перестаёт помещаться.
+  function infoField(id, rowIndex, day, value) {
+    var attrs = ' data-id="' + id + '" data-row="' + rowIndex + '" data-day="' + day + '" data-kind="info"';
+    if (!value) return '<input class="ddr-cell-input ddr-info" type="text" value=""' + attrs + '>';
+    return '<textarea class="ddr-cell-input ddr-info" rows="1"' + attrs + '>' + escapeHtml(value) + '</textarea>';
+  }
+
   function buildBody() {
     var count = daysInMonth(activeYear, activeMonth);
     if (!records.length) {
@@ -458,10 +467,7 @@ window.doctorDayApp = (function() {
           + '<input class="ddr-cell-input ddr-sum" type="text" value="' + escapeHtml(cell.sum || '') + '"'
           + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="sum"'
           + ' inputmode="decimal"></td>'
-          + '<td class="ddr-info">'
-          + '<textarea class="ddr-cell-input ddr-info" rows="1"'
-          + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="info">'
-          + escapeHtml(cell.info || '') + '</textarea></td>';
+          + '<td class="ddr-info">' + infoField(row.id, rowIndex, d, cell.info || '') + '</td>';
       }
 
       cells += '<td class="ddr-col-total ddr-total-cell" data-total-for="' + row.id + '">'
@@ -485,37 +491,53 @@ window.doctorDayApp = (function() {
     return '<tr>' + cells + '</tr>';
   }
 
+  // Ссылки на ячейки итогов и поля «Сумма» кэшируются один раз на отрисовку:
+  // на листе ~6000 полей, и искать их заново на каждое нажатие клавиши слишком дорого.
+  var sumInputs = [];
+  var rowTotalCells = {};
+  var dayTotalCells = {};
+  var grandTotalCell = null;
+
+  function cacheTableNodes() {
+    var body = document.getElementById('ddr-table-body');
+    var foot = document.getElementById('ddr-table-foot');
+    sumInputs = body.querySelectorAll('input[data-kind="sum"]');
+    rowTotalCells = {};
+    Array.prototype.forEach.call(body.querySelectorAll('[data-total-for]'), function(td) {
+      rowTotalCells[td.getAttribute('data-total-for')] = td;
+    });
+    dayTotalCells = {};
+    Array.prototype.forEach.call(foot.querySelectorAll('[data-total-day]'), function(td) {
+      dayTotalCells[td.getAttribute('data-total-day')] = td;
+    });
+    grandTotalCell = document.getElementById('ddr-grand-total');
+  }
+
   // Итоги считаются по тому, что сейчас в полях ввода — цифра в «Итого» меняется
   // сразу при наборе, не дожидаясь ответа сервера.
   function recalcTotals() {
-    var count = daysInMonth(activeYear, activeMonth);
     var perDay = {};
     var perRow = {};
     var grand = 0;
 
-    Array.prototype.forEach.call(
-      document.querySelectorAll('#ddr-table-body input[data-kind="sum"]'),
-      function(input) {
-        var n = parseAmount(input.value);
-        if (n === null) return;
-        var day = input.getAttribute('data-day');
-        var id = input.getAttribute('data-id');
-        perDay[day] = (perDay[day] || 0) + n;
-        perRow[id] = (perRow[id] || 0) + n;
-        grand += n;
-      }
-    );
-
-    records.forEach(function(row) {
-      var cell = document.querySelector('[data-total-for="' + row.id + '"]');
-      if (cell) cell.textContent = formatAmount(perRow[row.id] || 0);
-    });
-    for (var d = 1; d <= count; d++) {
-      var td = document.querySelector('[data-total-day="' + d + '"]');
-      if (td) td.textContent = formatAmount(perDay[d] || 0);
+    for (var i = 0; i < sumInputs.length; i++) {
+      var input = sumInputs[i];
+      var n = parseAmount(input.value);
+      if (n === null) continue;
+      var day = input.getAttribute('data-day');
+      var id = input.getAttribute('data-id');
+      perDay[day] = (perDay[day] || 0) + n;
+      perRow[id] = (perRow[id] || 0) + n;
+      grand += n;
     }
-    var grandCell = document.getElementById('ddr-grand-total');
-    if (grandCell) grandCell.textContent = formatAmount(grand);
+
+    Object.keys(rowTotalCells).forEach(function(id) {
+      rowTotalCells[id].textContent = formatAmount(perRow[id] || 0);
+    });
+    Object.keys(dayTotalCells).forEach(function(day) {
+      dayTotalCells[day].textContent = formatAmount(perDay[day] || 0);
+    });
+    if (grandTotalCell) grandTotalCell.textContent = formatAmount(grand);
 
     document.getElementById('ddr-summary').textContent =
       'Врачей: ' + records.length + ' | итого за ' + periodTitle(activeYear, activeMonth) + ': ' + formatAmount(grand);
@@ -526,6 +548,7 @@ window.doctorDayApp = (function() {
     document.getElementById('ddr-table-body').innerHTML = buildBody();
     document.getElementById('ddr-table-foot').innerHTML = records.length ? buildFoot() : '';
     attachCellHandlers();
+    cacheTableNodes();
     autoGrowAll();
     recalcTotals();
   }
@@ -613,30 +636,80 @@ window.doctorDayApp = (function() {
     el.style.height = Math.max(el.scrollHeight, 24) + 'px';
   }
 
+  // Массовая подгонка высоты — самое дорогое место на листе: чтение scrollHeight
+  // сразу после записи style заставляет браузер пересчитать вёрстку всей таблицы.
+  // Поэтому: пустые ячейки (их подавляющее большинство) пропускаем совсем,
+  // а у остальных сначала пишем стили пачкой и только потом читаем высоты — один пересчёт вместо тысяч.
   function autoGrowAll() {
-    Array.prototype.forEach.call(
-      document.querySelectorAll('#ddr-table-body textarea.ddr-cell-input'), autoGrow);
+    var list = document.querySelectorAll('#ddr-table-body textarea.ddr-cell-input');
+    var need = [];
+    for (var i = 0; i < list.length; i++) {
+      var el = list[i];
+      if (!el.value) { el.style.height = ''; continue; }
+      el.style.height = 'auto';
+      need.push(el);
+    }
+    var heights = need.map(function(el) { return el.scrollHeight; });
+    need.forEach(function(el, idx) { el.style.height = Math.max(heights[idx], 24) + 'px'; });
   }
 
+  // Подмена поля «на лету»: сохраняем значение, курсор и фокус, чтобы набор текста не прерывался
+  function upgradeToTextarea(input) {
+    var ta = document.createElement('textarea');
+    ta.className = input.className;
+    ta.rows = 1;
+    ['data-id', 'data-row', 'data-day', 'data-kind'].forEach(function(attr) {
+      var v = input.getAttribute(attr);
+      if (v !== null) ta.setAttribute(attr, v);
+    });
+    ta.value = input.value;
+    var caret = input.selectionStart;
+    input.parentNode.replaceChild(ta, input);
+    ta.focus();
+    try { ta.setSelectionRange(caret, caret); } catch (e) { /* браузер не дал — не критично */ }
+    return ta;
+  }
+
+  // Обработчики висят на <tbody>, а не на каждом поле: на листе их до 6000,
+  // и персональная подписка означала бы десятки тысяч слушателей при каждой отрисовке.
+  var cellHandlersBound = false;
+
   function attachCellHandlers() {
-    Array.prototype.forEach.call(
-      document.querySelectorAll('#ddr-table-body .ddr-cell-input'),
-      function(input) {
-        input.addEventListener('input', function() {
-          autoGrow(this);
-          if (this.getAttribute('data-kind') === 'sum') recalcTotals();
-        });
-        input.addEventListener('change', function() { saveRow(this); });
-        input.addEventListener('keydown', function(e) {
-          // Enter — переход к следующему врачу, Shift+Enter — перенос строки внутри ячейки
-          if (e.key === 'Enter' && e.shiftKey && this.tagName === 'TEXTAREA') return;
-          if (e.key === 'Enter') { e.preventDefault(); this.blur(); moveFocus(this, 1); }
-          else if (e.key === 'ArrowDown' && e.ctrlKey) { e.preventDefault(); moveFocus(this, 1); }
-          else if (e.key === 'ArrowUp' && e.ctrlKey) { e.preventDefault(); moveFocus(this, -1); }
-        });
-        input.addEventListener('focus', function() { this.select(); });
-      }
-    );
+    if (cellHandlersBound) return;
+    var body = document.getElementById('ddr-table-body');
+
+    function cellOf(e) {
+      var el = e.target;
+      return el && el.classList && el.classList.contains('ddr-cell-input') ? el : null;
+    }
+
+    body.addEventListener('input', function(e) {
+      var el = cellOf(e);
+      if (!el) return;
+      if (el.getAttribute('data-kind') === 'sum') { recalcTotals(); return; }
+      // Текст перестал помещаться в строку — меняем input на textarea, чтобы пошли переносы
+      if (el.tagName === 'INPUT' && el.scrollWidth > el.clientWidth) el = upgradeToTextarea(el);
+      autoGrow(el);
+    });
+    body.addEventListener('change', function(e) {
+      var el = cellOf(e);
+      if (el) saveRow(el);
+    });
+    body.addEventListener('keydown', function(e) {
+      var el = cellOf(e);
+      if (!el) return;
+      // Enter — переход к следующему врачу, Shift+Enter — перенос строки внутри ячейки
+      if (e.key === 'Enter' && e.shiftKey && el.tagName === 'TEXTAREA') return;
+      if (e.key === 'Enter') { e.preventDefault(); el.blur(); moveFocus(el, 1); }
+      else if (e.key === 'ArrowDown' && e.ctrlKey) { e.preventDefault(); moveFocus(el, 1); }
+      else if (e.key === 'ArrowUp' && e.ctrlKey) { e.preventDefault(); moveFocus(el, -1); }
+    });
+    body.addEventListener('focusin', function(e) {
+      var el = cellOf(e);
+      if (el) el.select();
+    });
+
+    cellHandlersBound = true;
   }
 
   // ── Загрузка ───────────────────────────────────────────────────────────────
