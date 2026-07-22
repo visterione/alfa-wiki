@@ -678,6 +678,7 @@ window.registryApp = (function() {
           return '<td' + (tdCls ? ' class="' + tdCls + '"' : '') + '>' + formatValue(val) + '</td>';
         }).join('') +
         '<td class="center col-actions"><div class="reg-actions-cell">' +
+          '<button class="reg-btn reg-btn-secondary reg-btn-icon" type="button" onclick="registryApp.copyFrom(\'' + row.id + '\')" title="Новая справка по этому же человеку (копирует налогоплательщика и пациента)">⧉</button>' +
           '<button class="reg-btn reg-btn-secondary reg-btn-icon" type="button" onclick="registryApp.edit(\'' + row.id + '\')" title="Редактировать">✎</button>' +
           '<button class="reg-btn reg-btn-danger reg-btn-icon" type="button" onclick="registryApp.remove(\'' + row.id + '\')" title="Удалить">×</button>' +
         '</div></td></tr>';
@@ -769,18 +770,62 @@ window.registryApp = (function() {
     });
   }
 
+  // Текущее содержимое формы — чтобы перенести незаконченный ввод на другую вкладку.
+  function currentFormValues() {
+    var form = document.getElementById('reg-form');
+    var values = {};
+    if (!form || !form.elements) return values;
+    fields.forEach(function(field) {
+      var el = form.elements[field.name];
+      if (el && el.value) values[field.name] = el.value;
+    });
+    return values;
+  }
+
   function switchTab(org, year) {
+    // Форму при смене вкладки не сбрасываем: типичный сценарий — скопировать данные
+    // пациента из вкладки прошлого года и добавить справку в другой год.
+    // Полная очистка — только кнопкой «Очистить».
+    var draft = currentFormValues();
+    delete draft.seqNumber;                        // номер свой у каждой вкладки — подставится заново
+    if (org !== activeOrg) delete draft.clinics;   // список клиник зависит от организации
+
     activeOrg = org;
     activeYear = Number(year) || activeYear;
     editingId = '';
     pagination.page = 1;
-    renderForm();
+    renderForm(draft);
     reload();
   }
 
   function resetForm() {
     editingId = '';
     renderForm();
+  }
+
+  // Поля, которые переносятся кнопкой быстрого копирования: обе секции целиком.
+  // Берём из структуры столбцов, чтобы список не разошёлся при её изменении.
+  var COPY_GROUPS = ['Налогоплательщик', 'Пациент'];
+  function copyableFieldNames() {
+    return fields.filter(function(f) { return COPY_GROUPS.indexOf(f.group) !== -1; })
+                 .map(function(f) { return f.name; });
+  }
+
+  // Быстрое создание новой справки по тому же человеку: переносим данные
+  // налогоплательщика и пациента, остальное заполняется заново (номер, даты, суммы).
+  function copyFrom(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    var src = row.data || {};
+    var copy = {};
+    copyableFieldNames().forEach(function(name) {
+      if (src[name]) copy[name] = src[name];
+    });
+
+    editingId = '';          // это новая запись, а не редактирование исходной
+    renderForm(copy);
+    document.querySelector('.reg-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showToast('Данные скопированы — заполните остальные поля', 'success');
   }
 
   function save(event) {
@@ -1099,6 +1144,7 @@ window.registryApp = (function() {
     resetForm: resetForm,
     save: save,
     edit: edit,
+    copyFrom: copyFrom,
     remove: remove,
     reload: reload,
     clearFilters: clearFilters,

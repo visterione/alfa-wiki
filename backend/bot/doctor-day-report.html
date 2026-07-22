@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт по врачам</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ddr-primary: #2563eb;
+  --ddr-primary-hover: #1d4ed8;
+  --ddr-bg: #f8fafc;
+  --ddr-card: #fff;
+  --ddr-border: #e5e7eb;
+  --ddr-border-dark: #cbd5e1;
+  --ddr-text: #111827;
+  --ddr-muted: #64748b;
+  --ddr-success: #16a34a;
+  --ddr-danger: #dc2626;
+  --ddr-amount: #fef9c3;
+  --ddr-amount-strong: #fef08a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ddr-bg);
+  color: var(--ddr-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+#doctor-day-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+.ddr-topbar {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--ddr-border);
+  flex-wrap: wrap;
+}
+.ddr-actions { display: flex; gap: 5px; padding-bottom: 8px; flex-shrink: 0; }
+.ddr-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.ddr-btn-primary { background: var(--ddr-primary); color: #fff; }
+.ddr-btn-primary:hover { background: var(--ddr-primary-hover); }
+.ddr-btn-secondary { background: #fff; color: #334155; border-color: var(--ddr-border-dark); }
+.ddr-btn-secondary:hover { background: #f1f5f9; }
+.ddr-btn-danger { background: #fee2e2; color: var(--ddr-danger); }
+.ddr-btn-danger:hover { background: #fecaca; }
+.ddr-btn-success { background: var(--ddr-success); color: #fff; }
+.ddr-btn-success:hover { background: #15803d; }
+.ddr-btn-icon { width: 34px; min-height: 34px; padding: 0; }
+.ddr-btn svg { width: 16px; height: 16px; }
+.ddr-tabbar { display: flex; align-items: flex-end; gap: 6px; flex: 1; min-width: 0; }
+.ddr-year {
+  display: flex; align-items: center; gap: 2px; padding-bottom: 6px; flex-shrink: 0;
+}
+.ddr-year-value { font-weight: 700; font-size: 13px; color: var(--ddr-primary); min-width: 42px; text-align: center; }
+.ddr-year-btn {
+  border: 1px solid var(--ddr-border-dark); background: #fff; color: #334155;
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.ddr-year-btn:hover { background: #f1f5f9; }
+.ddr-tabs {
+  display: flex; gap: 2px; flex: 1; min-width: 0; margin-bottom: 0;
+  overflow-x: auto; scrollbar-width: thin;
+}
+.ddr-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ddr-muted);
+  padding: 10px 12px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.ddr-tab:hover { background: #f1f5f9; color: var(--ddr-text); }
+.ddr-tab.active { color: var(--ddr-primary); border-bottom-color: var(--ddr-primary); background: #eff6ff; }
+.ddr-tab.has-data::after {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 5px;
+  border-radius: 50%; background: var(--ddr-success); vertical-align: middle;
+}
+.ddr-panel {
+  background: var(--ddr-card); border: 1px solid var(--ddr-border); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.ddr-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 9px 13px; border-bottom: 1px solid var(--ddr-border); flex-wrap: wrap;
+}
+.ddr-toolbar-group { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.ddr-input, .ddr-select {
+  border: 1px solid var(--ddr-border-dark); border-radius: 7px; background: #fff;
+  color: var(--ddr-text); padding: 6px 9px; min-height: 34px; outline: none; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.ddr-input:focus, .ddr-select:focus {
+  border-color: var(--ddr-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.ddr-search { min-width: 150px; }
+.ddr-new-doctor { min-width: 220px; }
+.ddr-status { display: inline-flex; align-items: center; gap: 5px; color: var(--ddr-muted); font-size: 12px; }
+.ddr-status.api { color: var(--ddr-success); }
+.ddr-status.error { color: var(--ddr-danger); }
+.ddr-status.loading { color: var(--ddr-primary); }
+
+.ddr-table-wrap { overflow: auto; max-height: calc(100vh - 230px); min-height: 160px; }
+.ddr-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
+.ddr-table th, .ddr-table td {
+  border-right: 1px solid var(--ddr-border); border-bottom: 1px solid var(--ddr-border);
+  padding: 0; background: #fff;
+}
+/* border-collapse: separate — иначе рамки «уезжают» у закреплённых ячеек,
+   поэтому внешние края таблицы дорисовываем отдельно */
+.ddr-table th:first-child, .ddr-table td:first-child { border-left: 1px solid var(--ddr-border); }
+.ddr-table thead tr:first-child th { border-top: 1px solid var(--ddr-border); }
+.ddr-table th {
+  background: #f8fafc; color: #334155; text-align: center; font-weight: 700;
+  padding: 4px 6px; white-space: nowrap; position: sticky; z-index: 2;
+}
+.ddr-table thead tr:first-child th { top: 0; height: 24px; }
+.ddr-table thead tr:nth-child(2) th { top: 24px; }
+.ddr-table th.ddr-day { background: #eff6ff; color: var(--ddr-primary); }
+/* Столбцы «Сумма» подсвечены жёлтым — глаз сразу цепляется за цифры среди пар столбцов */
+.ddr-table thead th.ddr-sum { background: var(--ddr-amount-strong); color: #854d0e; }
+.ddr-table tbody td.ddr-sum { background: var(--ddr-amount); }
+.ddr-table tbody tr:hover td.ddr-sum { background: var(--ddr-amount-strong); }
+/* Первый столбец (ФИО) закреплён слева, «Итого» и «Действия» — справа */
+.ddr-col-doctor { position: sticky; left: 0; z-index: 3; min-width: 210px; max-width: 210px; }
+.ddr-table th.ddr-col-doctor { z-index: 5; }
+.ddr-col-total { position: sticky; right: 38px; z-index: 3; min-width: 92px; text-align: right; }
+.ddr-table th.ddr-col-total { z-index: 5; }
+.ddr-col-actions { position: sticky; right: 0; z-index: 3; width: 38px; min-width: 38px; text-align: center; }
+.ddr-table th.ddr-col-actions { z-index: 5; }
+.ddr-col-doctor { box-shadow: 2px 0 5px rgba(0,0,0,.06); }
+.ddr-col-total { box-shadow: -2px 0 5px rgba(0,0,0,.06); }
+.ddr-cell-input {
+  width: 100%; border: 0; outline: none; background: transparent; color: inherit;
+  padding: 4px 6px; font-size: 11px; min-height: 24px; font-family: inherit;
+}
+.ddr-cell-input:focus { background: #eff6ff; box-shadow: inset 0 0 0 2px var(--ddr-primary); }
+.ddr-cell-input.saving { background: #fef9c3; }
+.ddr-cell-input.saved { background: #dcfce7; transition: background .6s; }
+.ddr-cell-input.failed { background: #fee2e2; }
+.ddr-sum { text-align: right; min-width: 74px; }
+.ddr-info { min-width: 96px; }
+.ddr-doctor-input { font-weight: 600; font-size: 12px; }
+.ddr-total-cell { padding: 4px 7px; text-align: right; font-weight: 700; color: var(--ddr-primary); background: #f8fafc; }
+.ddr-table tbody tr:hover td { background: #f8fafc; }
+.ddr-table tbody tr:hover td.ddr-total-cell { background: #eff6ff; }
+.ddr-table tfoot td, .ddr-table tfoot th {
+  position: sticky; bottom: 0; z-index: 4; background: #eff6ff;
+  font-weight: 700; color: var(--ddr-primary); padding: 5px 6px; text-align: right;
+}
+.ddr-table tfoot th.ddr-col-doctor { z-index: 6; text-align: left; }
+.ddr-table tfoot td.ddr-col-total, .ddr-table tfoot td.ddr-col-actions { z-index: 6; }
+.ddr-grand { background: #dbeafe !important; }
+.ddr-empty { text-align: center; color: var(--ddr-muted); padding: 28px 12px !important; background: #fff; }
+.ddr-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 13px; border-top: 1px solid var(--ddr-border); background: #f8fafc; flex-wrap: wrap;
+}
+.ddr-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 13px;
+  border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  font-size: 13px; font-weight: 600;
+}
+.ddr-toast.success { background: var(--ddr-success); }
+.ddr-toast.error { background: var(--ddr-danger); }
+@media (max-width: 640px) {
+  #doctor-day-app { padding: 8px 10px 12px; }
+  .ddr-actions { justify-content: flex-start; width: 100%; }
+  .ddr-search, .ddr-new-doctor { min-width: 100%; }
+  .ddr-table-wrap { max-height: none; }
+  .ddr-col-doctor { min-width: 150px; max-width: 150px; }
+}
+</style>
+</head>
+<body>
+<div id="doctor-day-app">
+  <div class="ddr-topbar">
+    <div class="ddr-tabbar">
+      <div class="ddr-year">
+        <button type="button" class="ddr-year-btn" onclick="doctorDayApp.shiftYear(-1)" title="Предыдущий год">‹</button>
+        <span class="ddr-year-value" id="ddr-year-value"></span>
+        <button type="button" class="ddr-year-btn" onclick="doctorDayApp.shiftYear(1)" title="Следующий год">›</button>
+      </div>
+      <div class="ddr-tabs" id="ddr-tabs"></div>
+    </div>
+    <div class="ddr-actions">
+      <button class="ddr-btn ddr-btn-secondary ddr-btn-icon" onclick="doctorDayApp.reload()" title="Обновить" aria-label="Обновить">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
+      </button>
+      <button id="ddr-btn-import" class="ddr-btn ddr-btn-secondary ddr-btn-icon" onclick="doctorDayApp.openImport()" title="Импорт Excel" aria-label="Импорт Excel" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="ddr-btn ddr-btn-success ddr-btn-icon" onclick="doctorDayApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button id="ddr-btn-delete-all" class="ddr-btn ddr-btn-danger ddr-btn-icon" onclick="doctorDayApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+      </button>
+      <input type="file" id="ddr-import-file" accept=".xlsx,.xls" style="display:none" onchange="doctorDayApp.importExcel(this.files[0])">
+    </div>
+  </div>
+
+  <section class="ddr-panel">
+    <div class="ddr-toolbar">
+      <div class="ddr-toolbar-group">
+        <input class="ddr-input ddr-new-doctor" id="ddr-new-doctor" placeholder="ФИО врача — Enter, чтобы добавить"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();doctorDayApp.addDoctor();}">
+        <button class="ddr-btn ddr-btn-primary" type="button" onclick="doctorDayApp.addDoctor()">Добавить врача</button>
+        <button class="ddr-btn ddr-btn-secondary" type="button" onclick="doctorDayApp.copyDoctors()"
+                title="Перенести список врачей с предыдущего месяца">Импорт врачей</button>
+      </div>
+      <div class="ddr-toolbar-group">
+        <input class="ddr-input ddr-search" id="ddr-search" placeholder="Поиск по врачу" oninput="doctorDayApp.onSearchChange()">
+        <span class="ddr-status" id="ddr-storage-status"></span>
+      </div>
+    </div>
+
+    <div class="ddr-table-wrap" id="ddr-table-wrap">
+      <table class="ddr-table" id="ddr-table">
+        <thead id="ddr-table-head"></thead>
+        <tbody id="ddr-table-body"></tbody>
+        <tfoot id="ddr-table-foot"></tfoot>
+      </table>
+    </div>
+
+    <div class="ddr-footer">
+      <div class="ddr-status" id="ddr-summary">0 врачей</div>
+      <div class="ddr-status">Изменения сохраняются автоматически</div>
+    </div>
+  </section>
+</div>
+
+<script>
+window.doctorDayApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/doctor-day-report';
+
+  var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+
+  var records = [];                 // строки текущего месяца: { id, doctorName, days }
+  var periods = [];                 // периоды с данными: [{ year, month, count }]
+  var searchTimer = null;
+
+  var now = new Date();
+  var activeYear = now.getFullYear();
+  var activeMonth = now.getMonth() + 1;
+
+  function daysInMonth(year, month) { return new Date(year, month, 0).getDate(); }
+  function periodTitle(year, month) { return MONTHS[month - 1] + ' ' + year; }
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  // ID wiki-страницы, в которую встроена таблица. Нужен, чтобы изменения фиксировались
+  // в «Журнале изменений» этой страницы. Определяем сами по slug из URL (не зависим от React).
+  var PAGES_URL = API_URL.replace(/\/doctor-day-report\/?$/, '/pages');
+  var wikiPageIdCache = '';
+
+  function wikiPageId() {
+    return wikiPageIdCache || (window.__WIKI_PAGE__ && window.__WIKI_PAGE__.id) || '';
+  }
+
+  function currentSlug() {
+    var parts = window.location.pathname.split('/').filter(Boolean);
+    if (!parts.length) return '';
+    try { return decodeURIComponent(parts[parts.length - 1]); }
+    catch (e) { return parts[parts.length - 1]; }
+  }
+
+  function resolveWikiPageId() {
+    if (wikiPageId()) return Promise.resolve(wikiPageId());
+    var slug = currentSlug();
+    if (!slug) return Promise.resolve('');
+    return fetch(PAGES_URL + '/' + encodeURIComponent(slug), {
+      headers: { 'Authorization': 'Bearer ' + getToken() }
+    }).then(function(r) {
+      return r.ok ? r.json() : null;
+    }).then(function(page) {
+      wikiPageIdCache = (page && page.id) || '';
+      return wikiPageIdCache;
+    }).catch(function() { return ''; });
+  }
+
+  function withPageId(path) {
+    var id = wikiPageId();
+    if (!id) return path;
+    return path + (path.indexOf('?') === -1 ? '?' : '&') + 'pageId=' + encodeURIComponent(id);
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 12000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил за 12 секунд');
+      throw e;
+    });
+  }
+
+  function uploadApi(path, formData, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 120000);
+    return fetch(API_URL + path, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Импорт не ответил за 120 секунд');
+      throw e;
+    });
+  }
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'ddr-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2600);
+  }
+
+  function setStatus(text, type) {
+    var el = document.getElementById('ddr-storage-status');
+    el.className = 'ddr-status ' + (type || '');
+    el.textContent = text || '';
+  }
+
+  // «1 200,50 ₽» → 1200.5, нечисловое → null. Так в «Сумму» можно писать пометки,
+  // и они просто не попадут в итог, вместо того чтобы его сломать.
+  function parseAmount(value) {
+    if (value === null || value === undefined || value === '') return null;
+    var text = String(value).replace(/\s| /g, '').replace(/[^\d,.\-]/g, '').replace(',', '.');
+    if (!text || text === '-' || text === '.') return null;
+    var n = Number(text);
+    return isFinite(n) ? n : null;
+  }
+
+  function formatAmount(n) {
+    if (!n) return '0';
+    return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  }
+
+  function normalizeRows(rows) {
+    return (rows || []).map(function(row) {
+      return {
+        id: row.id,
+        year: Number(row.year),
+        month: Number(row.month),
+        doctorName: row.doctorName || '',
+        days: row.days || {}
+      };
+    });
+  }
+
+  // ── Вкладки ────────────────────────────────────────────────────────────────
+  function hasData(year, month) {
+    return periods.some(function(p) { return Number(p.year) === year && Number(p.month) === month; });
+  }
+
+  function renderTabs() {
+    document.getElementById('ddr-year-value').textContent = activeYear;
+    document.getElementById('ddr-tabs').innerHTML = MONTHS.map(function(title, idx) {
+      var month = idx + 1;
+      var cls = 'ddr-tab'
+        + (month === activeMonth ? ' active' : '')
+        + (hasData(activeYear, month) ? ' has-data' : '');
+      return '<button type="button" class="' + cls + '" onclick="doctorDayApp.switchMonth(' + month + ')">'
+        + escapeHtml(title) + '</button>';
+    }).join('');
+  }
+
+  // ── Таблица ────────────────────────────────────────────────────────────────
+  function buildHead() {
+    var count = daysInMonth(activeYear, activeMonth);
+    var row1 = '<th rowspan="2" class="ddr-col-doctor">ФИО врача</th>';
+    var row2 = '';
+    for (var d = 1; d <= count; d++) {
+      row1 += '<th colspan="2" class="ddr-day">' + d + '</th>';
+      row2 += '<th class="ddr-sum">Сумма</th><th class="ddr-info">Инфо</th>';
+    }
+    row1 += '<th rowspan="2" class="ddr-col-total">Итого</th>'
+          + '<th rowspan="2" class="ddr-col-actions" title="Удалить врача с этого листа">✕</th>';
+    return '<tr>' + row1 + '</tr><tr>' + row2 + '</tr>';
+  }
+
+  function rowTotal(days) {
+    return Object.keys(days || {}).reduce(function(acc, key) {
+      var n = parseAmount((days[key] || {}).sum);
+      return n === null ? acc : acc + n;
+    }, 0);
+  }
+
+  function buildBody() {
+    var count = daysInMonth(activeYear, activeMonth);
+    if (!records.length) {
+      return '<tr><td class="ddr-empty" colspan="' + (count * 2 + 3) + '">'
+        + 'Нет врачей на этом листе — добавьте первого сверху или перенесите список с прошлого месяца</td></tr>';
+    }
+
+    return records.map(function(row, rowIndex) {
+      var cells = '<td class="ddr-col-doctor">'
+        + '<input class="ddr-cell-input ddr-doctor-input" type="text" value="' + escapeHtml(row.doctorName) + '"'
+        + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-kind="doctor"'
+        + ' title="' + escapeHtml(row.doctorName) + '"></td>';
+
+      for (var d = 1; d <= count; d++) {
+        var cell = (row.days || {})[String(d)] || {};
+        cells += '<td class="ddr-sum">'
+          + '<input class="ddr-cell-input ddr-sum" type="text" value="' + escapeHtml(cell.sum || '') + '"'
+          + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="sum"'
+          + ' inputmode="decimal"></td>'
+          + '<td class="ddr-info">'
+          + '<input class="ddr-cell-input ddr-info" type="text" value="' + escapeHtml(cell.info || '') + '"'
+          + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="info"></td>';
+      }
+
+      cells += '<td class="ddr-col-total ddr-total-cell" data-total-for="' + row.id + '">'
+        + escapeHtml(formatAmount(rowTotal(row.days))) + '</td>'
+        + '<td class="ddr-col-actions">'
+        + '<button class="ddr-btn ddr-btn-danger ddr-btn-icon" type="button" style="width:28px;min-height:22px"'
+        + ' onclick="doctorDayApp.removeRow(\'' + row.id + '\')" title="Удалить врача">×</button></td>';
+
+      return '<tr>' + cells + '</tr>';
+    }).join('');
+  }
+
+  function buildFoot() {
+    var count = daysInMonth(activeYear, activeMonth);
+    var cells = '<th class="ddr-col-doctor">Итого</th>';
+    for (var d = 1; d <= count; d++) {
+      cells += '<td class="ddr-sum" data-total-day="' + d + '">0</td><td class="ddr-info"></td>';
+    }
+    cells += '<td class="ddr-col-total ddr-grand" id="ddr-grand-total">0</td>'
+          + '<td class="ddr-col-actions ddr-grand"></td>';
+    return '<tr>' + cells + '</tr>';
+  }
+
+  // Итоги считаются по тому, что сейчас в полях ввода — цифра в «Итого» меняется
+  // сразу при наборе, не дожидаясь ответа сервера.
+  function recalcTotals() {
+    var count = daysInMonth(activeYear, activeMonth);
+    var perDay = {};
+    var perRow = {};
+    var grand = 0;
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#ddr-table-body input[data-kind="sum"]'),
+      function(input) {
+        var n = parseAmount(input.value);
+        if (n === null) return;
+        var day = input.getAttribute('data-day');
+        var id = input.getAttribute('data-id');
+        perDay[day] = (perDay[day] || 0) + n;
+        perRow[id] = (perRow[id] || 0) + n;
+        grand += n;
+      }
+    );
+
+    records.forEach(function(row) {
+      var cell = document.querySelector('[data-total-for="' + row.id + '"]');
+      if (cell) cell.textContent = formatAmount(perRow[row.id] || 0);
+    });
+    for (var d = 1; d <= count; d++) {
+      var td = document.querySelector('[data-total-day="' + d + '"]');
+      if (td) td.textContent = formatAmount(perDay[d] || 0);
+    }
+    var grandCell = document.getElementById('ddr-grand-total');
+    if (grandCell) grandCell.textContent = formatAmount(grand);
+
+    document.getElementById('ddr-summary').textContent =
+      'Врачей: ' + records.length + ' | итого за ' + periodTitle(activeYear, activeMonth) + ': ' + formatAmount(grand);
+  }
+
+  function renderTable() {
+    document.getElementById('ddr-table-head').innerHTML = buildHead();
+    document.getElementById('ddr-table-body').innerHTML = buildBody();
+    document.getElementById('ddr-table-foot').innerHTML = records.length ? buildFoot() : '';
+    attachCellHandlers();
+    recalcTotals();
+  }
+
+  function renderAll() {
+    renderTabs();
+    renderTable();
+  }
+
+  // ── Inline-редактирование ──────────────────────────────────────────────────
+  function markInput(input, state) {
+    input.classList.remove('saving', 'saved', 'failed');
+    if (state) input.classList.add(state);
+    if (state === 'saved') setTimeout(function() { input.classList.remove('saved'); }, 900);
+  }
+
+  // Собираем дни строки из полей ввода — источник правды при сохранении.
+  function collectDays(id) {
+    var days = {};
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#ddr-table-body input[data-id="' + id + '"][data-day]'),
+      function(input) {
+        var day = input.getAttribute('data-day');
+        var kind = input.getAttribute('data-kind');
+        var value = input.value.trim();
+        if (!value) return;
+        if (!days[day]) days[day] = { sum: '', info: '' };
+        days[day][kind] = value;
+      }
+    );
+    return days;
+  }
+
+  function saveRow(input) {
+    var id = input.getAttribute('data-id');
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+
+    var payload = { days: collectDays(id) };
+    if (input.getAttribute('data-kind') === 'doctor') {
+      var name = input.value.trim();
+      if (!name) {
+        showToast('ФИО врача не может быть пустым', 'error');
+        input.value = row.doctorName;
+        markInput(input, 'failed');
+        return;
+      }
+      payload.doctorName = name;
+    }
+
+    markInput(input, 'saving');
+    api('/' + id, {
+      method: 'PUT',
+      body: JSON.stringify(Object.assign({ pageId: wikiPageId() }, payload))
+    }).then(function(saved) {
+      var renamed = saved.doctorName !== row.doctorName;
+      row.days = saved.days || {};
+      row.doctorName = saved.doctorName || row.doctorName;
+      markInput(input, 'saved');
+      // После переименования строка меняет место в алфавите — перечитываем лист
+      if (renamed) reload();
+    }).catch(function(e) {
+      markInput(input, 'failed');
+      showToast('Не сохранено: ' + e.message, 'error');
+    });
+  }
+
+  // Enter и стрелки вверх/вниз двигают по столбцу — заполнять день за днём
+  // по всем врачам удобнее, чем строку целиком.
+  function moveFocus(input, delta) {
+    var rowIndex = Number(input.getAttribute('data-row'));
+    var day = input.getAttribute('data-day');
+    var kind = input.getAttribute('data-kind');
+    var selector = day
+      ? '#ddr-table-body input[data-row="' + (rowIndex + delta) + '"][data-day="' + day + '"][data-kind="' + kind + '"]'
+      : '#ddr-table-body input[data-row="' + (rowIndex + delta) + '"][data-kind="doctor"]';
+    var next = document.querySelector(selector);
+    if (next) { next.focus(); next.select(); }
+  }
+
+  function attachCellHandlers() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#ddr-table-body .ddr-cell-input'),
+      function(input) {
+        input.addEventListener('input', function() {
+          if (this.getAttribute('data-kind') === 'sum') recalcTotals();
+        });
+        input.addEventListener('change', function() { saveRow(this); });
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') { e.preventDefault(); this.blur(); moveFocus(this, 1); }
+          else if (e.key === 'ArrowDown' && e.ctrlKey) { e.preventDefault(); moveFocus(this, 1); }
+          else if (e.key === 'ArrowUp' && e.ctrlKey) { e.preventDefault(); moveFocus(this, -1); }
+        });
+        input.addEventListener('focus', function() { this.select(); });
+      }
+    );
+  }
+
+  // ── Загрузка ───────────────────────────────────────────────────────────────
+  function loadPeriods() {
+    return api('/periods').then(function(res) {
+      periods = res.periods || [];
+      renderTabs();
+    }).catch(function() {});
+  }
+
+  function loadFromApi() {
+    var params = new URLSearchParams();
+    params.set('year', activeYear);
+    params.set('month', activeMonth);
+    var search = document.getElementById('ddr-search').value.trim();
+    if (search) params.set('search', search);
+    return api('?' + params.toString()).then(function(res) {
+      records = normalizeRows(res.rows);
+      renderAll();
+    });
+  }
+
+  function reload() {
+    setStatus('Загрузка...', 'loading');
+    loadPeriods();
+    return loadFromApi().then(function() { setStatus(''); }).catch(function(e) {
+      records = [];
+      renderAll();
+      setStatus('БД недоступна', 'error');
+      showToast('Не удалось загрузить данные из БД: ' + e.message, 'error');
+    });
+  }
+
+  function switchMonth(month) {
+    activeMonth = Number(month) || activeMonth;
+    reload();
+  }
+
+  function shiftYear(delta) {
+    activeYear += delta;
+    reload();
+  }
+
+  function onSearchChange() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() { reload(); }, 350);
+  }
+
+  // ── Строки ─────────────────────────────────────────────────────────────────
+  function addDoctor() {
+    var input = document.getElementById('ddr-new-doctor');
+    var doctorName = input.value.trim();
+    if (!doctorName) { input.focus(); return; }
+
+    var createdId = '';
+    api('', {
+      method: 'POST',
+      body: JSON.stringify({ year: activeYear, month: activeMonth, doctorName: doctorName, pageId: wikiPageId() })
+    }).then(function(created) {
+      createdId = created && created.id ? created.id : '';
+      input.value = '';
+      showToast('Врач добавлен', 'success');
+      return reload();
+    }).then(function() {
+      // Строка встала по алфавиту — подсвечиваем её и ставим курсор в первый день
+      var cell = createdId && document.querySelector(
+        '#ddr-table-body input[data-id="' + createdId + '"][data-day="1"][data-kind="sum"]');
+      if (!cell) return;
+      cell.scrollIntoView({ block: 'nearest', inline: 'start' });
+      cell.focus();
+    }).catch(function(e) {
+      showToast('Не добавлено: ' + e.message, 'error');
+    });
+  }
+
+  function removeRow(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    if (!confirm('Удалить врача «' + row.doctorName + '» из листа «' + periodTitle(activeYear, activeMonth) + '» вместе со всеми суммами?')) return;
+    api(withPageId('/' + id), { method: 'DELETE' }).then(function() {
+      showToast('Удалено', 'success');
+      reload();
+    }).catch(function(e) { showToast('Ошибка удаления: ' + e.message, 'error'); });
+  }
+
+  function copyDoctors() {
+    var fromMonth = activeMonth === 1 ? 12 : activeMonth - 1;
+    var fromYear = activeMonth === 1 ? activeYear - 1 : activeYear;
+    if (!confirm('Перенести список врачей из «' + periodTitle(fromYear, fromMonth) + '» в «'
+      + periodTitle(activeYear, activeMonth) + '»? Суммы не копируются.')) return;
+
+    api('/copy-doctors', {
+      method: 'POST',
+      body: JSON.stringify({
+        fromYear: fromYear, fromMonth: fromMonth,
+        toYear: activeYear, toMonth: activeMonth,
+        pageId: wikiPageId()
+      })
+    }).then(function(res) {
+      showToast('Добавлено врачей: ' + res.added + (res.skipped ? ', уже были: ' + res.skipped : ''), 'success');
+      reload();
+    }).catch(function(e) {
+      showToast('Не удалось перенести: ' + e.message, 'error');
+    });
+  }
+
+  // ── Импорт / очистка ───────────────────────────────────────────────────────
+  function openImport() {
+    document.getElementById('ddr-import-file').click();
+  }
+
+  function importExcel(file) {
+    if (!file) return;
+    if (!confirm('Импортировать данные из Excel? Новые врачи будут добавлены, у существующих дни дополнятся.')) {
+      document.getElementById('ddr-import-file').value = '';
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('pageId', wikiPageId());
+    setStatus('Импорт...', 'loading');
+    uploadApi('/import', formData).then(function(result) {
+      document.getElementById('ddr-import-file').value = '';
+      setStatus('');
+      showToast('Добавлено: ' + result.total + ', дополнено: ' + (result.updated || 0), 'success');
+      if (result.skippedSheets && result.skippedSheets.length) {
+        console.warn('[doctor-day] Пропущены листы (нет месяца/года в названии или не найдена шапка с числами):', result.skippedSheets);
+        alert('Импорт завершён. Не удалось разобрать листы:\n\n• ' + result.skippedSheets.join('\n• ')
+          + '\n\nЛист должен называться как «Июль 2026», а в шапке идти числа месяца.');
+      }
+      reload();
+    }).catch(function(e) {
+      document.getElementById('ddr-import-file').value = '';
+      setStatus('');
+      showToast('Ошибка импорта: ' + e.message, 'error');
+    });
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить все данные отчёта по врачам (все месяцы)?')) return;
+    var answer = prompt('Для подтверждения введите УДАЛИТЬ');
+    if (answer !== 'УДАЛИТЬ') {
+      showToast('Очистка отменена', 'error');
+      return;
+    }
+    setStatus('Очистка...', 'loading');
+    api(withPageId(''), { method: 'DELETE' }).then(function(result) {
+      records = [];
+      renderAll();
+      setStatus('');
+      showToast('Удалено строк: ' + (result.deleted || 0), 'success');
+      reload();
+    }).catch(function(e) {
+      setStatus('');
+      showToast('Ошибка очистки: ' + e.message, 'error');
+    });
+  }
+
+  // ── Экспорт ────────────────────────────────────────────────────────────────
+  function exportExcel() {
+    if (!window.ExcelJS) {
+      showToast('Библиотека ExcelJS не загружена', 'error');
+      return;
+    }
+    showToast('Готовлю Excel...', 'success');
+    api(withPageId('/export-data')).then(function(exportRows) {
+      buildExcel(normalizeRows(exportRows));
+    }).catch(function(e) {
+      showToast('Ошибка экспорта: ' + e.message, 'error');
+    });
+  }
+
+  // Лист на каждый месяц с данными — как в исходном файле.
+  function buildExcel(exportRows) {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Alfa Wiki';
+    wb.created = new Date();
+
+    var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+    var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+
+    var keys = [];
+    exportRows.forEach(function(row) {
+      var key = row.year + '|' + row.month;
+      if (keys.indexOf(key) === -1) keys.push(key);
+    });
+    keys.sort(function(a, b) {
+      var pa = a.split('|').map(Number), pb = b.split('|').map(Number);
+      return pa[0] - pb[0] || pa[1] - pb[1];
+    });
+    if (!keys.length) { showToast('Нет данных для экспорта', 'error'); return; }
+
+    keys.forEach(function(key) {
+      var parts = key.split('|').map(Number);
+      var year = parts[0], month = parts[1];
+      var count = daysInMonth(year, month);
+      var ws = wb.addWorksheet(periodTitle(year, month));
+
+      // Шапка: числа месяца объединены над парой «Сумма | Информация»
+      var row1 = ['ФИО врача'];
+      var row2 = [''];
+      for (var d = 1; d <= count; d++) { row1.push(d, ''); row2.push('Сумма', 'Информация'); }
+      row1.push('Итого');
+      row2.push('');
+      ws.addRow(row1);
+      ws.addRow(row2);
+      ws.mergeCells(1, 1, 2, 1);
+      for (var i = 0; i < count; i++) ws.mergeCells(1, 2 + i * 2, 1, 3 + i * 2);
+      ws.mergeCells(1, 2 + count * 2, 2, 2 + count * 2);
+
+      var dayTotals = new Array(count).fill(0);
+      var grand = 0;
+
+      exportRows.filter(function(r) { return r.year === year && r.month === month; })
+        .forEach(function(row) {
+          var values = [row.doctorName];
+          var total = 0;
+          for (var d = 1; d <= count; d++) {
+            var cell = (row.days || {})[String(d)] || {};
+            var n = parseAmount(cell.sum);
+            if (n !== null) { total += n; dayTotals[d - 1] += n; }
+            values.push(n === null ? (cell.sum || '') : n, cell.info || '');
+          }
+          values.push(total);
+          grand += total;
+          ws.addRow(values);
+        });
+
+      ws.addRow(['Итого'].concat(
+        dayTotals.reduce(function(acc, n) { return acc.concat([n, '']); }, []),
+        [grand]
+      ));
+
+      var colCount = 2 + count * 2;
+      [1, 2].forEach(function(rn) {
+        var hr = ws.getRow(rn);
+        hr.font = { bold: true, color: { argb: 'FF1D4ED8' } };
+        hr.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+        hr.eachCell({ includeEmpty: true }, function(cell) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+        });
+      });
+      var lastRow = ws.getRow(ws.rowCount);
+      lastRow.font = { bold: true, color: { argb: 'FF1D4ED8' } };
+      lastRow.eachCell({ includeEmpty: true }, function(cell) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+      });
+
+      ws.eachRow({ includeEmpty: true }, function(rowObj) {
+        for (var ci = 1; ci <= colCount; ci++) rowObj.getCell(ci).border = border;
+      });
+
+      ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 2 }];
+      ws.getColumn(1).width = 32;
+      for (var c = 2; c <= colCount - 1; c++) ws.getColumn(c).width = c % 2 === 0 ? 11 : 16;
+      ws.getColumn(colCount).width = 14;
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Отчет_по_врачам_' + today() + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Excel сформирован', 'success');
+    });
+  }
+
+  // Страница встраивается в wiki (тот же window, что и React). Layout слушает
+  // 'spreadsheet-page' и сворачивает сайдбар, освобождая место под таблицу.
+  function collapseSidebar() {
+    try {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+      var rootEl = document.getElementById('doctor-day-app');
+      if (rootEl && window.MutationObserver) {
+        var obs = new MutationObserver(function() {
+          if (!document.body.contains(rootEl)) {
+            window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) { /* вне wiki — игнорируем */ }
+  }
+
+  function init() {
+    collapseSidebar();
+    resolveWikiPageId();
+    renderTabs();
+    reload();
+    api('/whoami').then(function(info) {
+      if (info.isAdmin) {
+        document.getElementById('ddr-btn-import').style.display = '';
+        document.getElementById('ddr-btn-delete-all').style.display = '';
+      }
+    }).catch(function(e) {
+      console.warn('[doctor-day] whoami failed:', e && e.message);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    switchMonth: switchMonth,
+    shiftYear: shiftYear,
+    reload: reload,
+    onSearchChange: onSearchChange,
+    addDoctor: addDoctor,
+    removeRow: removeRow,
+    copyDoctors: copyDoctors,
+    exportExcel: exportExcel,
+    openImport: openImport,
+    importExcel: importExcel,
+    clearAllData: clearAllData
+  };
+})();
+</script>
+</body>
+</html>

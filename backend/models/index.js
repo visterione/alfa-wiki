@@ -2589,6 +2589,28 @@ const CertificateRegistryEntry = sequelize.define('CertificateRegistryEntry', {
   ]
 });
 
+// === DOCTOR DAY REPORT MODEL (Отчёт по врачам за месяц) ===
+// Строка = врач на конкретном месяце (вкладка = год + месяц, как лист Excel).
+// days — суммы и комментарии по числам месяца: { "1": { sum, info }, ... }.
+// Итоги по строке и по столбцу считаются на лету и в БД не хранятся.
+// Порядок строк тоже не хранится — список всегда сортируется по алфавиту ФИО,
+// поэтому добавленный врач сразу встаёт на своё место.
+const DoctorDayReportEntry = sequelize.define('DoctorDayReportEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  year: { type: DataTypes.INTEGER, allowNull: false },
+  month: { type: DataTypes.INTEGER, allowNull: false, comment: 'Месяц 1–12 — вкладка (лист исходного Excel)' },
+  doctorName: { type: DataTypes.TEXT, allowNull: false },
+  days: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'doctor_day_report_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['year', 'month'] },
+    { fields: ['doctorName'] }
+  ]
+});
+
 // === OPERATIONS REPORT MODEL ===
 const OperationsReportEntry = sequelize.define('OperationsReportEntry', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3122,6 +3144,7 @@ module.exports = {
   // Ambulance reports module
   AmbulanceReportEntry,
   CertificateRegistryEntry,
+  DoctorDayReportEntry,
   // Partner services cache
   PartnerServiceCache,
   // Nomenclature 804н reference
