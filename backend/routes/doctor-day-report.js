@@ -106,7 +106,15 @@ function rowTotal(days) {
 // Единый порядок строк — по алфавиту ФИО. Порядковый номер не храним: новый врач
 // попадает на своё место сам, без перенумерации остальных строк.
 // btrim+lower — чтобы «иванов» и « Иванов» стояли рядом, а не в разных концах списка.
-const NAME_ORDER = [sequelize.fn('lower', sequelize.fn('btrim', sequelize.col('doctorName'))), 'ASC'];
+// Названия, начинающиеся с цифры («314 кабинет»), уходят в конец списка — после алфавита.
+// COLLATE "C" обязателен: коллация БД (en_US.UTF-8) кириллицу сортирует неверно —
+// «Перевязочный» оказывается впереди «Арабян ЖМ». В байтовом порядке кириллица
+// после lower() идёт ровно по алфавиту, «ё» приводим к «е» отдельно.
+const NAME_SORT_KEY = `lower(translate(btrim("DoctorDayReportEntry"."doctorName"), 'Ёё', 'Ее')) COLLATE "C"`;
+const NAME_ORDER = [
+  [sequelize.literal(`CASE WHEN btrim("DoctorDayReportEntry"."doctorName") ~ '^[0-9]' THEN 1 ELSE 0 END`), 'ASC'],
+  [sequelize.literal(NAME_SORT_KEY), 'ASC']
+];
 
 // Короткое описание изменений по дням для «Журнала изменений»
 function daysChanges(oldDays, newDays) {
@@ -305,7 +313,7 @@ router.get('/', authenticate, async (req, res) => {
     const search = cleanText(req.query.search);
     if (search) where.doctorName = { [Op.iLike]: `%${search}%` };
 
-    const rows = await DoctorDayReportEntry.findAll({ where, order: [NAME_ORDER] });
+    const rows = await DoctorDayReportEntry.findAll({ where, order: NAME_ORDER });
 
     res.json({ rows, year, month, days: daysInMonth(year, month), total: rows.length });
   } catch (err) {
@@ -341,7 +349,7 @@ router.get('/whoami', authenticate, (req, res) => {
 router.get('/export-data', authenticate, async (req, res) => {
   try {
     const rows = await DoctorDayReportEntry.findAll({
-      order: [['year', 'ASC'], ['month', 'ASC'], NAME_ORDER]
+      order: [['year', 'ASC'], ['month', 'ASC'], ...NAME_ORDER]
     });
     await logDoctorDayHistory(req, {
       event: 'export',
@@ -452,7 +460,7 @@ router.post('/copy-doctors', authenticate, async (req, res) => {
 
     const source = await DoctorDayReportEntry.findAll({
       where: { year: fromYear, month: fromMonth },
-      order: [NAME_ORDER]
+      order: NAME_ORDER
     });
     if (!source.length) return res.status(404).json({ error: 'В выбранном месяце нет врачей' });
 

@@ -126,7 +126,7 @@ button, input, textarea, select { font-family: inherit; }
 /* Первый столбец (ФИО) закреплён слева, «Итого» и «Действия» — справа */
 .ddr-col-doctor { position: sticky; left: 0; z-index: 3; min-width: 210px; max-width: 210px; }
 .ddr-table th.ddr-col-doctor { z-index: 5; }
-.ddr-col-total { position: sticky; right: 38px; z-index: 3; min-width: 92px; text-align: right; }
+.ddr-col-total { position: sticky; right: 38px; z-index: 3; min-width: 92px; text-align: center; }
 .ddr-table th.ddr-col-total { z-index: 5; }
 .ddr-col-actions { position: sticky; right: 0; z-index: 3; width: 38px; min-width: 38px; text-align: center; }
 .ddr-table th.ddr-col-actions { z-index: 5; }
@@ -140,10 +140,23 @@ button, input, textarea, select { font-family: inherit; }
 .ddr-cell-input.saving { background: #fef9c3; }
 .ddr-cell-input.saved { background: #dcfce7; transition: background .6s; }
 .ddr-cell-input.failed { background: #fee2e2; }
-.ddr-sum { text-align: right; min-width: 74px; }
+/* ФИО и «Инфо» — textarea: длинный текст переносится на новую строку,
+   высота подгоняется под содержимое (autoGrow), а не обрезается по краю ячейки */
+textarea.ddr-cell-input {
+  display: block; resize: none; overflow: hidden; line-height: 1.35;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.ddr-sum { text-align: center; min-width: 74px; }
+.ddr-table tbody td.ddr-sum, .ddr-table tfoot td.ddr-sum { text-align: center; }
 .ddr-info { min-width: 96px; }
 .ddr-doctor-input { font-weight: 600; font-size: 12px; }
-.ddr-total-cell { padding: 4px 7px; text-align: right; font-weight: 700; color: var(--ddr-primary); background: #f8fafc; }
+.ddr-total-cell { padding: 4px 7px; text-align: center; font-weight: 700; color: var(--ddr-primary); background: #f8fafc; }
+/* Селекторы с тегом обязательны: во встроенной в wiki странице действует
+   глобальное правило .page-content td { text-align: left }, и оно специфичнее,
+   чем один класс. Без этого «Итого» прижимается влево. */
+.ddr-table thead th.ddr-col-total,
+.ddr-table tbody td.ddr-col-total,
+.ddr-table tfoot td.ddr-col-total { text-align: center; }
 .ddr-table tbody tr:hover td { background: #f8fafc; }
 .ddr-table tbody tr:hover td.ddr-total-cell { background: #eff6ff; }
 .ddr-table tfoot td, .ddr-table tfoot th {
@@ -153,7 +166,8 @@ button, input, textarea, select { font-family: inherit; }
 .ddr-table tfoot th.ddr-col-doctor { z-index: 6; text-align: left; }
 .ddr-table tfoot td.ddr-col-total, .ddr-table tfoot td.ddr-col-actions { z-index: 6; }
 .ddr-grand { background: #dbeafe !important; }
-.ddr-empty { text-align: center; color: var(--ddr-muted); padding: 28px 12px !important; background: #fff; }
+.ddr-empty, .ddr-table tbody td.ddr-empty { text-align: center; color: var(--ddr-muted); padding: 28px 12px !important; background: #fff; }
+.ddr-table thead th.ddr-col-actions, .ddr-table tbody td.ddr-col-actions { text-align: center; }
 .ddr-footer {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 8px 13px; border-top: 1px solid var(--ddr-border); background: #f8fafc; flex-wrap: wrap;
@@ -434,9 +448,9 @@ window.doctorDayApp = (function() {
 
     return records.map(function(row, rowIndex) {
       var cells = '<td class="ddr-col-doctor">'
-        + '<input class="ddr-cell-input ddr-doctor-input" type="text" value="' + escapeHtml(row.doctorName) + '"'
+        + '<textarea class="ddr-cell-input ddr-doctor-input" rows="1"'
         + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-kind="doctor"'
-        + ' title="' + escapeHtml(row.doctorName) + '"></td>';
+        + ' title="' + escapeHtml(row.doctorName) + '">' + escapeHtml(row.doctorName) + '</textarea></td>';
 
       for (var d = 1; d <= count; d++) {
         var cell = (row.days || {})[String(d)] || {};
@@ -445,8 +459,9 @@ window.doctorDayApp = (function() {
           + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="sum"'
           + ' inputmode="decimal"></td>'
           + '<td class="ddr-info">'
-          + '<input class="ddr-cell-input ddr-info" type="text" value="' + escapeHtml(cell.info || '') + '"'
-          + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="info"></td>';
+          + '<textarea class="ddr-cell-input ddr-info" rows="1"'
+          + ' data-id="' + row.id + '" data-row="' + rowIndex + '" data-day="' + d + '" data-kind="info">'
+          + escapeHtml(cell.info || '') + '</textarea></td>';
       }
 
       cells += '<td class="ddr-col-total ddr-total-cell" data-total-for="' + row.id + '">'
@@ -511,6 +526,7 @@ window.doctorDayApp = (function() {
     document.getElementById('ddr-table-body').innerHTML = buildBody();
     document.getElementById('ddr-table-foot').innerHTML = records.length ? buildFoot() : '';
     attachCellHandlers();
+    autoGrowAll();
     recalcTotals();
   }
 
@@ -530,7 +546,7 @@ window.doctorDayApp = (function() {
   function collectDays(id) {
     var days = {};
     Array.prototype.forEach.call(
-      document.querySelectorAll('#ddr-table-body input[data-id="' + id + '"][data-day]'),
+      document.querySelectorAll('#ddr-table-body .ddr-cell-input[data-id="' + id + '"][data-day]'),
       function(input) {
         var day = input.getAttribute('data-day');
         var kind = input.getAttribute('data-kind');
@@ -584,10 +600,22 @@ window.doctorDayApp = (function() {
     var day = input.getAttribute('data-day');
     var kind = input.getAttribute('data-kind');
     var selector = day
-      ? '#ddr-table-body input[data-row="' + (rowIndex + delta) + '"][data-day="' + day + '"][data-kind="' + kind + '"]'
-      : '#ddr-table-body input[data-row="' + (rowIndex + delta) + '"][data-kind="doctor"]';
+      ? '#ddr-table-body .ddr-cell-input[data-row="' + (rowIndex + delta) + '"][data-day="' + day + '"][data-kind="' + kind + '"]'
+      : '#ddr-table-body .ddr-cell-input[data-row="' + (rowIndex + delta) + '"][data-kind="doctor"]';
     var next = document.querySelector(selector);
     if (next) { next.focus(); next.select(); }
+  }
+
+  // Высота textarea по содержимому — иначе длинный текст скрывался бы за краем ячейки
+  function autoGrow(el) {
+    if (el.tagName !== 'TEXTAREA') return;
+    el.style.height = 'auto';
+    el.style.height = Math.max(el.scrollHeight, 24) + 'px';
+  }
+
+  function autoGrowAll() {
+    Array.prototype.forEach.call(
+      document.querySelectorAll('#ddr-table-body textarea.ddr-cell-input'), autoGrow);
   }
 
   function attachCellHandlers() {
@@ -595,10 +623,13 @@ window.doctorDayApp = (function() {
       document.querySelectorAll('#ddr-table-body .ddr-cell-input'),
       function(input) {
         input.addEventListener('input', function() {
+          autoGrow(this);
           if (this.getAttribute('data-kind') === 'sum') recalcTotals();
         });
         input.addEventListener('change', function() { saveRow(this); });
         input.addEventListener('keydown', function(e) {
+          // Enter — переход к следующему врачу, Shift+Enter — перенос строки внутри ячейки
+          if (e.key === 'Enter' && e.shiftKey && this.tagName === 'TEXTAREA') return;
           if (e.key === 'Enter') { e.preventDefault(); this.blur(); moveFocus(this, 1); }
           else if (e.key === 'ArrowDown' && e.ctrlKey) { e.preventDefault(); moveFocus(this, 1); }
           else if (e.key === 'ArrowUp' && e.ctrlKey) { e.preventDefault(); moveFocus(this, -1); }
