@@ -4,6 +4,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const path = require('path');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { Server } = require('socket.io');
 require('dotenv').config();
 
@@ -76,7 +78,29 @@ const discountReportsRoutes      = require('./routes/discount-reports');
 const releaseNotesRoutes         = require('./routes/release-notes');
 
 const app = express();
-const server = http.createServer(app);
+
+// --- HTTPS / TLS ---------------------------------------------------------
+// Если заданы пути к сертификату и ключу и файлы существуют — поднимаем HTTPS,
+// иначе (например, локальная разработка без сертификатов) — обычный HTTP.
+const SSL_KEY_PATH  = process.env.SSL_KEY_PATH  || path.join(__dirname, '..', 'certs', 'certificate.key');
+const SSL_CERT_PATH = process.env.SSL_CERT_PATH || path.join(__dirname, '..', 'certs', 'certificate.crt');
+const SSL_CA_PATH   = process.env.SSL_CA_PATH   || path.join(__dirname, '..', 'certs', 'certificate_ca.crt');
+
+let server;
+if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+  const httpsOptions = {
+    key: fs.readFileSync(SSL_KEY_PATH),
+    cert: fs.readFileSync(SSL_CERT_PATH),
+  };
+  if (fs.existsSync(SSL_CA_PATH)) {
+    httpsOptions.ca = fs.readFileSync(SSL_CA_PATH);
+  }
+  server = https.createServer(httpsOptions, app);
+  console.log('🔒 HTTPS enabled (TLS termination in Node)');
+} else {
+  server = http.createServer(app);
+  console.log('⚠️  HTTPS certificates not found — starting in plain HTTP mode');
+}
 
 // Initialize Socket.IO with CORS
 const io = new Server(server, {
