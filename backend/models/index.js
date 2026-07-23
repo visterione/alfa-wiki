@@ -2675,6 +2675,22 @@ const SurgeryReportEntry = sequelize.define('SurgeryReportEntry', {
   ]
 });
 
+// === DISCOUNT REPORT MODEL (скидки 100%) ===
+const DiscountReportEntry = sequelize.define('DiscountReportEntry', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  entryDate: { type: DataTypes.DATEONLY, allowNull: true },
+  searchText: { type: DataTypes.TEXT, allowNull: true },
+  data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'discount_report_entries',
+  timestamps: true,
+  indexes: [
+    { fields: ['entryDate'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === PARTNER SERVICE CACHE MODEL ===
 const PartnerServiceCache = sequelize.define('PartnerServiceCache', {
   id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
@@ -3199,6 +3215,8 @@ module.exports = {
   TherapyReportEntry,
   // Surgery reports module
   SurgeryReportEntry,
+  // Discount reports module (скидки 100%)
+  DiscountReportEntry,
   // Release notes module (Центр обновлений)
   ReleaseNote,
   ReleaseNoteRead,

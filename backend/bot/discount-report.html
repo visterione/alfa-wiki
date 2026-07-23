@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт по скидкам 100%</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --disc-primary: #2563eb;
+  --disc-primary-hover: #1d4ed8;
+  --disc-bg: #f8fafc;
+  --disc-card: #fff;
+  --disc-border: #e5e7eb;
+  --disc-border-dark: #cbd5e1;
+  --disc-text: #111827;
+  --disc-muted: #64748b;
+  --disc-success: #16a34a;
+  --disc-danger: #dc2626;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--disc-bg);
+  color: var(--disc-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+}
+button, input, textarea, select { font-family: inherit; }
+#discount-app { max-width: 1480px; margin: 0 auto; padding: 10px 14px 14px; }
+.disc-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; margin-bottom: 10px; border-bottom: 1px solid var(--disc-border);
+  padding-bottom: 8px; flex-wrap: wrap;
+}
+.disc-topbar-title { font-size: 15px; font-weight: 700; color: var(--disc-primary); }
+.disc-actions { display: flex; gap: 5px; flex-shrink: 0; }
+.disc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 34px; padding: 7px 12px; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s, color .15s;
+  white-space: nowrap;
+}
+.disc-btn-primary { background: var(--disc-primary); color: #fff; }
+.disc-btn-primary:hover { background: var(--disc-primary-hover); }
+.disc-btn-secondary { background: #fff; color: #334155; border-color: var(--disc-border-dark); }
+.disc-btn-secondary:hover { background: #f1f5f9; }
+.disc-btn-danger { background: #fee2e2; color: var(--disc-danger); }
+.disc-btn-danger:hover { background: #fecaca; }
+.disc-btn-success { background: var(--disc-success); color: #fff; }
+.disc-btn-success:hover { background: #15803d; }
+.disc-btn-icon { width: 34px; min-height: 34px; padding: 0; }
+.disc-btn svg { width: 16px; height: 16px; }
+.disc-tabbar {
+  display: flex; align-items: flex-end; gap: 6px; margin-bottom: 10px;
+  border-bottom: 1px solid var(--disc-border);
+}
+.disc-year { display: flex; align-items: center; gap: 2px; padding-bottom: 6px; flex-shrink: 0; }
+.disc-year-value { font-weight: 700; font-size: 13px; color: var(--disc-primary); min-width: 42px; text-align: center; }
+.disc-year-btn {
+  border: 1px solid var(--disc-border-dark); background: #fff; color: #334155;
+  width: 24px; height: 24px; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.disc-year-btn:hover { background: #f1f5f9; }
+.disc-tabs { display: flex; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+.disc-tab {
+  border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--disc-muted);
+  padding: 10px 12px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap;
+}
+.disc-tab:hover { background: #f1f5f9; color: var(--disc-text); }
+.disc-tab.active { color: var(--disc-primary); border-bottom-color: var(--disc-primary); background: #eff6ff; }
+.disc-tab.has-data::after {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 5px;
+  border-radius: 50%; background: var(--disc-success); vertical-align: middle;
+}
+.disc-layout { display: grid; grid-template-columns: 1fr; gap: 12px; align-items: start; }
+.disc-panel {
+  background: var(--disc-card); border: 1px solid var(--disc-border); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+}
+.disc-panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--disc-border);
+  background: linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%);
+  border-left: 3px solid var(--disc-primary);
+}
+.disc-panel-title { margin: 0; font-size: 13px; font-weight: 700; color: var(--disc-primary); letter-spacing: -.01em; }
+.disc-form { padding: 13px; }
+.disc-grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.disc-field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 0; min-width: 0; flex: 1 1 160px; }
+.disc-field.date, .disc-field.amount { flex: 0 1 130px; }
+.disc-field.name { flex: 2 1 220px; }
+.disc-field.source { flex: 1.5 1 200px; }
+.disc-field label {
+  font-size: 10px; font-weight: 700; color: #94a3b8;
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.disc-required { color: var(--disc-danger); }
+.disc-input, .disc-select, .disc-textarea {
+  width: 100%; border: 1px solid var(--disc-border-dark); border-radius: 7px; background: #fff;
+  color: var(--disc-text); padding: 6px 9px; min-height: 32px; outline: none; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
+}
+.disc-textarea { min-height: 58px; resize: vertical; line-height: 1.4; }
+.disc-input:focus, .disc-select:focus, .disc-textarea:focus {
+  border-color: var(--disc-primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.disc-form-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; flex: 0 0 auto;
+}
+.disc-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 13px; border-bottom: 1px solid var(--disc-border); flex-wrap: wrap; }
+.disc-filters { display: flex; gap: 7px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.disc-search { min-width: 130px; flex: 1; }
+.disc-table-wrap { overflow: auto; max-height: calc(100vh - 260px); min-height: 120px; }
+.disc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.disc-table th {
+  position: sticky; top: 0; z-index: 1; background: #f8fafc; color: #334155; text-align: center;
+  padding: 6px 8px; border-bottom: 1px solid var(--disc-border); font-weight: 700; white-space: nowrap;
+}
+.disc-table td { padding: 5px 8px; border-bottom: 1px solid var(--disc-border); vertical-align: top; }
+.disc-table tr:hover td { background: #f8fafc; }
+.disc-table .center { text-align: center; }
+.disc-table .right { text-align: right; }
+.disc-actions-cell { display: flex; gap: 5px; justify-content: center; }
+.disc-table th.col-actions,
+.disc-table td.col-actions { position: sticky; right: 0; box-shadow: -2px 0 5px rgba(0,0,0,.07); }
+.disc-table th.col-actions { z-index: 3; }
+.disc-table td.col-actions { background: #fff; z-index: 2; }
+.disc-table tr:hover td.col-actions { background: #f8fafc; }
+/* Строка-разделитель между датами: пустая серая полоса, чтобы записи одного дня читались одним куском */
+.disc-table tr.disc-sep td { padding: 4px 7px; height: 23px; background: #e2e8f0; border-bottom: 1px solid var(--disc-border-dark); }
+.disc-table tr.disc-sep:hover td { background: #e2e8f0; }
+.disc-empty { text-align: center; color: var(--disc-muted); padding: 28px 12px !important; }
+.disc-status { display: inline-flex; align-items: center; gap: 5px; color: var(--disc-muted); font-size: 12px; }
+.disc-status.error { color: var(--disc-danger); }
+.disc-status.loading { color: var(--disc-primary); }
+.disc-pagination {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 13px; border-top: 1px solid var(--disc-border); background: #f8fafc; flex-wrap: wrap;
+}
+.disc-pagination-controls { display: flex; align-items: center; gap: 6px; }
+.disc-page-size { width: 80px; }
+.disc-toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 13px;
+  border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  font-size: 13px; font-weight: 600;
+}
+.disc-toast.success { background: var(--disc-success); }
+.disc-toast.error { background: var(--disc-danger); }
+@media (max-width: 640px) {
+  #discount-app { padding: 8px 10px 12px; }
+  .disc-actions { justify-content: flex-start; width: 100%; }
+  .disc-search { min-width: 100%; }
+  .disc-table-wrap { max-height: none; }
+  .disc-form { padding: 11px; }
+}
+</style>
+</head>
+<body>
+<div id="discount-app">
+  <div class="disc-topbar">
+    <span class="disc-topbar-title">Отчёт по скидкам 100%</span>
+    <div class="disc-actions">
+      <button class="disc-btn disc-btn-secondary disc-btn-icon" onclick="discApp.reload()" title="Обновить" aria-label="Обновить">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12a8 8 0 10-2.34 5.66M20 12v6h-6"/></svg>
+      </button>
+      <button id="disc-btn-import" class="disc-btn disc-btn-secondary disc-btn-icon" onclick="discApp.openImport()" title="Импорт Excel / ODS" aria-label="Импорт Excel / ODS" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button class="disc-btn disc-btn-success disc-btn-icon" onclick="discApp.exportExcel()" title="Скачать Excel" aria-label="Скачать Excel">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v12m0 0l4-4m-4 4l-4-4M4 17v3h16v-3"/></svg>
+      </button>
+      <button id="disc-btn-delete-all" class="disc-btn disc-btn-danger disc-btn-icon" onclick="discApp.clearAllData()" title="Удалить все данные" aria-label="Удалить все данные" style="display:none">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7h16M10 11v6m4-6v6M6 7l1 14h10l1-14M9 7V4h6v3"/></svg>
+      </button>
+      <input type="file" id="disc-import-file" accept=".xlsx,.xls,.ods" style="display:none" onchange="discApp.importExcel(this.files[0])">
+    </div>
+  </div>
+
+  <div class="disc-tabbar">
+    <div class="disc-year">
+      <button type="button" class="disc-year-btn" onclick="discApp.shiftYear(-1)" title="Предыдущий год">‹</button>
+      <span class="disc-year-value" id="disc-year-value"></span>
+      <button type="button" class="disc-year-btn" onclick="discApp.shiftYear(1)" title="Следующий год">›</button>
+    </div>
+    <div class="disc-tabs" id="disc-tabs"></div>
+  </div>
+
+  <div class="disc-layout">
+    <section class="disc-panel">
+      <div class="disc-panel-head">
+        <h2 class="disc-panel-title" id="disc-form-title">Новая запись</h2>
+        <span class="disc-status" id="disc-storage-status"></span>
+      </div>
+      <form class="disc-form" id="disc-form" onsubmit="discApp.save(event)">
+        <div class="disc-grid">
+          <div class="disc-field date">
+            <label for="disc-reportDate">Дата <span class="disc-required">*</span></label>
+            <input class="disc-input" id="disc-reportDate" name="reportDate" type="text" data-mask="date" placeholder="ДД.ММ.ГГГГ" maxlength="10" autocomplete="off" required>
+          </div>
+          <div class="disc-field name">
+            <label for="disc-fullName">ФИО <span class="disc-required">*</span></label>
+            <input class="disc-input" id="disc-fullName" name="fullName" type="text" required
+                   placeholder="Фамилия Имя Отчество" autocomplete="off">
+          </div>
+          <div class="disc-field source">
+            <label for="disc-discountSource">От кого скидка 100%</label>
+            <input class="disc-input" id="disc-discountSource" name="discountSource" type="text"
+                   placeholder="Напр. м/о сотрудник, от ДВ, персональная"
+                   list="disc-source-names" autocomplete="off">
+            <datalist id="disc-source-names"></datalist>
+          </div>
+          <div class="disc-field amount">
+            <label for="disc-amount">Сумма</label>
+            <input class="disc-input" id="disc-amount" name="amount" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div class="disc-form-actions">
+            <button class="disc-btn disc-btn-primary" type="submit" id="disc-submit-btn">Добавить</button>
+            <button class="disc-btn disc-btn-secondary" type="button" onclick="discApp.resetForm()">Очистить</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="disc-panel">
+      <div class="disc-toolbar">
+        <div class="disc-filters">
+          <input class="disc-input disc-search" id="disc-search" placeholder="Поиск по таблице" oninput="discApp.onSearchChange()">
+        </div>
+        <button class="disc-btn disc-btn-secondary" onclick="discApp.clearFilters()" type="button">Сбросить</button>
+      </div>
+      <div class="disc-table-wrap">
+        <table class="disc-table">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>ФИО</th>
+              <th>От кого скидка 100%</th>
+              <th>Сумма</th>
+              <th class="col-actions">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="disc-table-body"></tbody>
+        </table>
+      </div>
+      <div class="disc-pagination">
+        <div class="disc-status" id="disc-page-info">0 записей</div>
+        <div class="disc-pagination-controls">
+          <button class="disc-btn disc-btn-secondary disc-btn-icon" type="button" onclick="discApp.prevPage()" title="Назад">‹</button>
+          <select class="disc-select disc-page-size" id="disc-page-size" onchange="discApp.changePageSize(this.value)">
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+          <button class="disc-btn disc-btn-secondary disc-btn-icon" type="button" onclick="discApp.nextPage()" title="Вперёд">›</button>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+window.discApp = (function() {
+  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/discount-reports';
+  var records = [];
+  var editingId = '';
+  var pagination = { page: 1, pageSize: 50, total: 0 };
+  var searchTimer = null;
+
+  // Вкладки по месяцам: activeMonth = 0 — показываем все записи без фильтра по дате
+  var periods = [];
+  var activeYear = new Date().getFullYear();
+  var activeMonth = new Date().getMonth() + 1;
+
+  var FIELDS = [
+    { name: 'reportDate',     label: 'Дата' },
+    { name: 'fullName',       label: 'ФИО' },
+    { name: 'discountSource', label: 'От кого скидка 100%' },
+    { name: 'amount',         label: 'Сумма' }
+  ];
+
+  function getToken() {
+    return localStorage.getItem('token') || sessionStorage.getItem('token') || '';
+  }
+
+  function api(path, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 12000);
+    return fetch(API_URL + path, {
+      method: options.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + getToken() },
+      body: options.body,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Сервер не ответил за 12 секунд');
+      throw e;
+    });
+  }
+
+  function uploadApi(path, formData, options) {
+    options = options || {};
+    var controller = window.AbortController ? new AbortController() : null;
+    var timeout = setTimeout(function() { if (controller) controller.abort(); }, options.timeout || 120000);
+    return fetch(API_URL + path, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + getToken() },
+      body: formData,
+      signal: controller ? controller.signal : undefined
+    }).then(function(r) {
+      clearTimeout(timeout);
+      if (!r.ok) return r.text().then(function(txt) {
+        var msg = 'Ошибка ' + r.status;
+        try { var j = JSON.parse(txt); msg = j.error || j.message || msg; } catch(x) { if (txt && txt.length < 200) msg = txt || msg; }
+        throw new Error(msg);
+      });
+      return r.json();
+    }).catch(function(e) {
+      clearTimeout(timeout);
+      if (e.name === 'AbortError') throw new Error('Импорт не ответил за 120 секунд');
+      throw e;
+    });
+  }
+
+  function today() { return new Date().toISOString().slice(0, 10); }
+
+  function todayDMY() {
+    var d = new Date();
+    return String(d.getDate()).padStart(2,'0') + '.' + String(d.getMonth()+1).padStart(2,'0') + '.' + d.getFullYear();
+  }
+
+  function focusNextInput(el) {
+    var inputs = Array.from(document.querySelectorAll('#disc-form input.disc-input, #disc-form select.disc-select, #disc-form textarea.disc-textarea'));
+    var idx = inputs.indexOf(el);
+    if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+  }
+
+  function attachDateMask(el) {
+    el.addEventListener('keydown', function(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (['Tab','Backspace','Delete','ArrowLeft','ArrowRight','Home','End'].includes(e.key)) return;
+      if (!/^\d$/.test(e.key)) e.preventDefault();
+    });
+    el.addEventListener('input', function() {
+      var caretBefore = this.selectionStart;
+      var digitsBefore = (this.value.substring(0, caretBefore).match(/\d/g) || []).length;
+      var digits = this.value.replace(/\D/g,'').substring(0, 8);
+      var f = digits.length > 4
+        ? digits.slice(0,2) + '.' + digits.slice(2,4) + '.' + digits.slice(4)
+        : digits.length > 2 ? digits.slice(0,2) + '.' + digits.slice(2) : digits;
+      this.value = f;
+      var n = 0, c = 0;
+      while (n < f.length && c < digitsBefore) { if (/\d/.test(f[n])) c++; n++; }
+      this.setSelectionRange(n, n);
+      if (digits.length >= 8) focusNextInput(this);
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+  }
+
+  function formatValue(value) {
+    return value == null || value === '' ? '-' : escapeHtml(value);
+  }
+
+  function showToast(message, type) {
+    var el = document.createElement('div');
+    el.className = 'disc-toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(function() { el.remove(); }, 2600);
+  }
+
+  function setStatus(text, type) {
+    var el = document.getElementById('disc-storage-status');
+    el.className = 'disc-status ' + (type || '');
+    el.textContent = text;
+  }
+
+  function collectForm() {
+    return {
+      reportDate:     document.getElementById('disc-reportDate').value.trim(),
+      fullName:       document.getElementById('disc-fullName').value.trim(),
+      discountSource: document.getElementById('disc-discountSource').value.trim(),
+      amount:         document.getElementById('disc-amount').value
+    };
+  }
+
+  function fillForm(data) {
+    document.getElementById('disc-reportDate').value     = data.reportDate     || '';
+    document.getElementById('disc-fullName').value       = data.fullName       || '';
+    document.getElementById('disc-discountSource').value = data.discountSource || '';
+    document.getElementById('disc-amount').value         = data.amount != null ? data.amount : '';
+  }
+
+  // Подсказки для «От кого скидка 100%»: уже встречавшиеся значения, частые сверху.
+  // Нативный datalist — выпадающий список с фильтрацией по вводу, но своё значение вписать можно.
+  function loadSourceNames() {
+    return api('/source-names').then(function(res) {
+      document.getElementById('disc-source-names').innerHTML = (res.names || []).map(function(name) {
+        return '<option value="' + escapeHtml(name) + '"></option>';
+      }).join('');
+    }).catch(function() {});
+  }
+
+  function resetForm() {
+    editingId = '';
+    document.getElementById('disc-form').reset();
+    document.getElementById('disc-reportDate').value = todayDMY();
+    document.getElementById('disc-form-title').textContent = 'Новая запись';
+    document.getElementById('disc-submit-btn').textContent = 'Добавить';
+  }
+
+  // ── Вкладки по месяцам ──────────────────────────────────────────────────────
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function monthRange(year, month) {
+    return {
+      from: year + '-' + pad2(month) + '-01',
+      to:   year + '-' + pad2(month) + '-' + pad2(new Date(year, month, 0).getDate())
+    };
+  }
+
+  function hasData(year, month) {
+    return periods.some(function(p) { return Number(p.year) === year && Number(p.month) === month; });
+  }
+
+  function renderTabs() {
+    document.getElementById('disc-year-value').textContent = activeYear;
+    var tabs = '<button type="button" class="disc-tab' + (activeMonth === 0 ? ' active' : '') + '"'
+      + ' onclick="discApp.switchMonth(0)">Все</button>';
+    tabs += MONTH_NAMES.map(function(title, idx) {
+      var month = idx + 1;
+      var cls = 'disc-tab'
+        + (month === activeMonth ? ' active' : '')
+        + (hasData(activeYear, month) ? ' has-data' : '');
+      return '<button type="button" class="' + cls + '" onclick="discApp.switchMonth(' + month + ')">'
+        + escapeHtml(title) + '</button>';
+    }).join('');
+    document.getElementById('disc-tabs').innerHTML = tabs;
+  }
+
+  function loadPeriods() {
+    return api('/periods').then(function(res) {
+      periods = res.periods || [];
+      renderTabs();
+    }).catch(function() {});
+  }
+
+  function switchMonth(month) {
+    activeMonth = Number(month) || 0;
+    pagination.page = 1;
+    renderTabs();
+    reload();
+  }
+
+  function shiftYear(delta) {
+    activeYear += delta;
+    pagination.page = 1;
+    renderTabs();
+    if (activeMonth) reload();
+  }
+
+  function renderTable() {
+    var tbody = document.getElementById('disc-table-body');
+    if (!records.length) {
+      tbody.innerHTML = '<tr><td class="disc-empty" colspan="5">Нет данных</td></tr>';
+      renderPagination();
+      return;
+    }
+    var prevDate = null;
+    tbody.innerHTML = records.map(function(row) {
+      var d = row.data || {};
+      // Дата сменилась — вставляем пустую серую строку, чтобы день отделялся от дня
+      var currDate = d.reportDate || '';
+      var sep = (prevDate !== null && currDate !== prevDate) ? '<tr class="disc-sep"><td colspan="5"></td></tr>' : '';
+      prevDate = currDate;
+      return sep + '<tr>' +
+        '<td>' + formatValue(d.reportDate) + '</td>' +
+        '<td>' + formatValue(d.fullName) + '</td>' +
+        '<td class="center">' + formatValue(d.discountSource) + '</td>' +
+        '<td class="center">' + formatValue(d.amount) + '</td>' +
+        '<td class="center col-actions"><div class="disc-actions-cell">' +
+          '<button class="disc-btn disc-btn-secondary disc-btn-icon" type="button" onclick="discApp.edit(\'' + escapeHtml(row.id) + '\')" title="Редактировать">✎</button>' +
+          '<button class="disc-btn disc-btn-danger disc-btn-icon" type="button" onclick="discApp.remove(\'' + escapeHtml(row.id) + '\')" title="Удалить">×</button>' +
+        '</div></td>' +
+      '</tr>';
+    }).join('');
+    renderPagination();
+  }
+
+  function renderPagination() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    var start = pagination.total ? ((pagination.page - 1) * pagination.pageSize + 1) : 0;
+    var end = Math.min(pagination.page * pagination.pageSize, pagination.total);
+    document.getElementById('disc-page-info').textContent =
+      'Показано ' + start + '-' + end + ' из ' + pagination.total + ' | страница ' + pagination.page + ' из ' + totalPages;
+    document.getElementById('disc-page-size').value = String(pagination.pageSize);
+  }
+
+  function loadFromApi() {
+    var params = new URLSearchParams();
+    var search = document.getElementById('disc-search').value.trim();
+    params.set('page', pagination.page);
+    params.set('limit', pagination.pageSize);
+    if (search) params.set('search', search);
+    if (activeMonth) {
+      var range = monthRange(activeYear, activeMonth);
+      params.set('dateFrom', range.from);
+      params.set('dateTo', range.to);
+    }
+    return api('?' + params.toString()).then(function(res) {
+      records = (res.rows || []).map(function(r) {
+        return { id: r.id, data: r.data || {} };
+      });
+      pagination.total = res.total || 0;
+      pagination.page = res.page || pagination.page;
+      pagination.pageSize = res.limit || pagination.pageSize;
+      renderTable();
+    });
+  }
+
+  function reload() {
+    setStatus('Загрузка...', 'loading');
+    loadPeriods();
+    loadFromApi().then(function() {
+      setStatus('', '');
+    }).catch(function(e) {
+      records = [];
+      pagination.total = 0;
+      renderTable();
+      setStatus('БД недоступна', 'error');
+      showToast('Не удалось загрузить данные: ' + e.message, 'error');
+    });
+  }
+
+  function save(event) {
+    event.preventDefault();
+    var data = collectForm();
+    var payload = { entryType: 'discount', data: data };
+    var request = editingId
+      ? api('/' + editingId, { method: 'PUT', body: JSON.stringify(payload) })
+      : api('', { method: 'POST', body: JSON.stringify(payload) });
+    request.then(function() {
+      showToast('Запись сохранена', 'success');
+      resetForm();
+      loadSourceNames();
+      reload();
+    }).catch(function(e) {
+      showToast('Ошибка сохранения: ' + e.message, 'error');
+    });
+  }
+
+  function edit(id) {
+    var row = records.find(function(r) { return r.id === id; });
+    if (!row) return;
+    editingId = row.id;
+    fillForm(row.data || {});
+    document.getElementById('disc-form-title').textContent = 'Редактировать';
+    document.getElementById('disc-submit-btn').textContent = 'Сохранить изменения';
+    document.querySelector('.disc-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function remove(id) {
+    if (!confirm('Удалить запись?')) return;
+    api('/' + id, { method: 'DELETE' }).then(function() {
+      showToast('Удалено', 'success');
+      reload();
+    }).catch(function(e) { showToast('Ошибка удаления: ' + e.message, 'error'); });
+  }
+
+  function clearFilters() {
+    document.getElementById('disc-search').value = '';
+    pagination.page = 1;
+    reload();
+  }
+
+  function onSearchChange() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function() { pagination.page = 1; reload(); }, 350);
+  }
+
+  function prevPage() {
+    if (pagination.page <= 1) return;
+    pagination.page -= 1;
+    reload();
+  }
+
+  function nextPage() {
+    var totalPages = Math.max(Math.ceil(pagination.total / pagination.pageSize), 1);
+    if (pagination.page >= totalPages) return;
+    pagination.page += 1;
+    reload();
+  }
+
+  function changePageSize(value) {
+    pagination.pageSize = Number(value) || 50;
+    pagination.page = 1;
+    reload();
+  }
+
+  function exportExcel() {
+    if (!window.ExcelJS) { showToast('Библиотека ExcelJS не загружена', 'error'); return; }
+    showToast('Готовлю Excel...', 'success');
+    api('/export-data').then(function(exportRows) {
+      buildExcel(exportRows || []);
+    }).catch(function(e) {
+      showToast('Ошибка экспорта: ' + e.message, 'error');
+    });
+  }
+
+  var MONTH_NAMES = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  function parseMonthKey(dateStr) {
+    var m = String(dateStr || '').match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (m) return m[3] + '-' + m[2].padStart(2,'0');
+    m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return m[1] + '-' + m[2];
+    return 'unknown';
+  }
+
+  function monthKeyToLabel(key) {
+    var parts = key.split('-');
+    if (parts.length === 2) {
+      var monthIdx = parseInt(parts[1], 10) - 1;
+      var year = parts[0];
+      if (monthIdx >= 0 && monthIdx < 12) return MONTH_NAMES[monthIdx] + ' ' + year;
+    }
+    return key;
+  }
+
+  function buildExcel(exportRows) {
+    var wb = new ExcelJS.Workbook();
+    wb.creator = 'Alfa Wiki';
+    wb.created = new Date();
+
+    var byMonth = {};
+    var monthOrder = [];
+    exportRows.forEach(function(row) {
+      var key = parseMonthKey((row.data || {}).reportDate);
+      if (!byMonth[key]) { byMonth[key] = []; monthOrder.push(key); }
+      byMonth[key].push(row);
+    });
+
+    if (!monthOrder.length) monthOrder.push('unknown');
+
+    monthOrder.forEach(function(key) {
+      var rows = byMonth[key] || [];
+      var label = monthKeyToLabel(key);
+      var ws = wb.addWorksheet(label);
+
+      ws.addRow(FIELDS.map(function(f) { return f.label; }));
+
+      var prevDate = null;
+      rows.forEach(function(row) {
+        var d = row.data || {};
+        var currDate = d.reportDate || '';
+        if (prevDate !== null && currDate !== prevDate) ws.addRow([]);
+        ws.addRow([
+          d.reportDate     || '',
+          d.fullName       || '',
+          d.discountSource || '',
+          d.amount != null && d.amount !== '' && isFinite(Number(d.amount)) ? Number(d.amount) : (d.amount || '')
+        ]);
+        prevDate = currDate;
+      });
+
+      var borderStyle = { style: 'thin', color: { argb: 'FF000000' } };
+      var border = { top: borderStyle, left: borderStyle, bottom: borderStyle, right: borderStyle };
+      ws.eachRow(function(row, rowNumber) {
+        row.eachCell({ includeEmpty: true }, function(cell) { cell.border = border; });
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2563EB' } };
+      ws.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.columns.forEach(function(col) {
+        var max = 12;
+        col.eachCell({ includeEmpty: true }, function(cell) {
+          max = Math.max(max, String(cell.value || '').length + 2);
+        });
+        col.width = Math.min(max, 40);
+      });
+    });
+
+    wb.xlsx.writeBuffer().then(function(buffer) {
+      var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'Отчет_по_скидкам_100_' + today() + '.xlsx';
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Excel сформирован', 'success');
+    });
+  }
+
+  function openImport() {
+    document.getElementById('disc-import-file').click();
+  }
+
+  function importExcel(file) {
+    if (!file) return;
+    if (!confirm('Импортировать данные из Excel / ODS? Записи будут добавлены в БД.')) {
+      document.getElementById('disc-import-file').value = '';
+      return;
+    }
+    var formData = new FormData();
+    formData.append('file', file);
+    setStatus('Импорт...', 'loading');
+    uploadApi('/import', formData).then(function(result) {
+      document.getElementById('disc-import-file').value = '';
+      setStatus('', '');
+      showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0), 'success');
+      loadSourceNames();
+      pagination.page = 1;
+      reload();
+    }).catch(function(e) {
+      document.getElementById('disc-import-file').value = '';
+      setStatus('', '');
+      showToast('Ошибка импорта: ' + e.message, 'error');
+    });
+  }
+
+  function clearAllData() {
+    if (!confirm('Удалить все данные отчёта по скидкам 100%?')) return;
+    var answer = prompt('Для подтверждения введите УДАЛИТЬ');
+    if (answer !== 'УДАЛИТЬ') { showToast('Очистка отменена', 'error'); return; }
+    setStatus('Очистка...', 'loading');
+    api('', { method: 'DELETE' }).then(function(result) {
+      editingId = '';
+      pagination.page = 1;
+      records = [];
+      resetForm();
+      reload();
+      showToast('Удалено записей: ' + (result.deleted || 0), 'success');
+    }).catch(function(e) {
+      setStatus('', '');
+      showToast('Ошибка очистки: ' + e.message, 'error');
+    });
+  }
+
+  function collapseSidebar() {
+    // Страница встраивается в wiki: тот же window, что и React-приложение.
+    // Layout слушает 'spreadsheet-page' и сворачивает сайдбар, давая больше места таблице.
+    try {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+      var rootEl = document.getElementById('discount-app');
+      if (rootEl && window.MutationObserver) {
+        var obs = new MutationObserver(function() {
+          if (!document.body.contains(rootEl)) {
+            window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) { /* вне wiki — игнорируем */ }
+  }
+
+  function init() {
+    collapseSidebar();
+    attachDateMask(document.getElementById('disc-reportDate'));
+    document.getElementById('disc-reportDate').value = todayDMY();
+    renderTabs();
+    loadSourceNames();
+    reload();
+    api('/whoami').then(function(info) {
+      if (info.isAdmin) {
+        document.getElementById('disc-btn-import').style.display = '';
+        document.getElementById('disc-btn-delete-all').style.display = '';
+      }
+    }).catch(function(e) {
+      console.warn('[discount] whoami failed:', e && e.message);
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  return {
+    save: save,
+    edit: edit,
+    remove: remove,
+    reload: reload,
+    resetForm: resetForm,
+    clearFilters: clearFilters,
+    onSearchChange: onSearchChange,
+    switchMonth: switchMonth,
+    shiftYear: shiftYear,
+    exportExcel: exportExcel,
+    openImport: openImport,
+    importExcel: importExcel,
+    clearAllData: clearAllData,
+    prevPage: prevPage,
+    nextPage: nextPage,
+    changePageSize: changePageSize
+  };
+})();
+</script>
+</body>
+</html>

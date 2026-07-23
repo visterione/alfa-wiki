@@ -21,6 +21,7 @@
   --ddr-danger: #dc2626;
   --ddr-amount: #fef9c3;
   --ddr-amount-strong: #fef08a;
+  --ddr-day-sep: #000;
 }
 * { box-sizing: border-box; }
 body {
@@ -123,6 +124,22 @@ button, input, textarea, select { font-family: inherit; }
 .ddr-table thead th.ddr-sum { background: var(--ddr-amount-strong); color: #854d0e; }
 .ddr-table tbody td.ddr-sum { background: var(--ddr-amount); }
 .ddr-table tbody tr:hover td.ddr-sum { background: var(--ddr-amount-strong); }
+/* Жирная граница-разделитель между днями: замыкает каждую пару «Сумма | Инфо».
+   «Инфо» — последний столбец дня, число в шапке (colspan=2) стоит над той же парой. */
+.ddr-table th.ddr-day,
+.ddr-table th.ddr-info,
+.ddr-table td.ddr-info { border-right: 2px solid var(--ddr-day-sep); }
+/* Столбец ФИО отделяем такой же чёрной чертой от первого дня */
+.ddr-table th.ddr-col-doctor,
+.ddr-table td.ddr-col-doctor { border-right: 2px solid var(--ddr-day-sep); }
+/* «Итого» — чёрная черта слева, замыкает дни */
+.ddr-table th.ddr-col-total,
+.ddr-table td.ddr-col-total { border-left: 2px solid var(--ddr-day-sep); }
+/* Нижняя граница шапки: под строкой «Сумма | Инфо» и закреплёнными ячейками */
+.ddr-table thead tr:nth-child(2) th,
+.ddr-table thead th.ddr-col-doctor,
+.ddr-table thead th.ddr-col-total,
+.ddr-table thead th.ddr-col-actions { border-bottom: 2px solid var(--ddr-day-sep); }
 /* Первый столбец (ФИО) закреплён слева, «Итого» и «Действия» — справа */
 .ddr-col-doctor { position: sticky; left: 0; z-index: 3; min-width: 210px; max-width: 210px; }
 .ddr-table th.ddr-col-doctor { z-index: 5; }
@@ -168,10 +185,6 @@ textarea.ddr-cell-input {
 .ddr-grand { background: #dbeafe !important; }
 .ddr-empty, .ddr-table tbody td.ddr-empty { text-align: center; color: var(--ddr-muted); padding: 28px 12px !important; background: #fff; }
 .ddr-table thead th.ddr-col-actions, .ddr-table tbody td.ddr-col-actions { text-align: center; }
-.ddr-footer {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 8px 13px; border-top: 1px solid var(--ddr-border); background: #f8fafc; flex-wrap: wrap;
-}
 .ddr-toast {
   position: fixed; right: 16px; bottom: 16px; z-index: 1000; padding: 10px 13px;
   border-radius: 8px; background: #111827; color: #fff; box-shadow: 0 10px 30px rgba(15,23,42,.2);
@@ -237,11 +250,6 @@ textarea.ddr-cell-input {
         <tbody id="ddr-table-body"></tbody>
         <tfoot id="ddr-table-foot"></tfoot>
       </table>
-    </div>
-
-    <div class="ddr-footer">
-      <div class="ddr-status" id="ddr-summary">0 врачей</div>
-      <div class="ddr-status">Изменения сохраняются автоматически</div>
     </div>
   </section>
 </div>
@@ -423,8 +431,11 @@ window.doctorDayApp = (function() {
     var count = daysInMonth(activeYear, activeMonth);
     var row1 = '<th rowspan="2" class="ddr-col-doctor">ФИО врача</th>';
     var row2 = '';
+    var mm = ('0' + activeMonth).slice(-2);
+    var yy = ('0' + (activeYear % 100)).slice(-2);
     for (var d = 1; d <= count; d++) {
-      row1 += '<th colspan="2" class="ddr-day">' + d + '</th>';
+      var dd = ('0' + d).slice(-2);
+      row1 += '<th colspan="2" class="ddr-day">' + dd + '.' + mm + '.' + yy + '</th>';
       row2 += '<th class="ddr-sum">Сумма</th><th class="ddr-info">Инфо</th>';
     }
     row1 += '<th rowspan="2" class="ddr-col-total">Итого</th>'
@@ -538,9 +549,6 @@ window.doctorDayApp = (function() {
       dayTotalCells[day].textContent = formatAmount(perDay[day] || 0);
     });
     if (grandTotalCell) grandTotalCell.textContent = formatAmount(grand);
-
-    document.getElementById('ddr-summary').textContent =
-      'Врачей: ' + records.length + ' | итого за ' + periodTitle(activeYear, activeMonth) + ': ' + formatAmount(grand);
   }
 
   function renderTable() {

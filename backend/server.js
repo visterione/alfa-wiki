@@ -72,6 +72,7 @@ const operationsReportsRoutes    = require('./routes/operations-reports');
 const gynecologyReportsRoutes    = require('./routes/gynecology-reports');
 const therapyReportsRoutes       = require('./routes/therapy-reports');
 const surgeryReportsRoutes       = require('./routes/surgery-reports');
+const discountReportsRoutes      = require('./routes/discount-reports');
 const releaseNotesRoutes         = require('./routes/release-notes');
 
 const app = express();
@@ -273,6 +274,7 @@ app.use('/api/operations-reports',  operationsReportsRoutes);
 app.use('/api/gynecology-reports',  gynecologyReportsRoutes);
 app.use('/api/therapy-reports',     therapyReportsRoutes);
 app.use('/api/surgery-reports',     surgeryReportsRoutes);
+app.use('/api/discount-reports',    discountReportsRoutes);
 app.use('/api/release-notes',       releaseNotesRoutes);
 
 // Telegram Bot API compatibility layer — must come AFTER body parsing middleware
