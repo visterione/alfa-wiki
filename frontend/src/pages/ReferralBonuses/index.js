@@ -675,6 +675,8 @@ export default function ReferralBonusesPage() {
   const [pdfSelectedDoctorIds, setPdfSelectedDoctorIds] = useState(new Set());
   const [pdfUnmatchedExpanded, setPdfUnmatchedExpanded] = useState(false);
   const [pdfSubdivisionExpanded, setPdfSubdivisionExpanded] = useState(false);
+  // Какие столбцы импортируем. Напр. за первую половину месяца НДФЛ не нужен — его можно отключить.
+  const [pdfEnabledCols, setPdfEnabledCols] = useState({ mainPayment: true, advance: true, vacation: true, ndfl: true });
   // pdfPreviewModal: { matched, settingsMap, unmatchedNames, noSubdivision }
 
   const handleImportPdf = useCallback(async (file) => {
@@ -809,6 +811,7 @@ export default function ReferralBonusesPage() {
     setPdfClinicFilter('');
     setPdfUnmatchedExpanded(false);
     setPdfSubdivisionExpanded(false);
+    setPdfEnabledCols({ mainPayment: true, advance: true, vacation: true, ndfl: true });
     setPdfSelectedDoctorIds(new Set(sortedMatched.map(entry => entry.doctor.id)));
     setPdfPreviewModal({ matched: sortedMatched, settingsMap, unmatchedNames, noSubdivision });
   }, [matchDoctorByName]);
@@ -864,6 +867,18 @@ export default function ReferralBonusesPage() {
       }
     }
 
+    // Отключённые в модалке столбцы не импортируем — обнуляем, чтобы они не записались и не считались конфликтами
+    for (let i = 0; i < resolvedMatched.length; i++) {
+      const e = resolvedMatched[i];
+      resolvedMatched[i] = {
+        ...e,
+        mainPayment: pdfEnabledCols.mainPayment ? e.mainPayment : null,
+        advance:     pdfEnabledCols.advance     ? e.advance     : null,
+        vacation:    pdfEnabledCols.vacation    ? e.vacation    : null,
+        ndfl:        pdfEnabledCols.ndfl        ? e.ndfl        : null,
+      };
+    }
+
     setPdfPreviewModal(null);
 
     const conflicts = resolvedMatched.filter(({ doctor, clinicId: cid, mainPayment, advance, ndfl, vacation }) => {
@@ -884,7 +899,7 @@ export default function ReferralBonusesPage() {
       await applyNdflImport('overwrite', resolvedMatched, settingsMap);
       setPdfImporting(false);
     }
-  }, [pdfPreviewModal, splitEditValues, pdfSelectedDoctorIds, applyNdflImport]);
+  }, [pdfPreviewModal, splitEditValues, pdfSelectedDoctorIds, pdfEnabledCols, applyNdflImport]);
 
   // ── Navigate to step 5 with pre-selected doctor (from step 4 "Create report" button) ──
   const openReportForDoctor = useCallback((misUserId) => {
@@ -1330,6 +1345,15 @@ export default function ReferralBonusesPage() {
         const fmt = (v) => v != null ? v.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) : '—';
         const COL = { border: '1px solid #e5e7eb', padding: '6px 10px', textAlign: 'left' };
         const COLR = { ...COL, textAlign: 'right', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' };
+        // Числовые столбцы можно отключать (напр. НДФЛ за первую половину месяца) — отключённые не импортируются
+        const NUM_FIELDS = [
+          { key: 'mainPayment', label: 'Осн. ЗП' },
+          { key: 'advance',     label: 'Аванс' },
+          { key: 'vacation',    label: 'Отпускные' },
+          { key: 'ndfl',        label: 'НДФЛ' },
+        ];
+        const dimCol = (field) => pdfEnabledCols[field] ? null : { opacity: 0.25 };
+        const toggleCol = (field) => setPdfEnabledCols(prev => ({ ...prev, [field]: !prev[field] }));
 
         const tableRows = [];
         for (let i = 0; i < m.length; i++) {
@@ -1358,10 +1382,10 @@ export default function ReferralBonusesPage() {
                   <td style={{ ...COL, fontWeight: 700, color: '#111827' }}>{doctor.name}</td>
                   <td style={{ ...COL, color: '#374151', fontSize: 11, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={pdfSubdivision || ''}>{pdfSubdivision}</td>
                   <td style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>↕ итого</td>
-                  <td style={COLR}>{fmt(refMainPayment)}</td>
-                  <td style={COLR}>{fmt(refAdvance)}</td>
-                  <td style={COLR}>{fmt(refVacation)}</td>
-                  <td style={COLR}>{fmt(refNdfl)}</td>
+                  <td style={{ ...COLR, ...dimCol('mainPayment') }}>{fmt(refMainPayment)}</td>
+                  <td style={{ ...COLR, ...dimCol('advance') }}>{fmt(refAdvance)}</td>
+                  <td style={{ ...COLR, ...dimCol('vacation') }}>{fmt(refVacation)}</td>
+                  <td style={{ ...COLR, ...dimCol('ndfl') }}>{fmt(refNdfl)}</td>
                 </tr>
               );
             }
@@ -1388,10 +1412,10 @@ export default function ReferralBonusesPage() {
                     ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{cliName}</span>
                     : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>Общий</span>}
                 </td>
-                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('mainPayment', refMainPayment)}</td>
-                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('advance', refAdvance)}</td>
-                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('vacation', refVacation)}</td>
-                <td style={{ ...COL, textAlign: 'right' }}>{mkInput('ndfl', refNdfl)}</td>
+                <td style={{ ...COL, textAlign: 'right', ...dimCol('mainPayment') }}>{mkInput('mainPayment', refMainPayment)}</td>
+                <td style={{ ...COL, textAlign: 'right', ...dimCol('advance') }}>{mkInput('advance', refAdvance)}</td>
+                <td style={{ ...COL, textAlign: 'right', ...dimCol('vacation') }}>{mkInput('vacation', refVacation)}</td>
+                <td style={{ ...COL, textAlign: 'right', ...dimCol('ndfl') }}>{mkInput('ndfl', refNdfl)}</td>
               </tr>
             );
 
@@ -1406,10 +1430,10 @@ export default function ReferralBonusesPage() {
                   <td style={COL} />
                   <td colSpan={2} style={{ ...COL, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>Остаток → пустые поля</td>
                   <td style={COL} />
-                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('mainPayment')}</td>
-                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('advance')}</td>
-                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('vacation')}</td>
-                  <td style={{ ...COLR, fontSize: 11 }}>{remStyle('ndfl')}</td>
+                  <td style={{ ...COLR, fontSize: 11, ...dimCol('mainPayment') }}>{remStyle('mainPayment')}</td>
+                  <td style={{ ...COLR, fontSize: 11, ...dimCol('advance') }}>{remStyle('advance')}</td>
+                  <td style={{ ...COLR, fontSize: 11, ...dimCol('vacation') }}>{remStyle('vacation')}</td>
+                  <td style={{ ...COLR, fontSize: 11, ...dimCol('ndfl') }}>{remStyle('ndfl')}</td>
                 </tr>
               );
             }
@@ -1437,10 +1461,10 @@ export default function ReferralBonusesPage() {
                     ? <span style={{ background: getClinicColor(clinicId), color: '#fff', borderRadius: 4, padding: '2px 7px', fontSize: 11 }}>{clinicName}</span>
                     : <span style={{ color: '#9ca3af', fontStyle: 'italic' }}>{subdivisionResolved ? 'Общий' : '—'}</span>}
                 </td>
-                <td style={COLR}>{mainPayment != null ? fmt(mainPayment) : <span style={{ opacity: 0.35 }}>—</span>}</td>
-                <td style={COLR}>{advance    != null ? fmt(advance)    : <span style={{ opacity: 0.35 }}>—</span>}</td>
-                <td style={COLR}>{vacation   != null ? fmt(vacation)   : <span style={{ opacity: 0.35 }}>—</span>}</td>
-                <td style={COLR}>{ndfl       != null ? fmt(ndfl)       : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={{ ...COLR, ...dimCol('mainPayment') }}>{mainPayment != null ? fmt(mainPayment) : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={{ ...COLR, ...dimCol('advance') }}>{advance    != null ? fmt(advance)    : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={{ ...COLR, ...dimCol('vacation') }}>{vacation   != null ? fmt(vacation)   : <span style={{ opacity: 0.35 }}>—</span>}</td>
+                <td style={{ ...COLR, ...dimCol('ndfl') }}>{ndfl       != null ? fmt(ndfl)       : <span style={{ opacity: 0.35 }}>—</span>}</td>
               </tr>
             );
           }
@@ -1461,6 +1485,9 @@ export default function ReferralBonusesPage() {
                   {splitDoctorCount > 0 && <span style={{ color: '#374151', fontWeight: 600 }}>Разделить вручную: <b>{splitDoctorCount}</b></span>}
                   {pdfPreviewModal.unmatchedNames.length > 0 && <span style={{ color: '#92400e' }}>Не найдено: <b>{pdfPreviewModal.unmatchedNames.length}</b></span>}
                   {pdfPreviewModal.noSubdivision.length > 0 && <span>Без Подразд.: <b>{pdfPreviewModal.noSubdivision.length}</b></span>}
+                  {NUM_FIELDS.some(f => !pdfEnabledCols[f.key]) && (
+                    <span style={{ color: '#92400e' }}>Не импортируются: <b>{NUM_FIELDS.filter(f => !pdfEnabledCols[f.key]).map(f => f.label).join(', ')}</b></span>
+                  )}
                 </div>
 
                 {/* Employees selected for import */}
@@ -1532,13 +1559,20 @@ export default function ReferralBonusesPage() {
                           ['Сотрудник',     200],
                           ['Подразд. (1С)', 170],
                           ['Клиника',        90],
-                          ['Осн. ЗП',       110],
-                          ['Аванс',         110],
-                          ['Отпускные',     110],
-                          ['НДФЛ',          110],
                         ].map(([h, w]) => (
                           <th key={h} style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid #e5e7eb', minWidth: w }}>{h}</th>
                         ))}
+                        {NUM_FIELDS.map(({ key, label }) => {
+                          const on = pdfEnabledCols[key];
+                          return (
+                            <th key={key} style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600, color: on ? '#6b7280' : '#c4c9d1', whiteSpace: 'nowrap', fontSize: 11, border: '1px solid #e5e7eb', minWidth: 110 }}>
+                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', justifyContent: 'flex-end', userSelect: 'none' }} title={on ? 'Не импортировать этот столбец' : 'Импортировать этот столбец'}>
+                                <input type="checkbox" checked={on} onChange={() => toggleCol(key)} style={{ accentColor: 'var(--rb-primary)', cursor: 'pointer' }} />
+                                <span style={{ textDecoration: on ? 'none' : 'line-through' }}>{label}</span>
+                              </label>
+                            </th>
+                          );
+                        })}
                       </tr>
                     </thead>
                     <tbody>

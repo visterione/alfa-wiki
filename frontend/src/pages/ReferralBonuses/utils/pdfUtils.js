@@ -93,7 +93,7 @@ function parseBlock(lines) {
   const advMatch = text.match(
     new RegExp(
       'За первую половину месяца[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)\\w*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
       'i'
     )
   );
@@ -105,7 +105,7 @@ function parseBlock(lines) {
   const salaryMatch = text.match(
     new RegExp(
       'Зарплата за\\s+(?:второй\\s+)?месяц[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)\\w*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
       'i'
     )
   );
@@ -127,7 +127,7 @@ function parseBlock(lines) {
   const vacMatch = text.match(
     new RegExp(
       'Отпуска,\\s+межрасчет[\\s\\S]{0,200}?' +
-      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)\\w*\\s+\\d{4}\\s+(' + RU_NUM + ')',
+      '(?:янв|фев|мар|апр|май|июн|июл|авг|сен|окт|ноя|дек)[а-яё]*\\s+\\d{4}\\s+(' + RU_NUM + ')',
       'i'
     )
   );
@@ -164,6 +164,19 @@ export async function parseSalarySlipPdf(file) {
     }
   }
   if (block && block.length) blocks.push(block);
+
+  // ── ВРЕМЕННЫЙ ОТЛАДОЧНЫЙ ВЫВОД (удалить после диагностики аванса) ──
+  try {
+    blocks.forEach((b, i) => {
+      const relevant = b.filter(l => /полов|аванс|первую|половину/i.test(l));
+      if (relevant.length) {
+        console.log(`[PDF-DEBUG] блок ${i} строки с авансом:`, JSON.stringify(relevant));
+      } else {
+        console.log(`[PDF-DEBUG] блок ${i}: НЕТ строк со словом "половину/аванс"`);
+      }
+    });
+    if (blocks[0]) console.log('[PDF-DEBUG] полный текст первого блока:\n' + blocks[0].join('\n'));
+  } catch (e) { /* noop */ }
 
   return blocks.map(parseBlock).filter(Boolean);
 }

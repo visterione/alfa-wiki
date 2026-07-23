@@ -406,6 +406,59 @@ function MissingBonusBanner({ clinicReports, doctor, canEdit, onSaved }) {
   );
 }
 
+// ─── Missing subdivision (1С) detection ───────────────────────────────────────
+// Подразделение (1С) нужно, чтобы импорт расчётных листков PDF попал в нужную клинику.
+// Пусто → предупреждаем, аналогично непроставленным бонусам.
+function collectMissingSubdivisions(clinicReports) {
+  const seen = new Set();
+  return (clinicReports || [])
+    .filter(cr => {
+      const v = cr.pdfSubdivision;
+      const list = Array.isArray(v) ? v : String(v || '').split(/[;\n]/);
+      return list.map(s => String(s || '').trim()).filter(Boolean).length === 0;
+    })
+    .map(cr => ({ clinic: cr.clinicLabel || '', clinicId: cr.clinicId }))
+    .filter(x => { const k = String(x.clinicId ?? x.clinic); return seen.has(k) ? false : (seen.add(k), true); });
+}
+
+function MissingSubdivisionBanner({ clinicReports }) {
+  const [expanded, setExpanded] = useState(false);
+  const missing = collectMissingSubdivisions(clinicReports);
+  if (!missing.length) return null;
+
+  return (
+    <div style={{ marginBottom: 16, background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 8, overflow: 'hidden' }}>
+      <div
+        onClick={() => setExpanded(e => !e)}
+        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', cursor: 'pointer', userSelect: 'none' }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+          Не указано подразделение (1С) для {missing.length} {missing.length === 1 ? 'клиники' : 'клиник'} — импорт расчётных листков PDF не попадёт в эту клинику
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#92400e" strokeWidth="2" width="14" height="14" style={{ flexShrink: 0, transform: expanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      {expanded && (
+        <div style={{ padding: '2px 14px 12px', borderTop: '1px solid #fde68a' }}>
+          <div style={{ fontSize: 12, color: '#78350f', margin: '8px 0 6px' }}>
+            Задайте «Подразделение (1С)» этим клиникам во вкладке «Исполнители», чтобы импорт расчётных листков распределял суммы автоматически:
+          </div>
+          {missing.map((m, i) => (
+            <div key={i} style={{ fontSize: 12, color: '#92400e', paddingLeft: 12, marginBottom: 2 }}>
+              • {m.clinic || 'Клиника не указана'}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Individual mode ───────────────────────────────────────────────────────────
 function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = false, excelSources = [] }) {
   const [dateFrom, setDateFrom] = useState('');
@@ -744,6 +797,7 @@ function ModeIndividual({ selectedDoctor, doctors, clinics, readOnly, interim = 
         {reportData && (
           <div className="rb-report">
             <MissingBonusBanner clinicReports={reportData.clinicReports} doctor={selectedDoctor} canEdit={!readOnly} onSaved={handleGenerate} />
+            <MissingSubdivisionBanner clinicReports={reportData.clinicReports} />
             {/* Clinic reports */}
             {reportData.clinicReports.map(({ clinicLabel, clinicColor, clinicId, salary }, idx) => {
               const isMulti = reportData.clinicReports.length > 1;
@@ -1265,6 +1319,7 @@ function ModeBulk({ doctors, clinics, bulkSelectedIds, readOnly, interim = false
                   {isOpen && hasClinics && (
                     <div style={{ padding: '16px 16px 16px', borderTop: '1px solid var(--rb-border)' }}>
                       <MissingBonusBanner clinicReports={r.clinicReports} doctor={r.doctor} canEdit={!readOnly} onSaved={() => rerunSingleDoctor(r.doctor)} />
+                      <MissingSubdivisionBanner clinicReports={r.clinicReports} />
                       {r.clinicReports.map((cr, cidx) => {
                         const isAup = String(cr.clinicId) === 'aup';
                         return (

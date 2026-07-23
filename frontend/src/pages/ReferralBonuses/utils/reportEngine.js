@@ -1588,6 +1588,9 @@ export async function buildReport({
       clinicId,
       clinicLabel,
       clinicColor: rbGetClinicColor(clinicId),
+      // Подразделение (1С) для сопоставления при импорте расчётных листков PDF.
+      // Пусто → PDF-импорт не сможет направить данные в эту клинику (предупреждаем в отчёте).
+      pdfSubdivision: clinicSettings.pdfSubdivision || null,
       referralSections,
       executorSections: interim ? [] : executorSections,
       salary,
