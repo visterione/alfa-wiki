@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { getDoctorSpecialty } from './formatters';
 
 // ─── Shared style helpers ──────────────────────────────────────────────────────
 function _makeStyles() {
@@ -13,7 +14,7 @@ function _makeStyles() {
 }
 
 // ─── Internal: write one clinic sheet into a workbook ─────────────────────────
-function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments, totalRemainder) {
+function _writeOneClinicSheet(wb, sheetName, doctorName, doctorSpecialty, clinicLabel, executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, cashPayments, totalRemainder) {
   const ws = wb.addWorksheet(sheetName);
   ws.columns = Array.from({ length: 6 }, () => ({ width: 8 }));
   ws.properties.outlineLevelRow = 4;
@@ -111,6 +112,12 @@ function _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel, executorSe
   titleRow.getCell(1).font = fontTitle;
   ws.mergeCells(`A${titleRow.number}:F${titleRow.number}`);
   autoWidth(titleRow, 1);
+  if (doctorSpecialty) {
+    const specRow = ws.addRow([doctorSpecialty]);
+    specRow.getCell(1).font = { ...fontNormal, color: { argb: 'FF64748B' } };
+    ws.mergeCells(`A${specRow.number}:F${specRow.number}`);
+    autoWidth(specRow, 1);
+  }
   ws.addRow([]);
 
   if (salary) {
@@ -556,7 +563,8 @@ export function buildSingleWorkbook(reportData, cashPayments) {
   if (!clinicReports?.length) return wb;
 
   const { fontTitle, fontBold, fontNormal, fillHeader, allBorders } = _makeStyles();
-  const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Врач');
+  const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Сотрудник');
+  const doctorSpecialty = getDoctorSpecialty(doctor);
 
   const totalRemainder = cashPayments?.length
     ? clinicReports.reduce((s, cr) => {
@@ -570,7 +578,7 @@ export function buildSingleWorkbook(reportData, cashPayments) {
     const { clinicLabel, executorSections, salary } = clinicReports[i];
     const sheetName = (clinicLabel || 'Клиника').substring(0, 31);
     const isLast = i === clinicReports.length - 1;
-    _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, isLast ? cashPayments : undefined, isLast ? totalRemainder : undefined);
+    _writeOneClinicSheet(wb, sheetName, doctorName, doctorSpecialty, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders, isLast ? cashPayments : undefined, isLast ? totalRemainder : undefined);
   }
   return wb;
 }
@@ -603,36 +611,37 @@ export function buildBulkWorkbook(bulkResults) {
   const { fontTitle, fontBold, fontNormal, fillHeader, allBorders } = _makeStyles();
 
   // Summary sheet with company grouping
-  // Columns: Врач, Компания/Клиника, Период, Часы работы, Начислено, Основная ЗП, Аванс, Отпускные, НДФЛ, К доплате
+  // Columns: Сотрудник, Роль/Специальность, Компания/Клиника, Период, Часы работы, Начислено, Основная ЗП, Аванс, Отпускные, НДФЛ, К доплате
   const summaryWs = wb.addWorksheet('Сводка');
   summaryWs.properties.outlineLevelRow = 1;
   summaryWs.properties.outlineProperties = { summaryBelow: false, summaryRight: false };
   summaryWs.columns = [
-    { width: 40 }, { width: 22 }, { width: 18 },
+    { width: 40 }, { width: 28 }, { width: 22 }, { width: 18 },
     { width: 12 }, { width: 18 }, { width: 16 }, { width: 14 },
     { width: 16 }, { width: 14 }, { width: 16 },
   ];
   const hdr = summaryWs.addRow([
-    'Врач', 'Компания / Клиника', 'Период',
+    'Сотрудник', 'Роль / Специальность', 'Компания / Клиника', 'Период',
     'Часы работы', 'Начислено, руб', 'Основная ЗП', 'Аванс',
     'Отпускные', 'НДФЛ', 'К доплате',
   ]);
   hdr.eachCell({ includeEmpty: true }, (cell, c) => {
-    if (c <= 10) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center', wrapText: true }; }
+    if (c <= 11) { cell.font = fontBold; cell.fill = fillHeader; cell.border = allBorders; cell.alignment = { horizontal: 'center', wrapText: true }; }
   });
 
   const _applyNumFmt = (row, bold) => {
     const f = bold ? fontBold : fontNormal;
-    [5, 6, 7, 8, 9, 10].forEach(c => { row.getCell(c).numFmt = '#,##0.00'; row.getCell(c).font = f; });
+    [6, 7, 8, 9, 10, 11].forEach(c => { row.getCell(c).numFmt = '#,##0.00'; row.getCell(c).font = f; });
   };
 
   for (const r of bulkResults) {
+    const doctorSpecialty = getDoctorSpecialty(r.doctor);
     if (r.error || !r.clinicReports?.length) {
-      const eRow = summaryWs.addRow([r.doctor?.name || '—', 'Ошибка: ' + (r.error || 'нет данных'), r.periodLabel || '', '', '', '', '', '', '', '']);
-      eRow.getCell(2).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
+      const eRow = summaryWs.addRow([r.doctor?.name || '—', doctorSpecialty, 'Ошибка: ' + (r.error || 'нет данных'), r.periodLabel || '', '', '', '', '', '', '', '']);
+      eRow.getCell(3).font = { ...fontNormal, color: { argb: 'FFCC0000' } };
       continue;
     }
-    const doctorName = r.doctor?.name || 'Врач';
+    const doctorName = r.doctor?.name || 'Сотрудник';
 
     // Compute per-clinic values and group by company
     const companyMap = new Map();
@@ -682,6 +691,7 @@ export function buildBulkWorkbook(bulkResults) {
       // Company summary row (always visible, outlineLevel 0)
       const coRow = summaryWs.addRow([
         isFirstCompany ? doctorName : '',
+        isFirstCompany ? doctorSpecialty : '',
         companyName,
         r.periodLabel || '',
         compHours || '',
@@ -693,15 +703,16 @@ export function buildBulkWorkbook(bulkResults) {
         compKDoplat,
       ]);
       coRow.eachCell({ includeEmpty: true }, (cell, c) => {
-        if (c <= 10) { cell.font = fontBold; cell.border = allBorders; cell.fill = _COMPANY_FILL; }
+        if (c <= 11) { cell.font = fontBold; cell.border = allBorders; cell.fill = _COMPANY_FILL; }
       });
       _applyNumFmt(coRow, true);
-      coRow.getCell(5).font  = { ...fontBold, color: { argb: compNachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
-      coRow.getCell(10).font = { ...fontBold, color: { argb: compKDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
+      coRow.getCell(6).font  = { ...fontBold, color: { argb: compNachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
+      coRow.getCell(11).font = { ...fontBold, color: { argb: compKDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
 
       // Clinic detail rows (hidden by default, outlineLevel 1 — expandable)
       for (const { cr, hoursWorked, nachleno, mainSalary, advance, vacationPay, ndfl, kDoplat } of items) {
         const detRow = summaryWs.addRow([
+          '',
           '',
           `  ${cr.clinicLabel || '—'}`,
           r.periodLabel || '',
@@ -713,10 +724,10 @@ export function buildBulkWorkbook(bulkResults) {
           ndfl || '',
           kDoplat,
         ]);
-        detRow.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 10) { cell.font = fontNormal; cell.border = allBorders; } });
+        detRow.eachCell({ includeEmpty: true }, (cell, c) => { if (c <= 11) { cell.font = fontNormal; cell.border = allBorders; } });
         _applyNumFmt(detRow, false);
-        detRow.getCell(5).font  = { ...fontNormal, color: { argb: nachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
-        detRow.getCell(10).font = { ...fontNormal, color: { argb: kDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
+        detRow.getCell(6).font  = { ...fontNormal, color: { argb: nachleno >= 0 ? 'FF166534' : 'FFCC0000' } };
+        detRow.getCell(11).font = { ...fontNormal, color: { argb: kDoplat  >= 0 ? 'FF166534' : 'FFCC0000' } };
         detRow.outlineLevel = 1;
         detRow.hidden = true;
       }
@@ -745,7 +756,8 @@ export function buildBulkWorkbook(bulkResults) {
 
   for (const r of bulkResults) {
     if (r.error || !r.clinicReports?.length) continue;
-    const doctorName = r.doctor?.name || 'Врач';
+    const doctorName = r.doctor?.name || 'Сотрудник';
+    const doctorSpecialty = getDoctorSpecialty(r.doctor);
     const parts = doctorName.trim().split(/\s+/);
     const lastName = parts[0] || doctorName;
     const initials = parts.slice(1).map(p => p[0]).filter(Boolean).join('').toUpperCase();
@@ -753,7 +765,7 @@ export function buildBulkWorkbook(bulkResults) {
     for (const { clinicLabel, executorSections, salary } of r.clinicReports) {
       const sheetLabel = `${nameTag} - ${clinicLabel || 'Клиника'}`;
       const sheetName = makeSheetName(sheetLabel);
-      _writeOneClinicSheet(wb, sheetName, doctorName, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders);
+      _writeOneClinicSheet(wb, sheetName, doctorName, doctorSpecialty, clinicLabel || 'Клиника', executorSections, salary, fontTitle, fontBold, fontNormal, fillHeader, allBorders);
     }
   }
 
@@ -775,7 +787,7 @@ export async function exportReport(reportData) {
   if (!clinicReports?.length) return;
 
   const wb = buildSingleWorkbook(reportData);
-  const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Врач');
+  const doctorName = typeof doctor === 'string' ? doctor : (doctor?.name || 'Сотрудник');
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);

@@ -31,6 +31,16 @@ export function getInitials(name) {
   return String(name || '').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
 }
 
+// Специальность сотрудника как в списке врачей: профессии, а если их нет — роли
+export function getDoctorSpecialty(doctor) {
+  if (!doctor || typeof doctor === 'string') return '';
+  const specialty = (doctor.professions || [])
+    .map(p => (typeof p === 'object' ? (p.title || '') : String(p || '')))
+    .filter(Boolean)
+    .join(', ');
+  return specialty || (doctor.roles || []).filter(Boolean).join(', ');
+}
+
 const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
 
 export function histShortLabel(rec) {
