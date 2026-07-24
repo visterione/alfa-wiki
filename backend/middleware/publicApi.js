@@ -194,14 +194,25 @@ function auditLog() {
 // ── Ограничение размера тела ──────────────────────────────────────────────
 
 /**
- * Отсекает большие тела до разбора JSON. Формы весят единицы килобайт.
- * @param {number} maxBytes
+ * Отсекает большие тела до разбора. Обычная форма весит единицы килобайт, но форма
+ * с приложенными документами приходит как multipart и законно больше — для неё
+ * отдельный потолок. Точные лимиты на каждый файл проверяет multer.
+ *
+ * @param {Object} limits
+ * @param {number} limits.json      Потолок для JSON, байт
+ * @param {number} limits.multipart Потолок для multipart/form-data, байт
  */
-function limitBodySize(maxBytes = 100 * 1024) {
+function limitBodySize({ json = 100 * 1024, multipart = 20 * 1024 * 1024 } = {}) {
   return (req, res, next) => {
+    const isMultipart = String(req.headers['content-type'] || '').includes('multipart/form-data');
+    const maxBytes = isMultipart ? multipart : json;
+
     const declared = Number(req.headers['content-length'] || 0);
     if (declared > maxBytes) {
-      return fail(res, 413, 'payload_too_large', `Тело запроса больше ${Math.round(maxBytes / 1024)} КБ`);
+      const limitLabel = maxBytes >= 1024 * 1024
+        ? `${Math.round(maxBytes / 1024 / 1024)} МБ`
+        : `${Math.round(maxBytes / 1024)} КБ`;
+      return fail(res, 413, 'payload_too_large', `Тело запроса больше ${limitLabel}`);
     }
     next();
   };

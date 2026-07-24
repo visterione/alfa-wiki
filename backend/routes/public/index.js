@@ -16,8 +16,9 @@ const formsRoutes = require('./v1/forms');
 
 // Порядок важен: сначала лог и грубые лимиты, потом разбор тела, потом маршруты
 router.use(auditLog());
-router.use(limitBodySize(100 * 1024));
+router.use(limitBodySize({ json: 100 * 1024, multipart: 20 * 1024 * 1024 }));
 router.use(rateLimitByIp(120));
+// multipart (формы с файлами) express.json пропускает — его разбирает multer в маршруте
 router.use(express.json({ limit: '100kb' }));
 
 // Некорректный JSON — понятная ошибка вместо стандартной HTML-страницы Express

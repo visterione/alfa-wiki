@@ -20,6 +20,7 @@ const router = express.Router();
 const { apiKeyAuth, rateLimitByClient } = require('../../../middleware/publicApi');
 const formRegistry = require('../../../services/public/formRegistry');
 const fieldValidator = require('../../../services/public/fieldValidator');
+const fileIntake = require('../../../services/public/fileIntake');
 const submissionService = require('../../../services/public/submissionService');
 
 /**
@@ -46,6 +47,27 @@ function authForForm(req, res, next) {
   return apiKeyAuth(formRegistry.scopeFor(req.params.formType))(req, res, next);
 }
 
+/**
+ * Формы с файлами приходят как multipart/form-data — их разбирает multer.
+ * Форма без файлов идёт обычным JSON, который уже разобран в routes/public/index.js.
+ */
+function parseFiles(req, res, next) {
+  if (!req.form.files?.length) return next();
+
+  fileIntake.uploaderFor(req.form)(req, res, (err) => {
+    if (!err) return next();
+
+    // При отказе multer может успеть записать часть файлов — не оставляем их на диске
+    Object.values(req.files || {}).flat().forEach(fileIntake.removeFile);
+
+    res.locals.errorCode = 'file_rejected';
+    const message = err.code === 'LIMIT_FILE_SIZE'
+      ? `Файл больше ${req.form.limits?.maxFileMb || 5} МБ`
+      : err.message;
+    return res.status(400).json({ ok: false, error: 'file_rejected', message });
+  });
+}
+
 // ── Схема формы ───────────────────────────────────────────────────────────
 // Отдаём разработчику сайта список полей — чтобы не сверяться с документацией руками.
 
@@ -56,25 +78,40 @@ router.get('/:formType/schema', loadForm, authForForm, (req, res) => {
     ok: true,
     formType: form.formType,
     title: form.title,
+    // requiredIf — поле обязательно не всегда, а при условии; описываем это словами,
+    // проверить функцию на стороне сайта всё равно нельзя
     fields: form.fields.map(f => ({
       key: f.key,
       label: f.label,
       type: f.type,
       required: Boolean(f.required),
+      conditional: Boolean(f.requiredIf),
       maxLength: f.max || null,
       values: f.values || null
+    })),
+    files: (form.files || []).map(f => ({
+      key: f.key,
+      label: f.label,
+      required: Boolean(f.required),
+      conditional: Boolean(f.requiredIf),
+      maxCount: f.maxCount || 1,
+      maxSizeMb: f.maxSizeMb || 5,
+      mimeTypes: f.mimeTypes || []
     }))
   });
 });
 
 // ── Приём заявки ──────────────────────────────────────────────────────────
 
-router.post('/:formType', loadForm, authForForm, rateLimitByClient(), async (req, res) => {
+router.post('/:formType', loadForm, authForForm, rateLimitByClient(), parseFiles, async (req, res) => {
   try {
     const form = req.form;
 
-    const result = fieldValidator.validate(req.body || {}, form.fields);
+    const result = fieldValidator.validate(req.body || {}, form.fields, form.validateAll);
     if (!result.ok) {
+      // Заявку не приняли — приложенные к ней файлы на диске не оставляем
+      Object.values(req.files || {}).flat().forEach(fileIntake.removeFile);
+
       res.locals.errorCode = 'validation_failed';
       return res.status(400).json({
         ok: false,
@@ -84,6 +121,22 @@ router.post('/:formType', loadForm, authForForm, rateLimitByClient(), async (req
         // Подсказка на случай опечатки в названии поля
         unknownFields: result.unknownFields.length ? result.unknownFields : undefined
       });
+    }
+
+    // Файлы проверяем после текстовых полей: обязательность файла зависит от них
+    const filesResult = fileIntake.validateFiles(req.files, form, result.value);
+    if (!filesResult.ok) {
+      res.locals.errorCode = 'validation_failed';
+      return res.status(400).json({
+        ok: false,
+        error: 'validation_failed',
+        message: 'Некоторые поля заполнены неверно',
+        fields: filesResult.fields
+      });
+    }
+
+    if (Object.keys(filesResult.attachments || {}).length > 0) {
+      result.value.attachments = filesResult.attachments;
     }
 
     const idempotencyKey = String(req.headers['idempotency-key'] || '').trim().slice(0, 100);

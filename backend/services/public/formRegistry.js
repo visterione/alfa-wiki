@@ -16,9 +16,11 @@
  */
 
 const patientRegistration = require('./forms/patientRegistration');
+const taxDeductionCertificate = require('./forms/taxDeductionCertificate');
 
 const FORMS = [
-  patientRegistration
+  patientRegistration,
+  taxDeductionCertificate
 ];
 
 const byType = new Map(FORMS.map(f => [f.formType, f]));

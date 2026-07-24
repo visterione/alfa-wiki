@@ -76,7 +76,9 @@ async function deliver(submission, io) {
 
   try {
     const text = form.formatMessage(submission.payload, submission);
-    const { messageId } = await sendBotMessage({ botToken, chatId, text, io });
+    // Файлы заявки уходят вложениями к тому же сообщению
+    const attachments = Object.values(submission.payload.attachments || {}).flat();
+    const { messageId } = await sendBotMessage({ botToken, chatId, text, attachments, io });
 
     await submission.update({
       deliveryStatus:   'sent',

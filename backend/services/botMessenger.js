@@ -55,11 +55,12 @@ async function resolveChat(chatIdParam) {
  * @param {string}        params.botToken  Токен бота из bot_tokens
  * @param {string|number} params.chatId    UUID чата или целочисленный ID
  * @param {string}        params.text      Текст сообщения
+ * @param {Array}        [params.attachments] Вложения [{ filename, url, size, mimeType }]
  * @param {Object}       [params.io]       Socket.IO; если не передан — берётся из notificationService
  * @returns {Promise<{ messageId: number, messageUuid: string, chat: Object }>}
  * @throws {BotMessengerError}
  */
-async function sendBotMessage({ botToken, chatId, text, io }) {
+async function sendBotMessage({ botToken, chatId, text, attachments = [], io }) {
   const bot = await BotToken.findOne({ where: { token: botToken, isActive: true } });
   if (!bot) throw new BotMessengerError('invalid_token', 'Unauthorized: invalid api_key');
 
@@ -69,11 +70,17 @@ async function sendBotMessage({ botToken, chatId, text, io }) {
   const membership = await ChatMember.findOne({ where: { chatId: chat.id, userId: bot.userId } });
   if (!membership) throw new BotMessengerError('not_a_member', 'bot is not a member of this chat');
 
+  // Тип сообщения мессенджер определяет по вложениям — так же, как в routes/chat.js
+  const messageType = attachments.length === 0
+    ? 'text'
+    : (attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file');
+
   const message = await Message.create({
     chatId:   chat.id,
     senderId: bot.userId,
     content:  text,
-    type:     'text'
+    type:     messageType,
+    attachments
   });
 
   // message_id выдаёт BIGSERIAL таблицы bot_updates — как update_id в Telegram Bot API

@@ -16,8 +16,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
  * @typedef {Object} FieldSpec
  * @property {string}  key       Ключ в JSON запроса
  * @property {string}  label     Человеческое название (для сообщений об ошибках и чата)
- * @property {string}  type      string | enum | date | phone | email | boolean
+ * @property {string}  type      string | enum | date | phone | email | boolean | inn
  * @property {boolean} [required]
+ * @property {Function} [requiredIf] (value) => boolean — поле обязательно только при этом
+ *   условии. Когда условие не выполнено, поле считается неприменимым и в payload не
+ *   попадает, даже если его прислали. Так работает блок, скрытый галочкой на форме.
  * @property {number}  [max]     Максимальная длина для string
  * @property {Object}  [values]  Для enum: { ключ: 'Человеческая подпись' }
  * @property {boolean} [mustBeTrue] Для boolean: значение обязано быть true
@@ -27,18 +30,23 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i;
 /**
  * @param {Object} body Тело запроса
  * @param {FieldSpec[]} spec
+ * @param {Function} [validateAll] (value) => { ключ: 'ошибка' } — проверки, которым
+ *   нужны сразу несколько полей (например, окончание периода не раньше начала)
  * @returns {{ ok: boolean, value?: Object, fields?: Object, unknownFields?: string[] }}
  */
-function validate(body, spec) {
+function validate(body, spec, validateAll) {
   const value = {};
   const fields = {};
+  const missing = [];
 
+  // Проход 1: разбираем всё, что прислали. Условия обязательности проверяем позже —
+  // им нужны уже разобранные значения (галочка «пациент и налогоплательщик — одно лицо»).
   for (const field of spec) {
     const raw = body[field.key];
     const isEmpty = raw === undefined || raw === null || String(raw).trim() === '';
 
     if (isEmpty) {
-      if (field.required) fields[field.key] = `«${field.label}» — обязательное поле`;
+      missing.push(field);
       continue;
     }
 
@@ -48,6 +56,24 @@ function validate(body, spec) {
     } else {
       value[field.key] = result.value;
     }
+  }
+
+  // Проход 2: неприменимые поля выбрасываем, недостающие обязательные — в ошибки
+  for (const field of spec) {
+    if (field.requiredIf && !field.requiredIf(value)) {
+      delete value[field.key];
+      delete fields[field.key];
+      continue;
+    }
+    if (!missing.includes(field)) continue;
+    if (field.required || (field.requiredIf && field.requiredIf(value))) {
+      fields[field.key] = `«${field.label}» — обязательное поле`;
+    }
+  }
+
+  // Проход 3: проверки по нескольким полям — только если сами поля уже корректны
+  if (validateAll && Object.keys(fields).length === 0) {
+    Object.assign(fields, validateAll(value) || {});
   }
 
   const knownKeys = new Set(spec.map(f => f.key));
@@ -121,6 +147,17 @@ function normalize(raw, field) {
       return { value: str };
     }
 
+    case 'inn': {
+      const digits = String(raw).replace(/\D/g, '');
+      if (![10, 12].includes(digits.length)) {
+        return { error: `«${field.label}» — ИНН состоит из 12 цифр` };
+      }
+      if (!isValidInn(digits)) {
+        return { error: `«${field.label}» — контрольная сумма ИНН не сходится, проверьте цифры` };
+      }
+      return { value: digits };
+    }
+
     case 'boolean': {
       const str = String(raw).trim().toLowerCase();
       const isTrue = ['true', '1', 'on', 'yes', 'да'].includes(str);
@@ -167,4 +204,21 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
-module.exports = { validate, parseDate };
+/**
+ * Контрольная сумма ИНН по алгоритму ФНС: ловит опечатку в цифре ещё на форме,
+ * а не когда человек уже ждёт справку.
+ * @param {string} digits Только цифры, 10 или 12 символов
+ */
+function isValidInn(digits) {
+  const d = digits.split('').map(Number);
+  const checksum = (weights) =>
+    (weights.reduce((sum, w, i) => sum + w * d[i], 0) % 11) % 10;
+
+  if (d.length === 10) {
+    return checksum([2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[9];
+  }
+  return checksum([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[10]
+      && checksum([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === d[11];
+}
+
+module.exports = { validate, parseDate, isValidInn };
