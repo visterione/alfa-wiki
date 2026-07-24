@@ -10,7 +10,8 @@
     "db:seed": "node scripts/seedDb.js",
     "backup": "node scripts/backup.js",
     "sync-worker": "node scripts/syncWorker.js",
-    "sync-once": "node scripts/syncPartnerServices.js"
+    "sync-once": "node scripts/syncPartnerServices.js",
+    "migrate:public-api": "node scripts/migratePublicApi.js"
   },
   "dependencies": {
     "archiver": "^6.0.1",

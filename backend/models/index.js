@@ -2457,6 +2457,79 @@ const BotUpdate = sequelize.define('BotUpdate', {
   ]
 });
 
+// === API CLIENT MODEL (внешняя система, которой разрешено слать нам данные) ===
+// Не пользователь, а интегрируемая система: сайт клиники, лендинг, партнёрский сервис.
+// Сам ключ в БД не хранится — только префикс (для поиска строки) и sha256-хеш.
+const ApiClient = sequelize.define('ApiClient', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  name: { type: DataTypes.STRING(150), allowNull: false, comment: 'Название системы, напр. «Сайт medcentralfa.ru»' },
+  keyType: { type: DataTypes.STRING(10), allowNull: false, defaultValue: 'secret', comment: 'secret — вызывает бэкенд; public — вызывает браузер' },
+  keyPrefix: { type: DataTypes.STRING(32), allowNull: false, unique: true, comment: 'Начало ключа, по нему ищем строку' },
+  keyHash: { type: DataTypes.STRING(64), allowNull: false, comment: 'sha256 полного ключа' },
+  scopes: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], comment: "Разрешённые действия, напр. ['forms:patient-registration']" },
+  allowedOrigins: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], comment: 'Белый список Origin — обязателен для keyType=public' },
+  allowedIps: { type: DataTypes.JSONB, allowNull: false, defaultValue: [], comment: 'Белый список IP — опционально для keyType=secret' },
+  rateLimitPerMin: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 60, comment: 'Лимит запросов в минуту' },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  lastUsedAt: { type: DataTypes.DATE, allowNull: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true }
+}, {
+  tableName: 'api_clients',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['keyPrefix'] },
+    { fields: ['isActive'] }
+  ]
+});
+
+// === SUBMISSION MODEL (заявка, принятая публичным API) ===
+// Универсальная: новая форма = новый formType, без миграции.
+// Источник правды — эта таблица; сообщение в чате лишь доставка.
+const Submission = sequelize.define('Submission', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  formType: { type: DataTypes.STRING(50), allowNull: false, comment: 'Тип формы, напр. patient-registration' },
+  clientId: { type: DataTypes.UUID, allowNull: true, comment: 'ID api_clients, от кого пришло' },
+  payload: { type: DataTypes.JSONB, allowNull: false, defaultValue: {}, comment: 'Поля формы после нормализации' },
+  status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'new', comment: 'new | in_progress | done | spam' },
+  deliveryStatus: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pending', comment: 'pending | sent | failed' },
+  deliveryAttempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  deliveryError: { type: DataTypes.TEXT, allowNull: true },
+  deliveredMsgId: { type: DataTypes.BIGINT, allowNull: true, comment: 'message_id доставленного сообщения в чате' },
+  deliveredAt: { type: DataTypes.DATE, allowNull: true },
+  assignedUserId: { type: DataTypes.UUID, allowNull: true },
+  sourceIp: { type: DataTypes.STRING(64), allowNull: true },
+  userAgent: { type: DataTypes.TEXT, allowNull: true },
+  idempotencyKey: { type: DataTypes.STRING(100), allowNull: true, comment: 'Защита от дублей при ретраях клиента' }
+}, {
+  tableName: 'submissions',
+  timestamps: true,
+  indexes: [
+    { fields: ['deliveryStatus'] },
+    { fields: ['formType', 'createdAt'] }
+  ]
+});
+
+// === API REQUEST LOG MODEL (аудит публичного API) ===
+// Тело запроса НЕ логируем — там персональные данные.
+const ApiRequestLog = sequelize.define('ApiRequestLog', {
+  id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
+  clientId: { type: DataTypes.UUID, allowNull: true },
+  method: { type: DataTypes.STRING(10), allowNull: false },
+  path: { type: DataTypes.TEXT, allowNull: false },
+  statusCode: { type: DataTypes.INTEGER, allowNull: false },
+  errorCode: { type: DataTypes.STRING(50), allowNull: true },
+  durationMs: { type: DataTypes.INTEGER, allowNull: true },
+  ip: { type: DataTypes.STRING(64), allowNull: true }
+}, {
+  tableName: 'api_request_logs',
+  timestamps: true,
+  updatedAt: false,
+  indexes: [
+    { fields: ['clientId', 'createdAt'] },
+    { fields: ['createdAt'] }
+  ]
+});
+
 // === CASH PAYMENT MODEL (выдача из кассы) ===
 const CashPayment = sequelize.define('CashPayment', {
   id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
@@ -3171,6 +3244,10 @@ module.exports = {
   IntIdMap,
   BotToken,
   BotUpdate,
+  // Публичный API для внешних интеграций
+  ApiClient,
+  Submission,
+  ApiRequestLog,
   // Promotions module
   Promotion,
   // Ambulance reports module

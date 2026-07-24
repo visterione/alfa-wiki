@@ -21,8 +21,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { BotToken, BotUpdate, Chat, ChatMember, Message, User, IntIdMap } = require('../models');
+const { BotToken, Chat } = require('../models');
 const botWebhookService = require('../services/botWebhookService');
+const { sendBotMessage, BotMessengerError } = require('../services/botMessenger');
 
 router.post('/', async (req, res) => {
   try {
@@ -36,65 +37,19 @@ router.post('/', async (req, res) => {
     if (!chat_id)  return res.status(400).json({ ok: false, description: 'chat_id is required' });
     if (!text)     return res.status(400).json({ ok: false, description: 'text is required' });
 
-    // Validate bot token
-    const bot = await BotToken.findOne({ where: { token: api_key, isActive: true } });
-    if (!bot) return res.status(401).json({ ok: false, description: 'Unauthorized: invalid api_key' });
-
-    // Resolve chat
-    const chat = await resolveChat(chat_id);
-    if (!chat) return res.status(400).json({ ok: false, description: 'chat not found' });
-
-    // Verify the bot is a member of this chat
-    const membership = await ChatMember.findOne({ where: { chatId: chat.id, userId: bot.userId } });
-    if (!membership) return res.status(403).json({ ok: false, description: 'bot is not a member of this chat' });
-
-    // Create the message
-    const message = await Message.create({
-      chatId:   chat.id,
-      senderId: bot.userId,
-      content:  text,
-      type:     'text'
+    const { messageId } = await sendBotMessage({
+      botToken: api_key,
+      chatId:   chat_id,
+      text,
+      io: req.app.get('io')
     });
 
-    // Assign a message_id via BotUpdate BIGSERIAL
-    const botUser = await User.findByPk(bot.userId);
-    const msgData = await botWebhookService.formatMessage({ ...message.toJSON(), sender: botUser, chat });
-
-    const update = await BotUpdate.create({
-      botId:      bot.id,
-      updateType: 'message',
-      updateData: msgData,
-      processed:  true
-    });
-
-    msgData.message_id = Number(update.id);
-    await update.update({ updateData: msgData });
-    await message.update({ telegramMsgId: update.id });
-
-    // Emit via Socket.IO so chat participants see it in real time
-    const io = req.app.get('io');
-    if (io) {
-      const fullMsg = await Message.findByPk(message.id, {
-        include: [{ model: User, as: 'sender', attributes: ['id', 'username', 'displayName', 'avatar'] }]
-      });
-
-      // Notify all members of the chat
-      const members = await ChatMember.findAll({ where: { chatId: chat.id } });
-      members.forEach(m => {
-        io.to(`user:${m.userId}`).emit('new_message', {
-          message: fullMsg,
-          chat: {
-            id:          chat.id,
-            type:        chat.type,
-            displayName: chat.name,
-            avatar:      null
-          }
-        });
-      });
-    }
-
-    return res.json({ ok: true, message_id: msgData.message_id });
+    return res.json({ ok: true, message_id: messageId });
   } catch (error) {
+    if (error instanceof BotMessengerError) {
+      const status = { invalid_token: 401, chat_not_found: 400, not_a_member: 403 }[error.code] || 400;
+      return res.status(status).json({ ok: false, description: error.message });
+    }
     console.error('[notify] error:', error);
     return res.status(500).json({ ok: false, description: 'internal server error' });
   }
@@ -130,25 +85,5 @@ router.get('/chat-id', async (req, res) => {
     res.status(500).json({ ok: false, description: 'internal server error' });
   }
 });
-
-// ── Internal helper ────────────────────────────────────────────────────────
-
-async function resolveChat(chatIdParam) {
-  const idStr = String(chatIdParam).trim();
-
-  // UUID — direct lookup
-  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idStr)) {
-    return Chat.findByPk(idStr);
-  }
-
-  // Integer — lookup via IntIdMap
-  const absId = Math.abs(parseInt(idStr, 10));
-  if (!isNaN(absId) && absId > 0) {
-    const row = await IntIdMap.findByPk(absId);
-    if (row) return Chat.findByPk(row.uuid);
-  }
-
-  return null;
-}
 
 module.exports = router;

@@ -23,6 +23,14 @@ function init(socketIO) {
 }
 
 /**
+ * Доступ к Socket.IO из мест, где нет req (крон-джобы, воркеры).
+ * @returns {import('socket.io').Server|null}
+ */
+function getIo() {
+  return io;
+}
+
+/**
  * Создание или получение чата с ботом для пользователя
  * @param {string} userId - ID пользователя
  * @param {string} botId - ID бота (ASSISTANT_ID или REVIEWS_BOT_ID)
@@ -492,6 +500,7 @@ module.exports = {
   initMissedCallsBot,
   sendMissedCallToGroup,
   init,
+  getIo,
   getOrCreateAssistantChat,
   getOrCreateReviewsChat,
   sendMessageToUser,

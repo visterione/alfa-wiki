@@ -203,6 +203,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+// Публичный API для внешних интеграций (сайт клиники и т.д.).
+// Монтируется ДО express.json(), чтобы действовал собственный лимит размера тела
+// в 100 КБ, а не общий 10gb. Аутентификация здесь своя — по ключу api_clients.
+app.use('/api/public', require('./routes/public'));
+
 // Body parsing
 app.use(express.json({ limit: '10gb' }));
 app.use(express.urlencoded({ extended: true, limit: '10gb' }));
@@ -407,6 +412,9 @@ async function startServer() {
 
     // Initialize MIS payments (списания/возвраты) daily sync cron job (00:10 MSK)
     require('./cron/misPaymentsSyncCron');
+
+    // Повторная доставка заявок публичного API в чат (ежеминутно)
+    require('./cron/submissionsRetryCron');
 
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');
