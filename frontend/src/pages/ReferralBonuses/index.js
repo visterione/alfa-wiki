@@ -8,6 +8,7 @@ import { rbClinicId, rbProfessionTitle, DEFAULT_CLINICS, rbMatchClinicId, rbGetC
 import { clearExecCache } from './utils/reportEngine';
 import { parseExcelFile } from './utils/excelUtils';
 import { parseSalarySlipPdf, normSubdivision, toSubdivisionList } from './utils/pdfUtils';
+import { exportSalaryImportCheckPdf, resolveImportRows } from './utils/salaryImportCheckPdf';
 import { getSources } from './utils/excelSources';
 import { rbNamesMatch, rbNormalizeName } from './utils/nameMatching';
 import SearchableSelect from './components/SearchableSelect';
@@ -813,7 +814,7 @@ export default function ReferralBonusesPage() {
     setPdfSubdivisionExpanded(false);
     setPdfEnabledCols({ mainPayment: true, advance: true, vacation: true, ndfl: true });
     setPdfSelectedDoctorIds(new Set(sortedMatched.map(entry => entry.doctor.id)));
-    setPdfPreviewModal({ matched: sortedMatched, settingsMap, unmatchedNames, noSubdivision });
+    setPdfPreviewModal({ matched: sortedMatched, settingsMap, unmatchedNames, noSubdivision, fileName: file?.name || '' });
   }, [matchDoctorByName]);
 
   const confirmPdfImport = useCallback(async () => {
@@ -823,61 +824,15 @@ export default function ReferralBonusesPage() {
       return;
     }
     const { matched, settingsMap } = pdfPreviewModal;
-    const selectedMatched = matched.filter(entry => pdfSelectedDoctorIds.has(entry.doctor.id));
 
-    // Apply manually-entered split values to needsSplit entries
-    const parseEditVal = (v) => {
-      if (v === undefined || v === null || v === '') return null;
-      const n = parseFloat(String(v).replace(',', '.'));
-      return isNaN(n) ? null : n;
-    };
-    const resolvedMatched = selectedMatched.map(entry => {
-      if (!entry.needsSplit) return entry;
-      const originalIndex = matched.indexOf(entry);
-      const sv = splitEditValues[originalIndex] || {};
-      return {
-        ...entry,
-        mainPayment: parseEditVal(sv.mainPayment),
-        advance:     parseEditVal(sv.advance),
-        ndfl:        parseEditVal(sv.ndfl),
-        vacation:    parseEditVal(sv.vacation),
-      };
+    // Подставляет значения разделения, добивает пустые поля остатком
+    // и обнуляет отключённые столбцы — то же, что печатается в проверочной ведомости
+    const resolvedMatched = resolveImportRows({
+      matched,
+      splitEditValues,
+      selectedDoctorIds: pdfSelectedDoctorIds,
+      enabledCols: pdfEnabledCols,
     });
-
-    // Auto-fill empty split fields with remainder: total - sum(filled) / count(empty)
-    const splitGroups = {};
-    resolvedMatched.forEach((entry, i) => {
-      if (!entry.needsSplit) return;
-      if (!splitGroups[entry.doctor.id]) splitGroups[entry.doctor.id] = [];
-      splitGroups[entry.doctor.id].push(i);
-    });
-    for (const indices of Object.values(splitGroups)) {
-      for (const field of ['mainPayment', 'advance', 'ndfl', 'vacation']) {
-        const refField = 'ref' + field.charAt(0).toUpperCase() + field.slice(1);
-        const refVal = resolvedMatched[indices[0]][refField];
-        if (refVal == null) continue;
-        const emptyIdx = indices.filter(i => resolvedMatched[i][field] == null);
-        if (emptyIdx.length === 0) continue;
-        const filledSum = indices
-          .filter(i => resolvedMatched[i][field] != null)
-          .reduce((s, i) => s + resolvedMatched[i][field], 0);
-        const remainder = Math.round((refVal - filledSum) * 100) / 100;
-        const perEntry  = Math.round((remainder / emptyIdx.length) * 100) / 100;
-        emptyIdx.forEach(i => { resolvedMatched[i] = { ...resolvedMatched[i], [field]: perEntry }; });
-      }
-    }
-
-    // Отключённые в модалке столбцы не импортируем — обнуляем, чтобы они не записались и не считались конфликтами
-    for (let i = 0; i < resolvedMatched.length; i++) {
-      const e = resolvedMatched[i];
-      resolvedMatched[i] = {
-        ...e,
-        mainPayment: pdfEnabledCols.mainPayment ? e.mainPayment : null,
-        advance:     pdfEnabledCols.advance     ? e.advance     : null,
-        vacation:    pdfEnabledCols.vacation    ? e.vacation    : null,
-        ndfl:        pdfEnabledCols.ndfl        ? e.ndfl        : null,
-      };
-    }
 
     setPdfPreviewModal(null);
 
@@ -1642,6 +1597,26 @@ export default function ReferralBonusesPage() {
               </div>
               <div className="rb-modal-footer">
                 <button className="rb-btn rb-btn-secondary" onClick={() => setPdfPreviewModal(null)}>Отмена</button>
+                <button
+                  className="rb-btn rb-btn-secondary"
+                  disabled={selectedDoctorCount === 0}
+                  title="Скачать таблицу в PDF для распечатки и проверки"
+                  onClick={() => {
+                    const ok = exportSalaryImportCheckPdf({
+                      matched: m,
+                      splitEditValues,
+                      selectedDoctorIds: pdfSelectedDoctorIds,
+                      enabledCols: pdfEnabledCols,
+                      unmatchedNames: pdfPreviewModal.unmatchedNames,
+                      noSubdivision: pdfPreviewModal.noSubdivision,
+                      getClinicName,
+                      fileName: pdfPreviewModal.fileName,
+                    });
+                    if (!ok) toast.error('Нет строк для выгрузки');
+                  }}
+                >
+                  Ведомость PDF
+                </button>
                 <button
                   className="rb-btn"
                   disabled={selectedDoctorCount === 0}
