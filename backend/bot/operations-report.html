@@ -106,6 +106,24 @@ button, input, textarea, select { font-family: inherit; }
 .op-input:focus, .op-select:focus, .op-textarea:focus {
   border-color: var(--op-primary); box-shadow: 0 0 0 3px rgba(124,58,237,.1);
 }
+/* Кастомный автокомплит для «Название»: нативный datalist нельзя растянуть/переносить,
+   поэтому свой список — на всю ширину поля, с переносом длинных названий */
+.op-autocomplete { position: relative; }
+.op-autocomplete-list {
+  /* position: fixed + координаты из JS — чтобы список не обрезался overflow:hidden у панели.
+     max-height ≈ 10 строк, дальше внутренний скролл */
+  position: fixed; z-index: 1000;
+  max-height: 336px; overflow-y: auto;
+  background: #fff; border: 1px solid var(--op-border-dark); border-radius: 7px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.14);
+}
+.op-autocomplete-list[hidden] { display: none; }
+.op-autocomplete-item {
+  padding: 7px 10px; cursor: pointer; font-size: 13px; line-height: 1.35;
+  border-bottom: 1px solid var(--op-border); white-space: normal; word-break: break-word;
+}
+.op-autocomplete-item:last-child { border-bottom: 0; }
+.op-autocomplete-item:hover, .op-autocomplete-item.active { background: #f5f3ff; color: var(--op-primary); }
 .op-form-actions {
   display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;
   padding-top: 10px; border-top: 1px solid var(--op-border);
@@ -198,10 +216,12 @@ button, input, textarea, select { font-family: inherit; }
         <div class="op-grid">
           <div class="op-field full">
             <label for="op-serviceName">Название <span class="op-required">*</span></label>
-            <input class="op-input" id="op-serviceName" name="serviceName" type="text" required
-                   placeholder="Название услуги — выберите из списка или введите новое"
-                   list="op-service-names" autocomplete="off">
-            <datalist id="op-service-names"></datalist>
+            <div class="op-autocomplete">
+              <input class="op-input" id="op-serviceName" name="serviceName" type="text" required
+                     placeholder="Название услуги — выберите из списка или введите новое"
+                     autocomplete="off">
+              <div class="op-autocomplete-list" id="op-service-names" hidden></div>
+            </div>
           </div>
           <div class="op-field">
             <label for="op-patientCount">Кол-во пациентов</label>
@@ -267,7 +287,7 @@ button, input, textarea, select { font-family: inherit; }
 
 <script>
 window.opApp = (function() {
-  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/operations-reports';
+  var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/operations-reports';
   var records = [];
   var editingId = '';
   var pagination = { page: 1, pageSize: 50, total: 0 };
@@ -420,13 +440,97 @@ window.opApp = (function() {
   }
 
   // Подсказки для поля «Название»: уже встречавшиеся услуги, частые сверху.
-  // Нативный datalist — выпадающий список с фильтрацией по вводу, но своё значение вписать можно.
+  // Кастомный автокомплит вместо datalist — растянут на всю ширину поля, длинный текст переносится.
+  var serviceNames = [];
+  var acActiveIndex = -1;
+
   function loadServiceNames() {
     return api('/service-names').then(function(res) {
-      document.getElementById('op-service-names').innerHTML = (res.names || []).map(function(name) {
-        return '<option value="' + escapeHtml(name) + '"></option>';
-      }).join('');
+      serviceNames = res.names || [];
     }).catch(function() {});
+  }
+
+  function hideServiceList() {
+    var list = document.getElementById('op-service-names');
+    list.hidden = true;
+    acActiveIndex = -1;
+  }
+
+  // position: fixed — ставим список по координатам поля, чтобы его не резал overflow панели
+  function positionServiceList() {
+    var input = document.getElementById('op-serviceName');
+    var list = document.getElementById('op-service-names');
+    if (list.hidden) return;
+    var r = input.getBoundingClientRect();
+    list.style.left = r.left + 'px';
+    list.style.width = r.width + 'px';
+    list.style.top = (r.bottom + 3) + 'px';
+  }
+
+  function renderServiceList() {
+    var input = document.getElementById('op-serviceName');
+    var list = document.getElementById('op-service-names');
+    var q = input.value.trim().toLowerCase();
+    var matches = serviceNames.filter(function(name) {
+      return !q || String(name).toLowerCase().indexOf(q) !== -1;
+    });
+    if (!matches.length) { hideServiceList(); list.innerHTML = ''; return; }
+    acActiveIndex = -1;
+    list.innerHTML = matches.map(function(name) {
+      return '<div class="op-autocomplete-item" data-name="' + escapeHtml(name) + '">' + escapeHtml(name) + '</div>';
+    }).join('');
+    list.hidden = false;
+    positionServiceList();
+  }
+
+  function updateActive(items) {
+    items.forEach(function(it, i) { it.classList.toggle('active', i === acActiveIndex); });
+    if (acActiveIndex >= 0 && items[acActiveIndex]) items[acActiveIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function initServiceAutocomplete() {
+    var input = document.getElementById('op-serviceName');
+    var list = document.getElementById('op-service-names');
+    input.addEventListener('focus', renderServiceList);
+    input.addEventListener('input', renderServiceList);
+    input.addEventListener('keydown', function(e) {
+      if (list.hidden) return;
+      var items = list.querySelectorAll('.op-autocomplete-item');
+      if (!items.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        acActiveIndex = Math.min(acActiveIndex + 1, items.length - 1);
+        updateActive(items);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        acActiveIndex = Math.max(acActiveIndex - 1, 0);
+        updateActive(items);
+      } else if (e.key === 'Enter') {
+        if (acActiveIndex >= 0) {
+          e.preventDefault();
+          input.value = items[acActiveIndex].getAttribute('data-name');
+          hideServiceList();
+        }
+      } else if (e.key === 'Escape') {
+        hideServiceList();
+      }
+    });
+    // mousedown, а не click — чтобы успеть до blur поля и не потерять выбор
+    list.addEventListener('mousedown', function(e) {
+      var item = e.target.closest('.op-autocomplete-item');
+      if (!item) return;
+      e.preventDefault();
+      input.value = item.getAttribute('data-name');
+      hideServiceList();
+      input.focus();
+    });
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.op-autocomplete')) hideServiceList();
+    });
+    // Список зафиксирован (position: fixed) — при прокрутке/ресайзе двигаем его следом за полем.
+    // capture: true, чтобы ловить скролл любого внутреннего контейнера, а не только окна.
+    window.addEventListener('scroll', positionServiceList, true);
+    window.addEventListener('resize', positionServiceList);
   }
 
   function resetForm() {
@@ -790,6 +894,7 @@ window.opApp = (function() {
     attachDateMask(document.getElementById('op-reportDate'));
     document.getElementById('op-reportDate').value = todayDMY();
     renderTabs();
+    initServiceAutocomplete();
     loadServiceNames();
     reload();
     api('/whoami').then(function(info) {

@@ -649,7 +649,11 @@ input, select, textarea, button { font-family: inherit; }
 
 <script>
 window.dcApp = (function() {
-  var API_BASE = window.location.protocol + '//' + window.location.hostname + ':9001/api';
+  // Прод (HTTPS): nginx на 443 проксирует /api → бэкенд, обращаемся к тому же origin.
+  // Дев: страница отдаётся дев-сервером на :9000, бэкенд слушает :9001.
+  var API_BASE = (window.location.port === '9000')
+    ? window.location.protocol + '//' + window.location.hostname + ':9001/api'
+    : window.location.origin + '/api';
   var PAGE_SLUG = getPageSlug();
   var cards = [];
   var filteredCards = [];

@@ -1257,7 +1257,7 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="chat-main">
+        <div className={`chat-main ${activeChat ? '' : 'mobile-hidden'}`}>
           {activeChat ? (
             <>
               <div className="chat-main-header">

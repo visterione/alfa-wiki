@@ -910,8 +910,8 @@
 <script>
 window.servicesApp = (function() {
   // Backend всегда на порту 9001
-  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
-  var MIS_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/services';
+  var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/services';
+  var MIS_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/services';
 
   // Маппинг медцентров к clinic_id из МИС
   var MEDCENTER_CLINIC_IDS = {
@@ -1264,7 +1264,7 @@ window.servicesApp = (function() {
 
     // Если уже выбрана услуга из МИС — обновляем цену для нового медцентра
     if (misServiceId && clinicId) {
-      var MIS_PROXY_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/mis/services';
+      var MIS_PROXY_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/mis/services';
       fetchAPI(MIS_PROXY_URL, {
         method: 'POST',
         body: JSON.stringify({ service_ids: [misServiceId], clinic_id: clinicId })
@@ -1413,7 +1413,7 @@ window.servicesApp = (function() {
     var highlightParam = urlParams.get('highlight');
 
     // Загружаем права пользователя
-    fetch(window.location.protocol + '//' + window.location.hostname + ':9001/api/auth/me', {
+    fetch((window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/auth/me', {
       headers: { 'Authorization': 'Bearer ' + getToken() }
     }).then(function(r) { return r.json(); }).then(function(me) {
       canEditServices = !!(me.isAdmin || me.canEditServices);

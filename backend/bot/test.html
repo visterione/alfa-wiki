@@ -833,7 +833,7 @@ function rbPsvcToggleType(btn, type) {
 async function rbInit() {
   RB.token = localStorage.getItem('token') || sessionStorage.getItem('token') || window.__AUTH_TOKEN__;
   // Backend всегда на порту 9001
-  RB.apiBase = window.location.protocol + '//' + window.location.hostname + ':9001';
+  RB.apiBase = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '';
 
   await rbLoadClinics();
   await rbLoadDoctors();

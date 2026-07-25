@@ -110,6 +110,12 @@
   color: var(--text-secondary);
 }
 
+/* Мобильные элементы поиска — на десктопе скрыты, включаются в медиазапросе */
+.header-search-trigger,
+.header-search-back {
+  display: none;
+}
+
 /* Search Dropdown */
 .search-dropdown {
   position: absolute;
@@ -894,8 +900,117 @@
     display: none;
   }
 
+  /* На мобильном header-center не растягивает большое поле — держит только
+     иконку-триггер, прижатую вправо (к кнопке пользователя). margin-left:auto
+     здесь толкает связку «иконка + пользователь» вправо, поэтому у header-right
+     собственный auto-отступ убираем, иначе между ними появляется большой зазор. */
   .header-center {
+    flex: 0 0 auto;
+    padding: 0;
+    margin-left: auto;
+    margin-right: 6px;
+  }
+
+  .header-right {
+    margin-left: 0;
+  }
+
+  /* iOS Safari авто-зумит поле с font-size < 16px — на мобильном поднимаем до 16px */
+  .header-search input {
+    font-size: 16px;
+  }
+
+  /* Свёрнутый поиск — иконка */
+  .header-search-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    border-radius: var(--radius-sm);
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .header-search-trigger:hover {
+    background: rgba(255, 255, 255, 0.25);
+  }
+
+  /* Когда поиск раскрыт — иконку-триггер прячем (её место занимает оверлей) */
+  .header-center.search-open .header-search-trigger {
+    display: none;
+  }
+
+  /* Инлайн-поле скрыто, пока поиск не раскрыт */
+  .header-search {
+    display: none;
+  }
+
+  /* Раскрытый поиск — полноширинный оверлей поверх хедера */
+  .header-search.header-search--open {
+    display: flex;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--header-height);
+    z-index: 200;
+    margin: 0;
     padding: 0 12px;
+    gap: 8px;
+    border: none;
+    border-radius: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  /* В оверлее слева кнопка «назад» вместо абсолютной иконки-лупы */
+  .header-search--open > svg {
+    display: none;
+  }
+
+  .header-search-back {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .header-search-back:hover {
+    background: var(--bg-secondary);
+  }
+
+  /* Выпадашка результатов — во всю ширину экрана под хедером */
+  .header-search--open .search-dropdown {
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    max-height: calc(100vh - var(--header-height) - 16px);
+  }
+
+  /* На узком экране длинные названия переносим в 2 строки, а не обрезаем.
+     min-width:0 на контенте нужен, чтобы флекс-элемент уважал ширину экрана. */
+  .header-search--open .search-result-content {
+    min-width: 0;
+  }
+
+  .header-search--open .search-result-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   .header-username {

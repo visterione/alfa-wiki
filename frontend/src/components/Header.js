@@ -3,7 +3,8 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Menu, Search, User, LogOut, ChevronDown, Shield, FileText,
   Award, UserCircle, Briefcase, File, ExternalLink, Car, Settings,
-  Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper
+  Layout, Users, Lock, Database, BookOpen, TestTube, Table2, GitBranch, Bot, Newspaper,
+  ArrowLeft
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
@@ -122,9 +123,27 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
   const [isLoading, setIsLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [showDropdown, setShowDropdown] = useState(false);
+  // Мобильный поиск: свёрнут в иконку, по тапу раскрывается на всю ширину поверх хедера
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  const openMobileSearch = () => {
+    setSearchOpen(true);
+    // Фокус после рендера оверлея
+    requestAnimationFrame(() => searchInputRef.current?.focus());
+  };
+
+  const closeMobileSearch = () => {
+    setSearchOpen(false);
+    setShowResults(false);
+    setActiveIndex(-1);
+    setSearchQuery('');
+    setSearchResults([]);
+    setTotalResults(0);
+  };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -194,6 +213,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     } else if (e.key === 'Escape') {
       setShowResults(false);
       setActiveIndex(-1);
+      if (searchOpen) closeMobileSearch();
     }
   };
 
@@ -202,6 +222,7 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
     setSearchQuery('');
     setSearchResults([]);
     setActiveIndex(-1);
+    setSearchOpen(false);
     if (result.url.startsWith('http')) {
       window.open(result.url, '_blank');
     } else {
@@ -264,10 +285,29 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
         </Link>
       </div>
 
-      <div className="header-center">
-        <div className="header-search" ref={searchRef}>
+      <div className={`header-center ${searchOpen ? 'search-open' : ''}`}>
+        {/* Мобильный триггер: свёрнутый поиск в виде иконки (десктоп скрывает через CSS) */}
+        <button
+          type="button"
+          className="header-search-trigger"
+          onClick={openMobileSearch}
+          aria-label="Поиск"
+        >
+          <Search size={20} />
+        </button>
+        <div className={`header-search ${searchOpen ? 'header-search--open' : ''}`} ref={searchRef}>
+          {/* Кнопка «назад» — видна только в раскрытом мобильном поиске */}
+          <button
+            type="button"
+            className="header-search-back"
+            onClick={closeMobileSearch}
+            aria-label="Закрыть поиск"
+          >
+            <ArrowLeft size={20} />
+          </button>
           <Search size={18} />
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Поиск..."
             value={searchQuery}

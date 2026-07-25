@@ -515,7 +515,7 @@
 
 <script>
 window.accApp = (function() {
-  var API_URL = window.location.protocol + '//' + window.location.hostname + ':9001/api/accreditations';
+  var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/accreditations';
   var MEDCENTERS = ['Альфа', 'Кидс', 'Проф', 'Линия', 'Смайл', '3К', 'Сукко', 'ИП Микаелян'];
 
   var activeRecords = [];   // isArchived = false

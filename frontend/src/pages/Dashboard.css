@@ -1539,6 +1539,39 @@
     display: flex !important;
   }
 
+  /* iOS Safari авто-зумит поле с font-size < 16px и обратно не отъезжает.
+     На мобильном поднимаем до 16px — зум пропадает (десктоп остаётся 15px). */
+  .chat-input-wrapper input {
+    font-size: 16px;
+  }
+
+  /* Мастер-детейл на телефоне: список чатов на всю ширину, а chat-main
+     (с плейсхолдером) скрыт, пока не выбран чат. При выборе — сайдбар прячется
+     через .mobile-hidden, а chat-main занимает весь экран. */
+  .chat-sidebar {
+    width: 100%;
+  }
+
+  .chat-main.mobile-hidden {
+    display: none;
+  }
+
+  /* Убираем горизонтальный overflow чата: вся цепочка флекс-контейнеров имеет
+     min-width:auto и расширяется до max-content содержимого. min-width:0
+     возвращает их в границы экрана, а длинное название чата обрезаем эллипсисом. */
+  .main-content,
+  .alfa-chat,
+  .chat-main,
+  .chat-main-info {
+    min-width: 0;
+  }
+
+  .chat-main-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .chat-info-panel {
     width: 100%;
   }
