@@ -421,12 +421,20 @@ function QuickAccessButtons({ onClose }) {
     }
   };
 
+  // Кнопка «Сообщения»: если уже открыт конкретный чат — событие вернёт к списку
+  // чатов (обрабатывает Dashboard, только на мобильном). navigate('/') на той же
+  // странице ничего не делает, поэтому нужен отдельный сигнал.
+  const handleMessagesClick = () => {
+    window.dispatchEvent(new CustomEvent('messenger-go-home'));
+    handleClick('/');
+  };
+
   return (
     <div className="sidebar-quick-access">
       {/* Первый ряд */}
       <button 
         className={`quick-access-btn messages ${isOnChat ? 'active' : ''}`}
-        onClick={() => handleClick('/')}
+        onClick={handleMessagesClick}
         title="Сообщения"
       >
         <MessageCircle size={20} />

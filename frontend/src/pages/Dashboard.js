@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [showChatInfo, setShowChatInfo] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [showEmailCompose, setShowEmailCompose] = useState(false);
+  // Мобильное меню действий (заменяет chat-sidebar-header на телефонах)
+  const [showChatMenu, setShowChatMenu] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [botsList, setBotsList] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
@@ -86,10 +88,27 @@ export default function Dashboard() {
   const messageInputRef = useRef(null);
   const draggedPinnedId = useRef(null);
   const dragOverPinnedId = useRef(null);
+  const chatMenuRef = useRef(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => { activeChatRef.current = activeChat; }, [activeChat]);
+
+  // На мобильном кнопка «Сообщения» в сайдбаре должна возвращать из открытого
+  // чата к списку чатов (на десктопе поведение не меняем — там список и чат видны сразу).
+  useEffect(() => {
+    const goHome = () => { if (window.innerWidth <= 768) setActiveChat(null); };
+    window.addEventListener('messenger-go-home', goHome);
+    return () => window.removeEventListener('messenger-go-home', goHome);
+  }, []);
+
+  // Закрытие мобильного меню действий по клику вне его
+  useEffect(() => {
+    if (!showChatMenu) return;
+    const onDown = (e) => { if (chatMenuRef.current && !chatMenuRef.current.contains(e.target)) setShowChatMenu(false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [showChatMenu]);
 
   const loadChats = useCallback(async () => {
     try {
@@ -1193,7 +1212,20 @@ export default function Dashboard() {
               <button className="btn-icon-chat" onClick={() => { setShowNewChat(true); loadUsers(); }} title="Новый чат"><UserPlus size={20} /></button>
             </div>
           </div>
-          <div className="chat-search"><Search size={18} /><input placeholder="Поиск по чатам, сообщениям и файлам..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+          <div className="chat-search-row">
+            <div className="chat-search"><Search size={18} /><input placeholder="Поиск по чатам, сообщениям и файлам..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+            {/* Мобильное меню действий — заменяет chat-sidebar-header (скрыто на десктопе через CSS) */}
+            <div className="chat-search-menu" ref={chatMenuRef}>
+              <button type="button" className="btn-icon-chat chat-search-menu-btn" onClick={() => setShowChatMenu(v => !v)} title="Действия" aria-label="Действия"><MoreVertical size={20} /></button>
+              {showChatMenu && (
+                <div className="chat-search-menu-dropdown">
+                  <button type="button" onClick={() => { setShowChatMenu(false); setShowNewChat(true); loadUsers(); }}><UserPlus size={18} /> Новый чат</button>
+                  <button type="button" onClick={() => { setShowChatMenu(false); setShowNewGroup(true); loadUsers(); setSelectedUsers([]); setGroupName(''); setQuickAddRoleFilter(''); setQuickAddMedCenterFilter(''); }}><Users size={18} /> Создать группу</button>
+                  <button type="button" onClick={() => { setShowChatMenu(false); setShowEmailCompose(true); }}><Mail size={18} /> Email-рассылка</button>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="chat-list">
             {(loading || searching) ? <div className="chat-loading"><div className="loading-spinner" /></div> : (() => {
               const renderChatItem = (chatItem, { draggable: isDraggable = false, searchTerm = '' } = {}) => (

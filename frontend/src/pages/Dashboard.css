@@ -96,6 +96,12 @@
   color: var(--text-tertiary);
 }
 
+/* Мобильное меню действий (троеточие рядом с поиском) — на десктопе скрыто,
+   там свои кнопки в chat-sidebar-header. */
+.chat-search-menu {
+  display: none;
+}
+
 .chat-list {
   flex: 1;
   overflow-y: auto;
@@ -1556,6 +1562,85 @@
     display: none;
   }
 
+  /* Убираем большой нефункциональный заголовок сайдбара — его 3 кнопки
+     переезжают в меню-троеточие рядом с поиском. */
+  .chat-sidebar-header {
+    display: none;
+  }
+
+  /* iOS не зумит поле поиска (font-size < 16px) */
+  .chat-search input {
+    font-size: 16px;
+  }
+
+  /* Поиск + кнопка-троеточие в один ряд */
+  .chat-search-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 12px;
+  }
+
+  .chat-search-row .chat-search {
+    flex: 1;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .chat-search-menu {
+    display: block;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .chat-search-menu-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* Выпадающее меню действий */
+  .chat-search-menu-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    min-width: 190px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .chat-search-menu-dropdown button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    background: none;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .chat-search-menu-dropdown button:hover,
+  .chat-search-menu-dropdown button:active {
+    background: var(--bg-secondary);
+  }
+
+  .chat-search-menu-dropdown button svg {
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+
   /* Убираем горизонтальный overflow чата: вся цепочка флекс-контейнеров имеет
      min-width:auto и расширяется до max-content содержимого. min-width:0
      возвращает их в границы экрана, а длинное название чата обрезаем эллипсисом. */
@@ -1570,6 +1655,40 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Высота чата: на мобильных 100vh = «большой» вьюпорт (со спрятанной адресной
+     строкой), из-за чего страница выше видимой области и chat-main-header уезжает
+     под верхний хедер. dvh (динамический вьюпорт) равен реально видимой высоте —
+     страница перестаёт скроллиться, шапка чата остаётся на месте. Скоупим на чат
+     через :has(), чтобы не трогать остальные страницы. */
+  .layout:has(.dashboard-chat-wrapper) {
+    min-height: 100dvh;
+  }
+
+  .main-content:has(.dashboard-chat-wrapper) {
+    min-height: calc(100dvh - var(--header-height));
+  }
+
+  .dashboard-chat-wrapper {
+    height: calc(100dvh - var(--header-height));
+  }
+
+  /* Панель ввода: убираем горизонтальный overflow (из-за него обрезалась кнопка
+     отправки). min-width:0 снимает «врождённую» минимальную ширину input,
+     плюс уменьшаем отступы под узкий экран. */
+  .chat-input {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .chat-input-wrapper {
+    min-width: 0;
+    padding: 10px 16px;
+  }
+
+  .chat-input-wrapper input {
+    min-width: 0;
   }
 
   .chat-info-panel {
