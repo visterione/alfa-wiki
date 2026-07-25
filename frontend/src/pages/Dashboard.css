@@ -1657,21 +1657,31 @@
     text-overflow: ellipsis;
   }
 
-  /* Высота чата: на мобильных 100vh = «большой» вьюпорт (со спрятанной адресной
-     строкой), из-за чего страница выше видимой области и chat-main-header уезжает
-     под верхний хедер. dvh (динамический вьюпорт) равен реально видимой высоте —
-     страница перестаёт скроллиться, шапка чата остаётся на месте. Скоупим на чат
-     через :has(), чтобы не трогать остальные страницы. */
-  .layout:has(.dashboard-chat-wrapper) {
-    min-height: 100dvh;
+  /* Жёстко фиксируем раскладку открытого чата на телефоне, чтобы ничего не
+     скроллилось, кроме самой переписки:
+       1) верхний .header уже position:fixed (top:0, высота 56);
+       2) .chat-main прибиваем от низа хедера до низа экрана — тогда его флекс-
+          колонка сама даёт фикс. chat-main-header сверху, chat-input снизу,
+          а .chat-messages (flex:1) скроллится между ними.
+     bottom:0 у fixed-элемента корректно держится над нижней панелью браузера,
+     поэтому адресная строка больше не «съедает» шапку чата. */
+  .chat-main {
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
   }
 
-  .main-content:has(.dashboard-chat-wrapper) {
-    min-height: calc(100dvh - var(--header-height));
-  }
-
-  .dashboard-chat-wrapper {
-    height: calc(100dvh - var(--header-height));
+  /* Панель инфо о группе — тоже прибиваем к тому же окну поверх чата */
+  .chat-info-panel {
+    position: fixed;
+    top: var(--header-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 45;
   }
 
   /* Панель ввода: убираем горизонтальный overflow (из-за него обрезалась кнопка
