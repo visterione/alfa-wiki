@@ -74,40 +74,25 @@ function validateAll(v) {
  * @param {Object} submission Запись заявки
  * @returns {string}
  */
-function formatMessage(p, submission) {
+function formatMessage(p) {
+  const S = '   '; // разделитель полей внутри строки (pre-wrap сохраняет пробелы)
   const lines = [];
 
-  lines.push('🧾 Запрос справки для налогового вычета');
-  lines.push(formatDateTime(submission.createdAt));
-  lines.push('');
+  lines.push(`*Справка о налоговом вычете (${formatDate(p.periodStart)} – ${formatDate(p.periodEnd)}):*`);
 
-  lines.push(`👤 ${p.fullName}`);
-  lines.push(`Дата рождения: ${formatDate(p.birthDate)} · ИНН: ${p.inn}`);
-  lines.push('');
+  // Налогоплательщик
+  lines.push('*Налогоплательщик:*');
+  lines.push(`${p.fullName}${S}${formatDate(p.birthDate)}`);
+  lines.push(`${p.phone}${S}${p.email}`);
+  lines.push(`ИНН: ${p.inn}`);
 
-  lines.push(`📅 Период: ${formatDate(p.periodStart)} — ${formatDate(p.periodEnd)}`);
-  lines.push('');
-
-  lines.push(`📞 ${formatPhone(p.phone)}`);
-  lines.push(`✉️ ${p.email}`);
-  lines.push('');
-
-  if (p.taxpayerIsPatient) {
-    lines.push('✅ Налогоплательщик и пациент — одно лицо');
-  } else {
-    lines.push('🧑‍⚕️ Пациент — другое лицо');
-    lines.push(p.patientFullName);
-    lines.push(`Дата рождения: ${formatDate(p.patientBirthDate)}`);
+  // Пациент — только если это другое лицо; документ о родстве уходит вложением
+  if (!p.taxpayerIsPatient) {
+    lines.push('');
+    lines.push('*Пациент:*');
+    lines.push(`${p.patientFullName}${S}${formatDate(p.patientBirthDate)}`);
     lines.push(`Степень родства: ${p.relationship}`);
-
-    const docs = p.attachments?.relationshipDocument || [];
-    lines.push(docs.length
-      ? `📎 Документ о родстве: ${docs.length} ${plural(docs.length, 'файл', 'файла', 'файлов')} (ниже)`
-      : '⚠️ Документ о родстве не приложен');
   }
-
-  lines.push('');
-  lines.push(`ID заявки: ${String(submission.id).slice(0, 8)}`);
 
   return lines.join('\n');
 }
@@ -118,27 +103,6 @@ function formatDate(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
   return `${d}.${m}.${y}`;
-}
-
-function formatDateTime(date) {
-  return new Date(date).toLocaleString('ru-RU', {
-    timeZone: 'Europe/Moscow',
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
-function formatPhone(phone) {
-  const m = String(phone).match(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/);
-  return m ? `+7 ${m[1]} ${m[2]}-${m[3]}-${m[4]}` : phone;
-}
-
-function plural(n, one, few, many) {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return one;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
-  return many;
 }
 
 module.exports = {

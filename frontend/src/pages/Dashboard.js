@@ -1001,8 +1001,13 @@ export default function Dashboard() {
       /(?<!href=")(https?:\/\/[^\s<]+)/g,
       (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" class="chat-link">${url}</a>`
     );
+    // Жирный: *текст* → <strong>текст</strong> (без переноса строки внутри)
+    const withBold = withBare.replace(
+      /\*(\S(?:[^*\n]*\S)?)\*/g,
+      '<strong>$1</strong>'
+    );
     // Preserve newlines as <br>
-    return withBare.replace(/\n/g, '<br>');
+    return withBold.replace(/\n/g, '<br>');
   };
 
   const handleMessageContentClick = (e) => {

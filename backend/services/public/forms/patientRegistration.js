@@ -73,33 +73,16 @@ const fields = [
  * @param {Object} submission Запись заявки (нужен id для короткой ссылки в тексте)
  * @returns {string}
  */
-function formatMessage(p, submission) {
+function formatMessage(p) {
+  const S = '   '; // разделитель полей внутри строки (pre-wrap сохраняет пробелы)
   const lines = [];
 
-  lines.push('🆕 Новая заявка с сайта');
-  lines.push(`Регистрация пациента · ${formatDateTime(submission.createdAt)}`);
-  lines.push('');
+  // ФИО и адрес пациента
+  lines.push('*Новый пациент:*');
 
-  // ФИО и личные данные
   const fio = [p.lastName, p.firstName, p.middleName].filter(Boolean).join(' ');
-  lines.push(`👤 ${fio}`);
+  lines.push(`${fio}${S}${formatDate(p.birthDate)}`);
 
-  const personal = [];
-  if (p.gender) personal.push(`Пол: ${GENDER[p.gender]}`);
-  personal.push(`Дата рождения: ${formatDate(p.birthDate)}`);
-  lines.push(personal.join(' · '));
-
-  if (p.maritalStatus) lines.push(`Семейное положение: ${MARITAL_STATUS[p.maritalStatus]}`);
-  lines.push('');
-
-  // Документ
-  const docName = p.documentType ? DOCUMENT_TYPE[p.documentType] : 'Документ';
-  lines.push(`📄 ${docName} ${p.documentSeries} ${p.documentNumber}`);
-  lines.push(`Выдан: ${p.documentIssuedBy}`);
-  lines.push(`Дата выдачи: ${formatDate(p.documentIssuedAt)} · Код: ${p.documentDepartmentCode}`);
-  lines.push('');
-
-  // Адрес
   const addressHead = [p.postalCode, p.region, p.district].filter(Boolean).join(', ');
   const addressBody = [
     `г. ${p.city}`,
@@ -107,14 +90,17 @@ function formatMessage(p, submission) {
     p.building  ? `к. ${p.building}`  : null,
     p.apartment ? `кв. ${p.apartment}` : null
   ].filter(Boolean).join(', ');
-  lines.push(`🏠 ${[addressHead, addressBody].filter(Boolean).join(', ')}`);
+  lines.push([addressHead, addressBody].filter(Boolean).join(', '));
+
+  lines.push(`${p.phone}${S}${p.email}`);
   lines.push('');
 
-  // Контакты
-  lines.push(`📞 ${formatPhone(p.phone)}`);
-  lines.push(`✉️ ${p.email}`);
-  lines.push('');
-  lines.push(`ID заявки: ${String(submission.id).slice(0, 8)}`);
+  // Документ
+  lines.push('*Документ:*');
+  const docName = p.documentType ? DOCUMENT_TYPE[p.documentType] : 'Документ';
+  lines.push(`${docName}${S}${p.documentSeries}${S}${p.documentNumber}`);
+  lines.push(`Выдан: ${p.documentIssuedBy} (${p.documentDepartmentCode})`);
+  lines.push(`Дата выдачи: ${formatDate(p.documentIssuedAt)}`);
 
   return lines.join('\n');
 }
@@ -125,20 +111,6 @@ function formatDate(iso) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
   return `${d}.${m}.${y}`;
-}
-
-function formatDateTime(date) {
-  return new Date(date).toLocaleString('ru-RU', {
-    timeZone: 'Europe/Moscow',
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
-}
-
-function formatPhone(phone) {
-  // +79991234567 → +7 999 123-45-67
-  const m = String(phone).match(/^\+7(\d{3})(\d{3})(\d{2})(\d{2})$/);
-  return m ? `+7 ${m[1]} ${m[2]}-${m[3]}-${m[4]}` : phone;
 }
 
 module.exports = {
