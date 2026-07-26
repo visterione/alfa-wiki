@@ -80,8 +80,8 @@ function formatMessage(p) {
 
   lines.push(`*Справка о налоговом вычете (${formatDate(p.periodStart)} – ${formatDate(p.periodEnd)}):*`);
 
-  // Налогоплательщик
-  lines.push('*Налогоплательщик:*');
+  // Налогоплательщик; если он же и пациент — помечаем это прямо в заголовке
+  lines.push(p.taxpayerIsPatient ? '*Налогоплательщик (Пациент):*' : '*Налогоплательщик:*');
   lines.push(`${p.fullName}${S}${formatDate(p.birthDate)}`);
   lines.push(`${p.phone}${S}${p.email}`);
   lines.push(`ИНН: ${p.inn}`);

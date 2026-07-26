@@ -78,7 +78,8 @@ function formatMessage(p) {
   const lines = [];
 
   // ФИО и адрес пациента
-  lines.push('*Новый пациент:*');
+  lines.push('*Анкета нового пациента*');
+  lines.push('*Данные:*');
 
   const fio = [p.lastName, p.firstName, p.middleName].filter(Boolean).join(' ');
   lines.push(`${fio}${S}${formatDate(p.birthDate)}`);

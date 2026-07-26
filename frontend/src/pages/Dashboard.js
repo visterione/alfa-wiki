@@ -1010,6 +1010,9 @@ export default function Dashboard() {
     return withBold.replace(/\n/g, '<br>');
   };
 
+  // Превью в списке чатов — простой текст, поэтому маркеры жирного *...* просто снимаем
+  const stripBold = (text) => (text || '').replace(/\*(\S(?:[^*\n]*\S)?)\*/g, '$1');
+
   const handleMessageContentClick = (e) => {
     const link = e.target.closest('a[data-internal]');
     if (link) {
@@ -1253,7 +1256,7 @@ export default function Dashboard() {
                   </div>
                   <div className="chat-item-content">
                     <div className="chat-item-name">{chatItem.displayName}</div>
-                    <div className="chat-item-preview">{chatItem.lastMessage || 'Нет сообщений'}</div>
+                    <div className="chat-item-preview">{stripBold(chatItem.lastMessage) || 'Нет сообщений'}</div>
                   </div>
                   <div className="chat-item-right">
                     <div className="chat-item-time">{formatTime(chatItem.lastMessageAt)}</div>
