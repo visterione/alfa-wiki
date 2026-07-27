@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 const { Op } = require('sequelize');
 const { BotToken, BotUpdate, User, Chat, ChatMember } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const formRegistry = require('../services/public/formRegistry');
 
 const router = express.Router();
 
@@ -122,10 +123,16 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     const bot = await BotToken.findByPk(req.params.id);
     if (!bot) return res.status(404).json({ error: 'Bot not found' });
 
-    const { name, description, isActive, commands, webhookUrl, webhookSecretToken, allowedUpdates, maxConnections } = req.body;
+    const { name, description, isActive, commands, webhookUrl, webhookSecretToken, allowedUpdates, maxConnections, servesForms } = req.body;
 
     const update = {};
     if (name !== undefined) update.name = name;
+    // Какие формы публичного API доставляет бот. Заменяет PUBLIC_FORMS_BOT_TOKEN
+    // в .env: связка «форма → бот» теперь настраивается здесь.
+    if (servesForms !== undefined) {
+      const known = new Set(formRegistry.listFormTypes());
+      update.servesForms = [...new Set((servesForms || []).filter(t => known.has(t)))];
+    }
     if (description !== undefined) update.description = description;
     if (isActive !== undefined) update.isActive = isActive;
     if (commands !== undefined) update.commands = commands;
@@ -135,6 +142,12 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
     if (maxConnections !== undefined) update.maxConnections = maxConnections;
 
     await bot.update(update);
+
+    // Галочка формы должна срабатывать сразу в тех чатах, где бот уже состоит
+    if (update.servesForms !== undefined) {
+      const subscriptionService = require('../services/public/subscriptionService');
+      await subscriptionService.onServedFormsChanged(bot, req.user.id);
+    }
 
     // Sync displayName on User record if name changed
     if (name) {

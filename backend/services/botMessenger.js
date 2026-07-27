@@ -52,7 +52,10 @@ async function resolveChat(chatIdParam) {
  * Отправляет текстовое сообщение в чат от имени бота.
  *
  * @param {Object}        params
- * @param {string}        params.botToken  Токен бота из bot_tokens
+ * @param {string}        [params.botToken] Токен бота — для внешних вызывающих, которым
+ *   нужно доказать, что они этот бот (АТС, сторонние боты)
+ * @param {string}        [params.botId]    Строка bot_tokens напрямую — для внутренних
+ *   вызовов: доказывать бэкенду самому себе нечего, секрет тут не нужен
  * @param {string|number} params.chatId    UUID чата или целочисленный ID
  * @param {string}        params.text      Текст сообщения
  * @param {Array}        [params.attachments] Вложения [{ filename, url, size, mimeType }]
@@ -60,8 +63,10 @@ async function resolveChat(chatIdParam) {
  * @returns {Promise<{ messageId: number, messageUuid: string, chat: Object }>}
  * @throws {BotMessengerError}
  */
-async function sendBotMessage({ botToken, chatId, text, attachments = [], io }) {
-  const bot = await BotToken.findOne({ where: { token: botToken, isActive: true } });
+async function sendBotMessage({ botToken, botId, chatId, text, attachments = [], io }) {
+  const bot = botId
+    ? await BotToken.findOne({ where: { id: botId, isActive: true } })
+    : await BotToken.findOne({ where: { token: botToken, isActive: true } });
   if (!bot) throw new BotMessengerError('invalid_token', 'Unauthorized: invalid api_key');
 
   const chat = await resolveChat(chatId);

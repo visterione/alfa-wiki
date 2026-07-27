@@ -720,6 +720,19 @@ export const bots = {
   regenerateToken: (id)       => api.post(`/bots/${id}/regenerate-token`),
 };
 
+// Ключи публичного API: внешние системы, которым разрешено слать нам данные
+export const apiClients = {
+  list:        ()         => api.get('/api-clients'),
+  meta:        ()         => api.get('/api-clients/meta'),
+  create:      (data)     => api.post('/api-clients', data),
+  update:      (id, data) => api.patch(`/api-clients/${id}`, data),
+  rotate:      (id)       => api.post(`/api-clients/${id}/rotate`),
+  revoke:      (id)       => api.delete(`/api-clients/${id}`),
+  logs:        (id)       => api.get(`/api-clients/${id}/logs`),
+  submissions: (params)   => api.get('/api-clients/submissions', { params }),
+  redeliver:   (id)       => api.post(`/api-clients/submissions/${id}/redeliver`),
+};
+
 export const doctorSchedules = {
   list:                 (misUserId)              => api.get('/doctor-schedules', { params: { misUserId } }),
   create:               (data)                   => api.post('/doctor-schedules', data),

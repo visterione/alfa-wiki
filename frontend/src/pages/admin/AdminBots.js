@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, Edit2, RefreshCw, Copy, Check, Bot, X, Eye, EyeOff } from 'lucide-react';
-import { bots as botsApi, BASE_URL } from '../../services/api';
+import { bots as botsApi, apiClients as apiClientsApi, BASE_URL } from '../../services/api';
 import toast from 'react-hot-toast';
 
 function CopyButton({ text }) {
@@ -33,10 +33,11 @@ function TokenField({ token }) {
   );
 }
 
-const emptyForm = { name: '', username: '', description: '', webhookUrl: '', webhookSecretToken: '' };
+const emptyForm = { name: '', username: '', description: '', webhookUrl: '', webhookSecretToken: '', servesForms: [] };
 
 export default function AdminBots() {
   const [bots, setBots] = useState([]);
+  const [publicForms, setPublicForms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null); // null | { mode: 'create'|'edit', bot? }
   const [form, setForm] = useState(emptyForm);
@@ -69,7 +70,11 @@ export default function AdminBots() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // Список форм публичного API — для галочек «что доставляет бот»
+    apiClientsApi.meta().then(({ data }) => setPublicForms(data.forms)).catch(() => {});
+  }, []);
 
   const openCreate = () => {
     setForm(emptyForm);
@@ -83,8 +88,18 @@ export default function AdminBots() {
       description: bot.description || '',
       webhookUrl: bot.webhookUrl || '',
       webhookSecretToken: '',
+      servesForms: bot.servesForms || [],
     });
     setModal({ mode: 'edit', bot });
+  };
+
+  const toggleServedForm = (formType) => {
+    setForm(f => ({
+      ...f,
+      servesForms: f.servesForms.includes(formType)
+        ? f.servesForms.filter(t => t !== formType)
+        : [...f.servesForms, formType],
+    }));
   };
 
   const closeModal = () => setModal(null);
@@ -96,19 +111,25 @@ export default function AdminBots() {
     setSaving(true);
     try {
       if (modal.mode === 'create') {
-        await botsApi.create({
+        const { data } = await botsApi.create({
           name: form.name.trim(),
           username: form.username.trim(),
           description: form.description.trim(),
           webhookUrl: form.webhookUrl.trim() || undefined,
           webhookSecretToken: form.webhookSecretToken.trim() || undefined,
         });
+        // Формы проставляются отдельным запросом: создание бота их не принимает,
+        // а сохранение форм разбирает подписки в чатах, где бот уже состоит
+        if (form.servesForms.length > 0) {
+          await botsApi.update(data.id, { servesForms: form.servesForms });
+        }
         toast.success('Бот создан');
       } else {
         const upd = {
           name: form.name.trim(),
           description: form.description.trim(),
           webhookUrl: form.webhookUrl.trim() || null,
+          servesForms: form.servesForms,
         };
         if (form.webhookSecretToken.trim()) upd.webhookSecretToken = form.webhookSecretToken.trim();
         await botsApi.update(modal.bot.id, upd);
@@ -180,6 +201,7 @@ export default function AdminBots() {
                 <th>Бот</th>
                 <th>Username</th>
                 <th>Токен</th>
+                <th>Формы</th>
                 <th>Webhook</th>
                 <th>Статус</th>
                 <th>Создан</th>
@@ -207,6 +229,14 @@ export default function AdminBots() {
                     >
                       <RefreshCw size={12} /> {regenerating === bot.id ? 'Генерация...' : 'Новый токен'}
                     </button>
+                  </td>
+                  <td style={{ fontSize: 12 }}>
+                    {(bot.servesForms || []).length === 0
+                      ? <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      : (bot.servesForms || []).map(t => (
+                          <div key={t}>{publicForms.find(f => f.formType === t)?.title || t}</div>
+                        ))
+                    }
                   </td>
                   <td style={{ fontSize: 12 }}>
                     {bot.webhookUrl
@@ -311,6 +341,30 @@ export default function AdminBots() {
                   value={form.description}
                   onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Заявки с сайта, которые доставляет бот</label>
+                {publicForms.length === 0 ? (
+                  <small className="text-muted">Форм публичного API пока нет</small>
+                ) : (
+                  <>
+                    {publicForms.map(f => (
+                      <label key={f.formType} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={form.servesForms.includes(f.formType)}
+                          onChange={() => toggleServedForm(f.formType)}
+                        />
+                        <span>{f.title}</span>
+                      </label>
+                    ))}
+                    <small className="text-muted" style={{ display: 'block', marginTop: 6 }}>
+                      Заявки будут приходить в те чаты, где состоит бот. Добавьте его в нужный
+                      чат — подписка появится сама, убедиться можно командой <code>/subscriptions</code>.
+                    </small>
+                  </>
+                )}
               </div>
 
               <div className="form-group">

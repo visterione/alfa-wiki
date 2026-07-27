@@ -180,6 +180,53 @@ async function onNewMessage(message) {
   }
 }
 
+/**
+ * Бота добавили в чат или убрали из него — аналог my_chat_member в Telegram.
+ *
+ * Без этого события бот не может узнать, где он состоит, и адрес чата приходится
+ * вносить человеку руками (раньше — в .env). Здесь же событие получают и внешние
+ * боты через getUpdates/webhook, и внутренний обработчик подписок на формы.
+ *
+ * @param {Object} params
+ * @param {string} params.chatId
+ * @param {string} params.botUserId Пользователь-бот, которого добавили/убрали
+ * @param {string} params.actorId   Кто это сделал
+ * @param {'member'|'left'} params.status Новое состояние бота в чате
+ */
+async function onBotMembershipChange({ chatId, botUserId, actorId, status }) {
+  try {
+    const bot = await BotToken.findOne({ where: { userId: botUserId, isActive: true } });
+    if (!bot) return null;
+
+    const [chat, botUser, actor] = await Promise.all([
+      Chat.findByPk(chatId),
+      User.findByPk(botUserId),
+      actorId ? User.findByPk(actorId) : null
+    ]);
+    if (!chat || !botUser) return null;
+
+    const updateData = {
+      chat: await formatChat(chat),
+      from: actor ? await formatUser(actor) : null,
+      date: Math.floor(Date.now() / 1000),
+      old_chat_member: {
+        user: await formatUser(botUser),
+        status: status === 'member' ? 'left' : 'member'
+      },
+      new_chat_member: {
+        user: await formatUser(botUser),
+        status
+      }
+    };
+
+    await createUpdate(bot, 'my_chat_member', updateData);
+    return { bot, chat };
+  } catch (err) {
+    console.error('[botWebhookService] onBotMembershipChange error:', err);
+    return null;
+  }
+}
+
 async function onEditedMessage(message) {
   try {
     const members = await ChatMember.findAll({
@@ -214,5 +261,6 @@ module.exports = {
   createUpdate,
   deliverWebhook,
   onNewMessage,
-  onEditedMessage
+  onEditedMessage,
+  onBotMembershipChange
 };

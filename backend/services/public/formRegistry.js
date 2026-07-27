@@ -3,16 +3,15 @@
 /**
  * Реестр форм публичного API.
  *
- * Каждая форма: описание полей + шаблон сообщения (файл в forms/) и цель доставки —
- * бот и чат, куда падает заявка. Цель берётся из .env, чтобы боевой и тестовый
- * контуры отличались настройками, а не кодом.
+ * Здесь только описание формы: поля, проверки и шаблон сообщения (файл в forms/).
+ * Куда доставлять — не знает и знать не должен: маршрут задаётся тем, в какие чаты
+ * добавлен бот, см. services/public/subscriptionService.js.
  *
- * Переменные окружения:
- *   PUBLIC_FORMS_BOT_TOKEN                     — токен бота (общий для всех форм)
- *   PUBLIC_FORM_PATIENT_REGISTRATION_CHAT_ID   — чат конкретной формы
- *   PUBLIC_FORM_<FORM_TYPE>_BOT_TOKEN          — необязательное переопределение бота
- *
- * Чтобы добавить форму: создать forms/<имя>.js и добавить его в FORMS ниже.
+ * Чтобы добавить форму:
+ *   1. создать forms/<имя>.js и добавить его в FORMS ниже;
+ *   2. в админке отметить форму нужному боту («Боты» → бот → Формы);
+ *   3. в админке выдать право forms:<имя> нужному ключу («Интеграции»).
+ * Ключ разработчику при этом не меняется, .env трогать не нужно.
  */
 
 const patientRegistration = require('./forms/patientRegistration');
@@ -34,16 +33,11 @@ function getForm(formType) {
 }
 
 /**
- * Куда доставлять заявки этой формы.
- * @param {string} formType
- * @returns {{ botToken: string|undefined, chatId: string|undefined }}
+ * Формы со всеми их описаниями — для админки и команды /forms.
+ * @returns {Array<{ formType: string, title: string }>}
  */
-function getDeliveryTarget(formType) {
-  const envKey = formType.toUpperCase().replace(/-/g, '_');
-  return {
-    botToken: process.env[`PUBLIC_FORM_${envKey}_BOT_TOKEN`] || process.env.PUBLIC_FORMS_BOT_TOKEN,
-    chatId:   process.env[`PUBLIC_FORM_${envKey}_CHAT_ID`]
-  };
+function listForms() {
+  return FORMS.map(f => ({ formType: f.formType, title: f.title }));
 }
 
 /** @returns {string[]} Все известные типы форм */
@@ -56,4 +50,4 @@ function scopeFor(formType) {
   return `forms:${formType}`;
 }
 
-module.exports = { getForm, getDeliveryTarget, listFormTypes, scopeFor };
+module.exports = { getForm, listForms, listFormTypes, scopeFor };

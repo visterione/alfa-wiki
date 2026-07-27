@@ -2426,6 +2426,7 @@ const BotToken = sequelize.define('BotToken', {
   allowedUpdates: { type: DataTypes.ARRAY(DataTypes.TEXT), defaultValue: [], comment: 'Список типов обновлений для webhook' },
   maxConnections: { type: DataTypes.INTEGER, defaultValue: 40, comment: 'Максимальное число webhook соединений' },
   commands: { type: DataTypes.JSONB, defaultValue: [], comment: 'Список команд бота [{command, description}]' },
+  servesForms: { type: DataTypes.JSONB, defaultValue: [], comment: 'Типы форм публичного API, которые доставляет бот' },
   isActive: { type: DataTypes.BOOLEAN, defaultValue: true, comment: 'Бот активен' },
   lastUpdateId: { type: DataTypes.BIGINT, defaultValue: 0, comment: 'Последний полученный update_id (для getUpdates)' }
 }, {
@@ -2472,7 +2473,8 @@ const ApiClient = sequelize.define('ApiClient', {
   rateLimitPerMin: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 60, comment: 'Лимит запросов в минуту' },
   isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   lastUsedAt: { type: DataTypes.DATE, allowNull: true },
-  createdBy: { type: DataTypes.UUID, allowNull: true }
+  createdBy: { type: DataTypes.UUID, allowNull: true },
+  updatedBy: { type: DataTypes.UUID, allowNull: true, comment: 'Кто последним менял права ключа' }
 }, {
   tableName: 'api_clients',
   timestamps: true,
@@ -2527,6 +2529,49 @@ const ApiRequestLog = sequelize.define('ApiRequestLog', {
   indexes: [
     { fields: ['clientId', 'createdAt'] },
     { fields: ['createdAt'] }
+  ]
+});
+
+// === FORM SUBSCRIPTION MODEL (какой чат какие формы получает) ===
+// Заменяет переменные PUBLIC_FORM_<ТИП>_CHAT_ID в .env. Строка заводится сама,
+// когда бота добавляют в чат, и удаляется, когда его убирают — как в Telegram.
+const FormSubscription = sequelize.define('FormSubscription', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  botId: { type: DataTypes.UUID, allowNull: false, comment: 'Бот, который доставляет' },
+  chatId: { type: DataTypes.UUID, allowNull: false, comment: 'Чат-получатель' },
+  formType: { type: DataTypes.STRING(50), allowNull: false, comment: 'Тип формы' },
+  filters: { type: DataTypes.JSONB, allowNull: false, defaultValue: {}, comment: '{clientId} — принимать только от этого клиента' },
+  isActive: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  createdBy: { type: DataTypes.UUID, allowNull: true, comment: 'Кто подписал; NULL — автоподписка при входе бота' }
+}, {
+  tableName: 'form_subscriptions',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['botId', 'chatId', 'formType'] },
+    { fields: ['formType'] },
+    { fields: ['chatId'] }
+  ]
+});
+
+// === SUBMISSION DELIVERY MODEL (доставка заявки в конкретный чат) ===
+// Заявка уходит в несколько чатов сразу, у каждого свой статус и свои попытки:
+// сбой в одном чате не должен ни теряться, ни приводить к дублям в остальных.
+const SubmissionDelivery = sequelize.define('SubmissionDelivery', {
+  id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
+  submissionId: { type: DataTypes.UUID, allowNull: false },
+  chatId: { type: DataTypes.UUID, allowNull: false },
+  botId: { type: DataTypes.UUID, allowNull: true },
+  status: { type: DataTypes.STRING(20), allowNull: false, defaultValue: 'pending', comment: 'pending | sent | failed' },
+  attempts: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  error: { type: DataTypes.TEXT, allowNull: true },
+  messageId: { type: DataTypes.BIGINT, allowNull: true, comment: 'message_id в чате вики' },
+  deliveredAt: { type: DataTypes.DATE, allowNull: true }
+}, {
+  tableName: 'submission_deliveries',
+  timestamps: true,
+  indexes: [
+    { unique: true, fields: ['submissionId', 'chatId'] },
+    { fields: ['status', 'attempts'] }
   ]
 });
 
@@ -2822,6 +2867,17 @@ User.hasMany(BotToken, { foreignKey: 'userId', as: 'botTokens' });
 // BotUpdate relationships
 BotUpdate.belongsTo(BotToken, { foreignKey: 'botId', as: 'bot' });
 BotToken.hasMany(BotUpdate, { foreignKey: 'botId', as: 'updates', onDelete: 'CASCADE' });
+
+// FormSubscription relationships
+FormSubscription.belongsTo(BotToken, { foreignKey: 'botId', as: 'bot' });
+FormSubscription.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
+BotToken.hasMany(FormSubscription, { foreignKey: 'botId', as: 'formSubscriptions', onDelete: 'CASCADE' });
+Chat.hasMany(FormSubscription, { foreignKey: 'chatId', as: 'formSubscriptions', onDelete: 'CASCADE' });
+
+// SubmissionDelivery relationships
+SubmissionDelivery.belongsTo(Submission, { foreignKey: 'submissionId', as: 'submission' });
+SubmissionDelivery.belongsTo(Chat, { foreignKey: 'chatId', as: 'chat' });
+Submission.hasMany(SubmissionDelivery, { foreignKey: 'submissionId', as: 'deliveries', onDelete: 'CASCADE' });
 
 // AccreditationFile relationships
 AccreditationFile.belongsTo(Accreditation, { foreignKey: 'accreditationId', as: 'accreditation' });
@@ -3248,6 +3304,8 @@ module.exports = {
   ApiClient,
   Submission,
   ApiRequestLog,
+  FormSubscription,
+  SubmissionDelivery,
   // Promotions module
   Promotion,
   // Ambulance reports module

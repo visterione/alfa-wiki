@@ -9,6 +9,33 @@ const { authenticate } = require('../middleware/auth');
 const { Chat, ChatMember, Message, MessageReaction, User, Role, MedCenter } = require('../models');
 const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
+const subscriptionService = require('../services/public/subscriptionService');
+
+/**
+ * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
+ * Именно это событие заменяет ручную настройку адреса чата: раньше id приходилось
+ * вписывать в .env, теперь маршрутом управляет само членство бота в чате.
+ *
+ * Fire-and-forget: сбой уведомления не должен ломать операцию с участником.
+ */
+async function notifyBotMembership({ chatId, userId, actorId, status }) {
+  try {
+    const user = await User.findByPk(userId, { attributes: ['id', 'isBot'] });
+    if (!user?.isBot) return;
+
+    if (status === 'left') {
+      await subscriptionService.onBotLeft(userId, chatId);
+    }
+
+    const result = await botWebhookService.onBotMembershipChange({ chatId, botUserId: userId, actorId, status });
+
+    if (status === 'member' && result) {
+      await subscriptionService.onBotJoined(result.bot, result.chat, actorId);
+    }
+  } catch (err) {
+    console.error('[chat] уведомление о членстве бота не прошло:', err.message);
+  }
+}
 
 // ID Ассистента
 const ASSISTANT_ID = notificationService.ASSISTANT_ID;
@@ -578,6 +605,9 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
     // Deliver message to any bots in this chat (fire-and-forget)
     botWebhookService.onNewMessage(fullMessage).catch(() => {});
 
+    // /-команды управления подписками на формы обрабатывает сам бэкенд
+    subscriptionService.handleCommand(fullMessage).catch(() => {});
+
     res.status(201).json(fullMessage);
   } catch (error) {
     console.error('Send message error:', error);
@@ -1108,6 +1138,8 @@ router.post('/:chatId/members', authenticate, async (req, res) => {
 
     await ChatMember.create({ chatId, userId, role: 'member' });
 
+    notifyBotMembership({ chatId, userId, actorId: req.user.id, status: 'member' });
+
     const user = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
     const messageContent = `${user.displayName || user.username} добавлен в группу`;
     
@@ -1163,6 +1195,9 @@ router.post('/:chatId/members/bulk', authenticate, async (req, res) => {
     }
 
     await ChatMember.bulkCreate(newUserIds.map(userId => ({ chatId, userId, role: 'member' })));
+
+    newUserIds.forEach(userId =>
+      notifyBotMembership({ chatId, userId, actorId: req.user.id, status: 'member' }));
 
     const newUsers = await User.findAll({
       where: { id: newUserIds },
@@ -1263,10 +1298,12 @@ router.delete('/:chatId/members/:userId', authenticate, async (req, res) => {
     }
 
     const user = await User.findByPk(userId, { attributes: ['displayName', 'username'] });
-    
+
     await membership.destroy();
 
-    const messageContent = isSelf 
+    notifyBotMembership({ chatId, userId, actorId: req.user.id, status: 'left' });
+
+    const messageContent = isSelf
       ? `${user.displayName || user.username} покинул группу`
       : `${user.displayName || user.username} исключён из группы`;
 

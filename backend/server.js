@@ -51,6 +51,7 @@ const performedServiceBonusesRoutes = require('./routes/performed-service-bonuse
 const serviceConsumablesRoutes = require('./routes/service-consumables');
 const telegramBotApiRoutes = require('./routes/telegram-bot-api');
 const botManagementRoutes = require('./routes/bot-management');
+const apiClientsRoutes = require('./routes/api-clients');
 const notifyRoutes = require('./routes/notify');
 const salaryRecordsRoutes = require('./routes/salary-records');
 const cashPaymentsRoutes = require('./routes/cash-payments');
@@ -279,6 +280,7 @@ app.use('/api/executor-settings', executorSettingsRoutes);
 app.use('/api/performed-service-bonuses', performedServiceBonusesRoutes);
 app.use('/api/service-consumables', serviceConsumablesRoutes);
 app.use('/api/bots', botManagementRoutes);
+app.use('/api/api-clients', apiClientsRoutes);
 app.use('/api/bot-subscribers', require('./routes/bot-subscribers'));
 app.use('/api/notify', notifyRoutes);
 app.use('/api/salary-records', salaryRecordsRoutes);

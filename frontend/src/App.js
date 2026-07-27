@@ -13,6 +13,7 @@ import UserProfile from './pages/UserProfile';
 import Favorites from './pages/Favorites';
 import AdminUsers from './pages/admin/AdminUsers';
 import AdminBots from './pages/admin/AdminBots';
+import AdminIntegrations from './pages/admin/AdminIntegrations';
 import AdminRoles from './pages/admin/AdminRoles';
 import AdminSidebar from './pages/admin/AdminSidebar';
 import AdminPages from './pages/admin/AdminPages';
@@ -165,6 +166,11 @@ function AppRoutes() {
 
         <Route path="admin/bots" element={
           <ProtectedRoute adminOnly><AdminBots /></ProtectedRoute>
+        } />
+
+        {/* КЛЮЧИ ПУБЛИЧНОГО API И МАРШРУТЫ ДОСТАВКИ ЗАЯВОК */}
+        <Route path="admin/integrations" element={
+          <ProtectedRoute adminOnly><AdminIntegrations /></ProtectedRoute>
         } />
 
         {/* ЦЕНТР ОБНОВЛЕНИЙ - админка нововведений */}

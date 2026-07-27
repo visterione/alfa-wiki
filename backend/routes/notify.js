@@ -24,6 +24,12 @@ const router = express.Router();
 const { BotToken, Chat } = require('../models');
 const botWebhookService = require('../services/botWebhookService');
 const { sendBotMessage, BotMessengerError } = require('../services/botMessenger');
+const { rateLimitByIp, auditLog } = require('../middleware/publicApi');
+
+// Точка принимает токен бота и была смонтирована голой: перебирать токены по ней
+// можно было бесконечно и бесследно. Те же ограничения, что у публичного API форм.
+router.use(rateLimitByIp(60));
+router.use(auditLog());
 
 router.post('/', async (req, res) => {
   try {
@@ -55,12 +61,15 @@ router.post('/', async (req, res) => {
   }
 });
 
-// GET /api/notify/chat-id?api_key=...&chat_uuid=...
+// POST /api/notify/chat-id   { api_key, chat_uuid }
 // Helper: returns the integer chat_id for a given chat UUID
 // Useful for Comfortel setup — run once to get the numeric ID to use in curl
-router.get('/chat-id', async (req, res) => {
+//
+// Раньше был GET с токеном в query-строке: тот попадал в access-логи nginx
+// открытым текстом и оставался там в ротации. Токен принимается только в теле.
+router.post('/chat-id', async (req, res) => {
   try {
-    const { api_key, chat_uuid } = req.query;
+    const { api_key, chat_uuid } = req.body || {};
 
     if (!api_key)   return res.status(400).json({ ok: false, description: 'api_key is required' });
     if (!chat_uuid) return res.status(400).json({ ok: false, description: 'chat_uuid is required' });

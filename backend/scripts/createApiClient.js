@@ -4,6 +4,10 @@
 /**
  * Выдача ключа внешней системе для публичного API.
  *
+ * Обычный путь — Админка → Интеграции: там же права редактируются без смены ключа.
+ * Скрипт оставлен для случаев, когда до интерфейса не дотянуться. Учтите: он умеет
+ * только создавать, поэтому добавлять права существующему клиенту им нельзя.
+ *
  * Использование:
  *   node scripts/createApiClient.js "Сайт medcentralfa.ru" forms:patient-registration
  *   node scripts/createApiClient.js "Лендинг" forms:patient-registration --public --origin=https://medcentralfa.ru
