@@ -20,11 +20,13 @@ const UPLOAD_ROOT = path.join(__dirname, '..', '..', 'uploads', 'public-submissi
 
 // Расширение по типу файла: имя, пришедшее от клиента, для хранения не используем
 const EXT_BY_MIME = {
-  'application/pdf': '.pdf',
-  'image/jpeg':      '.jpg',
-  'image/png':       '.png',
-  'image/heic':      '.heic',
-  'image/heif':      '.heif'
+  'application/pdf':  '.pdf',
+  'image/jpeg':       '.jpg',
+  'image/png':        '.png',
+  'image/heic':       '.heic',
+  'image/heif':       '.heif',
+  'application/msword': '.doc',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx'
 };
 
 /**

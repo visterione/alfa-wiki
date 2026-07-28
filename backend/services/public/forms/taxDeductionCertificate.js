@@ -47,7 +47,13 @@ const files = [
     label: 'Документ, подтверждающий родство с пациентом',
     maxCount: 3,
     maxSizeMb: 5,
-    mimeTypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/heic', 'image/heif'],
+    mimeTypes: [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ],
     requiredIf: patientRequired
   }
 ];

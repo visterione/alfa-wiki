@@ -201,7 +201,9 @@ app.use(cors({
   origin: true, // Allow all origins (API is protected by JWT auth)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  // X-Api-Key нужен публичному контуру /api/public: без него браузер не пропустит
+  // preflight, и форма с сайта не уйдёт (curl это не воспроизводит — он preflight не шлёт)
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key']
 }));
 
 // Публичный API для внешних интеграций (сайт клиники и т.д.).
