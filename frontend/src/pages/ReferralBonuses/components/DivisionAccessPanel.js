@@ -19,6 +19,9 @@ const PERM_OPTIONS = [
   { value: 'read', label: 'Чтение',         color: '#d97706' },
 ];
 
+// Размер порции кандидатов в «Добавить сотрудника»
+const MEMBER_PAGE = 50;
+
 function genId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 
 function SearchableSelect({ value, onChange, options, placeholder = '— выберите —' }) {
@@ -158,7 +161,10 @@ export default function DivisionAccessPanel({
   const [memberFilterClinic, setMemberFilterClinic] = useState('');
   const [memberSaving,  setMemberSaving]  = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
+  // Сколько кандидатов отрисовано: догружаем порциями при прокрутке списка
+  const [memberVisible, setMemberVisible] = useState(MEMBER_PAGE);
   useEffect(() => { setMemberIds(divisionDoctorIds); }, [divisionDoctorIds]);
+  useEffect(() => { setMemberVisible(MEMBER_PAGE); }, [memberSearch, memberFilterClinic, showAddMember]);
 
   const memberSet = new Set(memberIds);
   const members = doctors.filter(d => memberSet.has(d.id));
@@ -166,12 +172,26 @@ export default function DivisionAccessPanel({
   const memberClinicIds = [...new Set(doctors.flatMap(d => d.clinics || []))]
     .sort((a, b) => (getClinicName ? getClinicName(a) : a).localeCompare(getClinicName ? getClinicName(b) : b, 'ru'));
 
-  const memberCandidates = doctors.filter(d => {
-    if (memberSet.has(d.id)) return false;
-    if (memberSearch.trim() && !d.name.toLowerCase().includes(memberSearch.trim().toLowerCase())) return false;
-    if (memberFilterClinic && !(d.clinics || []).map(String).includes(String(memberFilterClinic))) return false;
-    return true;
-  });
+  // Поиск потокенный: «иванов ив» находит «Иванов Иван Иванович» независимо от порядка слов
+  const memberTokens = memberSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+
+  const memberCandidates = doctors
+    .filter(d => {
+      if (memberSet.has(d.id)) return false;
+      const name = (d.name || '').toLowerCase();
+      if (memberTokens.length && !memberTokens.every(t => name.includes(t))) return false;
+      if (memberFilterClinic && !(d.clinics || []).map(String).includes(String(memberFilterClinic))) return false;
+      return true;
+    })
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
+
+  const memberShown = memberCandidates.slice(0, memberVisible);
+
+  const onCandidatesScroll = e => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight > 60) return;
+    setMemberVisible(v => (v < memberCandidates.length ? v + MEMBER_PAGE : v));
+  };
 
   const toggleMember = async (doctorId) => {
     const next = memberSet.has(doctorId)
@@ -772,11 +792,14 @@ export default function DivisionAccessPanel({
                   ))}
                 </select>
               </div>
-              <div style={{ marginTop: 6, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', maxHeight: 200, overflowY: 'auto' }}>
+              <div
+                onScroll={onCandidatesScroll}
+                style={{ marginTop: 6, border: '1px solid var(--rb-border)', borderRadius: 6, background: '#fff', maxHeight: 240, overflowY: 'auto' }}
+              >
                 {memberCandidates.length === 0 && (
                   <div style={{ padding: '8px 10px', fontSize: 12, color: 'var(--rb-text-secondary)' }}>Нет результатов</div>
                 )}
-                {memberCandidates.slice(0, 30).map(d => {
+                {memberShown.map(d => {
                   const specialty = (d.professions || [])
                     .map(p => typeof p === 'object' ? (p.title || '') : String(p || ''))
                     .filter(Boolean).join(', ');
@@ -796,7 +819,21 @@ export default function DivisionAccessPanel({
                     </div>
                   );
                 })}
+                {memberShown.length < memberCandidates.length && (
+                  <button
+                    type="button"
+                    onClick={() => setMemberVisible(v => v + MEMBER_PAGE)}
+                    style={{ width: '100%', padding: '7px 10px', fontSize: 11, fontWeight: 600, border: 'none', background: '#f8fafc', color: 'var(--rb-primary)', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Показать ещё · {memberShown.length} из {memberCandidates.length}
+                  </button>
+                )}
               </div>
+              {memberCandidates.length > 0 && (
+                <div style={{ marginTop: 4, fontSize: 10, color: 'var(--rb-text-secondary)' }}>
+                  Найдено: {memberCandidates.length}
+                </div>
+              )}
             </div>
           )}
 

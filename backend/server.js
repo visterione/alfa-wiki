@@ -203,7 +203,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   // X-Api-Key нужен публичному контуру /api/public: без него браузер не пропустит
   // preflight, и форма с сайта не уйдёт (curl это не воспроизводит — он preflight не шлёт)
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'Idempotency-Key']
 }));
 
 // Публичный API для внешних интеграций (сайт клиники и т.д.).
