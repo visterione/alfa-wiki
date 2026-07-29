@@ -39,6 +39,8 @@ const servicesRoutes = require('./routes/services');
 const calendarRoutes = require('./routes/calendar');
 const kanbanRoutes = require('./routes/kanban');
 const priceComparisonsRoutes = require('./routes/price-comparisons');
+const parserProxyRoutes = require('./routes/parser-proxy');
+const competitorMatchingRoutes = require('./routes/competitor-matching');
 const reviewsRoutes = require('./routes/reviews');
 const emailRoutes = require('./routes/email');
 const hourNormsRoutes = require('./routes/hour-norms');
@@ -271,6 +273,8 @@ app.use('/api/services', servicesRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/kanban', kanbanRoutes);
 app.use('/api/price-comparisons', priceComparisonsRoutes);
+app.use('/api/parser', parserProxyRoutes);
+app.use('/api/competitor-matching', competitorMatchingRoutes);
 app.use('/api/reviews', reviewsRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/hour-norms', hourNormsRoutes);
@@ -419,6 +423,9 @@ async function startServer() {
 
     // Повторная доставка заявок публичного API в чат (ежеминутно)
     require('./cron/submissionsRetryCron');
+
+    // Забор прайсов конкурентов из alfa-parser (03:30 МСК)
+    require('./cron/competitorPricesCron');
 
     // Ensure АТС bot user exists
     const { initMissedCallsBot } = require('./services/notificationService');

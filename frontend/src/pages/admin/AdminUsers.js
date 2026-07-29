@@ -223,7 +223,8 @@ export default function AdminUsers() {
       settings: false,
       courses: false,
       journal: false,
-      reviews: false
+      reviews: false,
+      parser: false
     },
     salaryPerm: { ...SALARY_PERM_DEFAULT },
     statisticsTabs: {
@@ -496,7 +497,8 @@ export default function AdminUsers() {
         canManagePromotions: user.canManagePromotions || false,
         adminAccess: user.adminAccess || {
           pages: false, sidebar: false, users: false, roles: false, media: false,
-          backup: false, settings: false, courses: false, journal: false, reviews: false
+          backup: false, settings: false, courses: false, journal: false, reviews: false,
+          parser: false
         },
         salaryPerm,
         statisticsTabs: user.statisticsTabs ? {
@@ -538,7 +540,8 @@ export default function AdminUsers() {
         canManagePromotions: false,
         adminAccess: {
           pages: false, sidebar: false, users: false, roles: false, media: false,
-          backup: false, settings: false, courses: false, journal: false, reviews: false
+          backup: false, settings: false, courses: false, journal: false, reviews: false,
+          parser: false
         },
         salaryPerm: { ...SALARY_PERM_DEFAULT },
         statisticsTabs: {
@@ -1302,6 +1305,7 @@ export default function AdminUsers() {
                         { key: 'users',    label: 'Пользователи' },
                         { key: 'backup',   label: 'Резервные копии' },
                         { key: 'journal',  label: 'Журнал' },
+                        { key: 'parser',   label: 'Парсер цен' },
                       ].map(({ key, label }) => ({
                         key, label,
                         checked: form.isAdmin || (form.adminAccess[key] ?? false),
@@ -1310,7 +1314,7 @@ export default function AdminUsers() {
                       onToggleAll: newVal => {
                         if (form.isAdmin) return;
                         const a = {...form.adminAccess};
-                        ['pages','roles','settings','sidebar','media','users','backup','journal'].forEach(k => { a[k] = newVal; });
+                        ['pages','roles','settings','sidebar','media','users','backup','journal','parser'].forEach(k => { a[k] = newVal; });
                         setForm({...form, adminAccess: a});
                       },
                     },

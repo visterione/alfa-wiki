@@ -25,6 +25,7 @@ import AdminCourses from './pages/admin/AdminCourses';
 import AdminCourseEditor from './pages/admin/AdminCourseEditor';
 import AdminJournal from './pages/admin/AdminJournal';
 import AdminRbAccess from './pages/admin/AdminRbAccess';
+import AdminParser from './pages/admin/AdminParser';
 import Calendar from './pages/Calendar';
 import Kanban from './pages/Kanban';
 import KanbanArchive from './pages/KanbanArchive';
@@ -171,6 +172,11 @@ function AppRoutes() {
         {/* КЛЮЧИ ПУБЛИЧНОГО API И МАРШРУТЫ ДОСТАВКИ ЗАЯВОК */}
         <Route path="admin/integrations" element={
           <ProtectedRoute adminOnly><AdminIntegrations /></ProtectedRoute>
+        } />
+
+        {/* ПАРСЕР ЦЕН КОНКУРЕНТОВ */}
+        <Route path="admin/parser" element={
+          <ProtectedRoute requireAdminAccess="parser"><AdminParser /></ProtectedRoute>
         } />
 
         {/* ЦЕНТР ОБНОВЛЕНИЙ - админка нововведений */}

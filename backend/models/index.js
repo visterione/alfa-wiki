@@ -64,7 +64,8 @@ const User = sequelize.define('User', {
       courses: false,    // Курсы
       kanban: false,     // Канбан-доска
       journal: false,    // Журнал страниц
-      reviews: false     // Отзывы
+      reviews: false,    // Отзывы
+      parser: false      // Парсер цен конкурентов
     },
     comment: 'Гранулярный доступ к админ-разделам'
   },
@@ -794,6 +795,12 @@ const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
     defaultValue: {},
     comment: 'История изменений цен: {"Неомед": [{price: 330, userId: "uuid", username: "Иванов И.И.", changedAt: "2026-02-06T10:00:00Z"}]}'
   },
+  priceSources: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    comment: 'Помечены только цены, проставленные парсером: {"Неомед": {source, matchId, filialName, syncedAt}}. '
+      + 'Всё непомеченное считается введённым человеком и парсером не перезаписывается'
+  },
   costPrices: {
     type: DataTypes.JSONB,
     defaultValue: {},
@@ -816,6 +823,148 @@ const PriceComparisonItem = sequelize.define('PriceComparisonItem', {
     { fields: ['comparisonId'] },
     { fields: ['serviceCode'] },
     { fields: ['sortOrder'] }
+  ]
+});
+
+// === COMPETITOR PRICES (зеркало alfa-parser) ===
+// Парсер обходит сайты конкурентов и хранит прайсы у себя, вики ночью забирает
+// текущие цены. Своя копия нужна для автосопоставления: в price_comparison_items
+// лежат только уже отобранные позиции, и подбирать соответствие там не с чем.
+const CompetitorSource = sequelize.define('CompetitorSource', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  parserSourceId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    unique: true,
+    comment: 'ID источника в парсере — по нему идёт сопоставление при синхронизации'
+  },
+  name: { type: DataTypes.STRING(255), allowNull: false, comment: 'Напр. "clinic23-krd"' },
+  baseUrl: { type: DataTypes.TEXT, allowNull: false },
+  city: {
+    type: DataTypes.STRING(150),
+    comment: 'Города разведены на уровне источника: у сети в каждом городе свой прайс'
+  },
+  servicesTotal: { type: DataTypes.INTEGER, defaultValue: 0, allowNull: false },
+  lastRunAt: { type: DataTypes.DATE, comment: 'Когда парсер последний раз обходил сайт' },
+  lastRunStatus: { type: DataTypes.STRING(16), comment: 'ok | partial | failed | running' },
+  syncedAt: { type: DataTypes.DATE, comment: 'Когда мы последний раз забирали данные' },
+  syncStatus: {
+    type: DataTypes.STRING(16),
+    defaultValue: 'pending',
+    allowNull: false,
+    comment: 'pending | ok | failed'
+  },
+  syncError: { type: DataTypes.TEXT },
+  competitorLabel: {
+    type: DataTypes.STRING(255),
+    comment: 'Как эта клиника названа в сравнениях цен — в неё пойдут цены источника'
+  }
+}, {
+  tableName: 'competitor_sources',
+  timestamps: true
+});
+
+const CompetitorService = sequelize.define('CompetitorService', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  sourceId: { type: DataTypes.UUID, allowNull: false },
+  parserServiceId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    unique: true,
+    comment: 'ID услуги в парсере, сквозной по всем источникам'
+  },
+  externalId: { type: DataTypes.STRING(255), comment: 'Артикул на сайте конкурента' },
+  name: { type: DataTypes.TEXT, allowNull: false },
+  nameNormalized: {
+    type: DataTypes.TEXT,
+    comment: 'Название под триграммный поиск; заполняется при синхронизации (normalizeName)'
+  },
+  url: { type: DataTypes.TEXT },
+  category: { type: DataTypes.TEXT, comment: 'Путь по дереву разделов строкой' },
+  categoryPath: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: "['Стоматология','Терапевтический прием']"
+  },
+  turnaround: { type: DataTypes.STRING(255), comment: 'Срок выполнения' },
+  codes: {
+    type: DataTypes.JSONB,
+    defaultValue: [],
+    comment: 'Коды приказа 804н — основа автосопоставления с нашими услугами'
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true,
+    allowNull: false,
+    comment: 'Пропала из прайса — гасим, но не удаляем: на неё могут ссылаться сопоставления'
+  },
+  lastSeenAt: { type: DataTypes.DATE }
+}, {
+  tableName: 'competitor_services',
+  timestamps: true,
+  indexes: [
+    { fields: ['sourceId'] },
+    { fields: ['sourceId', 'isActive'] }
+  ]
+});
+
+// Три значения цены, а не одно: конкуренты отдают вилку {min, base, max}, и base —
+// самостоятельная величина, а не середина. Именно его показывают клиенту на сайте.
+const CompetitorPrice = sequelize.define('CompetitorPrice', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  serviceId: { type: DataTypes.UUID, allowNull: false },
+  filialId: {
+    type: DataTypes.INTEGER,
+    comment: 'ID филиала в парсере; NULL — у лабораторий филиалов нет'
+  },
+  filialName: {
+    type: DataTypes.STRING(255),
+    comment: 'Денормализовано: отдельная таблица филиалов дала бы join без новых возможностей'
+  },
+  price: { type: DataTypes.DECIMAL(12, 2), comment: 'Цена, которую клиника показывает клиенту' },
+  priceMin: { type: DataTypes.DECIMAL(12, 2) },
+  priceMax: { type: DataTypes.DECIMAL(12, 2) },
+  priceDiscount: { type: DataTypes.DECIMAL(12, 2) },
+  currency: { type: DataTypes.STRING(3), defaultValue: 'RUB', allowNull: false },
+  observedAt: { type: DataTypes.DATE, comment: 'Когда парсер видел эту цену' }
+}, {
+  tableName: 'competitor_prices',
+  timestamps: true,
+  indexes: [
+    { fields: ['serviceId'] }
+  ]
+});
+
+// Соответствие «наша позиция в сравнении ↔ услуга конкурента».
+// Связь именно с позицией сравнения, а не с каталогом целиком: сравнения
+// собираются под задачу, и в разных сравнениях одна услуга значит разное.
+const CompetitorServiceMatch = sequelize.define('CompetitorServiceMatch', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  itemId: { type: DataTypes.UUID, allowNull: false, comment: 'Позиция сравнения цен' },
+  competitorServiceId: { type: DataTypes.UUID, allowNull: false },
+  status: {
+    type: DataTypes.STRING(16),
+    defaultValue: 'suggested',
+    allowNull: false,
+    comment: 'suggested — ждёт человека; confirmed — принято; rejected — отказано, больше не предлагать'
+  },
+  method: {
+    type: DataTypes.STRING(16),
+    defaultValue: 'name',
+    allowNull: false,
+    comment: 'code804 | name | manual — коду можно верить, названию только доверять с проверкой'
+  },
+  score: { type: DataTypes.DECIMAL(4, 3), comment: 'Насколько похоже: 1.000 для совпадения по коду' },
+  confirmedBy: { type: DataTypes.UUID },
+  confirmedAt: { type: DataTypes.DATE }
+}, {
+  tableName: 'competitor_service_matches',
+  timestamps: true,
+  indexes: [
+    // повторный автоподбор не должен плодить дубли и обязан видеть прежний отказ
+    { unique: true, fields: ['itemId', 'competitorServiceId'] },
+    { fields: ['itemId', 'status'] },
+    { fields: ['status'] }
   ]
 });
 
@@ -2894,6 +3043,17 @@ PriceComparison.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 PriceComparison.hasMany(PriceComparisonItem, { foreignKey: 'comparisonId', as: 'items', onDelete: 'CASCADE' });
 PriceComparisonItem.belongsTo(PriceComparison, { foreignKey: 'comparisonId', as: 'comparison' });
 
+// Competitor prices relationships (зеркало alfa-parser)
+CompetitorSource.hasMany(CompetitorService, { foreignKey: 'sourceId', as: 'services', onDelete: 'CASCADE' });
+CompetitorService.belongsTo(CompetitorSource, { foreignKey: 'sourceId', as: 'source' });
+CompetitorService.hasMany(CompetitorPrice, { foreignKey: 'serviceId', as: 'prices', onDelete: 'CASCADE' });
+CompetitorPrice.belongsTo(CompetitorService, { foreignKey: 'serviceId', as: 'service' });
+
+PriceComparisonItem.hasMany(CompetitorServiceMatch, { foreignKey: 'itemId', as: 'competitorMatches', onDelete: 'CASCADE' });
+CompetitorServiceMatch.belongsTo(PriceComparisonItem, { foreignKey: 'itemId', as: 'item' });
+CompetitorService.hasMany(CompetitorServiceMatch, { foreignKey: 'competitorServiceId', as: 'matches', onDelete: 'CASCADE' });
+CompetitorServiceMatch.belongsTo(CompetitorService, { foreignKey: 'competitorServiceId', as: 'competitorService' });
+
 // EmailTemplate relationships
 EmailTemplate.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' });
 User.hasMany(EmailTemplate, { foreignKey: 'createdBy', as: 'emailTemplates' });
@@ -3266,6 +3426,10 @@ module.exports = {
   KanbanTask,
   PriceComparison,
   PriceComparisonItem,
+  CompetitorSource,
+  CompetitorService,
+  CompetitorPrice,
+  CompetitorServiceMatch,
   // Reviews module
   ReviewPlatform,
   ReviewBoard,

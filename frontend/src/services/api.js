@@ -733,6 +733,39 @@ export const apiClients = {
   redeliver:   (id)       => api.post(`/api-clients/submissions/${id}/redeliver`),
 };
 
+// Парсер прайсов конкурентов. Всё идёт через наш бэкенд: парсер работает
+// по HTTP в локальной сети, и обратиться к нему со страницы напрямую нельзя —
+// браузер запретит смешанный контент.
+export const priceParser = {
+  ping:      ()               => api.get('/parser/ping'),
+  sources:   ()               => api.get('/parser/sources'),
+  source:    (id)             => api.get(`/parser/sources/${id}`),
+  services:  (id, params)     => api.get(`/parser/sources/${id}/services`, { params }),
+  analyze:   (url, city)      => api.post('/parser/analyze', { url, city }),
+  job:       (jobId)          => api.get(`/parser/jobs/${jobId}`),
+  confirm:   (jobId, cities)  => api.post(`/parser/jobs/${jobId}/confirm`, { cities }),
+  refresh:   (id)             => api.post(`/parser/sources/${id}/refresh`),
+  syncStatus:()               => api.get('/parser/sync/status'),
+  sync:      ()               => api.post('/parser/sync'),
+  setLabel:  (parserSourceId, competitorLabel) =>
+    api.put(`/parser/sources/${parserSourceId}/label`, { competitorLabel }),
+};
+
+// Сравнения цен — нужен только список, всё остальное живёт на своей странице
+export const priceComparisons = {
+  list: () => api.get('/price-comparisons'),
+};
+
+// Сопоставление услуг конкурентов с позициями сравнения цен.
+// Читать может любой сотрудник, менять — только с доступом «Парсер цен».
+export const competitorMatching = {
+  list:    (comparisonId)          => api.get(`/competitor-matching/${comparisonId}/matches`),
+  suggest: (comparisonId)          => api.post(`/competitor-matching/${comparisonId}/matches/suggest`),
+  confirm: (comparisonId, matchId) => api.post(`/competitor-matching/${comparisonId}/matches/${matchId}/confirm`),
+  reject:  (comparisonId, matchId) => api.post(`/competitor-matching/${comparisonId}/matches/${matchId}/reject`),
+  fill:    (comparisonId)          => api.post(`/competitor-matching/${comparisonId}/fill`),
+};
+
 export const doctorSchedules = {
   list:                 (misUserId)              => api.get('/doctor-schedules', { params: { misUserId } }),
   create:               (data)                   => api.post('/doctor-schedules', data),

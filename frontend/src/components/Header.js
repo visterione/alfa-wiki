@@ -475,6 +475,12 @@ export default function Header({ sidebarOpen, onToggleSidebar }) {
                     Журнал страниц
                   </Link>
                 )}
+                {(isAdmin || user?.adminAccess?.parser) && (
+                  <Link to="/admin/parser" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
+                    <Search size={16} />
+                    Парсер цен
+                  </Link>
+                )}
                 {isAdmin && (
                   <Link to="/admin/bots" className="header-dropdown-item" onClick={() => setShowDropdown(false)}>
                     <Bot size={16} />
