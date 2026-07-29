@@ -749,6 +749,24 @@ export const priceParser = {
   sync:      ()               => api.post('/parser/sync'),
   setLabel:  (parserSourceId, competitorLabel) =>
     api.put(`/parser/sources/${parserSourceId}/label`, { competitorLabel }),
+  // логотипы приходят готовыми data-URI: <img> не умеет слать JWT-заголовок
+  logos:     ()               => api.get('/parser/logos'),
+  rename:    (id, displayName) => api.patch(`/parser/sources/${id}`, { displayName }),
+  setCity:   (id, city)       => api.patch(`/parser/sources/${id}`, { city }),
+  // очередь: список ссылок разбирается по одной, человек возвращается к готовым
+  queueAdd:     (urls)        => api.post('/parser/queue', { urls }),
+  queueList:    ()            => api.get('/parser/queue'),
+  queueConfirm: (id, cities)  => api.post(`/parser/queue/${id}/confirm`, { cities }),
+  queueDrop:    (id)          => api.delete(`/parser/queue/${id}`),
+  queueClear:   ()            => api.post('/parser/queue/clear'),
+  // адреса точек: для карты в сравнении цен и просто чтобы знать, куда идти
+  locations:        (id)          => api.get(`/parser/sources/${id}/locations`),
+  collectLocations: (id)          => api.post(`/parser/sources/${id}/locations/collect`),
+  addLocation:      (id, data)    => api.post(`/parser/sources/${id}/locations`, data),
+  editLocation:     (lid, data)   => api.patch(`/parser/locations/${lid}`, data),
+  dropLocation:     (lid)         => api.delete(`/parser/locations/${lid}`),
+  branding:  (id)             => api.post(`/parser/sources/${id}/branding`),
+  remove:    (id)             => api.delete(`/parser/sources/${id}`),
 };
 
 // Сравнения цен — нужен только список, всё остальное живёт на своей странице

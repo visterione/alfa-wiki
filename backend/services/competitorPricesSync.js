@@ -15,7 +15,9 @@
  *     и быстрее, чем 67 тысяч точечных UPDATE.
  */
 
-const { sequelize, CompetitorSource, CompetitorService, CompetitorPrice } = require('../models');
+const {
+  sequelize, CompetitorSource, CompetitorService, CompetitorPrice, CompetitorLocation
+} = require('../models');
 const parser = require('./parserClient');
 const { normalizeName, normalizeCode } = require('./competitorMatching');
 
@@ -29,11 +31,17 @@ const chunk = (items, size) => {
   return parts;
 };
 
-/** Строка источника в вики: заводим при первой встрече, дальше обновляем. */
+/**
+ * Строка источника в вики: заводим при первой встрече, дальше обновляем.
+ *
+ * Название конкурента (competitorLabel) сознательно не трогаем: его задаёт
+ * человек под свои сравнения, и парсеру там делать нечего.
+ */
 async function upsertSource(remote) {
   const lastRun = remote.last_run || null;
   const fields = {
     name: remote.name,
+    displayName: remote.display_name || null,
     baseUrl: remote.base_url,
     city: remote.city || null,
     servicesTotal: remote.services_total || 0,
@@ -42,11 +50,71 @@ async function upsertSource(remote) {
   };
 
   const existing = await CompetitorSource.findOne({ where: { parserSourceId: remote.id } });
-  if (existing) {
-    await existing.update(fields);
-    return existing;
+  const source = existing
+    ? (await existing.update(fields), existing)
+    : await CompetitorSource.create({ parserSourceId: remote.id, ...fields });
+
+  await syncLogo(source, remote);
+  await syncLocations(source, remote);
+  return source;
+}
+
+/**
+ * Адреса точек клиники.
+ *
+ * Города для сравнения мало: у clinic23 в одном Краснодаре десять отделений
+ * с разными адресами. Зеркалим их к себе, потому что карту рисует вики,
+ * а ходить за адресами в парсер на каждый показ незачем.
+ *
+ * Список приходит целиком и целиком же замещает прежний: точек десятки,
+ * а не тысячи, и разбираться, какая исчезла, дороже, чем переписать заново.
+ */
+async function syncLocations(source, remote) {
+  try {
+    const data = await parser.get(`/api/sources/${remote.id}/locations`);
+    const rows = (data.locations || []).map(item => ({
+      sourceId: source.id,
+      parserLocationId: item.id,
+      name: item.name || null,
+      address: item.address,
+      city: item.city || null,
+      origin: item.origin || 'text',
+      parserFilialId: item.filial_id ?? null
+    }));
+
+    await sequelize.transaction(async (transaction) => {
+      await CompetitorLocation.destroy({ where: { sourceId: source.id }, transaction });
+      if (rows.length) await CompetitorLocation.bulkCreate(rows, { transaction });
+    });
+  } catch (err) {
+    // Адреса — дополнение к прайсу: без них таблица и сравнение работают
+    console.warn(`   ⚠️  адреса ${remote.name} не забрались: ${err.message}`);
   }
-  return CompetitorSource.create({ parserSourceId: remote.id, ...fields });
+}
+
+/**
+ * Значок клиники к нам в базу.
+ *
+ * Тянем байты только когда картинка сменилась: сравниваем адрес, с которого
+ * парсер её взял. Иначе каждый ночной прогон качал бы два десятка неизменных
+ * файлов без всякой пользы.
+ */
+async function syncLogo(source, remote) {
+  if (!remote.has_logo) return;
+  if (source.logoUrl && source.logoUrl === remote.logo_url && source.logoData) return;
+
+  try {
+    const { data, contentType } = await parser.getLogo(remote.id);
+    await source.update({
+      logoUrl: remote.logo_url || null,
+      logoData: data,
+      logoContentType: contentType
+    });
+  } catch (err) {
+    // Логотип — украшение: без него таблица работает, ронять из-за него
+    // синхронизацию цен нельзя
+    console.warn(`   ⚠️  логотип ${remote.name} не забрался: ${err.message}`);
+  }
 }
 
 /**

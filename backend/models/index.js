@@ -858,7 +858,17 @@ const CompetitorSource = sequelize.define('CompetitorSource', {
   competitorLabel: {
     type: DataTypes.STRING(255),
     comment: 'Как эта клиника названа в сравнениях цен — в неё пойдут цены источника'
-  }
+  },
+  displayName: {
+    type: DataTypes.STRING(255),
+    comment: 'Человеческое название с сайта клиники; name — это домен и в списке нечитаем'
+  },
+  logoUrl: { type: DataTypes.TEXT, comment: 'Откуда взят значок — чтобы не тянуть его заново' },
+  logoData: {
+    type: DataTypes.BLOB,
+    comment: 'Значок байтами: страница сравнения не должна ходить за картинкой на чужой сайт'
+  },
+  logoContentType: { type: DataTypes.STRING(100) }
 }, {
   tableName: 'competitor_sources',
   timestamps: true
@@ -906,6 +916,35 @@ const CompetitorService = sequelize.define('CompetitorService', {
     { fields: ['sourceId'] },
     { fields: ['sourceId', 'isActive'] }
   ]
+});
+
+// Точка клиники на карте. Отдельно от филиала намеренно: филиал в прайсе —
+// измерение цены, а точка — место, куда человек придёт. У лаборатории филиалов
+// в смысле прайса нет вовсе, а пункт забора с адресом есть.
+const CompetitorLocation = sequelize.define('CompetitorLocation', {
+  id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
+  sourceId: { type: DataTypes.UUID, allowNull: false },
+  parserLocationId: { type: DataTypes.INTEGER, allowNull: false, unique: true },
+  name: { type: DataTypes.STRING(255), comment: "Напр. 'Клиника на Сормовской'" },
+  address: { type: DataTypes.TEXT, allowNull: false },
+  city: {
+    type: DataTypes.STRING(150),
+    comment: 'Пусто, если на сайте не указан: выдуманный город хуже отсутствующего'
+  },
+  origin: {
+    type: DataTypes.STRING(16),
+    defaultValue: 'text',
+    allowNull: false,
+    comment: 'jsonld | text | manual — вписанному руками веры больше'
+  },
+  parserFilialId: {
+    type: DataTypes.INTEGER,
+    comment: 'Филиал в парсере, если точку удалось связать с ценами'
+  }
+}, {
+  tableName: 'competitor_locations',
+  timestamps: true,
+  indexes: [{ fields: ['sourceId'] }, { fields: ['city'] }]
 });
 
 // Три значения цены, а не одно: конкуренты отдают вилку {min, base, max}, и base —
@@ -3048,6 +3087,8 @@ CompetitorSource.hasMany(CompetitorService, { foreignKey: 'sourceId', as: 'servi
 CompetitorService.belongsTo(CompetitorSource, { foreignKey: 'sourceId', as: 'source' });
 CompetitorService.hasMany(CompetitorPrice, { foreignKey: 'serviceId', as: 'prices', onDelete: 'CASCADE' });
 CompetitorPrice.belongsTo(CompetitorService, { foreignKey: 'serviceId', as: 'service' });
+CompetitorSource.hasMany(CompetitorLocation, { foreignKey: 'sourceId', as: 'locations', onDelete: 'CASCADE' });
+CompetitorLocation.belongsTo(CompetitorSource, { foreignKey: 'sourceId', as: 'source' });
 
 PriceComparisonItem.hasMany(CompetitorServiceMatch, { foreignKey: 'itemId', as: 'competitorMatches', onDelete: 'CASCADE' });
 CompetitorServiceMatch.belongsTo(PriceComparisonItem, { foreignKey: 'itemId', as: 'item' });
@@ -3429,6 +3470,7 @@ module.exports = {
   CompetitorSource,
   CompetitorService,
   CompetitorPrice,
+  CompetitorLocation,
   CompetitorServiceMatch,
   // Reviews module
   ReviewPlatform,

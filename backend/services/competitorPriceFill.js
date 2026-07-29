@@ -13,7 +13,30 @@
  * человеческое и неприкосновенное.
  */
 
-const { sequelize, PriceComparisonItem, CompetitorServiceMatch } = require('../models');
+const { sequelize, PriceComparison, PriceComparisonItem, CompetitorServiceMatch } = require('../models');
+
+/**
+ * Названия конкурентов должны значиться в самом сравнении.
+ *
+ * Страница сравнения строит колонки так: всё, чего нет в `competitors`,
+ * она считает НАШИМ медцентром. Поэтому подставить цену мало — если не
+ * дописать сюда название, колонка появится, но встанет как своя клиника,
+ * и вся арифметика по ней поедет.
+ */
+async function ensureCompetitorColumns(comparisonId, labels) {
+  if (!labels.size) return;
+
+  const comparison = await PriceComparison.findByPk(comparisonId);
+  if (!comparison) return;
+
+  const known = new Set(comparison.competitors || []);
+  const missing = [...labels].filter(label => !known.has(label));
+  if (!missing.length) return;
+
+  comparison.competitors = [...known, ...missing];
+  comparison.changed('competitors', true);
+  await comparison.save();
+}
 
 /**
  * Цены подтверждённых соответствий одного сравнения.
@@ -72,6 +95,7 @@ async function fillComparison(comparisonId, { actor = null } = {}) {
 
   const summary = { items: 0, filled: 0, unchanged: 0, protectedByHuman: 0 };
   const now = new Date().toISOString();
+  const usedLabels = new Set(prices.map(row => row.competitorLabel));
 
   for (const [itemId, rowsForItem] of byItem) {
     const item = await PriceComparisonItem.findByPk(itemId);
@@ -139,7 +163,36 @@ async function fillComparison(comparisonId, { actor = null } = {}) {
     }
   }
 
+  // После записи цен, а не до: если подставлять было нечего, лишние колонки
+  // в сравнении не нужны
+  await ensureCompetitorColumns(comparisonId, usedLabels);
+
   return summary;
+}
+
+/**
+ * Обновить цены во всех сравнениях, где есть принятые соответствия.
+ *
+ * Вызывается ночью следом за забором цен. Берёт только подтверждённое —
+ * предложенное по-прежнему ждёт человека, — и не трогает ручные цены,
+ * поэтому работать без присмотра ей можно.
+ */
+async function fillAllComparisons() {
+  const [rows] = await sequelize.query(
+    `SELECT DISTINCT it."comparisonId"
+       FROM competitor_service_matches m
+       JOIN price_comparison_items it ON it.id = m."itemId"
+      WHERE m.status = 'confirmed'`
+  );
+
+  const totals = { comparisons: 0, filled: 0, protectedByHuman: 0 };
+  for (const row of rows) {
+    const summary = await fillComparison(row.comparisonId);
+    totals.comparisons += 1;
+    totals.filled += summary.filled;
+    totals.protectedByHuman += summary.protectedByHuman;
+  }
+  return totals;
 }
 
 /**
@@ -183,4 +236,10 @@ async function pendingCount(comparisonId) {
   });
 }
 
-module.exports = { pricesForComparison, fillComparison, clearParserPrice, pendingCount };
+module.exports = {
+  pricesForComparison,
+  fillComparison,
+  fillAllComparisons,
+  clearParserPrice,
+  pendingCount
+};

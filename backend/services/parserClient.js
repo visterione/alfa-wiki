@@ -46,6 +46,35 @@ async function post(path, body = {}) {
   return response.data;
 }
 
+async function patch(path, body = {}) {
+  const response = await axios.patch(`${parserUrl()}${path}`, body, {
+    headers: { 'X-Api-Key': process.env.PARSER_API_TOKEN || '' },
+    timeout: REQUEST_TIMEOUT
+  });
+  return response.data;
+}
+
+async function del(path) {
+  const response = await axios.delete(`${parserUrl()}${path}`, {
+    headers: { 'X-Api-Key': process.env.PARSER_API_TOKEN || '' },
+    timeout: REQUEST_TIMEOUT
+  });
+  return response.data;
+}
+
+/** Значок клиники — единственное место, где с парсера приходят байты, а не JSON. */
+async function getLogo(parserSourceId) {
+  const response = await axios.get(`${parserUrl()}/api/sources/${encodeURIComponent(parserSourceId)}/logo`, {
+    headers: { 'X-Api-Key': process.env.PARSER_API_TOKEN || '' },
+    timeout: REQUEST_TIMEOUT,
+    responseType: 'arraybuffer'
+  });
+  return {
+    data: Buffer.from(response.data),
+    contentType: (response.headers['content-type'] || 'image/png').split(';')[0].trim()
+  };
+}
+
 const ping = () => get('/api/ping');
 const listSources = async () => (await get('/api/sources')).sources || [];
 const getSource = (parserSourceId) => get(`/api/sources/${encodeURIComponent(parserSourceId)}`);
@@ -125,6 +154,9 @@ module.exports = {
   hasToken,
   get,
   post,
+  patch,
+  del,
+  getLogo,
   ping,
   listSources,
   getSource,

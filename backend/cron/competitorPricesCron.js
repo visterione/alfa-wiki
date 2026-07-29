@@ -14,6 +14,7 @@
 
 const cron = require('node-cron');
 const { syncAll } = require('../services/competitorPricesSync');
+const { fillAllComparisons } = require('../services/competitorPriceFill');
 
 cron.schedule('30 3 * * *', async () => {
   console.log('⏰ [CompetitorPrices CRON] Забираем прайсы конкурентов из парсера...');
@@ -22,6 +23,20 @@ cron.schedule('30 3 * * *', async () => {
   } catch (err) {
     // syncAll уже сообщил, в чём дело; здесь важно не уронить процесс
     console.error('❌ [CompetitorPrices CRON] Ошибка:', err.message);
+    return;
+  }
+
+  // Свежие цены сами по себе в сравнениях не появятся. Обновляем те, где
+  // соответствия уже приняты человеком: предложенное по-прежнему ждёт его
+  // решения, а ручные цены не перезаписываются — поэтому без присмотра можно
+  try {
+    const totals = await fillAllComparisons();
+    console.log(
+      `⏰ [CompetitorPrices CRON] Сравнений обновлено: ${totals.comparisons}, ` +
+      `цен проставлено: ${totals.filled}, ручных не тронуто: ${totals.protectedByHuman}`
+    );
+  } catch (err) {
+    console.error('❌ [CompetitorPrices CRON] Подстановка цен не удалась:', err.message);
   }
 }, {
   scheduled: true,

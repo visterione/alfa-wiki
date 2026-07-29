@@ -14,8 +14,9 @@
  */
 
 const express = require('express');
+const { Op } = require('sequelize');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
-const { CompetitorSource } = require('../models');
+const { CompetitorSource, CompetitorLocation } = require('../models');
 const parser = require('../services/parserClient');
 const { syncAll } = require('../services/competitorPricesSync');
 
@@ -76,12 +77,267 @@ router.get('/ping', ...canManage, async (req, res) => {
 // ИСТОЧНИКИ (напрямую из парсера)
 // ═══════════════════════════════════════════════════════════════
 
-// Список клиник-конкурентов со сводкой последнего обхода
+/**
+ * Список клиник-конкурентов со сводкой последнего обхода.
+ *
+ * Заодно заводим строки зеркала для источников, которых там ещё нет. Без
+ * этого «название в сравнениях» нельзя было указать, пока не прошёл первый
+ * забор цен, — а понять это по интерфейсу было невозможно.
+ */
 router.get('/sources', ...canManage, async (req, res) => {
   try {
-    res.json({ success: true, data: await parser.listSources() });
+    const sources = await parser.listSources();
+
+    const known = await CompetitorSource.findAll({ attributes: ['parserSourceId'], raw: true });
+    const seen = new Set(known.map(row => row.parserSourceId));
+    const fresh = sources.filter(source => !seen.has(source.id));
+    if (fresh.length) {
+      await CompetitorSource.bulkCreate(fresh.map(source => ({
+        parserSourceId: source.id,
+        name: source.name,
+        displayName: source.display_name || null,
+        baseUrl: source.base_url,
+        city: source.city || null,
+        servicesTotal: source.services_total || 0,
+        syncStatus: 'pending'
+      })));
+    }
+
+    res.json({ success: true, data: sources });
   } catch (err) {
     fail(res, err, 'sources');
+  }
+});
+
+/**
+ * Правка карточки клиники руками: название и город.
+ *
+ * Город правится здесь, а не при вводе ссылки: у сайта без переключателя
+ * городов взять его неоткуда, а для карты он нужен. Передаём только те поля,
+ * которые пришли, — иначе правка названия стирала бы город.
+ */
+router.patch('/sources/:id', ...canManage, async (req, res) => {
+  const patch = {};
+  if ('displayName' in (req.body || {})) patch.display_name = req.body.displayName ?? '';
+  if ('city' in (req.body || {})) patch.city = req.body.city ?? '';
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ success: false, error: 'nothing_to_change', message: 'Нечего менять' });
+  }
+
+  try {
+    const data = await parser.patch(`/api/sources/${encodeURIComponent(req.params.id)}`, patch);
+    // в зеркале держим ту же подпись, чтобы страница сравнения не ходила
+    // за ней в парсер
+    await CompetitorSource.update(
+      { displayName: data.display_name || null, city: data.city || null },
+      { where: { parserSourceId: Number(req.params.id) } }
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, `patch source ${req.params.id}`);
+  }
+});
+
+/** Сходить на сайт клиники за названием и значком заново. */
+router.post('/sources/:id/branding', ...canManage, async (req, res) => {
+  try {
+    const data = await parser.post(`/api/sources/${encodeURIComponent(req.params.id)}/branding`);
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, `branding ${req.params.id}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// АДРЕСА ТОЧЕК
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Точки клиники на карте.
+ *
+ * Отдаём из своей копии: карту рисует вики, и ходить за адресами в парсер
+ * на каждый показ незачем. Смотреть может любой сотрудник — адреса нужны
+ * и на странице сравнения цен.
+ */
+router.get('/sources/:id/locations', authenticate, async (req, res) => {
+  try {
+    const source = await CompetitorSource.findOne({
+      where: { parserSourceId: Number(req.params.id) },
+      attributes: ['id']
+    });
+    if (!source) return res.json({ success: true, data: [] });
+
+    const locations = await CompetitorLocation.findAll({
+      where: { sourceId: source.id },
+      order: [['city', 'ASC'], ['name', 'ASC']]
+    });
+    res.json({ success: true, data: locations });
+  } catch (err) {
+    console.error('❌ Адреса не отдались:', err.message);
+    res.status(500).json({ success: false, error: 'locations_failed', message: 'Не удалось прочитать адреса' });
+  }
+});
+
+/** Сходить на сайт за адресами точек заново. */
+router.post('/sources/:id/locations/collect', ...canManage, async (req, res) => {
+  try {
+    const data = await parser.post(`/api/sources/${encodeURIComponent(req.params.id)}/locations/collect`);
+    await mirrorLocations(Number(req.params.id), data.locations || []);
+    console.log(`📍 Адреса источника ${req.params.id}: найдено ${data.found}, со страницы ${data.page || '—'}`);
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, `locations ${req.params.id}`);
+  }
+});
+
+/**
+ * Вписать точку руками.
+ *
+ * Нужно там, где автосбор бессилен: инвитро рисует страницу скриптами,
+ * kdl отбивает запросы антиботом, у cl-lab самоподписанный сертификат.
+ */
+router.post('/sources/:id/locations', ...canManage, async (req, res) => {
+  try {
+    const data = await parser.post(`/api/sources/${encodeURIComponent(req.params.id)}/locations`, {
+      address: req.body?.address,
+      name: req.body?.name,
+      city: req.body?.city
+    });
+    await refreshMirror(Number(req.params.id));
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err.response?.status === 409) {
+      return res.status(409).json({ success: false, error: 'duplicate', message: 'Такой адрес уже есть' });
+    }
+    fail(res, err, `add location ${req.params.id}`);
+  }
+});
+
+/** Правка точки. После неё автосбор её не перетирает. */
+router.patch('/locations/:locationId', ...canManage, async (req, res) => {
+  try {
+    const data = await parser.patch(`/api/locations/${encodeURIComponent(req.params.locationId)}`, {
+      address: req.body?.address,
+      name: req.body?.name,
+      city: req.body?.city
+    });
+    await CompetitorLocation.update(
+      {
+        address: data.address,
+        name: data.name || null,
+        city: data.city || null,
+        origin: data.origin
+      },
+      { where: { parserLocationId: Number(req.params.locationId) } }
+    );
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, `patch location ${req.params.locationId}`);
+  }
+});
+
+router.delete('/locations/:locationId', ...canManage, async (req, res) => {
+  try {
+    await parser.del(`/api/locations/${encodeURIComponent(req.params.locationId)}`);
+    await CompetitorLocation.destroy({ where: { parserLocationId: Number(req.params.locationId) } });
+    res.json({ success: true });
+  } catch (err) {
+    fail(res, err, `delete location ${req.params.locationId}`);
+  }
+});
+
+/** Перечитать точки источника из парсера в нашу копию. */
+async function refreshMirror(parserSourceId) {
+  const data = await parser.get(`/api/sources/${parserSourceId}/locations`);
+  await mirrorLocations(parserSourceId, data.locations || []);
+}
+
+/** Список приходит целиком и целиком же замещает прежний: точек десятки. */
+async function mirrorLocations(parserSourceId, locations) {
+  const source = await CompetitorSource.findOne({ where: { parserSourceId }, attributes: ['id'] });
+  if (!source) return;
+
+  const rows = locations.map(item => ({
+    sourceId: source.id,
+    parserLocationId: item.id,
+    name: item.name || null,
+    address: item.address,
+    city: item.city || null,
+    origin: item.origin || 'text',
+    parserFilialId: item.filial_id ?? null
+  }));
+
+  await CompetitorLocation.destroy({ where: { sourceId: source.id } });
+  if (rows.length) await CompetitorLocation.bulkCreate(rows);
+}
+
+/**
+ * Все значки разом, готовыми data-URI.
+ *
+ * Тег <img> не умеет отправлять заголовок авторизации, а весь API вики закрыт
+ * JWT — поэтому обычной ссылкой на картинку не обойтись. Отдаём их одним
+ * запросом при загрузке страницы: значков пара десятков и они по несколько
+ * килобайт, это дешевле, чем городить отдельную схему доступа к файлам.
+ *
+ * Намеренно отдельно от /sync/status: тот опрашивается раз в несколько секунд,
+ * пока идёт забор, и таскать в нём картинки было бы расточительно.
+ */
+router.get('/logos', authenticate, async (req, res) => {
+  try {
+    const sources = await CompetitorSource.findAll({
+      where: { logoData: { [Op.ne]: null } },
+      attributes: ['parserSourceId', 'logoData', 'logoContentType']
+    });
+
+    const logos = {};
+    for (const source of sources) {
+      const type = source.logoContentType || 'image/png';
+      logos[source.parserSourceId] = `data:${type};base64,${source.logoData.toString('base64')}`;
+    }
+    res.json({ success: true, data: logos });
+  } catch (err) {
+    console.error('❌ Логотипы не отдались:', err.message);
+    res.status(500).json({ success: false, error: 'logos_failed', message: 'Не удалось загрузить логотипы' });
+  }
+});
+
+/**
+ * Значок клиники отдельным файлом. Отдаём из своей копии, а не из парсера:
+ * страница сравнения цен должна показывать логотипы и когда парсер выключен.
+ */
+router.get('/sources/:id/logo', authenticate, async (req, res) => {
+  try {
+    const source = await CompetitorSource.findOne({
+      where: { parserSourceId: Number(req.params.id) },
+      attributes: ['logoData', 'logoContentType']
+    });
+    if (!source?.logoData) return res.status(404).end();
+
+    res.set('Content-Type', source.logoContentType || 'image/png');
+    res.set('Cache-Control', 'private, max-age=86400');
+    res.send(source.logoData);
+  } catch (err) {
+    console.error('❌ Логотип не отдался:', err.message);
+    res.status(500).end();
+  }
+});
+
+/**
+ * Убрать клинику вместе со всем, что по ней собрано.
+ *
+ * Цены, уже подставленные в сравнения, остаются: их подтвердил человек,
+ * и это снимок на момент решения. Обновляться они перестанут — источника
+ * больше нет.
+ */
+router.delete('/sources/:id', ...canManage, async (req, res) => {
+  try {
+    const data = await parser.del(`/api/sources/${encodeURIComponent(req.params.id)}`);
+    // соответствия уходят каскадом вместе со строками зеркала
+    const removed = await CompetitorSource.destroy({ where: { parserSourceId: Number(req.params.id) } });
+    console.log(`🗑  Клиника «${data.deleted}» удалена пользователем ${req.user?.username} (строк зеркала: ${removed})`);
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, `delete source ${req.params.id}`);
   }
 });
 
@@ -132,9 +388,9 @@ router.get('/sync/status', ...canManage, async (req, res) => {
     const sources = await CompetitorSource.findAll({
       order: [['name', 'ASC']],
       attributes: [
-        'id', 'parserSourceId', 'name', 'baseUrl', 'city', 'servicesTotal',
+        'id', 'parserSourceId', 'name', 'displayName', 'baseUrl', 'city', 'servicesTotal',
         'lastRunAt', 'lastRunStatus', 'syncedAt', 'syncStatus', 'syncError',
-        'competitorLabel'
+        'competitorLabel', 'logoContentType'
       ]
     });
     res.json({ success: true, running: syncRunning, data: sources });
@@ -221,6 +477,85 @@ router.post('/analyze', ...canManage, async (req, res) => {
     res.json({ success: true, data });
   } catch (err) {
     fail(res, err, 'analyze');
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ОЧЕРЕДЬ
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Сдать список ссылок на разбор.
+ *
+ * Каждый сайт разбирается минутами, а выкатывать их приходится десятками.
+ * Очередь доводит каждый до состояния «разобрано, проверьте» и останавливается:
+ * подтверждение остаётся за человеком, потому что сайт с постраничной
+ * навигацией легко отдаёт первую страницу за весь прайс.
+ */
+router.post('/queue', ...canManage, async (req, res) => {
+  const urls = Array.isArray(req.body?.urls) ? req.body.urls : [];
+  if (!urls.length) {
+    return res.status(400).json({ success: false, error: 'urls_required', message: 'Вставьте хотя бы одну ссылку' });
+  }
+
+  try {
+    const data = await parser.post('/api/queue', { urls });
+    console.log(`📋 В очередь добавлено ${data.added} ссылок пользователем ${req.user?.username}`);
+    res.json({ success: true, data });
+  } catch (err) {
+    fail(res, err, 'queue add');
+  }
+});
+
+/** Очередь целиком: сначала то, что ждёт человека. */
+router.get('/queue', ...canManage, async (req, res) => {
+  try {
+    res.json({ success: true, data: await parser.get('/api/queue') });
+  } catch (err) {
+    fail(res, err, 'queue');
+  }
+});
+
+/** Принять разбор из очереди и запустить обход. */
+router.post('/queue/:itemId/confirm', ...canManage, async (req, res) => {
+  const cities = Array.isArray(req.body?.cities) ? req.body.cities : [];
+  try {
+    const data = await parser.post(`/api/queue/${encodeURIComponent(req.params.itemId)}/confirm`, { cities });
+    res.json({ success: true, data });
+  } catch (err) {
+    if (err.response?.status === 409) {
+      return res.status(409).json({
+        success: false,
+        error: 'not_ready',
+        message: 'Эта ссылка не ждёт подтверждения — обновите список'
+      });
+    }
+    fail(res, err, `queue confirm ${req.params.itemId}`);
+  }
+});
+
+/** Убрать ссылку из очереди. То, что сейчас в работе, снять нельзя. */
+router.delete('/queue/:itemId', ...canManage, async (req, res) => {
+  try {
+    res.json({ success: true, data: await parser.del(`/api/queue/${encodeURIComponent(req.params.itemId)}`) });
+  } catch (err) {
+    if (err.response?.status === 409) {
+      return res.status(409).json({
+        success: false,
+        error: 'busy',
+        message: 'Эту ссылку сейчас нельзя убрать — она в работе'
+      });
+    }
+    fail(res, err, `queue drop ${req.params.itemId}`);
+  }
+});
+
+/** Прибрать доведённое до конца, чтобы список не разрастался. */
+router.post('/queue/clear', ...canManage, async (req, res) => {
+  try {
+    res.json({ success: true, data: await parser.post('/api/queue/clear') });
+  } catch (err) {
+    fail(res, err, 'queue clear');
   }
 });
 

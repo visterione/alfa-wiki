@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2 } from 'lucide-react';
+import { Search, RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import toast from 'react-hot-toast';
 
@@ -208,30 +208,19 @@ function JobPanel({ job, onConfirm, onClose, confirming }) {
   );
 }
 
-/**
- * Как эта клиника называется в сравнениях цен.
- *
- * В зеркале источники зовутся по домену («clinic23-krd»), а в сравнении
- * конкуренты перечислены человеческими названиями («Неомед»). Пока связь
- * не проставлена, цены источника подставлять некуда — и в сопоставлении
- * он не участвует вовсе.
- */
-function LabelCell({ source, value, known, onSaved }) {
+/** Правка текста прямо в ячейке: и название клиники, и подпись в сравнениях. */
+function EditableCell({ value, placeholder, hint, bold, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { setDraft(value); }, [value]);
 
-  // Источник ещё не попал в нашу копию — сначала нужен забор цен
-  if (!known) return <small className="text-muted">после забора цен</small>;
-
   const save = async () => {
     setSaving(true);
     try {
-      await priceParser.setLabel(source.id, draft);
+      await onSave(draft.trim());
       setEditing(false);
-      onSaved();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось сохранить');
     } finally {
@@ -243,11 +232,11 @@ function LabelCell({ source, value, known, onSaved }) {
     return (
       <button
         className="btn btn-ghost"
-        style={{ padding: '2px 6px', fontWeight: value ? 500 : 400 }}
+        style={{ padding: '2px 6px', fontWeight: bold && value ? 600 : 400, textAlign: 'left' }}
         onClick={() => setEditing(true)}
-        title="Как эта клиника называется в сравнениях цен"
+        title={hint}
       >
-        {value || <span className="text-muted">указать…</span>}
+        {value || <span className="text-muted">{placeholder}</span>}
       </button>
     );
   }
@@ -256,10 +245,9 @@ function LabelCell({ source, value, known, onSaved }) {
     <span style={{ display: 'inline-flex', gap: 4 }}>
       <input
         className="form-input"
-        style={{ width: 140 }}
+        style={{ width: 170 }}
         value={draft}
         autoFocus
-        placeholder="Напр. Неомед"
         onChange={e => setDraft(e.target.value)}
         onKeyDown={e => {
           if (e.key === 'Enter') save();
@@ -269,6 +257,358 @@ function LabelCell({ source, value, known, onSaved }) {
       <button className="btn btn-icon" onClick={save} disabled={saving} title="Сохранить"><Check size={14} /></button>
       <button className="btn btn-icon" onClick={() => { setDraft(value); setEditing(false); }} title="Отмена"><X size={14} /></button>
     </span>
+  );
+}
+
+/**
+ * Как эта клиника называется в сравнениях цен.
+ *
+ * В зеркале источники зовутся по домену («clinic23-krd»), а в сравнении
+ * конкуренты перечислены человеческими названиями («Неомед»). Пока связь
+ * не проставлена, цены источника подставлять некуда — и в сопоставлении
+ * он не участвует вовсе.
+ */
+function LabelCell({ source, value, onSaved }) {
+  return (
+    <EditableCell
+      value={value}
+      placeholder="указать…"
+      hint="Как эта клиника называется в сравнениях цен"
+      onSave={async next => { await priceParser.setLabel(source.id, next); onSaved(); }}
+    />
+  );
+}
+
+/**
+ * Точки клиники: адреса филиалов и пунктов забора.
+ *
+ * Города для карты мало — у clinic23 в одном Краснодаре десять отделений
+ * с разными адресами. Собираются со страницы контактов автоматически, но
+ * три сайта из пятнадцати не поддаются: инвитро рисует страницу скриптами,
+ * kdl отбивает антиботом, у cl-lab самоподписанный сертификат. Для них
+ * адреса вписываются руками, и автосбор их потом не затирает.
+ */
+function LocationsModal({ source, onClose }) {
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [draft, setDraft] = useState({ name: '', address: '', city: '' });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await priceParser.locations(source.id);
+      setItems(data.data || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось загрузить адреса');
+    } finally {
+      setLoading(false);
+    }
+  }, [source.id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const collect = async () => {
+    setBusy(true);
+    try {
+      const { data } = await priceParser.collectLocations(source.id);
+      toast.success(
+        data.data.found
+          ? `Найдено точек: ${data.data.found}`
+          : 'На сайте адресов найти не удалось — впишите вручную'
+      );
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось собрать адреса');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const add = async (event) => {
+    event.preventDefault();
+    if (!draft.address.trim()) return;
+    try {
+      await priceParser.addLocation(source.id, draft);
+      setDraft({ name: '', address: '', city: '' });
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось добавить');
+    }
+  };
+
+  const remove = async (item) => {
+    try {
+      await priceParser.dropLocation(item.parserLocationId ?? item.id);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось убрать');
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Адреса: {source.display_name || source.name}</h2>
+          <button className="btn-icon" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+          <button className="btn" onClick={collect} disabled={busy}>
+            <MapPin size={16} /> {busy ? 'Ищем…' : 'Собрать с сайта'}
+          </button>
+          <span className="text-muted" style={{ fontSize: 13 }}>точек: {items.length}</span>
+        </div>
+
+        {loading ? (
+          <div className="admin-loading"><div className="loading-spinner" /></div>
+        ) : (
+          <div className="admin-table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+            <table className="admin-table">
+              <tbody>
+                {items.map(item => (
+                  <tr key={item.id}>
+                    <td>
+                      <div>{item.name || <span className="text-muted">без названия</span>}</div>
+                      <small className="text-muted">{item.address}</small>
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {item.city || <span className="text-muted">—</span>}
+                      {/* вписанному руками веры больше, чем вытащенному из текста */}
+                      {item.origin === 'manual' && <div><small className="text-muted">вручную</small></div>}
+                    </td>
+                    <td>
+                      <button className="btn btn-icon" title="Убрать" onClick={() => remove(item)}>
+                        <X size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {items.length === 0 && (
+                  <tr><td colSpan={3} className="text-muted">Пусто. Соберите с сайта или впишите адрес ниже.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form onSubmit={add} style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+          <input
+            className="form-input" style={{ flex: '1 1 150px' }} placeholder="Название точки"
+            value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })}
+          />
+          <input
+            className="form-input" style={{ flex: '2 1 220px' }} placeholder="Адрес*"
+            value={draft.address} onChange={e => setDraft({ ...draft, address: e.target.value })}
+          />
+          <input
+            className="form-input" style={{ flex: '0 1 130px' }} placeholder="Город"
+            value={draft.city} onChange={e => setDraft({ ...draft, city: e.target.value })}
+          />
+          <button className="btn btn-primary" type="submit" disabled={!draft.address.trim()}>
+            <Check size={16} />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Очередь разбора ссылок.
+ *
+ * Каждый сайт разбирается минутами, а выкатывать их приходится десятками:
+ * сдал список, ушёл, вернулся к готовым разборам. Очередь доводит каждый сайт
+ * до «разобрано, проверьте» и останавливается — подтверждение остаётся
+ * за человеком, иначе сайт с постраничной навигацией молча уедет в базу
+ * первой страницей, выданной за весь прайс.
+ */
+function QueueTab({ onConfirmed }) {
+  const [items, setItems] = useState([]);
+  const [urls, setUrls] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [chosen, setChosen] = useState({});   // id элемента → отмеченные города
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await priceParser.queueList();
+      setItems(data.data?.items || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось загрузить очередь');
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Пока что-то в работе, список сам обновляется: разбор идёт минутами,
+  // и человеку незачем жать «обновить»
+  const working = items.some(item => item.status === 'analyzing' || item.status === 'crawling' || item.status === 'queued');
+  useEffect(() => {
+    if (!working) return undefined;
+    const handle = setInterval(load, 5000);
+    return () => clearInterval(handle);
+  }, [working, load]);
+
+  const handleAdd = async (event) => {
+    event.preventDefault();
+    const list = urls.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!list.length) return;
+
+    setBusy(true);
+    try {
+      const { data } = await priceParser.queueAdd(list);
+      toast.success(
+        `В очередь: ${data.data.added}` +
+        (data.data.skipped ? `, пропущено повторов: ${data.data.skipped}` : '')
+      );
+      setUrls('');
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось поставить в очередь');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleConfirm = async (item) => {
+    try {
+      await priceParser.queueConfirm(item.id, chosen[item.id] || []);
+      await load();
+      onConfirmed();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось подтвердить');
+    }
+  };
+
+  const handleDrop = async (item) => {
+    try {
+      await priceParser.queueDrop(item.id);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось убрать');
+    }
+  };
+
+  const toggleCity = (itemId, name, options) => {
+    setChosen(prev => {
+      const current = prev[itemId] ?? options.filter(c => c.current).map(c => c.name);
+      const next = current.includes(name) ? current.filter(n => n !== name) : [...current, name];
+      return { ...prev, [itemId]: next };
+    });
+  };
+
+  const ready = items.filter(i => i.status === 'ready').length;
+  const inWork = items.filter(i => ['queued', 'analyzing', 'crawling'].includes(i.status)).length;
+
+  return (
+    <>
+      <form className="card" onSubmit={handleAdd} style={{ marginBottom: 16, padding: '16px 18px' }}>
+        <b style={{ display: 'block', marginBottom: 8 }}>Сдать список ссылок</b>
+        <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+          По одной ссылке в строке. Парсер разберёт их по очереди — на сайт уходит
+          от одной до нескольких минут, — и остановится на каждом, ожидая вашей проверки.
+          Можно закрыть страницу и вернуться позже.
+        </p>
+        <textarea
+          className="form-input"
+          style={{ width: '100%', minHeight: 90, fontFamily: 'monospace', fontSize: 13 }}
+          placeholder={'https://клиника-1.рф\nhttps://клиника-2.рф/price/\nhttps://лаборатория.рф'}
+          value={urls}
+          onChange={e => setUrls(e.target.value)}
+          disabled={busy}
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+          <button className="btn btn-primary" type="submit" disabled={busy || !urls.trim()}>
+            <ListPlus size={18} /> {busy ? 'Ставим…' : 'В очередь'}
+          </button>
+          {items.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={async () => { await priceParser.queueClear(); load(); }}
+            >
+              Прибрать завершённые
+            </button>
+          )}
+          <span className="text-muted" style={{ fontSize: 13 }}>
+            {inWork > 0 && `в работе: ${inWork}`}
+            {ready > 0 && `${inWork > 0 ? ' · ' : ''}ждут проверки: ${ready}`}
+          </span>
+        </div>
+      </form>
+
+      {items.length === 0 ? (
+        <div className="admin-empty">
+          <ListPlus size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+          <p>Очередь пуста. Вставьте список ссылок — можно сразу два десятка.</p>
+        </div>
+      ) : (
+        items.map(item => {
+          const options = item.cities?.options || [];
+          const picked = chosen[item.id] ?? options.filter(c => c.current).map(c => c.name);
+          const analysis = item.analysis || {};
+
+          return (
+            <div key={item.id} className="card" style={{ marginBottom: 10, padding: '12px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.url}</div>
+                  <small className="text-muted">
+                    {item.status === 'ready' ? 'разобрано — проверьте' : (item.stage || item.status)}
+                  </small>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                  {['queued', 'analyzing', 'crawling'].includes(item.status) && <Loader2 size={16} className="spin" />}
+                  {item.status === 'done' && <CheckCircle2 size={16} style={{ color: 'var(--color-success, #16a34a)' }} />}
+                  {item.status === 'failed' && <AlertTriangle size={16} style={{ color: 'var(--color-danger, #dc2626)' }} />}
+                  {item.status !== 'analyzing' && item.status !== 'crawling' && (
+                    <button className="btn btn-icon" title="Убрать из очереди" onClick={() => handleDrop(item)}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {item.error && (
+                <p style={{ margin: '8px 0 0', color: 'var(--color-danger, #dc2626)', fontSize: 13 }}>{item.error}</p>
+              )}
+
+              {item.status === 'ready' && (
+                <div style={{ marginTop: 10, borderTop: '1px solid var(--color-border, #e5e7eb)', paddingTop: 10 }}>
+                  <AnalysisSummary analysis={analysis} rows={analysis.rows_found ?? item.rows_found} />
+
+                  {options.length > 0 && (
+                    <div style={{ margin: '10px 0' }}>
+                      <b style={{ display: 'block', marginBottom: 6, fontSize: 13 }}>
+                        <Globe size={13} style={{ verticalAlign: -2, marginRight: 4 }} />
+                        Города сайта — отметьте нужные
+                      </b>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {options.map(city => (
+                          <label key={city.name} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={picked.includes(city.name)}
+                              onChange={() => toggleCity(item.id, city.name, options)}
+                            />
+                            {city.name}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button className="btn btn-primary" onClick={() => handleConfirm(item)}>
+                    <Check size={16} /> Всё верно, собрать
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </>
   );
 }
 
@@ -475,12 +815,15 @@ export default function AdminParser() {
   const [tab, setTab] = useState('sources');
   const [connection, setConnection] = useState(null);
   const [sources, setSources] = useState([]);
+  const [logos, setLogos] = useState({});
+  const [toDelete, setToDelete] = useState(null);
+  const [locationsFor, setLocationsFor] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [syncBySourceId, setSyncBySourceId] = useState({});
   const [syncRunning, setSyncRunning] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [url, setUrl] = useState('');
-  const [city, setCity] = useState('');
   const [starting, setStarting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -515,12 +858,23 @@ export default function AdminParser() {
     }
   }, []);
 
+  // Логотипы приходят готовыми data-URI одним запросом: <img> не умеет слать
+  // заголовок авторизации, а весь API вики за JWT
+  const loadLogos = useCallback(async () => {
+    try {
+      const { data } = await priceParser.logos();
+      setLogos(data.data || {});
+    } catch {
+      // без логотипов таблица работает — молча
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      await Promise.all([loadSources(), loadSyncStatus()]);
+      await Promise.all([loadSources(), loadSyncStatus(), loadLogos()]);
       setLoading(false);
     })();
-  }, [loadSources, loadSyncStatus]);
+  }, [loadSources, loadSyncStatus, loadLogos]);
 
   // Опрос задачи, пока она идёт. Останавливаемся, как только парсер встал:
   // закончил, упал или ждёт подтверждения
@@ -565,11 +919,10 @@ export default function AdminParser() {
 
     setStarting(true);
     try {
-      const { data } = await priceParser.analyze(url.trim(), city.trim() || null);
+      const { data } = await priceParser.analyze(url.trim());
       setJobId(data.data.job_id);
       setJob({ state: 'running', stage: 'В очереди', title: url.trim() });
       setUrl('');
-      setCity('');
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось запустить разбор');
     } finally {
@@ -601,6 +954,35 @@ export default function AdminParser() {
     }
   };
 
+  const handleBranding = async (source) => {
+    try {
+      const { data } = await priceParser.branding(source.id);
+      // название не перебиваем, если его уже вписали руками, — так решает парсер
+      if (data.data?.error) {
+        toast.error(`Сайт не отдал карточку: ${data.data.error}`);
+      } else {
+        toast.success(`Карточка обновлена: ${data.data?.title || source.name}`);
+      }
+      await Promise.all([loadSources(), loadLogos()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось подтянуть карточку');
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await priceParser.remove(toDelete.id);
+      toast.success(`Клиника «${toDelete.display_name || toDelete.name}» удалена`);
+      setToDelete(null);
+      await Promise.all([loadSources(), loadSyncStatus(), loadLogos()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось удалить');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleSync = async () => {
     try {
       await priceParser.sync();
@@ -629,6 +1011,7 @@ export default function AdminParser() {
       <div className="tabs" style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
         {[
           { id: 'sources',  label: 'Источники' },
+          { id: 'queue',    label: 'Очередь' },
           { id: 'matching', label: 'Сопоставление' },
         ].map(t => (
           <button
@@ -641,7 +1024,7 @@ export default function AdminParser() {
         ))}
       </div>
 
-      {tab === 'matching' ? <MatchingTab /> : <>
+      {tab === 'matching' ? <MatchingTab /> : tab === 'queue' ? <QueueTab onConfirmed={loadSources} /> : <>
 
       <ConnectionBanner status={connection} />
 
@@ -660,20 +1043,13 @@ export default function AdminParser() {
             onChange={e => setUrl(e.target.value)}
             disabled={starting || job?.state === 'running'}
           />
-          <input
-            className="form-input"
-            style={{ flex: '0 1 180px' }}
-            placeholder="Город (необязательно)"
-            value={city}
-            onChange={e => setCity(e.target.value)}
-            disabled={starting || job?.state === 'running'}
-          />
           <button className="btn btn-primary" type="submit" disabled={starting || !url.trim() || job?.state === 'running'}>
             <Search size={18} /> {starting ? 'Запускаем…' : 'Разобрать'}
           </button>
         </div>
         <small className="text-muted">
-          Город указывают, когда он и так известен: тогда парсер не тратит время на поиск переключателя городов.
+          Города парсер определит сам и предложит выбрать. Если у сайта переключателя
+          городов нет, город можно вписать в таблице ниже.
         </small>
       </form>
 
@@ -706,18 +1082,62 @@ export default function AdminParser() {
                 return (
                   <tr key={source.id}>
                     <td>
-                      <div>{source.name}</div>
-                      <small className="text-muted">{source.base_url}</small>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {logos[source.id] ? (
+                          <img
+                            src={logos[source.id]}
+                            alt=""
+                            style={{ width: 24, height: 24, objectFit: 'contain', flexShrink: 0 }}
+                          />
+                        ) : (
+                          <span style={{ width: 24, flexShrink: 0 }} />
+                        )}
+                        <div>
+                          {/* Название с сайта, а не домен: у сети из двадцати
+                              городов домены различаются лишь приставкой */}
+                          <EditableCell
+                            value={source.display_name || ''}
+                            placeholder={source.name}
+                            hint="Название клиники — можно поправить, если автомат угадал криво"
+                            bold
+                            onSave={async next => {
+                              await priceParser.rename(source.id, next);
+                              loadSources();
+                            }}
+                          />
+                          <div><small className="text-muted">{source.base_url}</small></div>
+                        </div>
+                      </div>
                     </td>
-                    <td>{source.city || '—'}</td>
+                    <td>
+                      {/* Правится здесь, а не при вводе ссылки: у сайта без
+                          переключателя городов взять город неоткуда */}
+                      <EditableCell
+                        value={source.city || ''}
+                        placeholder="указать…"
+                        hint="Город клиники"
+                        onSave={async next => {
+                          await priceParser.setCity(source.id, next);
+                          loadSources();
+                        }}
+                      />
+                      <div>
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: '0 4px', fontSize: 12 }}
+                          onClick={() => setLocationsFor(source)}
+                          title="Адреса точек — для карты в сравнении цен"
+                        >
+                          <MapPin size={12} style={{ verticalAlign: -1 }} /> адреса
+                          {source.filials_total > 0 && ` · филиалов ${source.filials_total}`}
+                        </button>
+                      </div>
+                    </td>
                     <td>{source.services_total}</td>
                     <td>
-                      {/* Пока не заполнено, цены источника подставлять некуда:
-                          в сравнении конкуренты названы по-человечески */}
                       <LabelCell
                         source={source}
                         value={sync?.competitorLabel || ''}
-                        known={Boolean(sync)}
                         onSaved={loadSyncStatus}
                       />
                     </td>
@@ -735,7 +1155,7 @@ export default function AdminParser() {
                         <div><small style={{ color: 'var(--color-danger, #dc2626)' }}>{sync.syncError}</small></div>
                       )}
                     </td>
-                    <td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
                       <button
                         className="btn btn-icon"
                         title="Обойти сайт заново"
@@ -744,12 +1164,63 @@ export default function AdminParser() {
                       >
                         <RefreshCw size={14} />
                       </button>
+                      <button
+                        className="btn btn-icon"
+                        title="Подтянуть название и логотип с сайта"
+                        onClick={() => handleBranding(source)}
+                      >
+                        <ImageDown size={14} />
+                      </button>
+                      <button
+                        className="btn btn-icon"
+                        title="Удалить клинику"
+                        onClick={() => setToDelete(source)}
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {locationsFor && (
+        <LocationsModal source={locationsFor} onClose={() => setLocationsFor(null)} />
+      )}
+
+      {toDelete && (
+        <div className="modal-overlay" onClick={() => !deleting && setToDelete(null)}>
+          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Удалить клинику?</h2>
+              <button className="btn-icon" onClick={() => setToDelete(null)} disabled={deleting}>
+                <X size={20} />
+              </button>
+            </div>
+            <p>
+              <b>{toDelete.display_name || toDelete.name}</b>
+              {toDelete.city && ` — ${toDelete.city}`}
+            </p>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              Уйдут все {toDelete.services_total} услуг, их цены и история обходов.
+              Отменить это нельзя — клинику придётся заводить заново по ссылке.
+            </p>
+            <p className="text-muted" style={{ fontSize: 13 }}>
+              Цены, уже подставленные в сравнения, останутся на месте: их подтверждал
+              человек. Обновляться они перестанут.
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                <Trash2 size={16} /> {deleting ? 'Удаляем…' : 'Удалить'}
+              </button>
+              <button className="btn btn-ghost" onClick={() => setToDelete(null)} disabled={deleting}>
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
