@@ -25,6 +25,7 @@ const {
   PriceComparisonItem
 } = require('../models');
 const parser = require('../services/parserClient');
+const geocoder = require('../services/geocoder');
 const { syncAll } = require('../services/competitorPricesSync');
 
 const router = express.Router();
@@ -251,7 +252,20 @@ router.get('/sources/:id/locations', authenticate, async (req, res) => {
       where: { sourceId: source.id },
       order: [['city', 'ASC'], ['name', 'ASC']]
     });
-    res.json({ success: true, data: locations });
+
+    // Филиалы прайса — чтобы точку было к чему привязать руками. Берём их
+    // из цен, а не из отдельной таблицы: филиал существует ровно постольку,
+    // поскольку у него есть своя цена.
+    const [filials] = await sequelize.query(
+      `SELECT DISTINCT p."filialId" AS id, p."filialName" AS name
+         FROM competitor_services cs
+         JOIN competitor_prices p ON p."serviceId" = cs.id
+        WHERE cs."sourceId" = :sourceId AND p."filialId" IS NOT NULL
+        ORDER BY p."filialId"`,
+      { replacements: { sourceId: source.id } }
+    );
+
+    res.json({ success: true, data: locations, filials });
   } catch (err) {
     console.error('❌ Адреса не отдались:', err.message);
     res.status(500).json({ success: false, error: 'locations_failed', message: 'Не удалось прочитать адреса' });
@@ -316,6 +330,138 @@ router.patch('/locations/:locationId', ...canManage, async (req, res) => {
   }
 });
 
+/**
+ * Поставить точку на карте руками.
+ *
+ * Координаты — наши, в парсере их нет вовсе, поэтому сюда он не участвует.
+ * Помечаем происхождение «manual»: после этого автогеокодер точку не трогает,
+ * а обновление адресов с сайта переносит координаты как есть. Поставленное
+ * мышью считается вернее всего — человек смотрел на карту.
+ */
+router.patch('/locations/:locationId/position', ...canManage, async (req, res) => {
+  const lat = Number(req.body?.lat);
+  const lon = Number(req.body?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) ||
+      lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return res.status(400).json({ success: false, error: 'bad_position', message: 'Координаты вне допустимых значений' });
+  }
+
+  try {
+    const [updated] = await CompetitorLocation.update(
+      { lat, lon, geoOrigin: 'manual', geocodedAt: new Date() },
+      { where: { parserLocationId: Number(req.params.locationId) } }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Точка не найдена' });
+    }
+    res.json({ success: true, data: { lat, lon, geoOrigin: 'manual' } });
+  } catch (err) {
+    console.error('❌ Координаты не сохранились:', err.message);
+    res.status(500).json({ success: false, error: 'position_failed', message: 'Не удалось сохранить координаты' });
+  }
+});
+
+/**
+ * Какому филиалу прайса соответствует точка.
+ *
+ * Парсер связывает адрес с филиалом далеко не всегда, а без связи цену
+ * к точке на карте привязать нечем. Своё поле, отдельное от parserFilialId:
+ * тот приходит из парсера и перезаписывается при обновлении адресов.
+ */
+router.patch('/locations/:locationId/filial', ...canManage, async (req, res) => {
+  const raw = req.body?.filialId;
+  const filialId = raw === null || raw === '' ? null : Number(raw);
+  if (filialId !== null && !Number.isInteger(filialId)) {
+    return res.status(400).json({ success: false, error: 'bad_filial', message: 'Филиал указан неверно' });
+  }
+
+  try {
+    const [updated] = await CompetitorLocation.update(
+      { filialIdManual: filialId },
+      { where: { parserLocationId: Number(req.params.locationId) } }
+    );
+    if (!updated) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Точка не найдена' });
+    }
+    res.json({ success: true, data: { filialIdManual: filialId } });
+  } catch (err) {
+    console.error('❌ Филиал точки не сохранился:', err.message);
+    res.status(500).json({ success: false, error: 'filial_failed', message: 'Не удалось сохранить филиал' });
+  }
+});
+
+/**
+ * Определить координаты адресов источника автоматически.
+ *
+ * Идёт последовательно с паузой — Nominatim не разрешает чаще запроса
+ * в секунду, поэтому полтора десятка адресов занимают около двадцати секунд.
+ * Поставленное мышью не трогаем никогда: человек смотрел на карту, геокодер —
+ * нет. Уже определённое пропускаем, если не попросили пересчитать всё.
+ */
+router.post('/sources/:id/locations/geocode', ...canManage, async (req, res) => {
+  try {
+    const source = await CompetitorSource.findOne({
+      where: { parserSourceId: Number(req.params.id) },
+      attributes: ['id', 'city']
+    });
+    if (!source) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Источника нет в нашей копии' });
+    }
+
+    const all = await CompetitorLocation.findAll({ where: { sourceId: source.id } });
+    const pending = all.filter(point =>
+      point.geoOrigin !== 'manual' && (req.body?.recheck || point.lat === null)
+    );
+
+    const summary = { total: all.length, tried: pending.length, placed: 0, doubtful: 0, missed: 0, skipped: all.length - pending.length };
+    const details = [];
+
+    for (let i = 0; i < pending.length; i++) {
+      const point = pending[i];
+      if (i > 0) await new Promise(resolve => setTimeout(resolve, geocoder.DELAY_MS));
+
+      const found = await geocoder.geocodeOne({
+        address: point.address,
+        city: point.city || source.city
+      });
+
+      if (!found) {
+        summary.missed += 1;
+        details.push({ id: point.parserLocationId, address: point.address, status: 'missed' });
+        continue;
+      }
+
+      await point.update({
+        lat: found.lat,
+        lon: found.lon,
+        geoOrigin: 'nominatim',
+        geocodedAt: new Date()
+      });
+
+      // Город из ответа расходится с ожидаемым — координаты сохранили, но
+      // показываем это отдельно: геокодер уверенно приводит «улицу Московскую»
+      // в другую область, и молча ставить такую точку нельзя
+      if (found.matchesCity) summary.placed += 1;
+      else summary.doubtful += 1;
+
+      details.push({
+        id: point.parserLocationId,
+        address: point.address,
+        status: found.matchesCity ? 'placed' : 'doubtful',
+        foundCity: found.city,
+        expectedCity: point.city || source.city
+      });
+    }
+
+    console.log(`📍 Геокодирование источника ${req.params.id}: поставлено ${summary.placed}, ` +
+      `под вопросом ${summary.doubtful}, не нашлось ${summary.missed}`);
+    res.json({ success: true, data: { ...summary, details } });
+  } catch (err) {
+    console.error('❌ Геокодирование не удалось:', err.message);
+    res.status(500).json({ success: false, error: 'geocode_failed', message: 'Не удалось определить координаты' });
+  }
+});
+
 router.delete('/locations/:locationId', ...canManage, async (req, res) => {
   try {
     await parser.del(`/api/locations/${encodeURIComponent(req.params.locationId)}`);
@@ -332,20 +478,42 @@ async function refreshMirror(parserSourceId) {
   await mirrorLocations(parserSourceId, data.locations || []);
 }
 
-/** Список приходит целиком и целиком же замещает прежний: точек десятки. */
+/**
+ * Список приходит целиком и целиком же замещает прежний: точек десятки.
+ *
+ * Наше — координаты и ручная привязка к филиалу — переносим на новые строки
+ * по parserLocationId. Иначе первое же обновление точек стирало бы работу,
+ * проделанную мышью: геокодирование полусотни адресов и разбор того, какой
+ * адрес какому филиалу прайса соответствует.
+ */
 async function mirrorLocations(parserSourceId, locations) {
   const source = await CompetitorSource.findOne({ where: { parserSourceId }, attributes: ['id'] });
   if (!source) return;
 
-  const rows = locations.map(item => ({
-    sourceId: source.id,
-    parserLocationId: item.id,
-    name: item.name || null,
-    address: item.address,
-    city: item.city || null,
-    origin: item.origin || 'text',
-    parserFilialId: item.filial_id ?? null
-  }));
+  const previous = await CompetitorLocation.findAll({
+    where: { sourceId: source.id },
+    attributes: ['parserLocationId', 'lat', 'lon', 'geoOrigin', 'geocodedAt', 'filialIdManual'],
+    raw: true
+  });
+  const keptByParserId = new Map(previous.map(row => [row.parserLocationId, row]));
+
+  const rows = locations.map(item => {
+    const kept = keptByParserId.get(item.id) || {};
+    return {
+      sourceId: source.id,
+      parserLocationId: item.id,
+      name: item.name || null,
+      address: item.address,
+      city: item.city || null,
+      origin: item.origin || 'text',
+      parserFilialId: item.filial_id ?? null,
+      lat: kept.lat ?? null,
+      lon: kept.lon ?? null,
+      geoOrigin: kept.geoOrigin ?? null,
+      geocodedAt: kept.geocodedAt ?? null,
+      filialIdManual: kept.filialIdManual ?? null
+    };
+  });
 
   await CompetitorLocation.destroy({ where: { sourceId: source.id } });
   if (rows.length) await CompetitorLocation.bulkCreate(rows);
@@ -639,6 +807,178 @@ router.get('/sources/:id/catalog', ...canManage, async (req, res) => {
   } catch (err) {
     console.error('❌ Каталог услуг не отдался:', err.message);
     res.status(500).json({ success: false, error: 'catalog_failed', message: 'Не удалось прочитать каталог услуг' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// КАРТА КОНКУРЕНТОВ
+// ═══════════════════════════════════════════════════════════════
+
+/** Медиана: половина значений выше, половина ниже. Среднее здесь врёт. */
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+/**
+ * Точки конкурентов с ценами относительно наших — для карты.
+ *
+ * Корзиной служит лист сравнения цен: в нём уже отобраны нужные услуги,
+ * уже приняты соответствия и уже выбран эталон. Считать «диапазон цен»
+ * по всему прайсу клиники бессмысленно — у clinic23 это от 30 ₽ до 770 000 ₽
+ * и ни о чём не говорит.
+ *
+ * Цены берём не из колонок сравнения, а напрямую из зеркала: колонка есть
+ * не у каждого филиала, а точка на карте нужна каждому. Связка идёт по
+ * филиалу прайса, поэтому точка без указанного филиала цен не получает —
+ * у сети в каждом отделении свой прайс, и приписать ей чужой нельзя.
+ *
+ * Отдаём готовые числа, а не сырые цены: в листе бывают тысячи позиций
+ * на полтора десятка клиник, и считать это в браузере незачем.
+ */
+router.get('/map', authenticate, async (req, res) => {
+  try {
+    const comparisonId = req.query.comparisonId;
+    if (!comparisonId) {
+      return res.status(400).json({ success: false, error: 'comparison_required', message: 'Не выбран лист сравнения' });
+    }
+
+    const comparison = await PriceComparison.findByPk(comparisonId);
+    if (!comparison) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Сравнение не найдено' });
+    }
+
+    const items = await PriceComparisonItem.findAll({
+      where: { comparisonId },
+      attributes: ['id', 'serviceName', 'serviceCode', 'prices']
+    });
+
+    // Свои колонки — всё, чего нет в списке конкурентов. Эталон либо задан
+    // явно, либо берём ту свою колонку, где цен больше всего: сравнивать
+    // с колонкой, заполненной на треть, — самообман
+    const competitors = new Set(comparison.competitors || []);
+    const ownFilled = new Map();
+    for (const item of items) {
+      for (const [column, value] of Object.entries(item.prices || {})) {
+        if (competitors.has(column) || value === null || value === '') continue;
+        ownFilled.set(column, (ownFilled.get(column) || 0) + 1);
+      }
+    }
+    const ownColumns = [...ownFilled.entries()].sort((a, b) => b[1] - a[1]).map(([name]) => name);
+    const base = req.query.base && ownFilled.has(req.query.base) ? req.query.base : ownColumns[0] || null;
+    if (!base) {
+      return res.json({
+        success: true,
+        data: { comparison: { id: comparison.id, name: comparison.name }, base: null, ownColumns, points: [], itemsTotal: items.length }
+      });
+    }
+
+    const oursByItem = new Map();
+    for (const item of items) {
+      const value = Number((item.prices || {})[base]);
+      if (Number.isFinite(value) && value > 0) {
+        oursByItem.set(item.id, { price: value, name: item.serviceName });
+      }
+    }
+
+    const onlyItemId = req.query.itemId || null;
+    const [rows] = await sequelize.query(
+      `SELECT m."itemId", cs."sourceId", p."filialId", p.price
+         FROM competitor_service_matches m
+         JOIN price_comparison_items it ON it.id = m."itemId"
+         JOIN competitor_services     cs ON cs.id = m."competitorServiceId"
+         JOIN competitor_prices       p  ON p."serviceId" = cs.id
+        WHERE it."comparisonId" = :comparisonId
+          AND m.status = 'confirmed'
+          AND p.price IS NOT NULL
+          ${onlyItemId ? 'AND m."itemId" = :onlyItemId' : ''}`,
+      { replacements: { comparisonId, onlyItemId } }
+    );
+
+    // Ключ — клиника и филиал: у сети в каждом отделении своя цена, а у
+    // лаборатории филиалов нет вовсе и filialId всегда пуст
+    const stats = new Map();
+    for (const row of rows) {
+      const ours = oursByItem.get(row.itemId);
+      if (!ours) continue;
+      const theirs = Number(row.price);
+      if (!Number.isFinite(theirs) || theirs <= 0) continue;
+
+      const key = `${row.sourceId}|${row.filialId ?? ''}`;
+      if (!stats.has(key)) stats.set(key, { ratios: [], entries: [] });
+      const bucket = stats.get(key);
+      bucket.ratios.push(theirs / ours.price);
+      bucket.entries.push({ service: ours.name, ours: ours.price, theirs, ratio: theirs / ours.price });
+    }
+
+    const locations = await CompetitorLocation.findAll({
+      where: { lat: { [Op.ne]: null } },
+      attributes: ['id', 'sourceId', 'parserLocationId', 'name', 'address', 'city',
+        'lat', 'lon', 'geoOrigin', 'parserFilialId', 'filialIdManual']
+    });
+    const sources = await CompetitorSource.findAll({
+      attributes: ['id', 'parserSourceId', 'name', 'displayName', 'city', 'competitorLabel']
+    });
+    const sourceById = new Map(sources.map(row => [row.id, row]));
+
+    const points = locations.map(point => {
+      const source = sourceById.get(point.sourceId);
+      const filialId = point.filialIdManual ?? point.parserFilialId ?? null;
+      const bucket = stats.get(`${point.sourceId}|${filialId ?? ''}`);
+
+      const ratios = bucket?.ratios || [];
+      const middle = median(ratios);
+      // Самые заметные расхождения в обе стороны: показывать человеку
+      // сотню строк на карточке бессмысленно, а пять — ровно то, ради чего
+      // он на точку и нажал
+      const top = (bucket?.entries || [])
+        .slice()
+        .sort((a, b) => Math.abs(b.ratio - 1) - Math.abs(a.ratio - 1))
+        .slice(0, 5);
+
+      return {
+        id: point.id,
+        parserLocationId: point.parserLocationId,
+        name: point.name,
+        address: point.address,
+        city: point.city || source?.city || null,
+        lat: Number(point.lat),
+        lon: Number(point.lon),
+        exact: point.geoOrigin === 'manual',
+        parserSourceId: source?.parserSourceId ?? null,
+        sourceName: source?.displayName || source?.name || '—',
+        competitorLabel: source?.competitorLabel || null,
+        filialId,
+        coverage: ratios.length,
+        medianRatio: middle,
+        cheaper: ratios.filter(r => r < 1).length,
+        dearer: ratios.filter(r => r > 1).length,
+        // Режим одной услуги: если она сопоставлена с несколькими позициями
+        // прайса конкурента, берём самую дешёвую — так же, как это делает
+        // подстановка цен в сравнение
+        price: onlyItemId && bucket?.entries.length
+          ? Math.min(...bucket.entries.map(entry => entry.theirs))
+          : null,
+        ours: onlyItemId && bucket?.entries.length ? bucket.entries[0].ours : null,
+        top
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        comparison: { id: comparison.id, name: comparison.name, type: comparison.comparisonType },
+        base,
+        ownColumns,
+        itemsTotal: oursByItem.size,
+        points
+      }
+    });
+  } catch (err) {
+    console.error('❌ Карта конкурентов не отдалась:', err.message);
+    res.status(500).json({ success: false, error: 'map_failed', message: 'Не удалось собрать данные карты' });
   }
 });
 

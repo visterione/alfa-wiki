@@ -767,6 +767,10 @@ export const priceParser = {
   addLocation:      (id, data)    => api.post(`/parser/sources/${id}/locations`, data),
   editLocation:     (lid, data)   => api.patch(`/parser/locations/${lid}`, data),
   dropLocation:     (lid)         => api.delete(`/parser/locations/${lid}`),
+  // координаты для карты: автоопределение по адресу и правка мышью
+  geocodeLocations: (id, recheck) => api.post(`/parser/sources/${id}/locations/geocode`, { recheck: !!recheck }),
+  setLocationPos:   (lid, lat, lon) => api.patch(`/parser/locations/${lid}/position`, { lat, lon }),
+  setLocationFilial:(lid, filialId) => api.patch(`/parser/locations/${lid}/filial`, { filialId }),
   branding:  (id)             => api.post(`/parser/sources/${id}/branding`),
   // свой значок — там, где с сайта снять нечего; автосбор его потом не трогает
   uploadLogo: (id, file) => {

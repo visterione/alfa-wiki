@@ -117,6 +117,60 @@
   color: var(--text-tertiary, #9ca3af);
 }
 
+/* Цветом видно состояние точки, не читая подписей: серая — координат нет,
+   синяя — поставил геокодер, зелёная — выверена мышью */
+.ap-loc-pin.placed { color: var(--primary); }
+.ap-loc-pin.manual { color: var(--success); }
+
+.ap-loc-item { cursor: pointer; }
+.ap-loc-item.picking { background: var(--primary-light, rgba(59, 130, 246, 0.12)); }
+
+.ap-loc-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+.ap-loc-actions .btn-icon.active { color: var(--primary); }
+
+.ap-loc-filial {
+  margin-top: 6px;
+  max-width: 260px;
+}
+
+/* ── Карта в модалке адресов ────────────────────────────────────────────── */
+
+.ap-map {
+  height: 260px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-light);
+  overflow: hidden;
+  margin-bottom: 6px;
+  /* Тайлы OSM всегда светлые — на тёмной теме подложка под ними не должна
+     просвечивать белыми полосами по краям */
+  background: var(--bg-secondary);
+}
+
+.ap-map-hint {
+  font-size: 12px;
+  color: var(--text-tertiary, #9ca3af);
+  margin-bottom: 14px;
+}
+
+/* Своя метка вместо стандартной картинки Leaflet: та тянет png с CDN
+   и в списке из десяти точек читается хуже простого кружка */
+.ap-map-pin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.ap-map-pin.manual { background: var(--success); }
+
 .ap-loc-text { flex: 1; min-width: 0; }
 
 .ap-loc-name {

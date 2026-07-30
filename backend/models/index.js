@@ -946,7 +946,21 @@ const CompetitorLocation = sequelize.define('CompetitorLocation', {
   parserFilialId: {
     type: DataTypes.INTEGER,
     comment: 'Филиал в парсере, если точку удалось связать с ценами'
-  }
+  },
+  // Парсер связывает адрес с филиалом далеко не всегда, а без связи цену
+  // к точке на карте привязать нечем. Поле отдельное от parserFilialId:
+  // тот приходит из парсера и перезаписывается при каждом обновлении точек.
+  filialIdManual: {
+    type: DataTypes.INTEGER,
+    comment: 'Филиал прайса, указанный человеком; перекрывает parserFilialId'
+  },
+  lat: { type: DataTypes.DECIMAL(9, 6), comment: 'Широта; NULL — адрес ещё не геокодирован' },
+  lon: { type: DataTypes.DECIMAL(9, 6) },
+  geoOrigin: {
+    type: DataTypes.STRING(16),
+    comment: 'nominatim | manual — выправленное мышью автопрогон не трогает'
+  },
+  geocodedAt: { type: DataTypes.DATE }
 }, {
   tableName: 'competitor_locations',
   timestamps: true,

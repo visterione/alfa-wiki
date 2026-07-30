@@ -1027,6 +1027,106 @@
   color: #9ca3af;
   font-size: 13px;
 }
+
+/* ═══ Карта конкурентов ═══
+   Второй способ смотреть тот же лист: таблица отвечает «сколько стоит»,
+   карта — «где мы дороже рынка». Корзиной служит сам лист, эталоном —
+   выбранная в нём базовая колонка, поэтому отдельных настроек у карты нет. */
+
+.pc-map-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.pc-map-wrap {
+  position: relative;
+  display: flex;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+#pc-map {
+  flex: 1;
+  height: calc(100vh - 260px);
+  min-height: 420px;
+  background: #eef1f4;
+}
+
+.pc-map-side {
+  width: 0;
+  flex-shrink: 0;
+  border-left: 1px solid #e5e7eb;
+  overflow-y: auto;
+  transition: width .2s;
+  background: #fff;
+}
+.pc-map-side.open { width: 330px; }
+.pc-map-side-inner { padding: 16px 18px; }
+
+.pc-map-side-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
+.pc-map-side-logo { width: 34px; height: 34px; object-fit: contain; border-radius: 6px; flex-shrink: 0; }
+.pc-map-side-title { font-size: 15px; font-weight: 600; line-height: 1.25; flex: 1; color: #111827; }
+.pc-map-side-close {
+  border: none; background: #f3f4f6; color: #6b7280;
+  width: 26px; height: 26px; border-radius: 6px; cursor: pointer;
+  font-size: 16px; line-height: 1; flex-shrink: 0;
+}
+.pc-map-side-close:hover { background: #e5e7eb; }
+.pc-map-side-addr { font-size: 13px; color: #6b7280; margin: 0 0 14px; }
+
+.pc-map-index { font-size: 30px; font-weight: 700; line-height: 1; margin-bottom: 2px; }
+.pc-map-index-label { font-size: 12px; color: #9ca3af; margin-bottom: 14px; }
+
+.pc-map-stats { display: flex; gap: 16px; margin-bottom: 14px; }
+.pc-map-stat-value { font-size: 17px; font-weight: 600; }
+.pc-map-stat-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: .3px; }
+
+.pc-map-top-title {
+  font-size: 11px; font-weight: 600; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: .3px; margin: 0 0 6px;
+}
+.pc-map-top { list-style: none; margin: 0; padding: 0; }
+.pc-map-top li {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 7px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; color: #374151;
+}
+.pc-map-top li:last-child { border-bottom: none; }
+.pc-map-top-prices { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pc-map-empty-side { font-size: 13px; color: #9ca3af; line-height: 1.5; }
+
+/* Метка: кружок с отклонением от наших цен. Логотип показываем только там,
+   где цен нет — иначе он спорит с числом, ради которого метку и открывают */
+.pc-map-pin {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  font-size: 11px; font-weight: 700; color: #fff;
+  font-family: 'Inter', sans-serif;
+}
+.pc-map-pin img { width: 22px; height: 22px; object-fit: contain; border-radius: 3px; }
+
+.pc-map-legend {
+  position: absolute; left: 12px; bottom: 12px; z-index: 500;
+  background: rgba(255,255,255,.94);
+  border: 1px solid #e5e7eb; border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; color: #374151;
+  box-shadow: 0 2px 8px rgba(0,0,0,.1);
+}
+.pc-map-legend-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.pc-map-legend-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .pc-map-side.open { width: 100%; position: absolute; inset: 0; z-index: 800; }
+  #pc-map { height: 60vh; }
+}
 </style>
 
   <!-- Переключатель режимов -->
@@ -1083,22 +1183,61 @@
 
   <!-- Фильтры и поиск -->
   <div class="price-filters" id="price-filters" style="display:none;">
-    <div class="price-search-box">
+    <!-- Таблица и карта — два взгляда на один лист: «сколько стоит»
+         и «где мы дороже рынка». Лист и эталон общие. -->
+    <div class="price-mode-switcher" style="margin-bottom:0;">
+      <button class="price-mode-btn active" id="layout-table-btn" onclick="priceApp.setLayout('table')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 6h18M3 14h18M3 18h18"/></svg>
+        Таблица
+      </button>
+      <button class="price-mode-btn" id="layout-map-btn" onclick="priceApp.setLayout('map')">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+        Карта
+      </button>
+    </div>
+    <div class="price-search-box pc-table-only">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
       <input type="text" id="filter-search" class="price-search" placeholder="Поиск по названию, коду..." oninput="priceApp.filterTable()">
     </div>
-    <div class="price-mode-switcher" style="margin-bottom:0;">
+    <div class="price-mode-switcher pc-table-only" style="margin-bottom:0;">
       <button class="price-mode-btn active" id="view-price-btn" onclick="priceApp.setViewMode('price')">Стоимость</button>
       <button class="price-mode-btn" id="view-cost-btn" onclick="priceApp.setViewMode('cost')">Себестоимость</button>
     </div>
-    <button class="price-btn price-btn-secondary" id="refresh-costs-btn" style="display:none;" onclick="priceApp.refreshCostPrices()">
+    <button class="price-btn price-btn-secondary pc-table-only" id="refresh-costs-btn" style="display:none;" onclick="priceApp.refreshCostPrices()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       Обновить себестоимость
     </button>
-    <button class="price-btn price-btn-primary" onclick="priceApp.openAddServiceModal()">
+    <button class="price-btn price-btn-primary pc-table-only" onclick="priceApp.openAddServiceModal()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
       Добавить услугу
     </button>
+  </div>
+
+  <!-- Карта -->
+  <div id="map-view" style="display:none;">
+    <div class="pc-map-controls">
+      <div class="price-mode-switcher" style="margin-bottom:0;">
+        <button class="price-mode-btn active" id="map-mode-basket" onclick="priceApp.setMapMode('basket')">Вся корзина</button>
+        <button class="price-mode-btn" id="map-mode-one" onclick="priceApp.setMapMode('one')">Одна услуга</button>
+      </div>
+      <input type="text" id="map-service" class="price-input" list="map-service-list"
+             placeholder="Начните вводить название услуги..." style="display:none; max-width:360px"
+             oninput="priceApp.onMapService()">
+      <datalist id="map-service-list"></datalist>
+      <span id="map-note" style="font-size:13px; color:#6b7280;"></span>
+    </div>
+
+    <div class="pc-map-wrap">
+      <div id="pc-map"></div>
+      <div class="pc-map-side" id="pc-map-side"><div class="pc-map-side-inner" id="pc-map-side-inner"></div></div>
+      <div class="pc-map-legend" id="pc-map-legend" style="display:none">
+        <b>Цены относительно наших</b>
+        <div class="pc-map-legend-row"><span class="pc-map-legend-dot" style="background:#16a34a"></span> дешевле нас</div>
+        <div class="pc-map-legend-row"><span class="pc-map-legend-dot" style="background:#f59e0b"></span> примерно так же</div>
+        <div class="pc-map-legend-row"><span class="pc-map-legend-dot" style="background:#dc2626"></span> дороже нас</div>
+        <div class="pc-map-legend-row"><span class="pc-map-legend-dot" style="background:#9ca3af"></span> цен нет</div>
+      </div>
+    </div>
   </div>
 
   <!-- Таблица -->
@@ -1480,6 +1619,10 @@ window.priceApp = (function() {
     document.getElementById('view-cost-btn').classList.remove('active');
     document.getElementById('refresh-costs-btn').style.display = 'none';
 
+    // Смена режима меняет и набор листов — возвращаемся к таблице,
+    // иначе карта осталась бы с точками от прежнего сравнения
+    setLayout('table');
+
     // Сбрасываем UI
     document.getElementById('columns-manager').style.display = 'none';
     document.getElementById('price-filters').style.display = 'none';
@@ -1585,6 +1728,13 @@ window.priceApp = (function() {
 
       renderColumnsManager();
       renderTable();
+      // Карта смотрит на тот же лист — при его смене пересчитываем и её
+      if (document.getElementById('map-view').style.display === 'block') {
+        fillMapServiceList();
+        pcMapItemId = '';
+        document.getElementById('map-service').value = '';
+        setMapMode(pcMapMode);
+      }
     }).catch(function(e) {
       showToast('Ошибка: ' + e.message, 'error');
     });
@@ -1681,6 +1831,8 @@ window.priceApp = (function() {
     baseColumnName = columnName;
     renderColumnsManager();
     renderTable();
+    // Эталон общий: карта считает отклонения от него же
+    if (document.getElementById('map-view').style.display === 'block') loadMapData();
   }
 
   function setViewMode(mode) {
@@ -3294,6 +3446,299 @@ window.priceApp = (function() {
     });
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // КАРТА КОНКУРЕНТОВ
+  //
+  // Тот же лист, второй взгляд: таблица отвечает «сколько стоит», карта —
+  // «где мы дороже рынка». Корзиной служит сам лист, эталоном — выбранная
+  // в нём базовая колонка, поэтому своих настроек у карты почти нет.
+  // ═══════════════════════════════════════════════════════════════
+
+  var pcMap = null;
+  var pcMapCluster = null;
+  var pcMapMode = 'basket';   // 'basket' | 'one'
+  var pcMapItemId = '';
+  var pcMapLibs = null;       // промис загрузки Leaflet
+
+  /**
+   * Leaflet по требованию.
+   *
+   * Страница открывается ради таблицы, картой пользуются реже — тянуть
+   * полмегабайта скриптов при каждом заходе незачем. Грузим при первом
+   * переключении и держим общий промис: два быстрых клика не должны
+   * приводить к двум вставкам одного и того же тега.
+   */
+  function ensureMapLibs() {
+    if (window.L && window.L.markerClusterGroup) return Promise.resolve();
+    if (pcMapLibs) return pcMapLibs;
+
+    pcMapLibs = new Promise(function(resolve, reject) {
+      function addCss(href) {
+        if (document.querySelector('link[href="' + href + '"]')) return;
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.appendChild(link);
+      }
+      function addScript(src) {
+        return new Promise(function(ok, fail) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = ok;
+          s.onerror = function() { fail(new Error('не загрузился ' + src)); };
+          document.head.appendChild(s);
+        });
+      }
+
+      addCss('https://unpkg.com/leaflet@1.9.4/dist/leaflet.css');
+      addCss('https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css');
+      // Кластеризация — плагин к Leaflet, порядок загрузки обязателен
+      addScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js')
+        .then(function() { return addScript('https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js'); })
+        .then(resolve)
+        .catch(function(e) { pcMapLibs = null; reject(e); });
+    });
+
+    return pcMapLibs;
+  }
+
+  function setLayout(layout) {
+    var isMap = layout === 'map';
+    document.getElementById('layout-table-btn').classList.toggle('active', !isMap);
+    document.getElementById('layout-map-btn').classList.toggle('active', isMap);
+    document.getElementById('table-container').style.display = isMap ? 'none' : '';
+    document.getElementById('map-view').style.display = isMap ? 'block' : 'none';
+
+    // Поиск, себестоимость и добавление услуг относятся к таблице
+    Array.prototype.forEach.call(document.querySelectorAll('.pc-table-only'), function(el) {
+      el.style.display = isMap ? 'none' : '';
+    });
+    if (!isMap) {
+      // У кнопки себестоимости своя логика показа — возвращаем ей управление
+      document.getElementById('refresh-costs-btn').style.display =
+        viewMode === 'cost' ? 'inline-flex' : 'none';
+      return;
+    }
+
+    if (!currentComparison) {
+      setMapNote('Сначала выберите страницу сравнения');
+      return;
+    }
+
+    fillMapServiceList();
+    ensureMapLibs().then(function() {
+      initMap();
+      loadMapData();
+    }).catch(function(e) {
+      setMapNote('Карта не загрузилась: ' + e.message);
+    });
+  }
+
+  function initMap() {
+    if (pcMap) { setTimeout(function() { pcMap.invalidateSize(); }, 60); return; }
+
+    pcMap = L.map('pc-map', { scrollWheelZoom: true }).setView([48.5, 45.0], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(pcMap);
+
+    // Клиники разбросаны по всей стране: без склейки Москва и Краснодар
+    // на общем виде превращаются в кашу из перекрытых меток
+    pcMapCluster = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 45 });
+    pcMap.addLayer(pcMapCluster);
+    setTimeout(function() { pcMap.invalidateSize(); }, 100);
+  }
+
+  function setMapNote(text) {
+    var el = document.getElementById('map-note');
+    if (el) el.textContent = text || '';
+  }
+
+  function fillMapServiceList() {
+    var list = document.getElementById('map-service-list');
+    if (!list) return;
+    list.innerHTML = currentItems.slice(0, 2000).map(function(item) {
+      return '<option value="' + escAttr(item.serviceName) + '"></option>';
+    }).join('');
+  }
+
+  function escAttr(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  function setMapMode(mode) {
+    pcMapMode = mode;
+    document.getElementById('map-mode-basket').classList.toggle('active', mode === 'basket');
+    document.getElementById('map-mode-one').classList.toggle('active', mode === 'one');
+    document.getElementById('map-service').style.display = mode === 'one' ? '' : 'none';
+    closeMapSide();
+
+    if (mode === 'basket') { pcMapItemId = ''; loadMapData(); }
+    else if (pcMapItemId) loadMapData();
+    else { if (pcMapCluster) pcMapCluster.clearLayers(); setMapNote('Выберите услугу'); }
+  }
+
+  function onMapService() {
+    var typed = document.getElementById('map-service').value.trim().toLowerCase();
+    var found = currentItems.filter(function(i) {
+      return String(i.serviceName).toLowerCase() === typed;
+    })[0];
+    if (!found) return;
+    pcMapItemId = found.id;
+    loadMapData();
+  }
+
+  function loadMapData() {
+    if (!currentComparison || !pcMapCluster) return;
+    if (pcMapMode === 'one' && !pcMapItemId) return;
+
+    var url = PARSER_URL + '/map?comparisonId=' + encodeURIComponent(currentComparison.id) +
+      (baseColumnName ? '&base=' + encodeURIComponent(baseColumnName) : '') +
+      (pcMapMode === 'one' && pcMapItemId ? '&itemId=' + encodeURIComponent(pcMapItemId) : '');
+
+    setMapNote('Считаем…');
+    fetchAPI(url, { timeout: 60000 }).then(function(res) {
+      renderMap(res.data);
+    }).catch(function(e) {
+      setMapNote('Ошибка: ' + e.message);
+    });
+  }
+
+  // Отклонение от наших цен: +34% значит «дороже нас на треть»
+  function mapPercent(ratio) {
+    var p = Math.round(ratio * 100 - 100);
+    return (p > 0 ? '+' : '') + p + '%';
+  }
+
+  /**
+   * Цвет метки. Порог в 5% намеренный: разница в пару процентов —
+   * округление прайса, а не позиция на рынке, и красить её было бы враньём.
+   */
+  function mapColor(ratio) {
+    if (ratio == null) return '#9ca3af';
+    if (ratio < 0.95) return '#16a34a';
+    if (ratio > 1.05) return '#dc2626';
+    return '#f59e0b';
+  }
+
+  // Значки уже загружены для колонок таблицы — берём их же по ID источника
+  function mapLogoFor(parserSourceId) {
+    var source = parserCompetitors.filter(function(c) {
+      return c.parserSourceId === parserSourceId && c.logo;
+    })[0];
+    return source ? source.logo : null;
+  }
+
+  function renderMap(data) {
+    var points = data.points || [];
+    pcMapCluster.clearLayers();
+    document.getElementById('pc-map-legend').style.display = points.length ? '' : 'none';
+
+    if (!points.length) {
+      setMapNote('Ни у одной точки нет координат — расставьте их в админке парсера');
+      return;
+    }
+
+    var withPrices = 0;
+    var bounds = [];
+
+    points.forEach(function(point) {
+      var value = pcMapMode === 'one'
+        ? (point.price != null && point.ours ? point.price / point.ours : null)
+        : point.medianRatio;
+      if (value != null) withPrices++;
+
+      var logo = mapLogoFor(point.parserSourceId);
+      var caption = pcMapMode === 'one'
+        ? (point.price != null ? Math.round(point.price) : '')
+        : (value != null ? mapPercent(value) : '');
+
+      var html = '<div class="pc-map-pin" style="background:' + mapColor(value) + '">' +
+        (value == null && logo ? '<img src="' + logo + '" alt="">' : caption) +
+        '</div>';
+
+      var marker = L.marker([point.lat, point.lon], {
+        icon: L.divIcon({ className: '', html: html, iconSize: [34, 34], iconAnchor: [17, 17] })
+      });
+      marker.bindTooltip(esc(point.sourceName) + (point.name ? ' · ' + esc(point.name) : ''));
+      marker.on('click', function() { openMapSide(point); });
+      pcMapCluster.addLayer(marker);
+      bounds.push([point.lat, point.lon]);
+    });
+
+    if (bounds.length) pcMap.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+
+    setMapNote('Точек: ' + points.length + ' · с ценами: ' + withPrices +
+      (pcMapMode === 'basket' ? ' · позиций в корзине: ' + data.itemsTotal : '') +
+      (data.base ? ' · эталон: ' + data.base : ''));
+  }
+
+  function openMapSide(point) {
+    var side = document.getElementById('pc-map-side');
+    var inner = document.getElementById('pc-map-side-inner');
+    var logo = mapLogoFor(point.parserSourceId);
+
+    var html = '<div class="pc-map-side-head">' +
+      (logo ? '<img class="pc-map-side-logo" src="' + logo + '" alt="">' : '') +
+      '<div class="pc-map-side-title">' + esc(point.sourceName) +
+        (point.name ? '<div style="font-weight:400;font-size:13px;color:#6b7280">' + esc(point.name) + '</div>' : '') +
+      '</div>' +
+      '<button class="pc-map-side-close" onclick="priceApp.closeMapSide()">&times;</button>' +
+      '</div>' +
+      '<p class="pc-map-side-addr">' + esc(point.address) +
+      (point.city ? ' · ' + esc(point.city) : '') + '</p>';
+
+    if (pcMapMode === 'one') {
+      var ratio = point.price != null && point.ours ? point.price / point.ours : null;
+      html += point.price == null
+        ? '<div class="pc-map-empty-side">Этой услуги у клиники нет.</div>'
+        : '<div class="pc-map-index" style="color:' + mapColor(ratio) + '">' + formatPrice(point.price) + '</div>' +
+          '<div class="pc-map-index-label">у нас ' + formatPrice(point.ours) +
+          (ratio != null ? ' · ' + mapPercent(ratio) : '') + '</div>';
+    } else if (point.medianRatio == null) {
+      // Пусто по двум разным причинам, и человеку нужно знать, по какой
+      html += '<div class="pc-map-empty-side">Цен нет. Либо у точки не указан филиал прайса, ' +
+        'либо ни одна услуга корзины не сопоставлена с этой клиникой.<br><br>' +
+        'Филиал указывается в админке парсера, в окне адресов.</div>';
+    } else {
+      html += '<div class="pc-map-index" style="color:' + mapColor(point.medianRatio) + '">' +
+          mapPercent(point.medianRatio) + '</div>' +
+        '<div class="pc-map-index-label">медиана по корзине относительно наших цен</div>' +
+        '<div class="pc-map-stats">' +
+          '<div><div class="pc-map-stat-value">' + point.coverage + '</div>' +
+            '<div class="pc-map-stat-label">услуг совпало</div></div>' +
+          '<div><div class="pc-map-stat-value" style="color:#16a34a">' + point.cheaper + '</div>' +
+            '<div class="pc-map-stat-label">дешевле</div></div>' +
+          '<div><div class="pc-map-stat-value" style="color:#dc2626">' + point.dearer + '</div>' +
+            '<div class="pc-map-stat-label">дороже</div></div>' +
+        '</div>';
+
+      if (point.top && point.top.length) {
+        html += '<p class="pc-map-top-title">Где расходимся сильнее всего</p><ul class="pc-map-top">' +
+          point.top.map(function(t) {
+            return '<li><span>' + esc(t.service) + '</span>' +
+              '<span class="pc-map-top-prices">' + formatPrice(t.theirs) +
+              ' <b style="color:' + mapColor(t.ratio) + '">' + mapPercent(t.ratio) + '</b></span></li>';
+          }).join('') + '</ul>';
+      }
+    }
+
+    inner.innerHTML = html;
+    side.classList.add('open');
+    setTimeout(function() { pcMap.invalidateSize(); }, 220);
+  }
+
+  function closeMapSide() {
+    document.getElementById('pc-map-side').classList.remove('open');
+    setTimeout(function() { if (pcMap) pcMap.invalidateSize(); }, 220);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   // === TOOLTIP ДЛЯ ИСТОРИИ ЦЕН ===
   var tooltipElement = null;
 
@@ -3876,7 +4321,11 @@ window.priceApp = (function() {
     onLabCategoryBlur: onLabCategoryBlur,
     onLabCategoryKeydown: onLabCategoryKeydown,
     selectLabCategory: selectLabCategory,
-    saveLabGroups: saveLabGroups
+    saveLabGroups: saveLabGroups,
+    setLayout: setLayout,
+    setMapMode: setMapMode,
+    onMapService: onMapService,
+    closeMapSide: closeMapSide
   };
 })();
 </script>

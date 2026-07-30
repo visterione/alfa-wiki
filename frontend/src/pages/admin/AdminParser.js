@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight, Crosshair } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
+import { ensureLeaflet } from '../../utils/leaflet';
 import toast from 'react-hot-toast';
 import '../Admin.css';
 import './AdminParser.css';
@@ -401,15 +402,29 @@ function LabelCell({ source, value, onSaved }) {
  */
 function LocationsModal({ source, onClose }) {
   const [items, setItems] = useState([]);
+  const [filials, setFilials] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
   const [draft, setDraft] = useState({ name: '', address: '', city: '' });
+  const [selected, setSelected] = useState(null);   // точка, которую ставим кликом
+  // Готовность карты — состоянием, а не ref: скрипт грузится с CDN и может
+  // прийти позже списка точек, а эффект с метками должен на это отреагировать
+  const [mapReady, setMapReady] = useState(false);
+
+  const mapNode = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef(new Map());
+  // Обработчики попадают внутрь Leaflet, который живёт вне React. Держим
+  // свежие значения в ref, иначе замыкание навсегда запомнит первый рендер.
+  const stateRef = useRef({ items: [], selected: null });
+  stateRef.current = { items, selected };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const { data } = await priceParser.locations(source.id);
       setItems(data.data || []);
+      setFilials(data.filials || []);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось загрузить адреса');
     } finally {
@@ -419,8 +434,103 @@ function LocationsModal({ source, onClose }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const savePosition = useCallback(async (point, lat, lon) => {
+    try {
+      await priceParser.setLocationPos(point.parserLocationId, lat, lon);
+      setItems(prev => prev.map(row => row.id === point.id
+        ? { ...row, lat, lon, geoOrigin: 'manual' }
+        : row));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось сохранить координаты');
+      await load();
+    }
+  }, [load]);
+
+  // ── Карта ───────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    ensureLeaflet().then(L => {
+      if (cancelled || !mapNode.current || mapRef.current) return;
+
+      const map = L.map(mapNode.current).setView([45.03, 38.97], 11);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      // Клик по карте ставит выбранную точку — так размещаются адреса,
+      // которые геокодер не нашёл вовсе
+      map.on('click', (e) => {
+        const target = stateRef.current.selected;
+        if (!target) return;
+        const point = stateRef.current.items.find(row => row.id === target);
+        if (point) savePosition(point, e.latlng.lat, e.latlng.lng);
+        setSelected(null);
+      });
+
+      mapRef.current = map;
+      setMapReady(true);
+      // Окно открывается анимацией, и на первом кадре размеры ещё нулевые
+      setTimeout(() => map.invalidateSize(), 200);
+    }).catch(err => toast.error(err.message));
+
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+      markersRef.current.clear();
+      setMapReady(false);
+    };
+  }, [savePosition]);
+
+  // Метки пересобираем при изменении списка: точек десятки, дешевле снести
+  // и разложить заново, чем сверять что с чем
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !window.L) return;
+    const L = window.L;
+
+    markersRef.current.forEach(marker => marker.remove());
+    markersRef.current.clear();
+
+    const placed = items.filter(row => row.lat !== null && row.lon !== null);
+    placed.forEach(row => {
+      const manual = row.geoOrigin === 'manual';
+      const marker = L.marker([Number(row.lat), Number(row.lon)], {
+        draggable: true,
+        title: row.name || row.address,
+        // Поставленное мышью отличаем цветом: видно, что уже выверено
+        icon: L.divIcon({
+          className: '',
+          html: `<div class="ap-map-pin${manual ? ' manual' : ''}"></div>`,
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        })
+      }).addTo(map);
+
+      marker.bindTooltip(`${row.name ? row.name + ' · ' : ''}${row.address}`);
+      marker.on('dragend', () => {
+        const { lat, lng } = marker.getLatLng();
+        savePosition(row, lat, lng);
+      });
+      markersRef.current.set(row.id, marker);
+    });
+
+    if (placed.length) {
+      map.fitBounds(placed.map(row => [Number(row.lat), Number(row.lon)]), {
+        padding: [30, 30],
+        maxZoom: 14
+      });
+    }
+  }, [items, savePosition, mapReady]);
+
+  const focus = (row) => {
+    if (row.lat === null || !mapRef.current) return;
+    mapRef.current.setView([Number(row.lat), Number(row.lon)], 16);
+    markersRef.current.get(row.id)?.openTooltip();
+  };
+
   const collect = async () => {
-    setBusy(true);
+    setBusy('collect');
     try {
       const { data } = await priceParser.collectLocations(source.id);
       toast.success(
@@ -432,7 +542,38 @@ function LocationsModal({ source, onClose }) {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось собрать адреса');
     } finally {
-      setBusy(false);
+      setBusy('');
+    }
+  };
+
+  // Геокодер идёт по адресам с паузой в секунду — на десяток точек это
+  // десяток секунд, поэтому кнопка блокируется, а не притворяется мгновенной
+  const geocode = async () => {
+    setBusy('geocode');
+    try {
+      const { data } = await priceParser.geocodeLocations(source.id);
+      const r = data.data;
+      toast.success(
+        `Поставлено: ${r.placed}` +
+        (r.doubtful ? `, под вопросом: ${r.doubtful}` : '') +
+        (r.missed ? `, не нашлось: ${r.missed}` : '')
+      );
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось определить координаты');
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const setFilial = async (row, filialId) => {
+    try {
+      await priceParser.setLocationFilial(row.parserLocationId, filialId || null);
+      setItems(prev => prev.map(item => item.id === row.id
+        ? { ...item, filialIdManual: filialId ? Number(filialId) : null }
+        : item));
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось привязать филиал');
     }
   };
 
@@ -467,11 +608,26 @@ function LocationsModal({ source, onClose }) {
 
         <div className="modal-body">
           <div className="ap-loc-toolbar">
-            <button className="btn" onClick={collect} disabled={busy}>
-              {busy ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
-              {busy ? 'Ищем…' : 'Собрать с сайта'}
+            <button className="btn" onClick={collect} disabled={!!busy}>
+              {busy === 'collect' ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
+              {busy === 'collect' ? 'Ищем…' : 'Собрать с сайта'}
             </button>
-            <span className="text-muted">точек: {items.length}</span>
+            <button className="btn" onClick={geocode} disabled={!!busy || !items.length}>
+              {busy === 'geocode' ? <Loader2 size={16} className="spin" /> : <Crosshair size={16} />}
+              {busy === 'geocode' ? 'Определяем…' : 'Определить координаты'}
+            </button>
+            <span className="text-muted">
+              точек: {items.length} · на карте: {items.filter(i => i.lat !== null).length}
+            </span>
+          </div>
+
+          {/* Карта над списком: метку двигают мышью, и после этого координаты
+              считаются выверенными — автогеокодер их больше не трогает */}
+          <div className="ap-map" ref={mapNode} />
+          <div className="ap-map-hint">
+            {selected
+              ? 'Кликните по карте, чтобы поставить выбранную точку'
+              : 'Метку можно перетащить — так координаты закрепляются за адресом навсегда'}
           </div>
 
           {loading ? (
@@ -480,25 +636,65 @@ function LocationsModal({ source, onClose }) {
             <div className="ap-loc-empty">Пусто. Соберите с сайта или впишите адрес ниже.</div>
           ) : (
             <ul className="ap-loc-list">
-              {items.map(item => (
-                <li key={item.id} className="ap-loc-item">
-                  <MapPin size={14} className="ap-loc-pin" />
-                  <div className="ap-loc-text">
-                    <div className="ap-loc-name">
-                      {item.name || <span className="text-muted">без названия</span>}
-                      {/* вписанному руками веры больше, чем вытащенному из текста */}
-                      {item.origin === 'manual' && <span className="ap-loc-tag">вручную</span>}
+              {items.map(item => {
+                const placed = item.lat !== null && item.lon !== null;
+                const filialId = item.filialIdManual ?? item.parserFilialId ?? '';
+                return (
+                  <li
+                    key={item.id}
+                    className={`ap-loc-item${selected === item.id ? ' picking' : ''}`}
+                    onClick={() => placed && focus(item)}
+                  >
+                    <MapPin
+                      size={14}
+                      className={`ap-loc-pin${placed ? (item.geoOrigin === 'manual' ? ' manual' : ' placed') : ''}`}
+                    />
+                    <div className="ap-loc-text">
+                      <div className="ap-loc-name">
+                        {item.name || <span className="text-muted">без названия</span>}
+                        {/* вписанному руками веры больше, чем вытащенному из текста */}
+                        {item.origin === 'manual' && <span className="ap-loc-tag">адрес вручную</span>}
+                        {item.geoOrigin === 'manual' && <span className="ap-loc-tag">точка выверена</span>}
+                      </div>
+                      <div className="ap-loc-addr">
+                        {item.address}
+                        {item.city && <span className="text-muted"> · {item.city}</span>}
+                      </div>
+
+                      {/* Без филиала цену к точке привязать нечем: у сети
+                          в каждом отделении свой прайс */}
+                      {filials.length > 0 && (
+                        <select
+                          className="input ap-cell-input ap-loc-filial"
+                          value={filialId}
+                          onClick={e => e.stopPropagation()}
+                          onChange={e => setFilial(item, e.target.value)}
+                        >
+                          <option value="">— филиал прайса не указан —</option>
+                          {filials.map(f => (
+                            <option key={f.id} value={f.id}>{f.name || `Филиал ${f.id}`}</option>
+                          ))}
+                        </select>
+                      )}
                     </div>
-                    <div className="ap-loc-addr">
-                      {item.address}
-                      {item.city && <span className="text-muted"> · {item.city}</span>}
+
+                    <div className="ap-loc-actions" onClick={e => e.stopPropagation()}>
+                      {!placed && (
+                        <button
+                          className={`btn btn-icon${selected === item.id ? ' active' : ''}`}
+                          title="Поставить точку кликом по карте"
+                          onClick={() => setSelected(selected === item.id ? null : item.id)}
+                        >
+                          <Crosshair size={14} />
+                        </button>
+                      )}
+                      <button className="btn btn-icon" title="Убрать" onClick={() => remove(item)}>
+                        <X size={14} />
+                      </button>
                     </div>
-                  </div>
-                  <button className="btn btn-icon" title="Убрать" onClick={() => remove(item)}>
-                    <X size={14} />
-                  </button>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
