@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import toast from 'react-hot-toast';
@@ -23,6 +23,9 @@ import './AdminParser.css';
 // минуты, чаще дёргать парсер незачем
 const POLL_MS = 2000;
 
+// Состояния очереди, при которых работа идёт прямо сейчас
+const IN_WORK = ['queued', 'analyzing', 'crawling'];
+
 const dateTime = (value) => value ? new Date(value).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 const date = (value) => value ? new Date(value).toLocaleDateString('ru-RU') : '—';
 
@@ -38,6 +41,42 @@ function ConnectionBanner({ status }) {
       </div>
       <p style={{ margin: '0 0 4px' }}>{status.message}</p>
       {status.parserUrl && <small className="text-muted">Адрес: {status.parserUrl}</small>}
+    </div>
+  );
+}
+
+/**
+ * Ход разбора полосой.
+ *
+ * Честного процента здесь быть не может: сколько у сайта страниц, парсер
+ * узнаёт только когда до них дойдёт. Поэтому полоса растёт по времени и
+ * тормозит у края — она отвечает на вопрос «оно живое?», а не «сколько
+ * осталось». Числа, которые парсер действительно знает (стадия и число
+ * пройденных страниц), стоят подписью.
+ */
+function ParseProgress({ stage, pages }) {
+  const [pct, setPct] = useState(6);
+
+  useEffect(() => {
+    const handle = setInterval(() => {
+      // Шаг тем меньше, чем ближе к 92% — до конца полоса не доходит никогда,
+      // конец рисует уже смена состояния задачи
+      setPct(prev => Math.min(92, prev + Math.max(0.3, (92 - prev) * 0.05)));
+    }, 600);
+    return () => clearInterval(handle);
+  }, []);
+
+  return (
+    <div className="ap-progress">
+      <div className="ap-progress-track">
+        <div className="ap-progress-fill" style={{ width: `${pct}%` }} />
+      </div>
+      {(stage || pages > 0) && (
+        <div className="ap-progress-label">
+          <span>{stage}</span>
+          {pages > 0 && <span>{pages} стр.</span>}
+        </div>
+      )}
     </div>
   );
 }
@@ -123,13 +162,7 @@ function JobPanel({ job, onConfirm, onClose, confirming }) {
         )}
       </div>
 
-      {job.state === 'running' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Loader2 size={16} className="spin" />
-          <span>{job.stage}</span>
-          {job.pages > 0 && <span className="text-muted">· страниц: {job.pages}</span>}
-        </div>
-      )}
+      {job.state === 'running' && <ParseProgress stage={job.stage} pages={job.pages} />}
 
       {job.state === 'lost' && (
         <p style={{ margin: 0 }}>
@@ -263,6 +296,82 @@ function EditableCell({ value, placeholder, hint, bold, onSave }) {
 }
 
 /**
+ * Значок клиники: показ, загрузка своего, снятие.
+ *
+ * Автосбор с сайта справляется не всегда — у части клиник взять картинку
+ * неоткуда, и строка остаётся безликой. Поэтому значок кликабелен: клик
+ * открывает выбор файла, крестик в углу снимает загруженный. Помеченный
+ * как свой автосбор потом не перезаписывает.
+ */
+function LogoCell({ source, logo, onChanged }) {
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+
+  const upload = async (event) => {
+    const file = event.target.files?.[0];
+    // Сбрасываем сразу: иначе повторный выбор того же файла не даст change
+    event.target.value = '';
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) return toast.error('Нужен файл изображения');
+    if (file.size > 1024 * 1024) return toast.error('Файл больше мегабайта — это иконка, а не обои');
+
+    setBusy(true);
+    try {
+      await priceParser.uploadLogo(source.id, file);
+      await onChanged();
+      toast.success('Логотип загружен');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось загрузить логотип');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const drop = async (event) => {
+    event.stopPropagation();
+    setBusy(true);
+    try {
+      await priceParser.dropLogo(source.id);
+      await onChanged();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Не удалось убрать логотип');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className={`ap-logo${logo ? ' has-logo' : ''}`}
+      onClick={() => !busy && inputRef.current?.click()}
+      title={logo ? 'Заменить логотип' : 'Загрузить логотип'}
+    >
+      {busy
+        ? <Loader2 size={14} className="spin" />
+        : logo
+          ? <img src={logo} alt="" />
+          : <ImageDown size={14} className="ap-logo-empty" />}
+
+      {logo && !busy && (
+        <button className="ap-logo-drop" onClick={drop} title="Убрать логотип">
+          <X size={10} />
+        </button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={upload}
+        onClick={e => e.stopPropagation()}
+      />
+    </div>
+  );
+}
+
+/**
  * Как эта клиника называется в сравнениях цен.
  *
  * В зеркале источники зовутся по домену («clinic23-krd»), а в сравнении
@@ -350,66 +459,65 @@ function LocationsModal({ source, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Адреса: {source.display_name || source.name}</h2>
           <button className="btn-icon" onClick={onClose}><X size={20} /></button>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
-          <button className="btn" onClick={collect} disabled={busy}>
-            <MapPin size={16} /> {busy ? 'Ищем…' : 'Собрать с сайта'}
-          </button>
-          <span className="text-muted" style={{ fontSize: 13 }}>точек: {items.length}</span>
+        <div className="modal-body">
+          <div className="ap-loc-toolbar">
+            <button className="btn" onClick={collect} disabled={busy}>
+              {busy ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
+              {busy ? 'Ищем…' : 'Собрать с сайта'}
+            </button>
+            <span className="text-muted">точек: {items.length}</span>
+          </div>
+
+          {loading ? (
+            <div className="admin-loading"><div className="loading-spinner" /></div>
+          ) : items.length === 0 ? (
+            <div className="ap-loc-empty">Пусто. Соберите с сайта или впишите адрес ниже.</div>
+          ) : (
+            <ul className="ap-loc-list">
+              {items.map(item => (
+                <li key={item.id} className="ap-loc-item">
+                  <MapPin size={14} className="ap-loc-pin" />
+                  <div className="ap-loc-text">
+                    <div className="ap-loc-name">
+                      {item.name || <span className="text-muted">без названия</span>}
+                      {/* вписанному руками веры больше, чем вытащенному из текста */}
+                      {item.origin === 'manual' && <span className="ap-loc-tag">вручную</span>}
+                    </div>
+                    <div className="ap-loc-addr">
+                      {item.address}
+                      {item.city && <span className="text-muted"> · {item.city}</span>}
+                    </div>
+                  </div>
+                  <button className="btn btn-icon" title="Убрать" onClick={() => remove(item)}>
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
-        {loading ? (
-          <div className="admin-loading"><div className="loading-spinner" /></div>
-        ) : (
-          <div className="admin-table-container" style={{ maxHeight: 320, overflowY: 'auto' }}>
-            <table className="admin-table">
-              <tbody>
-                {items.map(item => (
-                  <tr key={item.id}>
-                    <td>
-                      <div>{item.name || <span className="text-muted">без названия</span>}</div>
-                      <small className="text-muted">{item.address}</small>
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {item.city || <span className="text-muted">—</span>}
-                      {/* вписанному руками веры больше, чем вытащенному из текста */}
-                      {item.origin === 'manual' && <div><small className="text-muted">вручную</small></div>}
-                    </td>
-                    <td>
-                      <button className="btn btn-icon" title="Убрать" onClick={() => remove(item)}>
-                        <X size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {items.length === 0 && (
-                  <tr><td colSpan={3} className="text-muted">Пусто. Соберите с сайта или впишите адрес ниже.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <form onSubmit={add} style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+        <form className="modal-footer ap-loc-form" onSubmit={add}>
           <input
-            className="input ap-cell-input" style={{ flex: '1 1 150px' }} placeholder="Название точки"
+            className="input ap-cell-input" placeholder="Название точки"
             value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })}
           />
           <input
-            className="input ap-cell-input" style={{ flex: '2 1 220px' }} placeholder="Адрес*"
+            className="input ap-cell-input" placeholder="Адрес"
             value={draft.address} onChange={e => setDraft({ ...draft, address: e.target.value })}
           />
           <input
-            className="input ap-cell-input" style={{ flex: '0 1 130px' }} placeholder="Город"
+            className="input ap-cell-input" placeholder="Город"
             value={draft.city} onChange={e => setDraft({ ...draft, city: e.target.value })}
           />
           <button className="btn btn-primary" type="submit" disabled={!draft.address.trim()}>
-            <Check size={16} />
+            <Check size={16} /> Добавить
           </button>
         </form>
       </div>
@@ -649,7 +757,7 @@ function QueueTab({ onConfirmed }) {
 
   // Пока что-то в работе, список сам обновляется: разбор идёт минутами,
   // и человеку незачем жать «обновить»
-  const working = items.some(item => item.status === 'analyzing' || item.status === 'crawling' || item.status === 'queued');
+  const working = items.some(item => IN_WORK.includes(item.status));
   useEffect(() => {
     if (!working) return undefined;
     const handle = setInterval(load, 5000);
@@ -658,15 +766,15 @@ function QueueTab({ onConfirmed }) {
 
   const handleAdd = async (event) => {
     event.preventDefault();
-    const list = urls.split('\n').map(s => s.trim()).filter(Boolean);
-    if (!list.length) return;
+    const url = urls.trim();
+    if (!url) return;
 
     setBusy(true);
     try {
-      const { data } = await priceParser.queueAdd(list);
-      toast.success(
-        `В очередь: ${data.data.added}` +
-        (data.data.skipped ? `, пропущено повторов: ${data.data.skipped}` : '')
+      // Маршрут принимает список — ссылку заворачиваем в массив из одной
+      const { data } = await priceParser.queueAdd([url]);
+      toast[data.data.added ? 'success' : 'error'](
+        data.data.added ? 'Ссылка в очереди' : 'Эта ссылка уже в очереди'
       );
       setUrls('');
       await load();
@@ -705,43 +813,41 @@ function QueueTab({ onConfirmed }) {
   };
 
   const ready = items.filter(i => i.status === 'ready').length;
-  const inWork = items.filter(i => ['queued', 'analyzing', 'crawling'].includes(i.status)).length;
+  const inWork = items.filter(i => IN_WORK.includes(i.status)).length;
 
   return (
     <>
-      <form className="card" onSubmit={handleAdd} style={{ marginBottom: 16, padding: '16px 18px' }}>
-        <b style={{ display: 'block', marginBottom: 8 }}>Добавить клиники</b>
-        <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-          Вставьте одну или несколько ссылок, по одной в строке. Каждая сразу
-          встанет во внутреннюю очередь и обработается после предыдущей.
-          Эту страницу можно закрыть и вернуться позже.
-        </p>
-        <textarea
-          className="input ap-cell-input"
-          style={{ width: '100%', minHeight: 90, fontFamily: 'monospace', fontSize: 13 }}
-          placeholder={'https://клиника-1.рф\nhttps://клиника-2.рф/price/\nhttps://лаборатория.рф'}
+      {/* Ссылки сдают по одной, по мере того как находят клинику. Прежнее поле
+          на несколько строк предлагало собрать список заранее — так никто
+          не работает, а место занимало */}
+      <form className="card ap-queue-add" onSubmit={handleAdd}>
+        <input
+          className="input"
+          type="url"
+          placeholder="https://клиника.рф/price"
           value={urls}
           onChange={e => setUrls(e.target.value)}
           disabled={busy}
         />
-        <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
-          <button className="btn btn-primary" type="submit" disabled={busy || !urls.trim()}>
-            <ListPlus size={18} /> {busy ? 'Ставим…' : 'В очередь'}
+        <button className="btn btn-primary" type="submit" disabled={busy || !urls.trim()}>
+          {busy ? <Loader2 size={18} className="spin" /> : <ListPlus size={18} />}
+          В очередь
+        </button>
+        {items.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={async () => { await priceParser.queueClear(); load(); }}
+          >
+            Прибрать
           </button>
-          {items.length > 0 && (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={async () => { await priceParser.queueClear(); load(); }}
-            >
-              Прибрать завершённые
-            </button>
-          )}
-          <span className="text-muted" style={{ fontSize: 13 }}>
+        )}
+        {(inWork > 0 || ready > 0) && (
+          <span className="text-muted ap-queue-counts">
             {inWork > 0 && `в работе: ${inWork}`}
             {ready > 0 && `${inWork > 0 ? ' · ' : ''}ждут проверки: ${ready}`}
           </span>
-        </div>
+        )}
       </form>
 
       {items.length > 0 && (
@@ -755,12 +861,13 @@ function QueueTab({ onConfirmed }) {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.url}</div>
-                  <small className="text-muted">
-                    {item.status === 'ready' ? 'разобрано — проверьте' : (item.stage || item.status)}
-                  </small>
+                  {!IN_WORK.includes(item.status) && (
+                    <small className="text-muted">
+                      {item.status === 'ready' ? 'разобрано — проверьте' : item.status}
+                    </small>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-                  {['queued', 'analyzing', 'crawling'].includes(item.status) && <Loader2 size={16} className="spin" />}
                   {item.status === 'done' && <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />}
                   {item.status === 'failed' && <AlertTriangle size={16} style={{ color: 'var(--error)' }} />}
                   {item.status !== 'analyzing' && item.status !== 'crawling' && (
@@ -770,6 +877,12 @@ function QueueTab({ onConfirmed }) {
                   )}
                 </div>
               </div>
+
+              {/* Полоса вместо крутилки: разбор идёт минутами, и «оно живое?» —
+                  единственный вопрос, на который здесь нужно отвечать */}
+              {IN_WORK.includes(item.status) && (
+                <ParseProgress stage={item.stage || 'в очереди'} pages={item.pages} />
+              )}
 
               {item.error && (
                 <p style={{ margin: '8px 0 0', color: 'var(--error)', fontSize: 13 }}>{item.error}</p>
@@ -1257,15 +1370,11 @@ export default function AdminParser() {
                   <tr key={source.id}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {logos[source.id] ? (
-                          <img
-                            src={logos[source.id]}
-                            alt=""
-                            style={{ width: 24, height: 24, objectFit: 'contain', flexShrink: 0 }}
-                          />
-                        ) : (
-                          <span style={{ width: 24, flexShrink: 0 }} />
-                        )}
+                        <LogoCell
+                          source={source}
+                          logo={logos[source.id]}
+                          onChanged={loadLogos}
+                        />
                         <div>
                           {/* Название с сайта, а не домен: у сети из двадцати
                               городов домены различаются лишь приставкой */}

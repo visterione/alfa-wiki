@@ -768,6 +768,15 @@ export const priceParser = {
   editLocation:     (lid, data)   => api.patch(`/parser/locations/${lid}`, data),
   dropLocation:     (lid)         => api.delete(`/parser/locations/${lid}`),
   branding:  (id)             => api.post(`/parser/sources/${id}/branding`),
+  // свой значок — там, где с сайта снять нечего; автосбор его потом не трогает
+  uploadLogo: (id, file) => {
+    const form = new FormData();
+    form.append('logo', file);
+    return api.post(`/parser/sources/${id}/logo/upload`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  },
+  dropLogo:  (id)             => api.delete(`/parser/sources/${id}/logo`),
   remove:    (id)             => api.delete(`/parser/sources/${id}`),
 };
 

@@ -21,3 +21,189 @@
   padding: 4px 8px;
   font-size: 13px;
 }
+
+/* ── Значок клиники ─────────────────────────────────────────────────────── */
+
+/* Кликабельная плитка вместо голой картинки: с сайта значок снимается не
+   всегда, и загрузить свой должно быть можно прямо отсюда */
+.ap-logo {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-tertiary, #9ca3af);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.ap-logo:hover { border-color: var(--primary); background: var(--bg-secondary); }
+
+/* Со значком рамка не нужна — она спорит с самой картинкой */
+.ap-logo.has-logo { border-style: solid; border-color: transparent; }
+.ap-logo.has-logo:hover { border-color: var(--border); }
+
+.ap-logo img {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 4px;
+  display: block;
+}
+
+.ap-logo-empty { opacity: 0.45; }
+
+/* Крестик показываем только при наведении: в таблице из двадцати строк
+   два десятка крестиков — это шум */
+.ap-logo-drop {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--error);
+  color: #fff;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.ap-logo:hover .ap-logo-drop { display: flex; }
+
+/* ── Модалка адресов ────────────────────────────────────────────────────── */
+
+.ap-loc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+
+/* Список, а не таблица: у точки всего две строки текста, и колонки таблицы
+   на них только тратят ширину */
+.ap-loc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md, 8px);
+  overflow: hidden;
+}
+
+.ap-loc-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.ap-loc-item:last-child { border-bottom: none; }
+.ap-loc-item:hover { background: var(--bg-secondary); }
+
+.ap-loc-pin {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--text-tertiary, #9ca3af);
+}
+
+.ap-loc-text { flex: 1; min-width: 0; }
+
+.ap-loc-name {
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ap-loc-addr {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin-top: 1px;
+  word-break: break-word;
+}
+
+.ap-loc-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--primary-light, rgba(59, 130, 246, 0.12));
+  color: var(--primary);
+}
+
+.ap-loc-empty {
+  padding: 28px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary, #9ca3af);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md, 8px);
+}
+
+/* Форма вписывания адреса живёт в подвале окна: она нужна всегда, а список
+   над ней прокручивается */
+.ap-loc-form {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ap-loc-form .input { flex: 1 1 130px; min-width: 0; }
+.ap-loc-form .input:nth-of-type(2) { flex: 2 1 200px; }
+.ap-loc-form button { flex-shrink: 0; }
+
+/* ── Очередь разбора ────────────────────────────────────────────────────── */
+
+/* Одна строка: поле, кнопка, счётчик. Ссылки сдают по одной, по мере того
+   как находят клинику, — заранее собранного списка не бывает */
+.ap-queue-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  flex-wrap: wrap;
+}
+
+.ap-queue-add .input { flex: 1 1 320px; min-width: 0; }
+.ap-queue-counts { font-size: 13px; margin-left: auto; }
+
+/* ── Ход разбора ────────────────────────────────────────────────────────── */
+
+.ap-progress { margin-top: 10px; }
+
+.ap-progress-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-light);
+  overflow: hidden;
+}
+
+.ap-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--primary);
+  /* Длинный переход: полоса пересчитывается раз в 600 мс, и без сглаживания
+     она дёргалась бы ступеньками */
+  transition: width 0.6s linear;
+}
+
+.ap-progress-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--text-tertiary, #9ca3af);
+}

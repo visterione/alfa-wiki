@@ -201,6 +201,19 @@
 
 .price-btn svg { width: 18px; height: 18px; }
 
+/* Крутилка внутри кнопки: показывает, что запрос идёт, пока подбор цен
+   пересчитывает каталог конкурента */
+.price-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: spin 0.7s linear infinite;
+}
+
 /* Таблица */
 .price-table-container {
   background: #fff;
@@ -1219,7 +1232,7 @@
         <h3>Добавить конкурента</h3>
         <button class="price-modal-close" onclick="priceApp.closeModal('add-competitor-modal')">&times;</button>
       </div>
-      <form class="price-modal-body" onsubmit="priceApp.addCompetitor(event)">
+      <form class="price-modal-body" id="add-competitor-form" onsubmit="priceApp.addCompetitor(event)">
         <div class="price-form-group" id="competitor-parser-group" style="display:none">
           <label>Клиника из парсера</label>
           <select id="competitor-parser-select" class="price-input" onchange="priceApp.onParserCompetitorChange(this.value)">
@@ -1262,6 +1275,7 @@ window.priceApp = (function() {
   var parserLogoByLabel = {};      // подпись колонки -> data-URI значка
   var selectedParserSourceId = null; // что выбрано в списке при добавлении конкурента
   var selectedParserBaseLabel = null;
+  var competitorFormBusy = false;  // идёт добавление конкурента — повтор запрещён
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
   var labCategoryOptions = []; // Кеш всех опций категорий для поиска
@@ -1436,6 +1450,11 @@ window.priceApp = (function() {
   }
 
   function closeModal(modalId) {
+    // Пока конкурент добавляется, окно не закрываем ничем — ни крестиком,
+    // ни кликом по фону, ни Escape. Колонка к этому моменту уже создана,
+    // а цены ещё считаются: закрытое на полпути окно оставляет пустой столбец
+    // и никакого объяснения, почему он пуст.
+    if (modalId === 'add-competitor-modal' && competitorFormBusy) return;
     document.getElementById(modalId).style.display = 'none';
   }
 
@@ -2155,6 +2174,7 @@ window.priceApp = (function() {
   }
 
   function openAddCompetitorModal() {
+    setCompetitorFormBusy(false);
     document.getElementById('competitor-name-input').value = '';
     document.getElementById('competitor-name-input').readOnly = false;
     selectedParserSourceId = null;
@@ -2186,10 +2206,38 @@ window.priceApp = (function() {
     openModal('add-competitor-modal');
   }
 
+  // Подбор соответствий по каталогу в тысячи услуг идёт секундами, иногда
+  // и полминуты. Без явного признака работы окно выглядит зависшим: кнопка
+  // нажата, а на экране ничего не меняется — человек жмёт ещё раз или уходит
+  // перезагружать страницу, хотя всё считается.
+  function setCompetitorFormBusy(busy, text) {
+    var form = document.getElementById('add-competitor-form');
+    if (!form) return;
+    var submit = form.querySelector('button[type="submit"]');
+    var cancel = form.querySelector('.price-btn-secondary');
+    var select = document.getElementById('competitor-parser-select');
+    var input = document.getElementById('competitor-name-input');
+    var closeBtn = document.querySelector('#add-competitor-modal .price-modal-close');
+
+    if (submit) {
+      submit.disabled = busy;
+      submit.innerHTML = busy
+        ? '<span class="price-btn-spinner"></span>' + (text || 'Добавляем…')
+        : 'Добавить';
+    }
+    // Закрыть окно на полпути нельзя: колонка уже создана, а цены ещё нет,
+    // и вернувшийся человек увидит пустой столбец без объяснений
+    if (cancel) cancel.disabled = busy;
+    if (closeBtn) closeBtn.disabled = busy;
+    if (select) select.disabled = busy;
+    if (input) input.disabled = busy;
+    competitorFormBusy = busy;
+  }
+
   function addCompetitor(e) {
     e.preventDefault();
 
-    if (!currentComparison) return;
+    if (!currentComparison || competitorFormBusy) return;
 
     var competitor = document.getElementById('competitor-name-input').value.trim();
 
@@ -2202,6 +2250,10 @@ window.priceApp = (function() {
     }
 
     var newCompetitors = currentComparison.competitors.concat([competitor]);
+    var sourceId = selectedParserSourceId;
+    var baseLabel = selectedParserBaseLabel || competitor;
+
+    setCompetitorFormBusy(true, 'Создаём колонку…');
 
     fetchAPI(API_URL + '/' + currentComparison.id, {
       method: 'PUT',
@@ -2212,41 +2264,49 @@ window.priceApp = (function() {
         competitors: newCompetitors
       })
     }).then(function() {
+      // Колонка вписана руками — привязывать не к чему, цены внесёт человек
+      if (!sourceId) return { message: 'Колонка добавлена' };
+
       // Колонка выбрана из парсера — привязываем: под этой подписью в неё
       // будут подтягиваться цены клиники при сопоставлении
-      if (selectedParserSourceId) {
-        return fetchAPI(PARSER_URL + '/sources/' + selectedParserSourceId + '/label', {
-          method: 'PUT',
-          // К источнику привязывается базовая подпись клиники+города,
-          // а выбранный филиал остаётся отдельной колонкой сравнения.
-          body: JSON.stringify({ competitorLabel: selectedParserBaseLabel || competitor })
-        }).then(function() {
-          loadParserCompetitors();
-          // Точные связи и уже выученные на других листах соответствия
-          // применяются сразу. В админке останутся только спорные варианты.
-          return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
-            method: 'POST'
-          }).then(function(res) {
-            var data = res.data || {};
-            if (data.review) {
-              showToast('Цены добавлены автоматически. Требуют проверки: ' + data.review, 'success');
-            } else {
-              showToast('Цены конкурента добавлены автоматически', 'success');
-            }
-          }).catch(function(e) {
-            // Колонка и связь уже сохранены; автоподбор можно повторить из админки.
-            showToast('Конкурент добавлен, но автоподбор не запустился: ' + e.message, 'error');
-          });
-        }).catch(function(e) {
-          showToast('Колонка добавлена, но привязка к парсеру не удалась: ' + e.message, 'error');
+      setCompetitorFormBusy(true, 'Привязываем клинику…');
+      return fetchAPI(PARSER_URL + '/sources/' + sourceId + '/label', {
+        method: 'PUT',
+        // К источнику привязывается базовая подпись клиники+города,
+        // а выбранный филиал остаётся отдельной колонкой сравнения.
+        body: JSON.stringify({ competitorLabel: baseLabel })
+      }).then(function() {
+        loadParserCompetitors();
+        // Точные связи и уже выученные на других листах соответствия
+        // применяются сразу. В админке останутся только спорные варианты.
+        setCompetitorFormBusy(true, 'Подбираем цены…');
+        return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
+          method: 'POST',
+          // Подбор идёт по всему каталогу конкурента: у clinic23 это почти
+          // семь тысяч услуг, и стандартных 15 секунд ему не хватает
+          timeout: 180000
+        }).then(function(res) {
+          var data = res.data || {};
+          return {
+            message: data.review
+              ? 'Цены подставлены. Требуют проверки: ' + data.review
+              : 'Цены конкурента подставлены'
+          };
+        }).catch(function(err) {
+          // Колонка и связь уже сохранены; автоподбор можно повторить из админки.
+          return { message: 'Колонка добавлена, но автоподбор не запустился: ' + err.message, error: true };
         });
-      }
-    }).then(function() {
-      showToast('Конкурент добавлен', 'success');
+      }).catch(function(err) {
+        return { message: 'Колонка добавлена, но привязка к парсеру не удалась: ' + err.message, error: true };
+      });
+    }).then(function(result) {
+      setCompetitorFormBusy(false);
       closeModal('add-competitor-modal');
+      showToast(result.message, result.error ? 'error' : 'success');
       loadComparison();
-    }).catch(function(e) {
-      showToast('Ошибка: ' + e.message, 'error');
+    }).catch(function(err) {
+      setCompetitorFormBusy(false);
+      showToast('Ошибка: ' + err.message, 'error');
     });
   }
 

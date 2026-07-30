@@ -14,6 +14,7 @@
  */
 
 const express = require('express');
+const multer = require('multer');
 const { Op } = require('sequelize');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
 const {
@@ -33,6 +34,13 @@ const router = express.Router();
 // тумблером «Парсер» в настройках пользователя. Сами цены смотреть можно
 // шире — они лежат в модуле сравнения цен.
 const canManage = [authenticate, requireAdminAccess('parser')];
+
+// Значок лежит в базе байтами, поэтому файл держим в памяти и на диск
+// не кладём. Мегабайта хватает с запасом: это иконка в таблице, а не обои.
+const logoUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 1024 * 1024 }
+});
 
 /** Ошибку парсера показываем так, чтобы по ней было понятно, что чинить. */
 function fail(res, err, what) {
@@ -391,6 +399,74 @@ router.get('/sources/:id/logo', authenticate, async (req, res) => {
   } catch (err) {
     console.error('❌ Логотип не отдался:', err.message);
     res.status(500).end();
+  }
+});
+
+/**
+ * Загрузить значок клиники руками.
+ *
+ * Автосбор с сайта справляется не всегда: у части клиник на странице нет ни
+ * og:image, ни пригодной картинки в шапке, и строка остаётся без значка
+ * навсегда. Загруженный файл помечается как свой, и ночная синхронизация
+ * его больше не перезаписывает.
+ */
+router.post('/sources/:id/logo/upload', ...canManage, logoUpload.single('logo'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: 'file_required', message: 'Файл не выбран' });
+    }
+    if (!/^image\//.test(req.file.mimetype)) {
+      return res.status(400).json({ success: false, error: 'not_an_image', message: 'Нужен файл изображения' });
+    }
+
+    const source = await CompetitorSource.findOne({ where: { parserSourceId: Number(req.params.id) } });
+    if (!source) {
+      return res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: 'Источника нет в нашей копии — сначала заберите цены'
+      });
+    }
+
+    await source.update({
+      logoData: req.file.buffer,
+      logoContentType: req.file.mimetype,
+      // Адрес больше не наш ориентир: сравнивать загруженный файл не с чем
+      logoUrl: null,
+      logoIsCustom: true
+    });
+    console.log(`🖼  Логотип «${source.displayName || source.name}» загружен пользователем ${req.user?.username}`);
+
+    res.json({
+      success: true,
+      data: {
+        logo: `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`
+      }
+    });
+  } catch (err) {
+    console.error('❌ Логотип не загрузился:', err.message);
+    res.status(500).json({ success: false, error: 'logo_upload_failed', message: 'Не удалось сохранить логотип' });
+  }
+});
+
+/**
+ * Убрать значок.
+ *
+ * Снимаем и пометку «загружен вручную» — значит ближайший автосбор снова
+ * попробует взять картинку с сайта.
+ */
+router.delete('/sources/:id/logo', ...canManage, async (req, res) => {
+  try {
+    const source = await CompetitorSource.findOne({ where: { parserSourceId: Number(req.params.id) } });
+    if (!source) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Источника нет в нашей копии' });
+    }
+
+    await source.update({ logoData: null, logoContentType: null, logoUrl: null, logoIsCustom: false });
+    res.json({ success: true });
+  } catch (err) {
+    console.error('❌ Логотип не убрался:', err.message);
+    res.status(500).json({ success: false, error: 'logo_delete_failed', message: 'Не удалось убрать логотип' });
   }
 });
 

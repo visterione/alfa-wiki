@@ -100,6 +100,9 @@ async function syncLocations(source, remote) {
  * файлов без всякой пользы.
  */
 async function syncLogo(source, remote) {
+  // Загруженный человеком значок автосбор не трогает: его ставят как раз там,
+  // где с сайта берётся мусор или не берётся ничего
+  if (source.logoIsCustom) return;
   if (!remote.has_logo) return;
   if (source.logoUrl && source.logoUrl === remote.logo_url && source.logoData) return;
 

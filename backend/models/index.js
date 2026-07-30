@@ -868,7 +868,13 @@ const CompetitorSource = sequelize.define('CompetitorSource', {
     type: DataTypes.BLOB,
     comment: 'Значок байтами: страница сравнения не должна ходить за картинкой на чужой сайт'
   },
-  logoContentType: { type: DataTypes.STRING(100) }
+  logoContentType: { type: DataTypes.STRING(100) },
+  logoIsCustom: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false,
+    allowNull: false,
+    comment: 'Значок загружен человеком — автосбор с сайта его не перезаписывает'
+  }
 }, {
   tableName: 'competitor_sources',
   timestamps: true

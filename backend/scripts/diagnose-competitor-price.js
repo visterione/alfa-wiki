@@ -23,7 +23,12 @@ const matching = require('../services/competitorMatching');
 const args = process.argv.slice(2);
 const sheetFlag = args.indexOf('--sheet');
 const sheetName = sheetFlag >= 0 ? args[sheetFlag + 1] : null;
-const needle = args.filter((a, i) => i !== sheetFlag && i !== sheetFlag + 1).join(' ').trim();
+// Индексы флага исключаем только когда он есть: при sheetFlag === -1
+// проверка на sheetFlag + 1 выбросила бы нулевой аргумент, то есть сам запрос.
+const needle = args
+  .filter((a, i) => sheetFlag < 0 || (i !== sheetFlag && i !== sheetFlag + 1))
+  .join(' ')
+  .trim();
 
 const q = async (sql, replacements) => (await sequelize.query(sql, { replacements }))[0];
 const line = (char = '─') => console.log(char.repeat(78));
@@ -71,6 +76,9 @@ async function run() {
   for (const item of items) {
     line('═');
     console.log(`ЛИСТ «${item.sheet}» (${item.comparisonType})`);
+    // ID нужен, чтобы посмотреть в браузере, что реально приходит на страницу:
+    // расхождение между базой и таблицей ищется именно так
+    console.log(`         id: ${item.comparisonId}`);
     console.log(`ПОЗИЦИЯ  ${item.serviceName}`);
     console.log(`         артикул/код: ${item.serviceCode || '—'} · ID МИС: ${item.misServiceId || '—'}`);
 
@@ -168,6 +176,14 @@ async function run() {
       }
       if (m.status === 'confirmed' && Number(m.prices) === 0) {
         console.log('     ⚠ Соответствие принято, но цен у услуги в зеркале нет — заберите цены.');
+      }
+      // Самый незаметный случай: связь и цены на месте, а колонки под них нет.
+      // В таблице сравнения такая клиника просто отсутствует, и понять, что
+      // цена уже посчитана и ждёт колонки, по интерфейсу невозможно.
+      if (m.status === 'confirmed' && Number(m.prices) > 0 &&
+          !columns.some(col => col === m.competitorLabel || col.startsWith(`${m.competitorLabel} — `))) {
+        console.log(`     ⚠ Колонки «${m.competitorLabel}» в этом листе НЕТ — цену класть некуда.`);
+        console.log('       Добавьте конкурента на странице сравнения цен: «Управление колонками» → «+ Конкурент».');
       }
     }
 
