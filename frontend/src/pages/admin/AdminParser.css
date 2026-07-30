@@ -81,6 +81,31 @@
 
 /* ── Модалка адресов ────────────────────────────────────────────────────── */
 
+/* Окно с адресами — колонка: шапка, карта и форма прибиты, прокручивается
+   только список. Базовый .modal не флексовый, поэтому длинный список просто
+   уезжал за нижнюю границу и до дальних точек было не добраться. */
+.modal.ap-loc-modal {
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+}
+
+.modal.ap-loc-modal .modal-header,
+.modal.ap-loc-modal .ap-loc-fixed,
+.modal.ap-loc-modal .modal-footer { flex-shrink: 0; }
+
+.ap-loc-fixed { padding: 20px 24px 0; }
+
+.modal.ap-loc-modal .modal-body.ap-loc-scroll {
+  flex: 1 1 auto;
+  /* Без min-height:0 флекс-элемент не сжимается ниже своего содержимого
+     и прокрутка не включается вовсе */
+  min-height: 0;
+  max-height: none;
+  padding-top: 12px;
+  overflow-y: auto;
+}
+
 .ap-loc-toolbar {
   display: flex;
   align-items: center;
@@ -142,7 +167,13 @@
 /* ── Карта в модалке адресов ────────────────────────────────────────────── */
 
 .ap-map {
-  height: 260px;
+  /* Доля экрана, а не жёсткие пиксели: на ноутбуке карта не должна съедать
+     всё место, оставляя списку две строки */
+  height: clamp(170px, 28vh, 260px);
+  /* Свой контекст наложения: элементы управления Leaflet сидят на z-index
+     1000 и без этого лезут поверх шапки окна и всплывающих подсказок */
+  position: relative;
+  z-index: 0;
   border-radius: var(--radius-md, 8px);
   border: 1px solid var(--border-light);
   overflow: hidden;

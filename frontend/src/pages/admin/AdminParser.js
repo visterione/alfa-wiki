@@ -453,6 +453,10 @@ function LocationsModal({ source, onClose }) {
       if (cancelled || !mapNode.current || mapRef.current) return;
 
       const map = L.map(mapNode.current).setView([45.03, 38.97], 11);
+      // Приставка «Leaflet» с 2022 года идёт с украинским флагом — убираем.
+      // Подпись OpenStreetMap остаётся: тайлы под ODbL, указание источника
+      // это условие лицензии
+      map.attributionControl.setPrefix('');
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19,
         attribution: '© OpenStreetMap'
@@ -600,13 +604,16 @@ function LocationsModal({ source, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+      <div className="modal modal-lg ap-loc-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Адреса: {source.display_name || source.name}</h2>
           <button className="btn-icon" onClick={onClose}><X size={20} /></button>
         </div>
 
-        <div className="modal-body">
+        {/* Карта и кнопки прибиты, прокручивается только список: точек
+            бывает под два десятка, и уезжающая вверх карта делает
+            расстановку меток невозможной */}
+        <div className="ap-loc-fixed">
           <div className="ap-loc-toolbar">
             <button className="btn" onClick={collect} disabled={!!busy}>
               {busy === 'collect' ? <Loader2 size={16} className="spin" /> : <MapPin size={16} />}
@@ -629,7 +636,9 @@ function LocationsModal({ source, onClose }) {
               ? 'Кликните по карте, чтобы поставить выбранную точку'
               : 'Метку можно перетащить — так координаты закрепляются за адресом навсегда'}
           </div>
+        </div>
 
+        <div className="modal-body ap-loc-scroll">
           {loading ? (
             <div className="admin-loading"><div className="loading-spinner" /></div>
           ) : items.length === 0 ? (

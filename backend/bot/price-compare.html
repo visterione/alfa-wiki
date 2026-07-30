@@ -1043,6 +1043,11 @@
 
 .pc-map-wrap {
   position: relative;
+  /* Собственный контекст наложения. Leaflet держит панели на 400, а элементы
+     управления на 1000 — ровно столько же у выпадающих меню шапки вики, и
+     карта, идущая позже в разметке, перекрывала их. Внутри своего контекста
+     её тысяча остаётся её тысячей и наружу не поднимается. */
+  z-index: 0;
   display: flex;
   background: #fff;
   border: 1px solid #e5e7eb;
@@ -3538,6 +3543,10 @@ window.priceApp = (function() {
     if (pcMap) { setTimeout(function() { pcMap.invalidateSize(); }, 60); return; }
 
     pcMap = L.map('pc-map', { scrollWheelZoom: true }).setView([48.5, 45.0], 4);
+    // Убираем приставку «Leaflet» — с 2022 года она идёт с украинским флагом,
+    // которому на рабочем экране не место. Подпись OpenStreetMap оставляем:
+    // тайлы отдаются под ODbL, и указание источника — условие лицензии
+    pcMap.attributionControl.setPrefix('');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(pcMap);
