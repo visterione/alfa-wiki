@@ -1576,10 +1576,13 @@ window.priceApp = (function() {
     var list = document.getElementById('columns-list');
     list.innerHTML = '';
 
-    // В режиме лабораторий скрываем кнопку добавления конкурента
+    // Конкуренты нужны и лабораторному листу: Инвитро, KDL, СМлаб и CL LAB —
+    // это лаборатории, и сравнивать их цены осмысленно именно здесь. Раньше
+    // кнопка в этом режиме пряталась, и колонку конкурента было нечем завести,
+    // а без колонки парсер цены не подставляет вовсе — они просто не появлялись.
     var competitorContainer = document.getElementById('add-competitor-btn-container');
     if (competitorContainer) {
-      competitorContainer.style.display = currentMode === 'lab' ? 'none' : 'flex';
+      competitorContainer.style.display = 'flex';
     }
 
     // Если нет базовой колонки, устанавливаем первую видимую

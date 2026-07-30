@@ -659,10 +659,22 @@ function MatchingTab() {
 
   const handleSuggest = () => run('suggest',
     () => competitorMatching.suggest(comparisonId),
-    r => toast.success(
-      `Цен подставлено: ${r.filled}, автоматически принято: ${r.autoConfirmed}` +
-      (r.reused ? `, взято с других листов: ${r.reused}` : '') +
-      (r.review ? `, требуют проверки: ${r.review}` : '')));
+    r => {
+      // Молчаливые нули здесь читаются как поломка. На деле подбору некуда
+      // класть цену: в листе нет ни одной колонки конкурента из парсера.
+      if (r.noCompetitorColumns) {
+        toast.error(
+          'В этом сравнении нет ни одной колонки конкурента из парсера. ' +
+          'Добавьте её на странице сравнения цен: «Управление колонками» → «+ Конкурент».',
+          { duration: 8000 }
+        );
+        return;
+      }
+      toast.success(
+        `Цен подставлено: ${r.filled}, автоматически принято: ${r.autoConfirmed}` +
+        (r.reused ? `, взято с других листов: ${r.reused}` : '') +
+        (r.review ? `, требуют проверки: ${r.review}` : ''));
+    });
 
   const decide = async (match, accept) => {
     try {

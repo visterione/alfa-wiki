@@ -299,8 +299,11 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
   const columns = Array.isArray(comparison?.competitors) ? comparison.competitors : [];
   const labels = await sourceLabelsForColumns(columns);
 
+  // Ни одна колонка листа не привязана к клинике парсера — подбирать не к чему.
+  // Отдельный признак, а не просто нули: со стороны это выглядит как «кнопка
+  // ничего не делает», и человеку нужно сказать, что не хватает именно колонки.
   if (!labels?.length) {
-    return { items: items.length, created: 0, autoConfirmed: 0, reused: 0, review: 0, skipped: 0 };
+    return { items: items.length, created: 0, autoConfirmed: 0, reused: 0, review: 0, skipped: 0, noCompetitorColumns: true };
   }
 
   const learned = await learnedMappings(labels);
