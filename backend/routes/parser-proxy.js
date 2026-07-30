@@ -442,6 +442,130 @@ router.get('/sources/:id/services', ...canManage, async (req, res) => {
   }
 });
 
+/**
+ * Каталог услуг источника из НАШЕЙ копии — то, что видит сопоставление.
+ *
+ * Смотреть парсер напрямую для разбора «почему цена не подтянулась» мало:
+ * сопоставление читает зеркало, и расхождение между ним и парсером — сама
+ * по себе частая причина. Поэтому вместе со страницей отдаём и обе цифры:
+ * сколько услуг у нас и сколько их было на последнем заборе.
+ *
+ * Листается смещением, а не курсором, в отличие от проксирующего маршрута
+ * выше: зеркало между запросами не меняется — его перезаписывает только
+ * синхронизация, — а человеку нужно уметь прыгнуть на страницу назад.
+ */
+router.get('/sources/:id/catalog', ...canManage, async (req, res) => {
+  try {
+    const source = await CompetitorSource.findOne({
+      where: { parserSourceId: Number(req.params.id) },
+      attributes: [
+        'id', 'name', 'displayName', 'city', 'competitorLabel',
+        'servicesTotal', 'syncedAt', 'syncStatus', 'syncError', 'lastRunAt'
+      ]
+    });
+    if (!source) {
+      return res.status(404).json({
+        success: false,
+        error: 'not_found',
+        message: 'Источника нет в нашей копии — сначала заберите цены'
+      });
+    }
+
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const search = String(req.query.search || '').trim();
+    // «Погашенные» услуги показываем по запросу: пропавшая из прайса позиция —
+    // как раз то, что ищут, когда цена вчера была, а сегодня нет.
+    const onlyActive = req.query.status !== 'all';
+
+    const where = ['cs."sourceId" = :sourceId'];
+    const replacements = { sourceId: source.id, limit, offset: (page - 1) * limit };
+    if (onlyActive) where.push('cs."isActive"');
+    if (search) {
+      // Код 804н ищем по jsonb как по тексту: массив из одного-двух значений,
+      // разворачивать его ради LIKE не за чем.
+      where.push('(cs.name ILIKE :like OR cs.codes::text ILIKE :like OR cs."externalId" ILIKE :like)');
+      replacements.like = `%${search}%`;
+    }
+    const filter = where.join(' AND ');
+
+    const [[counts]] = await sequelize.query(
+      `SELECT count(*)                                  AS "mirrorTotal",
+              count(*) FILTER (WHERE cs."isActive")     AS "activeTotal",
+              count(*) FILTER (WHERE NOT cs."isActive") AS "inactiveTotal",
+              count(*) FILTER (
+                WHERE cs.codes IS NOT NULL AND jsonb_array_length(cs.codes) > 0
+              )                                         AS "withCodesTotal"
+         FROM competitor_services cs
+        WHERE cs."sourceId" = :sourceId`,
+      { replacements: { sourceId: source.id } }
+    );
+
+    const [[filtered]] = await sequelize.query(
+      `SELECT count(*) AS total FROM competitor_services cs WHERE ${filter}`,
+      { replacements }
+    );
+
+    const [rows] = await sequelize.query(
+      `SELECT cs.id, cs."parserServiceId", cs."externalId", cs.name, cs.category,
+              cs.codes, cs.url, cs.turnaround, cs."isActive", cs."lastSeenAt",
+              COALESCE(p.prices, '[]'::jsonb) AS prices
+         FROM competitor_services cs
+         LEFT JOIN LATERAL (
+           SELECT jsonb_agg(
+                    jsonb_build_object(
+                      'filialId',   pr."filialId",
+                      'filialName', pr."filialName",
+                      'price',      pr.price,
+                      'priceMin',   pr."priceMin",
+                      'priceMax',   pr."priceMax",
+                      'observedAt', pr."observedAt"
+                    )
+                    ORDER BY pr."filialId" NULLS FIRST, pr.price
+                  ) AS prices
+             FROM competitor_prices pr
+            WHERE pr."serviceId" = cs.id
+         ) p ON true
+        WHERE ${filter}
+        ORDER BY cs."isActive" DESC, cs.name
+        LIMIT :limit OFFSET :offset`,
+      { replacements }
+    );
+
+    res.json({
+      success: true,
+      data: {
+        source: {
+          parserSourceId: Number(req.params.id),
+          name: source.displayName || source.name,
+          city: source.city,
+          competitorLabel: source.competitorLabel,
+          // Сколько услуг было на последнем заборе. Расходится с mirrorTotal,
+          // если забор упал на середине.
+          servicesTotal: source.servicesTotal,
+          syncedAt: source.syncedAt,
+          syncStatus: source.syncStatus,
+          syncError: source.syncError,
+          lastRunAt: source.lastRunAt
+        },
+        counts: {
+          mirrorTotal: Number(counts.mirrorTotal),
+          activeTotal: Number(counts.activeTotal),
+          inactiveTotal: Number(counts.inactiveTotal),
+          withCodesTotal: Number(counts.withCodesTotal)
+        },
+        page,
+        limit,
+        total: Number(filtered.total),
+        items: rows
+      }
+    });
+  } catch (err) {
+    console.error('❌ Каталог услуг не отдался:', err.message);
+    res.status(500).json({ success: false, error: 'catalog_failed', message: 'Не удалось прочитать каталог услуг' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // СИНХРОНИЗАЦИЯ (наша копия прайсов)
 // ═══════════════════════════════════════════════════════════════

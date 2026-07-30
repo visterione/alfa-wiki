@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin } from 'lucide-react';
+import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -412,6 +412,210 @@ function LocationsModal({ source, onClose }) {
             <Check size={16} />
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+const money = (value) =>
+  value === null || value === undefined ? '—' : `${Number(value).toLocaleString('ru-RU')} ₽`;
+
+/** Цена услуги: у лаборатории она одна, у сети — своя в каждом филиале. */
+function PriceCell({ prices }) {
+  if (!prices?.length) {
+    // Услуга без цены не попадёт в сравнение никогда — это стоит увидеть сразу
+    return <span className="text-muted">нет цены</span>;
+  }
+  if (prices.length === 1) return <>{money(prices[0].price)}</>;
+
+  const values = prices.map(p => Number(p.price)).filter(v => Number.isFinite(v));
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return (
+    <>
+      {min === max ? money(min) : `${money(min)} – ${money(max)}`}
+      <div>
+        <small
+          className="text-muted"
+          title={prices.map(p => `${p.filialName || `Филиал ${p.filialId}`}: ${money(p.price)}`).join('\n')}
+        >
+          филиалов: {prices.length}
+        </small>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Каталог услуг источника.
+ *
+ * Показывается наша копия, а не сайт: сопоставление читает именно её, и когда
+ * цена конкурента «не подтянулась», разбираться нужно здесь. Рядом с числом
+ * услуг в копии стоит число у парсера — расхождение означает, что забор цен
+ * отстал от обхода, и это самая частая причина, по которой услуги «нет».
+ */
+function ServicesModal({ source, onClose }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [showInactive, setShowInactive] = useState(false);
+
+  const LIMIT = 50;
+
+  // Ввод не дёргает сервер на каждую букву: каталог у clinic23 — тысячи строк
+  useEffect(() => {
+    const handle = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 350);
+    return () => clearTimeout(handle);
+  }, [search]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    priceParser.catalog(source.id, {
+      search: query,
+      page,
+      limit: LIMIT,
+      status: showInactive ? 'all' : 'active'
+    })
+      .then(({ data: body }) => { if (!cancelled) setData(body.data); })
+      .catch(err => {
+        if (cancelled) return;
+        toast.error(err.response?.data?.message || 'Не удалось загрузить услуги');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [source.id, query, page, showInactive]);
+
+  const counts = data?.counts;
+  const pages = data ? Math.max(Math.ceil(data.total / data.limit), 1) : 1;
+  // У парсера число живое, у нас — на момент последнего забора. Расходятся —
+  // значит копия отстала, и в сравнении цен этих услуг ещё нет.
+  const behind = counts && source.services_total > counts.activeTotal;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal modal-wide" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Услуги: {source.display_name || source.name}</h2>
+          <button className="btn-icon" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        {counts && (
+          <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
+            В нашей копии <b>{counts.activeTotal}</b>, у парсера <b>{source.services_total}</b>.
+            {counts.inactiveTotal > 0 && <> Пропало из прайса: <b>{counts.inactiveTotal}</b>.</>}
+            {' '}С кодом 804н: <b>{counts.withCodesTotal}</b>.
+            {' '}Цены забраны {dateTime(data.source.syncedAt)}.
+          </p>
+        )}
+
+        {data?.source?.syncStatus === 'failed' && (
+          <div className="ap-warn" style={{ background: 'rgba(255, 59, 48, 0.12)' }}>
+            Последний забор цен не удался: {data.source.syncError}
+          </div>
+        )}
+
+        {behind && data?.source?.syncStatus !== 'failed' && (
+          <div className="ap-warn">
+            Копия отстаёт от парсера на {source.services_total - counts.activeTotal} услуг.
+            Пока не нажата «Забрать цены», в сравнении цен их не будет.
+          </div>
+        )}
+
+        {!data?.source?.competitorLabel && (
+          <div className="ap-warn">
+            У клиники не заполнено «Название в сравнениях» — её услуги не участвуют
+            в сопоставлении, сколько бы их ни было забрано.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+          <div style={{ position: 'relative', flex: '1 1 280px' }}>
+            <Search size={14} style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }} />
+            <input
+              className="input ap-cell-input"
+              style={{ width: '100%', paddingLeft: 26 }}
+              placeholder="Название, код 804н или артикул"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, whiteSpace: 'nowrap' }}>
+            <input
+              type="checkbox"
+              checked={showInactive}
+              onChange={e => { setShowInactive(e.target.checked); setPage(1); }}
+            />
+            Показывать пропавшие из прайса
+          </label>
+        </div>
+
+        {loading ? (
+          <div className="admin-loading"><div className="loading-spinner" /></div>
+        ) : !data?.items?.length ? (
+          <div className="admin-empty">
+            <p>{query ? 'По запросу ничего не нашлось.' : 'В нашей копии услуг нет — заберите цены.'}</p>
+          </div>
+        ) : (
+          <div className="admin-table-container" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Услуга</th>
+                  <th style={{ width: 170 }}>Код 804н</th>
+                  <th style={{ width: 110 }}>Артикул</th>
+                  <th style={{ width: 170 }}>Цена</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map(item => (
+                  <tr key={item.id} style={{ opacity: item.isActive ? 1 : 0.5 }}>
+                    <td>
+                      <div>
+                        {item.url ? (
+                          <a href={item.url} target="_blank" rel="noreferrer">{item.name}</a>
+                        ) : item.name}
+                      </div>
+                      {item.category && <small className="text-muted">{item.category}</small>}
+                      {!item.isActive && (
+                        <div><small className="text-muted">пропала из прайса {date(item.lastSeenAt)}</small></div>
+                      )}
+                    </td>
+                    <td>
+                      {item.codes?.length
+                        ? item.codes.join(', ')
+                        // Без кода услуга сопоставляется только по названию —
+                        // это заметно менее надёжно, и это стоит видеть
+                        : <span className="text-muted">нет</span>}
+                    </td>
+                    <td>{item.externalId || <span className="text-muted">—</span>}</td>
+                    <td><PriceCell prices={item.prices} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+          <small className="text-muted">
+            {data ? `Найдено: ${data.total}` : ''}
+          </small>
+          {pages > 1 && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <button className="btn btn-icon" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                <ChevronLeft size={14} />
+              </button>
+              <small className="text-muted">стр. {page} из {pages}</small>
+              <button className="btn btn-icon" disabled={page >= pages} onClick={() => setPage(p => p + 1)}>
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -831,6 +1035,7 @@ export default function AdminParser() {
   const [logos, setLogos] = useState({});
   const [toDelete, setToDelete] = useState(null);
   const [locationsFor, setLocationsFor] = useState(null);
+  const [servicesFor, setServicesFor] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [syncBySourceId, setSyncBySourceId] = useState({});
   const [syncRunning, setSyncRunning] = useState(false);
@@ -1102,7 +1307,18 @@ export default function AdminParser() {
                         </button>
                       </div>
                     </td>
-                    <td>{source.services_total}</td>
+                    <td>
+                      {/* Одной цифрой разобрать «почему цены нет» нельзя:
+                          по клику открывается наш каталог по этой клинике */}
+                      <button
+                        className="btn btn-ghost"
+                        style={{ padding: '0 4px' }}
+                        onClick={() => setServicesFor(source)}
+                        title="Показать услуги, забранные в нашу копию"
+                      >
+                        {source.services_total}
+                      </button>
+                    </td>
                     <td>
                       <LabelCell
                         source={source}
@@ -1158,6 +1374,10 @@ export default function AdminParser() {
 
       {locationsFor && (
         <LocationsModal source={locationsFor} onClose={() => setLocationsFor(null)} />
+      )}
+
+      {servicesFor && (
+        <ServicesModal source={servicesFor} onClose={() => setServicesFor(null)} />
       )}
 
       {toDelete && (

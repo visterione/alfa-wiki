@@ -741,6 +741,8 @@ export const priceParser = {
   sources:   ()               => api.get('/parser/sources'),
   source:    (id)             => api.get(`/parser/sources/${id}`),
   services:  (id, params)     => api.get(`/parser/sources/${id}/services`, { params }),
+  // каталог из нашей копии — то, что видит сопоставление, а не сайт конкурента
+  catalog:   (id, params)     => api.get(`/parser/sources/${id}/catalog`, { params }),
   analyze:   (url, city)      => api.post('/parser/analyze', { url, city }),
   job:       (jobId)          => api.get(`/parser/jobs/${jobId}`),
   confirm:   (jobId, cities)  => api.post(`/parser/jobs/${jobId}/confirm`, { cities }),
