@@ -15,6 +15,7 @@
 const cron = require('node-cron');
 const { syncAll } = require('../services/competitorPricesSync');
 const { fillAllComparisons } = require('../services/competitorPriceFill');
+const { autoMatchAllComparisons } = require('../services/competitorMatching');
 
 cron.schedule('30 3 * * *', async () => {
   console.log('⏰ [CompetitorPrices CRON] Забираем прайсы конкурентов из парсера...');
@@ -26,9 +27,21 @@ cron.schedule('30 3 * * *', async () => {
     return;
   }
 
-  // Свежие цены сами по себе в сравнениях не появятся. Обновляем те, где
-  // соответствия уже приняты человеком: предложенное по-прежнему ждёт его
-  // решения, а ручные цены не перезаписываются — поэтому без присмотра можно
+  // Новые листы и новые услуги не должны требовать отдельного ручного запуска.
+  // Точные и сильные совпадения принимаются сами; спорные остаются в админке.
+  try {
+    const matched = await autoMatchAllComparisons();
+    console.log(
+      `⏰ [CompetitorPrices CRON] Автосопоставление: сравнений ${matched.comparisons}, ` +
+      `принято ${matched.autoConfirmed}, переиспользовано ${matched.reused}, ` +
+      `требуют проверки ${matched.review}`
+    );
+  } catch (err) {
+    console.error('❌ [CompetitorPrices CRON] Автосопоставление не удалось:', err.message);
+  }
+
+  // Обновляем цены всех принятых соответствий. Ручные значения автоматика
+  // по-прежнему не перезаписывает.
   try {
     const totals = await fillAllComparisons();
     console.log(

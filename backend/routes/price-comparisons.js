@@ -58,7 +58,10 @@ router.get('/:id', authenticate, async (req, res) => {
         {
           model: PriceComparisonItem,
           as: 'items',
-          attributes: ['id', 'serviceCode', 'serviceName', 'misServiceId', 'prices', 'priceHistory', 'costPrices', 'lab', 'sortOrder'],
+          attributes: [
+            'id', 'serviceCode', 'serviceName', 'misServiceId', 'prices',
+            'priceHistory', 'priceSources', 'costPrices', 'lab', 'sortOrder'
+          ],
           order: [['sortOrder', 'ASC']]
         }
       ]
@@ -371,6 +374,8 @@ router.put('/:id/items/:itemId',
       const oldPrices = item.prices || {};
       const newPrices = prices || {};
       const priceHistory = { ...(item.priceHistory || {}) }; // Создаем новый объект
+      const priceSources = { ...(item.priceSources || {}) };
+      let priceSourceChanged = false;
 
       // Проходим по всем колонкам (медцентрам/конкурентам) и проверяем изменения
       Object.keys(newPrices).forEach(columnName => {
@@ -390,13 +395,21 @@ router.put('/:id/items/:itemId',
             changedAt: new Date().toISOString()
           });
         }
+
+        // Ручная правка превращает значение в ручное. Иначе ночной парсер
+        // считал бы его своим и молча вернул прежнюю автоматическую цену.
+        if (oldPrice !== newPrice && priceSources[columnName]) {
+          delete priceSources[columnName];
+          priceSourceChanged = true;
+        }
       });
 
-      const updateData = { prices, priceHistory };
+      const updateData = { prices, priceHistory, priceSources };
 
       // Явно помечаем что JSONB поля изменились
       item.changed('prices', true);
       item.changed('priceHistory', true);
+      if (priceSourceChanged) item.changed('priceSources', true);
       if (serviceCode !== undefined) updateData.serviceCode = serviceCode;
       if (serviceName) updateData.serviceName = serviceName;
       if (costPrices !== undefined) {

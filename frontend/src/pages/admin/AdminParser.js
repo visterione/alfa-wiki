@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin } from 'lucide-react';
+import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import toast from 'react-hot-toast';
 import '../Admin.css';
@@ -506,11 +506,11 @@ function QueueTab({ onConfirmed }) {
   return (
     <>
       <form className="card" onSubmit={handleAdd} style={{ marginBottom: 16, padding: '16px 18px' }}>
-        <b style={{ display: 'block', marginBottom: 8 }}>Сдать список ссылок</b>
+        <b style={{ display: 'block', marginBottom: 8 }}>Добавить клиники</b>
         <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-          По одной ссылке в строке. Парсер разберёт их по очереди — на сайт уходит
-          от одной до нескольких минут, — и остановится на каждом, ожидая вашей проверки.
-          Можно закрыть страницу и вернуться позже.
+          Вставьте одну или несколько ссылок, по одной в строке. Каждая сразу
+          встанет во внутреннюю очередь и обработается после предыдущей.
+          Эту страницу можно закрыть и вернуться позже.
         </p>
         <textarea
           className="input ap-cell-input"
@@ -540,12 +540,7 @@ function QueueTab({ onConfirmed }) {
         </div>
       </form>
 
-      {items.length === 0 ? (
-        <div className="admin-empty">
-          <ListPlus size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
-          <p>Очередь пуста. Вставьте список ссылок — можно сразу два десятка.</p>
-        </div>
-      ) : (
+      {items.length > 0 && (
         items.map(item => {
           const options = item.cities?.options || [];
           const picked = chosen[item.id] ?? options.filter(c => c.current).map(c => c.name);
@@ -615,13 +610,11 @@ function QueueTab({ onConfirmed }) {
 }
 
 /**
- * Сопоставление услуг конкурентов с позициями сравнения цен.
+ * Проверка только неоднозначных совпадений.
  *
- * Подбор ничего не решает сам: он предлагает, а человек принимает. Иначе
- * и быть не могло — по названиям всегда найдётся пара вроде «Мочевина
- * суточной мочи» против просто «Мочевина», и разницу видит только человек.
- * Поэтому у каждого предложения на виду, чем оно получено: код 804н точен,
- * похожесть названия — лишь повод посмотреть.
+ * Код 804н, точное/сильное название и решения, уже принятые на другом листе,
+ * применяются автоматически. Сюда попадает лишь остаток, где автоматике
+ * действительно нельзя доверить выбор.
  */
 function MatchingTab() {
   const [comparisons, setComparisons] = useState([]);
@@ -666,17 +659,18 @@ function MatchingTab() {
 
   const handleSuggest = () => run('suggest',
     () => competitorMatching.suggest(comparisonId),
-    r => toast.success(`Позиций просмотрено ${r.items}, предложено ${r.created}`));
+    r => toast.success(
+      `Цен подставлено: ${r.filled}, автоматически принято: ${r.autoConfirmed}` +
+      (r.reused ? `, взято с других листов: ${r.reused}` : '') +
+      (r.review ? `, требуют проверки: ${r.review}` : '')));
 
   const decide = async (match, accept) => {
     try {
       if (accept) {
         // цена уходит в сравнение сразу при принятии — отдельного шага нет
         const { data } = await competitorMatching.confirm(comparisonId, match.id);
-        const guarded = data.data?.protectedByHuman;
-        if (guarded) {
-          toast(`Принято. Цена не перезаписана: в сравнении стоит ручная`, { icon: '🔒' });
-        }
+        const reused = data.data?.reused || 0;
+        toast.success(`Принято${reused ? ` и применено ещё на ${reused} листах` : ''}`);
       } else {
         await competitorMatching.reject(comparisonId, match.id);
       }
@@ -686,11 +680,15 @@ function MatchingTab() {
     }
   };
 
+  // Принятые и отклонённые строки не превращаем в бесконечный архив:
+  // эта вкладка — рабочая очередь только действительно спорных вариантов.
+  const reviewMatches = matches.filter(match => match.status === 'suggested');
+
   // Соответствия приходят плоским списком, а решение человек принимает
   // по нашей позиции целиком: видеть надо всех кандидатов сразу
   const byItem = [];
   const index = new Map();
-  for (const match of matches) {
+  for (const match of reviewMatches) {
     if (!index.has(match.itemId)) {
       index.set(match.itemId, { itemId: match.itemId, ourName: match.ourName, ourCode: match.ourCode, rows: [] });
       byItem.push(index.get(match.itemId));
@@ -698,7 +696,7 @@ function MatchingTab() {
     index.get(match.itemId).rows.push(match);
   }
 
-  const pending = matches.filter(m => m.status === 'suggested').length;
+  const pending = reviewMatches.length;
   const confirmed = matches.filter(m => m.status === 'confirmed').length;
 
   return (
@@ -716,15 +714,15 @@ function MatchingTab() {
           </select>
 
           <button className="btn btn-primary" onClick={handleSuggest} disabled={!comparisonId || busy}>
-            <Wand2 size={16} /> {busy === 'suggest' ? 'Подбираем…' : 'Подобрать'}
+            <Wand2 size={16} /> {busy === 'suggest' ? 'Сопоставляем…' : 'Сопоставить автоматически'}
           </button>
         </div>
 
         <p className="text-muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
-          «Подобрать» находит для каждой нашей позиции похожие услуги у конкурентов.
-          Вы принимаете или отклоняете каждое предложение; принятая цена сразу
-          появляется в сравнении и дальше обновляется сама каждую ночь.
-          Цену, вписанную сотрудником руками, парсер не перезаписывает никогда.
+          Точные совпадения и связи, уже проверенные на других листах, применяются
+          без участия человека. Ниже показываются только неоднозначные названия.
+          Явное принятие заменяет старую ручную цену ценой парсера; ночное
+          обновление само по себе ручные значения не трогает.
           {comparisonId && matches.length > 0 && (
             <> Сейчас: ждут решения <b>{pending}</b>, принято <b>{confirmed}</b>.</>
           )}
@@ -740,11 +738,12 @@ function MatchingTab() {
         </div>
       ) : byItem.length === 0 ? (
         <div className="admin-empty">
-          <Link2 size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
+          <CheckCircle2 size={48} style={{ opacity: 0.3, marginBottom: 12 }} />
           <p>
-            Соответствий пока нет — нажмите «Подобрать».
-            Если после подбора пусто, проверьте на вкладке «Источники», что клиникам
-            проставлено, как они называются в сравнениях.
+            Спорных совпадений нет.
+            {confirmed
+              ? ` Автоматически или ранее принято: ${confirmed}.`
+              : ' Нажмите «Сопоставить автоматически», если конкурент добавлен недавно.'}
           </p>
         </div>
       ) : (
@@ -825,8 +824,6 @@ export default function AdminParser() {
   const [syncRunning, setSyncRunning] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const [url, setUrl] = useState('');
-  const [starting, setStarting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
   const [jobId, setJobId] = useState(null);
@@ -915,23 +912,6 @@ export default function AdminParser() {
     return () => clearInterval(handle);
   }, [syncRunning, loadSyncStatus]);
 
-  const handleAnalyze = async (event) => {
-    event.preventDefault();
-    if (!url.trim()) return;
-
-    setStarting(true);
-    try {
-      const { data } = await priceParser.analyze(url.trim());
-      setJobId(data.data.job_id);
-      setJob({ state: 'running', stage: 'В очереди', title: url.trim() });
-      setUrl('');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Не удалось запустить разбор');
-    } finally {
-      setStarting(false);
-    }
-  };
-
   const handleConfirm = async (cities) => {
     setConfirming(true);
     try {
@@ -1013,8 +993,7 @@ export default function AdminParser() {
       <div className="admin-tabs">
         {[
           { id: 'sources',  label: 'Источники' },
-          { id: 'queue',    label: 'Очередь' },
-          { id: 'matching', label: 'Сопоставление' },
+          { id: 'matching', label: 'Требуют проверки' },
         ].map(t => (
           <button
             key={t.id}
@@ -1026,35 +1005,11 @@ export default function AdminParser() {
         ))}
       </div>
 
-      {tab === 'matching' ? <MatchingTab /> : tab === 'queue' ? <QueueTab onConfirmed={loadSources} /> : <>
+      {tab === 'matching' ? <MatchingTab /> : <>
 
       <ConnectionBanner status={connection} />
 
-      <form className="card" onSubmit={handleAnalyze} style={{ marginBottom: 16, padding: '16px 18px' }}>
-        <b style={{ display: 'block', marginBottom: 8 }}>Добавить клинику</b>
-        <p className="text-muted" style={{ margin: '0 0 10px', fontSize: 13 }}>
-          Вставьте ссылку на страницу с ценами. Парсер разберёт её и покажет,
-          что нашёл, — обход начнётся только после вашего подтверждения.
-        </p>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <input
-            className="input ap-cell-input"
-            style={{ flex: '1 1 320px' }}
-            placeholder="https://клиника.рф/price/"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            disabled={starting || job?.state === 'running'}
-          />
-          <button className="btn btn-primary" type="submit" disabled={starting || !url.trim() || job?.state === 'running'}>
-            <Search size={18} /> {starting ? 'Запускаем…' : 'Разобрать'}
-          </button>
-        </div>
-        <small className="text-muted">
-          Города парсер определит сам и предложит выбрать. Если у сайта переключателя
-          городов нет, город можно вписать в таблице ниже.
-        </small>
-      </form>
-
+      <QueueTab onConfirmed={loadSources} />
       <JobPanel job={job} onConfirm={handleConfirm} onClose={closeJob} confirming={confirming} />
 
       {loading ? (

@@ -84,8 +84,13 @@ async function pricesForComparison(comparisonId) {
  * проставлено, но и сколько значений парсер не тронул, потому что там уже
  * стоит ручная цена.
  */
-async function fillComparison(comparisonId, { actor = null } = {}) {
+async function fillComparison(
+  comparisonId,
+  { actor = null, overwriteMatchIds = [], overwriteItemLabels = [] } = {}
+) {
   const prices = await pricesForComparison(comparisonId);
+  const forcedMatches = new Set(overwriteMatchIds);
+  const forcedCells = new Set(overwriteItemLabels);
 
   const byItem = new Map();
   for (const row of prices) {
@@ -115,7 +120,12 @@ async function fillComparison(comparisonId, { actor = null } = {}) {
       // Значение стоит, но его поставил не парсер — это ручная работа
       // сотрудника, и трогать её нельзя
       const hasHumanValue = existing !== undefined && existing !== null && existing !== '' && !wasSetByParser;
-      if (hasHumanValue) {
+      // Автоматика ручную цену бережёт. Но если человек только что явно
+      // подтвердил конкретное соответствие, его действие означает «брать цену
+      // парсера» — блокировать именно эту замену было бы противоречием.
+      const forcedByUser = forcedMatches.has(row.matchId) ||
+        forcedCells.has(`${row.itemId}|${label}`);
+      if (hasHumanValue && !forcedByUser) {
         summary.protectedByHuman += 1;
         continue;
       }

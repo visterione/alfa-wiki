@@ -774,8 +774,8 @@ export const priceComparisons = {
   list: () => api.get('/price-comparisons'),
 };
 
-// Сопоставление услуг конкурентов с позициями сравнения цен.
-// Читать может любой сотрудник, менять — только с доступом «Парсер цен».
+// Автосопоставление запускается при обычном добавлении конкурента.
+// Вручную принимать/отклонять спорные пары можно с доступом «Парсер цен».
 export const competitorMatching = {
   list:    (comparisonId)          => api.get(`/competitor-matching/${comparisonId}/matches`),
   suggest: (comparisonId)          => api.post(`/competitor-matching/${comparisonId}/matches/suggest`),

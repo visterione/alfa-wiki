@@ -3,10 +3,9 @@
 /**
  * Сопоставление услуг конкурентов с позициями сравнения цен и подстановка цен.
  *
- * Читать соответствия может любой сотрудник — это часть картины по ценам.
- * Подбирать, утверждать и подставлять — только с доступом «Парсер цен»:
- * подтверждение соответствия решает, какая цена окажется в сравнении,
- * и цена ошибки здесь та же, что у ручного ввода.
+ * Читать и запускать автоматический подбор может любой сотрудник — это часть
+ * обычного добавления конкурента. Вручную решать оставшиеся спорные пары может
+ * сотрудник с доступом «Парсер цен».
  */
 
 const express = require('express');
@@ -57,16 +56,23 @@ router.get('/:comparisonId/matches', authenticate, async (req, res) => {
  * Пересчёт безопасен: подтверждённое и отклонённое остаётся нетронутым,
  * иначе разобранная вручную сотня позиций терялась бы при первом же запуске.
  */
-router.post('/:comparisonId/matches/suggest', ...canApprove, async (req, res) => {
+// Автоматический подбор — часть обычного действия «добавить конкурента» на
+// странице сравнения. Ручные решения по спорным парам по-прежнему оставлены
+// сотрудникам с доступом к парсеру.
+router.post('/:comparisonId/matches/suggest', authenticate, async (req, res) => {
   try {
     const comparison = await PriceComparison.findByPk(req.params.comparisonId);
     if (!comparison) {
       return res.status(404).json({ success: false, error: 'not_found', message: 'Сравнение не найдено' });
     }
 
-    const result = await matching.suggestForComparison(req.params.comparisonId);
-    console.log(`🔗 Подбор соответствий для «${comparison.name}»: позиций ${result.items}, предложено ${result.created}`);
-    res.json({ success: true, data: result });
+    const result = await matching.suggestForComparison(req.params.comparisonId, { actor: req.user });
+    const filled = await fill.fillComparison(req.params.comparisonId, { actor: req.user });
+    console.log(
+      `🔗 Автосопоставление для «${comparison.name}»: позиций ${result.items}, ` +
+      `принято ${result.autoConfirmed}, переиспользовано ${result.reused}, проверить ${result.review}`
+    );
+    res.json({ success: true, data: { ...result, filled: filled.filled, protectedByHuman: filled.protectedByHuman } });
   } catch (err) {
     console.error('❌ Подбор соответствий не удался:', err.message);
     res.status(500).json({ success: false, error: 'suggest_failed', message: 'Подбор соответствий не удался' });
@@ -94,8 +100,28 @@ router.post('/:comparisonId/matches/:matchId/confirm', ...canApprove, async (req
       confirmedAt: new Date()
     });
 
-    const summary = await fill.fillComparison(req.params.comparisonId, { actor: req.user });
-    res.json({ success: true, data: { match, filled: summary.filled, protectedByHuman: summary.protectedByHuman } });
+    const learned = await matching.reuseConfirmedMatch(match.id, { actor: req.user });
+    const summary = await fill.fillComparison(req.params.comparisonId, {
+      actor: req.user,
+      // Явное принятие — осознанное разрешение заменить прежнее ручное
+      // значение именно для этой услуги и этой клиники.
+      overwriteMatchIds: [match.id],
+      overwriteItemLabels: learned.origin
+        ? [`${learned.origin.itemId}|${learned.origin.competitorLabel}`]
+        : []
+    });
+    for (const comparisonId of learned.comparisonIds) {
+      await fill.fillComparison(comparisonId, { actor: req.user });
+    }
+    res.json({
+      success: true,
+      data: {
+        match,
+        filled: summary.filled,
+        protectedByHuman: summary.protectedByHuman,
+        reused: learned.reused
+      }
+    });
   } catch (err) {
     console.error('❌ Не удалось принять соответствие:', err.message);
     res.status(500).json({ success: false, error: 'confirm_failed', message: 'Не удалось принять соответствие' });

@@ -1230,6 +1230,7 @@ window.priceApp = (function() {
   var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/price-comparisons';
   var MIS_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/mis';
   var PARSER_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/parser';
+  var MATCHING_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/competitor-matching';
 
   var currentMode = 'clinic'; // 'clinic' | 'lab'
   var currentComparison = null;
@@ -1855,7 +1856,19 @@ window.priceApp = (function() {
           // Для своих медцентров - показываем как текст (цена/себестоимость из МИС)
           html += '<span class="price-value">' + formatPrice(price) + '</span>';
         } else {
-          // Для конкурентов - инпут для ввода
+          var parserPrice = viewMode === 'price' &&
+            item.priceSources &&
+            item.priceSources[col.name] &&
+            item.priceSources[col.name].source === 'parser';
+
+          // Полученная цена — это результат, а не пустая форма для ручной работы.
+          // Поле ввода остаётся только у ещё не сопоставленных услуг.
+          if (parserPrice && price !== null) {
+            html += '<span class="price-value" title="Цена из парсера; обновляется автоматически">' +
+              formatPrice(price) + '</span>';
+            html += '<small style="display:block;color:#34c759;font-size:10px;margin-top:2px">из парсера</small>';
+          } else {
+          // Для конкурентов без автоматической цены - ручной инпут
           var history = viewMode === 'price' && item.priceHistory && item.priceHistory[col.name];
           var hasHistory = history && history.length > 0;
           var inputClass = 'price-value-input' + (hasHistory ? ' has-history' : '');
@@ -1884,6 +1897,7 @@ window.priceApp = (function() {
           }
 
           html += '>';
+          }
         }
         html += '</td>';
 
@@ -2076,6 +2090,21 @@ window.priceApp = (function() {
           body: JSON.stringify({ competitorLabel: competitor })
         }).then(function() {
           loadParserCompetitors();
+          // Точные связи и уже выученные на других листах соответствия
+          // применяются сразу. В админке останутся только спорные варианты.
+          return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
+            method: 'POST'
+          }).then(function(res) {
+            var data = res.data || {};
+            if (data.review) {
+              showToast('Цены добавлены автоматически. Требуют проверки: ' + data.review, 'success');
+            } else {
+              showToast('Цены конкурента добавлены автоматически', 'success');
+            }
+          }).catch(function(e) {
+            // Колонка и связь уже сохранены; автоподбор можно повторить из админки.
+            showToast('Конкурент добавлен, но автоподбор не запустился: ' + e.message, 'error');
+          });
         }).catch(function(e) {
           showToast('Колонка добавлена, но привязка к парсеру не удалась: ' + e.message, 'error');
         });
