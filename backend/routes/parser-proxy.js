@@ -148,6 +148,45 @@ router.post('/sources/:id/branding', ...canManage, async (req, res) => {
   }
 });
 
+/**
+ * Клиники-конкуренты для страницы сравнения цен.
+ *
+ * Отдаётся из зеркала одним запросом: название, город, подпись в сравнениях
+ * и значок готовым data-URI. Доступно любому сотруднику, а не только
+ * администратору парсера: добавить колонку конкурента в сравнение может
+ * каждый, у кого открыта та страница, — значит и список клиник ему нужен.
+ */
+router.get('/competitors', authenticate, async (req, res) => {
+  try {
+    const sources = await CompetitorSource.findAll({
+      order: [['displayName', 'ASC'], ['city', 'ASC']],
+      attributes: [
+        'parserSourceId', 'name', 'displayName', 'city', 'servicesTotal',
+        'competitorLabel', 'lastRunAt', 'logoData', 'logoContentType'
+      ]
+    });
+
+    res.json({
+      success: true,
+      data: sources.map(source => ({
+        parserSourceId: source.parserSourceId,
+        name: source.name,
+        displayName: source.displayName,
+        city: source.city,
+        servicesTotal: source.servicesTotal,
+        competitorLabel: source.competitorLabel,
+        lastRunAt: source.lastRunAt,
+        logo: source.logoData
+          ? `data:${source.logoContentType || 'image/png'};base64,${source.logoData.toString('base64')}`
+          : null
+      }))
+    });
+  } catch (err) {
+    console.error('❌ Список конкурентов не отдался:', err.message);
+    res.status(500).json({ success: false, error: 'competitors_failed', message: 'Не удалось прочитать список клиник' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // АДРЕСА ТОЧЕК
 // ═══════════════════════════════════════════════════════════════
@@ -408,7 +447,10 @@ router.get('/sync/status', ...canManage, async (req, res) => {
  * не проставлена, цены источника подставлять некуда, и в сопоставлении
  * он не участвует.
  */
-router.put('/sources/:parserSourceId/label', ...canManage, async (req, res) => {
+// Под обычной авторизацией, а не под админской: колонку конкурента в сравнение
+// добавляет любой сотрудник со страницы сравнения, и привязка колонки к клинике
+// парсера — продолжение того же действия, а не администрирование
+router.put('/sources/:parserSourceId/label', authenticate, async (req, res) => {
   try {
     const source = await CompetitorSource.findOne({
       where: { parserSourceId: Number(req.params.parserSourceId) }

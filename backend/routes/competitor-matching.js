@@ -73,7 +73,14 @@ router.post('/:comparisonId/matches/suggest', ...canApprove, async (req, res) =>
   }
 });
 
-/** Принять соответствие. Цена появится в сравнении после подстановки. */
+/**
+ * Принять соответствие.
+ *
+ * Цена уходит в сравнение сразу, отдельного шага «подставить» нет: человек
+ * принимает соответствие ровно затем, чтобы увидеть цену конкурента, — просить
+ * его нажать ещё одну кнопку с непонятным названием было лишним. Дальше цену
+ * поддерживает свежей ночная синхронизация.
+ */
 router.post('/:comparisonId/matches/:matchId/confirm', ...canApprove, async (req, res) => {
   try {
     const match = await CompetitorServiceMatch.findByPk(req.params.matchId);
@@ -86,7 +93,9 @@ router.post('/:comparisonId/matches/:matchId/confirm', ...canApprove, async (req
       confirmedBy: req.user.id,
       confirmedAt: new Date()
     });
-    res.json({ success: true, data: match });
+
+    const summary = await fill.fillComparison(req.params.comparisonId, { actor: req.user });
+    res.json({ success: true, data: { match, filled: summary.filled, protectedByHuman: summary.protectedByHuman } });
   } catch (err) {
     console.error('❌ Не удалось принять соответствие:', err.message);
     res.status(500).json({ success: false, error: 'confirm_failed', message: 'Не удалось принять соответствие' });

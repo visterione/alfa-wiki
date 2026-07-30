@@ -1201,6 +1201,15 @@
         <button class="price-modal-close" onclick="priceApp.closeModal('add-competitor-modal')">&times;</button>
       </div>
       <form class="price-modal-body" onsubmit="priceApp.addCompetitor(event)">
+        <div class="price-form-group" id="competitor-parser-group" style="display:none">
+          <label>Клиника из парсера</label>
+          <select id="competitor-parser-select" class="price-input" onchange="priceApp.onParserCompetitorChange(this.value)">
+            <option value="">— вписать название вручную —</option>
+          </select>
+          <small style="color:#86868B;display:block;margin-top:4px">
+            Выберите клинику — её цены будут подтягиваться в эту колонку автоматически.
+          </small>
+        </div>
         <div class="price-form-group">
           <label>Название конкурента <span>*</span></label>
           <input type="text" id="competitor-name-input" required class="price-input" placeholder="Неомед, МедГрад, АйКлиник...">
@@ -1220,6 +1229,7 @@ window.priceApp = (function() {
   // Backend всегда на порту 9001
   var API_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/price-comparisons';
   var MIS_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/mis';
+  var PARSER_URL = (window.location.port === '9000' ? window.location.protocol + '//' + window.location.hostname + ':9001' : window.location.origin) + '/api/parser';
 
   var currentMode = 'clinic'; // 'clinic' | 'lab'
   var currentComparison = null;
@@ -1227,6 +1237,9 @@ window.priceApp = (function() {
   var allColumns = []; // Список всех колонок (своих + конкурентов)
   var hiddenColumns = []; // Список скрытых колонок
   var availableClinics = []; // Список клиник из МИС
+  var parserCompetitors = [];      // Клиники-конкуренты из парсера (зеркало в вики)
+  var parserLogoByLabel = {};      // подпись колонки -> data-URI значка
+  var selectedParserSourceId = null; // что выбрано в списке при добавлении конкурента
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
   var labCategoryOptions = []; // Кеш всех опций категорий для поиска
@@ -1778,13 +1791,18 @@ window.priceApp = (function() {
       var hiddenClass = isHidden ? ' hidden' : '';
       var isBase = col.name === baseColumnName;
 
+      // Значок клиники из парсера, если колонка к ней привязана
+      var logoImg = parserLogoByLabel[col.name]
+        ? '<img src="' + parserLogoByLabel[col.name] + '" alt="" style="width:16px;height:16px;object-fit:contain;vertical-align:-3px;margin-right:5px">'
+        : '';
+
       if (isBase) {
         // Эталонная колонка - только 1 колонка (без разницы)
-        headerRow += '<th class="col-price-competitor col-clinic-single' + hiddenClass + '">' + col.name + ' (эталон)</th>';
+        headerRow += '<th class="col-price-competitor col-clinic-single' + hiddenClass + '">' + logoImg + col.name + ' (эталон)</th>';
         totalDataCols += 1;
       } else {
         // Остальные колонки имеют 2 подколонки (цена и разница), но без подзаголовков
-        headerRow += '<th class="col-price-competitor col-clinic-pair' + hiddenClass + '" colspan="2">' + col.name + '</th>';
+        headerRow += '<th class="col-price-competitor col-clinic-pair' + hiddenClass + '" colspan="2">' + logoImg + col.name + '</th>';
         totalDataCols += 2;
       }
     });
@@ -1968,8 +1986,59 @@ window.priceApp = (function() {
     });
   }
 
+  // Клиники-конкуренты из парсера. Подпись колонки должна быть уникальна:
+  // «Клиника Фомина» стоит в пятнадцати городах, поэтому при повторе имени
+  // к нему добавляется город.
+  function loadParserCompetitors() {
+    fetchAPI(PARSER_URL + '/competitors').then(function(res) {
+      parserCompetitors = res.data || [];
+      parserLogoByLabel = {};
+      var byName = {};
+      parserCompetitors.forEach(function(c) {
+        var key = c.displayName || c.name;
+        byName[key] = (byName[key] || 0) + 1;
+      });
+      parserCompetitors.forEach(function(c) {
+        var base = c.displayName || c.name;
+        c.suggestedLabel = c.competitorLabel ||
+          (byName[base] > 1 && c.city ? base + ' (' + c.city + ')' : base);
+        if (c.logo) {
+          parserLogoByLabel[c.suggestedLabel] = c.logo;
+          if (c.competitorLabel) parserLogoByLabel[c.competitorLabel] = c.logo;
+        }
+      });
+    }).catch(function(e) {
+      // без списка парсера окно работает по-старому, руками
+      console.warn('Список клиник парсера не загрузился:', e.message);
+    });
+  }
+
+  function onParserCompetitorChange(value) {
+    selectedParserSourceId = value ? Number(value) : null;
+    if (!selectedParserSourceId) return;
+    var picked = parserCompetitors.filter(function(c) {
+      return c.parserSourceId === selectedParserSourceId;
+    })[0];
+    if (picked) document.getElementById('competitor-name-input').value = picked.suggestedLabel;
+  }
+
   function openAddCompetitorModal() {
     document.getElementById('competitor-name-input').value = '';
+    selectedParserSourceId = null;
+
+    var group = document.getElementById('competitor-parser-group');
+    var select = document.getElementById('competitor-parser-select');
+    if (group && select) {
+      group.style.display = parserCompetitors.length ? '' : 'none';
+      var options = '<option value="">— вписать название вручную —</option>';
+      parserCompetitors.forEach(function(c) {
+        var taken = allColumns.some(function(col) { return col.name === c.suggestedLabel; });
+        options += '<option value="' + c.parserSourceId + '"' + (taken ? ' disabled' : '') + '>' +
+          c.suggestedLabel + (c.city && c.suggestedLabel.indexOf(c.city) < 0 ? ' — ' + c.city : '') +
+          ' · услуг: ' + (c.servicesTotal || 0) + (taken ? ' (уже в сравнении)' : '') + '</option>';
+      });
+      select.innerHTML = options;
+    }
     openModal('add-competitor-modal');
   }
 
@@ -1998,6 +2067,19 @@ window.priceApp = (function() {
         ownMedCenters: currentComparison.ownMedCenters,
         competitors: newCompetitors
       })
+    }).then(function() {
+      // Колонка выбрана из парсера — привязываем: под этой подписью в неё
+      // будут подтягиваться цены клиники при сопоставлении
+      if (selectedParserSourceId) {
+        return fetchAPI(PARSER_URL + '/sources/' + selectedParserSourceId + '/label', {
+          method: 'PUT',
+          body: JSON.stringify({ competitorLabel: competitor })
+        }).then(function() {
+          loadParserCompetitors();
+        }).catch(function(e) {
+          showToast('Колонка добавлена, но привязка к парсеру не удалась: ' + e.message, 'error');
+        });
+      }
     }).then(function() {
       showToast('Конкурент добавлен', 'success');
       closeModal('add-competitor-modal');
@@ -2980,6 +3062,7 @@ window.priceApp = (function() {
   } else {
     loadComparisons();
     loadClinics();
+    loadParserCompetitors();
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
         closeModal('new-comparison-modal');
@@ -3539,6 +3622,7 @@ window.priceApp = (function() {
     createComparison: createComparison,
     deleteComparison: deleteComparison,
     openAddCompetitorModal: openAddCompetitorModal,
+    onParserCompetitorChange: onParserCompetitorChange,
     addCompetitor: addCompetitor,
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,

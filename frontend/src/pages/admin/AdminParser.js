@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import toast from 'react-hot-toast';
+import '../Admin.css';
+import './AdminParser.css';
 
 /**
  * Парсер прайсов конкурентов.
@@ -29,9 +31,9 @@ function ConnectionBanner({ status }) {
   if (!status || status.ok) return null;
 
   return (
-    <div className="card" style={{ marginBottom: 16, padding: '14px 16px', border: '1px solid var(--color-danger, #dc2626)' }}>
+    <div className="card" style={{ marginBottom: 16, padding: '14px 16px', border: '1px solid var(--error)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <AlertTriangle size={18} style={{ color: 'var(--color-danger, #dc2626)' }} />
+        <AlertTriangle size={18} style={{ color: 'var(--error)' }} />
         <strong>Нет связи с парсером</strong>
       </div>
       <p style={{ margin: '0 0 4px' }}>{status.message}</p>
@@ -60,7 +62,7 @@ function AnalysisSummary({ analysis, rows }) {
       </p>
 
       {analysis.doubts?.length > 0 && (
-        <div style={{ margin: '8px 0', padding: '8px 12px', background: 'var(--color-warning-bg, #fef3c7)', borderRadius: 6 }}>
+        <div className="ap-warn">
           <b style={{ display: 'block', marginBottom: 4 }}>На что стоит посмотреть:</b>
           <ul style={{ margin: 0, paddingLeft: 18 }}>
             {analysis.doubts.map((doubt, i) => <li key={i}>{doubt}</li>)}
@@ -75,7 +77,7 @@ function AnalysisSummary({ analysis, rows }) {
       )}
 
       {columns.length > 0 && (
-        <div className="admin-table-wrap" style={{ marginTop: 12 }}>
+        <div className="admin-table-container" style={{ marginTop: 12 }}>
           <table className="admin-table">
             <thead>
               <tr>{columns.map(column => <th key={column}>{column}</th>)}</tr>
@@ -137,7 +139,7 @@ function JobPanel({ job, onConfirm, onClose, confirming }) {
 
       {job.state === 'failed' && (
         <div>
-          <p style={{ margin: '0 0 8px', color: 'var(--color-danger, #dc2626)' }}>{job.error}</p>
+          <p style={{ margin: '0 0 8px', color: 'var(--error)' }}>{job.error}</p>
           <AnalysisSummary analysis={job.analysis} rows={job.rows} />
         </div>
       )}
@@ -184,7 +186,7 @@ function JobPanel({ job, onConfirm, onClose, confirming }) {
       {job.state === 'done' && (
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <CheckCircle2 size={16} style={{ color: 'var(--color-success, #16a34a)' }} />
+            <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />
             <span>Собрано <b>{job.rows}</b> позиций со {job.pages} страниц.</span>
           </div>
           {(job.items_new > 0 || job.items_changed > 0 || job.items_gone > 0) && (
@@ -244,7 +246,7 @@ function EditableCell({ value, placeholder, hint, bold, onSave }) {
   return (
     <span style={{ display: 'inline-flex', gap: 4 }}>
       <input
-        className="form-input"
+        className="input ap-cell-input"
         style={{ width: 170 }}
         value={draft}
         autoFocus
@@ -364,7 +366,7 @@ function LocationsModal({ source, onClose }) {
         {loading ? (
           <div className="admin-loading"><div className="loading-spinner" /></div>
         ) : (
-          <div className="admin-table-wrap" style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <div className="admin-table-container" style={{ maxHeight: 320, overflowY: 'auto' }}>
             <table className="admin-table">
               <tbody>
                 {items.map(item => (
@@ -395,15 +397,15 @@ function LocationsModal({ source, onClose }) {
 
         <form onSubmit={add} style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
           <input
-            className="form-input" style={{ flex: '1 1 150px' }} placeholder="Название точки"
+            className="input ap-cell-input" style={{ flex: '1 1 150px' }} placeholder="Название точки"
             value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })}
           />
           <input
-            className="form-input" style={{ flex: '2 1 220px' }} placeholder="Адрес*"
+            className="input ap-cell-input" style={{ flex: '2 1 220px' }} placeholder="Адрес*"
             value={draft.address} onChange={e => setDraft({ ...draft, address: e.target.value })}
           />
           <input
-            className="form-input" style={{ flex: '0 1 130px' }} placeholder="Город"
+            className="input ap-cell-input" style={{ flex: '0 1 130px' }} placeholder="Город"
             value={draft.city} onChange={e => setDraft({ ...draft, city: e.target.value })}
           />
           <button className="btn btn-primary" type="submit" disabled={!draft.address.trim()}>
@@ -511,7 +513,7 @@ function QueueTab({ onConfirmed }) {
           Можно закрыть страницу и вернуться позже.
         </p>
         <textarea
-          className="form-input"
+          className="input ap-cell-input"
           style={{ width: '100%', minHeight: 90, fontFamily: 'monospace', fontSize: 13 }}
           placeholder={'https://клиника-1.рф\nhttps://клиника-2.рф/price/\nhttps://лаборатория.рф'}
           value={urls}
@@ -560,8 +562,8 @@ function QueueTab({ onConfirmed }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                   {['queued', 'analyzing', 'crawling'].includes(item.status) && <Loader2 size={16} className="spin" />}
-                  {item.status === 'done' && <CheckCircle2 size={16} style={{ color: 'var(--color-success, #16a34a)' }} />}
-                  {item.status === 'failed' && <AlertTriangle size={16} style={{ color: 'var(--color-danger, #dc2626)' }} />}
+                  {item.status === 'done' && <CheckCircle2 size={16} style={{ color: 'var(--success)' }} />}
+                  {item.status === 'failed' && <AlertTriangle size={16} style={{ color: 'var(--error)' }} />}
                   {item.status !== 'analyzing' && item.status !== 'crawling' && (
                     <button className="btn btn-icon" title="Убрать из очереди" onClick={() => handleDrop(item)}>
                       <X size={14} />
@@ -571,11 +573,11 @@ function QueueTab({ onConfirmed }) {
               </div>
 
               {item.error && (
-                <p style={{ margin: '8px 0 0', color: 'var(--color-danger, #dc2626)', fontSize: 13 }}>{item.error}</p>
+                <p style={{ margin: '8px 0 0', color: 'var(--error)', fontSize: 13 }}>{item.error}</p>
               )}
 
               {item.status === 'ready' && (
-                <div style={{ marginTop: 10, borderTop: '1px solid var(--color-border, #e5e7eb)', paddingTop: 10 }}>
+                <div style={{ marginTop: 10, borderTop: '1px solid var(--border-light)', paddingTop: 10 }}>
                   <AnalysisSummary analysis={analysis} rows={analysis.rows_found ?? item.rows_found} />
 
                   {options.length > 0 && (
@@ -666,17 +668,18 @@ function MatchingTab() {
     () => competitorMatching.suggest(comparisonId),
     r => toast.success(`Позиций просмотрено ${r.items}, предложено ${r.created}`));
 
-  const handleFill = () => run('fill',
-    () => competitorMatching.fill(comparisonId),
-    r => toast.success(
-      `Проставлено ${r.filled}` +
-      (r.protectedByHuman ? `, ручных цен не тронуто ${r.protectedByHuman}` : '')));
-
   const decide = async (match, accept) => {
     try {
-      await (accept
-        ? competitorMatching.confirm(comparisonId, match.id)
-        : competitorMatching.reject(comparisonId, match.id));
+      if (accept) {
+        // цена уходит в сравнение сразу при принятии — отдельного шага нет
+        const { data } = await competitorMatching.confirm(comparisonId, match.id);
+        const guarded = data.data?.protectedByHuman;
+        if (guarded) {
+          toast(`Принято. Цена не перезаписана: в сравнении стоит ручная`, { icon: '🔒' });
+        }
+      } else {
+        await competitorMatching.reject(comparisonId, match.id);
+      }
       await load(comparisonId);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось сохранить решение');
@@ -703,7 +706,7 @@ function MatchingTab() {
       <div className="card" style={{ marginBottom: 16, padding: '16px 18px' }}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
           <select
-            className="form-input"
+            className="input ap-cell-input"
             style={{ flex: '1 1 280px' }}
             value={comparisonId}
             onChange={e => setComparisonId(e.target.value)}
@@ -712,16 +715,15 @@ function MatchingTab() {
             {comparisons.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <button className="btn" onClick={handleSuggest} disabled={!comparisonId || busy}>
+          <button className="btn btn-primary" onClick={handleSuggest} disabled={!comparisonId || busy}>
             <Wand2 size={16} /> {busy === 'suggest' ? 'Подбираем…' : 'Подобрать'}
-          </button>
-          <button className="btn btn-primary" onClick={handleFill} disabled={!comparisonId || busy || !confirmed}>
-            <Download size={16} /> {busy === 'fill' ? 'Подставляем…' : 'Подставить цены'}
           </button>
         </div>
 
         <p className="text-muted" style={{ margin: '10px 0 0', fontSize: 13 }}>
-          Подбор предлагает, решаете вы. В сравнение попадают цены только принятых соответствий.
+          «Подобрать» находит для каждой нашей позиции похожие услуги у конкурентов.
+          Вы принимаете или отклоняете каждое предложение; принятая цена сразу
+          появляется в сравнении и дальше обновляется сама каждую ночь.
           Цену, вписанную сотрудником руками, парсер не перезаписывает никогда.
           {comparisonId && matches.length > 0 && (
             <> Сейчас: ждут решения <b>{pending}</b>, принято <b>{confirmed}</b>.</>
@@ -746,7 +748,7 @@ function MatchingTab() {
           </p>
         </div>
       ) : (
-        <div className="admin-table-wrap">
+        <div className="admin-table-container">
           <table className="admin-table">
             <thead>
               <tr>
@@ -784,7 +786,7 @@ function MatchingTab() {
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     {match.status === 'confirmed' ? (
-                      <span style={{ color: 'var(--color-success, #16a34a)' }}>
+                      <span style={{ color: 'var(--success)' }}>
                         <CheckCircle2 size={14} style={{ verticalAlign: -2 }} /> принято
                         {match.confirmedByName && <small className="text-muted"> · {match.confirmedByName}</small>}
                       </span>
@@ -1008,7 +1010,7 @@ export default function AdminParser() {
         )}
       </div>
 
-      <div className="tabs" style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+      <div className="admin-tabs">
         {[
           { id: 'sources',  label: 'Источники' },
           { id: 'queue',    label: 'Очередь' },
@@ -1016,7 +1018,7 @@ export default function AdminParser() {
         ].map(t => (
           <button
             key={t.id}
-            className={`btn ${tab === t.id ? 'btn-primary' : 'btn-ghost'}`}
+            className={`admin-tab ${tab === t.id ? 'active' : ''}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}
@@ -1036,7 +1038,7 @@ export default function AdminParser() {
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
-            className="form-input"
+            className="input ap-cell-input"
             style={{ flex: '1 1 320px' }}
             placeholder="https://клиника.рф/price/"
             value={url}
@@ -1063,7 +1065,7 @@ export default function AdminParser() {
           <p>Источников пока нет. Вставьте ссылку на прайс конкурента выше.</p>
         </div>
       ) : (
-        <div className="admin-table-wrap">
+        <div className="admin-table-container">
           <table className="admin-table">
             <thead>
               <tr>
@@ -1144,7 +1146,7 @@ export default function AdminParser() {
                     <td>
                       {date(source.last_run?.finished_at || source.last_run?.started_at)}
                       {source.last_run?.status && source.last_run.status !== 'ok' && (
-                        <div><small style={{ color: 'var(--color-danger, #dc2626)' }}>{source.last_run.status}</small></div>
+                        <div><small style={{ color: 'var(--error)' }}>{source.last_run.status}</small></div>
                       )}
                     </td>
                     <td>
@@ -1152,7 +1154,7 @@ export default function AdminParser() {
                           даёт всё ещё недельные цены */}
                       {dateTime(sync?.syncedAt)}
                       {sync?.syncStatus === 'failed' && (
-                        <div><small style={{ color: 'var(--color-danger, #dc2626)' }}>{sync.syncError}</small></div>
+                        <div><small style={{ color: 'var(--error)' }}>{sync.syncError}</small></div>
                       )}
                     </td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -1208,6 +1210,22 @@ export default function AdminParser() {
               Уйдут все {toDelete.services_total} услуг, их цены и история обходов.
               Отменить это нельзя — клинику придётся заводить заново по ссылке.
             </p>
+
+            {/* Рукописный рецепт повторным разбором не воспроизводится: автоматика
+                этот сайт разобрать не смогла, потому его и писали руками */}
+            {toDelete.recipe?.generated_by === 'manual' && (
+              <div className="ap-warn" style={{ margin: '10px 0' }}>
+                <b style={{ display: 'block', marginBottom: 4 }}>
+                  <AlertTriangle size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
+                  У этой клиники рецепт написан руками
+                </b>
+                <span style={{ fontSize: 13 }}>
+                  Автоматический разбор этот сайт не осилил — рецепт составляли вручную,
+                  и повторное добавление по ссылке его не воспроизведёт. Восстановить
+                  можно только из файла <code>recipes/</code> в репозитории парсера.
+                </span>
+              </div>
+            )}
             <p className="text-muted" style={{ fontSize: 13 }}>
               Цены, уже подставленные в сравнения, останутся на месте: их подтверждал
               человек. Обновляться они перестанут.
