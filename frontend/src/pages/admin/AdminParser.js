@@ -275,7 +275,7 @@ function LabelCell({ source, value, onSaved }) {
     <EditableCell
       value={value}
       placeholder="указать…"
-      hint="Как эта клиника называется в сравнениях цен"
+      hint="Название колонки; город источника добавится автоматически"
       onSave={async next => { await priceParser.setLabel(source.id, next); onSaved(); }}
     />
   );

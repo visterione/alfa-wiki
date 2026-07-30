@@ -16,7 +16,13 @@
 const express = require('express');
 const { Op } = require('sequelize');
 const { authenticate, requireAdminAccess } = require('../middleware/auth');
-const { CompetitorSource, CompetitorLocation } = require('../models');
+const {
+  sequelize,
+  CompetitorSource,
+  CompetitorLocation,
+  PriceComparison,
+  PriceComparisonItem
+} = require('../models');
 const parser = require('../services/parserClient');
 const { syncAll } = require('../services/competitorPricesSync');
 
@@ -439,6 +445,50 @@ router.get('/sync/status', ...canManage, async (req, res) => {
   }
 });
 
+async function renameComparisonLabel(oldLabel, newLabel, transaction) {
+  if (!oldLabel || !newLabel || oldLabel === newLabel) return 0;
+
+  const comparisons = await PriceComparison.findAll({
+    where: { competitors: { [Op.contains]: [oldLabel] } },
+    transaction
+  });
+  let movedItems = 0;
+
+  for (const comparison of comparisons) {
+    const renamed = (comparison.competitors || []).map(label =>
+      label === oldLabel ? newLabel : label
+    );
+    comparison.competitors = [...new Set(renamed)];
+    comparison.changed('competitors', true);
+    await comparison.save({ transaction });
+
+    const items = await PriceComparisonItem.findAll({
+      where: { comparisonId: comparison.id },
+      transaction
+    });
+    for (const item of items) {
+      let changed = false;
+      for (const field of ['prices', 'priceSources', 'priceHistory', 'costPrices']) {
+        const values = { ...(item[field] || {}) };
+        if (!Object.prototype.hasOwnProperty.call(values, oldLabel)) continue;
+        // Если уточнённая колонка уже существует, её значение приоритетнее.
+        if (!Object.prototype.hasOwnProperty.call(values, newLabel)) {
+          values[newLabel] = values[oldLabel];
+        }
+        delete values[oldLabel];
+        item[field] = values;
+        item.changed(field, true);
+        changed = true;
+      }
+      if (changed) {
+        await item.save({ transaction });
+        movedItems += 1;
+      }
+    }
+  }
+  return movedItems;
+}
+
 /**
  * Как эта клиника называется в сравнениях цен.
  *
@@ -463,9 +513,43 @@ router.put('/sources/:parserSourceId/label', authenticate, async (req, res) => {
       });
     }
 
-    const label = (req.body?.competitorLabel || '').trim();
-    await source.update({ competitorLabel: label || null });
-    res.json({ success: true, data: { competitorLabel: source.competitorLabel } });
+    let label = (req.body?.competitorLabel || '').trim();
+    const city = (source.city || '').trim();
+    // «Инвитро» в двух городах — два разных прайса и две разные колонки.
+    // Поэтому город является частью сохраняемого ключа, а не только
+    // декоративной подписью в браузере.
+    if (label && city &&
+        !label.toLocaleLowerCase('ru-RU').includes(city.toLocaleLowerCase('ru-RU'))) {
+      label = `${label} (${city})`;
+    }
+
+    if (label) {
+      const duplicate = await CompetitorSource.findOne({
+        where: {
+          competitorLabel: label,
+          parserSourceId: { [Op.ne]: source.parserSourceId }
+        },
+        attributes: ['parserSourceId']
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          error: 'label_already_used',
+          message: `Название «${label}» уже привязано к другому источнику`
+        });
+      }
+    }
+
+    const oldLabel = source.competitorLabel;
+    let movedItems = 0;
+    await sequelize.transaction(async transaction => {
+      await source.update({ competitorLabel: label || null }, { transaction });
+      movedItems = await renameComparisonLabel(oldLabel, label, transaction);
+    });
+    res.json({
+      success: true,
+      data: { competitorLabel: source.competitorLabel, movedItems }
+    });
   } catch (err) {
     console.error('❌ Не удалось сохранить название конкурента:', err.message);
     res.status(500).json({ success: false, error: 'label_failed', message: 'Не удалось сохранить название' });
