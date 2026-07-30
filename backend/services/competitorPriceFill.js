@@ -15,6 +15,29 @@
 
 const { sequelize, PriceComparison, PriceComparisonItem, CompetitorServiceMatch } = require('../models');
 
+function addBranchColumnLabels(rows) {
+  const branchIdsByName = new Map();
+  for (const row of rows) {
+    if (row.filialId == null) continue;
+    const name = row.filialName || row.locationName || row.address || 'Филиал';
+    const key = `${row.sourceId}|${name}`;
+    if (!branchIdsByName.has(key)) branchIdsByName.set(key, new Set());
+    branchIdsByName.get(key).add(String(row.filialId));
+  }
+
+  for (const row of rows) {
+    if (row.filialId == null && !row.filialName) {
+      row.columnLabel = row.competitorLabel;
+      continue;
+    }
+    let branch = row.filialName || row.locationName || row.address || `Филиал ${row.filialId}`;
+    const duplicateIds = branchIdsByName.get(`${row.sourceId}|${branch}`);
+    if (duplicateIds?.size > 1) branch += ` №${row.filialId}`;
+    row.columnLabel = `${row.competitorLabel} — ${branch}`;
+  }
+  return rows;
+}
+
 /**
  * Названия конкурентов должны значиться в самом сравнении.
  *
@@ -23,55 +46,117 @@ const { sequelize, PriceComparison, PriceComparisonItem, CompetitorServiceMatch 
  * дописать сюда название, колонка появится, но встанет как своя клиника,
  * и вся арифметика по ней поедет.
  */
-async function ensureCompetitorColumns(comparisonId, labels) {
-  if (!labels.size) return;
+async function ensureCompetitorColumns(comparisonId, prices) {
+  if (!prices.length) return;
 
   const comparison = await PriceComparison.findByPk(comparisonId);
   if (!comparison) return;
 
-  const known = new Set(comparison.competitors || []);
-  const missing = [...labels].filter(label => !known.has(label));
-  if (!missing.length) return;
+  const columnsBySource = new Map();
+  for (const row of prices) {
+    if (!columnsBySource.has(row.competitorLabel)) {
+      columnsBySource.set(row.competitorLabel, new Set());
+    }
+    columnsBySource.get(row.competitorLabel).add(row.columnLabel);
+  }
 
-  comparison.competitors = [...known, ...missing];
+  const next = new Set(comparison.competitors || []);
+  const replacedBaseLabels = [];
+  for (const [baseLabel, columns] of columnsBySource) {
+    // Если прайс содержит филиалы, базовая пустая колонка больше не нужна.
+    if ([...columns].some(label => label !== baseLabel) && next.delete(baseLabel)) {
+      replacedBaseLabels.push(baseLabel);
+    }
+    for (const label of columns) next.add(label);
+  }
+
+  comparison.competitors = [...next];
   comparison.changed('competitors', true);
   await comparison.save();
+
+  // До появления филиальных колонок здесь могла лежать минимальная цена по
+  // всей клинике. После разбиения она не должна внезапно определиться как
+  // «наша клиника» и вернуться отдельной колонкой.
+  if (replacedBaseLabels.length) {
+    const items = await PriceComparisonItem.findAll({ where: { comparisonId } });
+    for (const item of items) {
+      let changed = false;
+      for (const field of ['prices', 'priceSources', 'priceHistory', 'costPrices']) {
+        const values = { ...(item[field] || {}) };
+        for (const label of replacedBaseLabels) {
+          if (!Object.prototype.hasOwnProperty.call(values, label)) continue;
+          delete values[label];
+          changed = true;
+        }
+        item[field] = values;
+        item.changed(field, true);
+      }
+      if (changed) await item.save();
+    }
+  }
 }
 
 /**
  * Цены подтверждённых соответствий одного сравнения.
  *
- * У клиники цена зависит от филиала, и одна услуга даёт до десяти строк.
- * В сравнение идёт самая низкая по источнику — так же, как это делает
- * страница сравнения в самом парсере: иначе одна позиция превращается
- * в десяток, и сравнивать становится нечего.
+ * У клиники цена зависит от филиала. Каждый филиал становится отдельной
+ * колонкой: схлопывать десять адресов до минимальной цены по городу нельзя,
+ * потому что это скрывает реальные различия прайсов.
  */
 async function pricesForComparison(comparisonId) {
   const [rows] = await sequelize.query(
     `SELECT m.id            AS "matchId",
             m."itemId",
+            src.id           AS "sourceId",
             src."competitorLabel",
             cs.name         AS "competitorServiceName",
             p.price,
+            p."filialId",
             p."filialName",
+            loc.name        AS "locationName",
+            loc.address,
             p."observedAt"
        FROM competitor_service_matches m
        JOIN price_comparison_items  it  ON it.id  = m."itemId"
        JOIN competitor_services     cs  ON cs.id  = m."competitorServiceId"
        JOIN competitor_sources      src ON src.id = cs."sourceId"
        JOIN competitor_prices       p   ON p."serviceId" = cs.id
+       LEFT JOIN LATERAL (
+         SELECT l.name, l.address
+           FROM competitor_locations l
+          WHERE l."sourceId" = src.id
+            AND l."parserFilialId" = p."filialId"
+          ORDER BY (l.origin = 'manual') DESC, l."updatedAt" DESC
+          LIMIT 1
+       ) loc ON true
       WHERE it."comparisonId" = :comparisonId
         AND m.status = 'confirmed'
         AND src."competitorLabel" IS NOT NULL
         AND p.price IS NOT NULL
-      ORDER BY m."itemId", src."competitorLabel", p.price ASC`,
+      ORDER BY m."itemId", src."competitorLabel", p."filialId" NULLS FIRST, p.price ASC`,
     { replacements: { comparisonId } }
   );
 
-  // Первая строка в группе и есть самая дешёвая — за это отвечает ORDER BY
+  const [[comparison]] = await sequelize.query(
+    'SELECT competitors FROM price_comparisons WHERE id = :comparisonId',
+    { replacements: { comparisonId } }
+  );
+  const selectedColumns = new Set(comparison?.competitors || []);
+
+  // У двух филиалов Екатерининской реально встречается одно название
+  // «Лечебно-хирургический центр». В таком случае добавляем ID филиала.
+  addBranchColumnLabels(rows);
+  const selectedRows = rows.filter(row =>
+    // Базовая колонка — старый формат и означает «показать все филиалы».
+    selectedColumns.has(row.competitorLabel) ||
+    selectedColumns.has(row.columnLabel)
+  );
+
+  // Если одна и та же услуга сопоставлена повторно, берём минимальную цену
+  // только внутри конкретного филиала, но никогда между филиалами.
   const cheapest = new Map();
-  for (const row of rows) {
-    const key = `${row.itemId}|${row.competitorLabel}`;
+  for (const row of selectedRows) {
+    const key = `${row.itemId}|${row.columnLabel}`;
     if (!cheapest.has(key)) cheapest.set(key, row);
   }
   return [...cheapest.values()];
@@ -100,8 +185,6 @@ async function fillComparison(
 
   const summary = { items: 0, filled: 0, unchanged: 0, protectedByHuman: 0 };
   const now = new Date().toISOString();
-  const usedLabels = new Set(prices.map(row => row.competitorLabel));
-
   for (const [itemId, rowsForItem] of byItem) {
     const item = await PriceComparisonItem.findByPk(itemId);
     if (!item) continue;
@@ -112,7 +195,7 @@ async function fillComparison(
     let touched = false;
 
     for (const row of rowsForItem) {
-      const label = row.competitorLabel;
+      const label = row.columnLabel;
       const value = Number(row.price);
       const existing = nextPrices[label];
       const wasSetByParser = nextSources[label]?.source === 'parser';
@@ -140,7 +223,9 @@ async function fillComparison(
         source: 'parser',
         matchId: row.matchId,
         competitorServiceName: row.competitorServiceName,
+        filialId: row.filialId ?? null,
         filialName: row.filialName || null,
+        address: row.address || null,
         observedAt: row.observedAt || null,
         syncedAt: now
       };
@@ -175,7 +260,7 @@ async function fillComparison(
 
   // После записи цен, а не до: если подставлять было нечего, лишние колонки
   // в сравнении не нужны
-  await ensureCompetitorColumns(comparisonId, usedLabels);
+  await ensureCompetitorColumns(comparisonId, prices);
 
   return summary;
 }
@@ -247,6 +332,7 @@ async function pendingCount(comparisonId) {
 }
 
 module.exports = {
+  addBranchColumnLabels,
   pricesForComparison,
   fillComparison,
   fillAllComparisons,

@@ -8,6 +8,7 @@ const {
   hasSemanticConflict,
   canAutoConfirm
 } = require('../services/competitorMatching');
+const { addBranchColumnLabels } = require('../services/competitorPriceFill');
 
 test('same MIS service has one key on different comparison sheets', () => {
   assert.equal(
@@ -53,5 +54,41 @@ test('meaning-changing words are left for review', () => {
       { method: 'name', name: 'КТ органов грудной клетки с контрастом', score: 0.95 }
     ),
     false
+  );
+});
+
+test('each competitor branch gets a separate comparison column', () => {
+  const rows = addBranchColumnLabels([
+    {
+      sourceId: 'clinic',
+      competitorLabel: 'Екатерининская (Краснодар)',
+      filialId: 1,
+      filialName: 'Клиника на Сормовской'
+    },
+    {
+      sourceId: 'clinic',
+      competitorLabel: 'Екатерининская (Краснодар)',
+      filialId: 2,
+      filialName: 'Лечебно-хирургический центр'
+    },
+    {
+      sourceId: 'clinic',
+      competitorLabel: 'Екатерининская (Краснодар)',
+      filialId: 3,
+      filialName: 'Лечебно-хирургический центр'
+    }
+  ]);
+
+  assert.equal(
+    rows[0].columnLabel,
+    'Екатерининская (Краснодар) — Клиника на Сормовской'
+  );
+  assert.equal(
+    rows[1].columnLabel,
+    'Екатерининская (Краснодар) — Лечебно-хирургический центр №2'
+  );
+  assert.equal(
+    rows[2].columnLabel,
+    'Екатерининская (Краснодар) — Лечебно-хирургический центр №3'
   );
 });

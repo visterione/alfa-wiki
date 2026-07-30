@@ -258,6 +258,25 @@ async function learnedMappings(labels) {
 }
 
 /**
+ * В price_comparisons перечислены видимые колонки. После разбиения по филиалам
+ * это «Екатерининская (Краснодар) — Клиника на Сормовской», а источник хранит
+ * базовую подпись «Екатерининская (Краснодар)». Для поиска услуг восстанавливаем
+ * базовые подписи источников из набора филиальных колонок.
+ */
+async function sourceLabelsForColumns(columns) {
+  if (!columns?.length) return [];
+  const [sources] = await sequelize.query(
+    `SELECT "competitorLabel" FROM competitor_sources
+      WHERE "competitorLabel" IS NOT NULL`
+  );
+  return sources
+    .map(source => source.competitorLabel)
+    .filter(label => columns.some(column =>
+      column === label || column.startsWith(`${label} — `)
+    ));
+}
+
+/**
  * Подобрать соответствия для всех позиций сравнения.
  *
  * Пересчёт безопасен: подтверждённые и отклонённые соответствия остаются
@@ -277,9 +296,8 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
   );
   // Ищем только среди конкурентов, перечисленных в самом сравнении: остальные
   // клиники в нём не участвуют, и предлагать их — только мешать
-  const labels = Array.isArray(comparison?.competitors) && comparison.competitors.length
-    ? comparison.competitors
-    : null;
+  const columns = Array.isArray(comparison?.competitors) ? comparison.competitors : [];
+  const labels = await sourceLabelsForColumns(columns);
 
   if (!labels?.length) {
     return { items: items.length, created: 0, autoConfirmed: 0, reused: 0, review: 0, skipped: 0 };
@@ -403,8 +421,17 @@ async function reuseConfirmedMatch(matchId, { actor = null } = {}) {
     `SELECT it.id, it."comparisonId", it."misServiceId", it."serviceCode", it."serviceName"
        FROM price_comparison_items it
        JOIN price_comparisons pc ON pc.id = it."comparisonId"
-      WHERE pc.competitors @> :label::jsonb`,
-    { replacements: { label: JSON.stringify([origin.competitorLabel]) } }
+      WHERE EXISTS (
+        SELECT 1
+          FROM jsonb_array_elements_text(COALESCE(pc.competitors, '[]'::jsonb)) AS cols(column_name)
+         WHERE column_name = :label OR column_name LIKE :branchPrefix
+      )`,
+    {
+      replacements: {
+        label: origin.competitorLabel,
+        branchPrefix: `${origin.competitorLabel} — %`
+      }
+    }
   );
 
   const key = ownServiceKey(origin);
@@ -467,6 +494,7 @@ module.exports = {
   ownServiceKey,
   hasSemanticConflict,
   canAutoConfirm,
+  sourceLabelsForColumns,
   code804For,
   findCandidates,
   suggestForComparison,

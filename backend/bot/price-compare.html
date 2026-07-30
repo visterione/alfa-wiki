@@ -1258,8 +1258,10 @@ window.priceApp = (function() {
   var hiddenColumns = []; // Список скрытых колонок
   var availableClinics = []; // Список клиник из МИС
   var parserCompetitors = [];      // Клиники-конкуренты из парсера (зеркало в вики)
+  var parserCompetitorChoices = []; // Отдельные варианты колонок по филиалам
   var parserLogoByLabel = {};      // подпись колонки -> data-URI значка
   var selectedParserSourceId = null; // что выбрано в списке при добавлении конкурента
+  var selectedParserBaseLabel = null;
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
   var labCategoryOptions = []; // Кеш всех опций категорий для поиска
@@ -1389,8 +1391,19 @@ window.priceApp = (function() {
     return bound.length === 1 ? bound[0].suggestedLabel : col.name;
   }
 
+  function parserLogoForColumn(name) {
+    if (parserLogoByLabel[name]) return parserLogoByLabel[name];
+    var source = parserCompetitors.filter(function(c) {
+      return c.logo && (
+        name.indexOf(c.suggestedLabel + ' — ') === 0 ||
+        (c.competitorLabel && name.indexOf(c.competitorLabel + ' — ') === 0)
+      );
+    })[0];
+    return source ? source.logo : null;
+  }
+
   function columnHeadingHtml(col, suffix) {
-    var logo = parserLogoByLabel[col.name] || staticLogoForColumn(col.name);
+    var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
     var displayName = displayNameForColumn(col);
     var logoHtml = logo
       ? '<img class="price-column-logo" src="' + logo + '" alt="" onerror="this.hidden=true">'
@@ -1974,9 +1987,6 @@ window.priceApp = (function() {
           html += '<span class="price-value"' +
             (parserPrice ? ' title="Цена из парсера; обновляется автоматически"' : '') +
             '>' + formatPrice(price) + '</span>';
-          if (parserPrice) {
-            html += '<small style="display:block;color:#34c759;font-size:10px;margin-top:2px">из парсера</small>';
-          }
         }
         html += '</td>';
 
@@ -2088,6 +2098,7 @@ window.priceApp = (function() {
   function loadParserCompetitors() {
     fetchAPI(PARSER_URL + '/competitors').then(function(res) {
       parserCompetitors = res.data || [];
+      parserCompetitorChoices = [];
       parserLogoByLabel = {};
       parserCompetitors.forEach(function(c) {
         var base = c.displayName || c.name;
@@ -2098,6 +2109,32 @@ window.priceApp = (function() {
           parserLogoByLabel[c.suggestedLabel] = c.logo;
           if (c.competitorLabel) parserLogoByLabel[c.competitorLabel] = c.logo;
         }
+
+        var filials = c.filials || [];
+        if (!filials.length) {
+          parserCompetitorChoices.push({
+            source: c,
+            label: c.suggestedLabel,
+            branch: null
+          });
+          return;
+        }
+
+        var counts = {};
+        filials.forEach(function(f) {
+          var name = f.name || ('Филиал ' + f.id);
+          counts[name] = (counts[name] || 0) + 1;
+        });
+        filials.forEach(function(f) {
+          var branch = f.name || ('Филиал ' + f.id);
+          if (counts[branch] > 1) branch += ' №' + f.id;
+          parserCompetitorChoices.push({
+            source: c,
+            label: c.suggestedLabel + ' — ' + branch,
+            branch: branch,
+            address: f.address || null
+          });
+        });
       });
     }).catch(function(e) {
       // без списка парсера окно работает по-старому, руками
@@ -2106,31 +2143,40 @@ window.priceApp = (function() {
   }
 
   function onParserCompetitorChange(value) {
-    selectedParserSourceId = value ? Number(value) : null;
-    if (!selectedParserSourceId) return;
-    var picked = parserCompetitors.filter(function(c) {
-      return c.parserSourceId === selectedParserSourceId;
-    })[0];
-    if (picked) document.getElementById('competitor-name-input').value = picked.suggestedLabel;
+    var input = document.getElementById('competitor-name-input');
+    var choice = value ? parserCompetitorChoices[Number(value) - 1] : null;
+    selectedParserSourceId = choice ? choice.source.parserSourceId : null;
+    selectedParserBaseLabel = choice ? choice.source.suggestedLabel : null;
+    input.readOnly = Boolean(choice);
+    if (choice) input.value = choice.label;
   }
 
   function openAddCompetitorModal() {
     document.getElementById('competitor-name-input').value = '';
+    document.getElementById('competitor-name-input').readOnly = false;
     selectedParserSourceId = null;
+    selectedParserBaseLabel = null;
 
     var group = document.getElementById('competitor-parser-group');
     var select = document.getElementById('competitor-parser-select');
     if (group && select) {
-      group.style.display = parserCompetitors.length ? '' : 'none';
+      group.style.display = parserCompetitorChoices.length ? '' : 'none';
       var options = '<option value="">— вписать название вручную —</option>';
-      parserCompetitors.forEach(function(c) {
+      parserCompetitorChoices.forEach(function(choice, index) {
+        var c = choice.source;
         var taken = allColumns.some(function(col) {
-          return col.name === c.suggestedLabel ||
-            (c.competitorLabel && col.name === c.competitorLabel);
+          return col.name === choice.label ||
+            // Старая городская колонка означает «все филиалы».
+            col.name === c.suggestedLabel ||
+            (c.competitorLabel && (
+              col.name === c.competitorLabel
+            ));
         });
-        options += '<option value="' + c.parserSourceId + '"' + (taken ? ' disabled' : '') + '>' +
-          c.suggestedLabel +
-          ' · услуг: ' + (c.servicesTotal || 0) + (taken ? ' (уже в сравнении)' : '') + '</option>';
+        options += '<option value="' + (index + 1) + '"' + (taken ? ' disabled' : '') + '>' +
+          choice.label +
+          (choice.address ? ' · ' + choice.address : '') +
+          ' · услуг: ' + (c.servicesTotal || 0) +
+          (taken ? ' (уже в сравнении)' : '') + '</option>';
       });
       select.innerHTML = options;
     }
@@ -2168,7 +2214,9 @@ window.priceApp = (function() {
       if (selectedParserSourceId) {
         return fetchAPI(PARSER_URL + '/sources/' + selectedParserSourceId + '/label', {
           method: 'PUT',
-          body: JSON.stringify({ competitorLabel: competitor })
+          // К источнику привязывается базовая подпись клиники+города,
+          // а выбранный филиал остаётся отдельной колонкой сравнения.
+          body: JSON.stringify({ competitorLabel: selectedParserBaseLabel || competitor })
         }).then(function() {
           loadParserCompetitors();
           // Точные связи и уже выученные на других листах соответствия

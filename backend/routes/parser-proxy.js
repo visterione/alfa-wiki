@@ -167,10 +167,36 @@ router.get('/competitors', authenticate, async (req, res) => {
     const sources = await CompetitorSource.findAll({
       order: [['displayName', 'ASC'], ['city', 'ASC']],
       attributes: [
-        'parserSourceId', 'name', 'displayName', 'city', 'servicesTotal',
+        'id', 'parserSourceId', 'name', 'displayName', 'city', 'servicesTotal',
         'competitorLabel', 'lastRunAt', 'logoData', 'logoContentType'
       ]
     });
+    const [filialRows] = await sequelize.query(
+      `SELECT DISTINCT ON (cs."sourceId", p."filialId")
+              cs."sourceId", p."filialId", p."filialName",
+              loc.name AS "locationName", loc.address
+         FROM competitor_services cs
+         JOIN competitor_prices p ON p."serviceId" = cs.id
+         LEFT JOIN LATERAL (
+           SELECT l.name, l.address
+             FROM competitor_locations l
+            WHERE l."sourceId" = cs."sourceId"
+              AND l."parserFilialId" = p."filialId"
+            ORDER BY (l.origin = 'manual') DESC, l."updatedAt" DESC
+            LIMIT 1
+         ) loc ON true
+        WHERE p."filialId" IS NOT NULL OR p."filialName" IS NOT NULL
+        ORDER BY cs."sourceId", p."filialId", p."filialName"`
+    );
+    const filialsBySource = new Map();
+    for (const row of filialRows) {
+      if (!filialsBySource.has(row.sourceId)) filialsBySource.set(row.sourceId, []);
+      filialsBySource.get(row.sourceId).push({
+        id: row.filialId,
+        name: row.filialName || row.locationName || row.address || `Филиал ${row.filialId}`,
+        address: row.address || null
+      });
+    }
 
     res.json({
       success: true,
@@ -180,6 +206,7 @@ router.get('/competitors', authenticate, async (req, res) => {
         displayName: source.displayName,
         city: source.city,
         servicesTotal: source.servicesTotal,
+        filials: filialsBySource.get(source.id) || [],
         competitorLabel: source.competitorLabel,
         lastRunAt: source.lastRunAt,
         logo: source.logoData
