@@ -79,6 +79,85 @@
 
 .ap-logo:hover .ap-logo-drop { display: flex; }
 
+/* ── Дерево источников ──────────────────────────────────────────────────── */
+
+.ap-tree-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+/* .admin-table-container режет всё, что не влезло по ширине (overflow: hidden),
+   и колонка с кнопками уезжала за край: длинный адрес прайса растягивал
+   таблицу шире контейнера. Ссылки теперь обрезаются многоточием, а на узком
+   экране таблица прокручивается, а не теряет последнюю колонку */
+.ap-sources { overflow-x: auto; }
+
+.ap-sources .ap-url {
+  display: block;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Строк в дереве втрое больше, чем колонок: обычные 14px по вертикали
+   растягивают сеть из двадцати городов на два экрана */
+.ap-sources .admin-table th,
+.ap-sources .admin-table td { padding: 8px 12px; }
+
+/* Кнопки строки — всегда одной строкой и по правому краю */
+.ap-sources .ap-actions { white-space: nowrap; width: 1%; text-align: right; }
+.ap-sources .ap-actions .btn-icon { display: inline-flex; vertical-align: middle; }
+
+/* Ветки кликабельны целиком: попадать в стрелку размером с ноготь —
+   лишняя точность там, где вся строка ничего другого не делает */
+.admin-table tr.ap-group-row,
+.admin-table tr.ap-city-row { cursor: pointer; user-select: none; }
+
+.admin-table tr.ap-group-row > td { background: var(--bg-secondary, #f9fafb); }
+.admin-table tr.ap-city-row > td { background: var(--bg-primary, #fff); }
+
+.ap-branch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ap-twist {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-tertiary, #9ca3af);
+}
+
+.ap-branch-note { font-size: 12px; font-weight: 400; }
+
+.ap-group-logo {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+/* Пустое место вместо значка, чтобы названия сетей стояли в одну линию */
+.ap-group-logo-empty { display: inline-block; }
+
+/* Без подписи в сравнениях услуги источника никуда не попадают — на
+   свёрнутой ветке это единственный намёк, что там что-то не доделано */
+.ap-unlabeled {
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(255, 149, 0, 0.14);
+  color: var(--warning, #b45309);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* ── Модалка адресов ────────────────────────────────────────────────────── */
 
 /* Окно с адресами — колонка: шапка, карта и форма прибиты, прокручивается

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight, Crosshair } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { RefreshCw, Download, AlertTriangle, CheckCircle2, Loader2, Globe, X, Link2, Check, Ban, Wand2, Trash2, ImageDown, ListPlus, MapPin, Search, ChevronLeft, ChevronRight, ChevronDown, Crosshair } from 'lucide-react';
 import { priceParser, priceComparisons, competitorMatching } from '../../services/api';
 import { ensureLeaflet } from '../../utils/leaflet';
 import toast from 'react-hot-toast';
@@ -1346,6 +1346,114 @@ function MatchingTab() {
   );
 }
 
+/* ── Дерево источников ──────────────────────────────────────────────────────
+ *
+ * Парсер отдаёт источники плоским списком в порядке заведения, и у сети из
+ * двух десятков городов её строки расползаются по всей таблице вперемешку
+ * с чужими. Собираем их обратно в клиники.
+ *
+ * Клиника определяется доменом, а не названием: у сети под каждый город свой
+ * поддомен, зато имя с сайта совпадает не всегда — clinic23.ru отдаёт и
+ * «Клинику Екатерининскую», и «Клинику на Герцена», а это одна сеть. Домен
+ * же у всех городов один.
+ */
+
+// Домены, где предпоследняя часть — сама часть суффикса (com.ru, co.uk):
+// без этого списка clinic.com.ru разложился бы в «com.ru»
+const SUFFIX_2LD = new Set(['com', 'net', 'org', 'co', 'edu', 'gov', 'ac']);
+
+const ru = new Intl.Collator('ru');
+
+const sourceName = (source) => (source.display_name || source.name || '').trim();
+
+/** Домен клиники: belgorod.fomin-clinic.ru и fomin-clinic.ru — одна сеть. */
+function brandKey(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+    const parts = host.split('.');
+    if (parts.length <= 2) return host;
+    return SUFFIX_2LD.has(parts[parts.length - 2])
+      ? parts.slice(-3).join('.')
+      : parts.slice(-2).join('.');
+  } catch {
+    // Ссылка, которую не разобрал даже URL — пусть живёт отдельной веткой
+    return url || 'unknown';
+  }
+}
+
+/**
+ * Как назвать ветку сети.
+ *
+ * Берём название, встречающееся у большинства городов: у Фомина это
+ * «Клиника Фомина» во всех двадцати, а единичное «Клиника на Герцена»
+ * не должно перебивать имя всей сети.
+ */
+function brandTitle(items, fallback) {
+  const tally = new Map();
+  for (const source of items) {
+    const name = sourceName(source);
+    if (name) tally.set(name, (tally.get(name) || 0) + 1);
+  }
+  if (!tally.size) return fallback;
+  return [...tally.entries()].sort(
+    (a, b) => b[1] - a[1] || a[0].length - b[0].length || ru.compare(a[0], b[0])
+  )[0][0];
+}
+
+/**
+ * Клиника → город → источник.
+ *
+ * Город становится отдельной веткой только когда в нём правда несколько
+ * источников: у Фомина в каждом городе ровно один, и промежуточный узел
+ * там был бы лишним кликом ради одной строки.
+ */
+function buildTree(sources, syncBySourceId) {
+  const groups = new Map();
+  for (const source of sources) {
+    const key = brandKey(source.base_url);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(source);
+  }
+
+  const byNameThenCity = (a, b) =>
+    ru.compare(sourceName(a), sourceName(b)) || ru.compare(a.city || '', b.city || '');
+
+  return [...groups.entries()].map(([key, items]) => {
+    const byCity = new Map();
+    for (const source of items) {
+      const city = (source.city || '').trim();
+      if (!byCity.has(city)) byCity.set(city, []);
+      byCity.get(city).push(source);
+    }
+
+    const nodes = [...byCity.entries()]
+      // Города по алфавиту, безымянный — в конец: он требует внимания,
+      // но не должен возглавлять список
+      .sort(([a], [b]) => (a ? 0 : 1) - (b ? 0 : 1) || ru.compare(a, b))
+      .map(([city, cityItems]) => {
+        cityItems.sort(byNameThenCity);
+        return cityItems.length > 1
+          ? { type: 'city', key: `c:${key}:${city}`, city, items: cityItems }
+          : { type: 'source', key: `s:${cityItems[0].id}`, source: cityItems[0] };
+      });
+
+    return {
+      key: `g:${key}`,
+      title: brandTitle(items, key),
+      items,
+      nodes,
+      cities: byCity.size,
+      services: items.reduce((sum, s) => sum + (Number(s.services_total) || 0), 0),
+      // Без подписи в сравнениях услуги источника не участвуют в сопоставлении
+      // вовсе — на свёрнутой ветке это единственный способ такое заметить
+      unlabeled: items.filter(s => !syncBySourceId[s.id]?.competitorLabel).length,
+    };
+  }).sort((a, b) => ru.compare(a.title, b.title));
+}
+
+// Раскрытые ветки переживают перезагрузку: страницу держат открытой днями
+const TREE_OPEN_KEY = 'ap-tree-open';
+
 export default function AdminParser() {
   const [tab, setTab] = useState('sources');
   const [connection, setConnection] = useState(null);
@@ -1360,6 +1468,13 @@ export default function AdminParser() {
   const [loading, setLoading] = useState(true);
 
   const [confirming, setConfirming] = useState(false);
+
+  // Ветка открыта, если о ней есть явное решение человека; иначе действует
+  // умолчание: сети свёрнуты (у Фомина два десятка городов), города внутри —
+  // раскрыты, до них человек уже добрался осознанно
+  const [open, setOpen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(TREE_OPEN_KEY)) || {}; } catch { return {}; }
+  });
 
   const [jobId, setJobId] = useState(null);
   const [job, setJob] = useState(null);
@@ -1514,6 +1629,134 @@ export default function AdminParser() {
   // Опрос остановит сам эффект: он завязан на jobId
   const closeJob = () => { setJobId(null); setJob(null); };
 
+  const tree = useMemo(() => buildTree(sources, syncBySourceId), [sources, syncBySourceId]);
+
+  useEffect(() => {
+    try { localStorage.setItem(TREE_OPEN_KEY, JSON.stringify(open)); } catch { /* приватный режим */ }
+  }, [open]);
+
+  const isOpen = (key) => open[key] ?? key.startsWith('c:');
+  const toggleBranch = (key) => setOpen(prev => ({ ...prev, [key]: !(prev[key] ?? key.startsWith('c:')) }));
+
+  const branchKeys = tree.flatMap(group => [
+    group.key,
+    ...group.nodes.filter(node => node.type === 'city').map(node => node.key),
+  ]);
+  const allOpen = branchKeys.length > 0 && branchKeys.every(isOpen);
+  const toggleAll = () =>
+    setOpen(Object.fromEntries(branchKeys.map(key => [key, !allOpen])));
+
+  /** Строка источника — одна и та же на любом уровне дерева, меняется отступ. */
+  const sourceRow = (source, depth) => {
+    const sync = syncBySourceId[source.id];
+    return (
+      <tr key={source.id}>
+        <td style={{ paddingLeft: 20 + depth * 22 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <LogoCell source={source} logo={logos[source.id]} onChanged={loadLogos} />
+            <div style={{ minWidth: 0 }}>
+              {/* Название с сайта, а не домен: у сети из двадцати
+                  городов домены различаются лишь приставкой */}
+              <EditableCell
+                value={source.display_name || ''}
+                placeholder={source.name}
+                hint="Название клиники — можно поправить, если автомат угадал криво"
+                bold
+                onSave={async next => {
+                  await priceParser.rename(source.id, next);
+                  loadSources();
+                }}
+              />
+              {/* Ссылка обрезается: у Инвитро адрес с query-строкой на сотню
+                  символов растягивал таблицу так, что колонка с кнопками
+                  уезжала за край контейнера */}
+              <div>
+                <small className="text-muted ap-url" title={source.base_url}>{source.base_url}</small>
+              </div>
+            </div>
+          </div>
+        </td>
+        <td>
+          {/* Правится здесь, а не при вводе ссылки: у сайта без
+              переключателя городов взять город неоткуда */}
+          <EditableCell
+            value={source.city || ''}
+            placeholder="указать…"
+            hint="Город клиники"
+            onSave={async next => {
+              await priceParser.setCity(source.id, next);
+              loadSources();
+            }}
+          />
+          <div>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '0 4px', fontSize: 12 }}
+              onClick={() => setLocationsFor(source)}
+              title="Адреса точек — для карты в сравнении цен"
+            >
+              <MapPin size={12} style={{ verticalAlign: -1 }} /> адреса
+              {source.filials_total > 0 && ` · филиалов ${source.filials_total}`}
+            </button>
+          </div>
+        </td>
+        <td>
+          {/* Одной цифрой разобрать «почему цены нет» нельзя:
+              по клику открывается наш каталог по этой клинике */}
+          <button
+            className="btn btn-ghost"
+            style={{ padding: '0 4px' }}
+            onClick={() => setServicesFor(source)}
+            title="Показать услуги, забранные в нашу копию"
+          >
+            {source.services_total}
+          </button>
+        </td>
+        <td>
+          <LabelCell source={source} value={sync?.competitorLabel || ''} onSaved={loadSyncStatus} />
+        </td>
+        <td>
+          {date(source.last_run?.finished_at || source.last_run?.started_at)}
+          {source.last_run?.status && source.last_run.status !== 'ok' && (
+            <div><small style={{ color: 'var(--error)' }}>{source.last_run.status}</small></div>
+          )}
+        </td>
+        <td>
+          {/* Две даты намеренно рядом: свежий забор недельного обхода
+              даёт всё ещё недельные цены */}
+          {dateTime(sync?.syncedAt)}
+          {sync?.syncStatus === 'failed' && (
+            <div><small style={{ color: 'var(--error)' }}>{sync.syncError}</small></div>
+          )}
+        </td>
+        <td className="ap-actions">
+          <button
+            className="btn btn-icon"
+            title="Обойти сайт заново"
+            onClick={() => handleRefresh(source)}
+            disabled={job?.state === 'running'}
+          >
+            <RefreshCw size={14} />
+          </button>
+          <button
+            className="btn btn-icon"
+            title="Подтянуть название и логотип с сайта"
+            onClick={() => handleBranding(source)}
+          >
+            <ImageDown size={14} />
+          </button>
+          <button
+            className="btn btn-icon"
+            title="Удалить клинику"
+            onClick={() => setToDelete(source)}
+          >
+            <Trash2 size={14} />
+          </button>
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="admin-page">
       <div className="admin-header">
@@ -1555,7 +1798,17 @@ export default function AdminParser() {
           <p>Источников пока нет. Вставьте ссылку на прайс конкурента выше.</p>
         </div>
       ) : (
-        <div className="admin-table-container">
+        <>
+        <div className="ap-tree-toolbar">
+          <span className="text-muted">
+            клиник: {tree.length} · источников: {sources.length}
+          </span>
+          <button className="btn btn-ghost" onClick={toggleAll}>
+            {allOpen ? 'Свернуть всё' : 'Развернуть всё'}
+          </button>
+        </div>
+
+        <div className="admin-table-container ap-sources">
           <table className="admin-table">
             <thead>
               <tr>
@@ -1569,121 +1822,79 @@ export default function AdminParser() {
               </tr>
             </thead>
             <tbody>
-              {sources.map(source => {
-                const sync = syncBySourceId[source.id];
+              {tree.map(group => {
+                // Клиника из одного города — просто строка: сворачивать
+                // ветку с единственным потомком незачем
+                if (group.items.length === 1) return sourceRow(group.items[0], 0);
+
+                const groupOpen = isOpen(group.key);
+                const logo = group.items.map(s => logos[s.id]).find(Boolean);
+
                 return (
-                  <tr key={source.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <LogoCell
-                          source={source}
-                          logo={logos[source.id]}
-                          onChanged={loadLogos}
-                        />
-                        <div>
-                          {/* Название с сайта, а не домен: у сети из двадцати
-                              городов домены различаются лишь приставкой */}
-                          <EditableCell
-                            value={source.display_name || ''}
-                            placeholder={source.name}
-                            hint="Название клиники — можно поправить, если автомат угадал криво"
-                            bold
-                            onSave={async next => {
-                              await priceParser.rename(source.id, next);
-                              loadSources();
-                            }}
-                          />
-                          <div><small className="text-muted">{source.base_url}</small></div>
+                  <React.Fragment key={group.key}>
+                    <tr className="ap-group-row" onClick={() => toggleBranch(group.key)}>
+                      <td>
+                        <div className="ap-branch">
+                          <span className="ap-twist">
+                            {groupOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                          </span>
+                          {logo
+                            ? <img className="ap-group-logo" src={logo} alt="" />
+                            : <span className="ap-group-logo ap-group-logo-empty" />}
+                          <b>{group.title}</b>
+                          <span className="text-muted ap-branch-note">
+                            источников: {group.items.length}
+                          </span>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      {/* Правится здесь, а не при вводе ссылки: у сайта без
-                          переключателя городов взять город неоткуда */}
-                      <EditableCell
-                        value={source.city || ''}
-                        placeholder="указать…"
-                        hint="Город клиники"
-                        onSave={async next => {
-                          await priceParser.setCity(source.id, next);
-                          loadSources();
-                        }}
-                      />
-                      <div>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: '0 4px', fontSize: 12 }}
-                          onClick={() => setLocationsFor(source)}
-                          title="Адреса точек — для карты в сравнении цен"
-                        >
-                          <MapPin size={12} style={{ verticalAlign: -1 }} /> адреса
-                          {source.filials_total > 0 && ` · филиалов ${source.filials_total}`}
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      {/* Одной цифрой разобрать «почему цены нет» нельзя:
-                          по клику открывается наш каталог по этой клинике */}
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: '0 4px' }}
-                        onClick={() => setServicesFor(source)}
-                        title="Показать услуги, забранные в нашу копию"
-                      >
-                        {source.services_total}
-                      </button>
-                    </td>
-                    <td>
-                      <LabelCell
-                        source={source}
-                        value={sync?.competitorLabel || ''}
-                        onSaved={loadSyncStatus}
-                      />
-                    </td>
-                    <td>
-                      {date(source.last_run?.finished_at || source.last_run?.started_at)}
-                      {source.last_run?.status && source.last_run.status !== 'ok' && (
-                        <div><small style={{ color: 'var(--error)' }}>{source.last_run.status}</small></div>
-                      )}
-                    </td>
-                    <td>
-                      {/* Две даты намеренно рядом: свежий забор недельного обхода
-                          даёт всё ещё недельные цены */}
-                      {dateTime(sync?.syncedAt)}
-                      {sync?.syncStatus === 'failed' && (
-                        <div><small style={{ color: 'var(--error)' }}>{sync.syncError}</small></div>
-                      )}
-                    </td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button
-                        className="btn btn-icon"
-                        title="Обойти сайт заново"
-                        onClick={() => handleRefresh(source)}
-                        disabled={job?.state === 'running'}
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                      <button
-                        className="btn btn-icon"
-                        title="Подтянуть название и логотип с сайта"
-                        onClick={() => handleBranding(source)}
-                      >
-                        <ImageDown size={14} />
-                      </button>
-                      <button
-                        className="btn btn-icon"
-                        title="Удалить клинику"
-                        onClick={() => setToDelete(source)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
+                      </td>
+                      <td className="text-muted">городов: {group.cities}</td>
+                      <td>{group.services.toLocaleString('ru-RU')}</td>
+                      <td>
+                        {group.unlabeled > 0 && (
+                          <small className="ap-unlabeled" title="Без подписи услуги не участвуют в сопоставлении">
+                            не указано: {group.unlabeled}
+                          </small>
+                        )}
+                      </td>
+                      <td colSpan={3} />
+                    </tr>
+
+                    {groupOpen && group.nodes.map(node => {
+                      if (node.type === 'source') return sourceRow(node.source, 1);
+
+                      const cityOpen = isOpen(node.key);
+                      const cityServices = node.items.reduce(
+                        (sum, s) => sum + (Number(s.services_total) || 0), 0);
+
+                      return (
+                        <React.Fragment key={node.key}>
+                          <tr className="ap-city-row" onClick={() => toggleBranch(node.key)}>
+                            <td style={{ paddingLeft: 42 }}>
+                              <div className="ap-branch">
+                                <span className="ap-twist">
+                                  {cityOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                                </span>
+                                <span>{node.city || <span className="text-muted">город не указан</span>}</span>
+                                <span className="text-muted ap-branch-note">
+                                  источников: {node.items.length}
+                                </span>
+                              </div>
+                            </td>
+                            <td />
+                            <td>{cityServices.toLocaleString('ru-RU')}</td>
+                            <td colSpan={4} />
+                          </tr>
+                          {cityOpen && node.items.map(source => sourceRow(source, 2))}
+                        </React.Fragment>
+                      );
+                    })}
+                  </React.Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       {locationsFor && (
