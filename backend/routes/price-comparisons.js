@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const { Op } = require('sequelize');
 const { PriceComparison, PriceComparisonItem, Page, PageHistory } = require('../models');
 const { authenticate } = require('../middleware/auth');
+const { pruneBindings } = require('../services/comparisonBindings');
 
 const router = express.Router();
 
@@ -35,7 +36,10 @@ router.get('/', authenticate, async (req, res) => {
     const comparisons = await PriceComparison.findAll({
       where,
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'name', 'description', 'competitors', 'ownMedCenters', 'comparisonType', 'createdAt', 'updatedAt']
+      attributes: [
+        'id', 'name', 'description', 'competitors', 'competitorBindings',
+        'ownMedCenters', 'comparisonType', 'createdAt', 'updatedAt'
+      ]
     });
 
     res.json(comparisons);
@@ -100,6 +104,7 @@ router.post('/',
         description = '',
         ownMedCenters = [],
         competitors = [],
+        competitorBindings = {},
         comparisonType = 'external'
       } = req.body;
 
@@ -108,6 +113,7 @@ router.post('/',
         description,
         ownMedCenters,
         competitors,
+        competitorBindings: pruneBindings(competitorBindings, competitors),
         comparisonType,
         createdBy: req.user.id
       });
@@ -149,7 +155,8 @@ router.put('/:id',
         name,
         description,
         ownMedCenters,
-        competitors
+        competitors,
+        competitorBindings
       } = req.body;
 
       const comparison = await PriceComparison.findOne({
@@ -161,11 +168,19 @@ router.put('/:id',
       }
 
       const oldName = comparison.name;
+      // Привязки колонок к клиникам парсера присылаются не всегда: страница
+      // сохраняет сравнение и при переименовании листа. Что не прислали —
+      // оставляем как было, а привязки удалённых колонок убираем сами:
+      // отдельной кнопки «отвязать клинику» у человека нет и не нужно.
       await comparison.update({
         name,
         description,
         ownMedCenters,
-        competitors
+        competitors,
+        competitorBindings: pruneBindings(
+          competitorBindings || comparison.competitorBindings,
+          competitors
+        )
       });
 
       const changes = [];

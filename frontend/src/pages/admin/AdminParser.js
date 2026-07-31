@@ -244,7 +244,7 @@ function JobPanel({ job, onConfirm, onClose, confirming }) {
   );
 }
 
-/** Правка текста прямо в ячейке: и название клиники, и подпись в сравнениях. */
+/** Правка текста прямо в ячейке: название клиники и город. */
 function EditableCell({ value, placeholder, hint, bold, onSave }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -369,25 +369,6 @@ function LogoCell({ source, logo, onChanged }) {
         onClick={e => e.stopPropagation()}
       />
     </div>
-  );
-}
-
-/**
- * Как эта клиника называется в сравнениях цен.
- *
- * В зеркале источники зовутся по домену («clinic23-krd»), а в сравнении
- * конкуренты перечислены человеческими названиями («Неомед»). Пока связь
- * не проставлена, цены источника подставлять некуда — и в сопоставлении
- * он не участвует вовсе.
- */
-function LabelCell({ source, value, onSaved }) {
-  return (
-    <EditableCell
-      value={value}
-      placeholder="указать…"
-      hint="Название колонки; город источника добавится автоматически"
-      onSave={async next => { await priceParser.setLabel(source.id, next); onSaved(); }}
-    />
   );
 }
 
@@ -834,13 +815,6 @@ function ServicesModal({ source, onClose }) {
           <div className="ap-warn">
             Копия отстаёт от парсера на {source.services_total - counts.activeTotal} услуг.
             Пока не нажата «Забрать цены», в сравнении цен их не будет.
-          </div>
-        )}
-
-        {!data?.source?.competitorLabel && (
-          <div className="ap-warn">
-            У клиники не заполнено «Название в сравнениях» — её услуги не участвуют
-            в сопоставлении, сколько бы их ни было забрано.
           </div>
         )}
 
@@ -1306,7 +1280,7 @@ function MatchingTab() {
                     <div>{match.competitorName}</div>
                     {match.competitorCategory && <small className="text-muted">{match.competitorCategory}</small>}
                   </td>
-                  <td>{match.competitorLabel}{match.city && <small className="text-muted"> · {match.city}</small>}</td>
+                  <td>{match.sourceName}{match.city && <small className="text-muted"> · {match.city}</small>}</td>
                   <td>{match.price != null ? Number(match.price).toLocaleString('ru-RU') : '—'}</td>
                   <td>
                     {match.method === 'code804' ? (
@@ -1767,9 +1741,6 @@ export default function AdminParser() {
           </button>
         </td>
         <td>
-          <LabelCell source={source} value={sync?.competitorLabel || ''} onSaved={loadSyncStatus} />
-        </td>
-        <td>
           {dateTime(sync?.syncedAt)}
           {sync?.syncStatus === 'failed' && (
             <div><small style={{ color: 'var(--error)' }}>{sync.syncError}</small></div>
@@ -1817,7 +1788,7 @@ export default function AdminParser() {
           </td>
           <td />
           <td title="Услуг с ценой в этом филиале">{filial.services.toLocaleString('ru-RU')}</td>
-          <td colSpan={3} />
+          <td colSpan={2} />
         </tr>
       ))}
       </React.Fragment>
@@ -1879,7 +1850,6 @@ export default function AdminParser() {
                 <th>Клиника</th>
                 <th>Город</th>
                 <th>Услуг</th>
-                <th>Название в сравнениях</th>
                 <th>Цены забраны</th>
                 <th></th>
               </tr>
@@ -1919,7 +1889,7 @@ export default function AdminParser() {
                       </td>
                       {/* Сводных чисел на ветках нет намеренно: сумма услуг
                           по сети ничего не решает, а строку загромождает */}
-                      <td colSpan={5} />
+                      <td colSpan={4} />
                     </tr>
 
                     {groupOpen && group.nodes.map(node => {
@@ -1939,7 +1909,7 @@ export default function AdminParser() {
                                 <span>{node.city || 'город не указан'}</span>
                               </div>
                             </td>
-                            <td colSpan={5} />
+                            <td colSpan={4} />
                           </tr>
                           {cityOpen && node.items.map(source => sourceRow(source, 2))}
                         </React.Fragment>

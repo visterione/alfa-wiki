@@ -29,7 +29,7 @@ router.get('/:comparisonId/matches', authenticate, async (req, res) => {
               cs.name          AS "competitorName",
               cs.category      AS "competitorCategory",
               cs.codes         AS "competitorCodes",
-              src."competitorLabel",
+              COALESCE(src."displayName", src.name) AS "sourceName",
               src.city,
               u."displayName"  AS "confirmedByName",
               (SELECT min(p.price) FROM competitor_prices p WHERE p."serviceId" = cs.id) AS price
@@ -106,9 +106,7 @@ router.post('/:comparisonId/matches/:matchId/confirm', ...canApprove, async (req
       // Явное принятие — осознанное разрешение заменить прежнее ручное
       // значение именно для этой услуги и этой клиники.
       overwriteMatchIds: [match.id],
-      overwriteItemLabels: learned.origin
-        ? [`${learned.origin.itemId}|${learned.origin.competitorLabel}`]
-        : []
+      overwriteItemSources: learned.origin ? [learned.origin] : []
     });
     for (const comparisonId of learned.comparisonIds) {
       await fill.fillComparison(comparisonId, { actor: req.user });

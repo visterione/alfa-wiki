@@ -8,7 +8,12 @@ const {
   hasSemanticConflict,
   canAutoConfirm
 } = require('../services/competitorMatching');
-const { addBranchColumnLabels } = require('../services/competitorPriceFill');
+const {
+  readBindings,
+  boundSourceIds,
+  columnsForRow,
+  pruneBindings
+} = require('../services/comparisonBindings');
 
 test('same MIS service has one key on different comparison sheets', () => {
   assert.equal(
@@ -57,38 +62,47 @@ test('meaning-changing words are left for review', () => {
   );
 });
 
-test('each competitor branch gets a separate comparison column', () => {
-  const rows = addBranchColumnLabels([
-    {
-      sourceId: 'clinic',
-      competitorLabel: 'Екатерининская (Краснодар)',
-      filialId: 1,
-      filialName: 'Клиника на Сормовской'
-    },
-    {
-      sourceId: 'clinic',
-      competitorLabel: 'Екатерининская (Краснодар)',
-      filialId: 2,
-      filialName: 'Лечебно-хирургический центр'
-    },
-    {
-      sourceId: 'clinic',
-      competitorLabel: 'Екатерининская (Краснодар)',
-      filialId: 3,
-      filialName: 'Лечебно-хирургический центр'
-    }
-  ]);
+const SHEET = {
+  competitors: ['Екатерининская — Сормовская', 'Екатерининская — вся сеть', 'Наш медцентр'],
+  competitorBindings: {
+    'Екатерининская — Сормовская': { parserSourceId: 7, filialId: 1 },
+    'Екатерининская — вся сеть': { parserSourceId: 7, filialId: null },
+    // Колонку удалили со страницы, привязка от неё осталась
+    'Инвитро (Анапа)': { parserSourceId: 9, filialId: null }
+  }
+};
 
-  assert.equal(
-    rows[0].columnLabel,
-    'Екатерининская (Краснодар) — Клиника на Сормовской'
+test('branch price goes to its own column and to the whole-clinic one', () => {
+  const bySource = readBindings(SHEET);
+  assert.deepEqual(
+    columnsForRow(bySource, { parserSourceId: 7, filialId: 1 }),
+    ['Екатерининская — Сормовская', 'Екатерининская — вся сеть']
   );
-  assert.equal(
-    rows[1].columnLabel,
-    'Екатерининская (Краснодар) — Лечебно-хирургический центр №2'
+  assert.deepEqual(
+    columnsForRow(bySource, { parserSourceId: 7, filialId: 2 }),
+    ['Екатерининская — вся сеть']
   );
-  assert.equal(
-    rows[2].columnLabel,
-    'Екатерининская (Краснодар) — Лечебно-хирургический центр №3'
+});
+
+test('binding without a column is ignored', () => {
+  assert.deepEqual(boundSourceIds(SHEET), [7]);
+  assert.deepEqual(columnsForRow(readBindings(SHEET), { parserSourceId: 9, filialId: null }), []);
+});
+
+test('deleting a column drops its binding', () => {
+  const kept = pruneBindings(SHEET.competitorBindings, ['Екатерининская — вся сеть']);
+  assert.deepEqual(Object.keys(kept), ['Екатерининская — вся сеть']);
+});
+
+test('column name is not what binds a clinic', () => {
+  // Ту же колонку переименовали — привязка переезжает вместе с ключом,
+  // и цены продолжают попадать в неё
+  const renamed = {
+    competitors: ['Ек-ская, Сормовская'],
+    competitorBindings: { 'Ек-ская, Сормовская': { parserSourceId: 7, filialId: 1 } }
+  };
+  assert.deepEqual(
+    columnsForRow(readBindings(renamed), { parserSourceId: 7, filialId: 1 }),
+    ['Ек-ская, Сормовская']
   );
 });

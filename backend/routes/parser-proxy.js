@@ -95,9 +95,9 @@ router.get('/ping', ...canManage, async (req, res) => {
 /**
  * Список клиник-конкурентов со сводкой последнего обхода.
  *
- * Заодно заводим строки зеркала для источников, которых там ещё нет. Без
- * этого «название в сравнениях» нельзя было указать, пока не прошёл первый
- * забор цен, — а понять это по интерфейсу было невозможно.
+ * Заодно заводим строки зеркала для источников, которых там ещё нет: логотип,
+ * адреса точек и привязка к колонкам сравнения живут у нас, и заводить их
+ * только после первого забора цен незачем.
  */
 router.get('/sources', ...canManage, async (req, res) => {
   try {
@@ -166,8 +166,8 @@ router.post('/sources/:id/branding', ...canManage, async (req, res) => {
 /**
  * Клиники-конкуренты для страницы сравнения цен.
  *
- * Отдаётся из зеркала одним запросом: название, город, подпись в сравнениях
- * и значок готовым data-URI. Доступно любому сотруднику, а не только
+ * Отдаётся из зеркала одним запросом: название, город, филиалы и значок
+ * готовым data-URI. Доступно любому сотруднику, а не только
  * администратору парсера: добавить колонку конкурента в сравнение может
  * каждый, у кого открыта та страница, — значит и список клиник ему нужен.
  */
@@ -177,7 +177,7 @@ router.get('/competitors', authenticate, async (req, res) => {
       order: [['displayName', 'ASC'], ['city', 'ASC']],
       attributes: [
         'id', 'parserSourceId', 'name', 'displayName', 'city', 'servicesTotal',
-        'competitorLabel', 'lastRunAt', 'logoData', 'logoContentType'
+        'lastRunAt', 'logoData', 'logoContentType'
       ]
     });
     const [filialRows] = await sequelize.query(
@@ -216,7 +216,6 @@ router.get('/competitors', authenticate, async (req, res) => {
         city: source.city,
         servicesTotal: source.servicesTotal,
         filials: filialsBySource.get(source.id) || [],
-        competitorLabel: source.competitorLabel,
         lastRunAt: source.lastRunAt,
         logo: source.logoData
           ? `data:${source.logoContentType || 'image/png'};base64,${source.logoData.toString('base64')}`
@@ -765,7 +764,7 @@ router.get('/sources/:id/catalog', ...canManage, async (req, res) => {
     const source = await CompetitorSource.findOne({
       where: { parserSourceId: Number(req.params.id) },
       attributes: [
-        'id', 'name', 'displayName', 'city', 'competitorLabel',
+        'id', 'name', 'displayName', 'city',
         'servicesTotal', 'syncedAt', 'syncStatus', 'syncError', 'lastRunAt'
       ]
     });
@@ -845,7 +844,6 @@ router.get('/sources/:id/catalog', ...canManage, async (req, res) => {
           parserSourceId: Number(req.params.id),
           name: source.displayName || source.name,
           city: source.city,
-          competitorLabel: source.competitorLabel,
           // Сколько услуг было на последнем заборе. Расходится с mirrorTotal,
           // если забор упал на середине.
           servicesTotal: source.servicesTotal,
@@ -981,7 +979,7 @@ router.get('/map', authenticate, async (req, res) => {
         'lat', 'lon', 'geoOrigin', 'parserFilialId', 'filialIdManual']
     });
     const sources = await CompetitorSource.findAll({
-      attributes: ['id', 'parserSourceId', 'name', 'displayName', 'city', 'competitorLabel']
+      attributes: ['id', 'parserSourceId', 'name', 'displayName', 'city']
     });
     const sourceById = new Map(sources.map(row => [row.id, row]));
 
@@ -1011,7 +1009,6 @@ router.get('/map', authenticate, async (req, res) => {
         exact: point.geoOrigin === 'manual',
         parserSourceId: source?.parserSourceId ?? null,
         sourceName: source?.displayName || source?.name || '—',
-        competitorLabel: source?.competitorLabel || null,
         filialId,
         coverage: ratios.length,
         medianRatio: middle,
@@ -1064,124 +1061,13 @@ router.get('/sync/status', ...canManage, async (req, res) => {
       attributes: [
         'id', 'parserSourceId', 'name', 'displayName', 'baseUrl', 'city', 'servicesTotal',
         'lastRunAt', 'lastRunStatus', 'syncedAt', 'syncStatus', 'syncError',
-        'competitorLabel', 'logoContentType'
+        'logoContentType'
       ]
     });
     res.json({ success: true, running: syncRunning, data: sources });
   } catch (err) {
     console.error('❌ Не удалось прочитать состояние синхронизации:', err.message);
     res.status(500).json({ success: false, error: 'status_failed', message: 'Не удалось прочитать состояние синхронизации' });
-  }
-});
-
-async function renameComparisonLabel(oldLabel, newLabel, transaction) {
-  if (!oldLabel || !newLabel || oldLabel === newLabel) return 0;
-
-  const comparisons = await PriceComparison.findAll({
-    where: { competitors: { [Op.contains]: [oldLabel] } },
-    transaction
-  });
-  let movedItems = 0;
-
-  for (const comparison of comparisons) {
-    const renamed = (comparison.competitors || []).map(label =>
-      label === oldLabel ? newLabel : label
-    );
-    comparison.competitors = [...new Set(renamed)];
-    comparison.changed('competitors', true);
-    await comparison.save({ transaction });
-
-    const items = await PriceComparisonItem.findAll({
-      where: { comparisonId: comparison.id },
-      transaction
-    });
-    for (const item of items) {
-      let changed = false;
-      for (const field of ['prices', 'priceSources', 'priceHistory', 'costPrices']) {
-        const values = { ...(item[field] || {}) };
-        if (!Object.prototype.hasOwnProperty.call(values, oldLabel)) continue;
-        // Если уточнённая колонка уже существует, её значение приоритетнее.
-        if (!Object.prototype.hasOwnProperty.call(values, newLabel)) {
-          values[newLabel] = values[oldLabel];
-        }
-        delete values[oldLabel];
-        item[field] = values;
-        item.changed(field, true);
-        changed = true;
-      }
-      if (changed) {
-        await item.save({ transaction });
-        movedItems += 1;
-      }
-    }
-  }
-  return movedItems;
-}
-
-/**
- * Как эта клиника называется в сравнениях цен.
- *
- * В сравнении конкуренты перечислены человеческими названиями («Неомед»),
- * а в зеркале источники зовутся по домену («clinic23-krd»). Пока связь
- * не проставлена, цены источника подставлять некуда, и в сопоставлении
- * он не участвует.
- */
-// Под обычной авторизацией, а не под админской: колонку конкурента в сравнение
-// добавляет любой сотрудник со страницы сравнения, и привязка колонки к клинике
-// парсера — продолжение того же действия, а не администрирование
-router.put('/sources/:parserSourceId/label', authenticate, async (req, res) => {
-  try {
-    const source = await CompetitorSource.findOne({
-      where: { parserSourceId: Number(req.params.parserSourceId) }
-    });
-    if (!source) {
-      return res.status(404).json({
-        success: false,
-        error: 'not_found',
-        message: 'Источника нет в нашей копии — сначала заберите цены'
-      });
-    }
-
-    let label = (req.body?.competitorLabel || '').trim();
-    const city = (source.city || '').trim();
-    // «Инвитро» в двух городах — два разных прайса и две разные колонки.
-    // Поэтому город является частью сохраняемого ключа, а не только
-    // декоративной подписью в браузере.
-    if (label && city &&
-        !label.toLocaleLowerCase('ru-RU').includes(city.toLocaleLowerCase('ru-RU'))) {
-      label = `${label} (${city})`;
-    }
-
-    if (label) {
-      const duplicate = await CompetitorSource.findOne({
-        where: {
-          competitorLabel: label,
-          parserSourceId: { [Op.ne]: source.parserSourceId }
-        },
-        attributes: ['parserSourceId']
-      });
-      if (duplicate) {
-        return res.status(409).json({
-          success: false,
-          error: 'label_already_used',
-          message: `Название «${label}» уже привязано к другому источнику`
-        });
-      }
-    }
-
-    const oldLabel = source.competitorLabel;
-    let movedItems = 0;
-    await sequelize.transaction(async transaction => {
-      await source.update({ competitorLabel: label || null }, { transaction });
-      movedItems = await renameComparisonLabel(oldLabel, label, transaction);
-    });
-    res.json({
-      success: true,
-      data: { competitorLabel: source.competitorLabel, movedItems }
-    });
-  } catch (err) {
-    console.error('❌ Не удалось сохранить название конкурента:', err.message);
-    res.status(500).json({ success: false, error: 'label_failed', message: 'Не удалось сохранить название' });
   }
 });
 

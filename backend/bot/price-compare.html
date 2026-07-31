@@ -1387,8 +1387,12 @@
           </small>
         </div>
         <div class="price-form-group">
-          <label>Название конкурента <span>*</span></label>
+          <label>Название колонки <span>*</span></label>
           <input type="text" id="competitor-name-input" required class="price-input" placeholder="Неомед, МедГрад, АйКлиник...">
+          <small style="color:#86868B;display:block;margin-top:4px">
+            Только подпись в таблице — цены приходят от выбранной клиники,
+            как бы колонка ни называлась.
+          </small>
         </div>
         <div class="price-form-actions">
           <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.closeModal('add-competitor-modal')">Отмена</button>
@@ -1416,9 +1420,8 @@ window.priceApp = (function() {
   var availableClinics = []; // Список клиник из МИС
   var parserCompetitors = [];      // Клиники-конкуренты из парсера (зеркало в вики)
   var parserCompetitorChoices = []; // Отдельные варианты колонок по филиалам
-  var parserLogoByLabel = {};      // подпись колонки -> data-URI значка
-  var selectedParserSourceId = null; // что выбрано в списке при добавлении конкурента
-  var selectedParserBaseLabel = null;
+  var parserLogoBySourceId = {};   // id клиники в парсере -> data-URI значка
+  var selectedParserChoice = null; // что выбрано в списке при добавлении конкурента
   var competitorFormBusy = false;  // идёт добавление конкурента — повтор запрещён
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
@@ -1537,37 +1540,26 @@ window.priceApp = (function() {
     return cleanLabel + ' (' + cleanCity + ')';
   }
 
-  function displayNameForColumn(col) {
-    if (col.type !== 'competitor') return col.name;
-
-    // Старые сравнения могли хранить просто «Инвитро». Если эта подпись
-    // однозначно привязана к одному источнику, показываем уже уточнённое
-    // «Инвитро (Анапа)», не переименовывая ключ с сохранёнными ценами.
-    var bound = parserCompetitors.filter(function(c) {
-      return c.competitorLabel === col.name;
-    });
-    return bound.length === 1 ? bound[0].suggestedLabel : col.name;
+  /** К какой клинике парсера привязана колонка: {parserSourceId, filialId}. */
+  function bindingForColumn(name) {
+    var bindings = (currentComparison && currentComparison.competitorBindings) || {};
+    return bindings[name] || null;
   }
 
+  // Значок берётся по привязке, а не по совпадению названия: колонку можно
+  // назвать как угодно, клиника за ней от этого не меняется.
   function parserLogoForColumn(name) {
-    if (parserLogoByLabel[name]) return parserLogoByLabel[name];
-    var source = parserCompetitors.filter(function(c) {
-      return c.logo && (
-        name.indexOf(c.suggestedLabel + ' — ') === 0 ||
-        (c.competitorLabel && name.indexOf(c.competitorLabel + ' — ') === 0)
-      );
-    })[0];
-    return source ? source.logo : null;
+    var binding = bindingForColumn(name);
+    return binding ? parserLogoBySourceId[binding.parserSourceId] || null : null;
   }
 
   function columnHeadingHtml(col, suffix) {
     var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
-    var displayName = displayNameForColumn(col);
     var logoHtml = logo
       ? '<img class="price-column-logo" src="' + logo + '" alt="" onerror="this.hidden=true">'
       : '';
     return '<span class="price-column-heading">' + logoHtml +
-      '<span class="price-column-heading-text">' + displayName + (suffix || '') + '</span></span>';
+      '<span class="price-column-heading-text">' + col.name + (suffix || '') + '</span></span>';
   }
 
   function showToast(msg, type) {
@@ -2271,30 +2263,26 @@ window.priceApp = (function() {
     });
   }
 
-  // Клиники-конкуренты из парсера. Подпись колонки должна быть уникальна:
-  // «Клиника Фомина» стоит в пятнадцати городах, поэтому при повторе имени
-  // к нему добавляется город.
+  // Клиники-конкуренты из парсера. Подпись колонки здесь только предлагается:
+  // цены находят колонку по привязке, а не по названию, поэтому исправить
+  // предложенное человек может как угодно. Город в подписи всё же нужен —
+  // «Клиника Фомина» стоит в пятнадцати городах, и без него не различить.
   function loadParserCompetitors() {
     fetchAPI(PARSER_URL + '/competitors').then(function(res) {
       parserCompetitors = res.data || [];
       parserCompetitorChoices = [];
-      parserLogoByLabel = {};
+      parserLogoBySourceId = {};
       parserCompetitors.forEach(function(c) {
-        var base = c.displayName || c.name;
-        // Город — часть идентичности источника всегда, а не только когда
-        // браузер случайно увидел второй одноимённый источник.
-        c.suggestedLabel = labelWithCity(c.competitorLabel || base, c.city);
-        if (c.logo) {
-          parserLogoByLabel[c.suggestedLabel] = c.logo;
-          if (c.competitorLabel) parserLogoByLabel[c.competitorLabel] = c.logo;
-        }
+        var clinic = labelWithCity(c.displayName || c.name, c.city);
+        if (c.logo) parserLogoBySourceId[c.parserSourceId] = c.logo;
 
         var filials = c.filials || [];
         if (!filials.length) {
           parserCompetitorChoices.push({
             source: c,
-            label: c.suggestedLabel,
-            branch: null
+            label: clinic,
+            filialId: null,
+            address: null
           });
           return;
         }
@@ -2309,8 +2297,8 @@ window.priceApp = (function() {
           if (counts[branch] > 1) branch += ' №' + f.id;
           parserCompetitorChoices.push({
             source: c,
-            label: c.suggestedLabel + ' — ' + branch,
-            branch: branch,
+            label: clinic + ' — ' + branch,
+            filialId: f.id,
             address: f.address || null
           });
         });
@@ -2324,18 +2312,16 @@ window.priceApp = (function() {
   function onParserCompetitorChange(value) {
     var input = document.getElementById('competitor-name-input');
     var choice = value ? parserCompetitorChoices[Number(value) - 1] : null;
-    selectedParserSourceId = choice ? choice.source.parserSourceId : null;
-    selectedParserBaseLabel = choice ? choice.source.suggestedLabel : null;
-    input.readOnly = Boolean(choice);
+    selectedParserChoice = choice;
+    // Название колонки — только подпись, менять её можно: цены придут по
+    // привязке к клинике, а не по совпадению текста
     if (choice) input.value = choice.label;
   }
 
   function openAddCompetitorModal() {
     setCompetitorFormBusy(false);
     document.getElementById('competitor-name-input').value = '';
-    document.getElementById('competitor-name-input').readOnly = false;
-    selectedParserSourceId = null;
-    selectedParserBaseLabel = null;
+    selectedParserChoice = null;
 
     var group = document.getElementById('competitor-parser-group');
     var select = document.getElementById('competitor-parser-select');
@@ -2344,13 +2330,13 @@ window.priceApp = (function() {
       var options = '<option value="">— вписать название вручную —</option>';
       parserCompetitorChoices.forEach(function(choice, index) {
         var c = choice.source;
+        // Занято, если этот же филиал этой же клиники уже стоит за какой-то
+        // колонкой листа. Как та колонка названа — неважно.
         var taken = allColumns.some(function(col) {
-          return col.name === choice.label ||
-            // Старая городская колонка означает «все филиалы».
-            col.name === c.suggestedLabel ||
-            (c.competitorLabel && (
-              col.name === c.competitorLabel
-            ));
+          var binding = bindingForColumn(col.name);
+          return binding &&
+            binding.parserSourceId === c.parserSourceId &&
+            (binding.filialId == null ? null : binding.filialId) === choice.filialId;
         });
         options += '<option value="' + (index + 1) + '"' + (taken ? ' disabled' : '') + '>' +
           choice.label +
@@ -2407,8 +2393,17 @@ window.priceApp = (function() {
     }
 
     var newCompetitors = currentComparison.competitors.concat([competitor]);
-    var sourceId = selectedParserSourceId;
-    var baseLabel = selectedParserBaseLabel || competitor;
+    var choice = selectedParserChoice;
+
+    // Клиника и филиал сохраняются вместе с колонкой: связь идёт по id,
+    // поэтому подпись колонки после этого можно менять как угодно.
+    var newBindings = Object.assign({}, currentComparison.competitorBindings || {});
+    if (choice) {
+      newBindings[competitor] = {
+        parserSourceId: choice.source.parserSourceId,
+        filialId: choice.filialId
+      };
+    }
 
     setCompetitorFormBusy(true, 'Создаём колонку…');
 
@@ -2418,43 +2413,31 @@ window.priceApp = (function() {
         name: currentComparison.name,
         description: currentComparison.description,
         ownMedCenters: currentComparison.ownMedCenters,
-        competitors: newCompetitors
+        competitors: newCompetitors,
+        competitorBindings: newBindings
       })
     }).then(function() {
       // Колонка вписана руками — привязывать не к чему, цены внесёт человек
-      if (!sourceId) return { message: 'Колонка добавлена' };
+      if (!choice) return { message: 'Колонка добавлена' };
 
-      // Колонка выбрана из парсера — привязываем: под этой подписью в неё
-      // будут подтягиваться цены клиники при сопоставлении
-      setCompetitorFormBusy(true, 'Привязываем клинику…');
-      return fetchAPI(PARSER_URL + '/sources/' + sourceId + '/label', {
-        method: 'PUT',
-        // К источнику привязывается базовая подпись клиники+города,
-        // а выбранный филиал остаётся отдельной колонкой сравнения.
-        body: JSON.stringify({ competitorLabel: baseLabel })
-      }).then(function() {
-        loadParserCompetitors();
-        // Точные связи и уже выученные на других листах соответствия
-        // применяются сразу. В админке останутся только спорные варианты.
-        setCompetitorFormBusy(true, 'Подбираем цены…');
-        return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
-          method: 'POST',
-          // Подбор идёт по всему каталогу конкурента: у clinic23 это почти
-          // семь тысяч услуг, и стандартных 15 секунд ему не хватает
-          timeout: 180000
-        }).then(function(res) {
-          var data = res.data || {};
-          return {
-            message: data.review
-              ? 'Цены подставлены. Требуют проверки: ' + data.review
-              : 'Цены конкурента подставлены'
-          };
-        }).catch(function(err) {
-          // Колонка и связь уже сохранены; автоподбор можно повторить из админки.
-          return { message: 'Колонка добавлена, но автоподбор не запустился: ' + err.message, error: true };
-        });
+      // Точные связи и уже выученные на других листах соответствия
+      // применяются сразу. В админке останутся только спорные варианты.
+      setCompetitorFormBusy(true, 'Подбираем цены…');
+      return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
+        method: 'POST',
+        // Подбор идёт по всему каталогу конкурента: у clinic23 это почти
+        // семь тысяч услуг, и стандартных 15 секунд ему не хватает
+        timeout: 180000
+      }).then(function(res) {
+        var data = res.data || {};
+        return {
+          message: data.review
+            ? 'Цены подставлены. Требуют проверки: ' + data.review
+            : 'Цены конкурента подставлены'
+        };
       }).catch(function(err) {
-        return { message: 'Колонка добавлена, но привязка к парсеру не удалась: ' + err.message, error: true };
+        // Колонка и привязка уже сохранены; автоподбор можно повторить из админки.
+        return { message: 'Колонка добавлена, но автоподбор не запустился: ' + err.message, error: true };
       });
     }).then(function(result) {
       setCompetitorFormBusy(false);

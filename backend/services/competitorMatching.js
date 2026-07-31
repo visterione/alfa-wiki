@@ -24,6 +24,7 @@
  */
 
 const { sequelize, CompetitorServiceMatch } = require('../models');
+const { boundSourceIds } = require('./comparisonBindings');
 
 // Ниже этого сходства названий предлагать нечего: на реальных прайсах всё,
 // что слабее, — совпадения по общим словам вроде «приём» и «врача»
@@ -121,11 +122,12 @@ async function code804For(item, transaction = null) {
 /**
  * Кандидаты из каталогов конкурентов для одной нашей позиции.
  *
- * Ищем только среди источников, у которых проставлено, как они называются
- * в сравнениях: без этого непонятно, в какую колонку класть цену, и такой
- * кандидат бесполезен.
+ * Ищем только среди клиник, привязанных к колонкам сравнения: услуга клиники,
+ * которой в листе нет, никуда не попадёт, и предлагать её — только мешать.
  */
-async function findCandidates(item, { labels = null } = {}) {
+async function findCandidates(item, { sourceIds }) {
+  if (!sourceIds?.length) return [];
+
   const code = await code804For(item);
   const normalized = normalizeName(item.serviceName);
   const found = new Map();
@@ -134,15 +136,14 @@ async function findCandidates(item, { labels = null } = {}) {
   if (code) {
     const [rows] = await sequelize.query(
       `SELECT cs.id, cs.name, cs."nameNormalized", cs.category, cs.codes,
-              src."competitorLabel", src.name AS "sourceName", src.city
+              src."parserSourceId", COALESCE(src."displayName", src.name) AS "sourceName", src.city
          FROM competitor_services cs
          JOIN competitor_sources  src ON src.id = cs."sourceId"
         WHERE cs."isActive"
-          AND src."competitorLabel" IS NOT NULL
+          AND src."parserSourceId" IN (:sourceIds)
           AND cs.codes @> :code::jsonb
-          ${labels ? 'AND src."competitorLabel" IN (:labels)' : ''}
         LIMIT 50`,
-      { replacements: { code: JSON.stringify([code]), labels } }
+      { replacements: { code: JSON.stringify([code]), sourceIds } }
     );
     for (const row of rows) {
       found.set(row.id, { ...row, method: 'code804', score: 1 });
@@ -153,10 +154,10 @@ async function findCandidates(item, { labels = null } = {}) {
   if (normalized) {
     const [rows] = await sequelize.query(
       `SELECT id, name, "nameNormalized", category, codes,
-              "competitorLabel", "sourceName", city, score
+              "parserSourceId", "sourceName", city, score
          FROM (
            SELECT cs.id, cs.name, cs."nameNormalized", cs.category, cs.codes,
-                  src."competitorLabel", src.name AS "sourceName", src.city,
+                  src."parserSourceId", COALESCE(src."displayName", src.name) AS "sourceName", src.city,
                   similarity(cs."nameNormalized", :name) AS score,
                   row_number() OVER (
                     PARTITION BY src.id
@@ -165,13 +166,12 @@ async function findCandidates(item, { labels = null } = {}) {
              FROM competitor_services cs
              JOIN competitor_sources src ON src.id = cs."sourceId"
             WHERE cs."isActive"
-              AND src."competitorLabel" IS NOT NULL
+              AND src."parserSourceId" IN (:sourceIds)
               AND cs."nameNormalized" % :name
-              ${labels ? 'AND src."competitorLabel" IN (:labels)' : ''}
          ) ranked
         WHERE source_rank <= :perSource
         ORDER BY score DESC`,
-      { replacements: { name: normalized, labels, perSource: CANDIDATES_PER_ITEM } }
+      { replacements: { name: normalized, sourceIds, perSource: CANDIDATES_PER_ITEM } }
     );
     for (const row of rows) {
       if (found.has(row.id)) continue;
@@ -184,8 +184,8 @@ async function findCandidates(item, { labels = null } = {}) {
   // позиций одной клиники бессмысленно, выбирать он будет всё равно из них
   const best = new Map();
   for (const candidate of found.values()) {
-    const current = best.get(candidate.competitorLabel);
-    if (!current || candidate.score > current.score) best.set(candidate.competitorLabel, candidate);
+    const current = best.get(candidate.parserSourceId);
+    if (!current || candidate.score > current.score) best.set(candidate.parserSourceId, candidate);
   }
 
   return [...best.values()].sort((a, b) => b.score - a.score);
@@ -225,13 +225,13 @@ function canAutoConfirm(item, candidate) {
  * Подтверждённые связи — это общий словарь, а не работа внутри одного листа.
  * Собираем его один раз и переиспользуем при любом следующем подборе.
  */
-async function learnedMappings(labels) {
-  if (!labels?.length) return new Map();
+async function learnedMappings(sourceIds) {
+  if (!sourceIds?.length) return new Map();
 
   const [rows] = await sequelize.query(
     `SELECT learned."misServiceId", learned."serviceCode", learned."serviceName",
             cs.id, cs.name, cs."nameNormalized", cs.category, cs.codes,
-            src."competitorLabel", src.name AS "sourceName", src.city,
+            src."parserSourceId", COALESCE(src."displayName", src.name) AS "sourceName", src.city,
             m.method, m.score
        FROM competitor_service_matches m
        JOIN price_comparison_items learned ON learned.id = m."itemId"
@@ -239,9 +239,9 @@ async function learnedMappings(labels) {
        JOIN competitor_sources src ON src.id = cs."sourceId"
       WHERE m.status = 'confirmed'
         AND cs."isActive"
-        AND src."competitorLabel" IN (:labels)
+        AND src."parserSourceId" IN (:sourceIds)
       ORDER BY m."confirmedAt" DESC NULLS LAST`,
-    { replacements: { labels } }
+    { replacements: { sourceIds } }
   );
 
   const byService = new Map();
@@ -250,30 +250,11 @@ async function learnedMappings(labels) {
     if (!key) continue;
     if (!byService.has(key)) byService.set(key, new Map());
     // Последнее подтверждение для клиники выигрывает; ORDER BY уже это обеспечил.
-    if (!byService.get(key).has(row.competitorLabel)) {
-      byService.get(key).set(row.competitorLabel, row);
+    if (!byService.get(key).has(row.parserSourceId)) {
+      byService.get(key).set(row.parserSourceId, row);
     }
   }
   return byService;
-}
-
-/**
- * В price_comparisons перечислены видимые колонки. После разбиения по филиалам
- * это «Екатерининская (Краснодар) — Клиника на Сормовской», а источник хранит
- * базовую подпись «Екатерининская (Краснодар)». Для поиска услуг восстанавливаем
- * базовые подписи источников из набора филиальных колонок.
- */
-async function sourceLabelsForColumns(columns) {
-  if (!columns?.length) return [];
-  const [sources] = await sequelize.query(
-    `SELECT "competitorLabel" FROM competitor_sources
-      WHERE "competitorLabel" IS NOT NULL`
-  );
-  return sources
-    .map(source => source.competitorLabel)
-    .filter(label => columns.some(column =>
-      column === label || column.startsWith(`${label} — `)
-    ));
 }
 
 /**
@@ -291,33 +272,32 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
   );
 
   const [[comparison]] = await sequelize.query(
-    'SELECT competitors FROM price_comparisons WHERE id = :comparisonId',
+    'SELECT competitors, "competitorBindings" FROM price_comparisons WHERE id = :comparisonId',
     { replacements: { comparisonId } }
   );
-  // Ищем только среди конкурентов, перечисленных в самом сравнении: остальные
-  // клиники в нём не участвуют, и предлагать их — только мешать
-  const columns = Array.isArray(comparison?.competitors) ? comparison.competitors : [];
-  const labels = await sourceLabelsForColumns(columns);
+  // Ищем только среди клиник, привязанных к колонкам этого листа: остальные
+  // в нём не участвуют, и предлагать их — только мешать
+  const sourceIds = boundSourceIds(comparison);
 
   // Ни одна колонка листа не привязана к клинике парсера — подбирать не к чему.
   // Отдельный признак, а не просто нули: со стороны это выглядит как «кнопка
   // ничего не делает», и человеку нужно сказать, что не хватает именно колонки.
-  if (!labels?.length) {
+  if (!sourceIds.length) {
     return { items: items.length, created: 0, autoConfirmed: 0, reused: 0, review: 0, skipped: 0, noCompetitorColumns: true };
   }
 
-  const learned = await learnedMappings(labels);
+  const learned = await learnedMappings(sourceIds);
   let created = 0;
   let autoConfirmed = 0;
   let reused = 0;
   let skipped = 0;
 
   for (const item of items) {
-    const confirmedLabels = new Set();
+    const confirmedSources = new Set();
 
     // Сначала применяем словарь, выученный на других листах.
     const remembered = learned.get(ownServiceKey(item));
-    for (const [label, candidate] of remembered || []) {
+    for (const [parserSourceId, candidate] of remembered || []) {
       const [match, isNew] = await CompetitorServiceMatch.findOrCreate({
         where: { itemId: item.id, competitorServiceId: candidate.id },
         defaults: {
@@ -338,15 +318,15 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
         });
       }
       if (match.status === 'confirmed') {
-        confirmedLabels.add(label);
+        confirmedSources.add(parserSourceId);
         reused += isNew ? 1 : 0;
       }
     }
 
-    const candidates = await findCandidates(item, { labels });
+    const candidates = await findCandidates(item, { sourceIds });
 
     for (const candidate of candidates) {
-      if (confirmedLabels.has(candidate.competitorLabel)) continue;
+      if (confirmedSources.has(candidate.parserSourceId)) continue;
       const automatic = canAutoConfirm(item, candidate);
       const [match, isNew] = await CompetitorServiceMatch.findOrCreate({
         where: { itemId: item.id, competitorServiceId: candidate.id },
@@ -363,7 +343,7 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
         created += 1;
         if (automatic) {
           autoConfirmed += 1;
-          confirmedLabels.add(candidate.competitorLabel);
+          confirmedSources.add(candidate.parserSourceId);
         }
         continue;
       }
@@ -385,7 +365,7 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
       });
       if (automatic) {
         autoConfirmed += 1;
-        confirmedLabels.add(candidate.competitorLabel);
+        confirmedSources.add(candidate.parserSourceId);
       }
     }
   }
@@ -410,7 +390,7 @@ async function suggestForComparison(comparisonId, { actor = null } = {}) {
 async function reuseConfirmedMatch(matchId, { actor = null } = {}) {
   const [[origin]] = await sequelize.query(
     `SELECT m."competitorServiceId", it.id AS "itemId", it."misServiceId",
-            it."serviceCode", it."serviceName", src."competitorLabel"
+            it."serviceCode", it."serviceName", src."parserSourceId"
        FROM competitor_service_matches m
        JOIN price_comparison_items it ON it.id = m."itemId"
        JOIN competitor_services cs ON cs.id = m."competitorServiceId"
@@ -418,23 +398,21 @@ async function reuseConfirmedMatch(matchId, { actor = null } = {}) {
       WHERE m.id = :matchId`,
     { replacements: { matchId } }
   );
-  if (!origin?.competitorLabel) return { reused: 0, comparisonIds: [], origin: null };
+  if (!origin?.parserSourceId) return { reused: 0, comparisonIds: [], origin: null };
 
+  // Листы, где эта клиника занимает хотя бы одну живую колонку. Привязка
+  // на удалённую колонку не в счёт — цене там взяться некуда.
   const [items] = await sequelize.query(
     `SELECT it.id, it."comparisonId", it."misServiceId", it."serviceCode", it."serviceName"
        FROM price_comparison_items it
        JOIN price_comparisons pc ON pc.id = it."comparisonId"
       WHERE EXISTS (
         SELECT 1
-          FROM jsonb_array_elements_text(COALESCE(pc.competitors, '[]'::jsonb)) AS cols(column_name)
-         WHERE column_name = :label OR column_name LIKE :branchPrefix
+          FROM jsonb_each(COALESCE(pc."competitorBindings", '{}'::jsonb)) AS b(column_name, binding)
+         WHERE (binding->>'parserSourceId')::int = :parserSourceId
+           AND jsonb_exists(COALESCE(pc.competitors, '[]'::jsonb), b.column_name)
       )`,
-    {
-      replacements: {
-        label: origin.competitorLabel,
-        branchPrefix: `${origin.competitorLabel} — %`
-      }
-    }
+    { replacements: { parserSourceId: origin.parserSourceId } }
   );
 
   const key = ownServiceKey(origin);
@@ -468,14 +446,14 @@ async function reuseConfirmedMatch(matchId, { actor = null } = {}) {
   return {
     reused,
     comparisonIds: [...comparisonIds],
-    origin: { itemId: origin.itemId, competitorLabel: origin.competitorLabel }
+    origin: { itemId: origin.itemId, parserSourceId: origin.parserSourceId }
   };
 }
 
 async function autoMatchAllComparisons() {
   const [rows] = await sequelize.query(
     `SELECT id FROM price_comparisons
-      WHERE jsonb_array_length(COALESCE(competitors, '[]'::jsonb)) > 0`
+      WHERE "competitorBindings" <> '{}'::jsonb`
   );
   const totals = { comparisons: 0, autoConfirmed: 0, reused: 0, review: 0 };
   for (const row of rows) {
@@ -497,7 +475,6 @@ module.exports = {
   ownServiceKey,
   hasSemanticConflict,
   canAutoConfirm,
-  sourceLabelsForColumns,
   code804For,
   findCandidates,
   suggestForComparison,

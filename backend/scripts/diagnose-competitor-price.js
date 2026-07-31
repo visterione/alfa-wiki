@@ -4,10 +4,10 @@
  * Почему в сравнении цен пуста ячейка конкурента.
  *
  * Цена конкурента проходит через пять звеньев, и оборваться может любое:
- * подпись источника → колонка листа → код 804н нашей позиции → соответствие
- * → цена в зеркале. По самой таблице сравнения видно только итог — прочерк,
- * одинаковый для всех пяти случаев. Скрипт проходит цепочку по шагам и
- * показывает, на каком именно она рвётся.
+ * привязка колонки к клинике → код 804н нашей позиции → соответствие →
+ * цена в зеркале → сама колонка. По таблице сравнения видно только итог —
+ * прочерк, одинаковый для всех случаев. Скрипт проходит цепочку по шагам
+ * и показывает, на каком именно она рвётся.
  *
  * Запуск (из каталога backend):
  *   node scripts/diagnose-competitor-price.js "<часть названия или код 804н>"
@@ -19,6 +19,7 @@
 
 const { sequelize } = require('../models');
 const matching = require('../services/competitorMatching');
+const { readBindings } = require('../services/comparisonBindings');
 
 const args = process.argv.slice(2);
 const sheetFlag = args.indexOf('--sheet');
@@ -43,7 +44,7 @@ async function run() {
   const items = await q(
     `SELECT it.id, it."comparisonId", it."serviceCode", it."serviceName", it."misServiceId",
             it.prices, it."priceSources",
-            pc.name AS sheet, pc."comparisonType", pc.competitors
+            pc.name AS sheet, pc."comparisonType", pc.competitors, pc."competitorBindings"
        FROM price_comparison_items it
        JOIN price_comparisons pc ON pc.id = it."comparisonId"
       WHERE (it."serviceCode" ILIKE :like OR it."serviceName" ILIKE :like)
@@ -62,16 +63,22 @@ async function run() {
     if (!sheetName) console.log('Сузить можно так: --sheet "Название листа"\n');
   }
 
-  // ── Источники: подписи в сравнениях ──────────────────────────────────────
+  // ── Клиники парсера, к которым вообще можно привязать колонку ────────────
   const sources = await q(
     `SELECT src.id, src."parserSourceId", src.name, src."displayName", src.city,
-            src."competitorLabel", src."syncedAt", src."syncStatus",
+            src."syncedAt", src."syncStatus",
             count(cs.id) FILTER (WHERE cs."isActive") AS services
        FROM competitor_sources src
        LEFT JOIN competitor_services cs ON cs."sourceId" = src.id
       GROUP BY src.id
       ORDER BY src.name`
   );
+  const sourceById = new Map(sources.map(s => [s.parserSourceId, s]));
+  const sourceTitle = id => {
+    const source = sourceById.get(id);
+    if (!source) return `клиника #${id} (в зеркале её нет)`;
+    return `${source.displayName || source.name}${source.city ? ` (${source.city})` : ''}`;
+  };
 
   for (const item of items) {
     line('═');
@@ -91,41 +98,43 @@ async function run() {
     }
 
     const columns = Array.isArray(item.competitors) ? item.competitors : [];
+    const bySource = readBindings(item);
+    // Колонка → клиника, чтобы не искать привязку заново на каждой строке
+    const sourceOfColumn = new Map();
+    for (const [parserSourceId, targets] of bySource) {
+      for (const target of targets) sourceOfColumn.set(target.column, { parserSourceId, ...target });
+    }
+
     console.log(`\n2. Колонки конкурентов в листе (${columns.length}):`);
-    columns.forEach(c => console.log(`   • ${c}`));
+    columns.forEach(col => {
+      const bound = sourceOfColumn.get(col);
+      console.log(`   • ${col}` + (bound
+        ? ` → ${sourceTitle(bound.parserSourceId)}${bound.filialId == null ? ', вся клиника' : `, филиал ${bound.filialId}`}`
+        : ' → не привязана к парсеру'));
+    });
     if (!columns.length) {
       console.log('   ⚠ Ни одной. Добавьте конкурента на странице сравнения цен — ' +
         'без колонки подставлять цену некуда.');
       continue;
     }
 
-    // ── 3. Какие источники вообще участвуют ───────────────────────────────
-    const labels = await matching.sourceLabelsForColumns(columns);
-    console.log(`\n3. Источники, попавшие в подбор по этим колонкам (${labels.length}):`);
-    labels.forEach(l => console.log(`   ✓ ${l}`));
+    // ── 3. Какие клиники вообще участвуют ─────────────────────────────────
+    const sourceIds = [...bySource.keys()];
+    console.log(`\n3. Клиники, попавшие в подбор по этим колонкам (${sourceIds.length}):`);
+    sourceIds.forEach(id => console.log(`   ✓ ${sourceTitle(id)}`));
 
-    const orphanColumns = columns.filter(col =>
-      !labels.some(l => col === l || col.startsWith(`${l} — `)));
+    const orphanColumns = columns.filter(col => !sourceOfColumn.has(col));
     if (orphanColumns.length) {
-      console.log('\n   ⚠ Колонки, за которыми не стоит ни один источник парсера:');
+      console.log('\n   ⚠ Колонки без привязки к клинике парсера:');
       orphanColumns.forEach(col => console.log(`     ✗ ${col}`));
-      console.log('     Цены в них не появятся никогда: подпись источника в админке парсера');
-      console.log('     («Название в сравнениях») должна совпадать с началом названия колонки.');
-      console.log('     Сейчас подписи такие:');
-      sources
-        .filter(s => s.competitorLabel)
-        .forEach(s => console.log(`       «${s.competitorLabel}» — ${s.displayName || s.name}` +
-          `${s.city ? ` (${s.city})` : ''}, услуг ${s.services}`));
-      const unlabelled = sources.filter(s => !s.competitorLabel);
-      if (unlabelled.length) {
-        console.log('     Без подписи (в сопоставлении не участвуют вообще):');
-        unlabelled.forEach(s => console.log(`       ${s.displayName || s.name}${s.city ? ` (${s.city})` : ''}`));
-      }
+      console.log('     Цены в них не появятся: колонку нужно завести заново на странице');
+      console.log('     сравнения — «Управление колонками» → «+ Конкурент» → выбрать клинику.');
+      console.log('     (Своими медцентрами это не касается: они колонками конкурентов не значатся.)');
     }
 
     // ── 4. Что нашлось бы в каталогах конкурентов ─────────────────────────
-    if (labels.length) {
-      const candidates = await matching.findCandidates(item, { labels });
+    if (sourceIds.length) {
+      const candidates = await matching.findCandidates(item, { sourceIds });
       console.log(`\n4. Кандидаты в каталогах конкурентов (${candidates.length}):`);
       if (!candidates.length) {
         console.log('   ⚠ Ни одного. Либо у конкурента нет услуги с этим кодом 804н,');
@@ -133,7 +142,7 @@ async function run() {
         console.log('     колонка «Услуг» → каталог, там видно код каждой услуги.');
       }
       candidates.forEach(c => console.log(
-        `   • [${c.competitorLabel}] ${c.name}\n` +
+        `   • [${sourceTitle(c.parserSourceId)}] ${c.name}\n` +
         `     ${c.method === 'code804' ? 'по коду 804н' : `по названию, сходство ${Number(c.score).toFixed(2)}`}` +
         ` · принялось бы автоматически: ${matching.canAutoConfirm(item, c) ? 'да' : 'НЕТ, нужно решение человека'}`
       ));
@@ -143,7 +152,7 @@ async function run() {
     const matches = await q(
       `SELECT m.status, m.method, m.score, m."confirmedAt",
               cs.name AS competitor_service, cs.codes, cs."isActive",
-              src."competitorLabel",
+              src."parserSourceId",
               u."displayName" AS decided_by,
               (SELECT count(*) FROM competitor_prices p WHERE p."serviceId" = cs.id) AS prices
          FROM competitor_service_matches m
@@ -151,7 +160,7 @@ async function run() {
          JOIN competitor_sources  src ON src.id = cs."sourceId"
          LEFT JOIN users u ON u.id = m."confirmedBy"
         WHERE m."itemId" = :itemId
-        ORDER BY src."competitorLabel"`,
+        ORDER BY src."parserSourceId"`,
       { itemId: item.id }
     );
 
@@ -163,7 +172,7 @@ async function run() {
     }
     for (const m of matches) {
       const mark = m.status === 'confirmed' ? '✓' : m.status === 'rejected' ? '✗' : '?';
-      console.log(`   ${mark} [${m.competitorLabel}] ${m.status} · ${m.competitor_service}`);
+      console.log(`   ${mark} [${sourceTitle(m.parserSourceId)}] ${m.status} · ${m.competitor_service}`);
       console.log(`     коды: ${JSON.stringify(m.codes)} · цен в зеркале: ${m.prices}` +
         `${m.isActive ? '' : ' · УСЛУГА ПОГАШЕНА (пропала из прайса)'}`);
       if (m.status === 'rejected') {
@@ -180,9 +189,8 @@ async function run() {
       // Самый незаметный случай: связь и цены на месте, а колонки под них нет.
       // В таблице сравнения такая клиника просто отсутствует, и понять, что
       // цена уже посчитана и ждёт колонки, по интерфейсу невозможно.
-      if (m.status === 'confirmed' && Number(m.prices) > 0 &&
-          !columns.some(col => col === m.competitorLabel || col.startsWith(`${m.competitorLabel} — `))) {
-        console.log(`     ⚠ Колонки «${m.competitorLabel}» в этом листе НЕТ — цену класть некуда.`);
+      if (m.status === 'confirmed' && Number(m.prices) > 0 && !bySource.has(m.parserSourceId)) {
+        console.log(`     ⚠ Колонки клиники «${sourceTitle(m.parserSourceId)}» в этом листе НЕТ — цену класть некуда.`);
         console.log('       Добавьте конкурента на странице сравнения цен: «Управление колонками» → «+ Конкурент».');
       }
     }
@@ -198,21 +206,25 @@ async function run() {
       ` (${sourcesMap[k]?.source === 'parser' ? 'парсер' : 'внесено человеком'})`
     ));
 
-    const confirmedLabels = matches.filter(m => m.status === 'confirmed').map(m => m.competitorLabel);
+    const confirmedSources = new Set(
+      matches.filter(m => m.status === 'confirmed').map(m => m.parserSourceId)
+    );
     const missing = columns.filter(col => prices[col] === undefined || prices[col] === null || prices[col] === '');
     if (missing.length) {
       console.log('\n   Пустые колонки конкурентов:');
       missing.forEach(col => {
-        const label = labels.find(l => col === l || col.startsWith(`${l} — `));
+        const bound = sourceOfColumn.get(col);
         let why;
-        if (!label) why = 'за колонкой не стоит источник парсера (см. п.3)';
-        else if (!confirmedLabels.includes(label)) {
-          const rejected = matches.some(m => m.competitorLabel === label && m.status === 'rejected');
-          const pending = matches.some(m => m.competitorLabel === label && m.status === 'suggested');
+        if (!bound) why = 'колонка не привязана к клинике парсера (см. п.2)';
+        else if (!confirmedSources.has(bound.parserSourceId)) {
+          const rejected = matches.some(m => m.parserSourceId === bound.parserSourceId && m.status === 'rejected');
+          const pending = matches.some(m => m.parserSourceId === bound.parserSourceId && m.status === 'suggested');
           why = rejected ? 'соответствие отклонено (см. п.5)'
             : pending ? 'соответствие ждёт решения (см. п.5)'
               : 'принятого соответствия нет — автоподбор не нашёл или не запускался';
-        } else why = 'соответствие принято, но цена не разложилась — проверьте филиалы в п.5/6';
+        } else if (bound.filialId != null) {
+          why = `соответствие принято, но цены филиала ${bound.filialId} у этой услуги нет`;
+        } else why = 'соответствие принято, но цена не разложилась — проверьте п.5/6';
         console.log(`     ✗ ${col} → ${why}`);
       });
     }

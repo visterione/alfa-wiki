@@ -749,8 +749,6 @@ export const priceParser = {
   refresh:   (id)             => api.post(`/parser/sources/${id}/refresh`),
   syncStatus:()               => api.get('/parser/sync/status'),
   sync:      ()               => api.post('/parser/sync'),
-  setLabel:  (parserSourceId, competitorLabel) =>
-    api.put(`/parser/sources/${parserSourceId}/label`, { competitorLabel }),
   // логотипы приходят готовыми data-URI: <img> не умеет слать JWT-заголовок
   logos:     ()               => api.get('/parser/logos'),
   rename:    (id, displayName) => api.patch(`/parser/sources/${id}`, { displayName }),

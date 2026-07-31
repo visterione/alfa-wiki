@@ -749,6 +749,15 @@ const PriceComparison = sequelize.define('PriceComparison', {
     defaultValue: [],
     comment: 'Массив названий конкурентов: ["Неомед", "МедГрад", "АйКлиник"]'
   },
+  // Имя колонки — только подпись для человека; какие цены в неё попадают,
+  // решает id клиники в парсере. Раньше это была связь по совпадению строк,
+  // из-за чего у клиники приходилось держать второе, «правильное» название.
+  competitorBindings: {
+    type: DataTypes.JSONB,
+    defaultValue: {},
+    allowNull: false,
+    comment: 'Колонка → клиника парсера: {"Неомед — Красная": {"parserSourceId": 12, "filialId": 3}}'
+  },
   ownMedCenters: {
     type: DataTypes.JSONB,
     defaultValue: [],
@@ -855,10 +864,6 @@ const CompetitorSource = sequelize.define('CompetitorSource', {
     comment: 'pending | ok | failed'
   },
   syncError: { type: DataTypes.TEXT },
-  competitorLabel: {
-    type: DataTypes.STRING(255),
-    comment: 'Как эта клиника названа в сравнениях цен — в неё пойдут цены источника'
-  },
   displayName: {
     type: DataTypes.STRING(255),
     comment: 'Человеческое название с сайта клиники; name — это домен и в списке нечитаем'

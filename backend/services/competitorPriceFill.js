@@ -13,107 +13,34 @@
  * человеческое и неприкосновенное.
  */
 
-const { sequelize, PriceComparison, PriceComparisonItem, CompetitorServiceMatch } = require('../models');
-
-function addBranchColumnLabels(rows) {
-  const branchIdsByName = new Map();
-  for (const row of rows) {
-    if (row.filialId == null) continue;
-    const name = row.filialName || row.locationName || row.address || 'Филиал';
-    const key = `${row.sourceId}|${name}`;
-    if (!branchIdsByName.has(key)) branchIdsByName.set(key, new Set());
-    branchIdsByName.get(key).add(String(row.filialId));
-  }
-
-  for (const row of rows) {
-    if (row.filialId == null && !row.filialName) {
-      row.columnLabel = row.competitorLabel;
-      continue;
-    }
-    let branch = row.filialName || row.locationName || row.address || `Филиал ${row.filialId}`;
-    const duplicateIds = branchIdsByName.get(`${row.sourceId}|${branch}`);
-    if (duplicateIds?.size > 1) branch += ` №${row.filialId}`;
-    row.columnLabel = `${row.competitorLabel} — ${branch}`;
-  }
-  return rows;
-}
+const { sequelize, PriceComparisonItem, CompetitorServiceMatch } = require('../models');
+const { readBindings, columnsForRow } = require('./comparisonBindings');
 
 /**
- * Названия конкурентов должны значиться в самом сравнении.
+ * Цены подтверждённых соответствий одного сравнения, разложенные по колонкам.
  *
- * Страница сравнения строит колонки так: всё, чего нет в `competitors`,
- * она считает НАШИМ медцентром. Поэтому подставить цену мало — если не
- * дописать сюда название, колонка появится, но встанет как своя клиника,
- * и вся арифметика по ней поедет.
- */
-async function ensureCompetitorColumns(comparisonId, prices) {
-  if (!prices.length) return;
-
-  const comparison = await PriceComparison.findByPk(comparisonId);
-  if (!comparison) return;
-
-  const columnsBySource = new Map();
-  for (const row of prices) {
-    if (!columnsBySource.has(row.competitorLabel)) {
-      columnsBySource.set(row.competitorLabel, new Set());
-    }
-    columnsBySource.get(row.competitorLabel).add(row.columnLabel);
-  }
-
-  const next = new Set(comparison.competitors || []);
-  const replacedBaseLabels = [];
-  for (const [baseLabel, columns] of columnsBySource) {
-    // Если прайс содержит филиалы, базовая пустая колонка больше не нужна.
-    if ([...columns].some(label => label !== baseLabel) && next.delete(baseLabel)) {
-      replacedBaseLabels.push(baseLabel);
-    }
-    for (const label of columns) next.add(label);
-  }
-
-  comparison.competitors = [...next];
-  comparison.changed('competitors', true);
-  await comparison.save();
-
-  // До появления филиальных колонок здесь могла лежать минимальная цена по
-  // всей клинике. После разбиения она не должна внезапно определиться как
-  // «наша клиника» и вернуться отдельной колонкой.
-  if (replacedBaseLabels.length) {
-    const items = await PriceComparisonItem.findAll({ where: { comparisonId } });
-    for (const item of items) {
-      let changed = false;
-      for (const field of ['prices', 'priceSources', 'priceHistory', 'costPrices']) {
-        const values = { ...(item[field] || {}) };
-        for (const label of replacedBaseLabels) {
-          if (!Object.prototype.hasOwnProperty.call(values, label)) continue;
-          delete values[label];
-          changed = true;
-        }
-        item[field] = values;
-        item.changed(field, true);
-      }
-      if (changed) await item.save();
-    }
-  }
-}
-
-/**
- * Цены подтверждённых соответствий одного сравнения.
- *
- * У клиники цена зависит от филиала. Каждый филиал становится отдельной
- * колонкой: схлопывать десять адресов до минимальной цены по городу нельзя,
- * потому что это скрывает реальные различия прайсов.
+ * Колонку выбирает привязка, а не совпадение названий: в каждой колонке
+ * человек указал клинику и филиал, и цена идёт ровно туда. Схлопывать десять
+ * адресов до минимальной цены по городу нельзя — это скрывает реальные
+ * различия прайсов, поэтому колонка филиала получает только его цены.
  */
 async function pricesForComparison(comparisonId) {
+  const [[comparison]] = await sequelize.query(
+    'SELECT competitors, "competitorBindings" FROM price_comparisons WHERE id = :comparisonId',
+    { replacements: { comparisonId } }
+  );
+  const bySource = readBindings(comparison);
+  const sourceIds = [...bySource.keys()];
+  if (!sourceIds.length) return [];
+
   const [rows] = await sequelize.query(
     `SELECT m.id            AS "matchId",
             m."itemId",
-            src.id           AS "sourceId",
-            src."competitorLabel",
+            src."parserSourceId",
             cs.name         AS "competitorServiceName",
             p.price,
             p."filialId",
             p."filialName",
-            loc.name        AS "locationName",
             loc.address,
             p."observedAt"
        FROM competitor_service_matches m
@@ -122,7 +49,7 @@ async function pricesForComparison(comparisonId) {
        JOIN competitor_sources      src ON src.id = cs."sourceId"
        JOIN competitor_prices       p   ON p."serviceId" = cs.id
        LEFT JOIN LATERAL (
-         SELECT l.name, l.address
+         SELECT l.address
            FROM competitor_locations l
           WHERE l."sourceId" = src.id
             AND l."parserFilialId" = p."filialId"
@@ -131,33 +58,22 @@ async function pricesForComparison(comparisonId) {
        ) loc ON true
       WHERE it."comparisonId" = :comparisonId
         AND m.status = 'confirmed'
-        AND src."competitorLabel" IS NOT NULL
+        AND src."parserSourceId" IN (:sourceIds)
         AND p.price IS NOT NULL
-      ORDER BY m."itemId", src."competitorLabel", p."filialId" NULLS FIRST, p.price ASC`,
-    { replacements: { comparisonId } }
+      ORDER BY m."itemId", src."parserSourceId", p.price ASC`,
+    { replacements: { comparisonId, sourceIds } }
   );
 
-  const [[comparison]] = await sequelize.query(
-    'SELECT competitors FROM price_comparisons WHERE id = :comparisonId',
-    { replacements: { comparisonId } }
-  );
-  const selectedColumns = new Set(comparison?.competitors || []);
-
-  // У двух филиалов Екатерининской реально встречается одно название
-  // «Лечебно-хирургический центр». В таком случае добавляем ID филиала.
-  addBranchColumnLabels(rows);
-  const selectedRows = rows.filter(row =>
-    // Базовая колонка — старый формат и означает «показать все филиалы».
-    selectedColumns.has(row.competitorLabel) ||
-    selectedColumns.has(row.columnLabel)
-  );
-
-  // Если одна и та же услуга сопоставлена повторно, берём минимальную цену
-  // только внутри конкретного филиала, но никогда между филиалами.
+  // Одна цена может попасть в две колонки: филиальную и «вся клиника».
+  // В колонке остаётся минимальная из подходящих ей — по филиалу, если
+  // колонка филиальная, и по всей клинике, если колонка общая. ORDER BY
+  // по цене уже поставил нужную строку первой.
   const cheapest = new Map();
-  for (const row of selectedRows) {
-    const key = `${row.itemId}|${row.columnLabel}`;
-    if (!cheapest.has(key)) cheapest.set(key, row);
+  for (const row of rows) {
+    for (const column of columnsForRow(bySource, row)) {
+      const key = `${row.itemId}|${column}`;
+      if (!cheapest.has(key)) cheapest.set(key, { ...row, column });
+    }
   }
   return [...cheapest.values()];
 }
@@ -171,11 +87,15 @@ async function pricesForComparison(comparisonId) {
  */
 async function fillComparison(
   comparisonId,
-  { actor = null, overwriteMatchIds = [], overwriteItemLabels = [] } = {}
+  { actor = null, overwriteMatchIds = [], overwriteItemSources = [] } = {}
 ) {
   const prices = await pricesForComparison(comparisonId);
   const forcedMatches = new Set(overwriteMatchIds);
-  const forcedCells = new Set(overwriteItemLabels);
+  // «Эту услугу у этой клиники человек только что разобрал руками» — какой
+  // именно колонкой она обернётся, вызывающему знать не нужно
+  const forcedCells = new Set(
+    overwriteItemSources.map(({ itemId, parserSourceId }) => `${itemId}|${parserSourceId}`)
+  );
 
   const byItem = new Map();
   for (const row of prices) {
@@ -195,7 +115,7 @@ async function fillComparison(
     let touched = false;
 
     for (const row of rowsForItem) {
-      const label = row.columnLabel;
+      const label = row.column;
       const value = Number(row.price);
       const existing = nextPrices[label];
       const wasSetByParser = nextSources[label]?.source === 'parser';
@@ -207,7 +127,7 @@ async function fillComparison(
       // подтвердил конкретное соответствие, его действие означает «брать цену
       // парсера» — блокировать именно эту замену было бы противоречием.
       const forcedByUser = forcedMatches.has(row.matchId) ||
-        forcedCells.has(`${row.itemId}|${label}`);
+        forcedCells.has(`${row.itemId}|${row.parserSourceId}`);
       if (hasHumanValue && !forcedByUser) {
         summary.protectedByHuman += 1;
         continue;
@@ -258,10 +178,6 @@ async function fillComparison(
     }
   }
 
-  // После записи цен, а не до: если подставлять было нечего, лишние колонки
-  // в сравнении не нужны
-  await ensureCompetitorColumns(comparisonId, prices);
-
   return summary;
 }
 
@@ -295,20 +211,25 @@ async function fillAllComparisons() {
  *
  * Нужно при отказе от соответствия: человек снял связь — значит и цена,
  * приехавшая по ней, в сравнении больше не место. Ручные цены не трогаются.
+ *
+ * Колонок может оказаться несколько: рядом с колонкой филиала бывает колонка
+ * «вся клиника», и одна цена стояла в обеих.
  */
 async function clearParserPrice(match) {
   const item = await PriceComparisonItem.findByPk(match.itemId);
   if (!item) return false;
 
   const sources = { ...(item.priceSources || {}) };
-  const label = Object.keys(sources).find(
+  const labels = Object.keys(sources).filter(
     key => sources[key]?.source === 'parser' && sources[key]?.matchId === match.id
   );
-  if (!label) return false;
+  if (!labels.length) return false;
 
   const prices = { ...(item.prices || {}) };
-  delete prices[label];
-  delete sources[label];
+  for (const label of labels) {
+    delete prices[label];
+    delete sources[label];
+  }
 
   item.prices = prices;
   item.priceSources = sources;
@@ -332,7 +253,6 @@ async function pendingCount(comparisonId) {
 }
 
 module.exports = {
-  addBranchColumnLabels,
   pricesForComparison,
   fillComparison,
   fillAllComparisons,
