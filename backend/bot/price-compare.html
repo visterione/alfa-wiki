@@ -12,12 +12,38 @@
 <div id="price-app">
 
 <style>
+/* Ширину не ограничиваем и боковые поля держим узкими: страница почти
+   целиком — широкая таблица с колонкой на каждого конкурента, и каждый
+   пиксель полей уходит из рабочей зоны */
 #price-app {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-  max-width: 1400px;
   margin: 0 auto;
-  padding: 20px 40px;
+  padding: 12px 10px 16px;
+  /* Ширину задаёт обёртка, а не таблица внутри: иначе широкий лист
+     распирает страницу вместо того, чтобы скроллиться в своём контейнере */
+  max-width: 100%;
+  min-width: 0;
 }
+
+/* ═══ Поля вокруг страницы ═══
+   Страница встраивается в вики, и почти все пустые поля по бокам приходят
+   не отсюда: .content-wrapper там 80% ширины (те самые ~20% пустоты) плюс
+   32px у .page-content. Для таблицы с колонкой на каждого конкурента это
+   дорого, поэтому для страниц именно с этим приложением поля ужимаем.
+
+   min-width у .main-content — обязательное условие, а не украшение:
+   это flex-элемент, и без него минимальная ширина таблицы растягивает его
+   за край экрана, так что горизонтально скроллится вся страница вместо
+   .price-table-scroll. */
+.main-content:has(#price-app) { min-width: 0; }
+
+.content-wrapper:has(#price-app) {
+  width: 94%;
+  max-width: none;
+  padding: 16px 0;
+}
+
+.page-content:has(#price-app) { padding: 10px; }
 
 /* Заголовок и кнопки */
 .price-header {
@@ -276,25 +302,29 @@
 .price-column-heading-text {
   min-width: 0;
 }
+/* Ширины колонок с ценами. Считаны по самому широкому значению
+   («1 501.00 ₽» — около 62px при 12px шрифта) плюс поля ячейки: у́же уже
+   начнутся переносы. Каждые сэкономленные 40px — это ещё один конкурент,
+   который влезает на экран без горизонтальной прокрутки. */
 .price-table th.col-price-competitor.col-clinic-single {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
 }
 .price-table th.col-price-competitor.col-clinic-pair {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 200px;
+  min-width: 200px;
+  max-width: 200px;
 }
 .price-table td.col-clinic-single-data {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
 }
 .price-table td.col-clinic-pair-data {
-  width: 120px;
-  min-width: 120px;
-  max-width: 120px;
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
 }
 .price-table th.col-diff-competitor { width: 80px; }
 .price-table th.col-actions { width: 80px; }
@@ -855,16 +885,12 @@
 }
 
 @media (max-width: 768px) {
+  #price-app { padding: 10px 8px 14px; }
   .price-header { flex-direction: column; align-items: stretch; }
   .price-header-right { justify-content: flex-start; }
   .price-filters { flex-direction: column; }
   .price-search-box { min-width: 100%; }
   .price-select { min-width: 100%; }
-  #creation-date-display {
-    font-size: 12px !important;
-    margin-right: 0 !important;
-    margin-bottom: 8px;
-  }
 }
 
 @media (max-width: 1200px) {
@@ -1028,6 +1054,92 @@
   font-size: 13px;
 }
 
+/* ═══ Выбор клиники в окне «Добавить конкурента» ═══
+   Тот же приём, что в дереве админки парсера: сеть → город → клиника →
+   филиал. Плоским списком двадцать городов «Клиники Фомина» вперемешку
+   с чужими клиниками не читаются, а выбрать нужно ровно один филиал —
+   от него и придут цены в колонку. */
+
+.pc-picker { position: relative; }
+
+.pc-picker-trigger {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  background: #fff; cursor: pointer;
+  font-size: 14px; font-family: inherit; color: #111827;
+  text-align: left;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pc-picker-trigger:hover:not(:disabled) { border-color: #9ca3af; }
+.pc-picker-trigger:disabled { opacity: .6; cursor: not-allowed; }
+.pc-picker.open .pc-picker-trigger {
+  border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+.pc-picker-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
+.pc-picker-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-picker-value.placeholder { color: #9ca3af; }
+.pc-picker-caret { flex-shrink: 0; color: #6b7280; transition: transform .15s; }
+.pc-picker.open .pc-picker-caret { transform: rotate(180deg); }
+
+/* Позиция считается на открытии, как у выпадающих списков категорий рядом:
+   внутри окна с прокруткой обычный absolute обрезается по краю окна */
+.pc-picker-menu {
+  position: fixed; z-index: 10002;
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #d1d5db; border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  overflow: hidden;
+}
+.pc-picker-search { padding: 8px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
+.pc-picker-search input {
+  width: 100%; padding: 7px 10px; font-size: 13px; font-family: inherit;
+  border: 1px solid #d1d5db; border-radius: 7px; outline: none;
+}
+.pc-picker-search input:focus { border-color: #3b82f6; }
+
+/* Высоту списка задаёт меню: оно уже подогнано под свободное место на экране */
+.pc-picker-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
+
+.pc-node {
+  width: 100%;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border: none; border-radius: 7px;
+  background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 13px; color: #374151;
+  text-align: left;
+}
+.pc-node:hover { background: #f3f4f6; }
+.pc-node-brand { font-weight: 600; color: #111827; }
+.pc-node-city { color: #4b5563; }
+/* Отступ ветки рисуем самим отступом, а не палочками: уровней всего три,
+   и линии здесь только добавляют шума */
+.pc-node[data-level="1"] { padding-left: 22px; }
+.pc-node[data-level="2"] { padding-left: 40px; }
+.pc-node[data-level="3"] { padding-left: 58px; }
+
+.pc-twist { flex-shrink: 0; width: 14px; color: #9ca3af; line-height: 1; font-size: 11px; }
+.pc-node-logo-slot { width: 22px; flex-shrink: 0; display: flex; }
+.pc-node-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+.pc-node-body { flex: 1; min-width: 0; }
+.pc-node-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-node-sub { display: block; font-size: 11px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-node-meta { flex-shrink: 0; font-size: 11px; color: #9ca3af; }
+
+.pc-node-leaf.selected { background: #eff6ff; color: #1d4ed8; }
+.pc-node-leaf.selected .pc-node-sub { color: #60a5fa; }
+/* Занятый филиал остаётся видимым, но некликабельным: человеку важно понять,
+   что клиника в сравнении уже есть, а не гадать, почему её нет в списке */
+.pc-node-leaf.taken { opacity: .45; cursor: not-allowed; }
+.pc-node-leaf.taken:hover { background: transparent; }
+
+.pc-picker-manual {
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px; padding-bottom: 6px;
+}
+.pc-picker-empty { padding: 16px; text-align: center; font-size: 13px; color: #9ca3af; }
+
 /* ═══ Карта конкурентов ═══
    Второй способ смотреть тот же лист: таблица отвечает «сколько стоит»,
    карта — «где мы дороже рынка». Корзиной служит сам лист, эталоном —
@@ -1118,6 +1230,32 @@
 }
 .pc-map-pin img { width: 22px; height: 22px; object-fit: contain; border-radius: 3px; }
 
+/* Склейка меток. Плагин рисует внутри иконки только число, а подложку берёт
+   из MarkerCluster.Default.css — его мы не грузим, чтобы синие «пузыри» не
+   спорили с цветными метками. Рисуем кружок сами, в одном стиле с меткой:
+   белая обводка, тень, ореол вокруг — чтобы цифра читалась поверх карты */
+.marker-cluster {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, .25);
+}
+.marker-cluster div {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: #2563eb;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0,0,0,.35);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* Больше меток — крупнее кружок: размер сам по себе подсказывает масштаб */
+.marker-cluster-medium div { width: 34px; height: 34px; font-size: 13px; }
+.marker-cluster-large div { width: 36px; height: 36px; font-size: 13px; }
+
 .pc-map-legend {
   position: absolute; left: 12px; bottom: 12px; z-index: 500;
   background: rgba(255,255,255,.94);
@@ -1162,12 +1300,6 @@
       </button>
     </div>
     <div class="price-header-right">
-      <span id="creation-date-display" style="display:none; font-size:13px; color:#6b7280; white-space: nowrap;">
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width:14px; height:14px; display:inline-block; vertical-align:middle; margin-right:4px;">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-        </svg>
-        <span id="creation-date-text"></span>
-      </span>
       <button class="price-btn price-btn-success" onclick="priceApp.exportToExcel()" id="export-excel-btn" disabled>
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
         Excel
@@ -1379,9 +1511,24 @@
       <form class="price-modal-body" id="add-competitor-form" onsubmit="priceApp.addCompetitor(event)">
         <div class="price-form-group" id="competitor-parser-group" style="display:none">
           <label>Клиника из парсера</label>
-          <select id="competitor-parser-select" class="price-input" onchange="priceApp.onParserCompetitorChange(this.value)">
-            <option value="">— вписать название вручную —</option>
-          </select>
+          <div class="pc-picker" id="competitor-picker">
+            <button type="button" class="pc-picker-trigger" id="competitor-picker-trigger"
+                    onclick="priceApp.toggleCompetitorPicker()">
+              <img class="pc-picker-logo" id="competitor-picker-logo" src="" alt="" style="display:none">
+              <span class="pc-picker-value placeholder" id="competitor-picker-value">— вписать название вручную —</span>
+              <svg class="pc-picker-caret" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div class="pc-picker-menu" id="competitor-picker-menu" style="display:none">
+              <div class="pc-picker-search">
+                <input type="text" id="competitor-picker-search" autocomplete="off"
+                       placeholder="Поиск по клинике, городу, адресу"
+                       oninput="priceApp.onCompetitorSearch(this.value)">
+              </div>
+              <div class="pc-picker-list" id="competitor-picker-list"></div>
+            </div>
+          </div>
           <small style="color:#86868B;display:block;margin-top:4px">
             Выберите клинику — её цены будут подтягиваться в эту колонку автоматически.
           </small>
@@ -1625,7 +1772,6 @@ window.priceApp = (function() {
     document.getElementById('price-filters').style.display = 'none';
     document.getElementById('export-excel-btn').disabled = true;
     document.getElementById('delete-comparison-btn').disabled = true;
-    document.getElementById('creation-date-display').style.display = 'none';
 
     loadComparisons();
     renderTable();
@@ -1660,7 +1806,6 @@ window.priceApp = (function() {
       document.getElementById('price-filters').style.display = 'none';
       document.getElementById('export-excel-btn').disabled = true;
       document.getElementById('delete-comparison-btn').disabled = true;
-      document.getElementById('creation-date-display').style.display = 'none';
       renderTable();
       return;
     }
@@ -1706,22 +1851,6 @@ window.priceApp = (function() {
       document.getElementById('price-filters').style.display = 'flex';
       document.getElementById('export-excel-btn').disabled = false;
       document.getElementById('delete-comparison-btn').disabled = false;
-
-      // Отображение даты создания
-      if (comparison.createdAt) {
-        var createdDate = new Date(comparison.createdAt);
-        var formattedDate = createdDate.toLocaleDateString('ru-RU', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        document.getElementById('creation-date-text').textContent = formattedDate;
-        document.getElementById('creation-date-display').style.display = 'inline-block';
-      } else {
-        document.getElementById('creation-date-display').style.display = 'none';
-      }
 
       renderColumnsManager();
       renderTable();
@@ -2281,6 +2410,7 @@ window.priceApp = (function() {
           parserCompetitorChoices.push({
             source: c,
             label: clinic,
+            branch: null,
             filialId: null,
             address: null
           });
@@ -2298,54 +2428,430 @@ window.priceApp = (function() {
           parserCompetitorChoices.push({
             source: c,
             label: clinic + ' — ' + branch,
+            branch: branch,
             filialId: f.id,
             address: f.address || null
           });
         });
       });
+      competitorTree = buildCompetitorTree();
     }).catch(function(e) {
       // без списка парсера окно работает по-старому, руками
       console.warn('Список клиник парсера не загрузился:', e.message);
     });
   }
 
-  function onParserCompetitorChange(value) {
-    var input = document.getElementById('competitor-name-input');
-    var choice = value ? parserCompetitorChoices[Number(value) - 1] : null;
-    selectedParserChoice = choice;
+  /* ── Дерево клиник в окне «Добавить конкурента» ─────────────────────────
+   *
+   * Тот же разбор, что в дереве админки парсера: сеть → город → клиника →
+   * филиал. Плоским списком двадцать городов «Клиники Фомина» вперемешку
+   * с чужими клиниками не читаются, а выбрать надо ровно один филиал —
+   * от него и придут цены в колонку.
+   *
+   * Сеть определяется доменом, а не названием: под каждый город у сети свой
+   * поддомен, зато имя с сайта совпадает не всегда — clinic23.ru отдаёт и
+   * «Клинику Екатерининскую», и «Клинику на Герцена», а сеть одна.
+   */
+
+  var competitorTree = [];      // сети → города → клиники → филиалы
+  var competitorTreeOpen = {};  // ключ ветки → раскрыта ли (решение человека)
+  var competitorSearch = '';
+  var competitorPickerOpen = false;
+
+  // Домены, где предпоследняя часть — сама часть суффикса (com.ru, co.uk):
+  // без этого списка clinic.com.ru разложился бы в «com.ru»
+  var SUFFIX_2LD = { com: 1, net: 1, org: 1, co: 1, edu: 1, gov: 1, ac: 1 };
+  var ruCollator = new Intl.Collator('ru');
+
+  /** Домен клиники: belgorod.fomin-clinic.ru и fomin-clinic.ru — одна сеть. */
+  function brandKey(url) {
+    try {
+      var host = new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+      var parts = host.split('.');
+      if (parts.length <= 2) return host;
+      return SUFFIX_2LD[parts[parts.length - 2]]
+        ? parts.slice(-3).join('.')
+        : parts.slice(-2).join('.');
+    } catch (e) {
+      // Ссылка, которую не разобрал даже URL — пусть живёт отдельной веткой
+      return url || 'unknown';
+    }
+  }
+
+  function sourceTitle(source) {
+    return String(source.displayName || source.name || '').trim();
+  }
+
+  /**
+   * Как назвать ветку сети: берём название, встречающееся у большинства
+   * городов. У Фомина это «Клиника Фомина» во всех двадцати, а единичное
+   * «Клиника на Герцена» не должно перебивать имя всей сети.
+   *
+   * Когда счёт равный (у clinic23.ru «Екатерининская» и «на Постовой» —
+   * по одной), сеть называем по самой большой клинике: её прайс и есть
+   * то, за чем в эту ветку идут.
+   */
+  function brandTitle(items, fallback) {
+    var tally = {};
+    var services = {};
+    items.forEach(function(source) {
+      var name = sourceTitle(source);
+      if (!name) return;
+      tally[name] = (tally[name] || 0) + 1;
+      services[name] = Math.max(services[name] || 0, source.servicesTotal || 0);
+    });
+    var names = Object.keys(tally);
+    if (!names.length) return fallback;
+    names.sort(function(a, b) {
+      return tally[b] - tally[a] || services[b] - services[a] || ruCollator.compare(a, b);
+    });
+    return names[0];
+  }
+
+  /** Филиалы клиники как готовые к выбору строки (индекс — в плоском списке). */
+  function leavesForSource(source) {
+    var leaves = [];
+    parserCompetitorChoices.forEach(function(choice, index) {
+      if (choice.source.parserSourceId === source.parserSourceId) {
+        leaves.push({ index: index, choice: choice });
+      }
+    });
+    return leaves;
+  }
+
+  function sourceNode(source) {
+    return {
+      type: 'source',
+      key: 's:' + source.parserSourceId,
+      source: source,
+      leaves: leavesForSource(source)
+    };
+  }
+
+  function buildCompetitorTree() {
+    var groups = {};
+    var order = [];
+    parserCompetitors.forEach(function(source) {
+      // Без домена сеть не собрать — тогда клиника живёт отдельной строкой.
+      // Так дерево остаётся рабочим и со старым бэкендом, который baseUrl
+      // ещё не отдаёт: списком клиник, без веток
+      var key = source.baseUrl ? brandKey(source.baseUrl) : 'src:' + source.parserSourceId;
+      if (!groups[key]) { groups[key] = []; order.push(key); }
+      groups[key].push(source);
+    });
+
+    var byNameThenCity = function(a, b) {
+      return ruCollator.compare(sourceTitle(a), sourceTitle(b)) ||
+             ruCollator.compare(a.city || '', b.city || '');
+    };
+
+    return order.map(function(key) {
+      var items = groups[key];
+
+      var byCity = {};
+      var cityOrder = [];
+      items.forEach(function(source) {
+        var city = String(source.city || '').trim();
+        if (!byCity[city]) { byCity[city] = []; cityOrder.push(city); }
+        byCity[city].push(source);
+      });
+      // Города по алфавиту, безымянный — в конец: он требует внимания,
+      // но не должен возглавлять список
+      cityOrder.sort(function(a, b) {
+        return (a ? 0 : 1) - (b ? 0 : 1) || ruCollator.compare(a, b);
+      });
+
+      // Город становится отдельной веткой только когда в нём правда несколько
+      // клиник: у Фомина в каждом городе ровно одна, и промежуточный узел
+      // там был бы лишним кликом ради одной строки
+      var nodes = cityOrder.map(function(city) {
+        var cityItems = byCity[city].slice().sort(byNameThenCity);
+        return cityItems.length > 1
+          ? {
+              type: 'city',
+              key: 'c:' + key + ':' + city,
+              city: city,
+              sources: cityItems.map(sourceNode)
+            }
+          : sourceNode(cityItems[0]);
+      });
+
+      return {
+        key: 'g:' + key,
+        title: brandTitle(items, key),
+        logo: items.map(function(s) { return s.logo; }).filter(Boolean)[0] || null,
+        items: items,
+        nodes: nodes
+      };
+    }).sort(function(a, b) { return ruCollator.compare(a.title, b.title); });
+  }
+
+  /**
+   * Занято, если этот же филиал этой же клиники уже стоит за какой-то
+   * колонкой листа. Как та колонка названа — неважно: связь идёт по id.
+   */
+  function isChoiceTaken(choice) {
+    return allColumns.some(function(col) {
+      var binding = bindingForColumn(col.name);
+      return binding &&
+        binding.parserSourceId === choice.source.parserSourceId &&
+        (binding.filialId == null ? null : binding.filialId) === choice.filialId;
+    });
+  }
+
+  // Умолчание: сети свёрнуты (у Фомина два десятка городов), города внутри
+  // раскрыты — до них человек уже добрался осознанно. Поиск раскрывает всё:
+  // прятать найденное за кликом бессмысленно.
+  function isBranchOpen(key) {
+    if (competitorSearch.trim()) return true;
+    if (Object.prototype.hasOwnProperty.call(competitorTreeOpen, key)) {
+      return competitorTreeOpen[key];
+    }
+    return key.charAt(0) === 'c';
+  }
+
+  function matchesSearch(text) {
+    var term = competitorSearch.trim().toLowerCase();
+    if (!term) return true;
+    return String(text || '').toLowerCase().indexOf(term) >= 0;
+  }
+
+  // Поиск идёт по всему, что видно в строке: название клиники, город,
+  // филиал и его адрес — искать будут и «Сормовская», и «Краснодар»
+  function leafMatches(leaf) {
+    var choice = leaf.choice;
+    return matchesSearch(choice.label) ||
+           matchesSearch(choice.branch) ||
+           matchesSearch(choice.address) ||
+           matchesSearch(choice.source.city);
+  }
+
+  function visibleLeaves(node) {
+    return node.leaves.filter(leafMatches);
+  }
+
+  function twistHtml(open) {
+    return '<span class="pc-twist">' + (open ? '▾' : '▸') + '</span>';
+  }
+
+  function logoSlotHtml(logo) {
+    return '<span class="pc-node-logo-slot">' +
+      (logo ? '<img class="pc-node-logo" src="' + escAttr(logo) + '" alt="" onerror="this.hidden=true">' : '') +
+      '</span>';
+  }
+
+  function leafHtml(leaf, level, title, sub, logo, meta) {
+    var taken = isChoiceTaken(leaf.choice);
+    var selected = selectedParserChoice === leaf.choice;
+    return '<button type="button" data-level="' + level + '"' +
+      ' class="pc-node pc-node-leaf' + (selected ? ' selected' : '') + (taken ? ' taken' : '') + '"' +
+      (taken ? ' disabled' : '') +
+      ' onclick="priceApp.pickCompetitor(' + leaf.index + ')">' +
+      '<span class="pc-twist"></span>' +
+      logoSlotHtml(logo) +
+      '<span class="pc-node-body">' +
+        '<span class="pc-node-title">' + esc(title) + (taken ? ' · уже в сравнении' : '') + '</span>' +
+        (sub ? '<span class="pc-node-sub">' + esc(sub) + '</span>' : '') +
+      '</span>' +
+      (meta ? '<span class="pc-node-meta">' + esc(meta) + '</span>' : '') +
+      '</button>';
+  }
+
+  // inCity — клиника уже лежит внутри ветки города, и повторять город
+  // в её подписи незачем
+  function sourceHtml(node, level, inCity) {
+    var leaves = visibleLeaves(node);
+    if (!leaves.length) return '';
+
+    var source = node.source;
+    var title = inCity ? sourceTitle(source) : labelWithCity(sourceTitle(source), source.city);
+    var logo = source.logo || null;
+    var services = 'услуг: ' + (source.servicesTotal || 0);
+
+    // Один филиал — не заводим ветку ради одной строки: клиника сама и есть
+    // выбор, а филиал с адресом уходят во вторую строку. Так же схлопывается
+    // и клиника, у которой поиск оставил один филиал, — поэтому филиал здесь
+    // называем: иначе из «Сормовской» в запросе остался бы один адрес
+    if (leaves.length === 1) {
+      var only = leaves[0];
+      var sub = [only.choice.branch, only.choice.address].filter(Boolean).join(' · ');
+      return leafHtml(only, level, title, sub, logo, services);
+    }
+
+    var open = isBranchOpen(node.key);
+    var html = '<button type="button" data-level="' + level + '" class="pc-node"' +
+      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(node.key) + '\')">' +
+      twistHtml(open) + logoSlotHtml(logo) +
+      '<span class="pc-node-body"><span class="pc-node-title">' + esc(title) + '</span></span>' +
+      '<span class="pc-node-meta">филиалов: ' + leaves.length + '</span>' +
+      '</button>';
+
+    // У филиала своего счётчика услуг нет — прайс на всю клинику один,
+    // и повторять её число в каждой строке было бы обманом
+    if (open) {
+      html += leaves.map(function(leaf) {
+        return leafHtml(leaf, level + 1, leaf.choice.branch || 'Филиал',
+          leaf.choice.address || '', null, null);
+      }).join('');
+    }
+    return html;
+  }
+
+  function cityHtml(node, level) {
+    var inner = node.sources.map(function(child) { return sourceHtml(child, level + 1, true); }).join('');
+    if (!inner) return '';
+
+    var open = isBranchOpen(node.key);
+    var html = '<button type="button" data-level="' + level + '" class="pc-node pc-node-city"' +
+      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(node.key) + '\')">' +
+      twistHtml(open) + '<span class="pc-node-logo-slot"></span>' +
+      '<span class="pc-node-body"><span class="pc-node-title">' +
+        esc(node.city || 'город не указан') + '</span></span>' +
+      '<span class="pc-node-meta">клиник: ' + node.sources.length + '</span>' +
+      '</button>';
+    return open ? html + inner : html;
+  }
+
+  function nodeHtml(node, level) {
+    return node.type === 'city' ? cityHtml(node, level) : sourceHtml(node, level);
+  }
+
+  function groupHtml(group) {
+    // Сеть из одного города — просто строка: сворачивать ветку
+    // с единственным потомком незачем
+    if (group.items.length === 1) return nodeHtml(group.nodes[0], 0);
+
+    var inner = group.nodes.map(function(node) { return nodeHtml(node, 1); }).join('');
+    if (!inner) return '';
+
+    var open = isBranchOpen(group.key);
+    var html = '<button type="button" data-level="0" class="pc-node pc-node-brand"' +
+      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(group.key) + '\')">' +
+      twistHtml(open) + logoSlotHtml(group.logo) +
+      '<span class="pc-node-body"><span class="pc-node-title">' + esc(group.title) + '</span></span>' +
+      '<span class="pc-node-meta">городов: ' + group.items.length + '</span>' +
+      '</button>';
+    return open ? html + inner : html;
+  }
+
+  function renderCompetitorPicker() {
+    var list = document.getElementById('competitor-picker-list');
+    if (!list) return;
+
+    var manual = '<button type="button" class="pc-node pc-node-leaf pc-picker-manual' +
+      (selectedParserChoice ? '' : ' selected') + '" onclick="priceApp.pickCompetitor(-1)">' +
+      '<span class="pc-twist"></span><span class="pc-node-logo-slot"></span>' +
+      '<span class="pc-node-body">' +
+        '<span class="pc-node-title">Вписать название вручную</span>' +
+        '<span class="pc-node-sub">Цены внесёте сами — привязки к парсеру не будет</span>' +
+      '</span></button>';
+
+    var body = competitorTree.map(groupHtml).join('');
+    list.innerHTML = manual + (body || '<div class="pc-picker-empty">Ничего не нашлось</div>');
+
+    var value = document.getElementById('competitor-picker-value');
+    var logo = document.getElementById('competitor-picker-logo');
+    var choice = selectedParserChoice;
+    value.textContent = choice ? choice.label : '— вписать название вручную —';
+    value.className = 'pc-picker-value' + (choice ? '' : ' placeholder');
+    var logoSrc = choice ? parserLogoBySourceId[choice.source.parserSourceId] : null;
+    logo.style.display = logoSrc ? '' : 'none';
+    if (logoSrc) logo.src = logoSrc;
+  }
+
+  // Дерево длинное, а окно невысокое: раскрываем в ту сторону, где места
+  // больше, и не даём вылезти за экран
+  function positionCompetitorMenu() {
+    var trigger = document.getElementById('competitor-picker-trigger');
+    var menu = document.getElementById('competitor-picker-menu');
+    if (!trigger || !menu) return;
+
+    var rect = trigger.getBoundingClientRect();
+    var below = window.innerHeight - rect.bottom - 12;
+    var above = rect.top - 12;
+    var openUp = below < 240 && above > below;
+
+    menu.style.left = rect.left + 'px';
+    menu.style.width = rect.width + 'px';
+    menu.style.maxHeight = Math.max(openUp ? above : below, 200) + 'px';
+    if (openUp) {
+      menu.style.top = 'auto';
+      menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+    } else {
+      menu.style.bottom = 'auto';
+      menu.style.top = (rect.bottom + 4) + 'px';
+    }
+  }
+
+  function setCompetitorPickerOpen(open) {
+    competitorPickerOpen = open;
+    var picker = document.getElementById('competitor-picker');
+    var menu = document.getElementById('competitor-picker-menu');
+    if (!picker || !menu) return;
+    picker.classList.toggle('open', open);
+    menu.style.display = open ? '' : 'none';
+
+    if (!open) {
+      window.removeEventListener('resize', positionCompetitorMenu);
+      window.removeEventListener('scroll', positionCompetitorMenu, true);
+      return;
+    }
+
+    renderCompetitorPicker();
+    positionCompetitorMenu();
+    // Меню закреплено за экраном, а поле — за окном: если окно ещё не встало
+    // на место или страницу прокрутили, привязку надо пересчитать
+    if (window.requestAnimationFrame) window.requestAnimationFrame(positionCompetitorMenu);
+    window.addEventListener('resize', positionCompetitorMenu);
+    window.addEventListener('scroll', positionCompetitorMenu, true);
+
+    var search = document.getElementById('competitor-picker-search');
+    if (search) search.focus();
+  }
+
+  function toggleCompetitorPicker() {
+    setCompetitorPickerOpen(!competitorPickerOpen);
+  }
+
+  function toggleCompetitorBranch(key) {
+    competitorTreeOpen[key] = !isBranchOpen(key);
+    renderCompetitorPicker();
+    positionCompetitorMenu();
+  }
+
+  function onCompetitorSearch(value) {
+    competitorSearch = value;
+    renderCompetitorPicker();
+    positionCompetitorMenu();
+  }
+
+  function pickCompetitor(index) {
+    selectedParserChoice = index >= 0 ? parserCompetitorChoices[index] : null;
     // Название колонки — только подпись, менять её можно: цены придут по
     // привязке к клинике, а не по совпадению текста
-    if (choice) input.value = choice.label;
+    var input = document.getElementById('competitor-name-input');
+    if (selectedParserChoice) input.value = selectedParserChoice.label;
+    setCompetitorPickerOpen(false);
+    renderCompetitorPicker();
+    if (!selectedParserChoice) input.focus();
   }
 
   function openAddCompetitorModal() {
     setCompetitorFormBusy(false);
     document.getElementById('competitor-name-input').value = '';
     selectedParserChoice = null;
+    competitorSearch = '';
+    competitorTreeOpen = {};
+    competitorTree = buildCompetitorTree();
+
+    var search = document.getElementById('competitor-picker-search');
+    if (search) search.value = '';
 
     var group = document.getElementById('competitor-parser-group');
-    var select = document.getElementById('competitor-parser-select');
-    if (group && select) {
-      group.style.display = parserCompetitorChoices.length ? '' : 'none';
-      var options = '<option value="">— вписать название вручную —</option>';
-      parserCompetitorChoices.forEach(function(choice, index) {
-        var c = choice.source;
-        // Занято, если этот же филиал этой же клиники уже стоит за какой-то
-        // колонкой листа. Как та колонка названа — неважно.
-        var taken = allColumns.some(function(col) {
-          var binding = bindingForColumn(col.name);
-          return binding &&
-            binding.parserSourceId === c.parserSourceId &&
-            (binding.filialId == null ? null : binding.filialId) === choice.filialId;
-        });
-        options += '<option value="' + (index + 1) + '"' + (taken ? ' disabled' : '') + '>' +
-          choice.label +
-          (choice.address ? ' · ' + choice.address : '') +
-          ' · услуг: ' + (c.servicesTotal || 0) +
-          (taken ? ' (уже в сравнении)' : '') + '</option>';
-      });
-      select.innerHTML = options;
-    }
+    if (group) group.style.display = parserCompetitorChoices.length ? '' : 'none';
+    setCompetitorPickerOpen(false);
+    renderCompetitorPicker();
+
     openModal('add-competitor-modal');
   }
 
@@ -2358,7 +2864,7 @@ window.priceApp = (function() {
     if (!form) return;
     var submit = form.querySelector('button[type="submit"]');
     var cancel = form.querySelector('.price-btn-secondary');
-    var select = document.getElementById('competitor-parser-select');
+    var select = document.getElementById('competitor-picker-trigger');
     var input = document.getElementById('competitor-name-input');
     var closeBtn = document.querySelector('#add-competitor-modal .price-modal-close');
 
@@ -2374,6 +2880,7 @@ window.priceApp = (function() {
     if (closeBtn) closeBtn.disabled = busy;
     if (select) select.disabled = busy;
     if (input) input.disabled = busy;
+    if (busy) setCompetitorPickerOpen(false);
     competitorFormBusy = busy;
   }
 
@@ -3417,7 +3924,31 @@ window.priceApp = (function() {
     });
   }
 
+  /**
+   * Страница встраивается в вики и живёт в том же window, что и React-приложение.
+   * Layout слушает 'spreadsheet-page' и сворачивает сайдбар — таблице конкурентов
+   * его ширина нужнее. Когда наш корень уходит из DOM (ушли на другую страницу),
+   * возвращаем сайдбар на место.
+   */
+  function collapseSidebar() {
+    try {
+      window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: true } }));
+      var rootEl = document.getElementById('price-app');
+      if (rootEl && window.MutationObserver) {
+        var obs = new MutationObserver(function() {
+          if (!document.body.contains(rootEl)) {
+            window.dispatchEvent(new CustomEvent('spreadsheet-page', { detail: { active: false } }));
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+      }
+    } catch (e) { /* открыли файл вне вики — сайдбара нет, и ладно */ }
+  }
+
   // === INIT ===
+  collapseSidebar();
+
   if (!getToken()) {
     document.getElementById('price-app').innerHTML = '<div style="padding:40px;text-align:center;color:#dc2626;">Необходима авторизация</div>';
   } else {
@@ -3425,12 +3956,20 @@ window.priceApp = (function() {
     loadClinics();
     loadParserCompetitors();
     document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape') {
-        closeModal('new-comparison-modal');
-        closeModal('add-service-modal');
-        closeModal('add-competitor-modal');
-        closeModal('add-lab-services-modal');
-      }
+      if (e.key !== 'Escape') return;
+      // Открытое дерево клиник Escape закрывает первым: окно с наполовину
+      // заполненной формой закрывать по тому же нажатию человек не просил
+      if (competitorPickerOpen) { setCompetitorPickerOpen(false); return; }
+      closeModal('new-comparison-modal');
+      closeModal('add-service-modal');
+      closeModal('add-competitor-modal');
+      closeModal('add-lab-services-modal');
+    });
+    // Клик мимо дерева закрывает его, как у обычного выпадающего списка
+    document.addEventListener('mousedown', function(e) {
+      if (!competitorPickerOpen) return;
+      var picker = document.getElementById('competitor-picker');
+      if (picker && !picker.contains(e.target)) setCompetitorPickerOpen(false);
     });
   }
 
@@ -4280,7 +4819,10 @@ window.priceApp = (function() {
     createComparison: createComparison,
     deleteComparison: deleteComparison,
     openAddCompetitorModal: openAddCompetitorModal,
-    onParserCompetitorChange: onParserCompetitorChange,
+    toggleCompetitorPicker: toggleCompetitorPicker,
+    toggleCompetitorBranch: toggleCompetitorBranch,
+    onCompetitorSearch: onCompetitorSearch,
+    pickCompetitor: pickCompetitor,
     addCompetitor: addCompetitor,
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,

@@ -177,7 +177,11 @@ router.get('/competitors', authenticate, async (req, res) => {
       order: [['displayName', 'ASC'], ['city', 'ASC']],
       attributes: [
         'id', 'parserSourceId', 'name', 'displayName', 'city', 'servicesTotal',
-        'lastRunAt', 'logoData', 'logoContentType'
+        'lastRunAt', 'logoData', 'logoContentType',
+        // Домен нужен странице сравнения: она собирает список в дерево по сетям,
+        // а сеть определяется доменом, не названием — clinic23.ru отдаёт и
+        // «Клинику Екатерининскую», и «Клинику на Герцена», и это одна сеть
+        'baseUrl'
       ]
     });
     const [filialRows] = await sequelize.query(
@@ -213,6 +217,7 @@ router.get('/competitors', authenticate, async (req, res) => {
         parserSourceId: source.parserSourceId,
         name: source.name,
         displayName: source.displayName,
+        baseUrl: source.baseUrl,
         city: source.city,
         servicesTotal: source.servicesTotal,
         filials: filialsBySource.get(source.id) || [],
