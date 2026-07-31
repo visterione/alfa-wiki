@@ -94,13 +94,28 @@
    экране таблица прокручивается, а не теряет последнюю колонку */
 .ap-sources { overflow-x: auto; }
 
+/* Прайс конкурента открывается по клику: проверять разбор всё равно ходят
+   на сайт, а копировать адрес из подсказки — лишний шаг */
 .ap-sources .ap-url {
   display: block;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  /* Своего цвета у ссылки нет: в таблице один цвет текста на всё,
+     и синяя строка адреса выбивалась бы из него сильнее всего */
+  color: inherit;
+  text-decoration: none;
 }
+
+.ap-sources .ap-url:hover { text-decoration: underline; }
+
+/* Единый цвет текста во всей таблице: серые подписи вперемешку с чёрными
+   значениями читались как два разных сорта данных, хотя данные одни */
+.ap-sources .text-muted { color: inherit; }
+
+.ap-sources .admin-table th { text-align: center; }
 
 /* Строк в дереве втрое больше, чем колонок: обычные 14px по вертикали
    растягивают сеть из двадцати городов на два экрана */
@@ -116,14 +131,14 @@
 .admin-table tr.ap-group-row,
 .admin-table tr.ap-city-row { cursor: pointer; user-select: none; }
 
-.admin-table tr.ap-group-row > td { background: var(--bg-secondary, #f9fafb); }
-.admin-table tr.ap-city-row > td { background: var(--bg-primary, #fff); }
-
+/* Строка ветки ростом со строку источника, хотя текста в ней одна строка,
+   а не две: дерево из ступенек разной высоты читается хуже ровного списка */
 .ap-branch {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  min-height: 36px;
 }
 
 /* Место под шеврон и под значок занято в каждой строке, даже когда рисовать
@@ -155,7 +170,6 @@
   border-radius: 4px;
 }
 
-.admin-table tr.ap-filial-row > td { background: var(--bg-primary, #fff); }
 .ap-filial-row td:first-child { font-size: 13px; }
 
 /* ── Модалка адресов ────────────────────────────────────────────────────── */

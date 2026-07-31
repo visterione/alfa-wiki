@@ -1442,7 +1442,6 @@ function buildTree(sources) {
       title: brandTitle(items, key),
       items,
       nodes,
-      services: items.reduce((sum, s) => sum + (Number(s.services_total) || 0), 0),
     };
   }).sort((a, b) => ru.compare(a.title, b.title));
 }
@@ -1712,10 +1711,23 @@ export default function AdminParser() {
               />
               {/* Ссылка обрезается: у Инвитро адрес с query-строкой на сотню
                   символов растягивал таблицу так, что колонка с кнопками
-                  уезжала за край контейнера */}
+                  уезжала за край контейнера. Целиком она в подсказке */}
               <div>
-                <small className="text-muted ap-url" title={source.base_url}>{source.base_url}</small>
+                <a
+                  className="ap-url"
+                  href={source.base_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={source.base_url}
+                >
+                  {source.base_url}
+                </a>
               </div>
+              {/* Неудавшийся обход раньше был виден в отдельной колонке —
+                  теперь её нет, а знать про него надо */}
+              {source.last_run?.status && source.last_run.status !== 'ok' && (
+                <div><small style={{ color: 'var(--error)' }}>обход: {source.last_run.status}</small></div>
+              )}
             </div>
           </div>
         </td>
@@ -1758,14 +1770,6 @@ export default function AdminParser() {
           <LabelCell source={source} value={sync?.competitorLabel || ''} onSaved={loadSyncStatus} />
         </td>
         <td>
-          {date(source.last_run?.finished_at || source.last_run?.started_at)}
-          {source.last_run?.status && source.last_run.status !== 'ok' && (
-            <div><small style={{ color: 'var(--error)' }}>{source.last_run.status}</small></div>
-          )}
-        </td>
-        <td>
-          {/* Две даты намеренно рядом: свежий забор недельного обхода
-              даёт всё ещё недельные цены */}
           {dateTime(sync?.syncedAt)}
           {sync?.syncStatus === 'failed' && (
             <div><small style={{ color: 'var(--error)' }}>{sync.syncError}</small></div>
@@ -1813,7 +1817,7 @@ export default function AdminParser() {
           </td>
           <td />
           <td title="Услуг с ценой в этом филиале">{filial.services.toLocaleString('ru-RU')}</td>
-          <td colSpan={4} />
+          <td colSpan={3} />
         </tr>
       ))}
       </React.Fragment>
@@ -1876,7 +1880,6 @@ export default function AdminParser() {
                 <th>Город</th>
                 <th>Услуг</th>
                 <th>Название в сравнениях</th>
-                <th>Сайт обойдён</th>
                 <th>Цены забраны</th>
                 <th></th>
               </tr>
@@ -1914,17 +1917,15 @@ export default function AdminParser() {
                           </span>
                         </div>
                       </td>
-                      <td />
-                      <td>{group.services.toLocaleString('ru-RU')}</td>
-                      <td colSpan={4} />
+                      {/* Сводных чисел на ветках нет намеренно: сумма услуг
+                          по сети ничего не решает, а строку загромождает */}
+                      <td colSpan={5} />
                     </tr>
 
                     {groupOpen && group.nodes.map(node => {
                       if (node.type === 'source') return sourceRow(node.source, 1);
 
                       const cityOpen = isOpen(node.key);
-                      const cityServices = node.items.reduce(
-                        (sum, s) => sum + (Number(s.services_total) || 0), 0);
 
                       return (
                         <React.Fragment key={node.key}>
@@ -1935,12 +1936,10 @@ export default function AdminParser() {
                                   {cityOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                                 </span>
                                 <span className="ap-logo-slot" />
-                                <span>{node.city || <span className="text-muted">город не указан</span>}</span>
+                                <span>{node.city || 'город не указан'}</span>
                               </div>
                             </td>
-                            <td />
-                            <td>{cityServices.toLocaleString('ru-RU')}</td>
-                            <td colSpan={4} />
+                            <td colSpan={5} />
                           </tr>
                           {cityOpen && node.items.map(source => sourceRow(source, 2))}
                         </React.Fragment>
