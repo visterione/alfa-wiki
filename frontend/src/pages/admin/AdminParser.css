@@ -83,9 +83,7 @@
 
 .ap-tree-toolbar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  justify-content: flex-end;
   margin-bottom: 8px;
   font-size: 13px;
 }
@@ -128,35 +126,37 @@
   min-width: 0;
 }
 
+/* Место под шеврон и под значок занято в каждой строке, даже когда рисовать
+   там нечего: иначе строка без потомков или без логотипа съезжает влево,
+   и колонка названий превращается в лесенку */
 .ap-twist {
-  display: inline-flex;
+  width: 18px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-tertiary, #9ca3af);
 }
 
-.ap-branch-note { font-size: 12px; font-weight: 400; }
+.ap-twist-on { cursor: pointer; }
+
+.ap-logo-slot {
+  width: 28px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 
 .ap-group-logo {
   width: 22px;
   height: 22px;
-  flex-shrink: 0;
   object-fit: contain;
   border-radius: 4px;
 }
 
-/* Пустое место вместо значка, чтобы названия сетей стояли в одну линию */
-.ap-group-logo-empty { display: inline-block; }
-
-/* Без подписи в сравнениях услуги источника никуда не попадают — на
-   свёрнутой ветке это единственный намёк, что там что-то не доделано */
-.ap-unlabeled {
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: rgba(255, 149, 0, 0.14);
-  color: var(--warning, #b45309);
-  font-size: 12px;
-  white-space: nowrap;
-}
+.admin-table tr.ap-filial-row > td { background: var(--bg-primary, #fff); }
+.ap-filial-row td:first-child { font-size: 13px; }
 
 /* ── Модалка адресов ────────────────────────────────────────────────────── */
 

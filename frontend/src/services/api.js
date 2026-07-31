@@ -761,6 +761,8 @@ export const priceParser = {
   queueConfirm: (id, cities)  => api.post(`/parser/queue/${id}/confirm`, { cities }),
   queueDrop:    (id)          => api.delete(`/parser/queue/${id}`),
   queueClear:   ()            => api.post('/parser/queue/clear'),
+  // филиалы всех источников разом — третий уровень дерева на странице парсера
+  filials:   ()               => api.get('/parser/filials'),
   // адреса точек: для карты в сравнении цен и просто чтобы знать, куда идти
   locations:        (id)          => api.get(`/parser/sources/${id}/locations`),
   collectLocations: (id)          => api.post(`/parser/sources/${id}/locations/collect`),

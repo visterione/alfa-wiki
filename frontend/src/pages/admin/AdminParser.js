@@ -1407,7 +1407,7 @@ function brandTitle(items, fallback) {
  * источников: у Фомина в каждом городе ровно один, и промежуточный узел
  * там был бы лишним кликом ради одной строки.
  */
-function buildTree(sources, syncBySourceId) {
+function buildTree(sources) {
   const groups = new Map();
   for (const source of sources) {
     const key = brandKey(source.base_url);
@@ -1442,11 +1442,7 @@ function buildTree(sources, syncBySourceId) {
       title: brandTitle(items, key),
       items,
       nodes,
-      cities: byCity.size,
       services: items.reduce((sum, s) => sum + (Number(s.services_total) || 0), 0),
-      // Без подписи в сравнениях услуги источника не участвуют в сопоставлении
-      // вовсе — на свёрнутой ветке это единственный способ такое заметить
-      unlabeled: items.filter(s => !syncBySourceId[s.id]?.competitorLabel).length,
     };
   }).sort((a, b) => ru.compare(a.title, b.title));
 }
@@ -1459,6 +1455,7 @@ export default function AdminParser() {
   const [connection, setConnection] = useState(null);
   const [sources, setSources] = useState([]);
   const [logos, setLogos] = useState({});
+  const [filialsBySource, setFilialsBySource] = useState({});
   const [toDelete, setToDelete] = useState(null);
   const [locationsFor, setLocationsFor] = useState(null);
   const [servicesFor, setServicesFor] = useState(null);
@@ -1518,12 +1515,24 @@ export default function AdminParser() {
     }
   }, []);
 
+  // Филиалы — третий уровень дерева. Приходят из нашей копии одним запросом:
+  // у сети в одном Краснодаре десять отделений, и ходить за каждым отдельно
+  // значит десять запросов ради двух строк
+  const loadFilials = useCallback(async () => {
+    try {
+      const { data } = await priceParser.filials();
+      setFilialsBySource(data.data || {});
+    } catch {
+      // без филиалов дерево остаётся рабочим — молча
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      await Promise.all([loadSources(), loadSyncStatus(), loadLogos()]);
+      await Promise.all([loadSources(), loadSyncStatus(), loadLogos(), loadFilials()]);
       setLoading(false);
     })();
-  }, [loadSources, loadSyncStatus, loadLogos]);
+  }, [loadSources, loadSyncStatus, loadLogos, loadFilials]);
 
   // Опрос задачи, пока она идёт. Останавливаемся, как только парсер встал:
   // закончил, упал или ждёт подтверждения
@@ -1559,8 +1568,9 @@ export default function AdminParser() {
   useEffect(() => {
     if (!syncRunning) return undefined;
     const handle = setInterval(loadSyncStatus, 3000);
-    return () => clearInterval(handle);
-  }, [syncRunning, loadSyncStatus]);
+    // Забор цен мог принести новые филиалы — перечитываем их, когда он встал
+    return () => { clearInterval(handle); loadFilials(); };
+  }, [syncRunning, loadSyncStatus, loadFilials]);
 
   const handleConfirm = async (cities) => {
     setConfirming(true);
@@ -1607,7 +1617,7 @@ export default function AdminParser() {
       await priceParser.remove(toDelete.id);
       toast.success(`Клиника «${toDelete.display_name || toDelete.name}» удалена`);
       setToDelete(null);
-      await Promise.all([loadSources(), loadSyncStatus(), loadLogos()]);
+      await Promise.all([loadSources(), loadSyncStatus(), loadLogos(), loadFilials()]);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Не удалось удалить');
     } finally {
@@ -1629,30 +1639,63 @@ export default function AdminParser() {
   // Опрос остановит сам эффект: он завязан на jobId
   const closeJob = () => { setJobId(null); setJob(null); };
 
-  const tree = useMemo(() => buildTree(sources, syncBySourceId), [sources, syncBySourceId]);
+  const tree = useMemo(() => buildTree(sources), [sources]);
 
   useEffect(() => {
     try { localStorage.setItem(TREE_OPEN_KEY, JSON.stringify(open)); } catch { /* приватный режим */ }
   }, [open]);
 
+  // Города раскрыты по умолчанию, сети и филиалы — свёрнуты: у сети два
+  // десятка городов, у города до десяти филиалов, и вываливать это разом
+  // значит вернуть ту же простыню, из-за которой дерево и заводилось
   const isOpen = (key) => open[key] ?? key.startsWith('c:');
   const toggleBranch = (key) => setOpen(prev => ({ ...prev, [key]: !(prev[key] ?? key.startsWith('c:')) }));
 
   const branchKeys = tree.flatMap(group => [
-    group.key,
+    ...(group.items.length > 1 ? [group.key] : []),
     ...group.nodes.filter(node => node.type === 'city').map(node => node.key),
+    ...group.items.filter(s => filialsBySource[s.id]?.length).map(s => `f:${s.id}`),
   ]);
   const allOpen = branchKeys.length > 0 && branchKeys.every(isOpen);
   const toggleAll = () =>
     setOpen(Object.fromEntries(branchKeys.map(key => [key, !allOpen])));
 
+  /**
+   * Переименование сети целиком.
+   *
+   * Отдельного «названия сети» в парсере нет — есть название у каждого
+   * источника, а заголовок ветки складывается из них. Поэтому правим все
+   * города разом, но только те, что зовутся как сеть: индивидуально
+   * переименованный филиал («Клиника на Герцена») своё имя сохраняет.
+   */
+  const renameGroup = async (group, next) => {
+    const targets = group.items.filter(s => sourceName(s) === group.title);
+    for (const source of targets) await priceParser.rename(source.id, next);
+    await loadSources();
+    toast.success(`Переименовано городов: ${targets.length}`);
+  };
+
   /** Строка источника — одна и та же на любом уровне дерева, меняется отступ. */
   const sourceRow = (source, depth) => {
     const sync = syncBySourceId[source.id];
+    const filials = filialsBySource[source.id] || [];
+    const filialsKey = `f:${source.id}`;
+    const filialsOpen = filials.length > 0 && isOpen(filialsKey);
+
     return (
-      <tr key={source.id}>
+      <React.Fragment key={source.id}>
+      <tr>
         <td style={{ paddingLeft: 20 + depth * 22 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="ap-branch">
+            {/* Место под шеврон занято всегда — иначе значки и названия
+                строк без потомков разъезжаются с остальными */}
+            <span
+              className={`ap-twist${filials.length ? ' ap-twist-on' : ''}`}
+              onClick={filials.length ? () => toggleBranch(filialsKey) : undefined}
+              title={filials.length ? 'Филиалы прайса' : undefined}
+            >
+              {filials.length > 0 && (filialsOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />)}
+            </span>
             <LogoCell source={source} logo={logos[source.id]} onChanged={loadLogos} />
             <div style={{ minWidth: 0 }}>
               {/* Название с сайта, а не домен: у сети из двадцати
@@ -1696,7 +1739,6 @@ export default function AdminParser() {
               title="Адреса точек — для карты в сравнении цен"
             >
               <MapPin size={12} style={{ verticalAlign: -1 }} /> адреса
-              {source.filials_total > 0 && ` · филиалов ${source.filials_total}`}
             </button>
           </div>
         </td>
@@ -1754,6 +1796,27 @@ export default function AdminParser() {
           </button>
         </td>
       </tr>
+
+      {/* Филиалы: у сети в одном городе до десяти отделений, и цена в каждом
+          своя. Считаем по нашей копии — сопоставление читает именно её */}
+      {filialsOpen && filials.map(filial => (
+        <tr key={`${source.id}-${filial.id}`} className="ap-filial-row">
+          <td style={{ paddingLeft: 20 + (depth + 1) * 22 }}>
+            <div className="ap-branch">
+              <span className="ap-twist" />
+              <span className="ap-logo-slot" />
+              <div style={{ minWidth: 0 }}>
+                <div>{filial.name}</div>
+                {filial.address && <small className="text-muted">{filial.address}</small>}
+              </div>
+            </div>
+          </td>
+          <td />
+          <td title="Услуг с ценой в этом филиале">{filial.services.toLocaleString('ru-RU')}</td>
+          <td colSpan={4} />
+        </tr>
+      ))}
+      </React.Fragment>
     );
   };
 
@@ -1800,9 +1863,6 @@ export default function AdminParser() {
       ) : (
         <>
         <div className="ap-tree-toolbar">
-          <span className="text-muted">
-            клиник: {tree.length} · источников: {sources.length}
-          </span>
           <button className="btn btn-ghost" onClick={toggleAll}>
             {allOpen ? 'Свернуть всё' : 'Развернуть всё'}
           </button>
@@ -1835,28 +1895,28 @@ export default function AdminParser() {
                     <tr className="ap-group-row" onClick={() => toggleBranch(group.key)}>
                       <td>
                         <div className="ap-branch">
-                          <span className="ap-twist">
+                          <span className="ap-twist ap-twist-on">
                             {groupOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                           </span>
-                          {logo
-                            ? <img className="ap-group-logo" src={logo} alt="" />
-                            : <span className="ap-group-logo ap-group-logo-empty" />}
-                          <b>{group.title}</b>
-                          <span className="text-muted ap-branch-note">
-                            источников: {group.items.length}
+                          <span className="ap-logo-slot">
+                            {logo && <img className="ap-group-logo" src={logo} alt="" />}
+                          </span>
+                          {/* Название сети правится здесь и разъезжается по всем
+                              её городам: своего имени у сети в парсере нет */}
+                          <span onClick={e => e.stopPropagation()}>
+                            <EditableCell
+                              value={group.title}
+                              placeholder="название сети"
+                              hint="Название сети — применится ко всем её городам"
+                              bold
+                              onSave={next => renameGroup(group, next)}
+                            />
                           </span>
                         </div>
                       </td>
-                      <td className="text-muted">городов: {group.cities}</td>
+                      <td />
                       <td>{group.services.toLocaleString('ru-RU')}</td>
-                      <td>
-                        {group.unlabeled > 0 && (
-                          <small className="ap-unlabeled" title="Без подписи услуги не участвуют в сопоставлении">
-                            не указано: {group.unlabeled}
-                          </small>
-                        )}
-                      </td>
-                      <td colSpan={3} />
+                      <td colSpan={4} />
                     </tr>
 
                     {groupOpen && group.nodes.map(node => {
@@ -1871,13 +1931,11 @@ export default function AdminParser() {
                           <tr className="ap-city-row" onClick={() => toggleBranch(node.key)}>
                             <td style={{ paddingLeft: 42 }}>
                               <div className="ap-branch">
-                                <span className="ap-twist">
+                                <span className="ap-twist ap-twist-on">
                                   {cityOpen ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                                 </span>
+                                <span className="ap-logo-slot" />
                                 <span>{node.city || <span className="text-muted">город не указан</span>}</span>
-                                <span className="text-muted ap-branch-note">
-                                  источников: {node.items.length}
-                                </span>
                               </div>
                             </td>
                             <td />

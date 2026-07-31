@@ -229,6 +229,68 @@ router.get('/competitors', authenticate, async (req, res) => {
   }
 });
 
+/**
+ * Филиалы всех источников разом — для дерева на странице парсера.
+ *
+ * Филиал существует ровно постольку, поскольку у него есть своя цена:
+ * отдельной таблицы нет, и берём мы его из цен. Название у филиала в прайсе
+ * бывает пустым — тогда подставляем название точки с картой, привязанной
+ * к этому филиалу: «Клиника на Сормовской» читается лучше, чем «Филиал 7».
+ *
+ * Одним запросом на всю страницу, а не по источнику: у сети из десяти
+ * филиалов это десять походов в базу ради двух строк каждый.
+ */
+router.get('/filials', ...canManage, async (req, res) => {
+  try {
+    const [rows] = await sequelize.query(
+      `SELECT s."parserSourceId" AS "sourceId",
+              p."filialId"       AS id,
+              MAX(p."filialName") AS name,
+              COUNT(*)::int      AS services
+         FROM competitor_prices p
+         JOIN competitor_services cs ON cs.id = p."serviceId"
+         JOIN competitor_sources s   ON s.id = cs."sourceId"
+        WHERE p."filialId" IS NOT NULL AND cs."isActive"
+        GROUP BY s."parserSourceId", p."filialId"
+        ORDER BY s."parserSourceId", p."filialId"`
+    );
+
+    // Привязанному руками веры больше, чем пришедшему из парсера, — поэтому
+    // ручная привязка идёт первой и выигрывает при заполнении подписи
+    const [points] = await sequelize.query(
+      `SELECT s."parserSourceId" AS "sourceId",
+              COALESCE(l."filialIdManual", l."parserFilialId") AS "filialId",
+              l.name, l.address
+         FROM competitor_locations l
+         JOIN competitor_sources s ON s.id = l."sourceId"
+        WHERE COALESCE(l."filialIdManual", l."parserFilialId") IS NOT NULL
+        ORDER BY (l."filialIdManual" IS NOT NULL) DESC, l."updatedAt" DESC`
+    );
+
+    const labels = new Map();
+    for (const point of points) {
+      const key = `${point.sourceId}|${point.filialId}`;
+      if (!labels.has(key)) labels.set(key, point);
+    }
+
+    const bySource = {};
+    for (const row of rows) {
+      const point = labels.get(`${row.sourceId}|${row.id}`);
+      (bySource[row.sourceId] ||= []).push({
+        id: row.id,
+        name: row.name || point?.name || `Филиал ${row.id}`,
+        address: point?.address || null,
+        services: row.services
+      });
+    }
+
+    res.json({ success: true, data: bySource });
+  } catch (err) {
+    console.error('❌ Филиалы не отдались:', err.message);
+    res.status(500).json({ success: false, error: 'filials_failed', message: 'Не удалось прочитать филиалы' });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // АДРЕСА ТОЧЕК
 // ═══════════════════════════════════════════════════════════════
