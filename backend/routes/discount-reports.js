@@ -352,6 +352,25 @@ router.get('/source-names', authenticate, async (req, res) => {
   }
 });
 
+// ── GET full-names ────────────────────────────────────────────────────────────
+// Уникальные ФИО для автоподстановки в форме, частые — первыми.
+router.get('/full-names', authenticate, async (req, res) => {
+  try {
+    const [rows] = await DiscountReportEntry.sequelize.query(`
+      SELECT data->>'fullName' AS name, COUNT(*)::int AS count
+      FROM discount_report_entries
+      WHERE COALESCE(TRIM(data->>'fullName'), '') <> ''
+      GROUP BY 1
+      ORDER BY count DESC, name ASC
+      LIMIT 1000
+    `);
+    res.json({ names: rows.map(r => r.name) });
+  } catch (err) {
+    console.error('GET /api/discount-reports/full-names error:', err);
+    res.status(500).json({ error: 'Ошибка сервера' });
+  }
+});
+
 // ── GET whoami ────────────────────────────────────────────────────────────────
 router.get('/whoami', authenticate, (req, res) => {
   res.json({ isAdmin: !!req.user.isAdmin });

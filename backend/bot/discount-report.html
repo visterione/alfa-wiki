@@ -203,7 +203,9 @@ button, input, textarea, select { font-family: inherit; }
           <div class="disc-field name">
             <label for="disc-fullName">ФИО <span class="disc-required">*</span></label>
             <input class="disc-input" id="disc-fullName" name="fullName" type="text" required
-                   placeholder="Фамилия Имя Отчество" autocomplete="off">
+                   placeholder="Фамилия Имя Отчество"
+                   list="disc-full-names" autocomplete="off">
+            <datalist id="disc-full-names"></datalist>
           </div>
           <div class="disc-field source">
             <label for="disc-discountSource">От кого скидка 100%</label>
@@ -407,13 +409,20 @@ window.discApp = (function() {
     document.getElementById('disc-amount').value         = data.amount != null ? data.amount : '';
   }
 
-  // Подсказки для «От кого скидка 100%»: уже встречавшиеся значения, частые сверху.
+  // Подсказки для «ФИО» и «От кого скидка 100%»: уже встречавшиеся значения, частые сверху.
   // Нативный datalist — выпадающий список с фильтрацией по вводу, но своё значение вписать можно.
-  function loadSourceNames() {
-    return api('/source-names').then(function(res) {
-      document.getElementById('disc-source-names').innerHTML = (res.names || []).map(function(name) {
-        return '<option value="' + escapeHtml(name) + '"></option>';
-      }).join('');
+  function fillDatalist(elementId, names) {
+    document.getElementById(elementId).innerHTML = (names || []).map(function(name) {
+      return '<option value="' + escapeHtml(name) + '"></option>';
+    }).join('');
+  }
+
+  function loadSuggestions() {
+    api('/source-names').then(function(res) {
+      fillDatalist('disc-source-names', res.names);
+    }).catch(function() {});
+    api('/full-names').then(function(res) {
+      fillDatalist('disc-full-names', res.names);
     }).catch(function() {});
   }
 
@@ -558,7 +567,7 @@ window.discApp = (function() {
     request.then(function() {
       showToast('Запись сохранена', 'success');
       resetForm();
-      loadSourceNames();
+      loadSuggestions();
       reload();
     }).catch(function(e) {
       showToast('Ошибка сохранения: ' + e.message, 'error');
@@ -726,7 +735,7 @@ window.discApp = (function() {
       document.getElementById('disc-import-file').value = '';
       setStatus('', '');
       showToast('Добавлено: ' + result.total + ', пропущено: ' + (result.skipped || 0), 'success');
-      loadSourceNames();
+      loadSuggestions();
       pagination.page = 1;
       reload();
     }).catch(function(e) {
@@ -777,7 +786,7 @@ window.discApp = (function() {
     attachDateMask(document.getElementById('disc-reportDate'));
     document.getElementById('disc-reportDate').value = todayDMY();
     renderTabs();
-    loadSourceNames();
+    loadSuggestions();
     reload();
     api('/whoami').then(function(info) {
       if (info.isAdmin) {
