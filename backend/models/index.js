@@ -352,7 +352,8 @@ const Message = sequelize.define('Message', {
   chatId: { type: DataTypes.UUID, allowNull: false },
   senderId: { type: DataTypes.UUID, allowNull: false },
   content: { type: DataTypes.TEXT, allowNull: false },
-  type: { type: DataTypes.ENUM('text', 'image', 'file', 'system'), defaultValue: 'text' },
+  // 'voice' — голосовое сообщение, рисуется плеером, а не карточкой файла
+  type: { type: DataTypes.ENUM('text', 'image', 'file', 'system', 'voice'), defaultValue: 'text' },
   attachments: { type: DataTypes.JSONB, defaultValue: [] },
   isEdited: { type: DataTypes.BOOLEAN, defaultValue: false },
   replyToId: { type: DataTypes.UUID },

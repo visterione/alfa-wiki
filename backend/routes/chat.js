@@ -11,6 +11,7 @@ const notificationService = require('../services/notificationService');
 const botWebhookService = require('../services/botWebhookService');
 const subscriptionService = require('../services/public/subscriptionService');
 const pushService = require('../services/pushService');
+const voiceService = require('../services/voiceService');
 
 /**
  * Бота добавили в чат или убрали — рассылаем my_chat_member и правим подписки на формы.
@@ -532,6 +533,40 @@ router.get('/:chatId/messages', authenticate, async (req, res) => {
   }
 });
 
+// Загрузка голосового сообщения.
+//
+// Отдельный маршрут, а не флаг у /upload: здесь файл всегда перекодируется
+// в общий для всех платформ формат и у него определяется длительность —
+// обычным вложениям это не нужно и только замедлило бы загрузку.
+router.post('/voice', authenticate, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (!req.file.mimetype.startsWith('audio/') && !req.file.mimetype.startsWith('video/')) {
+      // Chrome отдаёт запись с MediaRecorder как video/webm, даже когда внутри
+      // только звук, — поэтому video/* здесь тоже законен
+      fs.unlink(req.file.path, () => {});
+      return res.status(400).json({ error: 'Expected an audio recording' });
+    }
+
+    const result = await voiceService.normalize(req.file);
+
+    res.json({
+      id: Date.now().toString(),
+      kind: 'voice',
+      name: 'Голосовое сообщение',
+      path: result.path,
+      mimeType: result.mimeType,
+      size: result.size,
+      duration: result.duration,
+    });
+  } catch (error) {
+    console.error('Voice upload error:', error);
+    res.status(500).json({ error: 'Failed to upload voice message' });
+  }
+});
+
 // Upload attachment
 router.post('/upload', authenticate, upload.single('file'), async (req, res) => {
   try {
@@ -586,7 +621,13 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
 
     let messageType = 'text';
     if (attachments.length > 0) {
-      messageType = attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file';
+      // Голосовое всегда одно и приходит одно — смешивать его с другими
+      // вложениями клиенты не умеют и не должны
+      if (attachments.length === 1 && attachments[0]?.kind === 'voice') {
+        messageType = 'voice';
+      } else {
+        messageType = attachments.every(a => a.mimeType?.startsWith('image/')) ? 'image' : 'file';
+      }
     }
 
     const message = await Message.create({
@@ -601,9 +642,11 @@ router.post('/:chatId/messages', authenticate, async (req, res) => {
     let lastMessagePreview = content?.trim() || '';
     if (attachments.length > 0 && !lastMessagePreview) {
       const allImages = attachments.every(a => a.mimeType?.startsWith('image/'));
-      lastMessagePreview = allImages
-        ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
-        : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
+      lastMessagePreview = messageType === 'voice'
+        ? '🎤 Голосовое сообщение'
+        : allImages
+          ? `📷 Фото${attachments.length > 1 ? ` (${attachments.length})` : ''}`
+          : `📎 Файл${attachments.length > 1 ? ` (${attachments.length})` : ''}`;
     }
 
     await Chat.update(

@@ -214,9 +214,13 @@ async function notifyNewMessage({ message, chat, senderId }) {
     // отдельным полем и в уведомлении показывается рядом с аватаркой
     let body = message.content?.trim() || '';
     if (!body && message.attachments?.length) {
-      const allImages = message.attachments.every(a => a.mimeType?.startsWith('image/'));
-      const suffix = message.attachments.length > 1 ? ` (${message.attachments.length})` : '';
-      body = allImages ? `📷 Фото${suffix}` : `📎 Файл${suffix}`;
+      if (message.type === 'voice') {
+        body = '🎤 Голосовое сообщение';
+      } else {
+        const allImages = message.attachments.every(a => a.mimeType?.startsWith('image/'));
+        const suffix = message.attachments.length > 1 ? ` (${message.attachments.length})` : '';
+        body = allImages ? `📷 Фото${suffix}` : `📎 Файл${suffix}`;
+      }
     }
     if (body.length > 200) body = `${body.slice(0, 200)}…`;
 
