@@ -45,33 +45,93 @@
 
 .page-content:has(#price-app) { padding: 10px; }
 
-/* Заголовок и кнопки */
+/* ═══ Шапка ═══
+   Одна строка на всё: слева лист и действия над ним, справа режим и меню.
+   Всё, что не таблица, отнимает у неё высоту, поэтому строка короткая,
+   а «Новая страница» и «Удалить страницу» ужаты до квадратных значков. */
 .price-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
+  margin-bottom: 14px;
   flex-wrap: wrap;
 }
 
 .price-header-left {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  flex: 1;
+  min-width: 0;
 }
 
 .price-header-right {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
 }
 
-.price-comparison-selector {
-  min-width: 250px;
+/* Квадратные кнопки-значки шапки */
+.pc-icon-btn {
+  width: 36px; height: 36px; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  background: #fff; color: #374151; cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
 }
+.pc-icon-btn:hover:not(:disabled) { background: #f9fafb; border-color: #9ca3af; }
+.pc-icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pc-icon-btn svg { width: 18px; height: 18px; }
+.pc-icon-btn.primary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.pc-icon-btn.primary:hover:not(:disabled) { background: #2563eb; border-color: #2563eb; }
+.pc-icon-btn.danger { color: #ef4444; }
+.pc-icon-btn.danger:hover:not(:disabled) { background: #fee2e2; border-color: #fca5a5; }
+
+/* ═══ Выпадающий список листов ═══
+   Обычный <select> здесь смотрелся чужеродно: своя высота, своя стрелка
+   и никакой отметки выбранного. Список короткий, поиска ему не нужно. */
+.pc-select { position: relative; }
+
+.pc-select-trigger {
+  height: 36px; min-width: 220px; max-width: 340px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 10px 0 12px;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  background: #fff; cursor: pointer;
+  font-family: inherit; font-size: 14px; color: #111827;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pc-select-trigger:hover { border-color: #9ca3af; }
+.pc-select.open .pc-select-trigger {
+  border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1);
+}
+.pc-select-value {
+  flex: 1; min-width: 0; text-align: left;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pc-select-value.placeholder { color: #9ca3af; }
+.pc-select-caret { flex-shrink: 0; width: 16px; height: 16px; color: #6b7280; transition: transform .15s; }
+.pc-select.open .pc-select-caret { transform: rotate(180deg); }
+
+/* Позиция считается на открытии — как у прочих меню страницы: внутри
+   прокручиваемой вики absolute обрезался бы по краю контейнера */
+.pc-select-menu {
+  position: fixed; z-index: 9000;
+  padding: 6px; max-height: 320px; overflow-y: auto;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.16);
+}
+.pc-select-option {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 14px; color: #374151; text-align: left;
+}
+.pc-select-option:hover { background: #f3f4f6; }
+.pc-select-option.selected { color: #1d4ed8; }
+.pc-select-option-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-select-option svg { width: 16px; height: 16px; flex-shrink: 0; }
+.pc-select-empty { padding: 16px; text-align: center; color: #9ca3af; font-size: 13px; }
 
 /* Фильтры */
 .price-filters {
@@ -732,7 +792,7 @@
 .pc-menu { position: relative; }
 
 .pc-menu-btn {
-  width: 40px; height: 40px;
+  width: 36px; height: 36px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 1px solid #d1d5db; border-radius: 8px;
   background: #fff; color: #374151; cursor: pointer;
@@ -767,59 +827,119 @@
 .pc-menu-item-sub { display: block; font-size: 11px; color: #9ca3af; margin-top: 1px; }
 .pc-menu-sep { height: 1px; margin: 5px 6px; background: #f1f5f9; }
 
-/* ═══ Окно «Управление колонками» ═══
-   Колонок на листе бывает десяток, и раньше их чипы занимали две строки
-   над таблицей. Настраивают их редко — место под таблицу нужнее. */
+/* ═══ Окно «Колонки» ═══
+   Не список того, что уже на листе, а дерево всего, из чего лист можно
+   собрать: свои клиники сверху, конкуренты — сетями, городами и филиалами,
+   как в админке парсера. Тумблер означает «показывать в таблице», и у
+   конкурента, которого на листе ещё нет, он же заводит колонку: раньше
+   каждого приходилось добавлять поодиночке через отдельное окно. */
 
-.pc-cols-hint {
-  margin: 0 0 14px; font-size: 13px; color: #6b7280; line-height: 1.45;
+/* Шапка, поиск и кнопки стоят на месте, прокручивается только дерево:
+   искать конкурента, прокрутив список до конца, иначе было бы нечем */
+.pc-cols-modal {
+  max-width: 640px;
+  display: flex; flex-direction: column;
+  max-height: 90vh; overflow: hidden;
 }
 
-.pc-cols-list { display: flex; flex-direction: column; gap: 6px; }
-
-.pc-col-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid #e5e7eb; border-radius: 10px;
-  background: #fff;
-  transition: border-color .15s, background .15s, opacity .15s;
+.pc-cols-search { position: relative; padding: 12px 20px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
+.pc-cols-search svg {
+  position: absolute; left: 32px; top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; color: #9ca3af; pointer-events: none;
 }
-.pc-col-row:hover { border-color: #d1d5db; }
-/* Эталон — точка отсчёта для всех разниц в таблице, и в списке он должен
-   быть виден сразу, без чтения подписей */
-.pc-col-row.base { border-color: #3b82f6; background: #eff6ff; }
-.pc-col-row.hidden-col { opacity: .5; }
+.pc-cols-search input {
+  box-sizing: border-box;
+  width: 100%; padding: 8px 12px 8px 34px;
+  font-family: inherit; font-size: 14px;
+  border: 1px solid #d1d5db; border-radius: 8px; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pc-cols-search input:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1); }
 
-.pc-col-radio { width: 16px; height: 16px; margin: 0; cursor: pointer; flex-shrink: 0; }
-.pc-col-logo-slot { width: 26px; flex-shrink: 0; display: flex; }
-.pc-col-logo { width: 26px; height: 26px; object-fit: contain; border-radius: 5px; }
-.pc-col-body { flex: 1; min-width: 0; }
-.pc-col-name {
-  display: block; font-size: 14px; color: #111827;
+.pc-cols-body { flex: 1; min-height: 0; padding: 6px 12px 12px; overflow-y: auto; }
+
+.pc-tree-section {
+  padding: 14px 8px 4px;
+  font-size: 11px; font-weight: 600; color: #9ca3af;
+  text-transform: uppercase; letter-spacing: .6px;
+}
+
+.pc-tree-row {
+  /* Отступ уровня растёт внутрь строки: без border-box вложенные филиалы
+     распирали бы окно вширь и уносили за край кнопки справа */
+  box-sizing: border-box;
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 5px 8px; border: none; border-radius: 8px;
+  background: transparent; text-align: left;
+  font-family: inherit; font-size: 14px; color: #374151;
+}
+.pc-tree-row:hover { background: #f8fafc; }
+.pc-tree-row.branch { cursor: pointer; }
+/* Отступ ветки рисуем самим отступом, а не палочками: уровней всего
+   четыре, и линии здесь только добавляют шума */
+.pc-tree-row[data-level="1"] { padding-left: 26px; }
+.pc-tree-row[data-level="2"] { padding-left: 48px; }
+.pc-tree-row[data-level="3"] { padding-left: 70px; }
+
+.pc-tree-slot {
+  width: 34px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #6b7280; font-size: 13px; line-height: 1;
+}
+.pc-tree-logo-slot { width: 22px; flex-shrink: 0; display: flex; }
+.pc-tree-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
+
+.pc-tree-main {
+  flex: 1; min-width: 0; padding: 0; border: none; background: transparent;
+  font-family: inherit; font-size: 14px; color: inherit; text-align: left; cursor: pointer;
+}
+.pc-tree-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-tree-row.on .pc-tree-title { color: #111827; }
+.pc-tree-sub {
+  display: block; font-size: 11px; color: #9ca3af;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.pc-col-tags { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
-
-.pc-col-tag {
-  font-size: 11px; font-weight: 500;
-  padding: 1px 7px; border-radius: 999px;
+.pc-tree-meta { flex-shrink: 0; font-size: 11px; color: #9ca3af; }
+.pc-tree-input {
+  box-sizing: border-box;
+  flex: 1; min-width: 0; padding: 6px 10px;
+  font-family: inherit; font-size: 14px;
+  border: 1px solid #3b82f6; border-radius: 8px; outline: none;
 }
-.pc-col-tag.own { background: #dbeafe; color: #1e40af; }
-.pc-col-tag.competitor { background: #fef3c7; color: #92400e; }
-.pc-col-tag.base { background: #3b82f6; color: #fff; }
-.pc-col-tag.muted { background: #f3f4f6; color: #6b7280; }
 
-.pc-col-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.pc-col-btn {
-  width: 32px; height: 32px;
+/* Тумблер вместо галочки: «эта колонка в таблице» читается по цвету
+   и положению, без подписей */
+.pc-switch {
+  position: relative; width: 34px; height: 20px; flex: 0 0 34px;
+  padding: 0; border: none; border-radius: 999px;
+  background: #d1d5db; cursor: pointer; transition: background .18s;
+}
+.pc-switch::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  transition: transform .18s;
+}
+.pc-switch.on { background: #3b82f6; }
+.pc-switch.on::after { transform: translateX(14px); }
+.pc-switch:disabled { opacity: .5; cursor: not-allowed; }
+
+.pc-tree-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.pc-tree-btn {
+  width: 28px; height: 28px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 8px;
-  background: #f3f4f6; color: #6b7280; cursor: pointer;
+  background: transparent; color: #9ca3af; cursor: pointer;
   transition: background .15s, color .15s;
 }
-.pc-col-btn:hover { background: #e5e7eb; color: #374151; }
-.pc-col-btn.danger:hover { background: #fee2e2; color: #dc2626; }
-.pc-col-btn svg { width: 16px; height: 16px; }
+.pc-tree-btn:hover { background: #f3f4f6; color: #374151; }
+/* Эталон — точка отсчёта для всех разниц; активные весы и есть вся
+   пометка, отдельный бейдж рядом с ними ничего не добавлял */
+.pc-tree-btn.active { color: #3b82f6; }
+.pc-tree-btn.danger:hover { background: #fee2e2; color: #dc2626; }
+.pc-tree-btn svg { width: 16px; height: 16px; }
+
+.pc-cols-status { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
 
 .pc-cols-empty {
   padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 14px;
@@ -912,17 +1032,12 @@
 @media (max-width: 768px) {
   #price-app { padding: 10px 8px 14px; }
   .price-header { flex-direction: column; align-items: stretch; }
-  .price-header-right { justify-content: flex-start; }
+  .price-header-right { justify-content: space-between; }
+  .price-header-left .pc-select { flex: 1; min-width: 0; }
+  .pc-select-trigger { min-width: 0; max-width: none; width: 100%; }
   .price-filters { flex-direction: column; }
   .price-search-box { min-width: 100%; }
   .price-select { min-width: 100%; }
-}
-
-@media (max-width: 1200px) {
-  .price-header-right {
-    width: 100%;
-    justify-content: space-between;
-  }
 }
 
 /* Переключатель режимов */
@@ -936,7 +1051,7 @@
 }
 
 .price-mode-btn {
-  padding: 8px 20px;
+  padding: 7px 14px;
   border: none;
   background: transparent;
   border-radius: 7px;
@@ -1079,92 +1194,6 @@
   font-size: 13px;
 }
 
-/* ═══ Выбор клиники в окне «Добавить конкурента» ═══
-   Тот же приём, что в дереве админки парсера: сеть → город → клиника →
-   филиал. Плоским списком двадцать городов «Клиники Фомина» вперемешку
-   с чужими клиниками не читаются, а выбрать нужно ровно один филиал —
-   от него и придут цены в колонку. */
-
-.pc-picker { position: relative; }
-
-.pc-picker-trigger {
-  width: 100%;
-  display: flex; align-items: center; gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid #d1d5db; border-radius: 8px;
-  background: #fff; cursor: pointer;
-  font-size: 14px; font-family: inherit; color: #111827;
-  text-align: left;
-  transition: border-color .15s, box-shadow .15s;
-}
-.pc-picker-trigger:hover:not(:disabled) { border-color: #9ca3af; }
-.pc-picker-trigger:disabled { opacity: .6; cursor: not-allowed; }
-.pc-picker.open .pc-picker-trigger {
-  border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,.1);
-}
-.pc-picker-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; flex-shrink: 0; }
-.pc-picker-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-picker-value.placeholder { color: #9ca3af; }
-.pc-picker-caret { flex-shrink: 0; color: #6b7280; transition: transform .15s; }
-.pc-picker.open .pc-picker-caret { transform: rotate(180deg); }
-
-/* Позиция считается на открытии, как у выпадающих списков категорий рядом:
-   внутри окна с прокруткой обычный absolute обрезается по краю окна */
-.pc-picker-menu {
-  position: fixed; z-index: 10002;
-  display: flex; flex-direction: column;
-  background: #fff; border: 1px solid #d1d5db; border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0,0,0,.14);
-  overflow: hidden;
-}
-.pc-picker-search { padding: 8px; border-bottom: 1px solid #f1f5f9; flex-shrink: 0; }
-.pc-picker-search input {
-  width: 100%; padding: 7px 10px; font-size: 13px; font-family: inherit;
-  border: 1px solid #d1d5db; border-radius: 7px; outline: none;
-}
-.pc-picker-search input:focus { border-color: #3b82f6; }
-
-/* Высоту списка задаёт меню: оно уже подогнано под свободное место на экране */
-.pc-picker-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px; }
-
-.pc-node {
-  width: 100%;
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 8px; border: none; border-radius: 7px;
-  background: transparent; cursor: pointer;
-  font-family: inherit; font-size: 13px; color: #374151;
-  text-align: left;
-}
-.pc-node:hover { background: #f3f4f6; }
-.pc-node-brand { font-weight: 600; color: #111827; }
-.pc-node-city { color: #4b5563; }
-/* Отступ ветки рисуем самим отступом, а не палочками: уровней всего три,
-   и линии здесь только добавляют шума */
-.pc-node[data-level="1"] { padding-left: 22px; }
-.pc-node[data-level="2"] { padding-left: 40px; }
-.pc-node[data-level="3"] { padding-left: 58px; }
-
-.pc-twist { flex-shrink: 0; width: 14px; color: #9ca3af; line-height: 1; font-size: 11px; }
-.pc-node-logo-slot { width: 22px; flex-shrink: 0; display: flex; }
-.pc-node-logo { width: 22px; height: 22px; object-fit: contain; border-radius: 4px; }
-.pc-node-body { flex: 1; min-width: 0; }
-.pc-node-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-node-sub { display: block; font-size: 11px; color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-node-meta { flex-shrink: 0; font-size: 11px; color: #9ca3af; }
-
-.pc-node-leaf.selected { background: #eff6ff; color: #1d4ed8; }
-.pc-node-leaf.selected .pc-node-sub { color: #60a5fa; }
-/* Занятый филиал остаётся видимым, но некликабельным: человеку важно понять,
-   что клиника в сравнении уже есть, а не гадать, почему её нет в списке */
-.pc-node-leaf.taken { opacity: .45; cursor: not-allowed; }
-.pc-node-leaf.taken:hover { background: transparent; }
-
-.pc-picker-manual {
-  border-bottom: 1px solid #f1f5f9;
-  margin-bottom: 4px; padding-bottom: 6px;
-}
-.pc-picker-empty { padding: 16px; text-align: center; font-size: 13px; color: #9ca3af; }
-
 /* ═══ Карта конкурентов ═══
    Второй способ смотреть тот же лист: таблица отвечает «сколько стоит»,
    карта — «где мы дороже рынка». Корзиной служит сам лист, эталоном —
@@ -1297,34 +1326,37 @@
 }
 </style>
 
-  <!-- Переключатель режимов -->
-  <div class="price-mode-switcher">
-    <button class="price-mode-btn active" id="mode-clinic-btn" onclick="priceApp.setMode('clinic')">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
-      Клиники
-    </button>
-    <button class="price-mode-btn" id="mode-lab-btn" onclick="priceApp.setMode('lab')">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
-      Лаборатории
-    </button>
-  </div>
-
-  <!-- Заголовок и управление -->
+  <!-- Заголовок и управление: слева лист и действия над ним, справа режим -->
   <div class="price-header">
     <div class="price-header-left">
-      <select id="comparison-selector" class="price-select price-comparison-selector" onchange="priceApp.loadComparison()">
-        <option value="">Создать новую страницу...</option>
-      </select>
-      <button class="price-btn price-btn-primary" onclick="priceApp.openNewComparisonModal()">
+      <div class="pc-select" id="sheet-select">
+        <button type="button" class="pc-select-trigger" id="sheet-select-trigger"
+                onclick="priceApp.toggleSheetMenu()" title="Страница сравнения">
+          <span class="pc-select-value placeholder" id="sheet-select-value">Выберите страницу</span>
+          <svg class="pc-select-caret" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </button>
+        <div class="pc-select-menu" id="sheet-select-menu" style="display:none"></div>
+      </div>
+      <button class="pc-icon-btn primary" onclick="priceApp.openNewComparisonModal()"
+              title="Новая страница" aria-label="Новая страница">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-        Новая страница
       </button>
-      <button class="price-btn price-btn-secondary" onclick="priceApp.deleteComparison()" id="delete-comparison-btn" disabled style="color: #ef4444;">
+      <button class="pc-icon-btn danger" onclick="priceApp.deleteComparison()" id="delete-comparison-btn"
+              disabled title="Удалить страницу" aria-label="Удалить страницу">
         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-        Удалить страницу
       </button>
     </div>
     <div class="price-header-right">
+      <div class="price-mode-switcher" style="margin-bottom:0">
+        <button class="price-mode-btn active" id="mode-clinic-btn" onclick="priceApp.setMode('clinic')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          Клиники
+        </button>
+        <button class="price-mode-btn" id="mode-lab-btn" onclick="priceApp.setMode('lab')">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+          Лаборатории
+        </button>
+      </div>
       <!-- Редкие действия под одной кнопкой: место в шапке дороже,
            чем один лишний клик раз в сеанс -->
       <div class="pc-menu" id="actions-menu">
@@ -1343,7 +1375,7 @@
           <button type="button" class="pc-menu-item" id="menu-columns"
                   onclick="priceApp.runAction('columns')">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
-            <span class="pc-menu-item-body">Управление колонками
+            <span class="pc-menu-item-body">Колонки
               <span class="pc-menu-item-sub" id="menu-columns-sub"></span>
             </span>
           </button>
@@ -1537,69 +1569,45 @@
     </div>
   </div>
 
-  <!-- Модальное окно: Управление колонками -->
+  <!-- Модальное окно: колонки листа -->
   <div id="columns-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('columns-modal')">
-    <div class="price-modal-content">
+    <div class="price-modal-content pc-cols-modal">
       <div class="price-modal-header">
-        <h3>Управление колонками</h3>
+        <h3>Колонки</h3>
         <button class="price-modal-close" onclick="priceApp.closeModal('columns-modal')">&times;</button>
       </div>
-      <div class="price-modal-body">
-        <p class="pc-cols-hint">
-          Эталон — колонка, с которой таблица сравнивает все остальные:
-          разницы считаются от неё. Скрытая колонка остаётся на листе,
-          но не показывается ни в таблице, ни в выгрузке.
-        </p>
-        <div class="pc-cols-list" id="columns-modal-list"></div>
+      <div class="pc-cols-search">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <input type="text" id="columns-search" autocomplete="off"
+               placeholder="Поиск по клинике, городу, адресу"
+               oninput="priceApp.onColumnsSearch(this.value)">
       </div>
+      <div class="pc-cols-body" id="columns-modal-list"></div>
       <div class="price-form-actions" style="justify-content: space-between">
-        <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
+        <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.openManualColumnModal()">
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-          Конкурент
+          Своя колонка
         </button>
+        <span class="pc-cols-status" id="columns-status"></span>
         <button type="button" class="price-btn price-btn-primary" onclick="priceApp.closeModal('columns-modal')">Готово</button>
       </div>
     </div>
   </div>
 
-  <!-- Модальное окно: Добавить конкурента -->
+  <!-- Модальное окно: колонка без клиники из парсера (цены вносят руками) -->
   <div id="add-competitor-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('add-competitor-modal')">
     <div class="price-modal-content">
       <div class="price-modal-header">
-        <h3>Добавить конкурента</h3>
+        <h3>Своя колонка</h3>
         <button class="price-modal-close" onclick="priceApp.closeModal('add-competitor-modal')">&times;</button>
       </div>
-      <form class="price-modal-body" id="add-competitor-form" onsubmit="priceApp.addCompetitor(event)">
-        <div class="price-form-group" id="competitor-parser-group" style="display:none">
-          <label>Клиника из парсера</label>
-          <div class="pc-picker" id="competitor-picker">
-            <button type="button" class="pc-picker-trigger" id="competitor-picker-trigger"
-                    onclick="priceApp.toggleCompetitorPicker()">
-              <img class="pc-picker-logo" id="competitor-picker-logo" src="" alt="" style="display:none">
-              <span class="pc-picker-value placeholder" id="competitor-picker-value">— вписать название вручную —</span>
-              <svg class="pc-picker-caret" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-              </svg>
-            </button>
-            <div class="pc-picker-menu" id="competitor-picker-menu" style="display:none">
-              <div class="pc-picker-search">
-                <input type="text" id="competitor-picker-search" autocomplete="off"
-                       placeholder="Поиск по клинике, городу, адресу"
-                       oninput="priceApp.onCompetitorSearch(this.value)">
-              </div>
-              <div class="pc-picker-list" id="competitor-picker-list"></div>
-            </div>
-          </div>
-          <small style="color:#86868B;display:block;margin-top:4px">
-            Выберите клинику — её цены будут подтягиваться в эту колонку автоматически.
-          </small>
-        </div>
+      <form class="price-modal-body" id="add-competitor-form" onsubmit="priceApp.addManualColumn(event)">
         <div class="price-form-group">
           <label>Название колонки <span>*</span></label>
           <input type="text" id="competitor-name-input" required class="price-input" placeholder="Неомед, МедГрад, АйКлиник...">
           <small style="color:#86868B;display:block;margin-top:4px">
-            Только подпись в таблице — цены приходят от выбранной клиники,
-            как бы колонка ни называлась.
+            Клиники из парсера включаются тумблером в дереве колонок —
+            здесь заводят колонку, цены в которую вносят руками.
           </small>
         </div>
         <div class="price-form-actions">
@@ -1629,8 +1637,7 @@ window.priceApp = (function() {
   var parserCompetitors = [];      // Клиники-конкуренты из парсера (зеркало в вики)
   var parserCompetitorChoices = []; // Отдельные варианты колонок по филиалам
   var parserLogoBySourceId = {};   // id клиники в парсере -> data-URI значка
-  var selectedParserChoice = null; // что выбрано в списке при добавлении конкурента
-  var competitorFormBusy = false;  // идёт добавление конкурента — повтор запрещён
+  var competitorFormBusy = false;  // идёт добавление колонки — повтор запрещён
   var baseColumnName = null; // Базовая колонка для расчета разницы
   var pendingLabGroups = []; // Временное хранилище сгруппированных услуг лабораторий
   var labCategoryOptions = []; // Кеш всех опций категорий для поиска
@@ -1833,30 +1840,111 @@ window.priceApp = (function() {
     document.getElementById('delete-comparison-btn').disabled = true;
     updateActionsState();
 
+    selectedComparisonId = '';
+    comparisonsList = [];
+    renderSheetSelect();
     loadComparisons();
     renderTable();
+  }
+
+  /* ── Список листов ───────────────────────────────────────────────────────
+   *
+   * Свой выпадающий список вместо <select>: системный не умел ни отметки
+   * выбранного, ни собственной высоты — рядом с квадратными кнопками
+   * «создать» и «удалить» он выбивался из строки.
+   */
+  var comparisonsList = [];
+  var selectedComparisonId = '';
+  var sheetMenuOpen = false;
+
+  var checkSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>';
+
+  function renderSheetSelect() {
+    var value = document.getElementById('sheet-select-value');
+    var menu = document.getElementById('sheet-select-menu');
+    if (!value || !menu) return;
+
+    var current = comparisonsList.filter(function(c) {
+      return String(c.id) === String(selectedComparisonId);
+    })[0];
+
+    value.textContent = current ? current.name : 'Выберите страницу';
+    value.className = 'pc-select-value' + (current ? '' : ' placeholder');
+
+    // Листы правим по индексу, а не по id: в onclick индекс безопаснее
+    menu.innerHTML = comparisonsList.length
+      ? comparisonsList.map(function(c, idx) {
+          var on = current && String(c.id) === String(current.id);
+          return '<button type="button" class="pc-select-option' + (on ? ' selected' : '') + '"' +
+            ' onclick="priceApp.selectSheet(' + idx + ')">' +
+            '<span class="pc-select-option-text">' + esc(c.name) + '</span>' +
+            (on ? checkSvg : '') +
+            '</button>';
+        }).join('')
+      : '<div class="pc-select-empty">Страниц пока нет</div>';
+  }
+
+  function positionSheetMenu() {
+    var trigger = document.getElementById('sheet-select-trigger');
+    var menu = document.getElementById('sheet-select-menu');
+    if (!trigger || !menu) return;
+    var rect = trigger.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 6) + 'px';
+    menu.style.left = rect.left + 'px';
+    menu.style.minWidth = rect.width + 'px';
+  }
+
+  function setSheetMenuOpen(open) {
+    sheetMenuOpen = open;
+    var select = document.getElementById('sheet-select');
+    var menu = document.getElementById('sheet-select-menu');
+    if (!select || !menu) return;
+    select.classList.toggle('open', open);
+    menu.style.display = open ? '' : 'none';
+    if (!open) {
+      window.removeEventListener('resize', positionSheetMenu);
+      window.removeEventListener('scroll', positionSheetMenu, true);
+      return;
+    }
+    renderSheetSelect();
+    positionSheetMenu();
+    window.addEventListener('resize', positionSheetMenu);
+    window.addEventListener('scroll', positionSheetMenu, true);
+  }
+
+  function toggleSheetMenu() {
+    setSheetMenuOpen(!sheetMenuOpen);
+  }
+
+  function selectSheet(idx) {
+    var comparison = comparisonsList[idx];
+    setSheetMenuOpen(false);
+    if (!comparison) return;
+    selectedComparisonId = comparison.id;
+    renderSheetSelect();
+    loadComparison();
   }
 
   // === ЗАГРУЗКА ДАННЫХ ===
   function loadComparisons() {
     var type = currentMode === 'lab' ? 'lab' : 'external';
-    fetchAPI(API_URL + '?type=' + type).then(function(comparisons) {
-      var selector = document.getElementById('comparison-selector');
-      selector.innerHTML = '<option value="">Создать новую страницу...</option>';
-
-      comparisons.forEach(function(c) {
-        var opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = c.name;
-        selector.appendChild(opt);
+    return fetchAPI(API_URL + '?type=' + type).then(function(comparisons) {
+      comparisonsList = comparisons || [];
+      // Выбранный лист мог быть удалён в другой вкладке — тогда возвращаемся
+      // к пустому выбору, а не показываем имя несуществующей страницы
+      var stillThere = comparisonsList.some(function(c) {
+        return String(c.id) === String(selectedComparisonId);
       });
+      if (!stillThere) selectedComparisonId = '';
+      renderSheetSelect();
     }).catch(function(e) {
       showToast('Ошибка: ' + e.message, 'error');
     });
   }
 
   function loadComparison() {
-    var comparisonId = document.getElementById('comparison-selector').value;
+    var comparisonId = selectedComparisonId;
 
     if (!comparisonId) {
       currentComparison = null;
@@ -2004,16 +2092,32 @@ window.priceApp = (function() {
       showToast('Сначала выберите страницу сравнения', 'error');
       return;
     }
+    competitorSearch = '';
+    renamingColumn = null;
+    var search = document.getElementById('columns-search');
+    if (search) search.value = '';
+    // Дерево строится по списку парсера, а он приезжает отдельным запросом:
+    // к моменту первого открытия окна он мог ещё не успеть
+    competitorTree = buildCompetitorTree();
     renderColumnsModal();
     openModal('columns-modal');
   }
 
-  var eyeOpenSvg =
-    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>';
-  var eyeOffSvg =
-    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>';
+  function onColumnsSearch(value) {
+    competitorSearch = value;
+    renamingColumn = null;
+    renderColumnsModal();
+  }
+
   var trashSvg =
     '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>';
+  // Весы вместо радиокнопки: эталон — то, с чем таблица взвешивает остальных
+  var scaleSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>';
+  var pencilSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>';
+  var closeSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
 
   function renderColumnsModal() {
     var list = document.getElementById('columns-modal-list');
@@ -2024,46 +2128,36 @@ window.priceApp = (function() {
       baseColumnName = allColumns[0].name;
     }
 
-    if (!allColumns.length) {
-      list.innerHTML = '<div class="pc-cols-empty">Колонок пока нет.<br>' +
-        'Добавьте услуги из МИС или заведите конкурента.</div>';
-      updateActionsState();
-      return;
+    var html = '';
+
+    var ownRows = allColumns.map(function(col, idx) { return { col: col, idx: idx }; })
+      .filter(function(row) { return row.col.type === 'own' && matchesSearch(row.col.name); })
+      .map(function(row) { return colOwnRowHtml(row.col, row.idx); })
+      .join('');
+    if (ownRows) {
+      html += sectionHtml(currentMode === 'lab' ? 'Наши лаборатории' : 'Наши клиники') + ownRows;
     }
 
-    // Колонки правят по индексу, а не по названию: в названии клиники
-    // попадаются и кавычки, и апострофы, и внутри onclick они бы всё сломали
-    list.innerHTML = allColumns.map(function(col, idx) {
-      var isHidden = hiddenColumns.indexOf(col.name) >= 0;
-      var isBase = col.name === baseColumnName;
-      var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
+    // Парсер ходит по сайтам клиник, и на листе лабораторий его дерево —
+    // чистый шум: колонки там заводят руками
+    var treeRows = currentMode === 'lab' ? '' : competitorTree.map(colGroupHtml).join('');
+    if (treeRows) html += sectionHtml('Конкуренты') + treeRows;
 
-      return '<div class="pc-col-row' + (isBase ? ' base' : '') + (isHidden ? ' hidden-col' : '') + '">' +
-        '<input type="radio" class="pc-col-radio" name="base-column"' + (isBase ? ' checked' : '') +
-          ' title="Сделать эталоном" onclick="priceApp.setBaseColumnAt(' + idx + ')">' +
-        '<span class="pc-col-logo-slot">' +
-          (logo ? '<img class="pc-col-logo" src="' + escAttr(logo) + '" alt="" onerror="this.hidden=true">' : '') +
-        '</span>' +
-        '<span class="pc-col-body">' +
-          '<span class="pc-col-name">' + esc(col.name) + '</span>' +
-          '<span class="pc-col-tags">' +
-            '<span class="pc-col-tag ' + col.type + '">' +
-              (col.type === 'own' ? 'наша клиника' : 'конкурент') + '</span>' +
-            (isBase ? '<span class="pc-col-tag base">эталон</span>' : '') +
-            (isHidden ? '<span class="pc-col-tag muted">скрыта</span>' : '') +
-          '</span>' +
-        '</span>' +
-        '<span class="pc-col-actions">' +
-          '<button type="button" class="pc-col-btn" onclick="priceApp.toggleColumnAt(' + idx + ')"' +
-            ' title="' + (isHidden ? 'Показать колонку' : 'Скрыть колонку') + '">' +
-            (isHidden ? eyeOffSvg : eyeOpenSvg) + '</button>' +
-          '<button type="button" class="pc-col-btn danger" onclick="priceApp.removeColumn(' + idx + ')"' +
-            ' title="Удалить колонку">' + trashSvg + '</button>' +
-        '</span>' +
+    var manualRows = manualColumnRowsHtml();
+    if (manualRows) html += sectionHtml(treeRows ? 'Свои колонки' : 'Конкуренты') + manualRows;
+
+    list.innerHTML = html || '<div class="pc-cols-empty">' +
+      (competitorSearch.trim()
+        ? 'Ничего не нашлось'
+        : 'Колонок пока нет.<br>Добавьте услуги из МИС или заведите свою колонку.') +
       '</div>';
-    }).join('');
 
+    focusRenameInput();
     updateActionsState();
+  }
+
+  function sectionHtml(title) {
+    return '<div class="pc-tree-section">' + esc(title) + '</div>';
   }
 
   function toggleColumnAt(idx) {
@@ -2086,12 +2180,27 @@ window.priceApp = (function() {
       // Скрываем колонку
       hiddenColumns.push(columnName);
     }
+
+    // Убранный из таблицы эталон оставил бы её без точки отсчёта: разницы
+    // во всех колонках разом превратились бы в прочерки
+    var baseGone = columnName === baseColumnName && hiddenColumns.indexOf(columnName) >= 0;
+    if (baseGone) {
+      var next = allColumns.filter(function(col) {
+        return col.name !== columnName && hiddenColumns.indexOf(col.name) < 0;
+      })[0];
+      if (next) baseColumnName = next.name;
+    }
+
     renderColumnsModal();
     renderTable();
+    if (baseGone && document.getElementById('map-view').style.display === 'block') loadMapData();
   }
 
   function setBaseColumn(columnName) {
     baseColumnName = columnName;
+    // Эталон, спрятанный из таблицы, эталоном быть не может — показываем
+    var hiddenIdx = hiddenColumns.indexOf(columnName);
+    if (hiddenIdx >= 0) hiddenColumns.splice(hiddenIdx, 1);
     renderColumnsModal();
     renderTable();
     // Эталон общий: карта считает отклонения от него же
@@ -2481,11 +2590,14 @@ window.priceApp = (function() {
     }).then(function(comparison) {
       showToast('Страница создана', 'success');
       closeModal('new-comparison-modal');
-      loadComparisons();
 
-      // Выбираем новую страницу
-      document.getElementById('comparison-selector').value = comparison.id;
+      // Новая страница сразу становится выбранной: список с сервера
+      // приедет следом и покажет её среди прочих
+      comparisonsList = [comparison].concat(comparisonsList);
+      selectedComparisonId = comparison.id;
+      renderSheetSelect();
       loadComparison();
+      loadComparisons();
     }).catch(function(e) {
       showToast('Ошибка: ' + e.message, 'error');
     });
@@ -2498,7 +2610,8 @@ window.priceApp = (function() {
       method: 'DELETE'
     }).then(function() {
       showToast('Страница удалена', 'success');
-      document.getElementById('comparison-selector').value = '';
+      selectedComparisonId = '';
+      renderSheetSelect();
       loadComparisons();
       loadComparison();
     }).catch(function(e) {
@@ -2572,13 +2685,19 @@ window.priceApp = (function() {
         });
       });
       competitorTree = buildCompetitorTree();
+      // Список приезжает своим запросом и вполне может опоздать к первому
+      // открытию окна колонок — тогда дерево дорисовываем на месте
+      if (document.getElementById('columns-modal').style.display === 'flex') {
+        renderColumnsModal();
+      }
     }).catch(function(e) {
-      // без списка парсера окно работает по-старому, руками
+      // без списка парсера в дереве остаются только свои клиники и колонки,
+      // заведённые руками
       console.warn('Список клиник парсера не загрузился:', e.message);
     });
   }
 
-  /* ── Дерево клиник в окне «Добавить конкурента» ─────────────────────────
+  /* ── Дерево клиник в окне «Колонки» ─────────────────────────────────────
    *
    * Тот же разбор, что в дереве админки парсера: сеть → город → клиника →
    * филиал. Плоским списком двадцать городов «Клиники Фомина» вперемешку
@@ -2593,7 +2712,6 @@ window.priceApp = (function() {
   var competitorTree = [];      // сети → города → клиники → филиалы
   var competitorTreeOpen = {};  // ключ ветки → раскрыта ли (решение человека)
   var competitorSearch = '';
-  var competitorPickerOpen = false;
 
   // Домены, где предпоследняя часть — сама часть суффикса (com.ru, co.uk):
   // без этого списка clinic.com.ru разложился бы в «com.ru»
@@ -2723,28 +2841,40 @@ window.priceApp = (function() {
     }).sort(function(a, b) { return ruCollator.compare(a.title, b.title); });
   }
 
+  /** Ключ строки филиала: тем же ключом связаны колонка листа и клиника. */
+  function choiceKey(choice) {
+    return choice.source.parserSourceId + ':' + (choice.filialId == null ? 'all' : choice.filialId);
+  }
+
+  function choiceByKey(key) {
+    return parserCompetitorChoices.filter(function(choice) {
+      return choiceKey(choice) === key;
+    })[0] || null;
+  }
+
   /**
-   * Занято, если этот же филиал этой же клиники уже стоит за какой-то
-   * колонкой листа. Как та колонка названа — неважно: связь идёт по id.
+   * Колонка листа, за которой стоит этот филиал этой клиники, — или null.
+   * Как колонка названа, неважно: связь идёт по id, поэтому переименование
+   * её не рвёт.
    */
-  function isChoiceTaken(choice) {
-    return allColumns.some(function(col) {
+  function columnForChoice(choice) {
+    return allColumns.filter(function(col) {
       var binding = bindingForColumn(col.name);
       return binding &&
         binding.parserSourceId === choice.source.parserSourceId &&
         (binding.filialId == null ? null : binding.filialId) === choice.filialId;
-    });
+    })[0] || null;
   }
 
-  // Умолчание: сети свёрнуты (у Фомина два десятка городов), города внутри
-  // раскрыты — до них человек уже добрался осознанно. Поиск раскрывает всё:
-  // прятать найденное за кликом бессмысленно.
-  function isBranchOpen(key) {
+  // Умолчание: сети свёрнуты (у Фомина два десятка городов), а ветка, в
+  // которой уже есть колонка листа, раскрыта — иначе набранные конкуренты
+  // прятались бы за кликом. Поиск раскрывает всё по той же причине.
+  function isBranchOpen(key, defaultOpen) {
     if (competitorSearch.trim()) return true;
     if (Object.prototype.hasOwnProperty.call(competitorTreeOpen, key)) {
       return competitorTreeOpen[key];
     }
-    return key.charAt(0) === 'c';
+    return !!defaultOpen;
   }
 
   function matchesSearch(text) {
@@ -2767,294 +2897,286 @@ window.priceApp = (function() {
     return node.leaves.filter(leafMatches);
   }
 
-  function twistHtml(open) {
-    return '<span class="pc-twist">' + (open ? '▾' : '▸') + '</span>';
+  /* ── Строки дерева колонок ──────────────────────────────────────────────
+   *
+   * Строка ветки — целиком кнопка: по ней только сворачивают и разворачивают.
+   * Строка клиники кнопкой быть не может — внутри неё живут тумблер, весы,
+   * карандаш и корзина, а кнопка в кнопку не вкладывается.
+   */
+
+  // Ключи веток попадают внутрь onclick — апостроф в названии города иначе
+  // оборвал бы строку прямо посреди обработчика
+  function jsAttr(s) {
+    return escAttr(s).replace(/'/g, '\\&#39;');
   }
 
-  function logoSlotHtml(logo) {
-    return '<span class="pc-node-logo-slot">' +
-      (logo ? '<img class="pc-node-logo" src="' + escAttr(logo) + '" alt="" onerror="this.hidden=true">' : '') +
+  function logoCellHtml(logo) {
+    return '<span class="pc-tree-logo-slot">' +
+      (logo ? '<img class="pc-tree-logo" src="' + escAttr(logo) + '" alt="" onerror="this.hidden=true">' : '') +
       '</span>';
   }
 
-  function leafHtml(leaf, level, title, sub, logo, meta) {
-    var taken = isChoiceTaken(leaf.choice);
-    var selected = selectedParserChoice === leaf.choice;
-    return '<button type="button" data-level="' + level + '"' +
-      ' class="pc-node pc-node-leaf' + (selected ? ' selected' : '') + (taken ? ' taken' : '') + '"' +
-      (taken ? ' disabled' : '') +
-      ' onclick="priceApp.pickCompetitor(' + leaf.index + ')">' +
-      '<span class="pc-twist"></span>' +
-      logoSlotHtml(logo) +
-      '<span class="pc-node-body">' +
-        '<span class="pc-node-title">' + esc(title) + (taken ? ' · уже в сравнении' : '') + '</span>' +
-        (sub ? '<span class="pc-node-sub">' + esc(sub) + '</span>' : '') +
-      '</span>' +
-      (meta ? '<span class="pc-node-meta">' + esc(meta) + '</span>' : '') +
+  function switchHtml(on, onclick, title) {
+    return '<button type="button" class="pc-switch' + (on ? ' on' : '') + '"' +
+      ' role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' +
+      ' title="' + escAttr(title) + '" onclick="' + onclick + '"></button>';
+  }
+
+  function colActionsHtml(idx, col) {
+    var isBase = col.name === baseColumnName;
+    // Своя клиника связана с МИС именно названием: переименуешь — и цены
+    // с себестоимостями перестанут находить свою колонку
+    var canRename = col.type !== 'own';
+    return '<span class="pc-tree-actions">' +
+      '<button type="button" class="pc-tree-btn' + (isBase ? ' active' : '') + '"' +
+        ' title="' + (isBase ? 'Эталон сравнения' : 'Сделать эталоном') + '"' +
+        ' onclick="priceApp.setBaseColumnAt(' + idx + ')">' + scaleSvg + '</button>' +
+      (canRename
+        ? '<button type="button" class="pc-tree-btn" title="Переименовать колонку"' +
+          ' onclick="priceApp.startRenameAt(' + idx + ')">' + pencilSvg + '</button>'
+        : '') +
+      '<button type="button" class="pc-tree-btn danger" title="Убрать колонку с листа"' +
+        ' onclick="priceApp.removeColumn(' + idx + ')">' + trashSvg + '</button>' +
+      '</span>';
+  }
+
+  function colRenameRowHtml(col, level, logo) {
+    return '<div class="pc-tree-row" data-level="' + level + '">' +
+      '<span class="pc-tree-slot"></span>' + logoCellHtml(logo) +
+      '<input type="text" class="pc-tree-input" id="pc-rename-input" value="' + escAttr(col.name) + '"' +
+        ' onkeydown="priceApp.onRenameKeydown(event)">' +
+      '<span class="pc-tree-actions">' +
+        '<button type="button" class="pc-tree-btn" title="Сохранить"' +
+          ' onclick="priceApp.commitRename()">' + checkSvg + '</button>' +
+        '<button type="button" class="pc-tree-btn" title="Отмена"' +
+          ' onclick="priceApp.cancelRename()">' + closeSvg + '</button>' +
+      '</span></div>';
+  }
+
+  function colBranchRowHtml(key, level, open, logo, title, meta) {
+    return '<button type="button" class="pc-tree-row branch" data-level="' + level + '"' +
+      ' onclick="priceApp.toggleColumnsBranch(\'' + jsAttr(key) + '\',' + (open ? 1 : 0) + ')">' +
+      '<span class="pc-tree-slot">' + (open ? '▾' : '▸') + '</span>' +
+      logoCellHtml(logo) +
+      '<span class="pc-tree-main"><span class="pc-tree-title">' + esc(title) + '</span></span>' +
+      (meta ? '<span class="pc-tree-meta">' + esc(meta) + '</span>' : '') +
       '</button>';
+  }
+
+  /** Строка колонки, за которой стоит клиника парсера. */
+  function colChoiceRowHtml(leaf, level, title, sub, logo) {
+    var choice = leaf.choice;
+    var col = columnForChoice(choice);
+    var key = choiceKey(choice);
+    var busy = !!columnsBusy[key];
+    var on = !!col && hiddenColumns.indexOf(col.name) < 0;
+
+    if (col && renamingColumn === col.name) return colRenameRowHtml(col, level, logo);
+
+    var call = 'priceApp.toggleChoice(\'' + jsAttr(key) + '\')';
+    var control = busy
+      ? '<span class="pc-tree-slot"><span class="price-btn-spinner"></span></span>'
+      : switchHtml(on, call, on ? 'Убрать из таблицы' : (col ? 'Вернуть в таблицу' : 'Добавить колонку'));
+
+    return '<div class="pc-tree-row' + (on ? ' on' : '') + '" data-level="' + level + '">' +
+      control + logoCellHtml(logo) +
+      '<button type="button" class="pc-tree-main"' + (busy ? ' disabled' : '') + ' onclick="' + call + '">' +
+        '<span class="pc-tree-title">' + esc(col ? col.name : title) + '</span>' +
+        (sub ? '<span class="pc-tree-sub">' + esc(sub) + '</span>' : '') +
+      '</button>' +
+      (col ? colActionsHtml(allColumns.indexOf(col), col) : '') +
+      '</div>';
+  }
+
+  /** Строка колонки без клиники парсера: своя клиника или ручная колонка. */
+  function colPlainRowHtml(col, idx, sub) {
+    var on = hiddenColumns.indexOf(col.name) < 0;
+    var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
+
+    if (renamingColumn === col.name) return colRenameRowHtml(col, 0, logo);
+
+    var call = 'priceApp.toggleColumnAt(' + idx + ')';
+    return '<div class="pc-tree-row' + (on ? ' on' : '') + '" data-level="0">' +
+      switchHtml(on, call, on ? 'Убрать из таблицы' : 'Вернуть в таблицу') +
+      logoCellHtml(logo) +
+      '<button type="button" class="pc-tree-main" onclick="' + call + '">' +
+        '<span class="pc-tree-title">' + esc(col.name) + '</span>' +
+        (sub ? '<span class="pc-tree-sub">' + esc(sub) + '</span>' : '') +
+      '</button>' +
+      colActionsHtml(idx, col) +
+      '</div>';
+  }
+
+  function colOwnRowHtml(col, idx) {
+    return colPlainRowHtml(col, idx, '');
+  }
+
+  /**
+   * Колонки, которых в дереве нет: вписанные руками и те, чья клиника
+   * пропала из парсера. Спрятать их только потому, что дерево о них не
+   * знает, нельзя — вместе с ними с глаз пропали бы и их цены.
+   */
+  function manualColumnRowsHtml() {
+    return allColumns.map(function(col, idx) { return { col: col, idx: idx }; })
+      .filter(function(row) {
+        if (row.col.type === 'own' || !matchesSearch(row.col.name)) return false;
+        var binding = bindingForColumn(row.col.name);
+        if (!binding) return true;
+        return !parserCompetitorChoices.some(function(choice) {
+          return columnForChoice(choice) === row.col;
+        });
+      })
+      .map(function(row) {
+        // Пока список парсера не приехал, о пропаже клиники говорить рано:
+        // дерево пустое у всех колонок сразу
+        var lost = bindingForColumn(row.col.name) && parserCompetitorChoices.length;
+        return colPlainRowHtml(row.col, row.idx, lost ? 'клиника не найдена в парсере' : '');
+      })
+      .join('');
+  }
+
+  function chosenLeaves(leaves) {
+    return leaves.filter(function(leaf) { return !!columnForChoice(leaf.choice); }).length;
   }
 
   // inCity — клиника уже лежит внутри ветки города, и повторять город
   // в её подписи незачем
-  function sourceHtml(node, level, inCity) {
+  function colSourceHtml(node, level, inCity) {
     var leaves = visibleLeaves(node);
     if (!leaves.length) return '';
 
     var source = node.source;
     var title = inCity ? sourceTitle(source) : labelWithCity(sourceTitle(source), source.city);
     var logo = source.logo || null;
-    var services = 'услуг: ' + (source.servicesTotal || 0);
 
     // Один филиал — не заводим ветку ради одной строки: клиника сама и есть
-    // выбор, а филиал с адресом уходят во вторую строку. Так же схлопывается
+    // колонка, а филиал с адресом уходят во вторую строку. Так же схлопывается
     // и клиника, у которой поиск оставил один филиал, — поэтому филиал здесь
     // называем: иначе из «Сормовской» в запросе остался бы один адрес
     if (leaves.length === 1) {
       var only = leaves[0];
       var sub = [only.choice.branch, only.choice.address].filter(Boolean).join(' · ');
-      return leafHtml(only, level, title, sub, logo, services);
+      return colChoiceRowHtml(only, level, title, sub, logo);
     }
 
-    var open = isBranchOpen(node.key);
-    var html = '<button type="button" data-level="' + level + '" class="pc-node"' +
-      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(node.key) + '\')">' +
-      twistHtml(open) + logoSlotHtml(logo) +
-      '<span class="pc-node-body"><span class="pc-node-title">' + esc(title) + '</span></span>' +
-      '<span class="pc-node-meta">филиалов: ' + leaves.length + '</span>' +
-      '</button>';
+    var chosen = chosenLeaves(leaves);
+    var open = isBranchOpen(node.key, chosen > 0);
+    var html = colBranchRowHtml(node.key, level, open, logo, title,
+      chosen ? chosen + ' из ' + leaves.length : 'филиалов: ' + leaves.length);
 
-    // У филиала своего счётчика услуг нет — прайс на всю клинику один,
-    // и повторять её число в каждой строке было бы обманом
     if (open) {
       html += leaves.map(function(leaf) {
-        return leafHtml(leaf, level + 1, leaf.choice.branch || 'Филиал',
-          leaf.choice.address || '', null, null);
+        return colChoiceRowHtml(leaf, level + 1, leaf.choice.branch || 'Филиал',
+          leaf.choice.address || '', null);
       }).join('');
     }
     return html;
   }
 
-  function cityHtml(node, level) {
-    var inner = node.sources.map(function(child) { return sourceHtml(child, level + 1, true); }).join('');
+  function colCityHtml(node, level) {
+    var inner = node.sources.map(function(child) { return colSourceHtml(child, level + 1, true); }).join('');
     if (!inner) return '';
 
-    var open = isBranchOpen(node.key);
-    var html = '<button type="button" data-level="' + level + '" class="pc-node pc-node-city"' +
-      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(node.key) + '\')">' +
-      twistHtml(open) + '<span class="pc-node-logo-slot"></span>' +
-      '<span class="pc-node-body"><span class="pc-node-title">' +
-        esc(node.city || 'город не указан') + '</span></span>' +
-      '<span class="pc-node-meta">клиник: ' + node.sources.length + '</span>' +
-      '</button>';
+    var chosen = node.sources.reduce(function(sum, child) {
+      return sum + chosenLeaves(child.leaves);
+    }, 0);
+    var open = isBranchOpen(node.key, true);
+    var html = colBranchRowHtml(node.key, level, open, null, node.city || 'город не указан',
+      chosen ? chosen + ' из ' + node.sources.length : 'клиник: ' + node.sources.length);
     return open ? html + inner : html;
   }
 
-  function nodeHtml(node, level) {
-    return node.type === 'city' ? cityHtml(node, level) : sourceHtml(node, level);
+  function colNodeHtml(node, level) {
+    return node.type === 'city' ? colCityHtml(node, level) : colSourceHtml(node, level);
   }
 
-  function groupHtml(group) {
+  function colGroupHtml(group) {
     // Сеть из одного города — просто строка: сворачивать ветку
     // с единственным потомком незачем
-    if (group.items.length === 1) return nodeHtml(group.nodes[0], 0);
+    if (group.items.length === 1) return colNodeHtml(group.nodes[0], 0);
 
-    var inner = group.nodes.map(function(node) { return nodeHtml(node, 1); }).join('');
+    var inner = group.nodes.map(function(node) { return colNodeHtml(node, 1); }).join('');
     if (!inner) return '';
 
-    var open = isBranchOpen(group.key);
-    var html = '<button type="button" data-level="0" class="pc-node pc-node-brand"' +
-      ' onclick="priceApp.toggleCompetitorBranch(\'' + escAttr(group.key) + '\')">' +
-      twistHtml(open) + logoSlotHtml(group.logo) +
-      '<span class="pc-node-body"><span class="pc-node-title">' + esc(group.title) + '</span></span>' +
-      '<span class="pc-node-meta">городов: ' + group.items.length + '</span>' +
-      '</button>';
+    var chosen = group.nodes.reduce(function(sum, node) {
+      return sum + (node.type === 'city'
+        ? node.sources.reduce(function(acc, child) { return acc + chosenLeaves(child.leaves); }, 0)
+        : chosenLeaves(node.leaves));
+    }, 0);
+    var open = isBranchOpen(group.key, chosen > 0);
+    var html = colBranchRowHtml(group.key, 0, open, group.logo, group.title,
+      chosen ? chosen + ' в таблице' : 'городов: ' + group.items.length);
     return open ? html + inner : html;
   }
 
-  function renderCompetitorPicker() {
-    var list = document.getElementById('competitor-picker-list');
-    if (!list) return;
-
-    var manual = '<button type="button" class="pc-node pc-node-leaf pc-picker-manual' +
-      (selectedParserChoice ? '' : ' selected') + '" onclick="priceApp.pickCompetitor(-1)">' +
-      '<span class="pc-twist"></span><span class="pc-node-logo-slot"></span>' +
-      '<span class="pc-node-body">' +
-        '<span class="pc-node-title">Вписать название вручную</span>' +
-        '<span class="pc-node-sub">Цены внесёте сами — привязки к парсеру не будет</span>' +
-      '</span></button>';
-
-    var body = competitorTree.map(groupHtml).join('');
-    list.innerHTML = manual + (body || '<div class="pc-picker-empty">Ничего не нашлось</div>');
-
-    var value = document.getElementById('competitor-picker-value');
-    var logo = document.getElementById('competitor-picker-logo');
-    var choice = selectedParserChoice;
-    value.textContent = choice ? choice.label : '— вписать название вручную —';
-    value.className = 'pc-picker-value' + (choice ? '' : ' placeholder');
-    var logoSrc = choice ? parserLogoBySourceId[choice.source.parserSourceId] : null;
-    logo.style.display = logoSrc ? '' : 'none';
-    if (logoSrc) logo.src = logoSrc;
+  function toggleColumnsBranch(key, open) {
+    competitorTreeOpen[key] = !open;
+    renderColumnsModal();
   }
 
-  // Дерево длинное, а окно невысокое: раскрываем в ту сторону, где места
-  // больше, и не даём вылезти за экран
-  function positionCompetitorMenu() {
-    var trigger = document.getElementById('competitor-picker-trigger');
-    var menu = document.getElementById('competitor-picker-menu');
-    if (!trigger || !menu) return;
+  /* ── Тумблер конкурента ──────────────────────────────────────────────────
+   *
+   * Тумблер значит «эта клиника в таблице». У колонки, которая на листе уже
+   * есть, он только прячет и возвращает её — цены при этом остаются на месте,
+   * убирает колонку насовсем только корзина. У клиники, которой на листе ещё
+   * нет, тот же тумблер её заводит: раньше ради каждой открывали отдельное
+   * окно и добавляли по одной.
+   *
+   * Колонки создаются по очереди, а подбор цен запускается один на всех:
+   * он идёт по всему каталогу конкурента и на десяти включённых подряд
+   * тумблерах десять раз подряд ждать его никто не станет.
+   */
+  var columnsBusy = {};    // ключ строки → колонка сейчас создаётся
+  var renamingColumn = null;
+  var addQueue = [];
+  var addRunning = false;
 
-    var rect = trigger.getBoundingClientRect();
-    var below = window.innerHeight - rect.bottom - 12;
-    var above = rect.top - 12;
-    var openUp = below < 240 && above > below;
+  function toggleChoice(key) {
+    if (!currentComparison) return;
+    var choice = choiceByKey(key);
+    if (!choice) return;
 
-    menu.style.left = rect.left + 'px';
-    menu.style.width = rect.width + 'px';
-    menu.style.maxHeight = Math.max(openUp ? above : below, 200) + 'px';
-    if (openUp) {
-      menu.style.top = 'auto';
-      menu.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
-    } else {
-      menu.style.bottom = 'auto';
-      menu.style.top = (rect.bottom + 4) + 'px';
+    var col = columnForChoice(choice);
+    if (col) { toggleColumn(col.name); return; }
+    if (columnsBusy[key]) return;
+
+    columnsBusy[key] = true;
+    addQueue.push(choice);
+    renderColumnsModal();
+    runAddQueue();
+  }
+
+  function setColumnsStatus(text) {
+    var el = document.getElementById('columns-status');
+    if (!el) return;
+    el.innerHTML = text
+      ? '<span class="price-btn-spinner"></span><span>' + esc(text) + '</span>'
+      : '';
+  }
+
+  /** Свободное имя колонки: два филиала одной клиники зовутся одинаково. */
+  function uniqueColumnName(label) {
+    var name = String(label || 'Конкурент').trim();
+    var taken = function(candidate) {
+      return allColumns.some(function(col) { return col.name === candidate; });
+    };
+    if (!taken(name)) return name;
+    for (var i = 2; i < 100; i++) {
+      if (!taken(name + ' (' + i + ')')) return name + ' (' + i + ')';
     }
+    return name + ' (' + Date.now() + ')';
   }
 
-  function setCompetitorPickerOpen(open) {
-    competitorPickerOpen = open;
-    var picker = document.getElementById('competitor-picker');
-    var menu = document.getElementById('competitor-picker-menu');
-    if (!picker || !menu) return;
-    picker.classList.toggle('open', open);
-    menu.style.display = open ? '' : 'none';
-
-    if (!open) {
-      window.removeEventListener('resize', positionCompetitorMenu);
-      window.removeEventListener('scroll', positionCompetitorMenu, true);
-      return;
-    }
-
-    renderCompetitorPicker();
-    positionCompetitorMenu();
-    // Меню закреплено за экраном, а поле — за окном: если окно ещё не встало
-    // на место или страницу прокрутили, привязку надо пересчитать
-    if (window.requestAnimationFrame) window.requestAnimationFrame(positionCompetitorMenu);
-    window.addEventListener('resize', positionCompetitorMenu);
-    window.addEventListener('scroll', positionCompetitorMenu, true);
-
-    var search = document.getElementById('competitor-picker-search');
-    if (search) search.focus();
-  }
-
-  function toggleCompetitorPicker() {
-    setCompetitorPickerOpen(!competitorPickerOpen);
-  }
-
-  function toggleCompetitorBranch(key) {
-    competitorTreeOpen[key] = !isBranchOpen(key);
-    renderCompetitorPicker();
-    positionCompetitorMenu();
-  }
-
-  function onCompetitorSearch(value) {
-    competitorSearch = value;
-    renderCompetitorPicker();
-    positionCompetitorMenu();
-  }
-
-  function pickCompetitor(index) {
-    selectedParserChoice = index >= 0 ? parserCompetitorChoices[index] : null;
-    // Название колонки — только подпись, менять её можно: цены придут по
-    // привязке к клинике, а не по совпадению текста
-    var input = document.getElementById('competitor-name-input');
-    if (selectedParserChoice) input.value = selectedParserChoice.label;
-    setCompetitorPickerOpen(false);
-    renderCompetitorPicker();
-    if (!selectedParserChoice) input.focus();
-  }
-
-  function openAddCompetitorModal() {
-    // Окно колонок закрываем: два окна друг на друге читаются плохо,
-    // а после добавления список колонок всё равно перечитывается с сервера
-    closeModal('columns-modal');
-    setCompetitorFormBusy(false);
-    document.getElementById('competitor-name-input').value = '';
-    selectedParserChoice = null;
-    competitorSearch = '';
-    competitorTreeOpen = {};
-    competitorTree = buildCompetitorTree();
-
-    var search = document.getElementById('competitor-picker-search');
-    if (search) search.value = '';
-
-    var group = document.getElementById('competitor-parser-group');
-    if (group) group.style.display = parserCompetitorChoices.length ? '' : 'none';
-    setCompetitorPickerOpen(false);
-    renderCompetitorPicker();
-
-    openModal('add-competitor-modal');
-  }
-
-  // Подбор соответствий по каталогу в тысячи услуг идёт секундами, иногда
-  // и полминуты. Без явного признака работы окно выглядит зависшим: кнопка
-  // нажата, а на экране ничего не меняется — человек жмёт ещё раз или уходит
-  // перезагружать страницу, хотя всё считается.
-  function setCompetitorFormBusy(busy, text) {
-    var form = document.getElementById('add-competitor-form');
-    if (!form) return;
-    var submit = form.querySelector('button[type="submit"]');
-    var cancel = form.querySelector('.price-btn-secondary');
-    var select = document.getElementById('competitor-picker-trigger');
-    var input = document.getElementById('competitor-name-input');
-    var closeBtn = document.querySelector('#add-competitor-modal .price-modal-close');
-
-    if (submit) {
-      submit.disabled = busy;
-      submit.innerHTML = busy
-        ? '<span class="price-btn-spinner"></span>' + (text || 'Добавляем…')
-        : 'Добавить';
-    }
-    // Закрыть окно на полпути нельзя: колонка уже создана, а цены ещё нет,
-    // и вернувшийся человек увидит пустой столбец без объяснений
-    if (cancel) cancel.disabled = busy;
-    if (closeBtn) closeBtn.disabled = busy;
-    if (select) select.disabled = busy;
-    if (input) input.disabled = busy;
-    if (busy) setCompetitorPickerOpen(false);
-    competitorFormBusy = busy;
-  }
-
-  function addCompetitor(e) {
-    e.preventDefault();
-
-    if (!currentComparison || competitorFormBusy) return;
-
-    var competitor = document.getElementById('competitor-name-input').value.trim();
-
-    if (!competitor) return;
-
-    // Проверяем, не добавлен ли уже
-    if (allColumns.some(function(col) { return col.name === competitor; })) {
-      showToast('Этот конкурент уже добавлен', 'error');
-      return;
-    }
-
-    var newCompetitors = currentComparison.competitors.concat([competitor]);
-    var choice = selectedParserChoice;
-
-    // Клиника и филиал сохраняются вместе с колонкой: связь идёт по id,
-    // поэтому подпись колонки после этого можно менять как угодно.
+  function createColumnForChoice(choice) {
+    var colName = uniqueColumnName(choice.label);
+    var newCompetitors = (currentComparison.competitors || []).concat([colName]);
     var newBindings = Object.assign({}, currentComparison.competitorBindings || {});
-    if (choice) {
-      newBindings[competitor] = {
-        parserSourceId: choice.source.parserSourceId,
-        filialId: choice.filialId
-      };
-    }
+    newBindings[colName] = {
+      parserSourceId: choice.source.parserSourceId,
+      filialId: choice.filialId
+    };
 
-    setCompetitorFormBusy(true, 'Создаём колонку…');
-
-    fetchAPI(API_URL + '/' + currentComparison.id, {
+    return fetchAPI(API_URL + '/' + currentComparison.id, {
       method: 'PUT',
       body: JSON.stringify({
         name: currentComparison.name,
@@ -3064,43 +3186,219 @@ window.priceApp = (function() {
         competitorBindings: newBindings
       })
     }).then(function() {
-      // Колонка вписана руками — привязывать не к чему, цены внесёт человек
-      if (!choice) return { message: 'Колонка добавлена' };
+      // Местное состояние держим в актуальном виде: следующая колонка
+      // в очереди считает свой список от него, а не от того, что было
+      // до первого сохранения
+      currentComparison.competitors = newCompetitors;
+      currentComparison.competitorBindings = newBindings;
+      allColumns.push({ name: colName, type: 'competitor' });
+      if (!baseColumnName) baseColumnName = colName;
+      renderTable();
+    });
+  }
 
-      // Точные связи и уже выученные на других листах соответствия
-      // применяются сразу. В админке останутся только спорные варианты.
-      setCompetitorFormBusy(true, 'Подбираем цены…');
-      return fetchAPI(MATCHING_URL + '/' + currentComparison.id + '/matches/suggest', {
-        method: 'POST',
-        // Подбор идёт по всему каталогу конкурента: у clinic23 это почти
-        // семь тысяч услуг, и стандартных 15 секунд ему не хватает
-        timeout: 180000
-      }).then(function(res) {
-        var data = res.data || {};
-        return {
-          message: data.review
-            ? 'Цены подставлены. Требуют проверки: ' + data.review
-            : 'Цены конкурента подставлены'
-        };
+  function runAddQueue() {
+    if (addRunning || !addQueue.length || !currentComparison) return;
+    addRunning = true;
+
+    var comparisonId = currentComparison.id;
+
+    var createNext = function(created) {
+      if (!addQueue.length) return Promise.resolve(created);
+      var choice = addQueue.shift();
+      var key = choiceKey(choice);
+      setColumnsStatus('Создаём колонку «' + choice.label + '»…');
+      return createColumnForChoice(choice).then(function() {
+        return created + 1;
       }).catch(function(err) {
-        // Колонка и привязка уже сохранены; автоподбор можно повторить из админки.
-        return { message: 'Колонка добавлена, но автоподбор не запустился: ' + err.message, error: true };
+        showToast('Не удалось добавить «' + choice.label + '»: ' + err.message, 'error');
+        return created;
+      }).then(function(count) {
+        delete columnsBusy[key];
+        renderColumnsModal();
+        return createNext(count);
       });
-    }).then(function(result) {
-      setCompetitorFormBusy(false);
-      closeModal('add-competitor-modal');
-      showToast(result.message, result.error ? 'error' : 'success');
+    };
+
+    var drain = function() {
+      return createNext(0).then(function(created) {
+        if (!created) return;
+        // Точные связи и уже выученные на других листах соответствия
+        // применяются сразу. В админке останутся только спорные варианты.
+        setColumnsStatus('Подбираем цены…');
+        return fetchAPI(MATCHING_URL + '/' + comparisonId + '/matches/suggest', {
+          // Подбор идёт по всему каталогу конкурента: у clinic23 это почти
+          // семь тысяч услуг, и стандартных 15 секунд ему не хватает
+          method: 'POST',
+          timeout: 180000
+        }).then(function(res) {
+          var data = res.data || {};
+          showToast(data.review
+            ? 'Цены подставлены. Требуют проверки: ' + data.review
+            : 'Цены конкурентов подставлены', 'success');
+        }).catch(function(err) {
+          // Колонки и привязки уже сохранены; подбор можно повторить из админки
+          showToast('Колонки добавлены, но автоподбор не запустился: ' + err.message, 'error');
+        }).then(function() {
+          // Лист перечитываем целиком: цены приехали на сервере
+          if (currentComparison && currentComparison.id === comparisonId) loadComparison();
+        });
+      }).then(function() {
+        // Пока шёл подбор, могли включить ещё тумблеры
+        if (addQueue.length) return drain();
+      });
+    };
+
+    drain().then(function() {
+      addRunning = false;
+      setColumnsStatus('');
+    });
+  }
+
+  /* ── Переименование колонки ─────────────────────────────────────────────
+   *
+   * Подпись колонки — ключ, под которым лежат её цены в каждой услуге,
+   * поэтому переименование делает сервер: одним запросом и во всех местах
+   * сразу. Клиника за колонкой при этом не меняется — связь идёт по id.
+   */
+  function startRenameAt(idx) {
+    var col = allColumns[idx];
+    if (!col || col.type === 'own') return;
+    renamingColumn = col.name;
+    renderColumnsModal();
+  }
+
+  function focusRenameInput() {
+    if (!renamingColumn) return;
+    var input = document.getElementById('pc-rename-input');
+    if (!input) return;
+    input.focus();
+    input.select();
+  }
+
+  function cancelRename() {
+    renamingColumn = null;
+    renderColumnsModal();
+  }
+
+  function onRenameKeydown(e) {
+    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelRename(); }
+  }
+
+  function commitRename() {
+    var input = document.getElementById('pc-rename-input');
+    var from = renamingColumn;
+    if (!input || !from || !currentComparison) return;
+
+    var to = input.value.trim();
+    if (!to || to === from) { cancelRename(); return; }
+    if (allColumns.some(function(col) { return col.name === to; })) {
+      showToast('Колонка с таким названием уже есть', 'error');
+      return;
+    }
+
+    input.disabled = true;
+    fetchAPI(API_URL + '/' + currentComparison.id + '/columns/rename', {
+      method: 'PUT',
+      body: JSON.stringify({ from: from, to: to })
+    }).then(function() {
+      // Скрытость и эталон держатся на имени — переносим их сами,
+      // иначе колонка после переименования вернулась бы в таблицу
+      var hiddenIdx = hiddenColumns.indexOf(from);
+      if (hiddenIdx >= 0) hiddenColumns[hiddenIdx] = to;
+      if (baseColumnName === from) baseColumnName = to;
+      renamingColumn = null;
+      showToast('Колонка переименована', 'success');
       loadComparison();
+    }).catch(function(e) {
+      input.disabled = false;
+      showToast('Ошибка: ' + e.message, 'error');
+    });
+  }
+
+  /* ── Колонка, которой нет в парсере ─────────────────────────────────────
+   *
+   * Клиники парсера включают тумблером прямо в дереве. Отдельное окно
+   * осталось ровно для того, чего в дереве нет: колонки, цены в которую
+   * человек вносит руками.
+   */
+  function openManualColumnModal() {
+    // Окно колонок закрываем: два окна друг на друге читаются плохо,
+    // а после добавления список колонок всё равно перечитывается с сервера
+    closeModal('columns-modal');
+    setManualColumnBusy(false);
+    document.getElementById('competitor-name-input').value = '';
+    openModal('add-competitor-modal');
+    document.getElementById('competitor-name-input').focus();
+  }
+
+  function setManualColumnBusy(busy) {
+    var form = document.getElementById('add-competitor-form');
+    if (!form) return;
+    var submit = form.querySelector('button[type="submit"]');
+    var cancel = form.querySelector('.price-btn-secondary');
+    var input = document.getElementById('competitor-name-input');
+    var closeBtn = document.querySelector('#add-competitor-modal .price-modal-close');
+
+    if (submit) {
+      submit.disabled = busy;
+      submit.innerHTML = busy ? '<span class="price-btn-spinner"></span>Добавляем…' : 'Добавить';
+    }
+    if (cancel) cancel.disabled = busy;
+    if (closeBtn) closeBtn.disabled = busy;
+    if (input) input.disabled = busy;
+    competitorFormBusy = busy;
+  }
+
+  function addManualColumn(e) {
+    e.preventDefault();
+
+    if (!currentComparison || competitorFormBusy) return;
+
+    var competitor = document.getElementById('competitor-name-input').value.trim();
+    if (!competitor) return;
+
+    if (allColumns.some(function(col) { return col.name === competitor; })) {
+      showToast('Колонка с таким названием уже есть', 'error');
+      return;
+    }
+
+    var newCompetitors = (currentComparison.competitors || []).concat([competitor]);
+
+    setManualColumnBusy(true);
+
+    fetchAPI(API_URL + '/' + currentComparison.id, {
+      method: 'PUT',
+      body: JSON.stringify({
+        name: currentComparison.name,
+        description: currentComparison.description,
+        ownMedCenters: currentComparison.ownMedCenters,
+        competitors: newCompetitors,
+        competitorBindings: currentComparison.competitorBindings || {}
+      })
+    }).then(function() {
+      setManualColumnBusy(false);
+      closeModal('add-competitor-modal');
+      showToast('Колонка добавлена', 'success');
+      loadComparison();
+      openColumnsModal();
     }).catch(function(err) {
-      setCompetitorFormBusy(false);
+      setManualColumnBusy(false);
       showToast('Ошибка: ' + err.message, 'error');
     });
   }
 
   function removeColumn(idx) {
-    if (!currentComparison || !confirm('Удалить колонку?')) return;
-
     var col = allColumns[idx];
+    if (!currentComparison || !col) return;
+    // Тумблер только прячет колонку, корзина убирает её насовсем — разницу
+    // проговариваем: вернуть цены после удаления неоткуда
+    if (!confirm('Убрать колонку «' + col.name + '» с листа? Её цены не сохранятся.')) return;
+
+    if (renamingColumn === col.name) renamingColumn = null;
+    var hiddenIdx = hiddenColumns.indexOf(col.name);
+    if (hiddenIdx >= 0) hiddenColumns.splice(hiddenIdx, 1);
 
     // Если удаляется базовая колонка, выбираем новую базовую
     if (col.name === baseColumnName) {
@@ -4097,10 +4395,12 @@ window.priceApp = (function() {
     loadParserCompetitors();
     document.addEventListener('keydown', function(e) {
       if (e.key !== 'Escape') return;
-      // Открытое дерево клиник Escape закрывает первым: окно с наполовину
-      // заполненной формой закрывать по тому же нажатию человек не просил
-      if (competitorPickerOpen) { setCompetitorPickerOpen(false); return; }
+      // Открытые меню Escape закрывает первыми: окно с наполовину заполненной
+      // формой закрывать по тому же нажатию человек не просил
+      if (sheetMenuOpen) { setSheetMenuOpen(false); return; }
       if (actionsMenuOpen) { setActionsMenuOpen(false); return; }
+      // Переименование — тоже правка на полуслове: сначала отменяем её
+      if (renamingColumn) { cancelRename(); return; }
       closeModal('new-comparison-modal');
       closeModal('add-service-modal');
       closeModal('add-competitor-modal');
@@ -4109,9 +4409,9 @@ window.priceApp = (function() {
     });
     // Клик мимо выпадающих списков закрывает их, как у обычного select
     document.addEventListener('mousedown', function(e) {
-      if (competitorPickerOpen) {
-        var picker = document.getElementById('competitor-picker');
-        if (picker && !picker.contains(e.target)) setCompetitorPickerOpen(false);
+      if (sheetMenuOpen) {
+        var select = document.getElementById('sheet-select');
+        if (select && !select.contains(e.target)) setSheetMenuOpen(false);
       }
       if (actionsMenuOpen) {
         var menu = document.getElementById('actions-menu');
@@ -4968,12 +5268,17 @@ window.priceApp = (function() {
     openNewComparisonModal: openNewComparisonModal,
     createComparison: createComparison,
     deleteComparison: deleteComparison,
-    openAddCompetitorModal: openAddCompetitorModal,
-    toggleCompetitorPicker: toggleCompetitorPicker,
-    toggleCompetitorBranch: toggleCompetitorBranch,
-    onCompetitorSearch: onCompetitorSearch,
-    pickCompetitor: pickCompetitor,
-    addCompetitor: addCompetitor,
+    toggleSheetMenu: toggleSheetMenu,
+    selectSheet: selectSheet,
+    openManualColumnModal: openManualColumnModal,
+    addManualColumn: addManualColumn,
+    onColumnsSearch: onColumnsSearch,
+    toggleColumnsBranch: toggleColumnsBranch,
+    toggleChoice: toggleChoice,
+    startRenameAt: startRenameAt,
+    commitRename: commitRename,
+    cancelRename: cancelRename,
+    onRenameKeydown: onRenameKeydown,
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,
     setBaseColumn: setBaseColumn,

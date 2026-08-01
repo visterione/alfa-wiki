@@ -203,6 +203,104 @@ router.put('/:id',
 );
 
 // ═══════════════════════════════════════════════════════════════
+// PUT /api/price-comparisons/:id/columns/rename - Переименовать колонку
+//
+// Подпись колонки — это ключ, под которым лежат её цена, себестоимость,
+// история и происхождение в каждой услуге листа, и он же ключ привязки
+// к клинике парсера. Поэтому переименование делает сервер и сразу во всех
+// местах: переименуй половину — и цены колонки останутся под старым именем,
+// то есть просто исчезнут с листа.
+//
+// Клиника за колонкой при этом не меняется: связь идёт по id, а подпись —
+// только то, что видит человек.
+// ═══════════════════════════════════════════════════════════════
+router.put('/:id/columns/rename',
+  authenticate,
+  [
+    body('from').isString().trim().notEmpty().withMessage('Не указана колонка'),
+    body('to').isString().trim().notEmpty().withMessage('Новое название обязательно')
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const { id } = req.params;
+      const from = String(req.body.from).trim();
+      const to = String(req.body.to).trim();
+
+      const comparison = await PriceComparison.findOne({ where: { id } });
+      if (!comparison) {
+        return res.status(404).json({ error: 'Сравнение не найдено' });
+      }
+
+      const competitors = comparison.competitors || [];
+      if (!competitors.includes(from)) {
+        // Колонки своих медцентров названы так же, как клиники в МИС, и по
+        // этому имени к ним приезжают цены — переименовывать их нельзя
+        return res.status(400).json({ error: 'Такой колонки конкурента нет на листе' });
+      }
+      if (from === to) return res.json({ message: 'Название не изменилось' });
+
+      const items = await PriceComparisonItem.findAll({ where: { comparisonId: id } });
+      const columnFields = ['prices', 'costPrices', 'priceSources', 'priceHistory'];
+      const nameTaken = competitors.includes(to) || items.some(item =>
+        columnFields.some(field =>
+          item[field] && Object.prototype.hasOwnProperty.call(item[field], to)
+        )
+      );
+      if (nameTaken) {
+        return res.status(400).json({ error: 'Колонка с таким названием уже есть' });
+      }
+
+      const bindings = { ...(comparison.competitorBindings || {}) };
+      if (bindings[from]) {
+        bindings[to] = bindings[from];
+        delete bindings[from];
+      }
+
+      await comparison.update({
+        competitors: competitors.map(column => (column === from ? to : column)),
+        competitorBindings: bindings
+      });
+
+      for (const item of items) {
+        let touched = false;
+        for (const field of columnFields) {
+          const map = item[field];
+          if (!map || !Object.prototype.hasOwnProperty.call(map, from)) continue;
+          // Пересобираем объект целиком, чтобы колонка осталась на своём
+          // месте в порядке ключей, а не уехала в конец
+          const next = {};
+          for (const [column, value] of Object.entries(map)) {
+            next[column === from ? to : column] = value;
+          }
+          item[field] = next;
+          // JSONB Sequelize сам изменённым не считает — помечаем явно
+          item.changed(field, true);
+          touched = true;
+        }
+        if (touched) await item.save();
+      }
+
+      await recordHistory(
+        PRICE_COMPARE_PAGE_SLUG,
+        req.user.id,
+        `Сравнение цен «${comparison.name}»: колонка «${from}» переименована в «${to}»`,
+        [{ field: 'column', label: 'Колонка', from, to }]
+      );
+
+      res.json({ message: 'Колонка переименована', from, to });
+    } catch (error) {
+      console.error('Error renaming comparison column:', error);
+      res.status(500).json({ error: 'Ошибка при переименовании колонки' });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════════
 // DELETE /api/price-comparisons/:id - Удалить сравнение
 // ═══════════════════════════════════════════════════════════════
 router.delete('/:id', authenticate, async (req, res) => {
