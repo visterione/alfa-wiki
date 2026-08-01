@@ -493,7 +493,7 @@ export default function Dashboard() {
       try {
         setSending(true);
         const ext = (recorder.mimeType || '').includes('mp4') ? 'm4a' : 'webm';
-        const { data: att } = await chat.uploadVoice(blob, `voice.${ext}`);
+        const { data: att } = await chat.uploadVoice(blob, `voice.${ext}`, recordSeconds);
         await chat.sendMessage(activeChat.id, '', [att], replyingToMessage?.id || null);
         setReplyingToMessage(null);
         loadMessages(activeChat.id, true);

@@ -293,9 +293,11 @@ export const chat = {
 
   // Голосовое сообщение. Отдельный маршрут: сервер приводит запись к общему
   // для всех платформ формату и определяет длительность.
-  uploadVoice: (blob, filename = 'voice.webm') => {
+  uploadVoice: (blob, filename = 'voice.webm', duration) => {
     const formData = new FormData();
     formData.append('file', blob, filename);
+    // Запасной источник длительности, если ffprobe на сервере промолчит
+    if (duration) formData.append('duration', String(duration));
     return api.post('/chat/voice', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     });

@@ -552,6 +552,14 @@ router.post('/voice', authenticate, upload.single('file'), async (req, res) => {
 
     const result = await voiceService.normalize(req.file);
 
+    // Длительность от ffprobe — источник истины, но он может не отработать
+    // (нет ffmpeg, битый контейнер). Тогда берём замер клиента: он считал
+    // секунды во время записи и ошибается разве что на доли секунды.
+    // Без длительности плеер не может нарисовать полосу прогресса.
+    const clientDuration = parseFloat(req.body?.duration);
+    const duration = result.duration
+      ?? (Number.isFinite(clientDuration) && clientDuration > 0 ? clientDuration : null);
+
     res.json({
       id: Date.now().toString(),
       kind: 'voice',
@@ -559,7 +567,7 @@ router.post('/voice', authenticate, upload.single('file'), async (req, res) => {
       path: result.path,
       mimeType: result.mimeType,
       size: result.size,
-      duration: result.duration,
+      duration,
     });
   } catch (error) {
     console.error('Voice upload error:', error);

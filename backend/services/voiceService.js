@@ -29,8 +29,13 @@ const TARGET_MIME = 'audio/mp4';
 // а на сервере они превращаются в мегабайты
 const MAX_DURATION_SEC = 300;
 
-let ffmpegChecked = false;
+// Результат проверки кэшируем, но НЕ навсегда: если ffmpeg не нашёлся, его
+// могли доустановить уже после старта процесса. Раньше отрицательный ответ
+// защёлкивался до перезапуска, и сервер молча складывал записи как есть —
+// браузерный webm при этом не играл ни на Android, ни на iOS.
 let ffmpegAvailable = false;
+let ffmpegCheckedAt = 0;
+const RECHECK_MS = 60_000;
 
 function run(cmd, args) {
   return new Promise(resolve => {
@@ -53,8 +58,12 @@ function run(cmd, args) {
  * Есть ли ffmpeg. Проверяется один раз за жизнь процесса.
  */
 async function checkFfmpeg() {
-  if (ffmpegChecked) return ffmpegAvailable;
-  ffmpegChecked = true;
+  // Положительный ответ держим до перезапуска: исчезнуть ffmpeg не может.
+  // Отрицательный перепроверяем раз в минуту — вдруг его доустановили.
+  if (ffmpegAvailable) return true;
+  if (ffmpegCheckedAt && Date.now() - ffmpegCheckedAt < RECHECK_MS) return false;
+
+  ffmpegCheckedAt = Date.now();
   const { ok } = await run('ffmpeg', ['-version']);
   ffmpegAvailable = ok;
   console.log(ok
