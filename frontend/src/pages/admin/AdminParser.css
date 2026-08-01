@@ -94,26 +94,36 @@
    экране таблица прокручивается, а не теряет последнюю колонку */
 .ap-sources { overflow-x: auto; }
 
+/* Единый текст во всей таблице: размер, начертание и цвет одни на всё.
+   Раньше в одной строке сходились серая кнопка-призрак с названием,
+   мелкий адрес, ещё более мелкая подпись филиала и чёрное число услуг —
+   пять сортов текста на одни и те же данные.
+
+   Кнопки-призраки здесь не кнопки по виду, а те же значения, которые
+   правятся по клику, — потому и выглядеть должны как значения */
+.ap-sources .admin-table td,
+.ap-sources .admin-table td small,
+.ap-sources .admin-table .btn-ghost,
+.ap-sources .admin-table .text-muted {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
 /* Прайс конкурента открывается по клику: проверять разбор всё равно ходят
-   на сайт, а копировать адрес из подсказки — лишний шаг */
+   на сайт, а копировать адрес из подсказки — лишний шаг. Единственный
+   цветной текст в таблице — по нему и видно, что это ссылка */
 .ap-sources .ap-url {
   display: block;
   max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  /* Своего цвета у ссылки нет: в таблице один цвет текста на всё,
-     и синяя строка адреса выбивалась бы из него сильнее всего */
-  color: inherit;
+  color: var(--primary);
   text-decoration: none;
 }
 
 .ap-sources .ap-url:hover { text-decoration: underline; }
-
-/* Единый цвет текста во всей таблице: серые подписи вперемешку с чёрными
-   значениями читались как два разных сорта данных, хотя данные одни */
-.ap-sources .text-muted { color: inherit; }
 
 .ap-sources .admin-table th { text-align: center; }
 
@@ -170,35 +180,105 @@
   border-radius: 4px;
 }
 
-.ap-filial-row td:first-child { font-size: 13px; }
+/* ── Окно «удалить клинику» ─────────────────────────────────────────────── */
+
+/* Своей вёрстки у окна не было вовсе: абзацы лежали прямо в .modal, без
+   отступов и без подвала, и упирались в края. Разметка теперь обычная
+   модальная — шапка, тело, подвал, — а текст сведён к трём строкам:
+   спрашивают одно, и читать перед ответом простыню незачем */
+
+.ap-confirm .modal-body { padding: 18px 24px; }
+
+/* Что удаляем — первым и крупно: остальное окно лишь объясняет последствия */
+.ap-confirm-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.ap-confirm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.ap-confirm-list li {
+  position: relative;
+  padding-left: 14px;
+  margin-bottom: 5px;
+}
+
+.ap-confirm-list li:last-child { margin-bottom: 0; }
+
+/* Точка рисуется сама: у list-style свои отступы, и они не совпадают
+   с левым краем остального содержимого окна */
+.ap-confirm-list li::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 9px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-tertiary, #9ca3af);
+}
+
+.ap-confirm-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ap-confirm-warn svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--warning);
+}
+
+/* Кнопки по правому краю, удаление — крайним: промахнуться мимо «Отмены»
+   в него сложнее, чем если бы оно стояло первым */
+.ap-confirm-actions { justify-content: flex-end; }
 
 /* ── Модалка адресов ────────────────────────────────────────────────────── */
 
 /* Окно с адресами — колонка: шапка, карта и форма прибиты, прокручивается
    только список. Базовый .modal не флексовый, поэтому длинный список просто
-   уезжал за нижнюю границу и до дальних точек было не добраться. */
+   уезжал за нижнюю границу и до дальних точек было не добраться.
+
+   Высота задана жёстко, а не «не выше 90vh»: при max-height окно росло по
+   содержимому, и список получал остаток места только если оставалось чему
+   доставаться — шапка с картой съедали почти всё, списку доставалась пара
+   строк, а прокрутка включалась не всегда. С заданной высотой список всегда
+   забирает всё, что не заняли шапка, карта и форма, и всегда прокручивается. */
 .modal.ap-loc-modal {
   display: flex;
   flex-direction: column;
-  max-height: 90vh;
+  height: 90vh;
 }
 
 .modal.ap-loc-modal .modal-header,
 .modal.ap-loc-modal .ap-loc-fixed,
 .modal.ap-loc-modal .modal-footer { flex-shrink: 0; }
 
-.ap-loc-fixed { padding: 20px 24px 0; }
+.ap-loc-fixed { padding: 16px 20px 0; }
 
 .modal.ap-loc-modal .modal-body.ap-loc-scroll {
   flex: 1 1 auto;
   /* Без min-height:0 флекс-элемент не сжимается ниже своего содержимого
      и прокрутка не включается вовсе */
   min-height: 0;
-  /* Предел задан явно, а не только сжатием по флексу: у флекса слишком
-     много условий, при которых он молча не срабатывает, а список обязан
-     прокручиваться всегда — иначе до дальних точек не добраться */
-  max-height: 40vh;
-  padding-top: 12px;
+  /* Свой потолок списку не нужен — его задаёт высота окна. Базовый
+     .modal-body ставит max-height: calc(90vh - 140px), и его надо снять
+     явно: иначе он режет список раньше, чем это сделает окно */
+  max-height: none;
+  /* Отступы поджаты: у .modal-body они рассчитаны на форму, а здесь каждые
+     лишние 12 пикселей — это ещё четверть строки списка */
+  padding: 12px 20px 14px;
   overflow-y: auto;
   /* Докрутив список до конца, не увозим следом всю страницу */
   overscroll-behavior: contain;
@@ -223,11 +303,13 @@
   overflow: hidden;
 }
 
+/* Точек в сети бывает под два десятка: отступы поджаты, чтобы в окно
+   помещалось заметно больше строк */
 .ap-loc-item {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -257,9 +339,13 @@
 
 .ap-loc-actions .btn-icon.active { color: var(--primary); }
 
+/* Выбор филиала — своей колонкой справа, а не третьей строкой под адресом:
+   строкой ниже точка выходила вдвое выше, и в окно помещалось две штуки
+   вместо шести. А привязывают филиалы как раз подряд по всему списку */
 .ap-loc-filial {
-  margin-top: 6px;
-  max-width: 260px;
+  flex-shrink: 0;
+  width: 175px;
+  align-self: center;
 }
 
 /* ── Карта в модалке адресов ────────────────────────────────────────────── */
@@ -267,7 +353,7 @@
 .ap-map {
   /* Доля экрана, а не жёсткие пиксели: на ноутбуке карта не должна съедать
      всё место, оставляя списку две строки */
-  height: clamp(170px, 28vh, 260px);
+  height: clamp(150px, 22vh, 220px);
   /* Свой контекст наложения: элементы управления Leaflet сидят на z-index
      1000 и без этого лезут поверх шапки окна и всплывающих подсказок */
   position: relative;
@@ -284,7 +370,7 @@
 .ap-map-hint {
   font-size: 12px;
   color: var(--text-tertiary, #9ca3af);
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 /* Своя метка вместо стандартной картинки Leaflet: та тянет png с CDN

@@ -650,23 +650,25 @@ function LocationsModal({ source, onClose }) {
                         {item.address}
                         {item.city && <span className="text-muted"> · {item.city}</span>}
                       </div>
-
-                      {/* Без филиала цену к точке привязать нечем: у сети
-                          в каждом отделении свой прайс */}
-                      {filials.length > 0 && (
-                        <select
-                          className="input ap-cell-input ap-loc-filial"
-                          value={filialId}
-                          onClick={e => e.stopPropagation()}
-                          onChange={e => setFilial(item, e.target.value)}
-                        >
-                          <option value="">— филиал прайса не указан —</option>
-                          {filials.map(f => (
-                            <option key={f.id} value={f.id}>{f.name || `Филиал ${f.id}`}</option>
-                          ))}
-                        </select>
-                      )}
                     </div>
+
+                    {/* Без филиала цену к точке привязать нечем: у сети
+                        в каждом отделении свой прайс. Стоит сбоку, а не
+                        строкой под адресом: строкой ниже точка выходила
+                        вдвое выше, и в окно их помещалось две */}
+                    {filials.length > 0 && (
+                      <select
+                        className="input ap-cell-input ap-loc-filial"
+                        value={filialId}
+                        onClick={e => e.stopPropagation()}
+                        onChange={e => setFilial(item, e.target.value)}
+                      >
+                        <option value="">— филиал не указан —</option>
+                        {filials.map(f => (
+                          <option key={f.id} value={f.id}>{f.name || `Филиал ${f.id}`}</option>
+                        ))}
+                      </select>
+                    )}
 
                     <div className="ap-loc-actions" onClick={e => e.stopPropagation()}>
                       {!placed && (
@@ -1720,7 +1722,7 @@ export default function AdminParser() {
           <div>
             <button
               className="btn btn-ghost"
-              style={{ padding: '0 4px', fontSize: 12 }}
+              style={{ padding: '0 4px' }}
               onClick={() => setLocationsFor(source)}
               title="Адреса точек — для карты в сравнении цен"
             >
@@ -1934,47 +1936,50 @@ export default function AdminParser() {
 
       {toDelete && (
         <div className="modal-overlay" onClick={() => !deleting && setToDelete(null)}>
-          <div className="modal modal-md" onClick={e => e.stopPropagation()}>
+          <div className="modal modal-sm ap-confirm" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Удалить клинику?</h2>
               <button className="btn-icon" onClick={() => setToDelete(null)} disabled={deleting}>
                 <X size={20} />
               </button>
             </div>
-            <p>
-              <b>{toDelete.display_name || toDelete.name}</b>
-              {toDelete.city && ` — ${toDelete.city}`}
-            </p>
-            <p className="text-muted" style={{ fontSize: 13 }}>
-              Уйдут все {toDelete.services_total} услуг, их цены и история обходов.
-              Отменить это нельзя — клинику придётся заводить заново по ссылке.
-            </p>
 
-            {/* Рукописный рецепт повторным разбором не воспроизводится: автоматика
-                этот сайт разобрать не смогла, потому его и писали руками */}
-            {toDelete.recipe?.generated_by === 'manual' && (
-              <div className="ap-warn" style={{ margin: '10px 0' }}>
-                <b style={{ display: 'block', marginBottom: 4 }}>
-                  <AlertTriangle size={14} style={{ verticalAlign: -2, marginRight: 4 }} />
-                  У этой клиники рецепт написан руками
-                </b>
-                <span style={{ fontSize: 13 }}>
-                  Автоматический разбор этот сайт не осилил — рецепт составляли вручную,
-                  и повторное добавление по ссылке его не воспроизведёт. Восстановить
-                  можно только из файла <code>recipes/</code> в репозитории парсера.
-                </span>
+            <div className="modal-body">
+              <div className="ap-confirm-name">
+                {toDelete.display_name || toDelete.name}
+                {toDelete.city && <span className="text-muted"> · {toDelete.city}</span>}
               </div>
-            )}
-            <p className="text-muted" style={{ fontSize: 13 }}>
-              Цены, уже подставленные в сравнения, останутся на месте: их подтверждал
-              человек. Обновляться они перестанут.
-            </p>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
-                <Trash2 size={16} /> {deleting ? 'Удаляем…' : 'Удалить'}
-              </button>
+
+              {/* Что уйдёт и что останется — тремя строками: у окна один
+                  вопрос, и читать перед ответом абзацы никто не станет */}
+              <ul className="ap-confirm-list">
+                <li>
+                  Уйдут услуги ({Number(toDelete.services_total || 0).toLocaleString('ru-RU')}),
+                  их цены и история обходов
+                </li>
+                <li>Принятые в сравнениях цены останутся, но обновляться перестанут</li>
+                <li>Вернуть можно только повторным разбором по ссылке</li>
+              </ul>
+
+              {/* Рукописный рецепт повторным разбором не воспроизводится: автоматика
+                  этот сайт разобрать не смогла, потому его и писали руками */}
+              {toDelete.recipe?.generated_by === 'manual' && (
+                <div className="ap-warn ap-confirm-warn">
+                  <AlertTriangle size={15} />
+                  <span>
+                    Рецепт этой клиники написан руками — по ссылке он
+                    не восстановится, только из <code>recipes/</code> в репозитории парсера.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="modal-footer ap-confirm-actions">
               <button className="btn btn-ghost" onClick={() => setToDelete(null)} disabled={deleting}>
                 Отмена
+              </button>
+              <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                <Trash2 size={16} /> {deleting ? 'Удаляем…' : 'Удалить'}
               </button>
             </div>
           </div>

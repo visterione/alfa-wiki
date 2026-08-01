@@ -724,80 +724,105 @@
   cursor: help;
 }
 
-/* Управление колонками */
-.columns-manager {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: #f9fafb;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
+/* ═══ Меню действий (кнопка-троеточие) ═══
+   «Добавить услугу», «Колонки» и «Excel» жмут раз в сеанс, а место в шапке
+   занимали постоянно. Прячем их под одну кнопку — строка над таблицей
+   становится короче на три кнопки. */
+
+.pc-menu { position: relative; }
+
+.pc-menu-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #d1d5db; border-radius: 8px;
+  background: #fff; color: #374151; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.pc-menu-btn:hover { background: #f9fafb; border-color: #9ca3af; }
+.pc-menu.open .pc-menu-btn { background: #f3f4f6; border-color: #9ca3af; }
+.pc-menu-btn svg { width: 20px; height: 20px; }
+
+/* Как и дерево клиник: позиция считается на открытии, иначе меню
+   обрезалось бы прокруткой страницы */
+.pc-menu-list {
+  position: fixed; z-index: 9000;
+  min-width: 236px;
+  padding: 6px;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.16);
 }
 
-.columns-manager h4 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
+.pc-menu-item {
+  width: 100%;
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border: none; border-radius: 8px;
+  background: transparent; cursor: pointer;
+  font-family: inherit; font-size: 14px; color: #374151;
+  text-align: left;
+}
+.pc-menu-item:hover:not(:disabled) { background: #f3f4f6; }
+.pc-menu-item:disabled { opacity: .45; cursor: not-allowed; }
+.pc-menu-item svg { width: 18px; height: 18px; flex-shrink: 0; color: #6b7280; }
+.pc-menu-item-body { flex: 1; min-width: 0; }
+.pc-menu-item-sub { display: block; font-size: 11px; color: #9ca3af; margin-top: 1px; }
+.pc-menu-sep { height: 1px; margin: 5px 6px; background: #f1f5f9; }
+
+/* ═══ Окно «Управление колонками» ═══
+   Колонок на листе бывает десяток, и раньше их чипы занимали две строки
+   над таблицей. Настраивают их редко — место под таблицу нужнее. */
+
+.pc-cols-hint {
+  margin: 0 0 14px; font-size: 13px; color: #6b7280; line-height: 1.45;
 }
 
-.columns-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
+.pc-cols-list { display: flex; flex-direction: column; gap: 6px; }
 
-.column-chip {
-  padding: 6px 12px;
+.pc-col-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid #e5e7eb; border-radius: 10px;
   background: #fff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  transition: border-color .15s, background .15s, opacity .15s;
 }
+.pc-col-row:hover { border-color: #d1d5db; }
+/* Эталон — точка отсчёта для всех разниц в таблице, и в списке он должен
+   быть виден сразу, без чтения подписей */
+.pc-col-row.base { border-color: #3b82f6; background: #eff6ff; }
+.pc-col-row.hidden-col { opacity: .5; }
 
-.column-chip.own {
-  background: #dbeafe;
-  border-color: #3b82f6;
-  color: #1e40af;
+.pc-col-radio { width: 16px; height: 16px; margin: 0; cursor: pointer; flex-shrink: 0; }
+.pc-col-logo-slot { width: 26px; flex-shrink: 0; display: flex; }
+.pc-col-logo { width: 26px; height: 26px; object-fit: contain; border-radius: 5px; }
+.pc-col-body { flex: 1; min-width: 0; }
+.pc-col-name {
+  display: block; font-size: 14px; color: #111827;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.pc-col-tags { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
 
-.column-chip.competitor {
-  background: #fef3c7;
-  border-color: #f59e0b;
-  color: #92400e;
+.pc-col-tag {
+  font-size: 11px; font-weight: 500;
+  padding: 1px 7px; border-radius: 999px;
 }
+.pc-col-tag.own { background: #dbeafe; color: #1e40af; }
+.pc-col-tag.competitor { background: #fef3c7; color: #92400e; }
+.pc-col-tag.base { background: #3b82f6; color: #fff; }
+.pc-col-tag.muted { background: #f3f4f6; color: #6b7280; }
 
-.column-chip.hidden-col {
-  opacity: 0.4;
+.pc-col-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.pc-col-btn {
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: 8px;
+  background: #f3f4f6; color: #6b7280; cursor: pointer;
+  transition: background .15s, color .15s;
 }
+.pc-col-btn:hover { background: #e5e7eb; color: #374151; }
+.pc-col-btn.danger:hover { background: #fee2e2; color: #dc2626; }
+.pc-col-btn svg { width: 16px; height: 16px; }
 
-.column-chip input[type="radio"] {
-  position: absolute;
-  left: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  width: 14px;
-  height: 14px;
-  opacity: 1;
-  margin: 0;
-}
-
-.column-chip button {
-  border: none;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 0;
-  width: 16px;
-  height: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.pc-cols-empty {
+  padding: 28px 12px; text-align: center; color: #9ca3af; font-size: 14px;
 }
 
 /* Print styles */
@@ -827,7 +852,7 @@
   .price-filters,
   .price-modal,
   .price-toast,
-  .columns-manager,
+  .pc-menu-list,
   .price-table th .add-column-btn,
   .price-table th .remove-column-btn,
   .price-table th.col-actions,
@@ -1300,21 +1325,36 @@
       </button>
     </div>
     <div class="price-header-right">
-      <button class="price-btn price-btn-success" onclick="priceApp.exportToExcel()" id="export-excel-btn" disabled>
-        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        Excel
-      </button>
-    </div>
-  </div>
-
-  <!-- Управление колонками -->
-  <div id="columns-manager" class="columns-manager" style="display:none;">
-    <h4>Управление колонками</h4>
-    <div class="columns-list" id="columns-list"></div>
-    <div id="add-competitor-btn-container" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-      <button class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
-        + Конкурент
-      </button>
+      <!-- Редкие действия под одной кнопкой: место в шапке дороже,
+           чем один лишний клик раз в сеанс -->
+      <div class="pc-menu" id="actions-menu">
+        <button type="button" class="pc-menu-btn" id="actions-menu-btn"
+                onclick="priceApp.toggleActionsMenu()" title="Действия" aria-label="Действия">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/>
+          </svg>
+        </button>
+        <div class="pc-menu-list" id="actions-menu-list" style="display:none">
+          <button type="button" class="pc-menu-item" id="menu-add-service"
+                  onclick="priceApp.runAction('add-service')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span class="pc-menu-item-body">Добавить услугу</span>
+          </button>
+          <button type="button" class="pc-menu-item" id="menu-columns"
+                  onclick="priceApp.runAction('columns')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 4v16M15 4v16M4 4h16v16H4z"/></svg>
+            <span class="pc-menu-item-body">Управление колонками
+              <span class="pc-menu-item-sub" id="menu-columns-sub"></span>
+            </span>
+          </button>
+          <div class="pc-menu-sep"></div>
+          <button type="button" class="pc-menu-item" id="menu-excel"
+                  onclick="priceApp.runAction('excel')">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="pc-menu-item-body">Скачать Excel</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1343,10 +1383,6 @@
     <button class="price-btn price-btn-secondary pc-table-only" id="refresh-costs-btn" style="display:none;" onclick="priceApp.refreshCostPrices()">
       <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
       Обновить себестоимость
-    </button>
-    <button class="price-btn price-btn-primary pc-table-only" onclick="priceApp.openAddServiceModal()">
-      <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-      Добавить услугу
     </button>
   </div>
 
@@ -1497,6 +1533,31 @@
           <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
           Добавить услуги
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Модальное окно: Управление колонками -->
+  <div id="columns-modal" class="price-modal" style="display:none" onclick="if(event.target===this)priceApp.closeModal('columns-modal')">
+    <div class="price-modal-content">
+      <div class="price-modal-header">
+        <h3>Управление колонками</h3>
+        <button class="price-modal-close" onclick="priceApp.closeModal('columns-modal')">&times;</button>
+      </div>
+      <div class="price-modal-body">
+        <p class="pc-cols-hint">
+          Эталон — колонка, с которой таблица сравнивает все остальные:
+          разницы считаются от неё. Скрытая колонка остаётся на листе,
+          но не показывается ни в таблице, ни в выгрузке.
+        </p>
+        <div class="pc-cols-list" id="columns-modal-list"></div>
+      </div>
+      <div class="price-form-actions" style="justify-content: space-between">
+        <button type="button" class="price-btn price-btn-secondary" onclick="priceApp.openAddCompetitorModal()">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+          Конкурент
+        </button>
+        <button type="button" class="price-btn price-btn-primary" onclick="priceApp.closeModal('columns-modal')">Готово</button>
       </div>
     </div>
   </div>
@@ -1768,10 +1829,9 @@ window.priceApp = (function() {
     setLayout('table');
 
     // Сбрасываем UI
-    document.getElementById('columns-manager').style.display = 'none';
     document.getElementById('price-filters').style.display = 'none';
-    document.getElementById('export-excel-btn').disabled = true;
     document.getElementById('delete-comparison-btn').disabled = true;
+    updateActionsState();
 
     loadComparisons();
     renderTable();
@@ -1802,10 +1862,10 @@ window.priceApp = (function() {
       currentComparison = null;
       currentItems = [];
       allColumns = [];
-      document.getElementById('columns-manager').style.display = 'none';
       document.getElementById('price-filters').style.display = 'none';
-      document.getElementById('export-excel-btn').disabled = true;
       document.getElementById('delete-comparison-btn').disabled = true;
+      closeModal('columns-modal');
+      updateActionsState();
       renderTable();
       return;
     }
@@ -1847,12 +1907,11 @@ window.priceApp = (function() {
         allColumns.push({ name: comp, type: 'competitor' });
       });
 
-      document.getElementById('columns-manager').style.display = 'block';
       document.getElementById('price-filters').style.display = 'flex';
-      document.getElementById('export-excel-btn').disabled = false;
       document.getElementById('delete-comparison-btn').disabled = false;
+      updateActionsState();
 
-      renderColumnsManager();
+      renderColumnsModal();
       renderTable();
       // Карта смотрит на тот же лист — при его смене пересчитываем и её
       if (document.getElementById('map-view').style.display === 'block') {
@@ -1866,77 +1925,155 @@ window.priceApp = (function() {
     });
   }
 
-  // === РЕНДЕРИНГ ===
-  function renderColumnsManager() {
-    var list = document.getElementById('columns-list');
-    list.innerHTML = '';
+  /* ── Меню действий и окно колонок ────────────────────────────────────────
+   *
+   * «Добавить услугу», «Колонки» и «Excel» нажимают в лучшем случае раз
+   * за сеанс, а место над таблицей занимали постоянно — оно ушло под
+   * одну кнопку. Настройки колонок переехали в своё окно по той же причине:
+   * десяток чипов занимал две строки ради редкой правки.
+   */
+  var actionsMenuOpen = false;
 
-    // Конкуренты нужны и лабораторному листу: Инвитро, KDL, СМлаб и CL LAB —
-    // это лаборатории, и сравнивать их цены осмысленно именно здесь. Раньше
-    // кнопка в этом режиме пряталась, и колонку конкурента было нечем завести,
-    // а без колонки парсер цены не подставляет вовсе — они просто не появлялись.
-    var competitorContainer = document.getElementById('add-competitor-btn-container');
-    if (competitorContainer) {
-      competitorContainer.style.display = 'flex';
+  function updateActionsState() {
+    var has = !!currentComparison;
+    var isMap = document.getElementById('map-view').style.display === 'block';
+
+    var addService = document.getElementById('menu-add-service');
+    var columns = document.getElementById('menu-columns');
+    var excel = document.getElementById('menu-excel');
+    var sub = document.getElementById('menu-columns-sub');
+
+    // Услуги добавляют в таблицу; на карте пункт не к месту
+    if (addService) {
+      addService.disabled = !has;
+      addService.style.display = isMap ? 'none' : '';
     }
+    if (columns) columns.disabled = !has;
+    if (excel) excel.disabled = !has || !currentItems.length;
 
-    // Если нет базовой колонки, устанавливаем первую видимую
+    if (sub) {
+      var hiddenCount = hiddenColumns.length;
+      sub.textContent = has
+        ? allColumns.length + ' на листе' + (hiddenCount ? ', скрыто ' + hiddenCount : '')
+        : '';
+    }
+  }
+
+  function positionActionsMenu() {
+    var btn = document.getElementById('actions-menu-btn');
+    var list = document.getElementById('actions-menu-list');
+    if (!btn || !list) return;
+    var rect = btn.getBoundingClientRect();
+    // Прижимаем к правому краю кнопки: она сама стоит у правого края шапки,
+    // и меню, растущее вправо, ушло бы за экран
+    list.style.top = (rect.bottom + 6) + 'px';
+    list.style.left = Math.max(8, rect.right - list.offsetWidth) + 'px';
+  }
+
+  function setActionsMenuOpen(open) {
+    actionsMenuOpen = open;
+    var menu = document.getElementById('actions-menu');
+    var list = document.getElementById('actions-menu-list');
+    if (!menu || !list) return;
+    menu.classList.toggle('open', open);
+    list.style.display = open ? '' : 'none';
+    if (!open) {
+      window.removeEventListener('resize', positionActionsMenu);
+      window.removeEventListener('scroll', positionActionsMenu, true);
+      return;
+    }
+    updateActionsState();
+    positionActionsMenu();
+    window.addEventListener('resize', positionActionsMenu);
+    window.addEventListener('scroll', positionActionsMenu, true);
+  }
+
+  function toggleActionsMenu() {
+    setActionsMenuOpen(!actionsMenuOpen);
+  }
+
+  function runAction(action) {
+    setActionsMenuOpen(false);
+    if (action === 'add-service') openAddServiceModal();
+    else if (action === 'columns') openColumnsModal();
+    else if (action === 'excel') exportToExcel();
+  }
+
+  function openColumnsModal() {
+    if (!currentComparison) {
+      showToast('Сначала выберите страницу сравнения', 'error');
+      return;
+    }
+    renderColumnsModal();
+    openModal('columns-modal');
+  }
+
+  var eyeOpenSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>';
+  var eyeOffSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.477 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>';
+  var trashSvg =
+    '<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>';
+
+  function renderColumnsModal() {
+    var list = document.getElementById('columns-modal-list');
+    if (!list) return;
+
+    // Если нет базовой колонки, устанавливаем первую
     if (!baseColumnName && allColumns.length > 0) {
       baseColumnName = allColumns[0].name;
     }
 
-    allColumns.forEach(function(col, idx) {
+    if (!allColumns.length) {
+      list.innerHTML = '<div class="pc-cols-empty">Колонок пока нет.<br>' +
+        'Добавьте услуги из МИС или заведите конкурента.</div>';
+      updateActionsState();
+      return;
+    }
+
+    // Колонки правят по индексу, а не по названию: в названии клиники
+    // попадаются и кавычки, и апострофы, и внутри onclick они бы всё сломали
+    list.innerHTML = allColumns.map(function(col, idx) {
       var isHidden = hiddenColumns.indexOf(col.name) >= 0;
       var isBase = col.name === baseColumnName;
+      var logo = parserLogoForColumn(col.name) || staticLogoForColumn(col.name);
 
-      var chip = document.createElement('div');
-      chip.className = 'column-chip ' + col.type + (isHidden ? ' hidden-col' : '');
-      chip.style.cursor = 'pointer';
-      chip.style.position = 'relative';
-      chip.style.paddingLeft = '28px'; // Делаем место для радио-кнопки
+      return '<div class="pc-col-row' + (isBase ? ' base' : '') + (isHidden ? ' hidden-col' : '') + '">' +
+        '<input type="radio" class="pc-col-radio" name="base-column"' + (isBase ? ' checked' : '') +
+          ' title="Сделать эталоном" onclick="priceApp.setBaseColumnAt(' + idx + ')">' +
+        '<span class="pc-col-logo-slot">' +
+          (logo ? '<img class="pc-col-logo" src="' + escAttr(logo) + '" alt="" onerror="this.hidden=true">' : '') +
+        '</span>' +
+        '<span class="pc-col-body">' +
+          '<span class="pc-col-name">' + esc(col.name) + '</span>' +
+          '<span class="pc-col-tags">' +
+            '<span class="pc-col-tag ' + col.type + '">' +
+              (col.type === 'own' ? 'наша клиника' : 'конкурент') + '</span>' +
+            (isBase ? '<span class="pc-col-tag base">эталон</span>' : '') +
+            (isHidden ? '<span class="pc-col-tag muted">скрыта</span>' : '') +
+          '</span>' +
+        '</span>' +
+        '<span class="pc-col-actions">' +
+          '<button type="button" class="pc-col-btn" onclick="priceApp.toggleColumnAt(' + idx + ')"' +
+            ' title="' + (isHidden ? 'Показать колонку' : 'Скрыть колонку') + '">' +
+            (isHidden ? eyeOffSvg : eyeOpenSvg) + '</button>' +
+          '<button type="button" class="pc-col-btn danger" onclick="priceApp.removeColumn(' + idx + ')"' +
+            ' title="Удалить колонку">' + trashSvg + '</button>' +
+        '</span>' +
+      '</div>';
+    }).join('');
 
-      // Радио-кнопка для выбора базовой колонки
-      var radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'base-column';
-      radio.checked = isBase;
-      radio.style.position = 'absolute';
-      radio.style.left = '8px';
-      radio.style.top = '50%';
-      radio.style.transform = 'translateY(-50%)';
-      radio.style.cursor = 'pointer';
-      radio.style.width = '14px';
-      radio.style.height = '14px';
-      radio.style.opacity = '1';
-      radio.onclick = function(e) {
-        e.stopPropagation();
-        priceApp.setBaseColumn(col.name);
-      };
+    updateActionsState();
+  }
 
-      // Клик по всему чипу для переключения видимости
-      chip.onclick = function(e) {
-        // Если клик по радио-кнопке или кнопке удаления, не переключаем видимость
-        if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button')) {
-          return;
-        }
-        priceApp.toggleColumn(col.name);
-      };
+  function toggleColumnAt(idx) {
+    var col = allColumns[idx];
+    if (col) toggleColumn(col.name);
+  }
 
-      var label = document.createElement('span');
-      label.textContent = col.name + (isBase ? ' (эталон)' : '');
-
-      var removeBtn = document.createElement('button');
-      removeBtn.innerHTML = '&times;';
-      removeBtn.onclick = function(e) {
-        e.stopPropagation();
-        priceApp.removeColumn(idx);
-      };
-
-      chip.appendChild(radio);
-      chip.appendChild(label);
-      chip.appendChild(removeBtn);
-      list.appendChild(chip);
-    });
+  function setBaseColumnAt(idx) {
+    var col = allColumns[idx];
+    if (col) setBaseColumn(col.name);
   }
 
   function toggleColumn(columnName) {
@@ -1949,13 +2086,13 @@ window.priceApp = (function() {
       // Скрываем колонку
       hiddenColumns.push(columnName);
     }
-    renderColumnsManager();
+    renderColumnsModal();
     renderTable();
   }
 
   function setBaseColumn(columnName) {
     baseColumnName = columnName;
-    renderColumnsManager();
+    renderColumnsModal();
     renderTable();
     // Эталон общий: карта считает отклонения от него же
     if (document.getElementById('map-view').style.display === 'block') loadMapData();
@@ -2837,6 +2974,9 @@ window.priceApp = (function() {
   }
 
   function openAddCompetitorModal() {
+    // Окно колонок закрываем: два окна друг на друге читаются плохо,
+    // а после добавления список колонок всё равно перечитывается с сервера
+    closeModal('columns-modal');
     setCompetitorFormBusy(false);
     document.getElementById('competitor-name-input').value = '';
     selectedParserChoice = null;
@@ -3960,17 +4100,25 @@ window.priceApp = (function() {
       // Открытое дерево клиник Escape закрывает первым: окно с наполовину
       // заполненной формой закрывать по тому же нажатию человек не просил
       if (competitorPickerOpen) { setCompetitorPickerOpen(false); return; }
+      if (actionsMenuOpen) { setActionsMenuOpen(false); return; }
       closeModal('new-comparison-modal');
       closeModal('add-service-modal');
       closeModal('add-competitor-modal');
       closeModal('add-lab-services-modal');
+      closeModal('columns-modal');
     });
-    // Клик мимо дерева закрывает его, как у обычного выпадающего списка
+    // Клик мимо выпадающих списков закрывает их, как у обычного select
     document.addEventListener('mousedown', function(e) {
-      if (!competitorPickerOpen) return;
-      var picker = document.getElementById('competitor-picker');
-      if (picker && !picker.contains(e.target)) setCompetitorPickerOpen(false);
+      if (competitorPickerOpen) {
+        var picker = document.getElementById('competitor-picker');
+        if (picker && !picker.contains(e.target)) setCompetitorPickerOpen(false);
+      }
+      if (actionsMenuOpen) {
+        var menu = document.getElementById('actions-menu');
+        if (menu && !menu.contains(e.target)) setActionsMenuOpen(false);
+      }
     });
+    updateActionsState();
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -4036,10 +4184,12 @@ window.priceApp = (function() {
     document.getElementById('table-container').style.display = isMap ? 'none' : '';
     document.getElementById('map-view').style.display = isMap ? 'block' : 'none';
 
-    // Поиск, себестоимость и добавление услуг относятся к таблице
+    // Поиск и себестоимость относятся к таблице
     Array.prototype.forEach.call(document.querySelectorAll('.pc-table-only'), function(el) {
       el.style.display = isMap ? 'none' : '';
     });
+    // «Добавить услугу» в меню — тоже про таблицу
+    updateActionsState();
     if (!isMap) {
       // У кнопки себестоимости своя логика показа — возвращаем ей управление
       document.getElementById('refresh-costs-btn').style.display =
@@ -4827,6 +4977,11 @@ window.priceApp = (function() {
     removeColumn: removeColumn,
     toggleColumn: toggleColumn,
     setBaseColumn: setBaseColumn,
+    toggleColumnAt: toggleColumnAt,
+    setBaseColumnAt: setBaseColumnAt,
+    toggleActionsMenu: toggleActionsMenu,
+    runAction: runAction,
+    openColumnsModal: openColumnsModal,
     openAddServiceModal: openAddServiceModal,
     searchMIS: searchMIS,
     selectMISService: selectMISService,
