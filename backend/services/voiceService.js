@@ -76,15 +76,58 @@ async function checkFfmpeg() {
  * Длительность в секундах через ffprobe. null, если определить не удалось.
  */
 async function probeDuration(filePath) {
-  const { ok, stdout } = await run('ffprobe', [
+  const parse = out => {
+    const value = parseFloat(String(out).trim().split('\n')[0]);
+    return Number.isFinite(value) && value > 0 ? Math.round(value * 10) / 10 : null;
+  };
+
+  // 1. Длительность контейнера — быстро и обычно достаточно
+  const fromFormat = await run('ffprobe', [
     '-v', 'error',
     '-show_entries', 'format=duration',
     '-of', 'default=noprint_wrappers=1:nokey=1',
     filePath,
   ]);
-  if (!ok) return null;
-  const value = parseFloat(String(stdout).trim());
-  return Number.isFinite(value) ? Math.round(value * 10) / 10 : null;
+  if (fromFormat.ok) {
+    const value = parse(fromFormat.stdout);
+    if (value) return value;
+  }
+
+  // 2. Длительность аудиодорожки. Нужна для потоковых контейнеров: webm,
+  // который пишет MediaRecorder в Chrome, длительности в заголовке не хранит,
+  // и первый способ на нём возвращает пустоту либо N/A.
+  const fromStream = await run('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'a:0',
+    '-show_entries', 'stream=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    filePath,
+  ]);
+  if (fromStream.ok) {
+    const value = parse(fromStream.stdout);
+    if (value) return value;
+  }
+
+  // 3. Досчитать по пакетам. Медленнее — читает файл целиком, — зато работает
+  // всегда, даже когда длительности нет нигде в метаданных.
+  const decoded = await run('ffprobe', [
+    '-v', 'error',
+    '-select_streams', 'a:0',
+    '-count_packets',
+    '-show_entries', 'stream=duration_ts,time_base',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    filePath,
+  ]);
+  if (decoded.ok) {
+    const [ts, base] = String(decoded.stdout).trim().split('\n');
+    const [num, den] = String(base || '').split('/').map(Number);
+    if (Number.isFinite(Number(ts)) && num && den) {
+      const seconds = (Number(ts) * num) / den;
+      if (seconds > 0) return Math.round(seconds * 10) / 10;
+    }
+  }
+
+  return null;
 }
 
 /**
